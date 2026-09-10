@@ -200,14 +200,76 @@ class UCSingleCatalog
 
   override def listTables(namespace: Array[String]): Array[Identifier] = delegate.listTables(namespace)
 
-  override def loadTable(ident: Identifier): Table = delegate.loadTable(ident)
+  override def loadTable(ident: Identifier): Table = {
+    requireAddressableTableNameOrPathTable(ident)
+    delegate.loadTable(ident)
+  }
 
-  override def loadTable(ident: Identifier, version:  String): Table = delegate.loadTable(ident, version)
+  override def loadTable(ident: Identifier, version: String): Table = {
+    requireAddressableTableNameOrPathTable(ident)
+    delegate.loadTable(ident, version)
+  }
 
-  override def loadTable(ident: Identifier, timestamp:  Long): Table = delegate.loadTable(ident, timestamp)
+  override def loadTable(ident: Identifier, timestamp: Long): Table = {
+    requireAddressableTableNameOrPathTable(ident)
+    delegate.loadTable(ident, timestamp)
+  }
 
+  // Spark resolves write targets (INSERT / UPDATE / DELETE / MERGE) through this overload.
+  override def loadTable(
+      ident: Identifier,
+      writePrivileges: util.Set[TableWritePrivilege]): Table = {
+    requireAddressableTableNameOrPathTable(ident)
+    val previousIntent = UCSingleCatalog.WRITE_INTENT.get()
+    UCSingleCatalog.WRITE_INTENT.set(true)
+    try {
+      delegate.loadTable(ident, writePrivileges)
+    } finally {
+      UCSingleCatalog.WRITE_INTENT.set(previousIntent)
+    }
+  }
+
+  /**
+   * Prevents file-format path identifiers (for example, `parquet`.`s3://bucket/path`) from reaching
+   * catalog delegates that interpret them as Unity Catalog table names. Reporting these identifiers
+   * as missing lets Spark's SQL-on-file resolution handle them instead.
+   *
+   * Delta and Iceberg path identifiers remain delegated so DeltaCatalog can resolve
+   * `delta.`path`` via `loadPathTable` and `iceberg.`path`` via `newIcebergPathTable`.
+   * Nested namespaces fail with [[UCSingleCatalog.checkUnsupportedNestedNamespace]] on load so
+   * they are not mistaken for a missing table.
+   */
+  private def requireAddressableTableNameOrPathTable(ident: Identifier): Unit = {
+    if (isDeltaOrIcebergPath(ident)) {
+      return
+    }
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    if (!UCSingleCatalog.isAddressableTableName(ident)) {
+      throw new NoSuchTableException(ident)
+    }
+  }
+
+  /**
+   * Parquet-style path identifiers are absent (so Spark can fall through to SQL-on-file). Nested
+   * names still go to the delegate: Delta 4.3+ rejects them client-side with
+   * IllegalArgumentException, which Spark DROP/EXISTS tests expect. Do not throw
+   * [[UCSingleCatalog.checkUnsupportedNestedNamespace]] here.
+   */
   override def tableExists(ident: Identifier): Boolean = {
-    delegate.tableExists(ident)
+    if (isDeltaOrIcebergPath(ident) || ident.namespace().length != 1) {
+      delegate.tableExists(ident)
+    } else if (!UCSingleCatalog.isAddressableTableName(ident)) {
+      false
+    } else {
+      delegate.tableExists(ident)
+    }
+  }
+
+  /** Matches DeltaCatalog's `hasDeltaNamespace` / `hasIcebergNamespace` path-table probe. */
+  private def isDeltaOrIcebergPath(ident: Identifier): Boolean = {
+    ident.namespace().length == 1 && (
+      ident.namespace()(0).equalsIgnoreCase("delta") ||
+        ident.namespace()(0).equalsIgnoreCase("iceberg"))
   }
 
   override def capabilities(): util.Set[TableCatalogCapability] = delegate.capabilities()
@@ -681,6 +743,11 @@ object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
+  // True while the current thread resolves a declared write target. Thread-local because
+  // DeltaCatalog does not override `loadTable(ident, writePrivileges)` and drops the argument
+  // before it reaches the vend site in `UCProxy.loadV1Table`.
+  private[spark] val WRITE_INTENT = ThreadLocal.withInitial[Boolean](() => false)
+
   /**
    * UC external locations and the temporary path-credentials API use canonical lowercase
    * `s3://` URLs on the server. Hadoop clients may reference the same storage as `s3a://`
@@ -925,6 +992,24 @@ private[spark] class UCProxy(
     }
   }
 
+  private def readCredentialsOrServerSidePlanning(
+      credBuilder: UCCredentialHadoopConfs.Builder,
+      tableId: String,
+      identifier: TableIdentifier): util.Map[String, String] = {
+    try {
+      credBuilder.buildForTable(tableId, TableOperation.READ)
+    } catch {
+      case e: ApiException =>
+        logWarning(s"READ credential generation failed for table $identifier: ${e.getMessage}")
+        if (serverSidePlanningEnabled) {
+          enableServerSidePlanningConfig(identifier)
+          Map.empty[String, String].asJava
+        } else {
+          throw e
+        }
+    }
+  }
+
   // Single-RPC table path. Calls UC `getTable` once and routes view-like rows through a
   // version-specific hook (rejected from the table surface on 4.2; plain views resolved as
   // read-only V1 views on 4.0/4.1).
@@ -959,27 +1044,19 @@ private[spark] class UCProxy(
         .enableCredentialScopedFs(credScopedFsEnabled)
         .hadoopConf(UCSingleCatalog.sessionHadoopConf())
 
-    // TODO: at this time, we don't know if the table will be read or written. For now we always
-    //       request READ_WRITE credentials as the server doesn't distinguish between READ and
-    //       READ_WRITE credentials as of today. When loading a table, Spark should tell if it's
-    //       for read or write, we can request the proper credential after fixing Spark.
+    // Intent-less loads still request READ_WRITE first: write paths such as Delta's OPTIMIZE,
+    // ALTER TABLE and streaming sinks resolve their target through the intent-less overload.
     val extraSerdeProps = try {
       credBuilder.buildForTable(tableId, TableOperation.READ_WRITE)
     } catch {
       case e: ApiException =>
-        logWarning(s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
-        try {
-          credBuilder.buildForTable(tableId, TableOperation.READ)
-        } catch {
-          case e: ApiException =>
-            logWarning(s"READ credential generation failed for table $identifier: ${e.getMessage}")
-            if (serverSidePlanningEnabled) {
-              enableServerSidePlanningConfig(identifier)
-              Map.empty[String, String].asJava
-            } else {
-              throw e
-            }
+        if (UCSingleCatalog.WRITE_INTENT.get()) {
+          // Fail fast: READ credentials would only defer the denial to the storage layer mid-job.
+          throw e
         }
+        logWarning(
+          s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
+        readCredentialsOrServerSidePlanning(credBuilder, tableId, identifier)
     }
 
     // For unrecognized schemes (e.g. file://) the credential switch returns empty without props;
@@ -1074,14 +1151,10 @@ private[spark] class UCProxy(
     comment.foreach(createTable.setComment(_))
     createTable.setColumns(columns)
     createTable.setDataSourceFormat(convertDatasourceFormat(format))
-    // Do not send the V2 table properties as they are made part of the `createTable` already.
-    // Also strip the vended filesystem credential properties (fs.* and their option.-prefixed
-    // duplicates, e.g. fs.s3a.session.token): they are session-scoped Hadoop configs injected by
-    // UCSingleCatalog for the local write path, not table metadata, and must never be persisted
-    // in the catalog.
+    // Drop V2 reserved keys, vended fs.* credentials, and Spark Hive-metastore schema JSON.
+    // Same deny-list as createView; see UCTableProperties.shouldPersistProperty.
     val propertiesToServer = properties.view
-      .filterKeys(!UCTableProperties.V2_TABLE_PROPERTIES.contains(_))
-      .filterKeys(k => !k.startsWith("fs.") && !k.startsWith(TableCatalog.OPTION_PREFIX + "fs."))
+      .filterKeys(UCTableProperties.shouldPersistProperty(_))
       .toMap
     createTable.setProperties(propertiesToServer)
     try {

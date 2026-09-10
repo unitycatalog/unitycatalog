@@ -24,6 +24,7 @@ import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.util.Map;
+import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.StagedTable;
 import org.apache.spark.sql.connector.catalog.StagingTableCatalog;
@@ -83,6 +84,64 @@ public class UCSingleCatalogStagingTableTest {
     when(mockFetcher.createCredentials())
         .thenReturn(singletonList(new GcsCredential("token", Long.MAX_VALUE, null)));
     CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockFetcher;
+  }
+
+  @Test
+  public void testLoadTableRejectsNonDeltaPathBeforeDelegate() throws Exception {
+    Identifier path =
+        Identifier.of(new String[] {"parquet"}, "s3://bucket/tenants/t1/input/file.parquet");
+
+    assertThatThrownBy(() -> catalog.loadTable(path)).isInstanceOf(NoSuchTableException.class);
+    assertThatThrownBy(() -> catalog.loadTable(path, "v1"))
+        .isInstanceOf(NoSuchTableException.class);
+    assertThatThrownBy(() -> catalog.loadTable(path, 123L))
+        .isInstanceOf(NoSuchTableException.class);
+    assertThat(catalog.tableExists(path)).isFalse();
+
+    verify(mockDelegate, never()).loadTable(path);
+    verify(mockDelegate, never()).loadTable(path, "v1");
+    verify(mockDelegate, never()).loadTable(path, 123L);
+    verify(mockDelegate, never()).tableExists(path);
+  }
+
+  @Test
+  public void testLoadTableDelegatesDeltaPath() throws Exception {
+    Identifier path = Identifier.of(new String[] {"DeLtA"}, "/tmp/delta-table");
+    Table expected = mock(Table.class);
+    when(mockDelegate.loadTable(path)).thenReturn(expected);
+    when(mockDelegate.tableExists(path)).thenReturn(true);
+
+    assertThat(catalog.loadTable(path)).isSameAs(expected);
+    assertThat(catalog.tableExists(path)).isTrue();
+    verify(mockDelegate).loadTable(path);
+    verify(mockDelegate).tableExists(path);
+  }
+
+  @Test
+  public void testLoadTableDelegatesIcebergPath() throws Exception {
+    Identifier path = Identifier.of(new String[] {"IceBerg"}, "s3://bucket/iceberg-table");
+    Table expected = mock(Table.class);
+    when(mockDelegate.loadTable(path)).thenReturn(expected);
+    when(mockDelegate.tableExists(path)).thenReturn(true);
+
+    assertThat(catalog.loadTable(path)).isSameAs(expected);
+    assertThat(catalog.tableExists(path)).isTrue();
+    verify(mockDelegate).loadTable(path);
+    verify(mockDelegate).tableExists(path);
+  }
+
+  @Test
+  public void testLoadTableRejectsNestedNamespaceWithExplicitError() throws Exception {
+    Identifier nested = Identifier.of(new String[] {"a", "b"}, "t");
+    when(mockDelegate.tableExists(nested)).thenReturn(false);
+
+    assertThatThrownBy(() -> catalog.loadTable(nested))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("Nested namespaces are not supported");
+    assertThat(catalog.tableExists(nested)).isFalse();
+
+    verify(mockDelegate, never()).loadTable(nested);
+    verify(mockDelegate).tableExists(nested);
   }
 
   @AfterEach

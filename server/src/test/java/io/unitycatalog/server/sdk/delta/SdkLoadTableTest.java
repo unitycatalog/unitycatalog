@@ -9,6 +9,7 @@ import io.unitycatalog.client.ApiResponse;
 import io.unitycatalog.client.api.DeltaCommitsApi;
 import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
+import io.unitycatalog.client.delta.model.DeltaMaintenanceOperation;
 import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaStructField;
 import io.unitycatalog.client.delta.model.DeltaTableMetadata;
@@ -148,6 +149,7 @@ public class SdkLoadTableTest extends BaseServerTest {
       // External table: no commits
       assertThat(response.getCommits()).isNullOrEmpty();
       assertThat(response.getLatestTableVersion()).isNull();
+      assertThat(response.getAllowedMaintenanceOperations()).isEmpty();
     }
 
     // -------- Managed DELTA table: commit + backfill flow --------
@@ -165,6 +167,11 @@ public class SdkLoadTableTest extends BaseServerTest {
       DeltaLoadTableResponse r1 = loadTable(tableName);
       assertThat(r1.getCommits()).isEmpty();
       assertThat(r1.getLatestTableVersion()).isEqualTo(0L);
+      assertThat(r1.getAllowedMaintenanceOperations())
+          .containsExactly(
+              DeltaMaintenanceOperation.DATA_REORGANIZATION,
+              DeltaMaintenanceOperation.DATA_CLEANUP,
+              DeltaMaintenanceOperation.METADATA_CLEANUP);
 
       // Commit v1, load: 1 commit
       commitsApi.commit(

@@ -5,12 +5,14 @@ import json
 import logging
 import os
 import re
+from dataclasses import dataclass
 from hashlib import md5
 from io import StringIO
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from pydantic import Field, create_model
 
+from unitycatalog.ai.core.utils.callable_utils import ServiceCredential
 from unitycatalog.ai.core.utils.config import JSON_SCHEMA_TYPE, UC_LIST_FUNCTIONS_MAX_RESULTS
 from unitycatalog.ai.core.utils.pydantic_utils import (
     PydanticField,
@@ -469,3 +471,133 @@ def extract_function_name(sql_body: str) -> str:
         "statement in Databricks: "
         "https://docs.databricks.com/en/sql/language-manual/sql-ref-syntax-ddl-create-sql-function.html#syntax."
     )
+
+
+@dataclass(frozen=True)
+class FunctionEnvironment:
+    """
+    Dataclass to store the execution environment declared on a Unity Catalog function.
+
+    Attributes:
+        dependencies: The dependencies declared for the function, empty when none were declared.
+        environment_version: The environment version declared for the function, or None when the
+            function did not declare one and Unity Catalog selected it implicitly.
+    """
+
+    dependencies: List[str]
+    environment_version: Optional[str]
+
+
+def _function_properties(function_info: Any) -> Dict[str, Any]:
+    """
+    Decode the `properties` field of a FunctionInfo into a dictionary.
+
+    Unity Catalog returns function properties as a JSON-encoded string rather than a typed field,
+    and the values within it are themselves JSON-encoded.
+
+    Args:
+        function_info: The FunctionInfo to read from.
+
+    Returns:
+        The decoded properties, or an empty dictionary if the function has none or they are not
+        decodable.
+    """
+    properties = getattr(function_info, "properties", None)
+    if not properties:
+        return {}
+    try:
+        decoded = json.loads(properties)
+    except (TypeError, ValueError):
+        _logger.warning("Unable to decode the properties of function %s.", function_info.name)
+        return {}
+    return decoded if isinstance(decoded, dict) else {}
+
+
+def _decode_property(properties: Dict[str, Any], key: str) -> Any:
+    """
+    Decode a single JSON-encoded property value.
+
+    Args:
+        properties: The decoded function properties.
+        key: The property key to read.
+
+    Returns:
+        The decoded value, or None when the key is absent or its value is not decodable.
+    """
+    raw = properties.get(key)
+    if raw is None:
+        return None
+    try:
+        return json.loads(raw)
+    except ValueError:
+        _logger.warning("Unable to decode the %s property of a function.", key)
+        return None
+
+
+def get_function_environment(function_info: Any) -> FunctionEnvironment:
+    """
+    Read the execution environment declared on a Unity Catalog function.
+
+    Args:
+        function_info: The FunctionInfo to read from.
+
+    Returns:
+        FunctionEnvironment: The declared dependencies and environment version.
+    """
+    properties = _function_properties(function_info)
+    dependencies = _decode_property(properties, "environment.dependencies")
+    return FunctionEnvironment(
+        dependencies=dependencies if isinstance(dependencies, list) else [],
+        environment_version=properties.get("environment.environment_version"),
+    )
+
+
+def get_function_credentials(function_info: Any) -> List[ServiceCredential]:
+    """
+    Read the service credentials declared on a Unity Catalog function.
+
+    Note that a credential declared without an alias is stored as an alias equal to its name, so
+    it is indistinguishable from one explicitly aliased to its own name; both are reported with
+    `alias` set to None.
+
+    Args:
+        function_info: The FunctionInfo to read from.
+
+    Returns:
+        The declared service credentials, ordered by the name they are referenced by.
+    """
+    properties = _function_properties(function_info)
+    mappings = _decode_property(properties, "routine_credential.credentials_mappings")
+    if not isinstance(mappings, dict):
+        return []
+
+    default_credential = _decode_property(properties, "routine_credential.default_credential")
+    return [
+        ServiceCredential(
+            name=name,
+            alias=alias if alias != name else None,
+            is_default=name == default_credential,
+        )
+        for alias, name in sorted(mappings.items())
+    ]
+
+
+def get_function_secrets(function_info: Any) -> List[str]:
+    """
+    Read the Unity Catalog secrets declared on a function.
+
+    Args:
+        function_info: The FunctionInfo to read from.
+
+    Returns:
+        The declared secrets as three-part 'catalog.schema.key' names.
+    """
+    properties = _function_properties(function_info)
+    secrets = _decode_property(properties, "routine_secrets.secrets")
+    if not isinstance(secrets, dict):
+        return []
+    return [
+        f"{secret['catalog']}.{secret['schema']}.{secret['key']}"
+        for secret in secrets.get("secrets", [])
+        if isinstance(secret, dict) and {"catalog", "schema", "key"} <= secret.keys()
+    ]

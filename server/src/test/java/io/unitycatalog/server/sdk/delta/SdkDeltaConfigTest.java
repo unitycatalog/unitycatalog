@@ -52,6 +52,10 @@ public class SdkDeltaConfigTest extends BaseServerTest {
     DeltaCatalogConfig config = configApi.getConfig(TestUtils.CATALOG_NAME, "1.0");
     assertThat(config.getEndpoints()).isNotEmpty();
     assertThat(config.getProtocolVersion()).isEqualTo("1.0");
+    // Verify that the {catalog} placeholder has been resolved to the actual catalog name
+    assertThat(config.getEndpoints())
+        .anySatisfy(endpoint -> assertThat(endpoint).contains(TestUtils.CATALOG_NAME))
+        .noneSatisfy(endpoint -> assertThat(endpoint).contains("{catalog}"));
 
     // Error: missing catalog returns 400 with InvalidParameterValueException
     TestUtils.assertDeltaApiException(

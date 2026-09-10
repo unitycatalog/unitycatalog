@@ -54,6 +54,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.catalog.Namespace;
@@ -61,7 +62,10 @@ import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.CommitFailedException;
+import org.apache.iceberg.exceptions.NamespaceNotEmptyException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
+import org.apache.iceberg.exceptions.NotFoundException;
+import org.apache.iceberg.exceptions.RESTException;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.metrics.CommitMetrics;
 import org.apache.iceberg.metrics.CommitMetricsResult;
@@ -131,7 +135,10 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   }
 
   @Test
-  public void testConfig() {
+  public void testConfig() throws ApiException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+
     // successful test of getting client config with prefix when passing in warehouse param
     AggregatedHttpResponse resp =
         client.get("/v1/config?warehouse=" + TestUtils.CATALOG_NAME).aggregate().join();
@@ -142,13 +149,15 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                 + "\"}"
                 + ",\"endpoints\":["
                 + "\"GET /v1/{prefix}/namespaces\","
-                + "\"GET /v1/{prefix}/namespaces/{namespace}\""
+                + "\"GET /v1/{prefix}/namespaces/{namespace}\","
+                + "\"HEAD /v1/{prefix}/namespaces/{namespace}\""
                 + ",\"HEAD /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
                 + "\"GET /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
                 + "\"GET /v1/{prefix}/namespaces/{namespace}/views/{view}\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables/{table}/metrics\","
                 + "\"GET /v1/{prefix}/namespaces/{namespace}/tables\","
                 + "\"POST /v1/{prefix}/namespaces\","
+                + "\"DELETE /v1/{prefix}/namespaces/{namespace}\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
                 + "\"DELETE /v1/{prefix}/namespaces/{namespace}/tables/{table}\""
@@ -159,6 +168,34 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     assertThat(resp.status().code()).isEqualTo(400);
     ErrorResponse errorResponse = ErrorResponseParser.fromJson(resp.contentUtf8());
     assertThat(errorResponse.type()).isEqualTo(BadRequestException.class.getSimpleName());
+
+    // A warehouse that does not exist is a 404, which is what the client reads as no such
+    // warehouse. Answering 200 would hand back a prefix whose every request fails instead.
+    resp = client.get("/v1/config?warehouse=noSuchCatalog").aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(404);
+    assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).message())
+        .contains("noSuchCatalog");
+  }
+
+  @Test
+  public void testNamespaceExists() throws ApiException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+
+    // The REST spec answers this HEAD with 204 and no content. Served by the GET route it answered
+    // 200 and described the body of the namespace response, which a HEAD must not carry.
+    AggregatedHttpResponse resp =
+        client.head(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME).aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(204);
+    assertThat(resp.contentUtf8()).isEmpty();
+    assertThat(resp.headers().contentLength()).isLessThanOrEqualTo(0);
+
+    // A namespace that does not exist is a 404, which is what the client reads as "no such
+    // namespace" without a body to parse.
+    resp = client.head(TEST_BASE_PREFIX + "/namespaces/noSuchSchema").aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(404);
   }
 
   @Test
@@ -224,6 +261,30 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
       // non-prefixed URL should result in 404
       resp = client.get(TEST_BASE_NON_PREFIX + "/namespaces").aggregate().join();
+      assertThat(resp.status().code()).isEqualTo(404);
+    }
+
+    // DropNamespace
+    {
+      String namespacePath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME;
+
+      // A namespace that still holds a table cannot be dropped, and the spec answers that with 409
+      // rather than the failed precondition the repository reports.
+      createTable(TestUtils.TABLE_NAME);
+      AggregatedHttpResponse resp = client.delete(namespacePath).aggregate().join();
+      assertThat(resp.status().code()).isEqualTo(409);
+      assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
+          .isEqualTo(NamespaceNotEmptyException.class.getSimpleName());
+
+      // Once it is empty the drop answers 204 with no content, and the namespace is gone.
+      tableOperations.deleteTable(TestUtils.TABLE_FULL_NAME);
+      resp = client.delete(namespacePath).aggregate().join();
+      assertThat(resp.status().code()).isEqualTo(204);
+      assertThat(resp.contentUtf8()).isEmpty();
+      assertThat(client.get(namespacePath).aggregate().join().status().code()).isEqualTo(404);
+
+      // Dropping a namespace that is not there is a 404.
+      resp = client.delete(namespacePath).aggregate().join();
       assertThat(resp.status().code()).isEqualTo(404);
     }
   }
@@ -953,6 +1014,110 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table"));
   }
 
+  @Test
+  public void testUnroutedIcebergRequestsAnswerWithAnIcebergError() {
+    // These paths are answered before any service is reached, so nothing here needs a catalog, a
+    // schema or a table to exist.
+
+    // A path the Iceberg API does not serve is answered before any service is reached, so the
+    // service's own handler never sees it. The response still has to be an error document Iceberg's
+    // parser can read.
+    AggregatedHttpResponse resp =
+        client
+            .get(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/views")
+            .aggregate()
+            .join();
+    assertIcebergStatusDocument(resp, 404, NotFoundException.class, "Not Found");
+
+    // Same for a method a served path does not accept: the namespaces collection serves listing
+    // and creation but not DELETE. Iceberg has no exception of its own for 405.
+    resp = client.delete(TEST_BASE_PREFIX + "/namespaces").aggregate().join();
+    assertIcebergStatusDocument(resp, 405, RESTException.class, "Method Not Allowed");
+
+    // The mount point itself belongs to the Iceberg API too, even though nothing is served there,
+    // so the prefix has to match it as well as the paths under it.
+    WebClient rootClient =
+        WebClient.builder(serverConfig.getServerUrl())
+            .auth(AuthToken.ofOAuth2(serverConfig.getAuthToken()))
+            .build();
+    resp = rootClient.get("/api/2.1/unity-catalog/iceberg").aggregate().join();
+    assertIcebergStatusDocument(resp, 404, NotFoundException.class, "Not Found");
+
+    // Paths outside the Iceberg API keep Armeria's own rendering, whether they are another UC API
+    // or the server root.
+    AggregatedHttpResponse outside =
+        rootClient.get("/api/2.1/unity-catalog/no_such_endpoint").aggregate().join();
+    assertThat(outside.status().code()).isEqualTo(404);
+    assertThat(outside.contentType()).isNotEqualTo(MediaType.JSON);
+
+    outside = rootClient.get("/").aggregate().join();
+    assertThat(outside.status().code()).isEqualTo(200);
+    assertThat(outside.contentUtf8()).isEqualTo("Hello, Unity Catalog!");
+  }
+
+  /**
+   * Asserts the response is the Iceberg error document a status raised before any service was
+   * reached has to be rendered as: Iceberg's own media type, the status in the body as well as on
+   * the response, and a type Iceberg's client knows.
+   */
+  private static void assertIcebergStatusDocument(
+      AggregatedHttpResponse resp,
+      int expectedCode,
+      Class<?> expectedType,
+      String expectedMessage) {
+    assertThat(resp.status().code()).isEqualTo(expectedCode);
+    assertThat(resp.contentType()).isEqualTo(MediaType.JSON);
+    ErrorResponse error = ErrorResponseParser.fromJson(resp.contentUtf8());
+    assertThat(error.code()).isEqualTo(expectedCode);
+    assertThat(error.type()).isEqualTo(expectedType.getSimpleName());
+    assertThat(error.message()).isEqualTo(expectedMessage);
+  }
+
+  @Test
+  public void testLoadTableSnapshotsParameter() throws Exception {
+    createUniformIcebergTable("/iceberg.metadata.two-snapshots.json");
+    String tablePath =
+        TEST_BASE_PREFIX
+            + "/namespaces/"
+            + TestUtils.SCHEMA_NAME
+            + "/tables/"
+            + TestUtils.TABLE_NAME;
+
+    // The default is every snapshot the metadata holds, which includes the one no ref points at.
+    assertThat(loadedSnapshotIds(client.get(tablePath).aggregate().join())).hasSize(2);
+    assertThat(loadedSnapshotIds(client.get(tablePath + "?snapshots=all").aggregate().join()))
+        .hasSize(2);
+
+    // "refs" asks for only the snapshots the table's refs point at.
+    AggregatedHttpResponse refsOnly = client.get(tablePath + "?snapshots=refs").aggregate().join();
+    assertThat(refsOnly.status().code()).isEqualTo(200);
+    LoadTableResponse loaded =
+        IcebergObjectMapper.mapper().readValue(refsOnly.contentUtf8(), LoadTableResponse.class);
+    assertThat(loadedSnapshotIds(refsOnly))
+        .containsExactly(loaded.tableMetadata().currentSnapshot().snapshotId());
+    // The rest of the metadata is the same table, so a client can still use what it got back.
+    assertThat(loaded.tableMetadata().metadataFileLocation())
+        .isEqualTo(
+            IcebergObjectMapper.mapper()
+                .readValue(
+                    client.get(tablePath).aggregate().join().contentUtf8(), LoadTableResponse.class)
+                .tableMetadata()
+                .metadataFileLocation());
+
+    // Any other value is a bad request rather than a silently complete response.
+    AggregatedHttpResponse rejected = client.get(tablePath + "?snapshots=some").aggregate().join();
+    assertThat(rejected.status().code()).isEqualTo(400);
+    assertThat(ErrorResponseParser.fromJson(rejected.contentUtf8()).type())
+        .isEqualTo(BadRequestException.class.getSimpleName());
+  }
+
+  private static List<Long> loadedSnapshotIds(AggregatedHttpResponse resp) throws IOException {
+    assertThat(resp.status().code()).isEqualTo(200);
+    LoadTableResponse loaded =
+        IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+    return loaded.tableMetadata().snapshots().stream().map(Snapshot::snapshotId).toList();
+  }
+
   private AggregatedHttpResponse postJson(String path, String body) {
     return client
         .execute(
@@ -1006,7 +1171,12 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
   /** Creates a table that the Iceberg endpoints see, i.e. one with uniform Iceberg metadata. */
   private void createUniformIcebergTable() throws IOException, URISyntaxException, ApiException {
-    Path metadataFile = writeIcebergMetadata();
+    createUniformIcebergTable("/iceberg.metadata.json");
+  }
+
+  private void createUniformIcebergTable(String metadataResource)
+      throws IOException, URISyntaxException, ApiException {
+    Path metadataFile = writeIcebergMetadata(metadataResource);
     catalogOperations.createCatalog(
         new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
     schemaOperations.createSchema(
@@ -1053,9 +1223,11 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   }
 
   private Path writeIcebergMetadata() throws IOException, URISyntaxException {
-    Path source =
-        Path.of(
-            Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json")).toURI());
+    return writeIcebergMetadata("/iceberg.metadata.json");
+  }
+
+  private Path writeIcebergMetadata(String resource) throws IOException, URISyntaxException {
+    Path source = Path.of(Objects.requireNonNull(this.getClass().getResource(resource)).toURI());
     Path metadataFile = icebergTableLocation.resolve("iceberg.metadata.json");
     String tableLocation = NormalizedURL.from(icebergTableLocation.toUri()).toString();
     String metadata =

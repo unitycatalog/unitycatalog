@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from decimal import Decimal
 from io import StringIO
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 from typing_extensions import override
 
@@ -21,6 +21,7 @@ from unitycatalog.ai.core.executor.local_subprocess import run_in_sandbox_subpro
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.callable_utils import (
+    ServiceCredential,
     dynamically_construct_python_function,
     generate_sql_function_body,
     generate_wrapped_sql_function_body,
@@ -32,6 +33,8 @@ from unitycatalog.ai.core.utils.execution_utils import (
 )
 from unitycatalog.ai.core.utils.function_processing_utils import (
     extract_function_name,
+    get_function_credentials,
+    get_function_secrets,
     process_function_parameter_defaults,
 )
 from unitycatalog.ai.core.utils.retry_utils import retry_on_session_expiration
@@ -90,6 +93,25 @@ def _validate_databricks_connect_available() -> bool:
             raise Exception(DATABRICKS_CONNECT_VERSION_NOT_SUPPORTED_ERROR_MESSAGE)
     except ImportError as e:
         raise Exception(DATABRICKS_CONNECT_IMPORT_ERROR_MESSAGE) from e
+
+
+def _declared_securables(function_info: "FunctionInfo") -> str:
+    """
+    Describe the credentials and secrets a function declares, for use in error messages.
+
+    Args:
+        function_info: The FunctionInfo to inspect.
+
+    Returns:
+        A human-readable description such as "service credentials and secrets", or an empty
+        string when the function declares neither.
+    """
+    declared = []
+    if get_function_credentials(function_info):
+        declared.append("service credentials")
+    if get_function_secrets(function_info):
+        declared.append("secrets")
+    return " and ".join(declared)
 
 
 def _is_in_databricks_notebook_environment() -> bool:
@@ -229,6 +251,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
         replace: bool = False,
         dependencies: Optional[list[str]] = None,
         environment_version: str = "None",
+        credentials: Optional[list[Union[str, ServiceCredential]]] = None,
+        secrets: Optional[list[str]] = None,
     ) -> "FunctionInfo":
         """
         Create a Unity Catalog (UC) function directly from a Python function.
@@ -324,6 +348,46 @@ class DatabricksFunctionClient(BaseFunctionClient):
             - It is strongly recommended to test the created function by executing it before integrating it into
             GenAI or other tools.
 
+        4. **Service Credentials and Secrets**:
+            - A function can declare Unity Catalog service credentials and secrets that its body may read at
+            execution time. The declaration is made here; the function body reads them through the Databricks
+            runtime modules:
+
+            ```python
+            from unitycatalog.ai.core.utils.callable_utils import ServiceCredential
+
+            def read_bucket(key: str) -> str:
+                \"\"\"
+                Read an object from S3.
+
+                Args:
+                    key (str): The object key to read.
+
+                Returns:
+                    str: The object contents.
+                \"\"\"
+                from databricks.service_credentials.credential_retriever import CredentialRetriever
+                from databricks.secrets.secrets import get
+
+                token = CredentialRetriever().get_aws_credential("prod-s3").access_key_id
+                api_key = get("main", "default", "api_key")
+                ...
+
+            client.create_python_function(
+                func=read_bucket,
+                catalog="main",
+                schema="ai",
+                environment_version="6",
+                credentials=[ServiceCredential(name="prod-s3", is_default=True)],
+                secrets=["main.default.api_key"],
+            )
+            ```
+
+            - Declaring secrets requires an explicit `environment_version` of '6' or higher; the version Unity
+            Catalog selects implicitly does not include the `databricks.secrets` module.
+            - Functions that declare credentials or secrets cannot be run in 'local' execution mode, which has no
+            access to the Unity Catalog credential and secret services. Use 'serverless' execution mode instead.
+
         **Function Metadata**:
         - Docstrings (if provided and Google-style) will automatically be included as detailed descriptions for
         function parameters as well as for the function itself, enhancing the discoverability of the utility of your
@@ -367,6 +431,11 @@ class DatabricksFunctionClient(BaseFunctionClient):
             environment_version: The version of the environment in which the function will be executed. Defaults to 'None'. Note
                 that the `environment_version` parameter is not supported in all runtimes. Ensure that you are using a runtime that
                 supports environment and dependency declaration prior to creating a function that declares an environment verison.
+            credentials: An optional list of Unity Catalog service credentials to make available to the function body. Each entry is
+                either a credential name or a `ServiceCredential`, which additionally supports an alias to refer to the credential by
+                and marking it as the function's default credential. At most one credential can be the default.
+            secrets: An optional list of Unity Catalog secrets to make available to the function body, each a three-part name of the
+                form 'catalog.schema.key'. Declaring secrets requires `environment_version` to be '6' or higher.
 
         Returns:
             FunctionInfo: Metadata about the created function, including its name and signature.
@@ -376,7 +445,14 @@ class DatabricksFunctionClient(BaseFunctionClient):
             raise ValueError("The provided function is not callable.")
 
         sql_function_body = generate_sql_function_body(
-            func, catalog, schema, replace, dependencies, environment_version
+            func=func,
+            catalog=catalog,
+            schema=schema,
+            replace=replace,
+            dependencies=dependencies,
+            environment_version=environment_version,
+            credentials=credentials,
+            secrets=secrets,
         )
 
         try:
@@ -404,6 +480,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
         replace=False,
         dependencies: Optional[list[str]] = None,
         environment_version: str = "None",
+        credentials: Optional[list[Union[str, ServiceCredential]]] = None,
+        secrets: Optional[list[str]] = None,
     ) -> "FunctionInfo":
         """
         Create a wrapped function comprised of a `primary_func` function and in-lined wrapped `functions` within the `primary_func` body.
@@ -424,6 +502,11 @@ class DatabricksFunctionClient(BaseFunctionClient):
             environment_version: The version of the environment in which the function will be executed. Defaults to 'None'. Note
                 that the `environment_version` parameter is not supported in all runtimes. Ensure that you are using a runtime that
                 supports environment and dependency declaration prior to creating a function that declares an environment verison.
+            credentials: An optional list of Unity Catalog service credentials to make available to the function body. Each entry is
+                either a credential name or a `ServiceCredential`, which additionally supports an alias to refer to the credential by
+                and marking it as the function's default credential. At most one credential can be the default.
+            secrets: An optional list of Unity Catalog secrets to make available to the function body, each a three-part name of the
+                form 'catalog.schema.key'. Declaring secrets requires `environment_version` to be '6' or higher.
 
         Returns:
             FunctionInfo: Metadata about the created function, including its name and signature.
@@ -439,6 +522,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
             replace=replace,
             dependencies=dependencies,
             environment_version=environment_version,
+            credentials=credentials,
+            secrets=secrets,
         )
 
         return self.create_function(sql_function_body=sql_function_body)
@@ -728,6 +813,13 @@ class DatabricksFunctionClient(BaseFunctionClient):
             raise ValueError(
                 "Local sandbox execution is only supported for scalar Python functions. "
                 "Use 'serverless' execution mode for table functions."
+            )
+        # The sandbox subprocess has no Unity Catalog securable service, so a body that reads a
+        # credential or a secret dies with an opaque signal instead of a usable error.
+        if declared := _declared_securables(function_info):
+            raise ValueError(
+                f"Function {function_info.full_name} declares {declared}, which are not available "
+                "in local sandbox execution. Use 'serverless' execution mode to execute it."
             )
         _logger.info("Using local sandbox to execute functions.")
 

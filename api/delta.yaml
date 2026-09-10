@@ -555,6 +555,19 @@ components:
         - READ
         - READ_WRITE
 
+    DeltaMaintenanceOperation:
+      type: string
+      description: A maintenance operation that a client can run on a Delta table.
+      enum:
+        - DATA_REORGANIZATION
+        - DATA_CLEANUP
+        - METADATA_CLEANUP
+      # Keep enum order aligned with x-enum-descriptions below
+      x-enum-descriptions:
+        - 'DATA_REORGANIZATION: Rewrites data files used by the latest table version to group, cluster, or lay out the data. It must not change the data in that version.'
+        - 'DATA_CLEANUP: Deletes old data files. It must not change the data in the latest table version.'
+        - 'METADATA_CLEANUP: Deletes old metadata files from the Delta log directory or other metadata-related directories. It must not change the data in the latest table version.'
+
     # Shared Types
 
     DeltaStorageCredential:
@@ -802,6 +815,14 @@ components:
           type: integer
           format: int64
           description: The latest ratified table version tracked by the server, including data-only commits. Compare with metadata.last-commit-version which only tracks metadata-changing commits.
+        allowed-maintenance-operations:
+          type: array
+          description: |
+            Maintenance operations that the catalog permits in addition to the operations that the
+            Delta protocol permits by default. A missing or empty list permits no additional
+            operations. A client must not perform an operation that it does not recognize.
+          items:
+            $ref: '#/components/schemas/DeltaMaintenanceOperation'
       required:
         - metadata
 

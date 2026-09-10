@@ -18,6 +18,7 @@ import com.linecorp.armeria.server.docs.DocService;
 import io.unitycatalog.server.auth.decorator.AuthorizationGateConverter;
 import io.unitycatalog.server.exception.GlobalExceptionHandlingDecorator;
 import io.unitycatalog.server.exception.ServiceExceptionHandlingDecorator;
+import io.unitycatalog.server.exception.UnroutedIcebergRequestHandler;
 import io.unitycatalog.server.service.AuthService;
 import io.unitycatalog.server.service.IcebergRestCatalogService;
 import io.unitycatalog.server.service.RegisteredService;
@@ -47,6 +48,12 @@ import java.util.Objects;
  * properties or security context.
  */
 public class ArmeriaServerBuilder {
+
+  /**
+   * Relative path the Iceberg REST API is mounted at. Shared with the error handler that renders
+   * unrouted Iceberg requests, so the mount point and that handler's prefix cannot drift apart.
+   */
+  static final String ICEBERG_RELATIVE_PATH = "iceberg";
 
   private final ServerBuilder armeriaServerBuilder;
   private final String basePath;
@@ -78,6 +85,10 @@ public class ArmeriaServerBuilder {
     this.armeriaServerBuilder.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"));
     this.basePath = basePath;
     this.controlPath = controlPath;
+    // Renders the 404s and 405s Armeria answers before a service is reached as Iceberg error
+    // documents, for the Iceberg API's paths only.
+    this.armeriaServerBuilder.errorHandler(
+        new UnroutedIcebergRequestHandler(basePath + ICEBERG_RELATIVE_PATH + "/"));
     this.authorizationEnabled = serverProperties.isAuthorizationEnabled();
     this.ucMapper =
         JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();

@@ -4,6 +4,7 @@ import static java.sql.Connection.TRANSACTION_REPEATABLE_READ;
 
 import io.unitycatalog.server.delta.model.DeltaCommit;
 import io.unitycatalog.server.delta.model.DeltaLoadTableResponse;
+import io.unitycatalog.server.delta.model.DeltaMaintenanceOperation;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableMetadata;
 import io.unitycatalog.server.delta.model.DeltaTableType;
@@ -424,6 +425,11 @@ public class TableRepository {
         && DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
       populateCommitsForDelta(
           response, repositories.getDeltaCommitRepository(), session, dao.getId());
+      response.setAllowedMaintenanceOperations(
+          List.of(
+              DeltaMaintenanceOperation.DATA_REORGANIZATION,
+              DeltaMaintenanceOperation.DATA_CLEANUP,
+              DeltaMaintenanceOperation.METADATA_CLEANUP));
     }
 
     populateUniformMetadata(response, dao);
@@ -568,12 +574,6 @@ public class TableRepository {
 
   private static DeltaTableType toDeltaTableType(String value) {
     return DeltaTableType.fromValue(value);
-  }
-
-  public String getTableUniformMetadataLocation(
-      Session session, String catalogName, String schemaName, String tableName) {
-    TableInfoDAO dao = findTableOrThrow(session, catalogName, schemaName, tableName);
-    return dao.getUniformIcebergMetadataLocation();
   }
 
   public IcebergTableState getIcebergTableState(
@@ -1060,6 +1060,48 @@ public class TableRepository {
               pageToken,
               omitProperties,
               omitColumns);
+        },
+        "Failed to list tables",
+        /* readOnly= */ true);
+  }
+
+  /**
+   * One page of the tables in a schema that carry an Iceberg metadata pointer, and the token for
+   * the page after it. An empty {@code nextPageToken} means the listing is complete. The names are
+   * only the tables that carry one, so a page can be empty while more pages remain.
+   */
+  public record IcebergTablePage(List<String> tableNames, Optional<String> nextPageToken) {}
+
+  /**
+   * Lists the tables in a schema that carry an Iceberg metadata pointer -- a Delta UniForm
+   * projection or a native Iceberg table -- one repository page at a time.
+   *
+   * <p>Whether a table carries one is read from the very row the page was read from, so a table
+   * created or dropped after this page was read cannot affect it. Callers that resolved each listed
+   * name a second time to answer the same question would instead fail the whole listing when a
+   * table was dropped in between.
+   *
+   * @param pageToken the token from the previous page, or empty to start at the first page
+   */
+  public IcebergTablePage listIcebergTables(
+      String catalogName, String schemaName, Optional<String> pageToken) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UUID schemaId =
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
+          List<TableInfoDAO> page =
+              LISTING_HELPER.listEntity(session, Optional.empty(), pageToken, schemaId);
+          String nextPageToken = LISTING_HELPER.getNextPageToken(page, Optional.empty());
+          List<String> tableNames =
+              page.stream()
+                  .filter(dao -> dao.getUniformIcebergMetadataLocation() != null)
+                  .map(TableInfoDAO::getName)
+                  .toList();
+          return new IcebergTablePage(
+              tableNames, Optional.ofNullable(nextPageToken).filter(token -> !token.isEmpty()));
         },
         "Failed to list tables",
         /* readOnly= */ true);

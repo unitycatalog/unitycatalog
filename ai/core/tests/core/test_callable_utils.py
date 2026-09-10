@@ -7,10 +7,15 @@ import pytest
 
 from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.callable_utils import (
+    ServiceCredential,
     _parse_routine_definition,
     _parse_sql_data_type,
+    construct_credentials_statement,
+    construct_dependency_statement,
+    construct_secrets_statement,
     dynamically_construct_python_function,
     generate_sql_function_body,
+    generate_wrapped_sql_function_body,
 )
 from unitycatalog.ai.core.utils.type_utils import SQL_TYPE_TO_PYTHON_TYPE_MAPPING
 
@@ -1903,3 +1908,307 @@ def test_dynamically_construct_python_function_indentation(input_body, expected_
     reconstructed = dynamically_construct_python_function(dummy)
     expected_def = build_expected_definition("test_func", input_body, "Test function")
     assert reconstructed == expected_def, f"Expected:\n{expected_def}\nGot:\n{reconstructed}"
+
+
+# ---------------------------
+# Tests for Credentials, Secrets, and Dependency Validation
+# ---------------------------
+
+
+def _env_deps_func(a: int) -> str:
+    """
+    A function that declares credentials or secrets.
+
+    Args:
+        a: An integer
+
+    Returns:
+        str: A string representation of the integer
+    """
+    return str(a)
+
+
+@pytest.mark.parametrize(
+    ("credentials", "expected"),
+    [
+        (None, ""),
+        ([], ""),
+        (["cred"], "\nCREDENTIALS (`cred`)"),
+        (["my-cred"], "\nCREDENTIALS (`my-cred`)"),
+        ([ServiceCredential(name="cred")], "\nCREDENTIALS (`cred`)"),
+        ([ServiceCredential(name="cred", alias="c")], "\nCREDENTIALS (`cred` AS `c`)"),
+        ([ServiceCredential(name="cred", is_default=True)], "\nCREDENTIALS (`cred` DEFAULT)"),
+        (
+            [ServiceCredential(name="cred", alias="c", is_default=True)],
+            "\nCREDENTIALS (`cred` AS `c` DEFAULT)",
+        ),
+        (
+            [ServiceCredential(name="a", is_default=True), ServiceCredential(name="b", alias="z")],
+            "\nCREDENTIALS (`a` DEFAULT, `b` AS `z`)",
+        ),
+        (["a", ServiceCredential(name="b")], "\nCREDENTIALS (`a`, `b`)"),
+    ],
+)
+def test_construct_credentials_statement(credentials, expected):
+    assert construct_credentials_statement(credentials) == expected
+
+
+@pytest.mark.parametrize(
+    ("credentials", "match"),
+    [
+        (
+            [
+                ServiceCredential(name="a", is_default=True),
+                ServiceCredential(name="b", is_default=True),
+            ],
+            "Only one service credential can be marked as the default",
+        ),
+        (
+            [ServiceCredential(name="a"), ServiceCredential(name="b", alias="a")],
+            "Duplicate service credential reference: 'a'",
+        ),
+        (
+            [ServiceCredential(name="a"), ServiceCredential(name="a")],
+            "Duplicate service credential",
+        ),
+        ([ServiceCredential(name="")], "Service credential name cannot be empty"),
+        ([ServiceCredential(name="a", alias="")], "Service credential alias cannot be empty"),
+        ([ServiceCredential(name="a`b")], "Service credential name cannot contain a backtick"),
+        (
+            [ServiceCredential(name="a", alias="x`y")],
+            "Service credential alias cannot contain a backtick",
+        ),
+    ],
+)
+def test_construct_credentials_statement_invalid(credentials, match):
+    with pytest.raises(ValueError, match=match):
+        construct_credentials_statement(credentials)
+
+
+@pytest.mark.parametrize(
+    ("secrets", "expected"),
+    [
+        (None, ""),
+        ([], ""),
+        (["cat.sch.key"], "\nSECRETS (`cat`.`sch`.`key`)"),
+        (["my-cat.my sch.key-1"], "\nSECRETS (`my-cat`.`my sch`.`key-1`)"),
+        (
+            ["a.b.c", "d.e.f"],
+            "\nSECRETS (`a`.`b`.`c`, `d`.`e`.`f`)",
+        ),
+    ],
+)
+def test_construct_secrets_statement(secrets, expected):
+    assert construct_secrets_statement(secrets, environment_version="6") == expected
+
+
+@pytest.mark.parametrize(
+    ("secrets", "match"),
+    [
+        (["cat.sch"], "must be a three-part name"),
+        (["cat.sch.key.extra"], "must be a three-part name"),
+        (["key"], "must be a three-part name"),
+        (["cat..key"], "Secret identifier part cannot be empty"),
+        (["cat.sch.ke`y"], "Secret identifier part cannot contain a backtick"),
+    ],
+)
+def test_construct_secrets_statement_invalid(secrets, match):
+    with pytest.raises(ValueError, match=match):
+        construct_secrets_statement(secrets, environment_version="6")
+
+
+@pytest.mark.parametrize("environment_version", ["6", "7", "10", "6-AIRGAPPED", "custom-channel"])
+def test_secrets_environment_version_accepted(environment_version):
+    assert construct_secrets_statement(["a.b.c"], environment_version) == "\nSECRETS (`a`.`b`.`c`)"
+
+
+@pytest.mark.parametrize("environment_version", ["None", "1", "5", "5-AIRGAPPED"])
+def test_secrets_environment_version_rejected(environment_version):
+    with pytest.raises(ValueError, match="environment_version"):
+        construct_secrets_statement(["a.b.c"], environment_version)
+
+
+def test_secrets_without_environment_version_names_the_fix():
+    with pytest.raises(ValueError, match="environment_version='6'"):
+        construct_secrets_statement(["a.b.c"], "None")
+
+
+@pytest.mark.parametrize(
+    ("dependencies", "match"),
+    [
+        (["pandas'; DROP"], "cannot contain a single quote"),
+        ([""], "cannot contain empty entries"),
+        (["   "], "cannot contain empty entries"),
+        (["/Volumes/cat/sch"], "not a valid volume path"),
+        (["/volumes/cat"], "not a valid volume path"),
+    ],
+)
+def test_validate_dependencies_invalid(dependencies, match):
+    with pytest.raises(ValueError, match=match):
+        construct_dependency_statement(dependencies)
+
+
+@pytest.mark.parametrize(
+    "dependency",
+    [
+        "requests>=2.31",
+        "/Volumes/cat/sch/vol/pkg.whl",
+        "/volumes/cat/sch/vol",
+        "git+https://example.invalid/pkg.git",
+    ],
+)
+def test_validate_dependencies_valid(dependency):
+    assert dependency in construct_dependency_statement([dependency])
+
+
+def test_credentials_and_secrets_in_generated_sql():
+    sql_body = generate_sql_function_body(
+        _env_deps_func,
+        "test_catalog",
+        "test_schema",
+        True,
+        ["numpy"],
+        "6",
+        [ServiceCredential(name="my-cred", alias="c", is_default=True)],
+        ["cat.sch.key"],
+    )
+
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`_env_deps_func`(a LONG COMMENT 'An integer')
+RETURNS STRING
+LANGUAGE PYTHON
+ENVIRONMENT (dependencies = '["numpy"]', environment_version = '6')
+CREDENTIALS (`my-cred` AS `c` DEFAULT)
+SECRETS (`cat`.`sch`.`key`)
+COMMENT 'A function that declares credentials or secrets.'
+AS $$
+    return str(a)
+$$;
+    """
+
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_credentials_only_in_generated_sql():
+    sql_body = generate_sql_function_body(
+        _env_deps_func, "test_catalog", "test_schema", True, credentials=["my-cred"]
+    )
+
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`_env_deps_func`(a LONG COMMENT 'An integer')
+RETURNS STRING
+LANGUAGE PYTHON
+CREDENTIALS (`my-cred`)
+COMMENT 'A function that declares credentials or secrets.'
+AS $$
+    return str(a)
+$$;
+    """
+
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_secrets_only_in_generated_sql():
+    sql_body = generate_sql_function_body(
+        _env_deps_func,
+        "test_catalog",
+        "test_schema",
+        True,
+        environment_version="6",
+        secrets=["cat.sch.key"],
+    )
+
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`_env_deps_func`(a LONG COMMENT 'An integer')
+RETURNS STRING
+LANGUAGE PYTHON
+ENVIRONMENT (environment_version = '6')
+SECRETS (`cat`.`sch`.`key`)
+COMMENT 'A function that declares credentials or secrets.'
+AS $$
+    return str(a)
+$$;
+    """
+
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_no_credentials_or_secrets_leaves_sql_unchanged():
+    sql_body = generate_sql_function_body(_env_deps_func, "test_catalog", "test_schema", True)
+
+    assert "CREDENTIALS" not in sql_body
+    assert "SECRETS" not in sql_body
+
+
+def test_wrapped_function_carries_credentials_and_secrets():
+    def helper(x: int) -> int:
+        """
+        Double a number.
+
+        Args:
+            x: A number
+
+        Returns:
+            int: The doubled number
+        """
+        return x * 2
+
+    def primary(a: int) -> str:
+        """
+        A wrapper function.
+
+        Args:
+            a: An integer
+
+        Returns:
+            str: A string
+        """
+        return str(helper(a))
+
+    sql_body = generate_wrapped_sql_function_body(
+        primary_func=primary,
+        functions=[helper],
+        catalog="test_catalog",
+        schema="test_schema",
+        replace=True,
+        environment_version="6",
+        credentials=["my-cred"],
+        secrets=["cat.sch.key"],
+    )
+
+    assert "CREDENTIALS (`my-cred`)" in sql_body
+    assert "SECRETS (`cat`.`sch`.`key`)" in sql_body
+
+
+@pytest.mark.parametrize("environment_version", ["6' OR '1'='1", "'"])
+def test_environment_version_rejects_single_quote(environment_version):
+    with pytest.raises(ValueError, match="environment_version cannot contain a single quote"):
+        construct_dependency_statement(["numpy"], environment_version)
+
+
+@pytest.mark.parametrize("environment_version", ["6\\", "\\", "6\\\\"])
+def test_environment_version_rejects_backslash(environment_version):
+    # A trailing backslash escapes the closing quote of the SQL string literal the version is
+    # emitted into, so the rest of the statement is absorbed and the text after it is reparsed
+    # as SQL.
+    with pytest.raises(ValueError, match="environment_version cannot contain a backslash"):
+        construct_dependency_statement(["numpy"], environment_version)
+
+
+@pytest.mark.parametrize("dependency", ["numpy\\", "\\", "/Volumes/c/s/v/a\\b.whl"])
+def test_dependencies_reject_backslash(dependency):
+    with pytest.raises(ValueError, match="Dependency cannot contain a backslash"):
+        construct_dependency_statement([dependency])
+
+
+@pytest.mark.parametrize(
+    ("identifier", "expected"),
+    [
+        ("plain", "`plain`"),
+        ("with-hyphen", "`with-hyphen`"),
+        ("with space", "`with space`"),
+        ("SELECT", "`SELECT`"),
+    ],
+)
+def test_identifiers_are_quoted_verbatim(identifier, expected):
+    assert construct_credentials_statement([identifier]) == f"\nCREDENTIALS ({expected})"

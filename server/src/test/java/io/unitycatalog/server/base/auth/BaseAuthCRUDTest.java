@@ -47,6 +47,8 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
 
     serverProperties.setProperty("server.allowed-issuers", testIssuer);
     serverProperties.setProperty("server.audiences", TEST_AUDIENCE);
+    serverProperties.setProperty("server.client-id", TEST_AUDIENCE);
+    serverProperties.setProperty("server.client-secret", "test-client-secret");
   }
 
   /**

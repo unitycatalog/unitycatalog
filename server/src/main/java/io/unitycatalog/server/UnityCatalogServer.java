@@ -48,6 +48,7 @@ import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
 import java.nio.file.Path;
+import java.util.concurrent.CompletionException;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -265,7 +266,7 @@ public class UnityCatalogServer implements AutoCloseable {
     TableConfigService tableConfigService = new TableConfigService(fileOperations);
 
     armeriaServerBuilder.annotate(
-        "iceberg",
+        ArmeriaServerBuilder.ICEBERG_RELATIVE_PATH,
         new IcebergRestCatalogService(
             authorizer, tableConfigService, metadataService, repositories, serverProperties));
   }
@@ -304,11 +305,21 @@ public class UnityCatalogServer implements AutoCloseable {
         UnityCatalogServer.builder().port(options.getPort() + 1).build();
     unityCatalogServer.printArt();
     unityCatalogServer.start();
-    // Start URL transcoder
+    // Start URL transcoder. Clients use its port, not Armeria's, so wait for it to be listening
+    // before this process reports itself started, and fail rather than serve only the internal
+    // port if it cannot bind.
     Vertx vertx = Vertx.vertx();
     Verticle transcodeVerticle =
         new URLTranscoderVerticle(options.getPort(), options.getPort() + 1);
-    vertx.deployVerticle(transcodeVerticle);
+    try {
+      vertx.deployVerticle(transcodeVerticle).toCompletionStage().toCompletableFuture().join();
+    } catch (CompletionException e) {
+      LOGGER.error(
+          "Failed to start the URL transcoder on port {}", options.getPort(), e.getCause());
+      vertx.close();
+      unityCatalogServer.close();
+      throw e;
+    }
   }
 
   public void start() {
