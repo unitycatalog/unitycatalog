@@ -4,13 +4,13 @@
 * @tdas @dennyglee
 
 # Spark Connector
-/connectors/spark/ @tdas @openinx @yili-db
+/connectors/spark/ @tdas @openinx @yili-db @TimothyW553
 
 # Hadoop Connector
 /connectors/hadoop/ @tdas @openinx @TimothyW553 @yili-db
 
-# Java clients.
-/clients/java/ @tdas @openinx @yili-db
+# Clients.
+/clients/ @tdas @openinx @yili-db
 
 # Integration tests.
 /integration-tests/ @tdas @openinx @yili-db
