@@ -1,0 +1,37 @@
+name: Database Tests
+
+on:
+  push:
+    branches: [ "main", "branch-*" ]
+  pull_request:
+    branches: [ "main", "branch-*" ]
+
+permissions:
+  contents: read
+
+jobs:
+  server-tests:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: PostgreSQL server tests
+            database: postgresql
+          - name: MySQL server tests
+            database: mysql
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Set up JDK 17
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          java-version: '17'
+          distribution: 'zulu'
+          cache: 'sbt'
+      - name: Run server tests
+        env:
+          UC_TEST_DATABASE: ${{ matrix.database }}
+        run: build/sbt -J-Xmx2G server/test

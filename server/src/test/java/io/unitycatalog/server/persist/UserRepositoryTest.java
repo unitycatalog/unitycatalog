@@ -8,8 +8,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.UpdateUser;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
-import io.unitycatalog.server.utils.ServerProperties;
-import java.util.Properties;
+import io.unitycatalog.server.utils.TestDatabaseUtils;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -22,10 +21,7 @@ class UserRepositoryTest {
 
   @BeforeAll
   static void setUp() {
-    Properties properties = new Properties();
-    properties.setProperty("server.env", "test");
-    HibernateConfigurator hibernateConfigurator =
-        new HibernateConfigurator(new ServerProperties(properties));
+    HibernateConfigurator hibernateConfigurator = TestDatabaseUtils.createHibernateConfigurator();
     sessionFactory = hibernateConfigurator.getSessionFactory();
     userRepository = new UserRepository(null, sessionFactory);
   }

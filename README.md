@@ -210,6 +210,12 @@ Refer to [sbt docs](https://www.scala-sbt.org/1.x/docs/) for more commands.
   ```sh
   build/sbt -J-Xmx2G clean test
   ```
+- Server tests use an in-memory H2 database by default. To run them against PostgreSQL or MySQL,
+  install Docker and set `UC_TEST_DATABASE`:
+  ```sh
+  UC_TEST_DATABASE=postgresql build/sbt -J-Xmx2G server/test
+  UC_TEST_DATABASE=mysql build/sbt -J-Xmx2G server/test
+  ```
 - To execute tests with coverage, run the following:
   ```sh
   build/sbt -J-Xmx2G jacoco
