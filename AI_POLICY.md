@@ -20,6 +20,7 @@ AI is a tool, not a co-author that shares responsibility. Whatever an assistant 
 - **Approve each comment individually; nothing is auto-posted.** Triggering an AI review, even one you asked for, is not approval to post its output. AI findings go to a draft or the reviewer's own notes first, and a human decides, comment by comment, what actually lands on the pull request. Never wire automation to post AI findings straight to a PR.
 - **Disclose AI assistance.** When a review comment is substantially AI-generated, say so in the pull request or review thread; marking such comments (for example, "(ai assisted)") is encouraged.
 - **Approval and merge are human decisions.** An assistant may summarize a change or suggest issues, but a maintainer decides whether to approve and merge.
+- **What to look for.** See `CODE_REVIEW.md` for the review substance: the themes reviewers check and how to phrase findings.
 
 ## Not acceptable
 
