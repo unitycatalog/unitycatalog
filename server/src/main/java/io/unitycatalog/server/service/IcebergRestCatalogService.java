@@ -71,6 +71,7 @@ import org.apache.iceberg.rest.RESTCatalogProperties;
 import org.apache.iceberg.rest.RESTCatalogProperties.SnapshotMode;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.ConfigResponse;
@@ -105,7 +106,8 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
           Endpoint.V1_DELETE_NAMESPACE,
           Endpoint.V1_CREATE_TABLE,
           Endpoint.V1_UPDATE_TABLE,
-          Endpoint.V1_DELETE_TABLE);
+          Endpoint.V1_DELETE_TABLE,
+          Endpoint.V1_RENAME_TABLE);
 
   private final TableConfigService tableConfigService;
   private final MetadataService metadataService;
@@ -590,6 +592,43 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       }
       throw e;
     }
+  }
+
+  @Post("/v1/catalogs/{catalog}/tables/rename")
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse renameTable(@Param("catalog") String catalog, RenameTableRequest request) {
+    serverProperties.checkIcebergTableEnabled();
+    // A request missing either identifier is a bad request, not the NPE reading it would raise.
+    request.validate();
+    Namespace source = request.source().namespace();
+    Namespace destination = request.destination().namespace();
+    if (!source.equals(destination)) {
+      // Unity Catalog has no way to move a table between schemas, so a rename that asks for one is
+      // reported as an operation this server does not implement rather than half-applied.
+      throw new BaseException(
+          ErrorCode.UNIMPLEMENTED,
+          "Renaming a table into another namespace is not supported: "
+              + source
+              + " to "
+              + destination);
+    }
+    String namespace = source.toString();
+    String fullName = catalog + "." + namespace + "." + request.source().name();
+    // As with dropTable, only a table created through this API may be changed through it: a UniForm
+    // table is a Delta table that these endpoints read, and renaming it here would rename the Delta
+    // table under its own API.
+    TableRepository.IcebergTableState state =
+        tableRepository.getIcebergTableState(catalog, namespace, request.source().name());
+    if (state.dataSourceFormat() != DataSourceFormat.ICEBERG) {
+      throw new BadRequestException(
+          "Table %s was not created through the Iceberg REST catalog; rename it through the Unity"
+              + " Catalog API instead.",
+          fullName);
+    }
+    tableRepository.renameTable(
+        catalog, namespace, request.source().name(), request.destination().name());
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}")

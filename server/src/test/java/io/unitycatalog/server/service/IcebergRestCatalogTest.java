@@ -160,7 +160,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                 + "\"DELETE /v1/{prefix}/namespaces/{namespace}\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
-                + "\"DELETE /v1/{prefix}/namespaces/{namespace}/tables/{table}\""
+                + "\"DELETE /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
+                + "\"POST /v1/{prefix}/tables/rename\""
                 + "]}");
 
     // not setting warehouse param should result in 400 BadRequestException
@@ -475,6 +476,12 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
       resp = client.delete(tablePath).aggregate().join();
       assertThat(resp.status().code()).isEqualTo(400);
+
+      resp =
+          postJson(
+              "/v1/catalogs/" + TestUtils.CATALOG_NAME + "/tables/rename",
+              renameRequest(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, "renamed"));
+      assertThat(resp.status().code()).isEqualTo(400);
     }
 
     // Credentials must never be scoped by a conflicting location in the metadata payload. Repoint
@@ -678,6 +685,51 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(resp.status().code()).isEqualTo(409);
       assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
           .isEqualTo(CommitFailedException.class.getSimpleName());
+    }
+
+    // Rename the table, and rename it back so the steps below still find it
+    {
+      String renamePath = "/v1/catalogs/" + TestUtils.CATALOG_NAME + "/tables/rename";
+      AggregatedHttpResponse resp =
+          postJson(
+              renamePath, renameRequest(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, "renamed"));
+      assertThat(resp.status().code()).isEqualTo(204);
+      assertThat(resp.contentUtf8()).isEmpty();
+
+      // The table answers under its new name and no longer under the old one.
+      assertThat(client.get(tablesPath + "/renamed").aggregate().join().status().code())
+          .isEqualTo(200);
+      assertThat(client.get(tablePath).aggregate().join().status().code()).isEqualTo(404);
+      ListTablesResponse listed =
+          IcebergObjectMapper.mapper()
+              .readValue(
+                  client.get(tablesPath).aggregate().join().contentUtf8(),
+                  ListTablesResponse.class);
+      assertThat(listed.identifiers())
+          .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "renamed"));
+
+      // A source that is not there is a 404, and a destination that is taken is a 409.
+      resp =
+          postJson(renamePath, renameRequest(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, "other"));
+      assertThat(resp.status().code()).isEqualTo(404);
+      createTable("taken");
+      resp = postJson(renamePath, renameRequest(TestUtils.SCHEMA_NAME, "renamed", "taken"));
+      assertThat(resp.status().code()).isEqualTo(409);
+
+      // Unity Catalog cannot move a table between namespaces, and says so rather than half-doing
+      // it.
+      resp =
+          postJson(
+              renamePath, renameRequest(TestUtils.SCHEMA_NAME, "renamed", "moved", "other_ns"));
+      assertThat(resp.status().code()).isEqualTo(501);
+
+      // A request without a source or a destination is a bad request, not a server error.
+      assertThat(postJson(renamePath, "{}").status().code()).isEqualTo(400);
+
+      resp =
+          postJson(
+              renamePath, renameRequest(TestUtils.SCHEMA_NAME, "renamed", TestUtils.TABLE_NAME));
+      assertThat(resp.status().code()).isEqualTo(204);
     }
 
     // Drop the table
@@ -1071,6 +1123,23 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     assertThat(error.code()).isEqualTo(expectedCode);
     assertThat(error.type()).isEqualTo(expectedType.getSimpleName());
     assertThat(error.message()).isEqualTo(expectedMessage);
+  }
+
+  private static String renameRequest(String namespace, String from, String to) {
+    return renameRequest(namespace, from, to, namespace);
+  }
+
+  private static String renameRequest(
+      String namespace, String from, String to, String destinationNamespace) {
+    return "{\"source\": {\"namespace\": [\""
+        + namespace
+        + "\"], \"name\": \""
+        + from
+        + "\"}, \"destination\": {\"namespace\": [\""
+        + destinationNamespace
+        + "\"], \"name\": \""
+        + to
+        + "\"}}";
   }
 
   @Test
