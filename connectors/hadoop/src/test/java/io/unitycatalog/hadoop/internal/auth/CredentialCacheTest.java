@@ -1,14 +1,20 @@
 package io.unitycatalog.hadoop.internal.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.hadoop.internal.auth.CredentialCache.RenewableCredential;
 import io.unitycatalog.hadoop.internal.id.CredId;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -100,6 +106,86 @@ class CredentialCacheTest {
     }
   }
 
+  @Test
+  void concurrentAccessRenewsEachScopeExactlyOnce() throws Exception {
+    int scopes = 8;
+    int threadsPerScope = 8;
+    CredentialCache<CredId, GenericCredential> cache = new CredentialCache<>(scopes);
+    Map<String, AtomicInteger> factoryCalls = new ConcurrentHashMap<>();
+    CyclicBarrier startBarrier = new CyclicBarrier(scopes * threadsPerScope);
+
+    ExecutorService executor = Executors.newFixedThreadPool(scopes * threadsPerScope);
+    try {
+      List<Future<GenericCredential>> futures = new ArrayList<>();
+      for (int i = 0; i < scopes; i++) {
+        String scope = "scope-" + i;
+        for (int j = 0; j < threadsPerScope; j++) {
+          futures.add(
+              executor.submit(
+                  () -> {
+                    startBarrier.await(10, TimeUnit.SECONDS);
+                    return cache.access(
+                        new TestCredId(scope),
+                        () -> {
+                          factoryCalls
+                              .computeIfAbsent(scope, ignored -> new AtomicInteger())
+                              .incrementAndGet();
+                          return validCredentialFor(scope);
+                        });
+                  }));
+        }
+      }
+
+      for (int i = 0; i < scopes; i++) {
+        for (int j = 0; j < threadsPerScope; j++) {
+          GenericCredential credential =
+              futures.get(i * threadsPerScope + j).get(20, TimeUnit.SECONDS);
+          // Every caller is served its own scope's credential, never a neighbouring scope's.
+          assertThat(((AwsCredential) credential).accessKeyId()).isEqualTo("access-scope-" + i);
+        }
+      }
+
+      // A stampede across scopes costs one vend per scope: the key lock keeps same-scope callers
+      // single-flight without letting one scope's renewal serialize the others.
+      assertThat(factoryCalls).hasSize(scopes);
+      assertThat(factoryCalls.values()).allSatisfy(calls -> assertThat(calls).hasValue(1));
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void failedRenewalIsNotCachedAndLeavesTheScopeUsable() throws Exception {
+    CredentialCache<CredId, GenericCredential> cache = new CredentialCache<>(4);
+    CredId credId = new TestCredId("scope-a");
+
+    assertThatThrownBy(
+            () ->
+                cache.access(
+                    credId,
+                    () -> {
+                      throw new ApiException(503, "vend unavailable");
+                    }))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("vend unavailable");
+
+    // A failed vend must cache nothing and hold no key lock. The retry runs on another thread
+    // with a timeout so a leaked lock fails the test instead of hanging the build.
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    GenericCredential renewed;
+    try {
+      Future<GenericCredential> retry =
+          executor.submit(() -> cache.access(credId, CredentialCacheTest::validCredential));
+      renewed = retry.get(5, TimeUnit.SECONDS);
+    } finally {
+      executor.shutdownNow();
+    }
+
+    assertThat(renewed).isNotNull();
+    assertThat(cache.access(credId, () -> fail("factory must not be invoked after a good renewal")))
+        .isSameAs(renewed);
+  }
+
   private static void awaitOrFail(CountDownLatch latch) {
     try {
       assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
@@ -110,16 +196,21 @@ class CredentialCacheTest {
   }
 
   private static RenewableCredential<GenericCredential> validCredential() {
-    return renewable(CLOCK.now().toEpochMilli() + 3_600_000L);
+    return renewable("access-key", CLOCK.now().toEpochMilli() + 3_600_000L);
+  }
+
+  private static RenewableCredential<GenericCredential> validCredentialFor(String scope) {
+    return renewable("access-" + scope, CLOCK.now().toEpochMilli() + 3_600_000L);
   }
 
   private static RenewableCredential<GenericCredential> expiredCredential() {
-    return renewable(CLOCK.now().toEpochMilli());
+    return renewable("access-key", CLOCK.now().toEpochMilli());
   }
 
-  private static RenewableCredential<GenericCredential> renewable(long expiredTimeMillis) {
+  private static RenewableCredential<GenericCredential> renewable(
+      String accessKeyId, long expiredTimeMillis) {
     GenericCredential credential =
-        new AwsCredential("access-key", "secret-key", "session-token", expiredTimeMillis, null);
+        new AwsCredential(accessKeyId, "secret-key", "session-token", expiredTimeMillis, null);
     return new RenewableCredential<>(credential) {
       @Override
       public boolean readyToRenew() {
