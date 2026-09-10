@@ -8,8 +8,8 @@ import com.auth0.jwt.interfaces.DecodedJWT;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
-import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
@@ -68,11 +68,14 @@ public class OpenSharingAuthorizationService extends AuthorizedService
    *     no permission check (the caller is always "authorized" in that case, since simply
    *     presenting a valid token is all that was asked)
    */
+  // A GET, not a POST: this reads and reports, changing nothing -- checking a privilege has no
+  // side effect any more than checking whose token this is does.
+  //
   // #principal != null lets UnityAccessDecorator's own bookkeeping know this endpoint is
   // deliberately open to any authenticated caller: the privilege named in the "privilege" query
   // parameter is dynamic, decided at request time, so it cannot be a fixed SpEL expression the
   // decorator itself evaluates -- authorize() below checks it explicitly instead.
-  @Post("/authorize")
+  @Get("/authorize")
   @AuthorizeExpression("#principal != null")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse authorize(

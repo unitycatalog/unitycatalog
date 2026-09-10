@@ -53,7 +53,7 @@ public final class OpenSharingLifecycle implements AutoCloseable {
    * <ul>
    *   <li>{@link CatalogAuthorizingIdentityResolver} resolves a provider-admin request's caller by
    *       presenting its own bearer token to {@link UnityCatalogConnector}'s implementation of
-   *       {@code CatalogConnector#authorize} ({@code POST /opensharing/authorize}) — the same call
+   *       {@code CatalogConnector#authorize} ({@code GET /opensharing/authorize}) — the same call
    *       standalone mode makes against a remote catalog, just against a loopback address.
    *   <li>{@link UnityCatalogConnector} resolves and reads assets, presenting either that same
    *       live token (adding a table to a share) or, on a recipient's read, this connector's own
