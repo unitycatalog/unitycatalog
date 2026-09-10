@@ -112,7 +112,7 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
         // status this surface wants, and its Iceberg name comes from the code, so nothing else
         // needs re-raising here.
         case SCHEMA_ALREADY_EXISTS, TABLE_ALREADY_EXISTS ->
-            new BaseException(ErrorCode.ALREADY_EXISTS, baseException.getErrorMessage());
+            wrapException(ErrorCode.ALREADY_EXISTS, baseException.getErrorMessage(), baseException);
         default -> baseException;
       };
     }
