@@ -43,7 +43,7 @@ public class JCasbinAuthorizerMultiInstanceTest {
   void tearDown() {
     replicas.forEach(JCasbinAuthorizer::close);
     replicas.clear();
-    hibernateConfigurator.getSessionFactory().close();
+    hibernateConfigurator.close();
   }
 
   private ServerProperties properties(boolean refreshEnabled, String interval) {

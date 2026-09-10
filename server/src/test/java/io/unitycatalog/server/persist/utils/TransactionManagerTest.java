@@ -213,17 +213,18 @@ public class TransactionManagerTest {
   public class IsolationLevelWithRealDatabaseTest {
 
     private static SessionFactory realSessionFactory;
+    private static HibernateConfigurator hibernateConfigurator;
 
     @BeforeAll
     public static void setUp() {
       ServerProperties serverProperties = new ServerProperties(new Properties());
-      HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
+      hibernateConfigurator = new HibernateConfigurator(serverProperties);
       realSessionFactory = hibernateConfigurator.getSessionFactory();
     }
 
     @AfterAll
     public static void tearDown() {
-      realSessionFactory.close();
+      hibernateConfigurator.close();
     }
 
     @Test

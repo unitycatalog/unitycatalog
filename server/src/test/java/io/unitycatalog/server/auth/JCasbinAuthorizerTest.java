@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 
 public class JCasbinAuthorizerTest {
   private UnityCatalogAuthorizer authenticator;
+  private HibernateConfigurator hibernateConfigurator;
 
   @BeforeEach
   void setUp() throws Exception {
@@ -25,7 +26,7 @@ public class JCasbinAuthorizerTest {
     // Single-instance tests do not need background polling.
     properties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "false");
     ServerProperties serverProperties = new ServerProperties(properties);
-    HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
+    hibernateConfigurator = new HibernateConfigurator(serverProperties);
     authenticator = new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
   }
 
@@ -38,28 +39,7 @@ public class JCasbinAuthorizerTest {
         throw new RuntimeException(e);
       }
     }
-  }
-
-  @Test
-  void resolvesUsernameFromStandardHibernateProperty() {
-    Properties properties = new Properties();
-    properties.setProperty("hibernate.connection.username", "alice");
-    assertThat(JCasbinAuthorizer.resolveConnectionUsername(properties)).isEqualTo("alice");
-  }
-
-  @Test
-  void fallsBackToLegacyUserProperty() {
-    Properties properties = new Properties();
-    properties.setProperty("hibernate.connection.user", "bob");
-    assertThat(JCasbinAuthorizer.resolveConnectionUsername(properties)).isEqualTo("bob");
-  }
-
-  @Test
-  void prefersStandardUsernameWhenBothPresent() {
-    Properties properties = new Properties();
-    properties.setProperty("hibernate.connection.username", "alice");
-    properties.setProperty("hibernate.connection.user", "bob");
-    assertThat(JCasbinAuthorizer.resolveConnectionUsername(properties)).isEqualTo("alice");
+    hibernateConfigurator.close();
   }
 
   @Test

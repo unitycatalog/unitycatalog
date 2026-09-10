@@ -100,15 +100,16 @@ public class UnityCatalogServer implements AutoCloseable {
   }
 
   /**
-   * Closes the SessionFactory if this server created it, leaving an injected one to its owner. A
-   * failure to close is attached to {@code primaryFailure} so it cannot mask the original error.
+   * Closes the Hibernate configurator if this server created it, leaving an injected one to its
+   * owner. A failure to close is attached to {@code primaryFailure} so it cannot mask the original
+   * error.
    */
   private void closeOwnedSessionFactory(Throwable primaryFailure) {
     if (!ownsHibernateConfigurator) {
       return;
     }
     try {
-      hibernateConfigurator.getSessionFactory().close();
+      hibernateConfigurator.close();
     } catch (Throwable closeFailure) {
       primaryFailure.addSuppressed(closeFailure);
     }
@@ -335,12 +336,12 @@ public class UnityCatalogServer implements AutoCloseable {
   }
 
   /**
-   * Stops the server and closes the Hibernate SessionFactory it created, releasing its pooled
-   * database connections, which the Armeria shutdown does not touch and which would otherwise stay
-   * open until the JVM exits. A configurator supplied via {@link Builder#hibernateConfigurator} is
-   * left open — the caller owns its lifecycle. Unlike {@link #stop()}, a server that owns its
-   * SessionFactory must not be restarted after this call: the factory is closed, so all persistence
-   * operations would fail. Safe to call more than once and safe to call before {@link #start()}.
+   * Stops the server and closes the Hibernate configurator it created, releasing the shared Hikari
+   * pool, which the Armeria shutdown does not touch and which would otherwise stay open until the
+   * JVM exits. A configurator supplied via {@link Builder#hibernateConfigurator} is left open — the
+   * caller owns its lifecycle. Unlike {@link #stop()}, a server that owns its configurator must not
+   * be restarted after this call: the factory and pool are closed, so all persistence operations
+   * would fail. Safe to call more than once and safe to call before {@link #start()}.
    */
   @Override
   public void close() {
@@ -349,7 +350,7 @@ public class UnityCatalogServer implements AutoCloseable {
     } finally {
       closeAuthorizer(null);
       if (ownsHibernateConfigurator) {
-        hibernateConfigurator.getSessionFactory().close();
+        hibernateConfigurator.close();
       }
     }
   }
