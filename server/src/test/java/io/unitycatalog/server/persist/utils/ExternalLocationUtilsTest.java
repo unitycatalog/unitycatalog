@@ -32,6 +32,7 @@ public class ExternalLocationUtilsTest {
 
   @TempDir Path tempDir;
 
+  private HibernateConfigurator hibernateConfigurator;
   private SessionFactory sessionFactory;
   private Session session;
   private ExternalLocationUtils externalLocationUtils;
@@ -45,7 +46,8 @@ public class ExternalLocationUtilsTest {
     properties.setProperty("hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID());
     // A nested transaction cannot borrow a second connection while the caller is using this one.
     properties.setProperty("hibernate.connection.pool_size", "1");
-    sessionFactory = new HibernateConfigurator(properties).getSessionFactory();
+    hibernateConfigurator = new HibernateConfigurator(properties);
+    sessionFactory = hibernateConfigurator.getSessionFactory();
     session = sessionFactory.openSession();
     externalLocationUtils = new ExternalLocationUtils(sessionFactory);
   }
@@ -56,7 +58,7 @@ public class ExternalLocationUtilsTest {
       session.getTransaction().rollback();
     }
     session.close();
-    sessionFactory.close();
+    hibernateConfigurator.close();
   }
 
   /**

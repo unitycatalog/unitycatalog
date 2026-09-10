@@ -19,21 +19,21 @@ class UserRepositoryTest {
 
   private static SessionFactory sessionFactory;
   private static UserRepository userRepository;
+  private static HibernateConfigurator hibernateConfigurator;
 
   @BeforeAll
   static void setUp() {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
-    HibernateConfigurator hibernateConfigurator =
-        new HibernateConfigurator(new ServerProperties(properties));
+    hibernateConfigurator = new HibernateConfigurator(new ServerProperties(properties));
     sessionFactory = hibernateConfigurator.getSessionFactory();
     userRepository = new UserRepository(null, sessionFactory);
   }
 
   @AfterAll
   static void tearDown() {
-    if (sessionFactory != null) {
-      sessionFactory.close();
+    if (hibernateConfigurator != null) {
+      hibernateConfigurator.close();
     }
   }
 

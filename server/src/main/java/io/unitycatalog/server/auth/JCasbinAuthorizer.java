@@ -8,7 +8,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -67,12 +66,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   public JCasbinAuthorizer(
       HibernateConfigurator hibernateConfigurator, ServerProperties serverProperties)
       throws Exception {
-    Properties properties = hibernateConfigurator.getHibernateProperties();
-    String driver = properties.getProperty("hibernate.connection.driver_class");
-    String url = properties.getProperty("hibernate.connection.url");
-    String user = resolveConnectionUsername(properties);
-    String password = properties.getProperty("hibernate.connection.password");
-    this.adapter = new JDBCAdapter(driver, url, user, password);
+    this.adapter = new JDBCAdapter(hibernateConfigurator.getDataSource());
 
     InputStream modelStream = this.getClass().getResourceAsStream("/jcasbin_auth_model.conf");
     this.modelText = IOUtils.toString(modelStream, StandardCharsets.UTF_8);
@@ -90,24 +84,6 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
               + " instance will not be seen by this one, so running more than one instance against"
               + " this database is unsafe.");
     }
-  }
-
-  /**
-   * Resolves the database connection username from the Hibernate properties.
-   *
-   * <p>Prefers the standard Hibernate key {@code hibernate.connection.username} (used by the main
-   * session factory configuration and by the project's own tests) and falls back to the
-   * non-standard {@code hibernate.connection.user} that the deployment docs and Helm chart
-   * document. Reading only {@code hibernate.connection.user} left the casbin JDBC adapter with a
-   * null username for any standard configuration, which the JDBC driver then silently replaced with
-   * a process default.
-   */
-  static String resolveConnectionUsername(Properties properties) {
-    String username = properties.getProperty("hibernate.connection.username");
-    if (username == null) {
-      username = properties.getProperty("hibernate.connection.user");
-    }
-    return username;
   }
 
   private SyncedEnforcer newEnforcer() {
@@ -275,6 +251,11 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   @Override
   public void close() {
     refresher.close();
+    try {
+      adapter.close();
+    } catch (Exception e) {
+      LOGGER.warn("Failed to close the Casbin JDBC adapter", e);
+    }
   }
 
   CasbinPolicyRefresher getRefresher() {
