@@ -6,6 +6,7 @@ import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import io.unitycatalog.server.utils.TestDatabaseUtils;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.Test;
 
 public class JCasbinAuthorizerTest {
   private UnityCatalogAuthorizer authenticator;
+  private HibernateConfigurator hibernateConfigurator;
 
   @BeforeEach
   void setUp() throws Exception {
@@ -25,7 +27,7 @@ public class JCasbinAuthorizerTest {
     // Single-instance tests do not need background polling.
     properties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "false");
     ServerProperties serverProperties = new ServerProperties(properties);
-    HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
+    hibernateConfigurator = TestDatabaseUtils.createHibernateConfigurator();
     authenticator = new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
   }
 
@@ -38,6 +40,7 @@ public class JCasbinAuthorizerTest {
         throw new RuntimeException(e);
       }
     }
+    hibernateConfigurator.getSessionFactory().close();
   }
 
   @Test
