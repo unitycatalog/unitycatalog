@@ -47,6 +47,7 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -66,6 +67,8 @@ import org.apache.iceberg.exceptions.NamespaceNotEmptyException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NoSuchViewException;
 import org.apache.iceberg.rest.Endpoint;
+import org.apache.iceberg.rest.RESTCatalogProperties;
+import org.apache.iceberg.rest.RESTCatalogProperties.SnapshotMode;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
@@ -276,7 +279,8 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   public LoadTableResponse loadTable(
       @Param("catalog") String catalog,
       @Param("namespace") String namespace,
-      @Param("table") String table) {
+      @Param("table") String table,
+      @Param(RESTCatalogProperties.SNAPSHOTS_QUERY_PARAMETER) Optional<String> snapshots) {
     TableRepository.IcebergTableState state =
         tableRepository.getIcebergTableState(catalog, namespace, table);
     if (state.metadataLocation() == null) {
@@ -287,6 +291,13 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     TableMetadata tableMetadata =
         metadataService.readTableMetadata(
             NormalizedURL.from(state.metadataLocation()), tableLocation);
+    if (refsOnly(snapshots)) {
+      tableMetadata =
+          TableMetadata.buildFrom(tableMetadata)
+              .withMetadataLocation(tableMetadata.metadataFileLocation())
+              .suppressHistoricalSnapshots()
+              .build();
+    }
     Map<String, String> config =
         tableConfigService.getTableConfig(tableLocation, getLoadCredentialPrivileges(state));
 
@@ -639,6 +650,32 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     } while (pageToken.isPresent());
 
     return listed.build();
+  }
+
+  /**
+   * Whether the request asked for only the snapshots the table's refs point at. The REST spec's
+   * {@code snapshots} parameter takes "all", which is also the default, or "refs"; anything else is
+   * a bad request rather than a silently full response.
+   */
+  private static boolean refsOnly(Optional<String> snapshots) {
+    return snapshots.map(IcebergRestCatalogService::snapshotMode).orElse(SnapshotMode.ALL)
+        == SnapshotMode.REFS;
+  }
+
+  /** Reads the parameter as the mode Iceberg's client names it with, rejecting anything else. */
+  private static SnapshotMode snapshotMode(String snapshots) {
+    try {
+      return SnapshotMode.valueOf(snapshots.toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException e) {
+      throw new BadRequestException(
+          "Invalid snapshots parameter: %s. Valid values are %s and %s.",
+          snapshots, modeName(SnapshotMode.ALL), modeName(SnapshotMode.REFS));
+    }
+  }
+
+  /** The name the mode travels under on the wire, which the client lowercases. */
+  private static String modeName(SnapshotMode mode) {
+    return mode.name().toLowerCase(Locale.ROOT);
   }
 
   /**
