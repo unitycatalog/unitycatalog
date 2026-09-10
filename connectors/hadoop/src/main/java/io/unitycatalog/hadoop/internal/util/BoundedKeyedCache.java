@@ -22,10 +22,12 @@ public final class BoundedKeyedCache<K, V> {
   }
 
   public BoundedKeyedCache(int maxSize, Consumer<V> evictionListener) {
-    this(maxSize, Objects.requireNonNull(evictionListener, "evictionListener"), alwaysFresh());
+    this(maxSize, evictionListener, alwaysFresh());
   }
 
   /**
+   * @param maxSize greatest number of entries retained; the least recently used entry is evicted
+   *     once a put would exceed it.
    * @param evictionListener notified for each value dropped by eviction, replacement or {@link
    *     #clear}; use {@link #noOpListener()} when evicted values need no disposal.
    * @param isFresh applied by {@link #getOrLoad} to a cached value; one it rejects is treated as a
@@ -120,6 +122,11 @@ public final class BoundedKeyedCache<K, V> {
     synchronized (cacheLock) {
       return cache.size();
     }
+  }
+
+  // Visible for testing: no per-key lock outlives the call that acquired it.
+  int keyLockCount() {
+    return keyLocks.lockCount();
   }
 
   public List<V> values() {
