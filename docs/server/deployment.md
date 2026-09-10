@@ -45,6 +45,9 @@ This guide outlines how to deploy the Unity Catalog server.
     server environment and the s3 configuration.
 - Setting the server environment to `dev` will use properties located in `etc/conf/hibernate.properties` to configure
     the backend database whereas `test` will spin up an in-memory database.
+- The server builds a HikariCP pool from those connection properties and shares it between Hibernate and Casbin. Optional
+    pool settings can be set as `hibernate.hikari.*` keys (for example `hibernate.hikari.maximumPoolSize`). Autocommit
+    defaults to false so Hibernate can roll back JDBC work.
 - The `etc/data/` directory contains the data files that are used by the UC server. This includes the tables and volumes
     that are created.
 - The `etc/db/` directory contains the backend database that is used by the UC server.
