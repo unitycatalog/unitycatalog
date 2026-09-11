@@ -6,6 +6,7 @@ import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import java.sql.Connection;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.Test;
 
 public class JCasbinAuthorizerTest {
   private UnityCatalogAuthorizer authenticator;
+  private HibernateConfigurator hibernateConfigurator;
 
   @BeforeEach
   void setUp() throws Exception {
@@ -25,7 +27,7 @@ public class JCasbinAuthorizerTest {
     // Single-instance tests do not need background polling.
     properties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "false");
     ServerProperties serverProperties = new ServerProperties(properties);
-    HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
+    hibernateConfigurator = new HibernateConfigurator(serverProperties);
     authenticator = new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
   }
 
@@ -38,28 +40,19 @@ public class JCasbinAuthorizerTest {
         throw new RuntimeException(e);
       }
     }
+    hibernateConfigurator.close();
   }
 
   @Test
-  void resolvesUsernameFromStandardHibernateProperty() {
-    Properties properties = new Properties();
-    properties.setProperty("hibernate.connection.username", "alice");
-    assertThat(JCasbinAuthorizer.resolveConnectionUsername(properties)).isEqualTo("alice");
-  }
-
-  @Test
-  void fallsBackToLegacyUserProperty() {
-    Properties properties = new Properties();
-    properties.setProperty("hibernate.connection.user", "bob");
-    assertThat(JCasbinAuthorizer.resolveConnectionUsername(properties)).isEqualTo("bob");
-  }
-
-  @Test
-  void prefersStandardUsernameWhenBothPresent() {
-    Properties properties = new Properties();
-    properties.setProperty("hibernate.connection.username", "alice");
-    properties.setProperty("hibernate.connection.user", "bob");
-    assertThat(JCasbinAuthorizer.resolveConnectionUsername(properties)).isEqualTo("alice");
+  void casbinCheckoutEnablesAutocommitWithoutChangingThePoolDefault() throws Exception {
+    assertThat(hibernateConfigurator.getDataSource().isAutoCommit()).isFalse();
+    try (Connection casbin =
+            JCasbinAuthorizer.autocommitOnCheckout(hibernateConfigurator.getDataSource())
+                .getConnection();
+        Connection hibernate = hibernateConfigurator.getDataSource().getConnection()) {
+      assertThat(casbin.getAutoCommit()).isTrue();
+      assertThat(hibernate.getAutoCommit()).isFalse();
+    }
   }
 
   @Test

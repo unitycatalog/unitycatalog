@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist.utils;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
@@ -29,6 +31,7 @@ import lombok.Getter;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.Configuration;
+import org.hibernate.cfg.JdbcSettings;
 import org.hibernate.service.ServiceRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,15 +39,19 @@ import org.slf4j.LoggerFactory;
 /**
  * This class configures the hibernate properties and adds annotated classes to the session factory.
  * This session factory is used to create sessions for database operations across the repository
- * classes.
+ * classes. Casbin's JDBC adapter is given the same DataSource so both sit under one Hikari {@code
+ * maximumPoolSize}. jdbc-adapter 2.7.0 still holds one pooled connection for its lifetime; Casbin
+ * enables autocommit on that checkout only.
  */
 @Getter
-public class HibernateConfigurator {
+public class HibernateConfigurator implements AutoCloseable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(HibernateConfigurator.class);
+  private static final String HIKARI_PREFIX = "hibernate.hikari.";
 
   private final SessionFactory sessionFactory;
   private final Properties hibernateProperties;
+  private final HikariDataSource dataSource;
 
   public HibernateConfigurator(ServerProperties serverProperties) {
     this(setupHibernateProperties(serverProperties));
@@ -56,12 +63,74 @@ public class HibernateConfigurator {
    */
   public HibernateConfigurator(Properties hibernateProperties) {
     this.hibernateProperties = hibernateProperties;
-    this.sessionFactory = createSessionFactory(hibernateProperties);
+    this.dataSource = createDataSource(hibernateProperties);
+    try {
+      this.sessionFactory = createSessionFactory(hibernateProperties, dataSource);
+    } catch (Throwable t) {
+      dataSource.close();
+      throw t;
+    }
   }
 
-  private static SessionFactory createSessionFactory(Properties hibernateProperties) {
+  private static HikariDataSource createDataSource(Properties hibernateProperties) {
+    Properties hikariProperties = new Properties();
+    hibernateProperties.stringPropertyNames().stream()
+        .filter(name -> name.startsWith(HIKARI_PREFIX))
+        .forEach(
+            name ->
+                hikariProperties.setProperty(
+                    name.substring(HIKARI_PREFIX.length()), hibernateProperties.getProperty(name)));
+
+    HikariConfig hikariConfig = new HikariConfig(hikariProperties);
+    hikariConfig.setJdbcUrl(hibernateProperties.getProperty("hibernate.connection.url"));
+    hikariConfig.setUsername(resolveConnectionUsername(hibernateProperties));
+    hikariConfig.setPassword(hibernateProperties.getProperty("hibernate.connection.password"));
+    hikariConfig.setDriverClassName(
+        hibernateProperties.getProperty("hibernate.connection.driver_class"));
+    if (!hikariProperties.containsKey("maximumPoolSize")) {
+      hikariConfig.setMaximumPoolSize(
+          Integer.parseInt(
+              hibernateProperties.getProperty("hibernate.connection.pool_size", "20")));
+    }
+    if (!hikariProperties.containsKey("minimumIdle")) {
+      hikariConfig.setMinimumIdle(Math.min(2, hikariConfig.getMaximumPoolSize()));
+    }
+    if (!hikariProperties.containsKey("autoCommit")) {
+      // Hibernate manages transactions and issues rollback() when JDBC work ends.
+      hikariConfig.setAutoCommit(false);
+    }
+    if (hikariConfig.getPoolName() == null) {
+      hikariConfig.setPoolName("unity-catalog");
+    }
+    return new HikariDataSource(hikariConfig);
+  }
+
+  /**
+   * Prefers {@code hibernate.connection.username} and falls back to {@code
+   * hibernate.connection.user}, which the deployment examples still document.
+   */
+  static String resolveConnectionUsername(Properties properties) {
+    String username = properties.getProperty("hibernate.connection.username");
+    return username != null ? username : properties.getProperty("hibernate.connection.user");
+  }
+
+  private static SessionFactory createSessionFactory(
+      Properties hibernateProperties, HikariDataSource dataSource) {
     try {
-      Configuration configuration = new Configuration().setProperties(hibernateProperties);
+      Properties sessionFactoryProperties = new Properties();
+      sessionFactoryProperties.putAll(hibernateProperties);
+      sessionFactoryProperties.remove("hibernate.connection.driver_class");
+      sessionFactoryProperties.remove("hibernate.connection.url");
+      sessionFactoryProperties.remove("hibernate.connection.user");
+      sessionFactoryProperties.remove("hibernate.connection.username");
+      sessionFactoryProperties.remove("hibernate.connection.password");
+      sessionFactoryProperties.remove("hibernate.connection.pool_size");
+      sessionFactoryProperties
+          .keySet()
+          .removeIf(key -> key instanceof String name && name.startsWith(HIKARI_PREFIX));
+      sessionFactoryProperties.put(JdbcSettings.JAKARTA_NON_JTA_DATASOURCE, dataSource);
+
+      Configuration configuration = new Configuration().setProperties(sessionFactoryProperties);
 
       // Add annotated classes
       configuration.addAnnotatedClass(CatalogInfoDAO.class);
@@ -88,6 +157,15 @@ public class HibernateConfigurator {
       return configuration.buildSessionFactory(serviceRegistry);
     } catch (Exception e) {
       throw new RuntimeException("Exception during creation of SessionFactory", e);
+    }
+  }
+
+  @Override
+  public void close() {
+    try {
+      sessionFactory.close();
+    } finally {
+      dataSource.close();
     }
   }
 

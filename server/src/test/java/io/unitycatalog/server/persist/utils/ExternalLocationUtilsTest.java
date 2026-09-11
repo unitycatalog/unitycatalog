@@ -25,13 +25,13 @@ public class ExternalLocationUtilsTest {
 
   private static SessionFactory sessionFactory;
   private static Session session;
+  private static HibernateConfigurator hibernateConfigurator;
 
   @BeforeAll
   public static void setUp() {
     // Create minimal properties
     ServerProperties serverProperties = new ServerProperties(new Properties());
-    // Create Hibernate configurator and session factory
-    HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
+    hibernateConfigurator = new HibernateConfigurator(serverProperties);
     sessionFactory = hibernateConfigurator.getSessionFactory();
     session = sessionFactory.openSession();
   }
@@ -39,7 +39,7 @@ public class ExternalLocationUtilsTest {
   @AfterAll
   public static void tearDown() {
     session.close();
-    sessionFactory.close();
+    hibernateConfigurator.close();
   }
 
   /**

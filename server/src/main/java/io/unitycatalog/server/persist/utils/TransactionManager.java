@@ -68,17 +68,19 @@ public class TransactionManager {
       }
 
       // Save and set custom isolation level if specified.
-      // IMPORTANT: With autocommit=false (Hibernate default), pooled connections may have an
-      // open implicit transaction from their prior use. H2's setTransactionIsolation() takes
-      // effect for the NEXT transaction, not the current implicit one. We must end the
-      // implicit transaction first so the new isolation level applies to a fresh MVCC snapshot.
-      // Without this, REPEATABLE_READ reads can see stale data from before the connection was
-      // returned to the pool.
+      // IMPORTANT: without autocommit, a pooled connection may carry an open implicit transaction
+      // from its prior use. H2's setTransactionIsolation() takes effect for the NEXT transaction,
+      // not the current implicit one, so that transaction has to end first or REPEATABLE_READ
+      // reads can see stale data from before the connection was returned to the pool. MySQL and
+      // PostgreSQL reject rollback() on an autocommit connection, so only roll back when there is
+      // something to end.
       final int[] originalIsolation = new int[1];
       if (isolationLevel.isPresent()) {
         session.doWork(
             connection -> {
-              connection.rollback(); // End any stale implicit transaction from pool reuse
+              if (!connection.getAutoCommit()) {
+                connection.rollback();
+              }
               originalIsolation[0] = connection.getTransactionIsolation();
               connection.setTransactionIsolation(isolationLevel.get());
             });
