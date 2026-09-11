@@ -47,19 +47,13 @@ public class CredentialCache<K, T> {
    *   <li>Cached but about to expire: create a fresh one via {@code factory}, cache it, return it.
    *   <li>Not cached: create it via {@code factory}, cache it, return it.
    * </ul>
+   *
+   * <p>Same-key callers are coalesced so only one factory invocation is in flight. Distinct keys
+   * fetch independently: the factory (typically a Unity Catalog HTTP call) is not run under a
+   * cache-wide lock.
    */
   public T access(K key, RenewableCredentialFactory<T> factory) throws ApiException {
-    synchronized (cache) {
-      RenewableCredential<T> cached = cache.getIfPresent(key);
-      // Reuse the cached value while it's still valid; otherwise fetch and cache a fresh one.
-      if (cached != null && !cached.readyToRenew()) {
-        return cached.credential();
-      }
-
-      RenewableCredential<T> created = factory.create();
-      cache.put(key, created);
-      return created.credential();
-    }
+    return cache.getOrLoad(key, RenewableCredential::readyToRenew, factory::create).credential();
   }
 
   /** Removes all cached values. Public so tests in other packages can reset shared caches. */

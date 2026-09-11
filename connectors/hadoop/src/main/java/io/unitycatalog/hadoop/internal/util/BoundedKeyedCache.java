@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 public final class BoundedKeyedCache<K, V> {
   private final int maxSize;
@@ -31,14 +32,30 @@ public final class BoundedKeyedCache<K, V> {
     }
   }
 
+  /**
+   * Returns the cached value for {@code key}, loading it on a miss. Concurrent loads for the same
+   * key are coalesced; different keys proceed independently. {@code loader} is never invoked while
+   * holding the map lock.
+   */
   public <E extends Exception> V getOrLoad(K key, CheckedSupplier<V, E> loader) throws E {
+    return getOrLoad(key, value -> false, loader);
+  }
+
+  /**
+   * Returns the cached value for {@code key} unless it is absent or {@code reloadIf} is true for
+   * the current entry. Concurrent loads and reloads for the same key are coalesced; different keys
+   * proceed independently. {@code loader} is never invoked while holding the map lock.
+   */
+  public <E extends Exception> V getOrLoad(
+      K key, Predicate<V> reloadIf, CheckedSupplier<V, E> loader) throws E {
+    Objects.requireNonNull(reloadIf, "reloadIf cannot be null");
     V cached = getIfPresent(key);
-    if (cached != null) {
+    if (cached != null && !reloadIf.test(cached)) {
       return cached;
     }
     try (IdLockMap<K>.IdLock ignored = keyLocks.acquire(key)) {
       V lockedCached = getIfPresent(key);
-      if (lockedCached != null) {
+      if (lockedCached != null && !reloadIf.test(lockedCached)) {
         return lockedCached;
       }
       V loaded = Objects.requireNonNull(loader.get(), "loader returned null");
