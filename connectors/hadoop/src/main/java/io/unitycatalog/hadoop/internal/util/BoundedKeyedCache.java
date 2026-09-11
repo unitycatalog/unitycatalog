@@ -42,20 +42,21 @@ public final class BoundedKeyedCache<K, V> {
   }
 
   /**
-   * Returns the cached value for {@code key} unless it is absent or {@code reloadIf} is true for
-   * the current entry. Concurrent loads and reloads for the same key are coalesced; different keys
-   * proceed independently. {@code loader} is never invoked while holding the map lock.
+   * Returns the cached value for {@code key} unless it is absent or {@code readyToRenewPredicate}
+   * is true for the current entry. Concurrent loads and renewals for the same key are coalesced;
+   * different keys proceed independently. {@code loader} is never invoked while holding the map
+   * lock.
    */
   public <E extends Exception> V getOrLoad(
-      K key, Predicate<V> reloadIf, CheckedSupplier<V, E> loader) throws E {
-    Objects.requireNonNull(reloadIf, "reloadIf cannot be null");
+      K key, Predicate<V> readyToRenewPredicate, CheckedSupplier<V, E> loader) throws E {
+    Objects.requireNonNull(readyToRenewPredicate, "readyToRenewPredicate cannot be null");
     V cached = getIfPresent(key);
-    if (cached != null && !reloadIf.test(cached)) {
+    if (cached != null && !readyToRenewPredicate.test(cached)) {
       return cached;
     }
     try (IdLockMap<K>.IdLock ignored = keyLocks.acquire(key)) {
       V lockedCached = getIfPresent(key);
-      if (lockedCached != null && !reloadIf.test(lockedCached)) {
+      if (lockedCached != null && !readyToRenewPredicate.test(lockedCached)) {
         return lockedCached;
       }
       V loaded = Objects.requireNonNull(loader.get(), "loader returned null");
