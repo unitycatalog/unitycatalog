@@ -337,19 +337,27 @@ SELECT * from unity.default.numbers;
 ## Spark and Java client authentication types
 
 The Java and Spark clients always construct a token provider (`TokenProvider.create`).
-`type` is required (`static`, `oauth`, or a custom class name). Omitting both `type` and a
-legacy `token` key fails with
+`type` is required (`static`, `oauth`, or a custom class name). Omitting it fails with
 `Required configuration key 'type' is missing or empty. Must be 'static',
 'oauth', or a fully qualified TokenProvider class name.`
 
+Key names differ by client:
+
+- **Java** (`TokenProvider.create`): `type` and `token` (not `auth.type` / `auth.token`).
+- **Spark** (`AuthConfigUtils.buildAuthConfigs`): catalog properties `auth.type` and
+  `auth.token`, which are stripped to `type` and `token` before `TokenProvider.create`.
+  A present legacy `spark.sql.catalog.<name>.token` key (including empty) is mapped to
+  `type=static`. Do not set both `token` and `auth.token`.
+
 | Server | Client |
 | --- | --- |
-| `server.authorization=disable` (default) | `auth.type=static` with an **empty** `token`, or the Spark catalog property `spark.sql.catalog.<name>.token` set to empty (`export UC_TOKEN=`). The client may send `Authorization: Bearer ` with an empty token; the server ignores it. |
-| `server.authorization=enable` | A real static token (personal access token) or `auth.type=oauth` with client credentials. See the sections below. |
+| `server.authorization=disable` (default) | Java: `type=static` with `token=""`. Spark: legacy `token=""` (`export UC_TOKEN=`), or `auth.type=static` with `auth.token=""`. The client may send `Authorization: Bearer ` with an empty token; the server ignores it. |
+| `server.authorization=enable` | Java: `type=static` with a real token, or `type=oauth` with `oauth.uri`, `oauth.clientId`, and `oauth.clientSecret`. Spark: the same keys under the `auth.` prefix, or a non-empty legacy `token`. See the sections below. |
 
-Spark maps a present `token` catalog property to `type=static` even when the value is empty. JDBC /
-Beeline URLs that omit empty query parameters cannot express an empty token; use a dummy
-non-empty `auth.token` against an auth-disabled server, or configure Spark with `--conf` instead.
+Spark maps a present `token` catalog property to `type=static` even when the value is empty.
+Hive JDBC / Beeline URLs that omit empty query parameters cannot express an empty token;
+use `auth.type=static` with a dummy non-empty `auth.token` against an auth-disabled server,
+or the legacy `token` property if the URL keeps it, or configure Spark with `--conf` instead.
 
 ## Using Spark with a User Token
 
