@@ -50,15 +50,17 @@ public class JCasbinAuthorizerMultiInstanceTest {
     return properties(refreshEnabled, interval, null);
   }
 
-  private ServerProperties properties(boolean refreshEnabled, String interval, String debounce) {
+  private ServerProperties properties(
+      boolean refreshEnabled, String interval, String minProbeInterval) {
     Properties properties = new Properties();
     properties.setProperty(Property.SERVER_ENV.getKey(), "test");
     properties.setProperty(
         Property.POLICY_REFRESH_ENABLED.getKey(), Boolean.toString(refreshEnabled));
     properties.setProperty(Property.POLICY_REFRESH_INTERVAL.getKey(), interval);
-    if (debounce != null) {
-      properties.setProperty(Property.POLICY_REFRESH_DEBOUNCE_INTERVAL.getKey(), debounce);
-    }
+    // Production default is PT1S; tests pin PT0S unless they are covering the wait.
+    properties.setProperty(
+        Property.POLICY_REFRESH_MIN_PROBE_INTERVAL.getKey(),
+        minProbeInterval != null ? minProbeInterval : "PT0S");
     return new ServerProperties(properties);
   }
 
@@ -218,23 +220,129 @@ public class JCasbinAuthorizerMultiInstanceTest {
   }
 
   @Test
-  void denyTriggeredRefreshIsDebounced() throws Exception {
+  void denyTriggeredRefreshCoversGrantWrittenAfterPreviousProbe() throws Exception {
     JCasbinAuthorizer replica =
-        register(
-            new JCasbinAuthorizer(
-                hibernateConfigurator, properties(true, "PT1H", TEST_REFRESH_INTERVAL)));
+        register(new JCasbinAuthorizer(hibernateConfigurator, properties(true, "PT1H")));
     JCasbinAuthorizer writer = startReplicaWithoutRefresh();
+    UUID principal = UUID.randomUUID();
+    UUID resource = UUID.randomUUID();
 
-    replica.refreshAuthorizations();
-    assertThat(replica.refreshAuthorizations())
-        .as("a second check inside the debounce window is skipped")
-        .isFalse();
+    assertThat(replica.authorize(principal, resource, Privileges.SELECT)).isFalse();
+    assertThat(replica.refreshAuthorizations(System.nanoTime())).isTrue();
+    assertThat(replica.authorize(principal, resource, Privileges.SELECT)).isFalse();
 
-    writer.grantAuthorization(UUID.randomUUID(), UUID.randomUUID(), Privileges.SELECT);
-    Thread.sleep(Duration.parse(TEST_REFRESH_INTERVAL).toMillis() + 50);
+    writer.grantAuthorization(principal, resource, Privileges.SELECT);
 
-    assertThat(replica.refreshAuthorizations())
-        .as("after the debounce window a changed policy is reloaded")
+    assertThat(replica.refreshAuthorizations(System.nanoTime()))
+        .as("a request starting after the grant requires a probe newer than the previous one")
+        .isTrue();
+    assertThat(replica.authorize(principal, resource, Privileges.SELECT)).isTrue();
+  }
+
+  @Test
+  void denyTriggeredRefreshDoesNotReloadOnRevokeOfNonMaxRow() throws Exception {
+    JCasbinAuthorizer replica =
+        register(new JCasbinAuthorizer(hibernateConfigurator, properties(true, "PT1H")));
+    JCasbinAuthorizer writer = startReplicaWithoutRefresh();
+    UUID principal = UUID.randomUUID();
+    UUID revoked = UUID.randomUUID();
+    UUID kept = UUID.randomUUID();
+    writer.grantAuthorization(principal, revoked, Privileges.SELECT);
+    writer.grantAuthorization(principal, kept, Privileges.SELECT);
+    settle(replica);
+
+    writer.revokeAuthorization(principal, revoked, Privileges.SELECT);
+
+    assertThat(replica.refreshAuthorizations(System.nanoTime()))
+        .as("a deny-path max(id) probe cannot observe a delete that leaves max(id) unchanged")
+        .isTrue();
+    assertThat(replica.authorize(principal, revoked, Privileges.SELECT))
+        .as("revocations of non-max rows still wait for a full count(*) poll")
+        .isTrue();
+    assertThat(replica.authorize(principal, kept, Privileges.SELECT)).isTrue();
+
+    assertThat(replica.getRefresher().checkAndReload()).isTrue();
+    assertThat(replica.authorize(principal, revoked, Privileges.SELECT)).isFalse();
+    assertThat(replica.authorize(principal, kept, Privileges.SELECT)).isTrue();
+  }
+
+  @Test
+  void minProbeIntervalWaitsThenSeesAGrantWrittenAfterTheLastProbe() throws Exception {
+    JCasbinAuthorizer replica =
+        register(new JCasbinAuthorizer(hibernateConfigurator, properties(true, "PT1H", "PT0.2S")));
+    JCasbinAuthorizer writer = startReplicaWithoutRefresh();
+    UUID principal = UUID.randomUUID();
+    UUID resource = UUID.randomUUID();
+    settle(replica);
+
+    writer.grantAuthorization(principal, resource, Privileges.SELECT);
+
+    long started = System.nanoTime();
+    assertThat(replica.refreshAuthorizations(System.nanoTime())).isTrue();
+    assertThat(Duration.ofNanos(System.nanoTime() - started))
+        .as("a positive min interval must wait rather than skip")
+        .isGreaterThanOrEqualTo(Duration.ofMillis(150));
+    assertThat(replica.authorize(principal, resource, Privileges.SELECT)).isTrue();
+  }
+
+  @Test
+  void deniesSharingOneRequestBarrierDoNotProbeAgain() throws Exception {
+    JCasbinAuthorizer replica =
+        register(new JCasbinAuthorizer(hibernateConfigurator, properties(true, "PT1H")));
+    JCasbinAuthorizer writer = startReplicaWithoutRefresh();
+    UUID principal = UUID.randomUUID();
+    UUID resource = UUID.randomUUID();
+    long requestStarted = System.nanoTime();
+
+    assertThat(replica.refreshAuthorizations(requestStarted)).isTrue();
+    writer.grantAuthorization(principal, resource, Privileges.SELECT);
+
+    assertThat(replica.refreshAuthorizations(requestStarted)).isTrue();
+    assertThat(replica.refreshAuthorizations(requestStarted)).isTrue();
+    assertThat(replica.authorize(principal, resource, Privileges.SELECT)).isFalse();
+
+    assertThat(replica.refreshAuthorizations(System.nanoTime())).isTrue();
+    assertThat(replica.authorize(principal, resource, Privileges.SELECT)).isTrue();
+  }
+
+  @Test
+  void concurrentDenyWaitsForRefreshAndThenReevaluates() throws Exception {
+    JCasbinAuthorizer replica =
+        register(new JCasbinAuthorizer(hibernateConfigurator, properties(true, "PT1H")));
+    AtomicBoolean firstResult = new AtomicBoolean(false);
+    AtomicBoolean secondResult = new AtomicBoolean(false);
+    // Separate requests, so each carries its own barrier.
+    Thread first =
+        new Thread(
+            () -> firstResult.set(replica.refreshAuthorizations(System.nanoTime())),
+            "first-deny-refresh");
+    Thread second =
+        new Thread(
+            () -> secondResult.set(replica.refreshAuthorizations(System.nanoTime())),
+            "second-deny-refresh");
+
+    synchronized (replica.getRefresher()) {
+      first.start();
+      await(
+          "the first deny to wait for the refresher",
+          () -> first.getState() == Thread.State.BLOCKED);
+
+      second.start();
+      await(
+          "the second deny to wait for the in-progress refresh",
+          () -> second.getState() == Thread.State.BLOCKED);
+      assertThat(secondResult.get())
+          .as("the second deny must not return before the refresh finishes")
+          .isFalse();
+    }
+
+    first.join(2000);
+    second.join(2000);
+    assertThat(first.isAlive()).isFalse();
+    assertThat(second.isAlive()).isFalse();
+    assertThat(firstResult.get()).isTrue();
+    assertThat(secondResult.get())
+        .as("the queued deny should re-evaluate against the completed refresh")
         .isTrue();
   }
 
@@ -243,7 +351,7 @@ public class JCasbinAuthorizerMultiInstanceTest {
     JCasbinAuthorizer replica = startReplicaWithoutRefresh();
 
     assertThat(replica.getRefresher().isRunning()).isFalse();
-    assertThat(replica.refreshAuthorizations()).isFalse();
+    assertThat(replica.refreshAuthorizations(System.nanoTime())).isFalse();
   }
 
   @Test

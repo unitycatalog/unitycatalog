@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -50,11 +49,8 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   private final JDBCAdapter adapter;
   private final String modelText;
   private final CasbinPolicyRefresher refresher;
-  private final long refreshDebounceNanos;
 
   private final boolean refreshEnabled;
-
-  private final AtomicLong lastRefreshNanos = new AtomicLong(Long.MIN_VALUE / 2);
 
   private static final int PRINCIPAL_INDEX = 0;
   private static final int RESOURCE_INDEX = 1;
@@ -78,10 +74,12 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
     this.modelText = IOUtils.toString(modelStream, StandardCharsets.UTF_8);
     currentEnforcer.set(newEnforcer());
 
-    this.refreshDebounceNanos = serverProperties.getPolicyRefreshDebounceInterval().toNanos();
     this.refreshEnabled = serverProperties.isPolicyRefreshEnabled();
     this.refresher =
-        new CasbinPolicyRefresher(this::reloadFromStore, hibernateConfigurator.getSessionFactory());
+        new CasbinPolicyRefresher(
+            this::reloadFromStore,
+            hibernateConfigurator.getSessionFactory(),
+            serverProperties.getPolicyRefreshMinProbeInterval());
     if (refreshEnabled) {
       refresher.start(serverProperties.getPolicyRefreshInterval());
     } else {
@@ -250,26 +248,15 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   }
 
   /**
-   * Rate-limited policy check before returning 403, for cross-instance create-then-read.
-   *
-   * @return true if the current enforcer was replaced (this call or a coalesced concurrent check)
+   * Reload after a deny if the in-memory policy may be stale. Returns true when the caller should
+   * re-evaluate.
    */
   @Override
-  public boolean refreshAuthorizations() {
+  public boolean refreshAuthorizations(long operationStartNanos) {
     if (!refreshEnabled) {
       return false;
     }
-    long now = System.nanoTime();
-    long last = lastRefreshNanos.get();
-    if (now - last < refreshDebounceNanos) {
-      return false;
-    }
-    if (!lastRefreshNanos.compareAndSet(last, now)) {
-      return false;
-    }
-    SyncedEnforcer before = currentEnforcer.get();
-    refresher.checkAndReload();
-    return currentEnforcer.get() != before;
+    return refresher.checkAndReloadAfter(operationStartNanos);
   }
 
   @Override
