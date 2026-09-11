@@ -224,7 +224,7 @@ public class ServerProperties {
     POLICY_REFRESH_INTERVAL(
         "server.authorization.policy-refresh-interval", "PT1M", DURATION_VALIDATOR),
     POLICY_REFRESH_MIN_PROBE_INTERVAL(
-        "server.authorization.policy-refresh-min-probe-interval", "PT0S", DURATION_VALIDATOR),
+        "server.authorization.policy-refresh-min-probe-interval", "PT1S", DURATION_VALIDATOR),
     STORAGE_CLEANUP_POLL_INTERVAL(
         "server.storage-cleanup.poll-interval", "PT1M", POSITIVE_DURATION_VALIDATOR),
     STORAGE_CLEANUP_ATTEMPT_TIMEOUT(

@@ -99,14 +99,14 @@ public class UnityAccessEvaluator {
    * @param expression The SpEL authorization expression
    * @param resourceIds Map of resource types to their UUIDs
    * @param nonResourceValues Map of parameter names to their values (from @AuthorizeKey)
-   * @param observedBefore {@link System#nanoTime()} from the start of this operation
+   * @param operationStartNanos {@link System#nanoTime()} from the start of this operation
    */
   public boolean evaluate(
       UUID principal,
       String expression,
       Map<SecurableType, UUID> resourceIds,
       Map<String, Object> nonResourceValues,
-      long observedBefore) {
+      long operationStartNanos) {
 
     StandardEvaluationContext context = new StandardEvaluationContext(Privileges.class);
 
@@ -126,7 +126,7 @@ public class UnityAccessEvaluator {
     }
 
     try {
-      if (!authorizer.refreshAuthorizations(observedBefore)) {
+      if (!authorizer.refreshAuthorizations(operationStartNanos)) {
         return false;
       }
     } catch (RuntimeException e) {
