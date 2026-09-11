@@ -4,7 +4,10 @@ import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.InputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +18,7 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.sql.DataSource;
 import org.apache.commons.io.IOUtils;
 import org.casbin.adapter.JDBCAdapter;
 import org.casbin.jcasbin.main.Enforcer;
@@ -29,10 +33,13 @@ import org.slf4j.LoggerFactory;
  * <p>This class is an implementation of UnityCatalogAuthorizor that uses JCasbin as the back end to
  * both store and enforce access control policies.
  *
- * <p>The implementation stores the policies in a database using the JDBCAdapter class. A {@link
- * SyncedEnforcer} is used because the UC server shares one authorizer across concurrent REST
- * requests; jCasbin's plain {@link Enforcer} is not thread-safe for concurrent {@code enforce()}
- * and policy mutations.
+ * <p>The implementation stores the policies in a database using the JDBCAdapter class. jdbc-adapter
+ * 2.7.0 pins one pooled connection for the authorizer lifetime; it does not check connections out
+ * per operation, so this shares a connection bound with Hibernate rather than the connections
+ * themselves. That checkout is forced to autocommit so policy reads do not sit idle-in-transaction
+ * on the Hibernate pool's autocommit-off default. A {@link SyncedEnforcer} is used because the UC
+ * server shares one authorizer across concurrent REST requests; jCasbin's plain {@link Enforcer} is
+ * not thread-safe for concurrent {@code enforce()} and policy mutations.
  *
  * <p>{@link CasbinPolicyRefresher} polls the shared {@code casbin_rule} table so grants and
  * revocations made through other instances are picked up. Reload builds a fresh enforcer and swaps
@@ -66,7 +73,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   public JCasbinAuthorizer(
       HibernateConfigurator hibernateConfigurator, ServerProperties serverProperties)
       throws Exception {
-    this.adapter = new JDBCAdapter(hibernateConfigurator.getDataSource());
+    this.adapter = new JDBCAdapter(autocommitOnCheckout(hibernateConfigurator.getDataSource()));
 
     InputStream modelStream = this.getClass().getResourceAsStream("/jcasbin_auth_model.conf");
     this.modelText = IOUtils.toString(modelStream, StandardCharsets.UTF_8);
@@ -84,6 +91,35 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
               + " instance will not be seen by this one, so running more than one instance against"
               + " this database is unsafe.");
     }
+  }
+
+  /**
+   * jdbc-adapter 2.7.0 calls {@link DataSource#getConnection()} once and holds it. Force autocommit
+   * on that checkout so {@code loadPolicy} does not leave Postgres/MySQL idle-in-transaction.
+   */
+  static DataSource autocommitOnCheckout(DataSource pool) {
+    return (DataSource)
+        Proxy.newProxyInstance(
+            DataSource.class.getClassLoader(),
+            new Class<?>[] {DataSource.class},
+            (proxy, method, args) -> {
+              try {
+                Object result = method.invoke(pool, args);
+                if (!(result instanceof Connection connection)) {
+                  return result;
+                }
+                try {
+                  connection.setAutoCommit(true);
+                  return connection;
+                } catch (Exception e) {
+                  try (connection) {
+                    throw e;
+                  }
+                }
+              } catch (InvocationTargetException e) {
+                throw e.getCause();
+              }
+            });
   }
 
   private SyncedEnforcer newEnforcer() {

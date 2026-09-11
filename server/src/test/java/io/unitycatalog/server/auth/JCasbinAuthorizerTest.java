@@ -6,6 +6,7 @@ import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import java.sql.Connection;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,18 @@ public class JCasbinAuthorizerTest {
       }
     }
     hibernateConfigurator.close();
+  }
+
+  @Test
+  void casbinCheckoutEnablesAutocommitWithoutChangingThePoolDefault() throws Exception {
+    assertThat(hibernateConfigurator.getDataSource().isAutoCommit()).isFalse();
+    try (Connection casbin =
+            JCasbinAuthorizer.autocommitOnCheckout(hibernateConfigurator.getDataSource())
+                .getConnection();
+        Connection hibernate = hibernateConfigurator.getDataSource().getConnection()) {
+      assertThat(casbin.getAutoCommit()).isTrue();
+      assertThat(hibernate.getAutoCommit()).isFalse();
+    }
   }
 
   @Test
