@@ -129,6 +129,16 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
     if (cause instanceof BadRequestException) {
       return wrapException(ErrorCode.INVALID_ARGUMENT, cause);
     }
+    if (cause instanceof NotFoundException) {
+      // Iceberg raises this when a file a table points at cannot be read, which for this service
+      // means the metadata file of a table the catalog still lists. The table is not missing, so
+      // this is not a 404; and reporting a 500 whose type names a not-found exception describes the
+      // failure as something the client could act on. The message says what could not be read
+      // without quoting where the server keeps it.
+      String message = "Could not read the Iceberg metadata of this table";
+      return wrapException(
+          ErrorCode.INTERNAL, message, new ServiceFailureException(cause, "%s", message));
+    }
     return super.toBaseException(cause);
   }
 
