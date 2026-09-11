@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
+import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
@@ -35,6 +36,8 @@ import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.Socket;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -95,6 +98,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 public class IcebergRestCatalogTest extends BaseServerTest {
 
+  private static final String ICEBERG_BASE_PATH = "/api/2.1/unity-catalog/iceberg";
   private static final String TEST_BASE_PREFIX = "/v1/catalogs/" + TestUtils.CATALOG_NAME;
   private static final String TEST_BASE_NON_PREFIX = "/v1";
   private static final int PAGE_SIZE = PagedListingHelper.DEFAULT_PAGE_SIZE;
@@ -116,7 +120,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   @BeforeEach
   public void setUp() {
     super.setUp();
-    String uri = serverConfig.getServerUrl() + "/api/2.1/unity-catalog/iceberg";
+    String uri = serverConfig.getServerUrl() + ICEBERG_BASE_PATH;
     String token = serverConfig.getAuthToken();
     catalogOperations = new SdkCatalogOperations(TestUtils.createApiClient(serverConfig));
     schemaOperations = new SdkSchemaOperations(TestUtils.createApiClient(serverConfig));
@@ -1201,6 +1205,100 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     assertThat(rejected.status().code()).isEqualTo(400);
     assertThat(ErrorResponseParser.fromJson(rejected.contentUtf8()).type())
         .isEqualTo(BadRequestException.class.getSimpleName());
+  }
+
+  @Test
+  public void testLoadTableConditionalGet() throws Exception {
+    createUniformIcebergTable("/iceberg.metadata.two-snapshots.json");
+    String tablePath =
+        TEST_BASE_PREFIX
+            + "/namespaces/"
+            + TestUtils.SCHEMA_NAME
+            + "/tables/"
+            + TestUtils.TABLE_NAME;
+
+    AggregatedHttpResponse loaded = client.get(tablePath).aggregate().join();
+    assertThat(loaded.status().code()).isEqualTo(200);
+    String etag = loaded.headers().get(HttpHeaderNames.ETAG);
+    // Weak, because the tag names the metadata version rather than the bytes of one response.
+    assertThat(etag).startsWith("W/\"").endsWith("\"");
+    // The tag must not hand out the metadata file location.
+    assertThat(etag).doesNotContain("iceberg.metadata");
+
+    // A caller that already holds this version gets a bodiless 304.
+    AggregatedHttpResponse notModified = conditionalGet(tablePath, etag);
+    assertThat(notModified.status().code()).isEqualTo(304);
+    assertThat(notModified.content().isEmpty()).isTrue();
+    assertThat(notModified.headers().get(HttpHeaderNames.ETAG)).isEqualTo(etag);
+
+    // The header may list several tags; ours being one of them is enough.
+    assertThat(conditionalGet(tablePath, "W/\"0\", " + etag).status().code()).isEqualTo(304);
+
+    // A tag from some other version, and the wildcard, both get the full response.
+    assertThat(conditionalGet(tablePath, "W/\"0\"").status().code()).isEqualTo(200);
+    assertThat(conditionalGet(tablePath, "*").status().code()).isEqualTo(200);
+
+    // "refs" returns a different body for the same version, so it carries its own tag and is not
+    // answered from a copy the default response handed out.
+    String refsPath = tablePath + "?snapshots=refs";
+    String refsETag = client.get(refsPath).aggregate().join().headers().get(HttpHeaderNames.ETAG);
+    assertThat(refsETag).isNotEqualTo(etag);
+    assertThat(conditionalGet(refsPath, etag).status().code()).isEqualTo(200);
+    assertThat(conditionalGet(refsPath, refsETag).status().code()).isEqualTo(304);
+
+    // An invalid snapshots value is still rejected rather than answered from the caller's copy.
+    assertThat(conditionalGet(tablePath + "?snapshots=some", etag).status().code()).isEqualTo(400);
+
+    // Moving the metadata pointer, as a commit does, retires the tag the caller holds.
+    TableInfo table =
+        tableOperations.getTable(
+            TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + TestUtils.TABLE_NAME);
+    Path committed =
+        Files.copy(
+            icebergTableLocation.resolve("iceberg.metadata.json"),
+            icebergTableLocation.resolve("committed.metadata.json"));
+    setUniformMetadata(table, committed);
+
+    AggregatedHttpResponse reloaded = conditionalGet(tablePath, etag);
+    assertThat(reloaded.status().code()).isEqualTo(200);
+    assertThat(reloaded.headers().get(HttpHeaderNames.ETAG)).isNotEqualTo(etag);
+
+    // Released Iceberg clients keep response headers in a map keyed by the name as received and
+    // look this one up as "ETag", so the name has to reach the wire spelled that way.
+    assertThat(responseHead(tablePath)).contains("ETag: W/\"");
+  }
+
+  /**
+   * Reads a response head straight off the socket. Both Armeria's client and the JDK's lowercase
+   * header names as they parse them, so neither can see how the server spelled them.
+   */
+  private String responseHead(String path) throws IOException {
+    URI server = URI.create(serverConfig.getServerUrl());
+    try (Socket socket = new Socket(server.getHost(), server.getPort())) {
+      socket
+          .getOutputStream()
+          .write(
+              ("GET "
+                      + ICEBERG_BASE_PATH
+                      + path
+                      + " HTTP/1.1\r\nHost: "
+                      + server.getAuthority()
+                      + "\r\nAuthorization: Bearer "
+                      + serverConfig.getAuthToken()
+                      + "\r\nConnection: close\r\n\r\n")
+                  .getBytes(StandardCharsets.UTF_8));
+      String response = new String(socket.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+      int endOfHead = response.indexOf("\r\n\r\n");
+      return endOfHead < 0 ? response : response.substring(0, endOfHead);
+    }
+  }
+
+  private AggregatedHttpResponse conditionalGet(String path, String ifNoneMatch) {
+    return client
+        .execute(
+            RequestHeaders.of(HttpMethod.GET, path, HttpHeaderNames.IF_NONE_MATCH, ifNoneMatch))
+        .aggregate()
+        .join();
   }
 
   private static List<Long> loadedSnapshotIds(AggregatedHttpResponse resp) throws IOException {
