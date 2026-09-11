@@ -45,9 +45,10 @@ public interface UnityCatalogAuthorizer {
   /**
    * Reload cached authorization state after a deny, if supported. Default is a no-op.
    *
+   * @param operationStartNanos {@link System#nanoTime()} from the start of the denied operation
    * @return true if authorization should be re-evaluated
    */
-  default boolean refreshAuthorizations(long observedBefore) {
+  default boolean refreshAuthorizations(long operationStartNanos) {
     return false;
   }
 }

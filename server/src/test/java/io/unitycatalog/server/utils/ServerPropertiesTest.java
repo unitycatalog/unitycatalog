@@ -217,6 +217,7 @@ public class ServerPropertiesTest {
     testValidProperty(Property.ACCESS_TOKEN_TIMEOUT, "PT1H");
     testValidProperty(Property.POLICY_REFRESH_MIN_PROBE_INTERVAL, "PT0S");
     testValidProperty(Property.POLICY_REFRESH_MIN_PROBE_INTERVAL, "PT0.1S");
+    testValidProperty(Property.POLICY_REFRESH_MIN_PROBE_INTERVAL, "PT1S");
 
     // Invalid values
     testInvalidProperty(

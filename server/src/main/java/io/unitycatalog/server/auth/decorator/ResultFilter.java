@@ -121,7 +121,7 @@ public class ResultFilter {
       throw new RuntimeException("Securable type " + securableType + " is already resolved");
     }
 
-    long observedBefore = System.nanoTime();
+    long operationStartNanos = System.nanoTime();
 
     items.removeIf(
         item -> {
@@ -132,7 +132,11 @@ public class ResultFilter {
                 resolveResourceIdsForItem(securableType, item, resourceIds);
             boolean authorized =
                 evaluator.evaluate(
-                    principalId, expression, resourceIdsForItem, nonResourceValues, observedBefore);
+                    principalId,
+                    expression,
+                    resourceIdsForItem,
+                    nonResourceValues,
+                    operationStartNanos);
             if (!authorized) {
               LOGGER.debug("Item filtered out: {}", item.getClass().getSimpleName());
             }

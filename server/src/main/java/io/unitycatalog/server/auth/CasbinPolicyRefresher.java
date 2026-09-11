@@ -18,8 +18,16 @@ import org.slf4j.LoggerFactory;
  * auto-save enabled, but each server process only loads that table into its enforcer at startup
  * unless this refresher reloads it.
  *
- * <p>The poller uses {@code count(*)} and {@code max(id)}; deny-path checks use {@code max(id)}
- * only. Reload is delegated to {@link JCasbinAuthorizer} so a fresh enforcer can be swapped without
+ * <p>Two probes, for different use cases:
+ *
+ * <ul>
+ *   <li>The background poller uses {@link #VERSION_QUERY} ({@code count(*)} and {@code max(id)}) so
+ *       a revoke that deletes a non-max row still shows up.
+ *   <li>The deny path uses {@link #MAX_ID_QUERY} ({@code max(id)} only). A stale deny after a grant
+ *       is a missing insert; revokes are left to the poller.
+ * </ul>
+ *
+ * <p>Reload is delegated to {@link JCasbinAuthorizer} so a fresh enforcer can be swapped without
  * blocking {@code enforce()}.
  */
 public class CasbinPolicyRefresher implements AutoCloseable {
@@ -32,8 +40,10 @@ public class CasbinPolicyRefresher implements AutoCloseable {
     RELOADED
   }
 
+  // Poller: count(*) catches revokes that delete a non-max row; max(id) catches new grants.
   private static final String VERSION_QUERY =
       "select count(*), coalesce(max(id), 0) from casbin_rule";
+  // Deny path: a stale deny after a grant is a missing insert, which always raises max(id).
   private static final String MAX_ID_QUERY = "select coalesce(max(id), 0) from casbin_rule";
 
   private final Runnable reloader;
@@ -45,7 +55,7 @@ public class CasbinPolicyRefresher implements AutoCloseable {
   private long lastMaxId = -1;
 
   // System.nanoTime() of the last successful probe start; Long.MIN_VALUE if none.
-  private volatile long lastCompletedProbeAt = Long.MIN_VALUE;
+  private volatile long lastCompletedProbeAtNanos = Long.MIN_VALUE;
 
   private ScheduledExecutorService executor;
 
@@ -84,26 +94,27 @@ public class CasbinPolicyRefresher implements AutoCloseable {
   }
 
   /**
-   * Probes {@code casbin_rule} and reloads when the version changed.
+   * Poller probe: {@link #VERSION_QUERY} ({@code count(*)} and {@code max(id)}).
    *
    * @return true if a reload happened
    */
   public boolean checkAndReload() {
     synchronized (this) {
-      return probeAndReload(true) == ProbeResult.RELOADED;
+      return probeCountAndMaxId() == ProbeResult.RELOADED;
     }
   }
 
   /**
-   * Reloads if policy may have changed after {@code observedBefore} ({@link System#nanoTime()}).
+   * Reloads if policy may have changed after {@code operationStartNanos} ({@link System#nanoTime()}
+   * from the start of the denied operation).
    */
-  public boolean checkAndReloadAfter(long observedBefore) {
-    if (isCoveredByCompletedProbe(observedBefore)) {
+  public boolean checkAndReloadAfter(long operationStartNanos) {
+    if (isCoveredByCompletedProbe(operationStartNanos)) {
       return true;
     }
     synchronized (this) {
       while (true) {
-        if (isCoveredByCompletedProbe(observedBefore)) {
+        if (isCoveredByCompletedProbe(operationStartNanos)) {
           return true;
         }
         Duration remaining = remainingMinProbeInterval();
@@ -113,22 +124,23 @@ public class CasbinPolicyRefresher implements AutoCloseable {
           }
           continue;
         }
-        return probeAndReload(false) != ProbeResult.FAILED;
+        return probeMaxId() != ProbeResult.FAILED;
       }
     }
   }
 
-  private boolean isCoveredByCompletedProbe(long observedBefore) {
-    long lastStart = lastCompletedProbeAt;
-    return lastStart != Long.MIN_VALUE && lastStart - observedBefore >= 0;
+  private boolean isCoveredByCompletedProbe(long operationStartNanos) {
+    long lastStartNanos = lastCompletedProbeAtNanos;
+    return lastStartNanos != Long.MIN_VALUE && lastStartNanos - operationStartNanos >= 0;
   }
 
   private Duration remainingMinProbeInterval() {
-    long lastStart = lastCompletedProbeAt;
-    if (minProbeInterval.isZero() || lastStart == Long.MIN_VALUE) {
+    long lastStartNanos = lastCompletedProbeAtNanos;
+    if (minProbeInterval.isZero() || lastStartNanos == Long.MIN_VALUE) {
       return Duration.ZERO;
     }
-    Duration remaining = minProbeInterval.minus(Duration.ofNanos(System.nanoTime() - lastStart));
+    Duration remaining =
+        minProbeInterval.minus(Duration.ofNanos(System.nanoTime() - lastStartNanos));
     return remaining.isNegative() ? Duration.ZERO : remaining;
   }
 
@@ -142,38 +154,38 @@ public class CasbinPolicyRefresher implements AutoCloseable {
     }
   }
 
-  private ProbeResult probeAndReload(boolean fullVersion) {
-    // Query snapshot is taken at start, so this instant is what the probe can cover.
-    long probeStarted = System.nanoTime();
-    if (fullVersion) {
-      long[] db = readVersion().orElse(null);
-      if (db == null) {
-        return ProbeResult.FAILED;
-      }
-      if (db[0] == lastCount && db[1] == lastMaxId) {
-        recordCompletedProbe(probeStarted);
-        return ProbeResult.UNCHANGED;
-      }
-      return reload(probeStarted, db[0], db[1]);
+  private ProbeResult probeCountAndMaxId() {
+    long probeStartedNanos = System.nanoTime();
+    long[] db = readVersion().orElse(null);
+    if (db == null) {
+      return ProbeResult.FAILED;
     }
+    if (db[0] == lastCount && db[1] == lastMaxId) {
+      recordCompletedProbe(probeStartedNanos);
+      return ProbeResult.UNCHANGED;
+    }
+    return reload(probeStartedNanos, db[0], db[1]);
+  }
 
+  private ProbeResult probeMaxId() {
+    long probeStartedNanos = System.nanoTime();
     Long maxId = readMaxId().orElse(null);
     if (maxId == null) {
       return ProbeResult.FAILED;
     }
     if (maxId == lastMaxId) {
-      recordCompletedProbe(probeStarted);
+      recordCompletedProbe(probeStartedNanos);
       return ProbeResult.UNCHANGED;
     }
-    return reload(probeStarted, lastCount, maxId);
+    return reload(probeStartedNanos, lastCount, maxId);
   }
 
-  private ProbeResult reload(long probeStarted, long count, long maxId) {
+  private ProbeResult reload(long probeStartedNanos, long count, long maxId) {
     long previousCount = lastCount;
     long previousMaxId = lastMaxId;
     reloader.run();
     recordVersion(count, maxId);
-    recordCompletedProbe(probeStarted);
+    recordCompletedProbe(probeStartedNanos);
     LOGGER.info(
         "Reloaded Casbin policy from casbin_rule (count {} -> {}, maxId {} -> {})",
         previousCount,
@@ -183,8 +195,8 @@ public class CasbinPolicyRefresher implements AutoCloseable {
     return ProbeResult.RELOADED;
   }
 
-  private void recordCompletedProbe(long probeStarted) {
-    lastCompletedProbeAt = probeStarted;
+  private void recordCompletedProbe(long probeStartedNanos) {
+    lastCompletedProbeAtNanos = probeStartedNanos;
     notifyAll();
   }
 

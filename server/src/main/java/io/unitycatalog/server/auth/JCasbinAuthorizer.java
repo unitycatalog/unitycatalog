@@ -252,11 +252,11 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
    * re-evaluate.
    */
   @Override
-  public boolean refreshAuthorizations(long observedBefore) {
+  public boolean refreshAuthorizations(long operationStartNanos) {
     if (!refreshEnabled) {
       return false;
     }
-    return refresher.checkAndReloadAfter(observedBefore);
+    return refresher.checkAndReloadAfter(operationStartNanos);
   }
 
   @Override

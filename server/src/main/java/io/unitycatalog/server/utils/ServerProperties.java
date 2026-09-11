@@ -202,7 +202,7 @@ public class ServerProperties {
     POLICY_REFRESH_INTERVAL(
         "server.authorization.policy-refresh-interval", "PT1M", DURATION_VALIDATOR),
     POLICY_REFRESH_MIN_PROBE_INTERVAL(
-        "server.authorization.policy-refresh-min-probe-interval", "PT0S", DURATION_VALIDATOR),
+        "server.authorization.policy-refresh-min-probe-interval", "PT1S", DURATION_VALIDATOR),
     AUTHORIZATION_URL("server.authorization-url", URL_VALIDATOR),
     TOKEN_URL("server.token-url", URL_VALIDATOR),
     CLIENT_ID("server.client-id"),

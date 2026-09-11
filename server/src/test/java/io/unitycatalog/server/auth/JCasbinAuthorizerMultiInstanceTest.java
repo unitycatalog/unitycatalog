@@ -57,9 +57,10 @@ public class JCasbinAuthorizerMultiInstanceTest {
     properties.setProperty(
         Property.POLICY_REFRESH_ENABLED.getKey(), Boolean.toString(refreshEnabled));
     properties.setProperty(Property.POLICY_REFRESH_INTERVAL.getKey(), interval);
-    if (minProbeInterval != null) {
-      properties.setProperty(Property.POLICY_REFRESH_MIN_PROBE_INTERVAL.getKey(), minProbeInterval);
-    }
+    // Production default is PT1S; tests pin PT0S unless they are covering the wait.
+    properties.setProperty(
+        Property.POLICY_REFRESH_MIN_PROBE_INTERVAL.getKey(),
+        minProbeInterval != null ? minProbeInterval : "PT0S");
     return new ServerProperties(properties);
   }
 
