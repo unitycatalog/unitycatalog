@@ -1,8 +1,11 @@
 package io.unitycatalog.server.exception;
 
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.common.annotation.Nullable;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import lombok.SneakyThrows;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
@@ -129,7 +132,43 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
     if (cause instanceof BadRequestException) {
       return wrapException(ErrorCode.INVALID_ARGUMENT, cause);
     }
+    String unreadableBody = unreadableBodyReason(cause);
+    if (unreadableBody != null) {
+      // A body the request converter cannot read arrives here as a failure whose message names the
+      // Jackson exception, the Java types it was mapping to, and the reader's location in the body.
+      // Say what was wrong with the request instead, in Iceberg's own vocabulary: the cause is an
+      // Iceberg BadRequestException so that the error type names one, not the converter's
+      // IllegalArgumentException.
+      BadRequestException badRequest = new BadRequestException("%s", unreadableBody);
+      // The converter's failure stays under the Iceberg exception, so the server's own logs still
+      // have the reason the body could not be read.
+      badRequest.initCause(cause);
+      return wrapException(ErrorCode.INVALID_ARGUMENT, unreadableBody, badRequest);
+    }
     return super.toBaseException(cause);
+  }
+
+  /**
+   * Why the request body could not be read, or null if the failure was something else. Only the two
+   * Jackson failures that mean "this body cannot be read" are recognized: a body that is not JSON
+   * ({@link JsonParseException}) and a body whose shape does not fit what the endpoint takes
+   * ({@link MismatchedInputException}). Every other Jackson failure -- writing a response, for one
+   * -- is left to the general handling, which does not call it a bad request.
+   */
+  @Nullable
+  private static String unreadableBodyReason(Throwable cause) {
+    for (Throwable current = cause; current != null; current = current.getCause()) {
+      if (current instanceof JsonParseException) {
+        return "Malformed request body: not valid JSON";
+      }
+      if (current instanceof MismatchedInputException) {
+        return "Malformed request body: not the structure this endpoint accepts";
+      }
+      if (current.getCause() == current) {
+        break;
+      }
+    }
+    return null;
   }
 
   @SneakyThrows
