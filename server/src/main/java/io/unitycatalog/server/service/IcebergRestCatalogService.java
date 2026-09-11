@@ -46,6 +46,7 @@ import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -73,6 +74,7 @@ import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
+import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.ConfigResponse;
 import org.apache.iceberg.rest.responses.CreateNamespaceResponse;
@@ -80,6 +82,7 @@ import org.apache.iceberg.rest.responses.GetNamespaceResponse;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.rest.responses.LoadViewResponse;
+import org.apache.iceberg.rest.responses.UpdateNamespacePropertiesResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -104,6 +107,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       List.of(
           Endpoint.V1_CREATE_NAMESPACE,
           Endpoint.V1_DELETE_NAMESPACE,
+          Endpoint.V1_UPDATE_NAMESPACE,
           Endpoint.V1_CREATE_TABLE,
           Endpoint.V1_UPDATE_TABLE,
           Endpoint.V1_DELETE_TABLE,
@@ -255,6 +259,29 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     }
     clearDeletedResourceAuthorizations(deleted);
     return HttpResponse.of(HttpStatus.NO_CONTENT);
+  }
+
+  @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/properties")
+  @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public UpdateNamespacePropertiesResponse updateNamespaceProperties(
+      @Param("catalog") String catalog,
+      @Param("namespace") String namespace,
+      UpdateNamespacePropertiesRequest request) {
+    serverProperties.checkIcebergTableEnabled();
+    // Iceberg's own request rejects a key asked to be both set and removed.
+    request.validate();
+    SchemaRepository.PropertyChanges changes =
+        schemaRepository.applyPropertyChanges(
+            String.join(".", catalog, namespace),
+            request.updates(),
+            new LinkedHashSet<>(request.removals()));
+    return UpdateNamespacePropertiesResponse.builder()
+        .addUpdated(changes.updated())
+        .addRemoved(changes.removed())
+        .addMissing(changes.missing())
+        .build();
   }
 
   // Table APIs

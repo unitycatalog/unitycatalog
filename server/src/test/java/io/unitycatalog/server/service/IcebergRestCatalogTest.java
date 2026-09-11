@@ -67,6 +67,7 @@ import org.apache.iceberg.exceptions.NoSuchNamespaceException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NotFoundException;
 import org.apache.iceberg.exceptions.RESTException;
+import org.apache.iceberg.exceptions.UnprocessableEntityException;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.metrics.CommitMetrics;
 import org.apache.iceberg.metrics.CommitMetricsResult;
@@ -86,6 +87,7 @@ import org.apache.iceberg.rest.responses.GetNamespaceResponse;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
 import org.apache.iceberg.rest.responses.ListTablesResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
+import org.apache.iceberg.rest.responses.UpdateNamespacePropertiesResponse;
 import org.apache.iceberg.types.Types;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
@@ -159,6 +161,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                 + "\"GET /v1/{prefix}/namespaces/{namespace}/tables\","
                 + "\"POST /v1/{prefix}/namespaces\","
                 + "\"DELETE /v1/{prefix}/namespaces/{namespace}\","
+                + "\"POST /v1/{prefix}/namespaces/{namespace}/properties\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
                 + "\"DELETE /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
@@ -1208,6 +1211,69 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     LoadTableResponse loaded =
         IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
     return loaded.tableMetadata().snapshots().stream().map(Snapshot::snapshotId).toList();
+  }
+
+  @Test
+  public void testUpdateNamespaceProperties() throws Exception {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema()
+            .catalogName(TestUtils.CATALOG_NAME)
+            .name(TestUtils.SCHEMA_NAME)
+            .properties(Map.of("keep", "me", "drop", "this")));
+    String propertiesPath =
+        TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/properties";
+
+    // What was set, what was removed, and what could not be removed because it was not there.
+    AggregatedHttpResponse resp =
+        postJson(
+            propertiesPath,
+            "{\"removals\": [\"drop\", \"absent\"], \"updates\": {\"added\": \"value\"}}");
+    assertThat(resp.status().code()).isEqualTo(200);
+    UpdateNamespacePropertiesResponse updated =
+        IcebergObjectMapper.mapper()
+            .readValue(resp.contentUtf8(), UpdateNamespacePropertiesResponse.class);
+    assertThat(updated.updated()).containsExactly("added");
+    assertThat(updated.removed()).containsExactly("drop");
+    assertThat(updated.missing()).containsExactly("absent");
+
+    // The namespace itself reflects the patch: keys not mentioned are left alone.
+    assertThat(namespaceProperties(TestUtils.SCHEMA_NAME))
+        .containsOnly(Map.entry("keep", "me"), Map.entry("added", "value"));
+
+    // Removing every key leaves the namespace with none. Worth pinning separately: a patch that
+    // ends in an empty property set is what a later "nothing to write" shortcut would get wrong.
+    resp = postJson(propertiesPath, "{\"removals\": [\"keep\", \"added\"], \"updates\": {}}");
+    assertThat(resp.status().code()).isEqualTo(200);
+    updated =
+        IcebergObjectMapper.mapper()
+            .readValue(resp.contentUtf8(), UpdateNamespacePropertiesResponse.class);
+    assertThat(updated.removed()).containsExactlyInAnyOrder("keep", "added");
+    assertThat(updated.updated()).isEmpty();
+    assertThat(namespaceProperties(TestUtils.SCHEMA_NAME)).isEmpty();
+
+    // A key both set and removed is the spec's 422, and a namespace that does not exist is a 404.
+    resp =
+        postJson(propertiesPath, "{\"removals\": [\"both\"], \"updates\": {\"both\": \"value\"}}");
+    assertThat(resp.status().code()).isEqualTo(422);
+    assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
+        .isEqualTo(UnprocessableEntityException.class.getSimpleName());
+    resp =
+        postJson(
+            TEST_BASE_PREFIX + "/namespaces/noSuchSchema/properties",
+            "{\"removals\": [], \"updates\": {\"a\": \"b\"}}");
+    assertThat(resp.status().code()).isEqualTo(404);
+  }
+
+  /** The properties the namespace reports, as a client reading it back would see them. */
+  private Map<String, String> namespaceProperties(String namespace) throws IOException {
+    AggregatedHttpResponse resp =
+        client.get(TEST_BASE_PREFIX + "/namespaces/" + namespace).aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(200);
+    return IcebergObjectMapper.mapper()
+        .readValue(resp.contentUtf8(), GetNamespaceResponse.class)
+        .properties();
   }
 
   private AggregatedHttpResponse postJson(String path, String body) {
