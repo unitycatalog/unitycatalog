@@ -336,9 +336,9 @@ public class UnityCatalogServer implements AutoCloseable {
   }
 
   /**
-   * Stops the server and closes the Hibernate configurator it created, releasing the shared Hikari
-   * pool, which the Armeria shutdown does not touch and which would otherwise stay open until the
-   * JVM exits. A configurator supplied via {@link Builder#hibernateConfigurator} is left open — the
+   * Stops the server and closes the Hibernate configurator it created, releasing the Hikari pool,
+   * which the Armeria shutdown does not touch and which would otherwise stay open until the JVM
+   * exits. A configurator supplied via {@link Builder#hibernateConfigurator} is left open — the
    * caller owns its lifecycle. Unlike {@link #stop()}, a server that owns its configurator must not
    * be restarted after this call: the factory and pool are closed, so all persistence operations
    * would fail. Safe to call more than once and safe to call before {@link #start()}.

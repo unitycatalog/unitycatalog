@@ -39,7 +39,9 @@ import org.slf4j.LoggerFactory;
 /**
  * This class configures the hibernate properties and adds annotated classes to the session factory.
  * This session factory is used to create sessions for database operations across the repository
- * classes. Hibernate and Casbin share the HikariCP DataSource built here.
+ * classes. Casbin's JDBC adapter is given the same DataSource so both sit under one Hikari {@code
+ * maximumPoolSize}. jdbc-adapter 2.7.0 still holds one pooled connection for its lifetime; Casbin
+ * enables autocommit on that checkout only.
  */
 @Getter
 public class HibernateConfigurator implements AutoCloseable {
