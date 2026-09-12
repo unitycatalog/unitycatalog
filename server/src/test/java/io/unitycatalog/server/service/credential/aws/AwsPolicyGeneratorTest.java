@@ -78,17 +78,15 @@ public class AwsPolicyGeneratorTest {
 
   @ParameterizedTest(name = "{index}: {0} becomes {1}")
   @CsvSource({
-    "%2A, ${*}",
-    "%2a, ${*}",
-    "%3F, ${?}",
-    "%3f, ${?}",
+    "%20, %20",
+    "%2A, %2A",
+    "%3F, %3F",
+    "%25, %25",
     "prefix*middle, prefix${*}middle",
-    "prefix%3Fmiddle, prefix${?}middle",
-    "%24%7Baws:username%7D, ${$}{aws:username}",
-    "$%7B*%7D, ${$}{${*}}"
+    "$%7B*%7D, ${$}%7B${*}%7D"
   })
-  public void testPolicyEscapesIamSpecialCharacters(String encodedPath, String expectedPath)
-      throws Exception {
+  public void testPolicyPreservesEncodedKeysAndEscapesRawIamCharacters(
+      String encodedPath, String expectedPath) throws Exception {
     String bucket = "victim-bucket";
     String policy =
         AwsPolicyGenerator.generatePolicy(
