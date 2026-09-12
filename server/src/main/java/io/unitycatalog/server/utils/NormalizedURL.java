@@ -236,6 +236,24 @@ public final class NormalizedURL {
     return path.substring(start, end);
   }
 
+  /** Returns the S3 bucket and textual object key without decoding percent escapes. */
+  public S3Location toS3Location() {
+    URI uri = toUri();
+    if (UriScheme.fromURI(uri) != UriScheme.S3) {
+      throw new IllegalArgumentException("S3 location requires an S3 URI");
+    }
+    String bucket = uri.getHost();
+    if (bucket == null || bucket.isBlank()) {
+      throw new IllegalArgumentException("S3 location requires a bucket");
+    }
+    String rawPath = uri.getRawPath();
+    String key = rawPath == null ? "" : rawPath.replaceFirst("^/+", "");
+    return new S3Location(bucket, key);
+  }
+
+  /** One S3 bucket and object key. */
+  public record S3Location(String bucket, String key) {}
+
   public NormalizedURL getStorageBase() {
     URI uri = URI.create(url);
     return NormalizedURL.from(uri.getScheme() + "://" + uri.getAuthority());
