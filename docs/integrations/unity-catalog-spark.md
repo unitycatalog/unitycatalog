@@ -236,8 +236,13 @@ Notice the following packages (`--packages`) and configurations (`--conf`)
   4.1.x, or 4.2.x coordinates from the prerequisites table above.
 - `spark.sql.catalog.spark_catalog` should be set to Delta's session catalog when working with Delta tables.
 - `spark.sql.catalog.<catalog_name>.uri` points to your local development UC instance.
-- `spark.sql.catalog.<catalog_name>.token` is empty when authentication is disabled; refer to [auth](../server/auth.md)
-  when using an authenticated server.
+- `spark.sql.catalog.<catalog_name>.token` is the static bearer token. When the
+  server has `server.authorization=disable` (the default), set this key to an
+  empty string (`export UC_TOKEN=` as in the examples above). Do not omit both
+  `token` and `auth.type`. Client auth types, empty tokens, and Hive JDBC /
+  Beeline workarounds are documented in
+  [Spark and Java client authentication types](../server/auth.md#spark-and-java-client-authentication-types).
+  When authorization is enabled, set a real token; see [auth](../server/auth.md).
 - `spark.sql.defaultCatalog=<catalog_name>` must be filled out to indicate the default catalog.
 
 ??? note "Three-part and two-part naming conventions"

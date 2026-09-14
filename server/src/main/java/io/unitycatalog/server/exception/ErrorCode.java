@@ -58,7 +58,11 @@ public enum ErrorCode {
   EXTERNAL_LOCATION_ALREADY_EXISTS(21, 400, DeltaErrorType.ALREADY_EXISTS_EXCEPTION, 409),
   // CCv2 commit whose idempotency the server could not determine (e.g. the published or staged
   // commit file could not be read for a content comparison). Retriable.
-  COMMIT_STATE_UNKNOWN(22, 500, DeltaErrorType.COMMIT_STATE_UNKNOWN_EXCEPTION);
+  COMMIT_STATE_UNKNOWN(22, 500, DeltaErrorType.COMMIT_STATE_UNKNOWN_EXCEPTION),
+  // A request the server understood but cannot carry out as asked, which the Iceberg REST spec
+  // answers 422 (e.g. a namespace property named in both updates and removals). The Delta API has
+  // no 422, so it keeps reporting such a request as a bad one.
+  UNPROCESSABLE_ENTITY(3, 422, DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION, 400);
 
   // Canonical mapping from DeltaErrorType to HTTP status. Built at class-load time and validated
   // to ensure every ErrorCode that shares the same deltaErrorType also agrees on deltaHttpStatus.
