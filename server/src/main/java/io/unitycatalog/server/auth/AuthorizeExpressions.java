@@ -36,6 +36,15 @@ public final class AuthorizeExpressions {
           #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
       """;
 
+  /** Authorization policy for reading schema metadata. */
+  public static final String GET_SCHEMA =
+      """
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+          #authorize(#principal, #catalog, USE_CATALOG))
+      """;
+
   /**
    * Authorization policy for creating a staging table (UC REST {@code POST /staging-tables} and UC
    * Delta API {@code createStagingTable}). Catalog {@code USE_CATALOG}/{@code OWNER} plus either

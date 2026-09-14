@@ -1,13 +1,14 @@
 package io.unitycatalog.server.sharing;
 
-import io.opensharing.catalog.unity.UnityCatalogConnector;
 import io.opensharing.principal.CatalogAuthorizingIdentityResolver;
 import io.opensharing.runtime.OpenSharing;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.security.UnityCatalogIdentityService;
+import io.unitycatalog.server.sharing.catalog.UnityCatalogCatalogConnector;
 import io.unitycatalog.server.utils.ServerProperties;
-import java.net.URI;
-import java.time.Duration;
 import java.util.Properties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,11 +23,6 @@ public final class OpenSharingLifecycle implements AutoCloseable {
   private OpenSharingLifecycle(AutoCloseable context) {
     this.context = context;
   }
-
-  /** Timeouts for the loopback calls to UC's own Armeria server — see {@link #start}. */
-  private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
-
-  private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
 
   /**
    * Starts embedded OpenSharing against UC's own database — the same JDBC connection {@code
@@ -46,33 +42,16 @@ public final class OpenSharingLifecycle implements AutoCloseable {
    * of which trust each other completely in one process — but restricting the bind address is what
    * makes "one address" true on the network, not merely in how the demo happens to be run.
    *
-   * <p>Every catalog and identity question OpenSharing has is a real HTTP call to UC's own Armeria
-   * server on {@code 127.0.0.1:armeriaPort} — never a direct repository read, and never a stored
-   * credential replayed later. Two calls, both OpenSharing's own, unmodified for embedding:
-   *
-   * <ul>
-   *   <li>{@link CatalogAuthorizingIdentityResolver} resolves a provider-admin request's caller by
-   *       presenting its own bearer token to {@link UnityCatalogConnector}'s implementation of
-   *       {@code CatalogConnector#authorize} ({@code GET /opensharing/authorize}) — the same call
-   *       standalone mode makes against a remote catalog, just against a loopback address.
-   *   <li>{@link UnityCatalogConnector} resolves and reads assets, presenting either that same
-   *       live token (adding a table to a share) or, on a recipient's read, this connector's own
-   *       {@code serverSecret} plus the share owner's catalog user id — on-behalf-of access, since
-   *       there is no owner token to present for a request the owner never made.
-   * </ul>
-   *
-   * <p>Both go through the one {@link UnityCatalogConnector} instance built here: the resolver
-   * wraps it rather than opening a second connection to the same loopback address.
-   *
-   * <p>Both go through UC's own {@code AuthDecorator}/{@code UnityAccessDecorator} exactly as if
-   * they had arrived on UC's public port, so the metastore/catalog/schema/table grants enforced are
-   * the ones UC already has and already tests — not a second, hand-written implementation of them
-   * kept in sync by hand.
+   * <p>Catalog and identity operations stay inside this JVM. The connector uses UC repositories,
+   * the shared identity service, the normal UC authorization evaluator, and credential vending
+   * directly; only OpenSharing's public protocol remains HTTP.
    */
   public static OpenSharingLifecycle start(
       ServerProperties serverProperties,
       HibernateConfigurator hibernateConfigurator,
-      int armeriaPort,
+      Repositories repositories,
+      UnityCatalogAuthorizer authorizer,
+      UnityCatalogIdentityService identities,
       int publicPort) {
     if (!serverProperties.isOpenSharingEnabled()) {
       return null;
@@ -89,15 +68,15 @@ public final class OpenSharingLifecycle implements AutoCloseable {
         serverProperties.getOpenSharingPort(),
         serverProperties.getOpenSharingRoutedPathPrefixes());
     try {
-      URI ucLoopback = URI.create("http://127.0.0.1:" + armeriaPort + "/api/2.1/unity-catalog");
-      String serverSecret = serverProperties.getOpenSharingServerSecret();
-      UnityCatalogConnector connector =
-          new UnityCatalogConnector(ucLoopback, CONNECT_TIMEOUT, REQUEST_TIMEOUT, serverSecret);
+      UnityCatalogCatalogConnector connector =
+          new UnityCatalogCatalogConnector(
+              repositories,
+              authorizer,
+              identities,
+              repositories.getStorageCredentialVendor());
       OpenSharing.EmbeddedBuilder builder =
           OpenSharing.embedded()
               .catalog(connector)
-              // Shares connector's own connection to this loopback address rather than opening a
-              // second one to it.
               .identityResolver(new CatalogAuthorizingIdentityResolver(connector))
               .property("server.port", serverProperties.getOpenSharingPort())
               .property("server.address", "127.0.0.1")

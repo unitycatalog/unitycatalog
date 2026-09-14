@@ -16,6 +16,7 @@ import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
+import io.unitycatalog.server.security.UnityCatalogIdentityService;
 import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.AuthService;
 import io.unitycatalog.server.service.CatalogService;
@@ -26,7 +27,6 @@ import io.unitycatalog.server.service.FunctionService;
 import io.unitycatalog.server.service.IcebergRestCatalogService;
 import io.unitycatalog.server.service.MetastoreService;
 import io.unitycatalog.server.service.ModelService;
-import io.unitycatalog.server.service.OpenSharingAuthorizationService;
 import io.unitycatalog.server.service.PermissionService;
 import io.unitycatalog.server.service.SchemaService;
 import io.unitycatalog.server.service.Scim2SelfService;
@@ -168,6 +168,9 @@ public class UnityCatalogServer implements AutoCloseable {
     authorizer =
         initializeAuthorizer(
             unityCatalogServerBuilder.serverProperties, hibernateConfigurator, repositories);
+    UnityCatalogIdentityService identities =
+        new UnityCatalogIdentityService(
+            securityContext, repositories, unityCatalogServerBuilder.serverProperties);
     // Configure error response stack traces
     BaseExceptionHandler.setIncludeStackTrace(
         unityCatalogServerBuilder.serverProperties.isIncludeStackTraceInError());
@@ -175,20 +178,29 @@ public class UnityCatalogServer implements AutoCloseable {
     addApiServices(armeriaServerBuilder, unityCatalogServerBuilder, authorizer, repositories);
     // Init security decorators
     addSecurityDecorators(
-        armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
+        armeriaServerBuilder,
+        unityCatalogServerBuilder.serverProperties,
+        authorizer,
+        repositories,
+        identities);
 
-    unityCatalogServerBuilder.serverProperties.checkOpenSharingConfigured();
     openSharingLifecycle =
         startEmbeddedOpenSharing(
             unityCatalogServerBuilder.serverProperties,
-            unityCatalogServerBuilder.port,
+            repositories,
+            authorizer,
+            identities,
             unityCatalogServerBuilder.publicPort);
 
     return armeriaServerBuilder.build();
   }
 
   private AutoCloseable startEmbeddedOpenSharing(
-      ServerProperties serverProperties, int armeriaPort, int publicPort) {
+      ServerProperties serverProperties,
+      Repositories repositories,
+      UnityCatalogAuthorizer authorizer,
+      UnityCatalogIdentityService identities,
+      int publicPort) {
     if (!serverProperties.isOpenSharingEnabled()) {
       return null;
     }
@@ -201,9 +213,18 @@ public class UnityCatalogServer implements AutoCloseable {
                   "start",
                   ServerProperties.class,
                   HibernateConfigurator.class,
-                  int.class,
+                  Repositories.class,
+                  UnityCatalogAuthorizer.class,
+                  UnityCatalogIdentityService.class,
                   int.class)
-              .invoke(null, serverProperties, hibernateConfigurator, armeriaPort, publicPort);
+              .invoke(
+                  null,
+                  serverProperties,
+                  hibernateConfigurator,
+                  repositories,
+                  authorizer,
+                  identities,
+                  publicPort);
       return started == null ? null : (AutoCloseable) started;
     } catch (ReflectiveOperationException e) {
       throw new BaseException(ErrorCode.INTERNAL, "Failed to start embedded OpenSharing.", e);
@@ -285,10 +306,7 @@ public class UnityCatalogServer implements AutoCloseable {
             new DeltaCommitsService(authorizer, repositories, serverProperties))
         .annotate(
             "external-locations",
-            new ExternalLocationService(authorizer, repositories, serverProperties))
-        .annotate(
-            "opensharing",
-            new OpenSharingAuthorizationService(authorizer, repositories, serverProperties));
+            new ExternalLocationService(authorizer, repositories, serverProperties));
     addIcebergApiServices(
         armeriaServerBuilder, authorizer, repositories, fileOperations, serverProperties);
     addDeltaApiServices(
@@ -329,13 +347,13 @@ public class UnityCatalogServer implements AutoCloseable {
       ArmeriaServerBuilder armeriaServerBuilder,
       ServerProperties serverProperties,
       UnityCatalogAuthorizer authorizer,
-      Repositories repositories) {
+      Repositories repositories,
+      UnityCatalogIdentityService identities) {
     // TODO: eventually might want to make this secure-by-default.
     if (serverProperties.isAuthorizationEnabled()) {
       LOGGER.info("Enabling security decorators...");
       armeriaServerBuilder.withSecurityDecorators(
-          new UnityAccessDecorator(authorizer, repositories),
-          new AuthDecorator(securityContext, repositories, serverProperties));
+          new UnityAccessDecorator(authorizer, repositories), new AuthDecorator(identities));
     }
   }
 

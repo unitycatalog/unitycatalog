@@ -43,7 +43,7 @@ public class UnityAccessEvaluator {
 
     MethodHandles.Lookup lookup = MethodHandles.lookup();
     MethodType mt = MethodType.methodType(boolean.class, UUID.class, UUID.class, Privileges.class);
-    MethodHandle mh = lookup.findVirtual(authorizer.getClass(), "authorize", mt);
+    MethodHandle mh = lookup.findVirtual(UnityCatalogAuthorizer.class, "authorize", mt);
     authorizeHandle = mh.bindTo(this.authorizer);
 
     mt = MethodType.methodType(boolean.class, Object[].class);

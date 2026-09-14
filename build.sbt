@@ -508,6 +508,11 @@ lazy val serverSharing = (project in file("server-sharing"))
         exclude("org.slf4j", "jul-to-slf4j"),
       "jakarta.servlet" % "jakarta.servlet-api" % "6.1.0" % Provided,
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
+      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "org.mockito" % "mockito-core" % "5.11.0" % Test,
+      "org.mockito" % "mockito-inline" % "5.2.0" % Test,
+      "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
     ),
   )
 

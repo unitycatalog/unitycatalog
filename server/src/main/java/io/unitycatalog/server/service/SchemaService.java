@@ -12,6 +12,7 @@ import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
@@ -112,13 +113,7 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
   }
 
   @Get("/{full_name}")
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-          #authorizeAny(#principal, #catalog, USE_CATALOG))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.GET_SCHEMA)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getSchema(@Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName) {
     return HttpResponse.ofJson(schemaRepository.getSchema(fullName));
