@@ -1301,7 +1301,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     ErrorResponse error = ErrorResponseParser.fromJson(resp.contentUtf8());
     assertThat(error.code()).isEqualTo(500);
     assertThat(error.type()).isEqualTo(ServiceFailureException.class.getSimpleName());
-    // Where the server keeps the file is not the client's business.
+    // The message says the table could not be read, and where the server keeps its files is not the
+    // client's business.
+    assertThat(error.message()).isEqualTo("Could not read this table");
     assertThat(error.message()).doesNotContain(icebergTableLocation.toString());
   }
 
