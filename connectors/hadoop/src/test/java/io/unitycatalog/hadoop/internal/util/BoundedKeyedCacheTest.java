@@ -225,7 +225,6 @@ class BoundedKeyedCacheTest {
                       }));
       assertThat(slowLoaderStarted.await(5, TimeUnit.SECONDS)).isTrue();
 
-      // While the slow loader on key "slow" is blocked, a load on a different key must complete.
       Future<String> fastKey = executor.submit(() -> cache.getOrLoad("fast", () -> "fast-value"));
       assertThat(fastKey.get(5, TimeUnit.SECONDS)).isEqualTo("fast-value");
 

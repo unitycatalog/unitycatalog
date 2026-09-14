@@ -40,13 +40,8 @@ public class CredentialCache<K, T> {
   }
 
   /**
-   * Returns the value for {@code key}, handling three cases:
-   *
-   * <ul>
-   *   <li>Cached and still valid: return it as is.
-   *   <li>Cached but about to expire: create a fresh one via {@code factory}, cache it, return it.
-   *   <li>Not cached: create it via {@code factory}, cache it, return it.
-   * </ul>
+   * Returns the cached value for {@code key}, creating or renewing it via {@code factory} when
+   * needed.
    *
    * <p>Same-key callers are coalesced so only one factory invocation is in flight. Distinct keys
    * fetch independently: the factory (typically a Unity Catalog HTTP call) is not run under a

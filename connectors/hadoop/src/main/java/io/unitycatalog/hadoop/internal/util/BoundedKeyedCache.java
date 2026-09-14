@@ -32,11 +32,7 @@ public final class BoundedKeyedCache<K, V> {
     }
   }
 
-  /**
-   * Returns the cached value for {@code key}, loading it on a miss. Concurrent loads for the same
-   * key are coalesced; different keys proceed independently. {@code loader} is never invoked while
-   * holding the map lock.
-   */
+  /** Returns the cached value for {@code key}, loading it on a miss. */
   public <E extends Exception> V getOrLoad(K key, CheckedSupplier<V, E> loader) throws E {
     return getOrLoad(key, value -> false, loader);
   }
