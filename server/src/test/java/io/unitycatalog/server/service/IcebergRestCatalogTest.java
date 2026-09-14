@@ -1431,13 +1431,15 @@ public class IcebergRestCatalogTest extends BaseServerTest {
             + TestUtils.TABLE_NAME
             + "/metrics";
 
-    // A body that is not JSON at all, and one that is JSON the endpoint cannot map, are both
-    // rejected as bad requests named in Iceberg's vocabulary rather than the converter's.
-    assertUnreadableBody(postJson(metricsPath, ""));
-    assertUnreadableBody(postJson(metricsPath, "{"));
+    // A body that is missing, one that is not JSON at all, and one that is JSON the endpoint cannot
+    // map are all rejected as bad requests named in Iceberg's vocabulary rather than the
+    // converter's, and each says which of the three it was.
+    assertUnreadableBody(postJson(metricsPath, ""), "Malformed request body: no content");
+    assertUnreadableBody(postJson(metricsPath, "{"), "Malformed request body: not valid JSON");
     // The mapped shape is where the reader would otherwise name the Java type it was mapping onto.
     assertUnreadableBody(
-        postJson(TEST_BASE_PREFIX + "/namespaces", "{\"namespace\": [\"x\"], \"properties\": 5}"));
+        postJson(TEST_BASE_PREFIX + "/namespaces", "{\"namespace\": [\"x\"], \"properties\": 5}"),
+        "Malformed request body: not the structure this endpoint accepts");
   }
 
   /**
@@ -1445,16 +1447,12 @@ public class IcebergRestCatalogTest extends BaseServerTest {
    * the parser's own classes, nor the Java types it was mapping the body onto, nor the location it
    * had reached in the body belong in an error a client is shown.
    */
-  private static void assertUnreadableBody(AggregatedHttpResponse resp) {
+  private static void assertUnreadableBody(AggregatedHttpResponse resp, String expectedMessage) {
     assertThat(resp.status().code()).isEqualTo(400);
     ErrorResponse error = ErrorResponseParser.fromJson(resp.contentUtf8());
     assertThat(error.code()).isEqualTo(400);
     assertThat(error.type()).isEqualTo(BadRequestException.class.getSimpleName());
-    assertThat(error.message())
-        .startsWith("Malformed request body")
-        .doesNotContain("com.fasterxml.jackson")
-        .doesNotContain("java.util.")
-        .doesNotContain("[Source:");
+    assertThat(error.message()).isEqualTo(expectedMessage);
   }
 
   private AggregatedHttpResponse postJson(String path, String body) {
