@@ -344,6 +344,26 @@ public class UCViewProxySuite {
   }
 
   @Test
+  public void testUCSingleCatalogLoadRelationRejectsNonDeltaPathWithoutDelegate()
+      throws Exception {
+    // Spark 4.2 RelationResolution.loadRelation only falls back to SQL-on-file for
+    // NoSuchTableException. Non-Delta path idents (parquet.`s3://...`) must not reach the
+    // delegate, which would call UC and surface "Invalid table name" instead.
+    Identifier ident =
+        Identifier.of(new String[] {"parquet"}, "s3://bucket/dir/file.parquet");
+    TableCatalog delegate = org.mockito.Mockito.mock(TableCatalog.class);
+
+    UCSingleCatalog catalog = new UCSingleCatalog();
+    setCatalogField(catalog, "delegate", delegate);
+    setCatalogField(catalog, "ucProxy", proxyRelations);
+
+    assertThatThrownBy(() -> ((RelationCatalog) catalog).loadRelation(ident))
+        .isInstanceOf(NoSuchTableException.class);
+    verify(delegate, org.mockito.Mockito.never()).loadTable(any());
+    verify(mockTablesApi, org.mockito.Mockito.never()).getTable(any(), any(), any());
+  }
+
+  @Test
   public void testLoadViewThrowsNoSuchViewForRegularTable() throws Exception {
     TableInfo ucTable =
         new TableInfo()
