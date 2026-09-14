@@ -23,8 +23,10 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>The background poller uses {@link #VERSION_QUERY} ({@code count(*)} and {@code max(id)}) so
  *       a revoke that deletes a non-max row still shows up.
- *   <li>The deny path uses {@link #MAX_ID_QUERY} ({@code max(id)} only). A stale deny after a grant
- *       is a missing insert; revokes are left to the poller.
+ *   <li>The deny path first uses {@link #MAX_ID_QUERY} ({@code max(id)} only). A stale deny after a
+ *       grant is a missing insert. When {@code max(id)} changes it upgrades to {@link
+ *       #VERSION_QUERY} so recorded {@code count(*)} stays accurate for later poller checks;
+ *       revokes that leave {@code max(id)} unchanged are still left to the poller.
  * </ul>
  *
  * <p>Reload is delegated to {@link JCasbinAuthorizer} so a fresh enforcer can be swapped without
@@ -177,7 +179,9 @@ public class CasbinPolicyRefresher implements AutoCloseable {
       recordCompletedProbe(probeStartedNanos);
       return ProbeResult.UNCHANGED;
     }
-    return reload(probeStartedNanos, lastCount, maxId);
+    // max(id) alone would leave lastCount stale (grant then later revoke of another row can make
+    // poller (count, maxId) falsely match DB). Re-read count(*) with max(id) before recording.
+    return probeCountAndMaxId();
   }
 
   private ProbeResult reload(long probeStartedNanos, long count, long maxId) {

@@ -267,6 +267,32 @@ public class JCasbinAuthorizerMultiInstanceTest {
   }
 
   @Test
+  void denyTriggeredReloadKeepsCountInSyncSoLaterRevokeIsVisibleToPoller() throws Exception {
+    JCasbinAuthorizer replica =
+        register(new JCasbinAuthorizer(hibernateConfigurator, properties(true, "PT1H")));
+    JCasbinAuthorizer writer = startReplicaWithoutRefresh();
+    UUID principal = UUID.randomUUID();
+    UUID existing = UUID.randomUUID();
+    UUID granted = UUID.randomUUID();
+    writer.grantAuthorization(principal, existing, Privileges.SELECT);
+    settle(replica);
+
+    writer.grantAuthorization(principal, granted, Privileges.SELECT);
+    assertThat(replica.refreshAuthorizations(System.nanoTime())).isTrue();
+    assertThat(replica.authorize(principal, granted, Privileges.SELECT)).isTrue();
+
+    // Revoke a non-max row: count drops, max(id) stays. A half-stale (count, maxId) pair would
+    // falsely match DB and hide this revoke from the poller.
+    writer.revokeAuthorization(principal, existing, Privileges.SELECT);
+
+    assertThat(replica.getRefresher().checkAndReload())
+        .as("poller must still see a revoke after a deny-path grant reload")
+        .isTrue();
+    assertThat(replica.authorize(principal, existing, Privileges.SELECT)).isFalse();
+    assertThat(replica.authorize(principal, granted, Privileges.SELECT)).isTrue();
+  }
+
+  @Test
   void minProbeIntervalWaitsThenSeesAGrantWrittenAfterTheLastProbe() throws Exception {
     JCasbinAuthorizer replica =
         register(new JCasbinAuthorizer(hibernateConfigurator, properties(true, "PT1H", "PT0.2S")));
