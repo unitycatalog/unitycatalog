@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.linecorp.armeria.common.Http1HeaderNaming;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.SessionProtocol;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
@@ -81,6 +82,11 @@ public class ArmeriaServerBuilder {
     this.armeriaServerBuilder =
         Server.builder()
             .localPort(port, SessionProtocol.HTTP)
+            // Armeria names HTTP/1 headers in their lowercase HTTP/2 form by default. Released
+            // Iceberg clients read our response headers out of a plain map keyed by the name as
+            // received, so a header they look up by its traditional spelling -- "ETag" for a
+            // conditional loadTable -- is invisible to them unless we write it that way.
+            .http1HeaderNaming(Http1HeaderNaming.traditional())
             .serviceUnder("/docs", new DocService());
     this.armeriaServerBuilder.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"));
     this.basePath = basePath;
