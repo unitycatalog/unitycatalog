@@ -136,6 +136,17 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
       // be carried out as asked, which the REST spec answers with 422.
       return wrapException(ErrorCode.UNPROCESSABLE_ENTITY, cause);
     }
+    if (cause instanceof NotFoundException) {
+      // Iceberg raises this for any file it cannot read, which today can only be a table's metadata
+      // file, reached while serving a table the catalog still lists. The table is not missing, so
+      // this is not a 404; and reporting a 500 whose type names a not-found exception describes the
+      // failure as something the client could act on. The message names the table rather than the
+      // file, so it stays true if another read starts raising this, and it does not quote where the
+      // server keeps the file.
+      String message = "Could not read this table";
+      return wrapException(
+          ErrorCode.INTERNAL, message, new ServiceFailureException(cause, "%s", message));
+    }
     return super.toBaseException(cause);
   }
 
