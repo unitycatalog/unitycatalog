@@ -244,4 +244,41 @@ class BoundedKeyedCacheTest {
     assertThat(cache.getOrLoad("k", value -> true, () -> "fresh")).isEqualTo("fresh");
     assertThat(cache.getIfPresent("k")).isEqualTo("fresh");
   }
+
+  @Test
+  void getOrLoadReloadsSameKeyOnlyOnce() throws Exception {
+    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2);
+    cache.put("k", "stale");
+    CountDownLatch firstReloadStarted = new CountDownLatch(1);
+    CountDownLatch releaseFirstReload = new CountDownLatch(1);
+    AtomicInteger loadCount = new AtomicInteger();
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      Future<String> first =
+          executor.submit(
+              () ->
+                  cache.getOrLoad(
+                      "k",
+                      "stale"::equals,
+                      () -> {
+                        loadCount.incrementAndGet();
+                        firstReloadStarted.countDown();
+                        assertThat(releaseFirstReload.await(5, TimeUnit.SECONDS)).isTrue();
+                        return "fresh";
+                      }));
+      assertThat(firstReloadStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+      Future<String> second =
+          executor.submit(() -> cache.getOrLoad("k", "stale"::equals, () -> "other"));
+
+      releaseFirstReload.countDown();
+      assertThat(first.get(5, TimeUnit.SECONDS)).isEqualTo("fresh");
+      assertThat(second.get(5, TimeUnit.SECONDS)).isEqualTo("fresh");
+      assertThat(loadCount).hasValue(1);
+    } finally {
+      releaseFirstReload.countDown();
+      executor.shutdownNow();
+    }
+  }
 }
