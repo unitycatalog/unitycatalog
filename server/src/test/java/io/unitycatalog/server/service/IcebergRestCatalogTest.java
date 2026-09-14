@@ -417,7 +417,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       tx.commit();
     }
 
-    // Now the uniform table exists
+    // Now the uniform table exists, which the REST spec reports as 204 with no content
     {
       AggregatedHttpResponse resp =
           client
@@ -429,7 +429,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                       + TestUtils.TABLE_NAME)
               .aggregate()
               .join();
-      assertThat(resp.status().code()).isEqualTo(200);
+      assertThat(resp.status().code()).isEqualTo(204);
+      assertThat(resp.contentUtf8()).isEmpty();
     }
     // metadata is valid metadata content and metadata location matches
     {
@@ -641,7 +642,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     String tableUuid;
     {
       AggregatedHttpResponse resp = client.head(tablePath).aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(200);
+      assertThat(resp.status().code()).isEqualTo(204);
 
       resp = client.get(tablePath).aggregate().join();
       assertThat(resp.status().code()).isEqualTo(200);
@@ -1373,6 +1374,86 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     return IcebergObjectMapper.mapper()
         .readValue(resp.contentUtf8(), GetNamespaceResponse.class)
         .properties();
+  }
+
+  @Test
+  public void testListNamespacesUnderAParent() throws ApiException, IOException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+
+    // A namespace that exists has no children, because Unity Catalog has no nested namespaces.
+    AggregatedHttpResponse resp =
+        client
+            .get(TEST_BASE_PREFIX + "/namespaces?parent=" + TestUtils.SCHEMA_NAME)
+            .aggregate()
+            .join();
+    assertThat(resp.status().code()).isEqualTo(200);
+    assertThat(
+            IcebergObjectMapper.mapper()
+                .readValue(resp.contentUtf8(), ListNamespacesResponse.class)
+                .namespaces())
+        .isEmpty();
+
+    // A parent that does not exist is a 404, not an empty listing: the client has to be able to
+    // tell "this namespace has no children" from "there is no such namespace".
+    resp = client.get(TEST_BASE_PREFIX + "/namespaces?parent=noSuchSchema").aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(404);
+    assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
+        .isEqualTo(NoSuchNamespaceException.class.getSimpleName());
+
+    // An empty parent is not a parent at all, so the listing is the whole one.
+    resp = client.get(TEST_BASE_PREFIX + "/namespaces?parent=").aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(200);
+    assertThat(
+            IcebergObjectMapper.mapper()
+                .readValue(resp.contentUtf8(), ListNamespacesResponse.class)
+                .namespaces())
+        .containsExactly(Namespace.of(TestUtils.SCHEMA_NAME));
+
+    // A catalog that does not exist is a 404 whether or not a parent is asked for.
+    resp =
+        client
+            .get("/v1/catalogs/noSuchCatalog/namespaces?parent=" + TestUtils.SCHEMA_NAME)
+            .aggregate()
+            .join();
+    assertThat(resp.status().code()).isEqualTo(404);
+  }
+
+  @Test
+  public void testReportMetricsRejectsAnUnreadableBodyWithoutLeakingTheParser() throws Exception {
+    createUniformIcebergTable();
+    String metricsPath =
+        TEST_BASE_PREFIX
+            + "/namespaces/"
+            + TestUtils.SCHEMA_NAME
+            + "/tables/"
+            + TestUtils.TABLE_NAME
+            + "/metrics";
+
+    // A body that is missing, one that is not JSON at all, and one that is JSON the endpoint cannot
+    // map are all rejected as bad requests named in Iceberg's vocabulary rather than the
+    // converter's, and each says which of the three it was.
+    assertUnreadableBody(postJson(metricsPath, ""), "Malformed request body: no content");
+    assertUnreadableBody(postJson(metricsPath, "{"), "Malformed request body: not valid JSON");
+    // The mapped shape is where the reader would otherwise name the Java type it was mapping onto.
+    assertUnreadableBody(
+        postJson(TEST_BASE_PREFIX + "/namespaces", "{\"namespace\": [\"x\"], \"properties\": 5}"),
+        "Malformed request body: not the structure this endpoint accepts");
+  }
+
+  /**
+   * Asserts the response rejects the body as unreadable without quoting the JSON reader: neither
+   * the parser's own classes, nor the Java types it was mapping the body onto, nor the location it
+   * had reached in the body belong in an error a client is shown.
+   */
+  private static void assertUnreadableBody(AggregatedHttpResponse resp, String expectedMessage) {
+    assertThat(resp.status().code()).isEqualTo(400);
+    ErrorResponse error = ErrorResponseParser.fromJson(resp.contentUtf8());
+    assertThat(error.code()).isEqualTo(400);
+    assertThat(error.type()).isEqualTo(BadRequestException.class.getSimpleName());
+    assertThat(error.message()).isEqualTo(expectedMessage);
   }
 
   @Test
