@@ -6,7 +6,9 @@ import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -47,6 +49,26 @@ public class StorageCleanupTaskRepository {
             .build();
     session.persist(task);
     return task;
+  }
+
+  public boolean hasPathOverlap(String storageLocation) {
+    String normalized = NormalizedURL.normalize(storageLocation);
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session ->
+            !session
+                .createQuery(
+                    "FROM StorageCleanupTaskDAO WHERE storageLocation IN :ancestors "
+                        + "OR storageLocation LIKE :descendants ESCAPE '\\'",
+                    StorageCleanupTaskDAO.class)
+                .setParameter("ancestors", ancestors(normalized))
+                .setParameter(
+                    "descendants", escapeLike(normalized) + (normalized.endsWith("/") ? "%" : "/%"))
+                .setMaxResults(1)
+                .getResultList()
+                .isEmpty(),
+        "Failed to check storage cleanup path",
+        /* readOnly= */ true);
   }
 
   /**
@@ -165,5 +187,25 @@ public class StorageCleanupTaskRepository {
 
   private static Date currentDatabaseTime(Session session) {
     return session.createQuery("SELECT CURRENT_TIMESTAMP", Date.class).getSingleResult();
+  }
+
+  private static List<String> ancestors(String location) {
+    List<String> result = new ArrayList<>();
+    result.add(location);
+    int schemeEnd = location.indexOf("://") + 3;
+    int pathStart = location.indexOf('/', schemeEnd);
+    if (pathStart >= 0) {
+      result.add(location.substring(0, pathStart + (pathStart == schemeEnd ? 1 : 0)));
+      for (int slash = location.indexOf('/', pathStart + 1);
+          slash >= 0;
+          slash = location.indexOf('/', slash + 1)) {
+        result.add(location.substring(0, slash));
+      }
+    }
+    return result;
+  }
+
+  private static String escapeLike(String value) {
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
   }
 }

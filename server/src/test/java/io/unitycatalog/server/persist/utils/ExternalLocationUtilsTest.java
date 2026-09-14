@@ -2,8 +2,14 @@ package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -56,6 +62,25 @@ public class ExternalLocationUtilsTest {
               .toList();
       assertThat(parentPathsList).containsExactlyElementsOf(expectedResult);
     }
+  }
+
+  @Test
+  public void testPendingCleanupIsRejectedBeforePathFallback() {
+    SessionFactory unusedSessionFactory = mock(SessionFactory.class);
+    StorageCleanupTaskRepository cleanupTaskRepository = mock(StorageCleanupTaskRepository.class);
+    NormalizedURL url = NormalizedURL.from("s3://bucket/external/deleted");
+    when(cleanupTaskRepository.hasPathOverlap(url.toString())).thenReturn(true);
+
+    ExternalLocationUtils externalLocationUtils =
+        new ExternalLocationUtils(unusedSessionFactory, cleanupTaskRepository);
+    assertThatThrownBy(() -> externalLocationUtils.getMapResourceIdsForPath(url))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            exception -> {
+              assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PERMISSION_DENIED);
+              assertThat(exception).hasMessage("Input path overlaps pending storage cleanup.");
+            });
+    verifyNoInteractions(unusedSessionFactory);
   }
 
   @Test

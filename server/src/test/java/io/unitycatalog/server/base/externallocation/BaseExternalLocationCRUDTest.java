@@ -31,16 +31,21 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.base.volume.VolumeOperations;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
+import io.unitycatalog.server.persist.utils.TransactionManager;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.api.io.TempDir;
 
 public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
@@ -321,5 +326,68 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     create(emptyExternalLocationName, testUrl() + "/empty");
 
     delete(emptyExternalLocationName, Optional.of(false));
+  }
+
+  @Test
+  public void testPendingCleanupBlocksExternalResourcesAndNormalLocationDeletion()
+      throws ApiException {
+    String externalLocationName = EXTERNAL_LOCATION_NAME + "_cleanup";
+    String externalLocationRoot = testUrl() + "/cleanup";
+    String cleanupPath = externalLocationRoot + "/deleted";
+    create(externalLocationName, externalLocationRoot);
+    createCleanupTask(cleanupPath);
+
+    CreateTable createTable =
+        new CreateTable()
+            .name(TABLE_NAME)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(DataSourceFormat.DELTA)
+            .storageLocation(cleanupPath + "/table")
+            .columns(
+                List.of(
+                    new ColumnInfo()
+                        .name("id")
+                        .typeText("integer")
+                        .typeName(ColumnTypeName.INT)
+                        .typeJson(
+                            "{\"name\":\"id\",\"type\":\"integer\","
+                                + "\"nullable\":true,\"metadata\":{}}")
+                        .position(0)));
+    assertPendingCleanupDenied(() -> tableOperations.createTable(createTable));
+
+    CreateVolumeRequestContent createVolume =
+        new CreateVolumeRequestContent()
+            .name(VOLUME_NAME)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .volumeType(VolumeType.EXTERNAL)
+            .storageLocation(externalLocationRoot);
+    assertPendingCleanupDenied(() -> volumeOperations.createVolume(createVolume));
+
+    assertPendingCleanupDenied(
+        () ->
+            externalLocationOperations.deleteExternalLocation(
+                externalLocationName, Optional.of(false)));
+    delete(externalLocationName, Optional.of(true));
+  }
+
+  private void assertPendingCleanupDenied(Executable action) {
+    assertApiException(
+        action, ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup");
+  }
+
+  private void createCleanupTask(String storageLocation) {
+    StorageCleanupTaskRepository repository =
+        new StorageCleanupTaskRepository(hibernateConfigurator.getSessionFactory());
+    TransactionManager.executeWithTransaction(
+        hibernateConfigurator.getSessionFactory(),
+        session -> {
+          repository.create(session, ResourceType.TABLE, UUID.randomUUID(), storageLocation);
+          return null;
+        },
+        "Failed to create test cleanup task",
+        /* readOnly= */ false);
   }
 }
