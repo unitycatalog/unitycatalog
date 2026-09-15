@@ -487,8 +487,6 @@ lazy val server = (project in file("server"))
       (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
     },
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
-    // netty-codec-native-quic uses ${packaging.type} in its POM which Ivy (used by sbt-license-report) cannot resolve.
-    excludeDependencies += ExclusionRule("io.netty", "netty-codec-native-quic"),
     // Include server and control models in the bin package for server
     // This will allow us to have a single maven artifact and not multiple (server, server models, control models)
     Compile / packageBin / mappings ++= (Compile / packageBin / mappings).value ++
