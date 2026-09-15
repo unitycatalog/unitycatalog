@@ -44,10 +44,10 @@ lazy val icebergVersion = "1.11.0"
 lazy val jacksonVersion = "2.17.0"
 lazy val openApiToolsJacksonBindNullableVersion = "0.2.6"
 lazy val log4jVersion = "2.25.3"
-lazy val armeriaVersion = "1.41.0"
-lazy val nettyVersion = "4.2.17.Final"
-lazy val nettyTcnativeVersion = "2.0.81.Final"
-lazy val vertxVersion = "4.5.32"
+lazy val armeriaVersion = "1.41.1"
+lazy val nettyVersion = "4.2.18.Final"
+lazy val nettyTcnativeVersion = "2.0.84.Final"
+lazy val vertxVersion = "4.5.34"
 val orgApacheHttpVersion = "4.5.14"
 
 lazy val commonSettings = Seq(
@@ -371,7 +371,7 @@ lazy val server = (project in file("server"))
       "com.linecorp.armeria" %  "armeria" % armeriaVersion,
       "org.apache.commons" % "commons-lang3" % "3.19.0",
 
-      // Netty dependencies. Armeria 1.33+ requires Netty 4.2; 4.2.17's OpenSSL engine
+      // Netty dependencies. Armeria 1.33+ requires Netty 4.2; 4.2.x OpenSSL engine
       // calls SSL.getGroupName, which exists only in tcnative 2.0.81+ (azure-core-http-netty
       // otherwise wins with tcnative-classes 2.0.65 and Azure credential work hangs).
       "io.netty" % "netty-all" % nettyVersion,
