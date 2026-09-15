@@ -100,6 +100,9 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   private static final String PREFIX_BASE = "catalogs/";
 
+  /** Query-parameter spellings of a boolean, lowercased; the set Armeria itself converts. */
+  private static final Set<String> BOOLEAN_SPELLINGS = Set.of("true", "false", "1", "0");
+
   private static final List<Endpoint> READ_ENDPOINTS =
       List.of(
           Endpoint.V1_LIST_NAMESPACES,
@@ -572,8 +575,11 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       @Param("catalog") String catalog,
       @Param("namespace") String namespace,
       @Param("table") String table,
-      @Param("purgeRequested") Optional<Boolean> purgeRequested) {
+      @Param("purgeRequested") Optional<String> purgeRequested) {
     serverProperties.checkIcebergTableEnabled();
+    // Bound as a String rather than a Boolean so the spelling a client actually sends is accepted;
+    // still validated, so a value that is not a boolean at all remains a clear 400.
+    validatePurgeRequested(purgeRequested);
     String fullName = catalog + "." + namespace + "." + table;
     TableRepository.IcebergTableState state =
         tableRepository.getIcebergTableState(catalog, namespace, table);
@@ -589,6 +595,24 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     TableInfoDAO deleted = tableRepository.deleteTable(catalog, namespace, table);
     removeHierarchicalAuthorizations(deleted.getId().toString(), deleted.getSchemaId().toString());
     return HttpResponse.of(HttpStatus.NO_CONTENT);
+  }
+
+  /**
+   * Rejects a {@code purgeRequested} value that is not a boolean, reading {@code true} and {@code
+   * false} without regard to case.
+   *
+   * <p>Armeria converts a {@code Boolean} parameter through a fixed table of {@code true|TRUE|1}
+   * and {@code false|FALSE|0}, so a request carrying {@code True} or {@code False} was answered
+   * "Can't convert 'True' to type 'Boolean'". Those are the spellings pyiceberg sends -- it hands a
+   * Python {@code bool} to {@code requests}, which renders it {@code True} / {@code False} -- so
+   * neither its {@code drop_table} nor its {@code purge_table} worked. The spellings that table
+   * already accepted, {@code 1} and {@code 0} included, keep working.
+   */
+  private static void validatePurgeRequested(Optional<String> purgeRequested) {
+    String value = purgeRequested.orElse("");
+    if (!value.isEmpty() && !BOOLEAN_SPELLINGS.contains(value.toLowerCase(Locale.ROOT))) {
+      throw new BadRequestException("Invalid purgeRequested: %s. It must be true or false.", value);
+    }
   }
 
   /**

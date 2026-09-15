@@ -798,6 +798,86 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   }
 
   @Test
+  public void testDropTableAcceptsCapitalizedPurgeRequested() throws Exception {
+    createCatalogAndNamespace();
+    String tablesPath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables";
+
+    // Armeria converts a Boolean parameter through a fixed table of true|TRUE|1 and false|FALSE|0,
+    // so "True" and "False" -- what pyiceberg sends for a Python bool -- used to be a 400.
+    // All of these drop the table: purging is not implemented, so the value itself is not acted on.
+    List<String> spellings =
+        List.of("true", "false", "True", "False", "TRUE", "FALSE", "tRuE", "1", "0", "");
+    for (int i = 0; i < spellings.size(); i++) {
+      String spelling = spellings.get(i);
+      // A fresh table per spelling, named by position so a mixed-case spelling does not also
+      // exercise mixed-case table names.
+      String name = "purge_" + i;
+      createIcebergTable(tablesPath, name);
+      String tablePath = tablesPath + "/" + name;
+      AggregatedHttpResponse resp =
+          client.delete(tablePath + "?purgeRequested=" + spelling).aggregate().join();
+      assertThat(resp.status().code()).as("purgeRequested=%s", spelling).isEqualTo(204);
+      assertThat(client.get(tablePath).aggregate().join().status().code())
+          .as("loading the table dropped with purgeRequested=%s", spelling)
+          .isEqualTo(404);
+    }
+
+    // Omitting the parameter stays valid.
+    createIcebergTable(tablesPath, "purge_omitted");
+    assertThat(client.delete(tablesPath + "/purge_omitted").aggregate().join().status().code())
+        .isEqualTo(204);
+  }
+
+  @Test
+  public void testDropTableRejectsNonBooleanPurgeRequested() throws Exception {
+    createCatalogAndNamespace();
+    String tablesPath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables";
+
+    // A value that is not a boolean is refused rather than silently ignored, and the table it named
+    // is left in place.
+    List<String> rejectedValues = List.of("yes", "purge", "2");
+    for (int i = 0; i < rejectedValues.size(); i++) {
+      String rejected = rejectedValues.get(i);
+      String name = "purge_bad_" + i;
+      createIcebergTable(tablesPath, name);
+      String tablePath = tablesPath + "/" + name;
+      AggregatedHttpResponse resp =
+          client.delete(tablePath + "?purgeRequested=" + rejected).aggregate().join();
+      assertThat(resp.status().code()).as("purgeRequested=%s", rejected).isEqualTo(400);
+      ErrorResponse error = ErrorResponseParser.fromJson(resp.contentUtf8());
+      assertThat(error.type()).isEqualTo(BadRequestException.class.getSimpleName());
+      assertThat(error.message())
+          .isEqualTo("Invalid purgeRequested: " + rejected + ". It must be true or false.");
+      assertThat(client.get(tablePath).aggregate().join().status().code())
+          .as("loading the table after purgeRequested=%s was refused", rejected)
+          .isEqualTo(200);
+    }
+  }
+
+  private void createCatalogAndNamespace() throws ApiException, IOException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    postJson(
+        TEST_BASE_PREFIX + "/namespaces",
+        IcebergObjectMapper.mapper()
+            .writeValueAsString(
+                CreateNamespaceRequest.builder()
+                    .withNamespace(Namespace.of(TestUtils.SCHEMA_NAME))
+                    .build()));
+  }
+
+  private void createIcebergTable(String tablesPath, String name) throws IOException {
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+    AggregatedHttpResponse resp =
+        postJson(
+            tablesPath,
+            IcebergObjectMapper.mapper()
+                .writeValueAsString(
+                    CreateTableRequest.builder().withName(name).withSchema(schema).build()));
+    assertThat(resp.status().code()).as("creating %s", name).isEqualTo(200);
+  }
+
+  @Test
   public void testStagedCreateAndCommit() throws ApiException, IOException {
     catalogOperations.createCatalog(
         new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
