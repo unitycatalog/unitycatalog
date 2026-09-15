@@ -16,13 +16,16 @@ import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
+import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import java.io.FileNotFoundException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -199,7 +202,8 @@ public class FileOperationsTest {
                     new AwsCredentials()
                         .accessKeyId("AKIA")
                         .secretAccessKey("secret")
-                        .sessionToken("token")));
+                        .sessionToken("token"))
+                .expirationTime(12345L));
     FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
 
     Map<String, String> config =
@@ -209,7 +213,99 @@ public class FileOperationsTest {
         .containsEntry(S3FileIOProperties.ACCESS_KEY_ID, "AKIA")
         .containsEntry(S3FileIOProperties.SECRET_ACCESS_KEY, "secret")
         .containsEntry(S3FileIOProperties.SESSION_TOKEN, "token")
-        .containsEntry(AwsClientProperties.CLIENT_REGION, "us-west-2");
+        .containsEntry(AwsClientProperties.CLIENT_REGION, "us-west-2")
+        .containsEntry(S3FileIOProperties.SESSION_TOKEN_EXPIRES_AT_MS, "12345")
+        // This overload builds config for the server's own FileIO, which has no catalog URI to
+        // resolve a refresh endpoint against.
+        .doesNotContainKey(AwsClientProperties.REFRESH_CREDENTIALS_ENDPOINT);
+  }
+
+  @Test
+  public void testGetFileIOConfigS3OmitsExpiryWhenNull() {
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://my-bucket");
+    props.setProperty("s3.region.0", "us-west-2");
+    props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("AKIA")
+                        .secretAccessKey("secret")
+                        .sessionToken("token")));
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
+
+    assertThat(config).doesNotContainKey(S3FileIOProperties.SESSION_TOKEN_EXPIRES_AT_MS);
+  }
+
+  @Test
+  public void testGetFileIOConfigCarriesRefreshEndpointForEveryCloud() {
+    // A client that is handed an expiring credential needs both the expiry and somewhere to renew,
+    // under each cloud's own property names.
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://my-bucket");
+    props.setProperty("s3.region.0", "us-west-2");
+    props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
+    String endpoint = "v1/catalogs/c/namespaces/n/tables/t/credentials";
+
+    Map<TemporaryCredentials, Map.Entry<String, Map<String, String>>> cases = new LinkedHashMap<>();
+    cases.put(
+        new TemporaryCredentials()
+            .awsTempCredentials(
+                new AwsCredentials()
+                    .accessKeyId("AKIA")
+                    .secretAccessKey("secret")
+                    .sessionToken("token"))
+            .expirationTime(12345L),
+        Map.entry(
+            "s3://my-bucket/table",
+            Map.of(
+                S3FileIOProperties.SESSION_TOKEN_EXPIRES_AT_MS,
+                "12345",
+                AwsClientProperties.REFRESH_CREDENTIALS_ENDPOINT,
+                endpoint)));
+    cases.put(
+        new TemporaryCredentials()
+            .gcpOauthToken(new GcpOauthToken().oauthToken("gcs-token"))
+            .expirationTime(12345L),
+        Map.entry(
+            "gs://my-bucket/table",
+            Map.of(
+                GCPProperties.GCS_OAUTH2_TOKEN_EXPIRES_AT,
+                "12345",
+                GCPProperties.GCS_OAUTH2_REFRESH_CREDENTIALS_ENDPOINT,
+                endpoint)));
+    cases.put(
+        new TemporaryCredentials()
+            .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("sas-token"))
+            .expirationTime(12345L),
+        Map.entry(
+            "abfs://container@myaccount.dfs.core.windows.net/table",
+            Map.of(
+                AzureProperties.ADLS_SAS_TOKEN_EXPIRES_AT_MS_PREFIX
+                    + "myaccount.dfs.core.windows.net",
+                "12345",
+                AzureProperties.ADLS_REFRESH_CREDENTIALS_ENDPOINT,
+                endpoint)));
+
+    cases.forEach(
+        (credential, expected) -> {
+          StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+          when(vendor.vendCredential(any(), any())).thenReturn(credential);
+          FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+
+          assertThat(
+                  fileOps.getFileIOConfig(
+                      NormalizedURL.from(expected.getKey()),
+                      CredentialContext.READ_ONLY,
+                      Optional.of(endpoint)))
+              .containsAllEntriesOf(expected.getValue());
+        });
   }
 
   @Test
@@ -260,7 +356,9 @@ public class FileOperationsTest {
 
     assertThat(config)
         .containsEntry(
-            AzureProperties.ADLS_SAS_TOKEN_PREFIX + "myaccount.dfs.core.windows.net", "sas-token");
+            AzureProperties.ADLS_SAS_TOKEN_PREFIX + "myaccount.dfs.core.windows.net", "sas-token")
+        .doesNotContainKey(
+            AzureProperties.ADLS_SAS_TOKEN_EXPIRES_AT_MS_PREFIX + "myaccount.dfs.core.windows.net");
   }
 
   @Test

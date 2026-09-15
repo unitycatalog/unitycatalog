@@ -90,6 +90,7 @@ import org.apache.iceberg.rest.responses.ErrorResponseParser;
 import org.apache.iceberg.rest.responses.GetNamespaceResponse;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
 import org.apache.iceberg.rest.responses.ListTablesResponse;
+import org.apache.iceberg.rest.responses.LoadCredentialsResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.rest.responses.UpdateNamespacePropertiesResponse;
 import org.apache.iceberg.types.Types;
@@ -161,6 +162,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                 + "\"HEAD /v1/{prefix}/namespaces/{namespace}\""
                 + ",\"HEAD /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
                 + "\"GET /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
+                + "\"GET /v1/{prefix}/namespaces/{namespace}/tables/{table}/credentials\","
                 + "\"GET /v1/{prefix}/namespaces/{namespace}/views/{view}\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables/{table}/metrics\","
                 + "\"GET /v1/{prefix}/namespaces/{namespace}/tables\","
@@ -981,6 +983,37 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         IcebergObjectMapper.mapper().readValue(loadResp.contentUtf8(), LoadTableResponse.class);
     assertThat(loaded.tableMetadata().metadataFileLocation()).contains("/metadata/00001-");
     assertThat(loaded.tableMetadata().schema().columns()).hasSize(2);
+  }
+
+  @Test
+  public void testLoadCredentials() throws Exception {
+    createUniformIcebergTable();
+    String tablesPath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables/";
+
+    // The route is served: a table UC serves as Iceberg answers 200 with the spec's response. This
+    // table is local, so it vends nothing -- an empty list, not a credential with an empty config,
+    // which Iceberg's own Credential type rejects.
+    AggregatedHttpResponse resp =
+        client.get(tablesPath + TestUtils.TABLE_NAME + "/credentials").aggregate().join();
+    assertThat(resp.status().code()).as(resp.contentUtf8()).isEqualTo(200);
+    assertThat(
+            IcebergObjectMapper.mapper()
+                .readValue(resp.contentUtf8(), LoadCredentialsResponse.class)
+                .credentials())
+        .isEmpty();
+
+    // A table UC knows about but does not serve as an Iceberg table is a 404, as it is for
+    // loadTable, and so is one that does not exist. Both are table-level errors rather than the
+    // generic 404 an unrouted path answers, which is how a client can tell this endpoint is served.
+    createTable("plainTable");
+    assertErrorType(
+        client.get(tablesPath + "plainTable/credentials").aggregate().join(),
+        404,
+        NoSuchTableException.class);
+    assertErrorType(
+        client.get(tablesPath + "noSuchTable/credentials").aggregate().join(),
+        404,
+        NoSuchTableException.class);
   }
 
   @Test
