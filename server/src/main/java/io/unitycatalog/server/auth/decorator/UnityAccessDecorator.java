@@ -464,34 +464,21 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     return locators;
   }
 
-  private static Method findServiceMethod(HttpService httpService) throws ClassNotFoundException {
+  private static Method findServiceMethod(HttpService httpService) {
     // as() searches the whole decorator chain, so this does not depend on how many decorators sit
     // between the route and the annotated service.
     HttpService annotated = httpService.as(AnnotatedService.class);
     if (annotated instanceof AnnotatedService service) {
 
       LOGGER.debug(
-          "serviceName = {}, methodName = {}", service.serviceName(), service.methodName());
+          "serviceName = {}, methodName = {}",
+          service.serviceClass().getName(),
+          service.methodName());
 
-      Class<?> clazz = Class.forName(service.serviceName());
-      List<Method> methods = findMethodsByName(clazz, service.methodName());
-      return (methods.size() == 1) ? methods.get(0) : null;
+      return service.method();
     } else {
       return null;
     }
-  }
-
-  private static List<Method> findMethodsByName(Class<?> clazz, String methodName) {
-    List<Method> matchingMethods = new ArrayList<>();
-    Method[] methods = clazz.getDeclaredMethods();
-
-    for (Method method : methods) {
-      if (method.getName().equals(methodName)) {
-        matchingMethods.add(method);
-      }
-    }
-
-    return matchingMethods;
   }
 
   /**
