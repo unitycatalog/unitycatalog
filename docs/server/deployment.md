@@ -53,6 +53,12 @@ This guide outlines how to deploy the Unity Catalog server.
 
 - The backend database can be configured by modifying the `etc/conf/hibernate.properties` file.
 - You need to provide the connection details to connect to your database server.
+- Hibernate and Casbin use one HikariCP pool built from those connection properties, so total
+    database connections are capped by `hibernate.hikari.maximumPoolSize` (not Hibernate's pool
+    plus a separate Casbin connection). Optional pool settings use `hibernate.hikari.*` keys.
+    Autocommit defaults to false so Hibernate can roll back JDBC work. jdbc-adapter 2.7.0 still
+    holds one pooled connection for the process lifetime; Casbin enables autocommit on that
+    checkout so policy reads do not sit idle-in-transaction.
 
 ### Example MySQL Connection
 
@@ -77,6 +83,8 @@ This guide outlines how to deploy the Unity Catalog server.
     hibernate.connection.url=jdbc:mysql://localhost:3306/ucdb
     hibernate.connection.user=uc_default_user
     hibernate.connection.password=uc_default_password
+    hibernate.hikari.maximumPoolSize=20
+    hibernate.hikari.minimumIdle=2
     ```
 
 - Modify the `jars/classpath` file and add path to your JDBC driver.
@@ -104,6 +112,8 @@ This guide outlines how to deploy the Unity Catalog server.
     hibernate.connection.url=jdbc:postgresql://localhost:5432/ucdb
     hibernate.connection.user=uc_default_user
     hibernate.connection.password=uc_default_password
+    hibernate.hikari.maximumPoolSize=20
+    hibernate.hikari.minimumIdle=2
     ```
 
 - Modify the `jars/classpath` file and add path to your jdbc driver.

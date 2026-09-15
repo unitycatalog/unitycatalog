@@ -381,6 +381,7 @@ lazy val server = (project in file("server"))
       "com.h2database" %  "h2" % "2.2.224",
 
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
+      "com.zaxxer" % "HikariCP" % "7.1.0",
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
