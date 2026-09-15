@@ -1,0 +1,217 @@
+syntax = "proto3";
+
+package uc.v1;
+
+import "buf/validate/validate.proto";
+import "uc/v1/common.proto";
+
+// ModelVersionStatus is the lifecycle status of a registered model version.
+enum ModelVersionStatus {
+  MODEL_VERSION_STATUS_UNSPECIFIED = 0;
+  MODEL_VERSION_STATUS_UNKNOWN = 1;
+  MODEL_VERSION_STATUS_PENDING_REGISTRATION = 2;
+  MODEL_VERSION_STATUS_FAILED_REGISTRATION = 3;
+  MODEL_VERSION_STATUS_READY = 4;
+}
+
+// RegisteredModelSummary contains the fields needed to render a model list.
+message RegisteredModelSummary {
+  string catalog_name = 1;
+  string schema_name = 2;
+  string name = 3;
+  string full_name = 4;
+  string comment = 5;
+  AuditInfo audit = 6;
+}
+
+// RegisteredModelInfo contains the complete registered-model details exposed by the UI.
+message RegisteredModelInfo {
+  string catalog_name = 1;
+  string schema_name = 2;
+  string name = 3;
+  string full_name = 4;
+  string storage_location = 5;
+  string comment = 6;
+  AuditInfo audit = 7;
+  string id = 8;
+}
+
+// ModelVersionInfo contains the model-version details exposed by the UI.
+message ModelVersionInfo {
+  string catalog_name = 1;
+  string schema_name = 2;
+  string model_name = 3;
+  int64 version = 4;
+  string source = 5;
+  string run_id = 6;
+  ModelVersionStatus status = 7;
+  string storage_location = 8;
+  string comment = 9;
+  AuditInfo audit = 10;
+  string id = 11;
+}
+
+// ListRegisteredModelsRequest lists registered models, optionally within a schema.
+message ListRegisteredModelsRequest {
+  option (buf.validate.message).cel = {
+    id: "list_registered_models.page_size"
+    message: "max_results must not exceed 50"
+    expression: "!has(this.page) || !has(this.page.max_results) || this.page.max_results <= 50"
+  };
+
+  SchemaRef schema = 1;
+  PageRequest page = 2;
+}
+
+// ListRegisteredModelsResponse contains one page of registered models.
+message ListRegisteredModelsResponse {
+  repeated RegisteredModelSummary models = 1;
+  PageResponse page = 2;
+}
+
+// GetRegisteredModelRequest selects a registered model.
+message GetRegisteredModelRequest {
+  SchemaObjectRef model = 1 [(buf.validate.field).required = true];
+}
+
+// GetRegisteredModelResponse contains complete registered-model details.
+message GetRegisteredModelResponse {
+  RegisteredModelInfo model = 1 [(buf.validate.field).required = true];
+}
+
+// CreateRegisteredModelRequest contains the user-editable fields for a new model.
+message CreateRegisteredModelRequest {
+  SchemaObjectRef model = 1 [(buf.validate.field).required = true];
+  optional string comment = 2 [(buf.validate.field).string.max_len = 65536];
+}
+
+// CreateRegisteredModelResponse contains the newly created model.
+message CreateRegisteredModelResponse {
+  RegisteredModelInfo model = 1 [(buf.validate.field).required = true];
+}
+
+// UpdateRegisteredModelRequest updates one or more mutable model fields.
+message UpdateRegisteredModelRequest {
+  option (buf.validate.message).cel = {
+    id: "update_registered_model.changes"
+    message: "at least one registered model field must be updated"
+    expression: "has(this.comment) || has(this.new_name)"
+  };
+
+  SchemaObjectRef model = 1 [(buf.validate.field).required = true];
+  optional string comment = 2 [(buf.validate.field).string.max_len = 65536];
+  optional string new_name = 3 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 255
+    pattern: "^[A-Za-z0-9_@-]+$"
+  }];
+}
+
+// UpdateRegisteredModelResponse contains the updated model.
+message UpdateRegisteredModelResponse {
+  RegisteredModelInfo model = 1 [(buf.validate.field).required = true];
+}
+
+// DeleteRegisteredModelRequest deletes a model, optionally including its versions.
+message DeleteRegisteredModelRequest {
+  SchemaObjectRef model = 1 [(buf.validate.field).required = true];
+  bool force = 2;
+}
+
+// DeleteRegisteredModelResponse acknowledges a successful model deletion.
+message DeleteRegisteredModelResponse {}
+
+// ListModelVersionsRequest lists versions of a registered model.
+message ListModelVersionsRequest {
+  option (buf.validate.message).cel = {
+    id: "list_model_versions.page_size"
+    message: "max_results must not exceed 50"
+    expression: "!has(this.page) || !has(this.page.max_results) || this.page.max_results <= 50"
+  };
+
+  SchemaObjectRef model = 1 [(buf.validate.field).required = true];
+  PageRequest page = 2;
+}
+
+// ListModelVersionsResponse contains one page of model versions.
+message ListModelVersionsResponse {
+  repeated ModelVersionInfo versions = 1;
+  PageResponse page = 2;
+}
+
+// GetModelVersionRequest selects a model version.
+message GetModelVersionRequest {
+  ModelVersionRef model_version = 1 [(buf.validate.field).required = true];
+}
+
+// GetModelVersionResponse contains complete model-version details.
+message GetModelVersionResponse {
+  ModelVersionInfo model_version = 1 [(buf.validate.field).required = true];
+}
+
+// CreateModelVersionRequest creates a version under a registered model.
+message CreateModelVersionRequest {
+  SchemaObjectRef model = 1 [(buf.validate.field).required = true];
+  string source = 2 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 8192
+    uri_ref: true
+  }];
+  optional string run_id = 3 [(buf.validate.field).string.max_len = 255];
+  optional string comment = 4 [(buf.validate.field).string.max_len = 65536];
+}
+
+// CreateModelVersionResponse contains the newly created model version.
+message CreateModelVersionResponse {
+  ModelVersionInfo model_version = 1 [(buf.validate.field).required = true];
+}
+
+// UpdateModelVersionRequest updates a model version's comment.
+message UpdateModelVersionRequest {
+  option (buf.validate.message).cel = {
+    id: "update_model_version.changes"
+    message: "comment must be provided"
+    expression: "has(this.comment)"
+  };
+
+  ModelVersionRef model_version = 1 [(buf.validate.field).required = true];
+  optional string comment = 2 [(buf.validate.field).string.max_len = 65536];
+}
+
+// UpdateModelVersionResponse contains the updated model version.
+message UpdateModelVersionResponse {
+  ModelVersionInfo model_version = 1 [(buf.validate.field).required = true];
+}
+
+// FinalizeModelVersionRequest marks a model version as ready.
+message FinalizeModelVersionRequest {
+  ModelVersionRef model_version = 1 [(buf.validate.field).required = true];
+}
+
+// FinalizeModelVersionResponse contains the finalized model version.
+message FinalizeModelVersionResponse {
+  ModelVersionInfo model_version = 1 [(buf.validate.field).required = true];
+}
+
+// DeleteModelVersionRequest deletes one model version.
+message DeleteModelVersionRequest {
+  ModelVersionRef model_version = 1 [(buf.validate.field).required = true];
+}
+
+// DeleteModelVersionResponse acknowledges a successful model-version deletion.
+message DeleteModelVersionResponse {}
+
+// ModelService provides the UI-facing registered-model and model-version operations.
+service ModelService {
+  rpc ListRegisteredModels(ListRegisteredModelsRequest) returns (ListRegisteredModelsResponse);
+  rpc GetRegisteredModel(GetRegisteredModelRequest) returns (GetRegisteredModelResponse);
+  rpc CreateRegisteredModel(CreateRegisteredModelRequest) returns (CreateRegisteredModelResponse);
+  rpc UpdateRegisteredModel(UpdateRegisteredModelRequest) returns (UpdateRegisteredModelResponse);
+  rpc DeleteRegisteredModel(DeleteRegisteredModelRequest) returns (DeleteRegisteredModelResponse);
+  rpc ListModelVersions(ListModelVersionsRequest) returns (ListModelVersionsResponse);
+  rpc GetModelVersion(GetModelVersionRequest) returns (GetModelVersionResponse);
+  rpc CreateModelVersion(CreateModelVersionRequest) returns (CreateModelVersionResponse);
+  rpc UpdateModelVersion(UpdateModelVersionRequest) returns (UpdateModelVersionResponse);
+  rpc FinalizeModelVersion(FinalizeModelVersionRequest) returns (FinalizeModelVersionResponse);
+  rpc DeleteModelVersion(DeleteModelVersionRequest) returns (DeleteModelVersionResponse);
+}

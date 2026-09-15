@@ -7,5 +7,6 @@ plugins:
   # shebang). `bun run generate` in web/ cd's up to this directory first.
   - local: [bun, web/node_modules/@bufbuild/protoc-gen-es/bin/protoc-gen-es]
     out: web/src/gen
+    include_imports: true
     opt:
       - target=ts

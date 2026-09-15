@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package uc.v1;
+
+import "buf/validate/validate.proto";
+import "uc/v1/common.proto";
+
+// SchemaSummary contains the fields needed to render a schema list.
+message SchemaSummary {
+  string catalog_name = 1;
+  string name = 2;
+  string full_name = 3;
+  string comment = 4;
+  AuditInfo audit = 5;
+}
+
+// SchemaInfo contains the complete schema details exposed by the UI.
+message SchemaInfo {
+  string catalog_name = 1;
+  string name = 2;
+  string full_name = 3;
+  string comment = 4;
+  Properties properties = 5;
+  AuditInfo audit = 6;
+  string id = 7;
+  string storage_root = 8;
+  string storage_location = 9;
+}
+
+// ListSchemasRequest lists schemas in a catalog.
+message ListSchemasRequest {
+  option (buf.validate.message).cel = {
+    id: "list_schemas.page_size"
+    message: "max_results must not exceed 1000"
+    expression: "!has(this.page) || !has(this.page.max_results) || this.page.max_results <= 1000"
+  };
+
+  CatalogRef catalog = 1 [(buf.validate.field).required = true];
+  PageRequest page = 2;
+}
+
+// ListSchemasResponse contains one page of schemas.
+message ListSchemasResponse {
+  repeated SchemaSummary schemas = 1;
+  PageResponse page = 2;
+}
+
+// GetSchemaRequest selects a schema.
+message GetSchemaRequest {
+  SchemaRef schema = 1 [(buf.validate.field).required = true];
+}
+
+// GetSchemaResponse contains complete schema details.
+message GetSchemaResponse {
+  SchemaInfo schema = 1 [(buf.validate.field).required = true];
+}
+
+// CreateSchemaRequest contains the user-editable fields for a new schema.
+message CreateSchemaRequest {
+  SchemaRef schema = 1 [(buf.validate.field).required = true];
+  optional string comment = 2 [(buf.validate.field).string.max_len = 65536];
+  Properties properties = 3;
+  optional string storage_root = 4 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 8192
+    pattern: "^(?:(?:s3|gs)://[^/]+(?:/.*)?|abfss?://[^/]+(?:/.*)?|file:/+.+|(?:/|[^:/]+/).*)$"
+    uri_ref: true
+  }];
+}
+
+// CreateSchemaResponse contains the newly created schema.
+message CreateSchemaResponse {
+  SchemaInfo schema = 1 [(buf.validate.field).required = true];
+}
+
+// UpdateSchemaRequest updates one or more mutable schema fields.
+message UpdateSchemaRequest {
+  option (buf.validate.message).cel = {
+    id: "update_schema.changes"
+    message: "at least one schema field must be updated"
+    expression: "has(this.comment) || has(this.properties) || has(this.new_name)"
+  };
+
+  SchemaRef schema = 1 [(buf.validate.field).required = true];
+  optional string comment = 2 [(buf.validate.field).string.max_len = 65536];
+  Properties properties = 3;
+  optional string new_name = 4 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 255
+    pattern: "^[A-Za-z0-9_@-]+$"
+  }];
+}
+
+// UpdateSchemaResponse contains the updated schema.
+message UpdateSchemaResponse {
+  SchemaInfo schema = 1 [(buf.validate.field).required = true];
+}
+
+// DeleteSchemaRequest deletes a schema, optionally including its children.
+message DeleteSchemaRequest {
+  SchemaRef schema = 1 [(buf.validate.field).required = true];
+  bool force = 2;
+}
+
+// DeleteSchemaResponse acknowledges a successful schema deletion.
+message DeleteSchemaResponse {}
+
+// SchemaService provides the UI-facing schema operations.
+service SchemaService {
+  rpc ListSchemas(ListSchemasRequest) returns (ListSchemasResponse);
+  rpc GetSchema(GetSchemaRequest) returns (GetSchemaResponse);
+  rpc CreateSchema(CreateSchemaRequest) returns (CreateSchemaResponse);
+  rpc UpdateSchema(UpdateSchemaRequest) returns (UpdateSchemaResponse);
+  rpc DeleteSchema(DeleteSchemaRequest) returns (DeleteSchemaResponse);
+}

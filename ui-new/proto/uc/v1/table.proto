@@ -1,0 +1,137 @@
+syntax = "proto3";
+
+package uc.v1;
+
+import "buf/validate/validate.proto";
+import "uc/v1/common.proto";
+
+// TableType is the UC table type returned by the Java API.
+enum TableType {
+  TABLE_TYPE_UNSPECIFIED = 0;
+  TABLE_TYPE_MANAGED = 1;
+  TABLE_TYPE_EXTERNAL = 2;
+  TABLE_TYPE_STREAMING_TABLE = 3;
+  TABLE_TYPE_MATERIALIZED_VIEW = 4;
+  TABLE_TYPE_METRIC_VIEW = 5;
+  TABLE_TYPE_VIEW = 6;
+}
+
+// DataSourceFormat is the storage format of a UC table.
+enum DataSourceFormat {
+  DATA_SOURCE_FORMAT_UNSPECIFIED = 0;
+  DATA_SOURCE_FORMAT_DELTA = 1;
+  DATA_SOURCE_FORMAT_ICEBERG = 2;
+  DATA_SOURCE_FORMAT_CSV = 3;
+  DATA_SOURCE_FORMAT_JSON = 4;
+  DATA_SOURCE_FORMAT_AVRO = 5;
+  DATA_SOURCE_FORMAT_PARQUET = 6;
+  DATA_SOURCE_FORMAT_ORC = 7;
+  DATA_SOURCE_FORMAT_TEXT = 8;
+}
+
+// TableSummary contains the fields needed to render a table list.
+message TableSummary {
+  string catalog_name = 1;
+  string schema_name = 2;
+  string name = 3;
+  string full_name = 4;
+  TableType table_type = 5;
+  DataSourceFormat data_source_format = 6;
+  string comment = 7;
+  AuditInfo audit = 8;
+}
+
+// TableInfo contains complete details for a non-metric-view table record.
+message TableInfo {
+  string catalog_name = 1;
+  string schema_name = 2;
+  string name = 3;
+  string full_name = 4;
+  TableType table_type = 5;
+  DataSourceFormat data_source_format = 6;
+  repeated ColumnInfo columns = 7;
+  string storage_location = 8;
+  string comment = 9;
+  Properties properties = 10;
+  AuditInfo audit = 11;
+  string id = 12;
+  string view_definition = 13;
+  repeated Dependency dependencies = 14;
+}
+
+// ListTablesRequest lists non-metric-view tables in a schema.
+message ListTablesRequest {
+  option (buf.validate.message).cel = {
+    id: "list_tables.page_size"
+    message: "max_results must not exceed 50"
+    expression: "!has(this.page) || !has(this.page.max_results) || this.page.max_results <= 50"
+  };
+
+  SchemaRef schema = 1 [(buf.validate.field).required = true];
+  PageRequest page = 2;
+}
+
+// ListTablesResponse contains one filtered page of non-metric-view tables.
+//
+// A page may contain no tables and still include a next-page token because the
+// Java API paginates all table types before Branch 2 filters METRIC_VIEW rows.
+message ListTablesResponse {
+  repeated TableSummary tables = 1;
+  PageResponse page = 2;
+}
+
+// GetTableRequest selects a non-metric-view table.
+message GetTableRequest {
+  SchemaObjectRef table = 1 [(buf.validate.field).required = true];
+}
+
+// GetTableResponse contains complete table details.
+message GetTableResponse {
+  TableInfo table = 1 [(buf.validate.field).required = true];
+}
+
+// CreateTableRequest creates an EXTERNAL table through the native UC API.
+//
+// Branch 2 supplies table_type=EXTERNAL, assigns column positions, and derives
+// missing scalar type metadata. Native Iceberg registration uses a different
+// API and is intentionally excluded. Metric views use ViewService. UC has no
+// native update operation for this surface, so the UI contract exposes create
+// and delete only.
+message CreateTableRequest {
+  SchemaObjectRef table = 1 [(buf.validate.field).required = true];
+  DataSourceFormat data_source_format = 2 [(buf.validate.field).enum = {
+    defined_only: true
+    in: 1
+    in: 3
+    in: 4
+    in: 5
+    in: 6
+    in: 7
+    in: 8
+  }];
+  repeated ColumnInput columns = 3 [(buf.validate.field).repeated.max_items = 10000];
+  ExternalStorageLocation storage_location = 4 [(buf.validate.field).required = true];
+  optional string comment = 5 [(buf.validate.field).string.max_len = 65536];
+  Properties properties = 6;
+}
+
+// CreateTableResponse contains the newly created table.
+message CreateTableResponse {
+  TableInfo table = 1 [(buf.validate.field).required = true];
+}
+
+// DeleteTableRequest deletes a non-metric-view table.
+message DeleteTableRequest {
+  SchemaObjectRef table = 1 [(buf.validate.field).required = true];
+}
+
+// DeleteTableResponse acknowledges a successful table deletion.
+message DeleteTableResponse {}
+
+// TableService provides the UI-facing non-metric-view table operations.
+service TableService {
+  rpc ListTables(ListTablesRequest) returns (ListTablesResponse);
+  rpc GetTable(GetTableRequest) returns (GetTableResponse);
+  rpc CreateTable(CreateTableRequest) returns (CreateTableResponse);
+  rpc DeleteTable(DeleteTableRequest) returns (DeleteTableResponse);
+}

@@ -11,7 +11,8 @@ supports the existing cookie-based auth (or an auth-disabled mode).
 - `server/` — the bridge: a Rust [axum](https://docs.rs/axum) service exposing one
   Connect RPC (`uc.v1.UnityProxyService/Call`, a generic UC REST passthrough), a
   runtime `/config`, `/healthz`, and (in prod) the built SPA.
-- `proto/` — the Connect service definition; `buf.gen.yaml` generates the TS client.
+- `proto/` — the implemented generic proxy plus typed catalog-domain RPC
+  contracts; `buf.gen.yaml` generates the TS clients.
 
 ## Architecture
 
@@ -27,6 +28,24 @@ to UC and copies UC's `Set-Cookie` back onto the (same-origin) response, so the
 session lands in the browser. `GET /config` tells the SPA whether auth is enabled
 and which providers to show — the runtime replacement for the old build-time
 `REACT_APP_*_AUTH_ENABLED` flags.
+
+## Typed domain RPC contract
+
+The protobuf package defines typed services for catalogs, schemas, tables,
+volumes, functions, registered models and model versions, and metric views.
+These definitions are the first change in the two-PR stack tracked by
+[issue #1888](https://github.com/unitycatalog/unitycatalog/issues/1888):
+
+1. The contract PR adds the messages and `buf.validate` rules and keeps
+   TypeScript generation working.
+2. A follow-up PR will generate and register the Rust Connect services, enforce
+   the rules with
+   [protovalidate-buffa](https://docs.rs/protovalidate-buffa/latest/protovalidate_buffa/),
+   and migrate the SPA from the generic proxy.
+
+Until the follow-up lands, `UnityProxyService/Call` remains the only implemented
+bridge service and all existing UI behavior continues through it. Generated
+files under `web/src/gen/` are reproducible and must not be edited by hand.
 
 ## Prerequisites
 
