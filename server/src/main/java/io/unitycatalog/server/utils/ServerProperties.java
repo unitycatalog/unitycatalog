@@ -155,17 +155,24 @@ public class ServerProperties {
 
   /**
    * Validator for the string format of {@code java.time.Duration}. Check function {@Duration.parse}
-   * for all the accepted forms.
+   * for all the accepted forms. Negative durations are rejected; zero is allowed.
    */
   private static class DurationValidator implements PropertyValidator {
     @Override
     public void validate(String key, String value) {
+      Duration duration;
       try {
-        Duration.parse(value);
+        duration = Duration.parse(value);
       } catch (DateTimeParseException e) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,
             String.format("Invalid value '%s' for property '%s': %s", value, key, e.getMessage()));
+      }
+      if (duration.isNegative()) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            String.format(
+                "Invalid value '%s' for property '%s': must be zero or positive", value, key));
       }
     }
   }
@@ -194,8 +201,8 @@ public class ServerProperties {
     POLICY_REFRESH_ENABLED("server.authorization.policy-refresh", "false", BOOLEAN_VALIDATOR),
     POLICY_REFRESH_INTERVAL(
         "server.authorization.policy-refresh-interval", "PT1M", DURATION_VALIDATOR),
-    POLICY_REFRESH_DEBOUNCE_INTERVAL(
-        "server.authorization.policy-refresh-debounce-interval", "PT1S", DURATION_VALIDATOR),
+    POLICY_REFRESH_MIN_PROBE_INTERVAL(
+        "server.authorization.policy-refresh-min-probe-interval", "PT1S", DURATION_VALIDATOR),
     AUTHORIZATION_URL("server.authorization-url", URL_VALIDATOR),
     TOKEN_URL("server.token-url", URL_VALIDATOR),
     CLIENT_ID("server.client-id"),
@@ -479,8 +486,8 @@ public class ServerProperties {
     return Duration.parse(get(Property.POLICY_REFRESH_INTERVAL));
   }
 
-  public Duration getPolicyRefreshDebounceInterval() {
-    return Duration.parse(get(Property.POLICY_REFRESH_DEBOUNCE_INTERVAL));
+  public Duration getPolicyRefreshMinProbeInterval() {
+    return Duration.parse(get(Property.POLICY_REFRESH_MIN_PROBE_INTERVAL));
   }
 
   public boolean isIncludeStackTraceInError() {
