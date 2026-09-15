@@ -192,6 +192,30 @@ public class SdkSchemaAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest
 
   @Test
   @SneakyThrows
+  public void schemaCreatorSeesTheirOwnSchemaInTheListing() {
+    createCommonTestUsers();
+    setupCommonCatalogAndSchema();
+
+    // A user who may create schemas in cat_pr1 but owns nothing else in it.
+    grantPermissions(REGULAR_2, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    grantPermissions(REGULAR_2, SecurableType.CATALOG, "cat_pr1", Privileges.CREATE_SCHEMA);
+    SchemasApi regular2SchemasApi =
+        new SchemasApi(TestUtils.createApiClient(createTestUserServerConfig(REGULAR_2)));
+
+    regular2SchemasApi.createSchema(new CreateSchema().name("sch_own").catalogName("cat_pr1"));
+
+    // Creating a schema makes the creator its owner, which getSchema already honours.
+    assertThat(regular2SchemasApi.getSchema("cat_pr1.sch_own")).isNotNull();
+
+    // The listing has to agree: the owner sees the schema they just created without USE SCHEMA
+    // granted on top of ownership, and still does not see sch_pr1, which belongs to someone else.
+    assertThat(regular2SchemasApi.listSchemas("cat_pr1", null, null).getSchemas())
+        .extracting(SchemaInfo::getName)
+        .containsExactly("sch_own");
+  }
+
+  @Test
+  @SneakyThrows
   public void forceDeleteSchemaClearsChildAuthorizations() {
     createCommonTestUsers();
 

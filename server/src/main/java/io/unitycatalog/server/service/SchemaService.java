@@ -96,7 +96,7 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
       """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) &&
+      (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
           #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
       """)
   @ResponseAuthorizeFilter
