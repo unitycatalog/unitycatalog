@@ -41,9 +41,9 @@ lazy val hadoopVersion = sys.props.getOrElse("hadoopVersion", "3.4.2")
 
 // Library versions
 lazy val icebergVersion = "1.11.0"
-lazy val jacksonVersion = "2.18.9"
+lazy val jacksonVersion = "2.18.10"
 lazy val openApiToolsJacksonBindNullableVersion = "0.2.11"
-lazy val log4jVersion = "2.25.5"
+lazy val log4jVersion = "2.26.1"
 val orgApacheHttpVersion = "4.5.14"
 
 lazy val commonSettings = Seq(
@@ -425,7 +425,7 @@ lazy val server = (project in file("server"))
         exclude("com.microsoft.sqlserver", "mssql-jdbc")
         exclude("com.oracle.database.jdbc", "ojdbc6"),
       "org.springframework" % "spring-expression" % "6.2.19",
-      "com.auth0" % "java-jwt" % "4.6.0",
+      "com.auth0" % "java-jwt" % "4.6.1",
       "com.auth0" % "jwks-rsa" % "0.24.1",
 
       // Test dependencies
