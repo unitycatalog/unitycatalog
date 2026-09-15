@@ -420,7 +420,7 @@ lazy val server = (project in file("server"))
 
       // Auth dependencies
       "com.unboundid.product.scim2" % "scim2-sdk-common" % "3.2.0",
-      "org.casbin" % "jcasbin" % "1.66.0",
+      "org.casbin" % "jcasbin" % "1.99.0",
       "org.casbin" % "jdbc-adapter" % "2.13.0"
         exclude("com.microsoft.sqlserver", "mssql-jdbc")
         exclude("com.oracle.database.jdbc", "ojdbc6"),
