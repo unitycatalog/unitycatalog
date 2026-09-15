@@ -391,8 +391,8 @@ lazy val server = (project in file("server"))
       "com.azure" % "azure-storage-file-datalake" % "12.20.0",
 
       // For GCS Access
-      "com.google.cloud" % "google-cloud-storage" % "2.72.0",
-      "com.google.auth" % "google-auth-library-oauth2-http" % "1.51.0",
+      "com.google.cloud" % "google-cloud-storage" % "2.73.0",
+      "com.google.auth" % "google-auth-library-oauth2-http" % "1.52.0",
 
       //For s3 access
       "com.amazonaws" % "aws-java-sdk-s3" % "1.12.728",
