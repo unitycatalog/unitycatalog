@@ -45,7 +45,7 @@ lazy val jacksonVersion = "2.18.10"
 lazy val openApiToolsJacksonBindNullableVersion = "0.2.11"
 lazy val log4jVersion = "2.26.1"
 lazy val awsSdkV1Version = "1.12.797"
-lazy val awsSdkV2Version = "2.54.16"
+lazy val awsSdkV2Version = "2.54.17"
 val orgApacheHttpVersion = "4.5.14"
 
 lazy val commonSettings = Seq(
