@@ -47,14 +47,14 @@ lazy val log4jVersion = "2.25.3"
 val orgApacheHttpVersion = "4.5.14"
 
 // Connector Jackson follows Spark's line: 4.0 ships 2.18.x, 4.1+ ships 2.21.x.
-// Spark 4.2 vendors at.yawk.lz4:lz4-java 1.11.0; 1.11.1 is the CVE-2026-59949 patch.
+// Spark 4.2 vendors at.yawk.lz4:lz4-java 1.11.0; 1.11.3 is the current CVE-2026-59949 patch line.
 lazy val sparkJacksonVersion =
-  if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 1)) "2.21.5" else "2.18.2"
+  if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 1)) "2.21.6" else "2.18.2"
 lazy val sparkJacksonAnnotationsVersion =
   if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 1)) "2.21" else "2.18.2"
 def sparkLz4Deps: Seq[ModuleID] =
   if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 2))
-    Seq("at.yawk.lz4" % "lz4-java" % "1.11.1" % Provided)
+    Seq("at.yawk.lz4" % "lz4-java" % "1.11.3" % Provided)
   else Seq.empty
 
 lazy val commonSettings = Seq(
