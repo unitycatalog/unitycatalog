@@ -1049,12 +1049,36 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       created.add(name);
     }
 
-    AggregatedHttpResponse resp = client.get(TEST_BASE_PREFIX + "/namespaces").aggregate().join();
-
-    assertThat(resp.status().code()).isEqualTo(200);
-    ListNamespacesResponse listed =
-        IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListNamespacesResponse.class);
+    // A request that does not ask to paginate is answered with the whole listing and no token,
+    // which the REST spec requires of a server that does paginate.
+    ListNamespacesResponse listed = listedNamespaces("");
     assertThat(listed.namespaces()).map(Namespace::toString).containsExactlyElementsOf(created);
+    assertThat(listed.nextPageToken()).isNull();
+    // Naming a size without opening a paginated listing does not paginate either.
+    assertThat(listedNamespaces("?pageSize=10").namespaces()).hasSize(created.size());
+
+    // Opening one with an empty token, as Iceberg's client does, answers a page and a token; the
+    // pages together are the same listing, each namespace once.
+    List<String> paged = new ArrayList<>();
+    String pageToken = "";
+    int pages = 0;
+    do {
+      ListNamespacesResponse page = listedNamespaces("?pageToken=" + pageToken);
+      page.namespaces().forEach(namespace -> paged.add(namespace.toString()));
+      pageToken = page.nextPageToken();
+      pages++;
+    } while (pageToken != null);
+    assertThat(pages).isEqualTo(2);
+    assertThat(paged).containsExactlyElementsOf(created);
+
+    // pageSize is the upper bound on one page.
+    assertThat(listedNamespaces("?pageToken=&pageSize=10").namespaces()).hasSize(10);
+    // A size the spec does not allow is a bad request rather than a page of some other size, and
+    // says so in the same words whether it is below the minimum or not a number at all.
+    assertRejectedPageSize("0", "Invalid pageSize: 0. It must be a whole number of at least 1.");
+    assertRejectedPageSize("-1", "Invalid pageSize: -1. It must be a whole number of at least 1.");
+    assertRejectedPageSize(
+        "ten", "Invalid pageSize: ten. It must be a whole number of at least 1.");
   }
 
   @Test
@@ -1065,24 +1089,36 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     schemaOperations.createSchema(
         new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
 
-    // Fill the first page with tables the Iceberg endpoints don't serve, so that the only uniform
-    // table sorts onto the second page
+    // Fill the first page with tables the Iceberg endpoints don't serve, so that the uniform tables
+    // sort onto the second page
     for (int i = 0; i < PAGE_SIZE; i++) {
       createTable("delta_%03d".formatted(i));
     }
     setUniformMetadata(createTable("uniform_table"), writeIcebergMetadata());
+    setUniformMetadata(createTable("uniform_table_b"), writeIcebergMetadata());
 
-    AggregatedHttpResponse resp =
-        client
-            .get(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables")
-            .aggregate()
-            .join();
-
-    assertThat(resp.status().code()).isEqualTo(200);
-    ListTablesResponse listed =
-        IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
+    ListTablesResponse listed = listedTables("");
     assertThat(listed.identifiers())
+        .containsExactly(
+            TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table"),
+            TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table_b"));
+    assertThat(listed.nextPageToken()).isNull();
+
+    // A page of one, opened the way Iceberg's client opens a paginated listing. The rows before the
+    // first uniform table carry no Iceberg metadata, so filling this page reads past them rather
+    // than answering the empty page those rows would make on their own.
+    ListTablesResponse firstPage = listedTables("?pageToken=&pageSize=1");
+    assertThat(firstPage.identifiers())
         .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table"));
+    assertThat(firstPage.nextPageToken()).isNotNull();
+
+    // The token resumes after the table just listed, not after the page of rows it was found in.
+    ListTablesResponse secondPage =
+        listedTables("?pageToken=" + firstPage.nextPageToken() + "&pageSize=1");
+    assertThat(secondPage.identifiers())
+        .containsExactly(
+            TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table_b"));
+    assertThat(secondPage.nextPageToken()).isNull();
   }
 
   @Test
@@ -1484,6 +1520,38 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     // client's business.
     assertThat(error.message()).isEqualTo("Could not read this table");
     assertThat(error.message()).doesNotContain(icebergTableLocation.toString());
+  }
+
+  /** Asserts the listing refuses the given {@code pageSize} as a bad request naming the value. */
+  private void assertRejectedPageSize(String pageSize, String expectedMessage) {
+    AggregatedHttpResponse resp =
+        client
+            .get(TEST_BASE_PREFIX + "/namespaces?pageToken=&pageSize=" + pageSize)
+            .aggregate()
+            .join();
+    assertThat(resp.status().code()).isEqualTo(400);
+    ErrorResponse error = ErrorResponseParser.fromJson(resp.contentUtf8());
+    assertThat(error.type()).isEqualTo(BadRequestException.class.getSimpleName());
+    assertThat(error.message()).isEqualTo(expectedMessage);
+  }
+
+  /** The namespaces the listing endpoint answers with for the given query string. */
+  private ListNamespacesResponse listedNamespaces(String query) throws IOException {
+    AggregatedHttpResponse resp =
+        client.get(TEST_BASE_PREFIX + "/namespaces" + query).aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(200);
+    return IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListNamespacesResponse.class);
+  }
+
+  /** The tables the listing endpoint answers with for the given query string. */
+  private ListTablesResponse listedTables(String query) throws IOException {
+    AggregatedHttpResponse resp =
+        client
+            .get(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables" + query)
+            .aggregate()
+            .join();
+    assertThat(resp.status().code()).isEqualTo(200);
+    return IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
   }
 
   private AggregatedHttpResponse postJson(String path, String body) {

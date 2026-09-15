@@ -44,6 +44,7 @@ import io.unitycatalog.server.persist.TableRepository.IcebergTablePage;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.iceberg.IcebergSchemaConverter;
 import io.unitycatalog.server.service.iceberg.MetadataService;
@@ -180,26 +181,40 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public ListNamespacesResponse listNamespaces(
-      @Param("catalog") String catalog, @Param("parent") Optional<String> parent) {
-    List<Namespace> namespaces = new ArrayList<>();
+      @Param("catalog") String catalog,
+      @Param("parent") Optional<String> parent,
+      @Param("pageToken") Optional<String> pageToken,
+      @Param("pageSize") Optional<String> pageSize) {
     if (parent.isPresent() && !parent.get().isEmpty()) {
       // Nested namespaces are not supported, so a parent yields no child namespaces. The parent is
       // still resolved rather than assumed: per the REST spec, listing under a namespace that does
       // not exist is a 404, which an empty list would hide from the client.
       schemaRepository.getSchema(String.join(".", catalog, parent.get()));
-    } else {
-      // This endpoint returns the whole listing, so follow the repository's page token to the end.
-      Optional<String> pageToken = Optional.empty();
-      do {
-        ListSchemasResponse resp =
-            schemaRepository.listSchemas(catalog, Optional.empty(), pageToken);
-        assert resp.getSchemas() != null;
-        resp.getSchemas().forEach(schemaInfo -> namespaces.add(Namespace.of(schemaInfo.getName())));
-        pageToken = nextPageToken(resp.getNextPageToken());
-      } while (pageToken.isPresent());
+      return ListNamespacesResponse.builder().build();
     }
 
-    return ListNamespacesResponse.builder().addAll(namespaces).build();
+    if (pageToken.isEmpty()) {
+      // Without the parameter the whole listing is the answer, so follow the repository's page
+      // token to the end and say nothing about pages.
+      List<Namespace> namespaces = new ArrayList<>();
+      Optional<String> cursor = Optional.empty();
+      do {
+        ListSchemasResponse resp = schemaRepository.listSchemas(catalog, Optional.empty(), cursor);
+        assert resp.getSchemas() != null;
+        resp.getSchemas().forEach(schemaInfo -> namespaces.add(Namespace.of(schemaInfo.getName())));
+        cursor = nextPageToken(resp.getNextPageToken());
+      } while (cursor.isPresent());
+      return ListNamespacesResponse.builder().addAll(namespaces).build();
+    }
+
+    ListSchemasResponse page =
+        schemaRepository.listSchemas(
+            catalog, Optional.of(requestedPageSize(pageSize)), requestedCursor(pageToken.get()));
+    assert page.getSchemas() != null;
+    return ListNamespacesResponse.builder()
+        .addAll(page.getSchemas().stream().map(schema -> Namespace.of(schema.getName())).toList())
+        .nextPageToken(nextPageToken(page.getNextPageToken()).orElse(null))
+        .build();
   }
 
   @Head("/v1/catalogs/{catalog}/namespaces/{namespace}")
@@ -726,21 +741,37 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public org.apache.iceberg.rest.responses.ListTablesResponse listTables(
-      @Param("catalog") String catalog, @Param("namespace") String namespace) {
-    // This endpoint returns the whole listing, so follow the repository's page token to the end.
+      @Param("catalog") String catalog,
+      @Param("namespace") String namespace,
+      @Param("pageToken") Optional<String> pageToken,
+      @Param("pageSize") Optional<String> pageSize) {
     // Each page already says which of its tables carry Iceberg metadata, so no listed table is
     // resolved a second time: doing that made a table dropped mid-listing fail the entire request.
     org.apache.iceberg.rest.responses.ListTablesResponse.Builder listed =
         org.apache.iceberg.rest.responses.ListTablesResponse.builder();
-    Optional<String> pageToken = Optional.empty();
-    do {
-      IcebergTablePage page = tableRepository.listIcebergTables(catalog, namespace, pageToken);
-      page.tableNames()
-          .forEach(table -> listed.add(TableIdentifier.of(Namespace.of(namespace), table)));
-      pageToken = page.nextPageToken();
-    } while (pageToken.isPresent());
+    if (pageToken.isEmpty()) {
+      // Without the parameter the whole listing is the answer, so follow the repository's page
+      // token to the end and say nothing about pages.
+      Optional<String> cursor = Optional.empty();
+      do {
+        IcebergTablePage page =
+            tableRepository.listIcebergTables(catalog, namespace, cursor, Optional.empty());
+        page.tableNames()
+            .forEach(table -> listed.add(TableIdentifier.of(Namespace.of(namespace), table)));
+        cursor = page.nextPageToken();
+      } while (cursor.isPresent());
+      return listed.build();
+    }
 
-    return listed.build();
+    IcebergTablePage page =
+        tableRepository.listIcebergTables(
+            catalog,
+            namespace,
+            requestedCursor(pageToken.get()),
+            Optional.of(requestedPageSize(pageSize)));
+    page.tableNames()
+        .forEach(table -> listed.add(TableIdentifier.of(Namespace.of(namespace), table)));
+    return listed.nextPageToken(page.nextPageToken().orElse(null)).build();
   }
 
   /**
@@ -799,5 +830,45 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
    */
   private static Optional<String> nextPageToken(String token) {
     return Optional.ofNullable(token).filter(t -> !t.isEmpty());
+  }
+
+  /**
+   * Where a paginated listing resumes. The REST spec has clients open a paginated listing by
+   * sending {@code pageToken} empty, so an empty value means the first entry rather than a token to
+   * resume after.
+   */
+  private static Optional<String> requestedCursor(String pageToken) {
+    return pageToken.isEmpty() ? Optional.empty() : Optional.of(pageToken);
+  }
+
+  /**
+   * How many entries one page of a paginated listing holds. The spec makes {@code pageSize} an
+   * upper bound a server may undercut, so a request for more than a repository page holds is
+   * answered with that much and a token; a request for fewer is honoured exactly. A client that
+   * opened the listing without naming a size gets the same page the repository reads.
+   */
+  private static int requestedPageSize(Optional<String> pageSize) {
+    // Read as text and converted here so that every value the spec does not allow -- a size below
+    // its minimum of one, and one that is not a number at all -- is refused in the same words.
+    int requested =
+        pageSize
+            .filter(size -> !size.isEmpty())
+            .map(IcebergRestCatalogService::pageSizeOf)
+            .orElse(PagedListingHelper.DEFAULT_PAGE_SIZE);
+    if (requested < 1) {
+      throw new BadRequestException(
+          "Invalid pageSize: %d. It must be a whole number of at least 1.", requested);
+    }
+    return Math.min(requested, PagedListingHelper.DEFAULT_PAGE_SIZE);
+  }
+
+  /** The size the parameter names, refusing a value that is not a whole number. */
+  private static int pageSizeOf(String pageSize) {
+    try {
+      return Integer.parseInt(pageSize);
+    } catch (NumberFormatException notANumber) {
+      throw new BadRequestException(
+          "Invalid pageSize: %s. It must be a whole number of at least 1.", pageSize);
+    }
   }
 }

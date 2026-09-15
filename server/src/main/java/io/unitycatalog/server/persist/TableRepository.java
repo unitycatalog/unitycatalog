@@ -1074,17 +1074,28 @@ public class TableRepository {
 
   /**
    * Lists the tables in a schema that carry an Iceberg metadata pointer -- a Delta UniForm
-   * projection or a native Iceberg table -- one repository page at a time.
+   * projection or a native Iceberg table.
    *
    * <p>Whether a table carries one is read from the very row the page was read from, so a table
    * created or dropped after this page was read cannot affect it. Callers that resolved each listed
    * name a second time to answer the same question would instead fail the whole listing when a
    * table was dropped in between.
    *
-   * @param pageToken the token from the previous page, or empty to start at the first page
+   * <p>Because that pointer is read from the row rather than filtered in the query, a page of rows
+   * yields at most as many names as it holds and can yield none. So {@code maxResults} reads as
+   * many pages of rows as it takes to collect that many names, and the returned token resumes at
+   * the row after the last one read -- not after the last row of some page whose remaining rows
+   * were never looked at.
+   *
+   * @param pageToken the token from the previous page, or empty to start at the first table
+   * @param maxResults how many names to collect at most; empty returns the names in one page of
+   *     rows, which is what a caller following the token to the end of the schema wants
    */
   public IcebergTablePage listIcebergTables(
-      String catalogName, String schemaName, Optional<String> pageToken) {
+      String catalogName,
+      String schemaName,
+      Optional<String> pageToken,
+      Optional<Integer> maxResults) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -1092,19 +1103,58 @@ public class TableRepository {
               repositories
                   .getSchemaRepository()
                   .getSchemaIdOrThrow(session, catalogName, schemaName);
-          List<TableInfoDAO> page =
-              LISTING_HELPER.listEntity(session, Optional.empty(), pageToken, schemaId);
-          String nextPageToken = LISTING_HELPER.getNextPageToken(page, Optional.empty());
-          List<String> tableNames =
-              page.stream()
-                  .filter(dao -> dao.getUniformIcebergMetadataLocation() != null)
-                  .map(TableInfoDAO::getName)
-                  .toList();
-          return new IcebergTablePage(
-              tableNames, Optional.ofNullable(nextPageToken).filter(token -> !token.isEmpty()));
+          return collectIcebergTables(session, schemaId, pageToken, maxResults.orElse(null));
         },
         "Failed to list tables",
         /* readOnly= */ true);
+  }
+
+  /**
+   * Collects the names {@link #listIcebergTables} answers with, and the name to resume after when
+   * the schema holds more rows than were read.
+   */
+  private IcebergTablePage collectIcebergTables(
+      Session session, UUID schemaId, Optional<String> pageToken, Integer maxResults) {
+    List<String> tableNames = new ArrayList<>();
+    Optional<String> cursor = pageToken;
+    String lastRowRead = null;
+    boolean moreRows = false;
+    while (true) {
+      List<TableInfoDAO> rows =
+          LISTING_HELPER.listEntity(session, Optional.empty(), cursor, schemaId);
+      // Null once the schema holds no row after this page.
+      String afterLastRow = LISTING_HELPER.getNextPageToken(rows, Optional.empty());
+      for (TableInfoDAO row : rows) {
+        if (maxResults != null && tableNames.size() == maxResults) {
+          // This row was not read, so the schema has more to give whatever the page said.
+          moreRows = true;
+          break;
+        }
+        lastRowRead = row.getName();
+        if (row.getUniformIcebergMetadataLocation() != null) {
+          tableNames.add(row.getName());
+        }
+      }
+      if (moreRows) {
+        break;
+      }
+      if (afterLastRow == null || afterLastRow.isEmpty()) {
+        break;
+      }
+      if (maxResults == null) {
+        // One page of rows, as asked; the caller reads the next one with this token.
+        moreRows = true;
+        lastRowRead = afterLastRow;
+        break;
+      }
+      if (tableNames.size() == maxResults) {
+        moreRows = true;
+        break;
+      }
+      cursor = Optional.of(afterLastRow);
+    }
+    return new IcebergTablePage(
+        tableNames, moreRows ? Optional.ofNullable(lastRowRead) : Optional.empty());
   }
 
   public ListTablesResponse listTables(
