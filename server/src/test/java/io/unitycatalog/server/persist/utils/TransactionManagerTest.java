@@ -13,11 +13,10 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.TransactionRollbackException;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
-import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TestDatabaseUtils;
 import java.sql.Connection;
 import java.util.Date;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -205,9 +204,9 @@ public class TransactionManagerTest {
   }
 
   /**
-   * Tests for the isolation level code path using a real H2 database. These verify that the
-   * rollback() call before setTransactionIsolation() correctly flushes stale implicit transactions
-   * from pooled connections, ensuring REPEATABLE_READ gets a fresh MVCC snapshot.
+   * Tests for the isolation level code path using a real database. These verify that the rollback()
+   * call before setTransactionIsolation() correctly flushes stale implicit transactions from pooled
+   * connections, ensuring REPEATABLE_READ gets a fresh MVCC snapshot.
    */
   @Nested
   public class IsolationLevelWithRealDatabaseTest {
@@ -216,8 +215,7 @@ public class TransactionManagerTest {
 
     @BeforeAll
     public static void setUp() {
-      ServerProperties serverProperties = new ServerProperties(new Properties());
-      HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
+      HibernateConfigurator hibernateConfigurator = TestDatabaseUtils.createHibernateConfigurator();
       realSessionFactory = hibernateConfigurator.getSessionFactory();
     }
 
@@ -228,8 +226,19 @@ public class TransactionManagerTest {
 
     @Test
     public void testIsolationLevelIsSetAndRestored() {
+      final int[] originalIsolation = new int[1];
       final int[] isolationDuringTx = new int[1];
       final int[] isolationAfter = new int[1];
+
+      TransactionManager.executeWithTransaction(
+          realSessionFactory,
+          session -> {
+            session.doWork(
+                connection -> originalIsolation[0] = connection.getTransactionIsolation());
+            return null;
+          },
+          "test",
+          true);
 
       // Run a transaction with REPEATABLE_READ
       TransactionManager.executeWithTransaction(
@@ -256,8 +265,7 @@ public class TransactionManagerTest {
           "test",
           true);
 
-      // Original isolation level should have been restored (H2 default is READ_COMMITTED)
-      assertThat(isolationAfter[0]).isEqualTo(Connection.TRANSACTION_READ_COMMITTED);
+      assertThat(isolationAfter[0]).isEqualTo(originalIsolation[0]);
     }
 
     @Test

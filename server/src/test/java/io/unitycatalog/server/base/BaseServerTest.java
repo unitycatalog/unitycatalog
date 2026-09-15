@@ -5,6 +5,7 @@ import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import io.unitycatalog.server.utils.TestDatabaseUtils;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.file.Files;
@@ -93,6 +94,7 @@ public abstract class BaseServerTest {
       setUpCredentialOperations(initServerProperties);
       Properties hibernateProperties =
           HibernateConfigurator.setupHibernateProperties(initServerProperties);
+      TestDatabaseUtils.configureHibernateProperties(hibernateProperties);
       setUpHibernateProperties(hibernateProperties);
       hibernateConfigurator = new HibernateConfigurator(hibernateProperties);
       unityCatalogServer =
@@ -140,9 +142,7 @@ public abstract class BaseServerTest {
       // this harness injects one, so the server leaves it open and we close it below.
       unityCatalogServer.close();
       // Release the factory this harness built and injected in setUp(). setUp() builds a fresh
-      // one per test, so leaked factories would otherwise accumulate for the whole JVM run. In
-      // test env hbm2ddl is create-drop, so closing also drops the schema — keep this after the
-      // cleanup queries above.
+      // one per test, so leaked factories would otherwise accumulate for the whole JVM run.
       sessionFactory.close();
       // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
       unityCatalogServer = null;

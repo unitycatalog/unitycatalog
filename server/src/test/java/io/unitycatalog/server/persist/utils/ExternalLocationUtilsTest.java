@@ -6,9 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.utils.NormalizedURL;
-import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TestDatabaseUtils;
 import java.util.List;
-import java.util.Properties;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -28,10 +27,7 @@ public class ExternalLocationUtilsTest {
 
   @BeforeAll
   public static void setUp() {
-    // Create minimal properties
-    ServerProperties serverProperties = new ServerProperties(new Properties());
-    // Create Hibernate configurator and session factory
-    HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
+    HibernateConfigurator hibernateConfigurator = TestDatabaseUtils.createHibernateConfigurator();
     sessionFactory = hibernateConfigurator.getSessionFactory();
     session = sessionFactory.openSession();
   }

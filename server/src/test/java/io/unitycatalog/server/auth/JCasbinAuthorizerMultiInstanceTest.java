@@ -7,6 +7,7 @@ import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import io.unitycatalog.server.utils.TestDatabaseUtils;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,9 +35,7 @@ public class JCasbinAuthorizerMultiInstanceTest {
 
   @BeforeEach
   void setUp() {
-    Properties properties = new Properties();
-    properties.setProperty(Property.SERVER_ENV.getKey(), "test");
-    hibernateConfigurator = new HibernateConfigurator(new ServerProperties(properties));
+    hibernateConfigurator = TestDatabaseUtils.createHibernateConfigurator();
   }
 
   @AfterEach
