@@ -1,14 +1,16 @@
 package io.unitycatalog.server.persist.utils;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.Comparator;
+import java.util.concurrent.CancellationException;
 import java.util.stream.Stream;
 import org.apache.iceberg.io.BulkDeletionFailureException;
 import org.apache.iceberg.io.CloseableIterable;
@@ -91,9 +93,7 @@ public class SimpleLocalFileIO implements DelegateFileIO {
    */
   @Override
   public CloseableIterable<FileInfo> listPrefix(String prefix) {
-    return CloseableIterable.transform(
-        walkPrefix(prefix, false /* includeDirectories */, false /* bottomUp */),
-        SimpleLocalFileIO::toFileInfo);
+    return CloseableIterable.transform(walkPrefix(prefix), SimpleLocalFileIO::toFileInfo);
   }
 
   @Override
@@ -104,44 +104,64 @@ public class SimpleLocalFileIO implements DelegateFileIO {
   /**
    * Recursively deletes everything under {@code prefix}, including the prefix directory itself.
    * Exposed as a static so callers with only a local path (and no FileIO instance) can reuse this
-   * logic; the instance {@link #deletePrefix(String)} delegates here.
+   * logic; the instance {@link #deletePrefix(String)} delegates here. A missing prefix is already
+   * clean and returns successfully.
    *
-   * @throws UncheckedIOException wrapping a {@link FileNotFoundException} if the prefix does not
-   *     exist.
+   * @throws CancellationException if the current thread is interrupted. Detection clears the
+   *     interrupt status before throwing so an executor can reuse the thread.
    */
   public static void deleteDirectory(String prefix) {
-    // Include directories so the emptied tree is removed too, bottom-up (children before parents)
-    // so each directory is empty by the time it is deleted.
-    boolean deletedAny = false;
-    try (CloseableIterable<Path> paths =
-        walkPrefix(prefix, true /* includeDirectories */, true /* bottomUp */)) {
-      for (Path path : paths) {
-        delete(path);
-        deletedAny = true;
-      }
+    try {
+      Files.walkFileTree(
+          toPath(prefix),
+          new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(
+                Path directory, BasicFileAttributes attributes) {
+              checkInterrupted();
+              return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
+                throws IOException {
+              checkInterrupted();
+              Files.deleteIfExists(file);
+              return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path directory, IOException failure)
+                throws IOException {
+              checkInterrupted();
+              if (failure != null && !(failure instanceof NoSuchFileException)) {
+                throw failure;
+              }
+              Files.deleteIfExists(directory);
+              return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException failure)
+                throws IOException {
+              checkInterrupted();
+              if (failure instanceof NoSuchFileException) {
+                return FileVisitResult.CONTINUE;
+              }
+              throw failure;
+            }
+          });
     } catch (IOException e) {
-      // Per-path delete failures throw UncheckedIOException from delete() and propagate directly;
-      // this only catches the checked IOException from closing the directory walk.
-      throw new UncheckedIOException("Failed to close directory walk for " + prefix, e);
-    }
-    if (!deletedAny) {
-      // With includeDirectories=true, walkPrefix yields the prefix directory itself when it
-      // exists, so an empty walk means the prefix does not exist.
-      throw new UncheckedIOException(
-          new FileNotFoundException("Directory does not exist: " + prefix));
+      throw new UncheckedIOException("Failed to delete directory " + prefix, e);
     }
   }
 
   /**
-   * Walks the tree under {@code prefix} and returns a lazy, close-safe view of its entries. When
-   * {@code includeDirectories} is false, only regular files are returned (the {@link #listPrefix}
-   * contract); when true, directories are included as well. When {@code bottomUp} is true, entries
-   * are returned in reverse lexicographic order (children before parents) so callers can delete
-   * bottom-up. Returns an empty iterable if the prefix does not exist. Callers must close the
-   * result to release the underlying directory stream.
+   * Walks the tree under {@code prefix} and returns a lazy, close-safe view of its regular files.
+   * Returns an empty iterable if the prefix does not exist. Callers must close the result to
+   * release the underlying directory stream.
    */
-  private static CloseableIterable<Path> walkPrefix(
-      String prefix, boolean includeDirectories, boolean bottomUp) {
+  private static CloseableIterable<Path> walkPrefix(String prefix) {
     Path dirPath = toPath(prefix);
     if (!Files.exists(dirPath)) {
       return CloseableIterable.empty();
@@ -152,15 +172,7 @@ public class SimpleLocalFileIO implements DelegateFileIO {
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to walk " + prefix, e);
     }
-    Stream<Path> entries = walk;
-    if (!includeDirectories) {
-      entries = entries.filter(Files::isRegularFile);
-    }
-    if (bottomUp) {
-      // reverseOrder puts children before parents; .sorted() also buffers the full tree before
-      // emitting, so deletePrefix can delete during iteration without disturbing the walk.
-      entries = entries.sorted(Comparator.reverseOrder());
-    }
+    Stream<Path> entries = walk.filter(Files::isRegularFile);
     return CloseableIterable.combine(entries::iterator, walk::close);
   }
 
@@ -175,11 +187,9 @@ public class SimpleLocalFileIO implements DelegateFileIO {
     }
   }
 
-  private static void delete(Path path) {
-    try {
-      Files.delete(path);
-    } catch (IOException e) {
-      throw new UncheckedIOException("Failed to delete " + path, e);
+  private static void checkInterrupted() {
+    if (Thread.interrupted()) {
+      throw new CancellationException("Local storage cleanup was interrupted");
     }
   }
 

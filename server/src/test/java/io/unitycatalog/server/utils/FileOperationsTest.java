@@ -1,6 +1,7 @@
 package io.unitycatalog.server.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -17,8 +18,6 @@ import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
-import java.io.FileNotFoundException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -85,14 +84,11 @@ public class FileOperationsTest {
 
   @SneakyThrows
   @Test
-  public void testDeletePrefixOnMissingDirectoryThrows() {
-    // deletePrefix must signal a missing prefix (it yields the prefix dir itself when present,
-    // so an empty walk means the directory does not exist).
+  public void testDeletePrefixOnMissingDirectorySucceeds() {
     NormalizedURL missing =
         NormalizedURL.from(rootBase.resolve("does-not-exist-" + UUID.randomUUID()).toString());
-    assertThatThrownBy(() -> SimpleLocalFileIO.deleteDirectory(missing.toString()))
-        .isInstanceOf(UncheckedIOException.class)
-        .hasCauseInstanceOf(FileNotFoundException.class);
+    assertThatCode(() -> SimpleLocalFileIO.deleteDirectory(missing.toString()))
+        .doesNotThrowAnyException();
   }
 
   @SneakyThrows

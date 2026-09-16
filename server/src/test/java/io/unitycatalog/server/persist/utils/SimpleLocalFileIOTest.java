@@ -130,10 +130,28 @@ public class SimpleLocalFileIOTest {
   }
 
   @Test
-  public void deleteDirectoryThrowsFileNotFoundWhenPrefixIsMissing(@TempDir Path tempDir) {
-    assertThatThrownBy(() -> SimpleLocalFileIO.deleteDirectory(uri(tempDir.resolve("absent"))))
-        .isInstanceOf(UncheckedIOException.class)
-        .hasCauseInstanceOf(java.io.FileNotFoundException.class);
+  public void deletePrefixAllowsMissingDirectory(@TempDir Path tempDir) {
+    assertThatCode(() -> fileIO.deletePrefix(uri(tempDir.resolve("absent"))))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  public void deletePrefixClearsInterruptSoThreadCanBeReused(@TempDir Path tempDir) {
+    Path root = tempDir.resolve("table");
+    write(uri(root.resolve("data")), "d");
+
+    Thread.currentThread().interrupt();
+    try {
+      assertThatThrownBy(() -> fileIO.deletePrefix(uri(root)))
+          .isInstanceOf(java.util.concurrent.CancellationException.class);
+      assertThat(Files.exists(root)).isTrue();
+      assertThat(Thread.currentThread().isInterrupted()).isFalse();
+
+      fileIO.deletePrefix(uri(root));
+      assertThat(Files.exists(root)).isFalse();
+    } finally {
+      Thread.interrupted();
+    }
   }
 
   @Test
