@@ -64,9 +64,6 @@ lazy val commonSettings = Seq(
   Test / javaOptions ++= Seq (
     "-ea",
   ),
-  // Libraries (client, spark, hadoop, generated APIs) must only depend on slf4j-api.
-  // A compile-scope SLF4J binding (log4j-slf4j2-impl) forces Log4j2 on every consumer and
-  // breaks hosts that already have a binding (e.g. Spring Boot / Logback).
   libraryDependencies ++= Seq(
     "org.slf4j" % "slf4j-api" % "2.0.13",
     "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
@@ -127,8 +124,6 @@ lazy val commonSettings = Seq(
   assembly / test := {}
 )
 
-// Log4j2 is the UC process logger (server + CLI). Keep the SLF4J binding and log4j-core
-// off published libraries. log4j-core is compile-scope because Configurator lives there.
 lazy val log4jProcessSettings = Seq(
   libraryDependencies ++= Seq(
     "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
