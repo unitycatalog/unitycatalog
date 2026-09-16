@@ -67,8 +67,6 @@ lazy val commonSettings = Seq(
   libraryDependencies ++= Seq(
     "org.slf4j" % "slf4j-api" % "2.0.13",
     "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
-    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % log4jVersion,
-    "org.apache.logging.log4j" % "log4j-api" % log4jVersion
   ),
   excludeDependencies ++= Seq(
     ExclusionRule("org.slf4j", "slf4j-reload4j")
@@ -124,6 +122,13 @@ lazy val commonSettings = Seq(
   },
   
   assembly / test := {}
+)
+
+lazy val log4jProcessSettings = Seq(
+  libraryDependencies ++= Seq(
+    "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
+    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % log4jVersion,
+  )
 )
 
 // Configure resolvers
@@ -356,6 +361,7 @@ lazy val server = (project in file("server"))
     name := s"$artifactNamePrefix-server",
     mainClass := Some(orgName + ".server.UnityCatalogServer"),
     commonSettings,
+    log4jProcessSettings,
     javaOnlyReleaseSettings,
     javafmtCheckSettings(),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
@@ -572,6 +578,7 @@ lazy val cli = (project in file("examples") / "cli")
     name := s"$artifactNamePrefix-cli",
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
+    log4jProcessSettings,
     skipReleaseSettings,
     javafmtCheckSettings(),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
