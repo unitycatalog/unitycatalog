@@ -1,5 +1,6 @@
 package io.unitycatalog.server.persist.utils;
 
+import io.unitycatalog.server.cleanup.InterruptiblePrefixOperations;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
@@ -12,19 +13,25 @@ import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.UriScheme;
+import io.unitycatalog.server.utils.ValidationUtils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.iceberg.aws.AwsClientProperties;
+import org.apache.iceberg.aws.HttpClientProperties;
+import org.apache.iceberg.aws.s3.S3FileIO;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
 import org.apache.iceberg.azure.AzureProperties;
 import org.apache.iceberg.gcp.GCPProperties;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.ResolvingFileIO;
+import org.apache.iceberg.io.SupportsPrefixOperations;
 
 /**
  * Single entry point for all storage/file access in the server. Covers both directory lifecycle
@@ -35,10 +42,12 @@ public class FileOperations {
 
   private final StorageCredentialVendor storageCredentialVendor;
   private final Map<NormalizedURL, String> s3BucketRegionMap;
+  private final String defaultS3Region;
 
   public FileOperations(
       StorageCredentialVendor storageCredentialVendor, ServerProperties serverProperties) {
     this.storageCredentialVendor = storageCredentialVendor;
+    this.defaultS3Region = serverProperties.get(ServerProperties.Property.AWS_REGION);
     this.s3BucketRegionMap =
         serverProperties.getS3Configurations().entrySet().stream()
             .filter(entry -> entry.getValue().getRegion() != null)
@@ -110,6 +119,32 @@ public class FileOperations {
     };
   }
 
+  /** Returns fresh, write-enabled prefix operations that honor interruption between requests. */
+  public SupportsPrefixOperations getCleanupFileIO(NormalizedURL path, Duration socketTimeout) {
+    return switch (UriScheme.fromURI(path.toUri())) {
+      case FILE, NULL -> new SimpleLocalFileIO();
+      case S3 -> getS3CleanupFileIO(path, socketTimeout);
+      default ->
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT, "Storage cleanup supports only local files and S3");
+    };
+  }
+
+  /**
+   * Builds a fresh S3 FileIO for one cleanup attempt. The socket timeout bounds a stalled request;
+   * the wrapper checks interruption between list and delete requests.
+   */
+  private SupportsPrefixOperations getS3CleanupFileIO(NormalizedURL path, Duration socketTimeout) {
+    ValidationUtils.checkArgument(
+        socketTimeout.toMillis() > 0, "S3 socket timeout must be at least one millisecond");
+    Map<String, String> config = new HashMap<>(getFileIOConfig(path, CredentialContext.READ_WRITE));
+    config.put(
+        HttpClientProperties.APACHE_SOCKET_TIMEOUT_MS, Long.toString(socketTimeout.toMillis()));
+    S3FileIO fileIO = new S3FileIO();
+    fileIO.initialize(config);
+    return new InterruptiblePrefixOperations(fileIO, path + "/");
+  }
+
   /**
    * Builds the Iceberg FileIO configuration (credentials, region, token expiry) for the given
    * location by vending temporary storage credentials for it. Returns an empty map for local
@@ -170,20 +205,25 @@ public class FileOperations {
   }
 
   private Map<String, String> getS3Config(NormalizedURL path, AwsCredentials awsCredentials) {
-    // TODO: if region isn't configured, use HEAD bucket to figure out
-    String s3Region = s3BucketRegionMap.get(path.getStorageBase());
-    if (s3Region == null) {
-      // s3BucketRegionMap has no entry for this bucket (Map.get returns null on a miss). Guard
-      // here with a clear message rather than letting Map.of throw an opaque NullPointerException
-      // below.
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "No S3 region configured for bucket: " + path.getStorageBase());
-    }
+    String s3Region = getS3Region(path);
     return Map.of(
         S3FileIOProperties.ACCESS_KEY_ID, awsCredentials.getAccessKeyId(),
         S3FileIOProperties.SECRET_ACCESS_KEY, awsCredentials.getSecretAccessKey(),
         S3FileIOProperties.SESSION_TOKEN, awsCredentials.getSessionToken(),
         AwsClientProperties.CLIENT_REGION, s3Region);
+  }
+
+  private String getS3Region(NormalizedURL path) {
+    // TODO: if region isn't configured, use HEAD bucket to figure out
+    String region = s3BucketRegionMap.get(path.getStorageBase());
+    if (region == null) {
+      region = defaultS3Region;
+    }
+    if (region == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "No S3 region configured for bucket: " + path.getStorageBase());
+    }
+    return region;
   }
 }

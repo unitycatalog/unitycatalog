@@ -6,9 +6,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.unitycatalog.server.cleanup.InterruptiblePrefixOperations;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
@@ -17,9 +19,11 @@ import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
+import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -28,6 +32,7 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import lombok.SneakyThrows;
 import org.apache.iceberg.aws.AwsClientProperties;
+import org.apache.iceberg.aws.HttpClientProperties;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
 import org.apache.iceberg.azure.AzureProperties;
 import org.apache.iceberg.gcp.GCPProperties;
@@ -39,6 +44,7 @@ import org.apache.iceberg.io.InputFile;
 import org.apache.iceberg.io.OutputFile;
 import org.apache.iceberg.io.PositionOutputStream;
 import org.apache.iceberg.io.ResolvingFileIO;
+import org.apache.iceberg.io.SupportsPrefixOperations;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -357,5 +363,51 @@ public class FileOperationsTest {
     try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from("s3://my-bucket/table"))) {
       assertThat(fileIO).isInstanceOf(ResolvingFileIO.class);
     }
+  }
+
+  @Test
+  public void testGetCleanupFileIOUsesDefaultRegionAndSocketTimeout() {
+    Properties props = new Properties();
+    props.setProperty("aws.region", "us-west-2");
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("AKIA")
+                        .secretAccessKey("secret")
+                        .sessionToken("token")));
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+    NormalizedURL path = NormalizedURL.from("s3://my-bucket/tables/" + UUID.randomUUID());
+    Duration socketTimeout = Duration.ofSeconds(3);
+
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try (SupportsPrefixOperations fileIO = fileOps.getCleanupFileIO(path, socketTimeout)) {
+        assertThat(fileIO).isInstanceOf(InterruptiblePrefixOperations.class);
+        assertThat(fileIO.properties())
+            .containsEntry(
+                HttpClientProperties.APACHE_SOCKET_TIMEOUT_MS,
+                Long.toString(socketTimeout.toMillis()))
+            .containsEntry(AwsClientProperties.CLIENT_REGION, "us-west-2");
+      }
+    }
+
+    verify(vendor, times(2)).vendCredential(path, CredentialContext.READ_WRITE);
+  }
+
+  @Test
+  public void testGetCleanupFileIORejectsUnsupportedSchemeBeforeVending() {
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+
+    assertThatThrownBy(
+            () ->
+                fileOps.getCleanupFileIO(
+                    NormalizedURL.from("gs://bucket/tables/" + UUID.randomUUID()),
+                    Duration.ofSeconds(1)))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("Storage cleanup supports only local files and S3");
+    verify(vendor, never()).vendCredential(any(), any());
   }
 }
