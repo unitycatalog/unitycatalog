@@ -251,6 +251,7 @@ A fast pre-push scan; each item is detailed in the sections above.
 
 - `CONTRIBUTING.md` for the authoritative contribution rules and governance.
 - `AI_POLICY.md` for the policy on AI-assisted contribution and review.
+- `CODE_REVIEW.md` for what reviewers look for, when reviewing a pull request or self-reviewing your own.
 - `README.md` for the quickstart, build, and deployment details.
 - `api/README.md` and `api/all.yaml` for the API specification.
 - `spec/protocols/` for protocol specifications.

@@ -54,7 +54,9 @@ public interface TokenProvider {
    *
    * <ul>
    *   <li><b>Static token authentication:</b> Set {@code "type"} to {@code "static"} and provide a
-   *       {@code "token"} key with the access token value
+   *       {@code "token"} key. When the Unity Catalog server has {@code
+   *       server.authorization=disable}, an empty token is valid. When authorization is enabled,
+   *       provide a real access token.
    *   <li><b>OAuth 2.0 authentication:</b> Set {@code "type"} to {@code "oauth"} and provide all
    *       three OAuth keys: {@code "oauth.uri"}, {@code "oauth.clientId"}, and {@code
    *       "oauth.clientSecret"}
