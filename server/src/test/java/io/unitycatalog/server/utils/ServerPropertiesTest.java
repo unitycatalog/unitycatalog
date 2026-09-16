@@ -229,6 +229,36 @@ public class ServerPropertiesTest {
   }
 
   @Test
+  public void testStorageCleanupConfiguration() {
+    ServerProperties defaults = new ServerProperties();
+    assertThat(defaults.getStorageCleanupPollInterval()).isEqualTo(Duration.ofSeconds(5));
+    assertThat(defaults.getStorageCleanupAttemptTimeout()).isEqualTo(Duration.ofSeconds(20));
+    assertThat(defaults.getStorageCleanupSocketTimeout()).isEqualTo(Duration.ofSeconds(5));
+    assertThat(defaults.getStorageCleanupLeaseDuration()).isEqualTo(Duration.ofMinutes(1));
+    assertThat(defaults.getStorageCleanupInitialDelay()).isEqualTo(Duration.ofMinutes(65));
+    assertThat(defaults.getStorageCleanupRetryBackoff()).isEqualTo(Duration.ofSeconds(30));
+
+    testInvalidProperty(
+        Property.STORAGE_CLEANUP_POLL_INTERVAL,
+        "PT0.000000001S",
+        "server.storage-cleanup.poll-interval",
+        "Expected at least one millisecond");
+    Properties socketTimeoutTooLong = new Properties();
+    socketTimeoutTooLong.setProperty(Property.STORAGE_CLEANUP_ATTEMPT_TIMEOUT.getKey(), "PT2S");
+    socketTimeoutTooLong.setProperty(Property.STORAGE_CLEANUP_SOCKET_TIMEOUT.getKey(), "PT2S");
+    assertThatThrownBy(() -> new ServerProperties(socketTimeoutTooLong))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("socket-timeout must be shorter than the attempt timeout");
+
+    Properties leaseTooShort = new Properties();
+    leaseTooShort.setProperty(Property.STORAGE_CLEANUP_ATTEMPT_TIMEOUT.getKey(), "PT20S");
+    leaseTooShort.setProperty(Property.STORAGE_CLEANUP_LEASE_DURATION.getKey(), "PT25S");
+    assertThatThrownBy(() -> new ServerProperties(leaseTooShort))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("lease-duration must exceed the attempt timeout plus socket");
+  }
+
+  @Test
   public void testEffectiveCookieTimeout() {
     ServerProperties serverProperties = new ServerProperties();
     assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT24H"));
