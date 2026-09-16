@@ -64,11 +64,12 @@ lazy val commonSettings = Seq(
   Test / javaOptions ++= Seq (
     "-ea",
   ),
+  // Libraries (client, spark, hadoop, generated APIs) must only depend on slf4j-api.
+  // A compile-scope SLF4J binding (log4j-slf4j2-impl) forces Log4j2 on every consumer and
+  // breaks hosts that already have a binding (e.g. Spring Boot / Logback).
   libraryDependencies ++= Seq(
     "org.slf4j" % "slf4j-api" % "2.0.13",
     "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
-    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % log4jVersion,
-    "org.apache.logging.log4j" % "log4j-api" % log4jVersion
   ),
   excludeDependencies ++= Seq(
     ExclusionRule("org.slf4j", "slf4j-reload4j")
@@ -124,6 +125,15 @@ lazy val commonSettings = Seq(
   },
   
   assembly / test := {}
+)
+
+// Log4j2 is the UC process logger (server + CLI). Keep the SLF4J binding and log4j-core
+// off published libraries. log4j-core is compile-scope because Configurator lives there.
+lazy val log4jProcessSettings = Seq(
+  libraryDependencies ++= Seq(
+    "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
+    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % log4jVersion,
+  )
 )
 
 // Configure resolvers
@@ -356,6 +366,7 @@ lazy val server = (project in file("server"))
     name := s"$artifactNamePrefix-server",
     mainClass := Some(orgName + ".server.UnityCatalogServer"),
     commonSettings,
+    log4jProcessSettings,
     javaOnlyReleaseSettings,
     javafmtCheckSettings(),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
@@ -572,6 +583,7 @@ lazy val cli = (project in file("examples") / "cli")
     name := s"$artifactNamePrefix-cli",
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
+    log4jProcessSettings,
     skipReleaseSettings,
     javafmtCheckSettings(),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
