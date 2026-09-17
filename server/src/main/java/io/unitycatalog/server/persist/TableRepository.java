@@ -1244,6 +1244,18 @@ public class TableRepository {
           tableInfoDAO.setUpdatedAt(new Date());
           tableInfoDAO.setUpdatedBy(callerId);
           session.merge(tableInfoDAO);
+          // Same reason as the create path: the lookup above cannot see a name another
+          // transaction is still committing, so the constraint is what settles the collision and
+          // the violation has to be caught here to be reported as one.
+          try {
+            session.flush();
+          } catch (ConstraintViolationException e) {
+            if (isDuplicateTableNameViolation(e)) {
+              throw new BaseException(
+                  ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + newName, e);
+            }
+            throw e;
+          }
           return null;
         },
         "Failed to rename table " + catalog + "." + schema + "." + table,

@@ -126,6 +126,65 @@ class TableRepositoryTest {
     }
   }
 
+  /**
+   * Renaming has the same shape as creating: the collision check cannot see a name another
+   * transaction is still committing, so two renames onto one target must not both land.
+   */
+  @Test
+  void concurrentRenamesOntoTheSameNameKeepTheNameUsable() throws Exception {
+    int threads = 4;
+    for (int round = 0; round < 4; round++) {
+      String target = "rename_target_" + round;
+      List<String> sources = new ArrayList<>();
+      for (int i = 0; i < threads; i++) {
+        String source = "rename_source_" + round + "_" + i;
+        sources.add(source);
+        withRequestContext(() -> tableRepository.createTable(externalTable(source)));
+      }
+
+      CyclicBarrier startBarrier = new CyclicBarrier(threads);
+      ExecutorService executor = Executors.newFixedThreadPool(threads);
+      List<Future<Object>> futures = new ArrayList<>();
+      try {
+        for (String source : sources) {
+          futures.add(
+              executor.submit(
+                  () -> {
+                    startBarrier.await(10, TimeUnit.SECONDS);
+                    return withRequestContext(
+                        () -> {
+                          tableRepository.renameTable(CATALOG_NAME, SCHEMA_NAME, source, target);
+                          return null;
+                        });
+                  }));
+        }
+
+        int renamed = 0;
+        for (Future<Object> future : futures) {
+          try {
+            future.get(20, TimeUnit.SECONDS);
+            renamed++;
+          } catch (ExecutionException e) {
+            assertThat(e.getCause())
+                .isInstanceOf(BaseException.class)
+                .satisfies(
+                    cause ->
+                        assertThat(((BaseException) cause).getErrorCode())
+                            .as("a losing rename must report the name as taken, not a server error")
+                            .isEqualTo(ErrorCode.TABLE_ALREADY_EXISTS));
+          }
+        }
+        assertThat(renamed).as("exactly one rename wins the race").isEqualTo(1);
+      } finally {
+        executor.shutdownNow();
+      }
+
+      String fullName = CATALOG_NAME + "." + SCHEMA_NAME + "." + target;
+      assertThat(withRequestContext(() -> tableRepository.getTable(fullName)).getName())
+          .isEqualTo(target);
+    }
+  }
+
   /** The repositories read the caller from Armeria's thread-local context, which tests must set. */
   private static <T> T withRequestContext(Callable<T> action) throws Exception {
     ServiceRequestContext context =
