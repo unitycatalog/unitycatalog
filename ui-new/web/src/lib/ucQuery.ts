@@ -5,21 +5,12 @@ import {
   useTransport,
 } from "@connectrpc/connect-query";
 import { UnityProxyService } from "@/gen/uc/v1/proxy_pb";
-import { UCError } from "@/lib/uc";
+import { toKeyValues, UCError } from "@/lib/uc";
 
 // The single generic UC REST proxy RPC. Every scoped fetch flows through it so
 // connect-query owns a stable, structured query key (method + input), which is
 // what makes the TanStack Query cache consistent across components and reloads.
 const callMethod = UnityProxyService.method.call;
-
-function toKV(query?: Record<string, string | undefined>) {
-  const out: { key: string; value: string }[] = [];
-  if (!query) return out;
-  for (const [key, value] of Object.entries(query)) {
-    if (value !== undefined && value !== "") out.push({ key, value });
-  }
-  return out;
-}
 
 export type UcQueryOpts<T> = {
   query?: Record<string, string | undefined>;
@@ -39,7 +30,7 @@ export function useUcQuery<T = unknown>(
   const input = {
     method,
     path,
-    query: toKV(opts.query),
+    query: toKeyValues(opts.query),
     jsonBody: "",
     contentType: "",
   };

@@ -1,39 +1,25 @@
 use connectrpc::{RequestContext, Response, ServiceRequest, ServiceResult};
 use serde_json::{json, Map, Value};
 
-use super::{page_query, properties_value};
+use super::{page_query, properties_value, UiRpc};
 use crate::mapping;
 use crate::proto::uc::v1::*;
-use crate::upstream::{path_segment, Upstream};
-use crate::AppState;
-
-pub(crate) struct SchemaRpc {
-    upstream: Upstream,
-}
-
-impl SchemaRpc {
-    pub(crate) fn new(state: AppState) -> Self {
-        Self {
-            upstream: Upstream::new(state),
-        }
-    }
-}
+use crate::upstream::path_segment;
 
 #[protovalidate_buffa::connect_impl]
-impl SchemaService for SchemaRpc {
+impl SchemaService for UiRpc {
     async fn list_schemas(
         &self,
         ctx: RequestContext,
         request: ServiceRequest<'_, ListSchemasRequest>,
     ) -> ServiceResult<ListSchemasResponse> {
-        let request = request.to_owned_message();
         let mut query = page_query(&request.page);
-        query.push(("catalog_name", request.catalog.name.clone()));
+        query.push(("catalog_name", request.catalog.name.to_string()));
         let value = self.upstream.get(&ctx, "/schemas", query).await?;
         let schemas = mapping::required_array(&value, "schemas")?
             .iter()
             .map(mapping::schema_summary)
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Response::new(ListSchemasResponse {
             schemas,
             page: mapping::page(&value).into(),
@@ -46,7 +32,6 @@ impl SchemaService for SchemaRpc {
         ctx: RequestContext,
         request: ServiceRequest<'_, GetSchemaRequest>,
     ) -> ServiceResult<GetSchemaResponse> {
-        let request = request.to_owned_message();
         let full_name = format!("{}.{}", request.schema.catalog_name, request.schema.name);
         let value = self
             .upstream
@@ -57,7 +42,7 @@ impl SchemaService for SchemaRpc {
             )
             .await?;
         Ok(Response::new(GetSchemaResponse {
-            schema: mapping::schema_info(&value).into(),
+            schema: mapping::schema_info(&value)?.into(),
             ..Default::default()
         }))
     }
@@ -67,7 +52,6 @@ impl SchemaService for SchemaRpc {
         ctx: RequestContext,
         request: ServiceRequest<'_, CreateSchemaRequest>,
     ) -> ServiceResult<CreateSchemaResponse> {
-        let request = request.to_owned_message();
         let mut body = Map::new();
         body.insert("name".to_string(), json!(request.schema.name));
         body.insert(
@@ -91,7 +75,7 @@ impl SchemaService for SchemaRpc {
             .post(&ctx, "/schemas", Value::Object(body))
             .await?;
         Ok(Response::new(CreateSchemaResponse {
-            schema: mapping::schema_info(&value).into(),
+            schema: mapping::schema_info(&value)?.into(),
             ..Default::default()
         }))
     }
@@ -101,7 +85,6 @@ impl SchemaService for SchemaRpc {
         ctx: RequestContext,
         request: ServiceRequest<'_, UpdateSchemaRequest>,
     ) -> ServiceResult<UpdateSchemaResponse> {
-        let request = request.to_owned_message();
         let full_name = format!("{}.{}", request.schema.catalog_name, request.schema.name);
         let mut body = Map::new();
         if let Some(comment) = request.comment {
@@ -125,7 +108,7 @@ impl SchemaService for SchemaRpc {
             )
             .await?;
         Ok(Response::new(UpdateSchemaResponse {
-            schema: mapping::schema_info(&value).into(),
+            schema: mapping::schema_info(&value)?.into(),
             ..Default::default()
         }))
     }
@@ -135,7 +118,6 @@ impl SchemaService for SchemaRpc {
         ctx: RequestContext,
         request: ServiceRequest<'_, DeleteSchemaRequest>,
     ) -> ServiceResult<DeleteSchemaResponse> {
-        let request = request.to_owned_message();
         let full_name = format!("{}.{}", request.schema.catalog_name, request.schema.name);
         self.upstream
             .delete(

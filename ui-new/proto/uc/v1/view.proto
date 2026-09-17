@@ -23,7 +23,6 @@ message MetricViewInfo {
   string full_name = 4;
   repeated ColumnInfo columns = 5;
   string view_definition = 6;
-  repeated Dependency dependencies = 7;
   string comment = 8;
   Properties properties = 9;
   AuditInfo audit = 10;
@@ -72,7 +71,7 @@ message CreateViewRequest {
   }];
   string view_definition = 3 [(buf.validate.field).string = {
     min_len: 1
-    max_len: 16777215
+    max_len: 1048576
   }];
   repeated Dependency dependencies = 4 [(buf.validate.field).repeated = {
     min_items: 1
@@ -87,7 +86,9 @@ message CreateViewResponse {
   MetricViewInfo view = 1 [(buf.validate.field).required = true];
 }
 
-// DeleteViewRequest deletes a metric view through the UC tables API.
+// DeleteViewRequest deletes the UC table resource at this name. Tables share
+// the same underlying REST resource, so callers must select the correct typed
+// service before deletion.
 //
 // UC has no native table update operation, so the UI contract intentionally
 // exposes create and delete without destructive delete-and-recreate editing.

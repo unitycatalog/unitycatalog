@@ -3,10 +3,9 @@
 use std::sync::Arc;
 
 use axum::http::{header, HeaderName, HeaderValue, Method};
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum::{Json, Router};
 use tower_http::cors::CorsLayer;
-use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
 pub mod config;
@@ -61,27 +60,16 @@ async fn healthz() -> &'static str {
     "ok"
 }
 
-/// Builds the application router. The SPA (prod) is served from `web_dist` with
-/// an index.html fallback so client-side routes deep-link correctly; in dev this
-/// directory is absent and Vite serves the SPA, proxying RPCs + /config here.
+/// Builds the bridge router. Vite serves the SPA in development and Nginx serves
+/// it in containers; both proxy RPCs and `/config` to this process.
 pub fn app(state: AppState) -> Router {
-    let index = state.config.web_dist.join("index.html");
-    let spa = ServeDir::new(&state.config.web_dist).fallback(ServeFile::new(index));
     let rpc = services::router(state.clone()).into_axum_service();
 
     let mut router = Router::new()
-        .route("/uc.v1.UnityProxyService/Call", post(proxy::call_handler))
         .route("/config", get(config_handler))
         .route("/healthz", get(healthz))
-        .route_service("/uc.v1.CatalogService/{method}", rpc.clone())
-        .route_service("/uc.v1.SchemaService/{method}", rpc.clone())
-        .route_service("/uc.v1.TableService/{method}", rpc.clone())
-        .route_service("/uc.v1.VolumeService/{method}", rpc.clone())
-        .route_service("/uc.v1.FunctionService/{method}", rpc.clone())
-        .route_service("/uc.v1.ModelService/{method}", rpc.clone())
-        .route_service("/uc.v1.ViewService/{method}", rpc)
-        .with_state(state.clone())
-        .fallback_service(spa);
+        .route_service("/uc.v1.{*rpc}", rpc)
+        .with_state(state.clone());
 
     if let Some(cors) = build_cors(&state.config.allowed_origins) {
         router = router.layer(cors);

@@ -6,47 +6,13 @@ import "buf/validate/validate.proto";
 import "uc/v1/common.proto";
 
 // FunctionLanguage is the language family of a UC function.
-enum FunctionLanguage {
-  FUNCTION_LANGUAGE_UNSPECIFIED = 0;
-  FUNCTION_LANGUAGE_SQL = 1;
-  FUNCTION_LANGUAGE_EXTERNAL = 2;
-}
-
-// FunctionSqlDataAccess describes the SQL data accessed by a function.
-enum FunctionSqlDataAccess {
-  FUNCTION_SQL_DATA_ACCESS_UNSPECIFIED = 0;
-  FUNCTION_SQL_DATA_ACCESS_CONTAINS_SQL = 1;
-  FUNCTION_SQL_DATA_ACCESS_READS_SQL_DATA = 2;
-  FUNCTION_SQL_DATA_ACCESS_NO_SQL = 3;
-}
-
-// FunctionParameterMode is the direction of a function parameter.
-enum FunctionParameterMode {
-  FUNCTION_PARAMETER_MODE_UNSPECIFIED = 0;
-  FUNCTION_PARAMETER_MODE_IN = 1;
-}
-
-// FunctionParameterType distinguishes scalar parameters from table columns.
-enum FunctionParameterType {
-  FUNCTION_PARAMETER_TYPE_UNSPECIFIED = 0;
-  FUNCTION_PARAMETER_TYPE_PARAM = 1;
-  FUNCTION_PARAMETER_TYPE_COLUMN = 2;
-}
-
 // FunctionParameterInfo describes one function parameter.
 message FunctionParameterInfo {
   string name = 1;
   string type_text = 2;
-  string type_json = 3;
   ColumnTypeName type_name = 4;
   int32 position = 5;
-  string parameter_default = 6;
   string comment = 7;
-  optional int32 type_precision = 8;
-  optional int32 type_scale = 9;
-  string type_interval_type = 10;
-  FunctionParameterMode parameter_mode = 11;
-  FunctionParameterType parameter_type = 12;
 }
 
 // FunctionParameterInput is the compact parameter shape accepted from the UI.
@@ -84,7 +50,6 @@ message FunctionSummary {
   string name = 3;
   string full_name = 4;
   ColumnTypeName data_type = 5;
-  FunctionLanguage language = 6;
   string comment = 7;
   AuditInfo audit = 8;
 }
@@ -98,18 +63,10 @@ message FunctionInfo {
   repeated FunctionParameterInfo input_parameters = 5;
   ColumnTypeName data_type = 6;
   string full_data_type = 7;
-  FunctionLanguage language = 8;
   string routine_definition = 9;
-  FunctionSqlDataAccess sql_data_access = 10;
-  optional bool is_deterministic = 11;
-  optional bool is_null_call = 12;
-  string external_language = 13;
   string comment = 14;
-  string properties_json = 15;
   AuditInfo audit = 16;
   string id = 17;
-  repeated FunctionParameterInfo return_parameters = 18;
-  repeated Dependency routine_dependencies = 19;
 }
 
 // ListFunctionsRequest lists functions in a schema.
@@ -172,7 +129,7 @@ message CreateFunctionRequest {
   }];
   string routine_definition = 4 [(buf.validate.field).string = {
     min_len: 1
-    max_len: 16777215
+    max_len: 1048576
   }];
   optional string comment = 5 [(buf.validate.field).string.max_len = 65536];
 }

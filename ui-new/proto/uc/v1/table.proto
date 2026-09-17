@@ -55,8 +55,6 @@ message TableInfo {
   Properties properties = 10;
   AuditInfo audit = 11;
   string id = 12;
-  string view_definition = 13;
-  repeated Dependency dependencies = 14;
 }
 
 // ListTablesRequest lists non-metric-view tables in a schema.
@@ -125,7 +123,9 @@ message CreateTableResponse {
   TableInfo table = 1 [(buf.validate.field).required = true];
 }
 
-// DeleteTableRequest deletes a non-metric-view table.
+// DeleteTableRequest deletes the UC table resource at this name. Metric views
+// share the same underlying REST resource, so callers must select the correct
+// typed service before deletion.
 message DeleteTableRequest {
   SchemaObjectRef table = 1 [(buf.validate.field).required = true];
 }

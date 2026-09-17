@@ -1,36 +1,24 @@
 use connectrpc::{ConnectError, RequestContext, Response, ServiceRequest, ServiceResult};
 use serde_json::{json, Map, Value};
 
-use super::{column_value, data_source_format, object_full_name, page_query, properties_value};
+use super::{
+    column_value, data_source_format, object_full_name, page_query, properties_value, UiRpc,
+};
 use crate::mapping;
 use crate::proto::uc::v1::*;
-use crate::upstream::{path_segment, Upstream};
-use crate::AppState;
-
-pub(crate) struct TableRpc {
-    upstream: Upstream,
-}
-
-impl TableRpc {
-    pub(crate) fn new(state: AppState) -> Self {
-        Self {
-            upstream: Upstream::new(state),
-        }
-    }
-}
+use crate::upstream::path_segment;
 
 #[protovalidate_buffa::connect_impl]
-impl TableService for TableRpc {
+impl TableService for UiRpc {
     async fn list_tables(
         &self,
         ctx: RequestContext,
         request: ServiceRequest<'_, ListTablesRequest>,
     ) -> ServiceResult<ListTablesResponse> {
-        let request = request.to_owned_message();
         let mut query = page_query(&request.page);
         query.extend([
-            ("catalog_name", request.schema.catalog_name.clone()),
-            ("schema_name", request.schema.name.clone()),
+            ("catalog_name", request.schema.catalog_name.to_string()),
+            ("schema_name", request.schema.name.to_string()),
             ("omit_columns", "true".to_string()),
             ("omit_properties", "true".to_string()),
         ]);
@@ -39,7 +27,7 @@ impl TableService for TableRpc {
             .iter()
             .filter(|table| table.get("table_type").and_then(Value::as_str) != Some("METRIC_VIEW"))
             .map(mapping::table_summary)
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Response::new(ListTablesResponse {
             tables,
             page: mapping::page(&value).into(),
@@ -52,7 +40,6 @@ impl TableService for TableRpc {
         ctx: RequestContext,
         request: ServiceRequest<'_, GetTableRequest>,
     ) -> ServiceResult<GetTableResponse> {
-        let request = request.to_owned_message();
         let full_name = object_full_name(&request.table);
         let value = self
             .upstream
@@ -68,7 +55,7 @@ impl TableService for TableRpc {
             )));
         }
         Ok(Response::new(GetTableResponse {
-            table: mapping::table_info(&value).into(),
+            table: mapping::table_info(&value)?.into(),
             ..Default::default()
         }))
     }
@@ -78,7 +65,6 @@ impl TableService for TableRpc {
         ctx: RequestContext,
         request: ServiceRequest<'_, CreateTableRequest>,
     ) -> ServiceResult<CreateTableResponse> {
-        let request = request.to_owned_message();
         let columns = request
             .columns
             .iter()
@@ -116,7 +102,7 @@ impl TableService for TableRpc {
             .post(&ctx, "/tables", Value::Object(body))
             .await?;
         Ok(Response::new(CreateTableResponse {
-            table: mapping::table_info(&value).into(),
+            table: mapping::table_info(&value)?.into(),
             ..Default::default()
         }))
     }
@@ -126,21 +112,7 @@ impl TableService for TableRpc {
         ctx: RequestContext,
         request: ServiceRequest<'_, DeleteTableRequest>,
     ) -> ServiceResult<DeleteTableResponse> {
-        let request = request.to_owned_message();
         let full_name = object_full_name(&request.table);
-        let value = self
-            .upstream
-            .get(
-                &ctx,
-                &format!("/tables/{}", path_segment(&full_name)),
-                Vec::new(),
-            )
-            .await?;
-        if value.get("table_type").and_then(Value::as_str) == Some("METRIC_VIEW") {
-            return Err(ConnectError::not_found(format!(
-                "Table not found: {full_name}"
-            )));
-        }
         self.upstream
             .delete(
                 &ctx,

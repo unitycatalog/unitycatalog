@@ -13,7 +13,7 @@ async fn main() {
         )
         .init();
 
-    let config = Config::from_env();
+    let config = Config::from_env().expect("invalid server configuration");
     let addr: SocketAddr = ([0, 0, 0, 0], config.port).into();
 
     tracing::info!(

@@ -22,7 +22,6 @@ fn build_app(uc_server: String) -> axum::Router {
             okta_enabled: false,
             keycloak_enabled: false,
             allowed_origins: vec![],
-            web_dist: std::path::PathBuf::from("/nonexistent-web-dist"),
         }),
     })
 }
@@ -468,33 +467,22 @@ async fn list_tables_omits_metric_views() {
 }
 
 #[tokio::test]
-async fn delete_services_refuse_the_other_table_type() {
+async fn table_and_view_deletes_use_the_shared_table_resource_directly() {
     let uc = MockServer::start().await;
-    Mock::given(method("GET"))
+    Mock::given(method("DELETE"))
         .and(path(
             "/api/2.1/unity-catalog/tables/main%2Edefault%2Emetrics",
         ))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "name": "metrics",
-            "table_type": "METRIC_VIEW"
-        })))
-        .expect(1)
-        .mount(&uc)
-        .await;
-    Mock::given(method("GET"))
-        .and(path(
-            "/api/2.1/unity-catalog/tables/main%2Edefault%2Eevents",
-        ))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "name": "events",
-            "table_type": "MANAGED"
-        })))
+        .respond_with(ResponseTemplate::new(200))
         .expect(1)
         .mount(&uc)
         .await;
     Mock::given(method("DELETE"))
+        .and(path(
+            "/api/2.1/unity-catalog/tables/main%2Edefault%2Eevents",
+        ))
         .respond_with(ResponseTemplate::new(200))
-        .expect(0)
+        .expect(1)
         .mount(&uc)
         .await;
     let app = build_app(uc.uri());
@@ -510,11 +498,7 @@ async fn delete_services_refuse_the_other_table_type() {
         ))
         .await
         .unwrap();
-    assert_eq!(table_response.status(), StatusCode::NOT_FOUND);
-    assert_eq!(
-        body_json(table_response).await["message"],
-        "Table not found: main.default.metrics"
-    );
+    assert_eq!(table_response.status(), StatusCode::OK);
 
     let view_response = app
         .oneshot(rpc_request(
@@ -526,11 +510,7 @@ async fn delete_services_refuse_the_other_table_type() {
         ))
         .await
         .unwrap();
-    assert_eq!(view_response.status(), StatusCode::NOT_FOUND);
-    assert_eq!(
-        body_json(view_response).await["message"],
-        "Metric view not found: main.default.events"
-    );
+    assert_eq!(view_response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -729,7 +709,6 @@ async fn upstream_body_timeout_maps_to_deadline_exceeded() {
             okta_enabled: false,
             keycloak_enabled: false,
             allowed_origins: vec![],
-            web_dist: std::path::PathBuf::from("/nonexistent-web-dist"),
         }),
     });
 

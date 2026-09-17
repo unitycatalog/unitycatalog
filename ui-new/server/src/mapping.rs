@@ -5,18 +5,20 @@ use serde_json::Value;
 
 use crate::proto::uc::v1::*;
 
-pub(crate) fn catalog_summary(value: &Value) -> CatalogSummary {
-    CatalogSummary {
-        name: string(value, "name"),
+type MappingResult<T> = Result<T, ConnectError>;
+
+pub(crate) fn catalog_summary(value: &Value) -> MappingResult<CatalogSummary> {
+    Ok(CatalogSummary {
+        name: required_string(value, "name")?,
         comment: string(value, "comment"),
         audit: audit(value).into(),
         ..Default::default()
-    }
+    })
 }
 
-pub(crate) fn catalog_info(value: &Value) -> CatalogInfo {
-    CatalogInfo {
-        name: string(value, "name"),
+pub(crate) fn catalog_info(value: &Value) -> MappingResult<CatalogInfo> {
+    Ok(CatalogInfo {
+        name: required_string(value, "name")?,
         comment: string(value, "comment"),
         properties: properties(value).into(),
         audit: audit(value).into(),
@@ -24,25 +26,29 @@ pub(crate) fn catalog_info(value: &Value) -> CatalogInfo {
         storage_root: string(value, "storage_root"),
         storage_location: string(value, "storage_location"),
         ..Default::default()
-    }
+    })
 }
 
-pub(crate) fn schema_summary(value: &Value) -> SchemaSummary {
-    SchemaSummary {
-        catalog_name: string(value, "catalog_name"),
-        name: string(value, "name"),
-        full_name: schema_full_name(value),
+pub(crate) fn schema_summary(value: &Value) -> MappingResult<SchemaSummary> {
+    let catalog_name = required_string(value, "catalog_name")?;
+    let name = required_string(value, "name")?;
+    Ok(SchemaSummary {
+        full_name: schema_full_name(value, &catalog_name, &name),
+        catalog_name,
+        name,
         comment: string(value, "comment"),
         audit: audit(value).into(),
         ..Default::default()
-    }
+    })
 }
 
-pub(crate) fn schema_info(value: &Value) -> SchemaInfo {
-    SchemaInfo {
-        catalog_name: string(value, "catalog_name"),
-        name: string(value, "name"),
-        full_name: schema_full_name(value),
+pub(crate) fn schema_info(value: &Value) -> MappingResult<SchemaInfo> {
+    let catalog_name = required_string(value, "catalog_name")?;
+    let name = required_string(value, "name")?;
+    Ok(SchemaInfo {
+        full_name: schema_full_name(value, &catalog_name, &name),
+        catalog_name,
+        name,
         comment: string(value, "comment"),
         properties: properties(value).into(),
         audit: audit(value).into(),
@@ -50,15 +56,16 @@ pub(crate) fn schema_info(value: &Value) -> SchemaInfo {
         storage_root: string(value, "storage_root"),
         storage_location: string(value, "storage_location"),
         ..Default::default()
-    }
+    })
 }
 
-pub(crate) fn table_summary(value: &Value) -> TableSummary {
-    TableSummary {
-        catalog_name: string(value, "catalog_name"),
-        schema_name: string(value, "schema_name"),
-        name: string(value, "name"),
-        full_name: table_full_name(value),
+pub(crate) fn table_summary(value: &Value) -> MappingResult<TableSummary> {
+    let (catalog_name, schema_name, name) = object_identity(value, "name")?;
+    Ok(TableSummary {
+        full_name: object_full_name(value, &catalog_name, &schema_name, &name),
+        catalog_name,
+        schema_name,
+        name,
         table_type: table_type(value.get("table_type").and_then(Value::as_str)),
         data_source_format: data_source_format(
             value.get("data_source_format").and_then(Value::as_str),
@@ -66,159 +73,165 @@ pub(crate) fn table_summary(value: &Value) -> TableSummary {
         comment: string(value, "comment"),
         audit: audit(value).into(),
         ..Default::default()
-    }
+    })
 }
 
-pub(crate) fn table_info(value: &Value) -> TableInfo {
-    TableInfo {
-        catalog_name: string(value, "catalog_name"),
-        schema_name: string(value, "schema_name"),
-        name: string(value, "name"),
-        full_name: table_full_name(value),
+pub(crate) fn table_info(value: &Value) -> MappingResult<TableInfo> {
+    let (catalog_name, schema_name, name) = object_identity(value, "name")?;
+    Ok(TableInfo {
+        full_name: object_full_name(value, &catalog_name, &schema_name, &name),
+        catalog_name,
+        schema_name,
+        name,
         table_type: table_type(value.get("table_type").and_then(Value::as_str)),
         data_source_format: data_source_format(
             value.get("data_source_format").and_then(Value::as_str),
         ),
-        columns: array(value, "columns").iter().map(column_info).collect(),
+        columns: array(value, "columns")
+            .iter()
+            .map(column_info)
+            .collect::<MappingResult<_>>()?,
         storage_location: string(value, "storage_location"),
         comment: string(value, "comment"),
         properties: properties(value).into(),
         audit: audit(value).into(),
         id: first_string(value, &["id", "table_id"]),
-        view_definition: string(value, "view_definition"),
-        dependencies: dependencies(value.get("view_dependencies")),
         ..Default::default()
-    }
+    })
 }
 
-pub(crate) fn metric_view_summary(value: &Value) -> MetricViewSummary {
-    MetricViewSummary {
-        catalog_name: string(value, "catalog_name"),
-        schema_name: string(value, "schema_name"),
-        name: string(value, "name"),
-        full_name: table_full_name(value),
+pub(crate) fn metric_view_summary(value: &Value) -> MappingResult<MetricViewSummary> {
+    let (catalog_name, schema_name, name) = object_identity(value, "name")?;
+    Ok(MetricViewSummary {
+        full_name: object_full_name(value, &catalog_name, &schema_name, &name),
+        catalog_name,
+        schema_name,
+        name,
         comment: string(value, "comment"),
         audit: audit(value).into(),
         ..Default::default()
-    }
+    })
 }
 
-pub(crate) fn metric_view_info(value: &Value) -> MetricViewInfo {
-    MetricViewInfo {
-        catalog_name: string(value, "catalog_name"),
-        schema_name: string(value, "schema_name"),
-        name: string(value, "name"),
-        full_name: table_full_name(value),
-        columns: array(value, "columns").iter().map(column_info).collect(),
+pub(crate) fn metric_view_info(value: &Value) -> MappingResult<MetricViewInfo> {
+    let (catalog_name, schema_name, name) = object_identity(value, "name")?;
+    Ok(MetricViewInfo {
+        full_name: object_full_name(value, &catalog_name, &schema_name, &name),
+        catalog_name,
+        schema_name,
+        name,
+        columns: array(value, "columns")
+            .iter()
+            .map(column_info)
+            .collect::<MappingResult<_>>()?,
         view_definition: string(value, "view_definition"),
-        dependencies: dependencies(value.get("view_dependencies")),
         comment: string(value, "comment"),
         properties: properties(value).into(),
         audit: audit(value).into(),
         id: first_string(value, &["id", "table_id"]),
         ..Default::default()
-    }
+    })
 }
 
-pub(crate) fn volume_summary(value: &Value) -> VolumeSummary {
-    VolumeSummary {
-        catalog_name: string(value, "catalog_name"),
-        schema_name: string(value, "schema_name"),
-        name: string(value, "name"),
-        full_name: string(value, "full_name"),
+pub(crate) fn volume_summary(value: &Value) -> MappingResult<VolumeSummary> {
+    let (catalog_name, schema_name, name) = object_identity(value, "name")?;
+    Ok(VolumeSummary {
+        full_name: object_full_name(value, &catalog_name, &schema_name, &name),
+        catalog_name,
+        schema_name,
+        name,
         volume_type: volume_type(value.get("volume_type").and_then(Value::as_str)),
         comment: string(value, "comment"),
         audit: audit(value).into(),
         ..Default::default()
-    }
+    })
 }
 
-pub(crate) fn volume_info(value: &Value) -> VolumeInfo {
-    VolumeInfo {
-        catalog_name: string(value, "catalog_name"),
-        schema_name: string(value, "schema_name"),
-        name: string(value, "name"),
-        full_name: string(value, "full_name"),
+pub(crate) fn volume_info(value: &Value) -> MappingResult<VolumeInfo> {
+    let (catalog_name, schema_name, name) = object_identity(value, "name")?;
+    Ok(VolumeInfo {
+        full_name: object_full_name(value, &catalog_name, &schema_name, &name),
+        catalog_name,
+        schema_name,
+        name,
         volume_type: volume_type(value.get("volume_type").and_then(Value::as_str)),
         storage_location: string(value, "storage_location"),
         comment: string(value, "comment"),
         audit: audit(value).into(),
         id: first_string(value, &["id", "volume_id"]),
         ..Default::default()
-    }
+    })
 }
 
-pub(crate) fn function_summary(value: &Value) -> FunctionSummary {
-    FunctionSummary {
-        catalog_name: string(value, "catalog_name"),
-        schema_name: string(value, "schema_name"),
-        name: string(value, "name"),
-        full_name: string(value, "full_name"),
+pub(crate) fn function_summary(value: &Value) -> MappingResult<FunctionSummary> {
+    let (catalog_name, schema_name, name) = object_identity(value, "name")?;
+    Ok(FunctionSummary {
+        full_name: object_full_name(value, &catalog_name, &schema_name, &name),
+        catalog_name,
+        schema_name,
+        name,
         data_type: column_type(value.get("data_type").and_then(Value::as_str)),
-        language: function_language(value.get("routine_body").and_then(Value::as_str)),
         comment: string(value, "comment"),
         audit: audit(value).into(),
         ..Default::default()
-    }
+    })
 }
 
-pub(crate) fn function_info(value: &Value) -> FunctionInfo {
-    FunctionInfo {
-        catalog_name: string(value, "catalog_name"),
-        schema_name: string(value, "schema_name"),
-        name: string(value, "name"),
-        full_name: string(value, "full_name"),
-        input_parameters: parameters(value.get("input_params")),
+pub(crate) fn function_info(value: &Value) -> MappingResult<FunctionInfo> {
+    let (catalog_name, schema_name, name) = object_identity(value, "name")?;
+    Ok(FunctionInfo {
+        full_name: object_full_name(value, &catalog_name, &schema_name, &name),
+        catalog_name,
+        schema_name,
+        name,
+        input_parameters: parameters(value.get("input_params"))?,
         data_type: column_type(value.get("data_type").and_then(Value::as_str)),
         full_data_type: string(value, "full_data_type"),
-        language: function_language(value.get("routine_body").and_then(Value::as_str)),
         routine_definition: string(value, "routine_definition"),
-        sql_data_access: sql_data_access(value.get("sql_data_access").and_then(Value::as_str)),
-        is_deterministic: optional_bool(value, "is_deterministic"),
-        is_null_call: optional_bool(value, "is_null_call"),
-        external_language: string(value, "external_language"),
         comment: string(value, "comment"),
-        properties_json: string(value, "properties"),
         audit: audit(value).into(),
         id: first_string(value, &["id", "function_id"]),
-        return_parameters: parameters(value.get("return_params")),
-        routine_dependencies: dependencies(value.get("routine_dependencies")),
         ..Default::default()
-    }
+    })
 }
 
-pub(crate) fn model_summary(value: &Value) -> RegisteredModelSummary {
-    RegisteredModelSummary {
-        catalog_name: string(value, "catalog_name"),
-        schema_name: string(value, "schema_name"),
-        name: string(value, "name"),
-        full_name: string(value, "full_name"),
+pub(crate) fn model_summary(value: &Value) -> MappingResult<RegisteredModelSummary> {
+    let (catalog_name, schema_name, name) = object_identity(value, "name")?;
+    Ok(RegisteredModelSummary {
+        full_name: object_full_name(value, &catalog_name, &schema_name, &name),
+        catalog_name,
+        schema_name,
+        name,
         comment: string(value, "comment"),
         audit: audit(value).into(),
         ..Default::default()
-    }
+    })
 }
 
-pub(crate) fn model_info(value: &Value) -> RegisteredModelInfo {
-    RegisteredModelInfo {
-        catalog_name: string(value, "catalog_name"),
-        schema_name: string(value, "schema_name"),
-        name: string(value, "name"),
-        full_name: string(value, "full_name"),
+pub(crate) fn model_info(value: &Value) -> MappingResult<RegisteredModelInfo> {
+    let (catalog_name, schema_name, name) = object_identity(value, "name")?;
+    Ok(RegisteredModelInfo {
+        full_name: object_full_name(value, &catalog_name, &schema_name, &name),
+        catalog_name,
+        schema_name,
+        name,
         storage_location: string(value, "storage_location"),
         comment: string(value, "comment"),
         audit: audit(value).into(),
         id: first_string(value, &["id", "registered_model_id"]),
         ..Default::default()
-    }
+    })
 }
 
-pub(crate) fn model_version_info(value: &Value) -> ModelVersionInfo {
-    ModelVersionInfo {
-        catalog_name: string(value, "catalog_name"),
-        schema_name: string(value, "schema_name"),
-        model_name: first_string(value, &["model_name", "name"]),
-        version: int64(value, "version").unwrap_or_default(),
+pub(crate) fn model_version_info(value: &Value) -> MappingResult<ModelVersionInfo> {
+    let version = int64(value, "version")
+        .filter(|version| *version > 0)
+        .ok_or_else(|| invalid_response("version must be a positive integer"))?;
+    Ok(ModelVersionInfo {
+        catalog_name: required_string(value, "catalog_name")?,
+        schema_name: required_string(value, "schema_name")?,
+        model_name: first_required_string(value, &["model_name", "name"])?,
+        version,
         source: string(value, "source"),
         run_id: string(value, "run_id"),
         status: model_version_status(value.get("status").and_then(Value::as_str)),
@@ -227,7 +240,7 @@ pub(crate) fn model_version_info(value: &Value) -> ModelVersionInfo {
         audit: audit(value).into(),
         id: first_string(value, &["id", "model_version_id"]),
         ..Default::default()
-    }
+    })
 }
 
 pub(crate) fn page(value: &Value) -> PageResponse {
@@ -264,25 +277,20 @@ fn timestamp(milliseconds: Option<i64>) -> Option<Timestamp> {
     })
 }
 
-fn schema_full_name(value: &Value) -> String {
+fn schema_full_name(value: &Value, catalog_name: &str, name: &str) -> String {
     let full_name = string(value, "full_name");
     if !full_name.is_empty() {
         return full_name;
     }
-    [string(value, "catalog_name"), string(value, "name")].join(".")
+    format!("{catalog_name}.{name}")
 }
 
-fn table_full_name(value: &Value) -> String {
+fn object_full_name(value: &Value, catalog_name: &str, schema_name: &str, name: &str) -> String {
     let full_name = string(value, "full_name");
     if !full_name.is_empty() {
         return full_name;
     }
-    [
-        string(value, "catalog_name"),
-        string(value, "schema_name"),
-        string(value, "name"),
-    ]
-    .join(".")
+    format!("{catalog_name}.{schema_name}.{name}")
 }
 
 fn properties(value: &Value) -> Properties {
@@ -304,75 +312,33 @@ fn properties(value: &Value) -> Properties {
     }
 }
 
-fn column_info(value: &Value) -> ColumnInfo {
-    ColumnInfo {
-        name: string(value, "name"),
+fn column_info(value: &Value) -> MappingResult<ColumnInfo> {
+    Ok(ColumnInfo {
+        name: required_string(value, "name")?,
         type_text: optional_string(value, "type_text"),
-        type_json: optional_string(value, "type_json"),
         type_name: column_type(value.get("type_name").and_then(Value::as_str)),
-        type_precision: int32(value, "type_precision"),
-        type_scale: int32(value, "type_scale"),
-        type_interval_type: optional_string(value, "type_interval_type"),
         position: int32(value, "position"),
         comment: optional_string(value, "comment"),
         nullable: optional_bool(value, "nullable"),
-        partition_index: int32(value, "partition_index"),
         ..Default::default()
-    }
+    })
 }
 
-fn parameters(value: Option<&Value>) -> Vec<FunctionParameterInfo> {
+fn parameters(value: Option<&Value>) -> MappingResult<Vec<FunctionParameterInfo>> {
     value
         .and_then(|value| value.get("parameters"))
         .and_then(Value::as_array)
         .map(|parameters| parameters.iter().map(parameter).collect())
-        .unwrap_or_default()
+        .unwrap_or_else(|| Ok(Vec::new()))
 }
 
-fn parameter(value: &Value) -> FunctionParameterInfo {
-    FunctionParameterInfo {
-        name: string(value, "name"),
+fn parameter(value: &Value) -> MappingResult<FunctionParameterInfo> {
+    Ok(FunctionParameterInfo {
+        name: required_string(value, "name")?,
         type_text: string(value, "type_text"),
-        type_json: string(value, "type_json"),
         type_name: column_type(value.get("type_name").and_then(Value::as_str)),
         position: int32(value, "position").unwrap_or_default(),
-        parameter_default: string(value, "parameter_default"),
         comment: string(value, "comment"),
-        type_precision: int32(value, "type_precision"),
-        type_scale: int32(value, "type_scale"),
-        type_interval_type: string(value, "type_interval_type"),
-        parameter_mode: parameter_mode(value.get("parameter_mode").and_then(Value::as_str)),
-        parameter_type: parameter_type(value.get("parameter_type").and_then(Value::as_str)),
-        ..Default::default()
-    }
-}
-
-fn dependencies(value: Option<&Value>) -> Vec<Dependency> {
-    value
-        .and_then(|value| value.get("dependencies"))
-        .and_then(Value::as_array)
-        .map(|dependencies| dependencies.iter().filter_map(dependency).collect())
-        .unwrap_or_default()
-}
-
-fn dependency(value: &Value) -> Option<Dependency> {
-    let target = if let Some(name) = value
-        .get("table")
-        .and_then(|table| table.get("table_full_name"))
-        .and_then(Value::as_str)
-    {
-        dependency::Target::TableFullName(name.to_string())
-    } else if let Some(name) = value
-        .get("function")
-        .and_then(|function| function.get("function_full_name"))
-        .and_then(Value::as_str)
-    {
-        dependency::Target::FunctionFullName(name.to_string())
-    } else {
-        return None;
-    };
-    Some(Dependency {
-        target: Some(target),
         ..Default::default()
     })
 }
@@ -410,42 +376,6 @@ fn volume_type(value: Option<&str>) -> EnumValue<VolumeType> {
         Some("MANAGED") => VolumeType::Managed,
         Some("EXTERNAL") => VolumeType::External,
         _ => VolumeType::Unspecified,
-    }
-    .into()
-}
-
-fn function_language(value: Option<&str>) -> EnumValue<FunctionLanguage> {
-    match value {
-        Some("SQL") => FunctionLanguage::Sql,
-        Some("EXTERNAL") => FunctionLanguage::External,
-        _ => FunctionLanguage::Unspecified,
-    }
-    .into()
-}
-
-fn sql_data_access(value: Option<&str>) -> EnumValue<FunctionSqlDataAccess> {
-    match value {
-        Some("CONTAINS_SQL") => FunctionSqlDataAccess::ContainsSql,
-        Some("READS_SQL_DATA") => FunctionSqlDataAccess::ReadsSqlData,
-        Some("NO_SQL") => FunctionSqlDataAccess::NoSql,
-        _ => FunctionSqlDataAccess::Unspecified,
-    }
-    .into()
-}
-
-fn parameter_mode(value: Option<&str>) -> EnumValue<FunctionParameterMode> {
-    match value {
-        Some("IN") => FunctionParameterMode::In,
-        _ => FunctionParameterMode::Unspecified,
-    }
-    .into()
-}
-
-fn parameter_type(value: Option<&str>) -> EnumValue<FunctionParameterType> {
-    match value {
-        Some("PARAM") => FunctionParameterType::Param,
-        Some("COLUMN") => FunctionParameterType::Column,
-        _ => FunctionParameterType::Unspecified,
     }
     .into()
 }
@@ -525,8 +455,85 @@ fn string(value: &Value, key: &str) -> String {
     optional_string(value, key).unwrap_or_default()
 }
 
+fn required_string(value: &Value, key: &str) -> MappingResult<String> {
+    optional_string(value, key)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| invalid_response(&format!("missing or invalid {key}")))
+}
+
 fn first_string(value: &Value, keys: &[&str]) -> String {
     keys.iter()
         .find_map(|key| optional_string(value, key))
         .unwrap_or_default()
+}
+
+fn first_required_string(value: &Value, keys: &[&str]) -> MappingResult<String> {
+    keys.iter()
+        .find_map(|key| optional_string(value, key).filter(|value| !value.is_empty()))
+        .ok_or_else(|| invalid_response(&format!("missing or invalid {}", keys.join("/"))))
+}
+
+fn object_identity(value: &Value, name_key: &str) -> MappingResult<(String, String, String)> {
+    Ok((
+        required_string(value, "catalog_name")?,
+        required_string(value, "schema_name")?,
+        required_string(value, name_key)?,
+    ))
+}
+
+fn invalid_response(detail: &str) -> ConnectError {
+    ConnectError::internal(format!(
+        "Invalid response from Unity Catalog server: {detail}"
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn rejects_missing_object_identity() {
+        let error = table_info(&json!({
+            "catalog_name": "catalog",
+            "schema_name": "schema"
+        }))
+        .unwrap_err();
+
+        assert!(error
+            .message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("missing or invalid name"));
+    }
+
+    #[test]
+    fn rejects_non_positive_model_version() {
+        let error = model_version_info(&json!({
+            "catalog_name": "catalog",
+            "schema_name": "schema",
+            "model_name": "model",
+            "version": 0
+        }))
+        .unwrap_err();
+
+        assert!(error
+            .message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("version must be a positive integer"));
+    }
+
+    #[test]
+    fn derives_full_name_from_valid_identity() {
+        let table = table_summary(&json!({
+            "catalog_name": "catalog",
+            "schema_name": "schema",
+            "name": "table"
+        }))
+        .unwrap();
+
+        assert_eq!(table.full_name, "catalog.schema.table");
+    }
 }

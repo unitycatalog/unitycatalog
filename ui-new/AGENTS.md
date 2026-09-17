@@ -11,7 +11,8 @@ the legacy `ui/` (CRA + Ant Design) at the repo root; do not conflate the two.
   (file-based) + TanStack Query, connect-web + connect-query.
 - `server/` — Rust axum bridge. Typed domain Connect services translate to UC
   REST; `UnityProxyService/Call` remains for control-plane endpoints. It also
-  serves `/config`, `/healthz`, and the built SPA.
+  serves `/config` and `/healthz`; Vite (development) or a separate web server
+  serves the SPA.
 - `proto/` — typed catalog-domain RPCs plus the generic control-plane proxy.
   `buf.gen.yaml` generates TS clients into `web/src/gen` (`bun run generate`
   from `web/`).
@@ -51,8 +52,8 @@ settings can differ, so UC may still reject the operation.
 ## Common tasks
 
 - Change the bridge contract: edit `proto/uc/v1/proxy.proto`, run
-  `bun run generate` in `web/`, and update the Rust `CallRequest`/`CallResponse`
-  in `server/src/proxy.rs` to match (fields use proto3 JSON camelCase).
+  `bun run generate` in `web/`, and update the generated-service implementation
+  in `server/src/proxy.rs` (fields use proto3 JSON camelCase).
 - Change a typed domain contract: edit the matching file under
   `proto/uc/v1/`, keep its `buf.validate` rules aligned with the UC API, then
   run `bun run proto:check` and `bun run generate` from `web/`. Update the translation in

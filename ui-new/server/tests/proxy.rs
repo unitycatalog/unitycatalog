@@ -17,8 +17,6 @@ fn test_config(uc_server: String) -> Config {
         okta_enabled: false,
         keycloak_enabled: true,
         allowed_origins: vec![],
-        // A path that certainly does not exist, so the SPA fallback stays inert.
-        web_dist: std::path::PathBuf::from("/nonexistent-web-dist"),
     }
 }
 
@@ -93,7 +91,9 @@ async fn call_maps_non_2xx_to_ok_false() {
     assert_eq!(resp.status(), StatusCode::OK);
     let json = body_json(resp).await;
     assert_eq!(json["httpStatus"], 404);
-    assert_eq!(json["ok"], false);
+    // Proto JSON omits fields holding their default value; clients decode the
+    // absent field as false.
+    assert!(json.get("ok").is_none());
 }
 
 #[tokio::test]
@@ -115,7 +115,8 @@ async fn call_forwards_cookie_auth_and_propagates_set_cookie() {
         .and(wiremock::matchers::body_string("grant_type=x"))
         .respond_with(
             ResponseTemplate::new(200)
-                .insert_header("set-cookie", "UC_SESSION=fresh; HttpOnly; Path=/")
+                .append_header("set-cookie", "UC_SESSION=fresh; HttpOnly; Path=/")
+                .append_header("set-cookie", "UC_CSRF=fresh; Path=/")
                 .set_body_string(r#"{"access_token":"t"}"#),
         )
         .mount(&uc)
@@ -142,8 +143,15 @@ async fn call_forwards_cookie_auth_and_propagates_set_cookie() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     // The bridge copied UC's Set-Cookie back onto the (same-origin) response.
-    let set_cookie = resp.headers().get(header::SET_COOKIE).unwrap();
-    assert!(set_cookie.to_str().unwrap().contains("UC_SESSION=fresh"));
+    let set_cookies: Vec<_> = resp
+        .headers()
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .map(|value| value.to_str().unwrap())
+        .collect();
+    assert_eq!(set_cookies.len(), 2);
+    assert!(set_cookies[0].contains("UC_SESSION=fresh"));
+    assert!(set_cookies[1].contains("UC_CSRF=fresh"));
 }
 
 #[tokio::test]
@@ -159,19 +167,33 @@ async fn call_requires_path() {
 }
 
 #[tokio::test]
-async fn call_rejects_client_selected_upstream() {
-    let app = build_app("http://127.0.0.1:1".to_string());
-    let resp = app
+async fn call_ignores_the_removed_server_url_and_token_fields() {
+    // Older clients sent these. The call must still go to the configured UC,
+    // and a body token must not become an Authorization header.
+    let uc = MockServer::start().await;
+    Mock::given(header_exists("authorization"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&uc)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/1.0/unity-control/scim2/Me"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+        .expect(1)
+        .mount(&uc)
+        .await;
+
+    let resp = build_app(uc.uri())
         .oneshot(call_request(serde_json::json!({
             "serverUrl": "http://169.254.169.254",
+            "token": "jwt",
             "method": "GET",
             "path": "/api/1.0/unity-control/scim2/Me"
         })))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    let json = body_json(resp).await;
-    assert_eq!(json["code"], "invalid_argument");
+
+    assert_eq!(body_json(resp).await["httpStatus"], 200);
 }
 
 #[tokio::test]
@@ -199,21 +221,6 @@ async fn call_does_not_add_the_csrf_header() {
         .unwrap();
 
     assert_eq!(body_json(resp).await["httpStatus"], 200);
-}
-
-#[tokio::test]
-async fn call_rejects_a_body_token() {
-    let app = build_app("http://127.0.0.1:1".to_string());
-    let resp = app
-        .oneshot(call_request(serde_json::json!({
-            "token": "jwt",
-            "method": "GET",
-            "path": "/api/1.0/unity-control/scim2/Me"
-        })))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(body_json(resp).await["code"], "invalid_argument");
 }
 
 #[tokio::test]

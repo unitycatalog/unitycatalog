@@ -1,12 +1,17 @@
 use buffa::EnumValue;
-use connectrpc::{ConnectError, Limits, Router};
+use connectrpc::{ConnectError, Router};
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
 
-use crate::proto::uc::v1::{
-    dependency, ColumnInput, ColumnTypeName, DataSourceFormat, Dependency, PageRequest, Properties,
-    SchemaObjectRef, VolumeType,
+use crate::proto::uc::v1::__buffa::view::{
+    ColumnInputView, DependencyView, PageRequestView, PropertiesView, SchemaObjectRefView,
 };
+use crate::proto::uc::v1::{
+    dependency, CatalogServiceExt, ColumnTypeName, DataSourceFormat, FunctionServiceExt,
+    ModelServiceExt, SchemaServiceExt, TableServiceExt, UnityProxyServiceExt, ViewServiceExt,
+    VolumeServiceExt, VolumeType,
+};
+use crate::upstream::Upstream;
 use crate::AppState;
 
 mod catalog;
@@ -17,44 +22,58 @@ mod table;
 mod view;
 mod volume;
 
-pub(crate) fn router(state: AppState) -> Router {
-    let large_request_limits = Limits::default()
-        .with_max_request_body_size(128 * 1024 * 1024)
-        .with_max_message_size(80 * 1024 * 1024)
-        .with_element_memory_limit(96 * 1024 * 1024);
-
-    Router::new()
-        .add_service(Arc::new(catalog::CatalogRpc::new(state.clone())))
-        .add_service(Arc::new(schema::SchemaRpc::new(state.clone())))
-        .add_service(Arc::new(table::TableRpc::new(state.clone())))
-        .add_service(Arc::new(volume::VolumeRpc::new(state.clone())))
-        .add_service(Arc::new(function::FunctionRpc::new(state.clone())))
-        .add_service(Arc::new(model::ModelRpc::new(state.clone())))
-        .add_service(Arc::new(view::ViewRpc::new(state)))
-        .with_route_limits("uc.v1.FunctionService/CreateFunction", large_request_limits)
-        .with_route_limits("uc.v1.ViewService/CreateView", large_request_limits)
+pub(crate) struct UiRpc {
+    pub(super) state: AppState,
+    pub(super) upstream: Upstream,
 }
 
-fn page_query(page: &PageRequest) -> Vec<(&'static str, String)> {
+impl UiRpc {
+    fn new(state: AppState) -> Self {
+        Self {
+            upstream: Upstream::new(state.clone()),
+            state,
+        }
+    }
+}
+
+pub(crate) fn router(state: AppState) -> Router {
+    let service = Arc::new(UiRpc::new(state));
+    let router = CatalogServiceExt::register(service.clone(), Router::new());
+    let router = SchemaServiceExt::register(service.clone(), router);
+    let router = TableServiceExt::register(service.clone(), router);
+    let router = VolumeServiceExt::register(service.clone(), router);
+    let router = FunctionServiceExt::register(service.clone(), router);
+    let router = ModelServiceExt::register(service.clone(), router);
+    let router = ViewServiceExt::register(service.clone(), router);
+    UnityProxyServiceExt::register(service, router)
+}
+
+fn page_query(page: &PageRequestView<'_>) -> Vec<(&'static str, String)> {
     let mut query = Vec::new();
     if let Some(max_results) = page.max_results {
         query.push(("max_results", max_results.to_string()));
     }
     if !page.page_token.is_empty() {
-        query.push(("page_token", page.page_token.clone()));
+        query.push(("page_token", page.page_token.to_string()));
     }
     query
 }
 
-fn object_full_name(reference: &SchemaObjectRef) -> String {
+fn object_full_name(reference: &SchemaObjectRefView<'_>) -> String {
     format!(
         "{}.{}.{}",
         reference.catalog_name, reference.schema_name, reference.name
     )
 }
 
-fn properties_value(values: &Properties) -> Value {
-    serde_json::to_value(&values.values).unwrap_or_else(|_| Value::Object(Default::default()))
+fn properties_value(properties: &PropertiesView<'_>) -> Value {
+    Value::Object(
+        properties
+            .values
+            .iter()
+            .map(|(key, value)| (key.to_string(), json!(value)))
+            .collect(),
+    )
 }
 
 fn data_source_format(value: EnumValue<DataSourceFormat>) -> Result<&'static str, ConnectError> {
@@ -165,7 +184,7 @@ fn scalar_type(value: EnumValue<ColumnTypeName>) -> Result<ScalarType, ConnectEr
 }
 
 fn column_value(
-    column: &ColumnInput,
+    column: &ColumnInputView<'_>,
     position: usize,
     mut metadata: Map<String, Value>,
 ) -> Result<Value, ConnectError> {
@@ -192,14 +211,14 @@ fn column_value(
     }))
 }
 
-fn dependencies_value(dependencies: &[Dependency]) -> Value {
+fn dependencies_value(dependencies: &buffa::RepeatedView<'_, DependencyView<'_>>) -> Value {
     let dependencies = dependencies
         .iter()
         .filter_map(|dependency| match dependency.target.as_ref() {
-            Some(dependency::Target::TableFullName(name)) => {
+            Some(dependency::TargetView::TableFullName(name)) => {
                 Some(json!({ "table": { "table_full_name": name } }))
             }
-            Some(dependency::Target::FunctionFullName(name)) => {
+            Some(dependency::TargetView::FunctionFullName(name)) => {
                 Some(json!({ "function": { "function_full_name": name } }))
             }
             None => None,
