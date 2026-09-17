@@ -14,20 +14,22 @@ import io.unitycatalog.server.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.server.model.PathOperation;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.Collections;
 import java.util.Set;
+import org.hibernate.SessionFactory;
 
 public class TemporaryPathCredentialsService implements UnityCatalogRestService {
   private final StorageCredentialVendor storageCredentialVendor;
-  private final ExternalLocationUtils externalLocationUtils;
+  private final SessionFactory sessionFactory;
 
   public TemporaryPathCredentialsService(
       StorageCredentialVendor storageCredentialVendor, Repositories repositories) {
     this.storageCredentialVendor = storageCredentialVendor;
-    this.externalLocationUtils = repositories.getExternalLocationUtils();
+    this.sessionFactory = repositories.getSessionFactory();
   }
 
   private Set<CredentialContext.Privilege> pathOperationToPrivileges(PathOperation pathOperation) {
@@ -113,7 +115,14 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
       @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "url") @AuthorizeKey(key = "operation")
           GenerateTemporaryPathCredential generateTemporaryPathCredential) {
     NormalizedURL url = NormalizedURL.from(generateTemporaryPathCredential.getUrl());
-    externalLocationUtils.validateNotOverlapWithPendingCleanup(url);
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          ExternalLocationUtils.validateNotOverlapWithPendingCleanup(session, url);
+          return null;
+        },
+        "Failed to check storage cleanup path",
+        /* readOnly= */ true);
     return HttpResponse.ofJson(
         storageCredentialVendor.vendCredential(
             url, pathOperationToPrivileges(generateTemporaryPathCredential.getOperation())));

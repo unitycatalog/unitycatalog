@@ -1168,7 +1168,7 @@ public class TableRepository {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
     }
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
-      createCleanupTaskIfSupported(session, tableInfoDAO);
+      createCleanupTask(session, tableInfoDAO);
       repositories
           .getDeltaCommitRepository()
           .permanentlyDeleteTableCommits(session, tableInfoDAO.getId());
@@ -1184,7 +1184,7 @@ public class TableRepository {
     return tableInfoDAO;
   }
 
-  private void createCleanupTaskIfSupported(Session session, TableInfoDAO tableInfoDAO) {
+  private void createCleanupTask(Session session, TableInfoDAO tableInfoDAO) {
     NormalizedURL location = NormalizedURL.from(tableInfoDAO.getUrl());
     switch (UriScheme.fromURI(location.toUri())) {
       case FILE, NULL, S3, GS ->

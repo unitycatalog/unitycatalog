@@ -93,8 +93,6 @@ public class ExternalLocationUtilsTest {
             task.getStorageLocation() + "/data")) {
       NormalizedURL url = NormalizedURL.from(path);
       assertPendingCleanupDenied(() -> externalLocationUtils.getMapResourceIdsForPath(url));
-      assertPendingCleanupDenied(
-          () -> externalLocationUtils.validateNotOverlapWithPendingCleanup(url));
     }
     assertThat(
             externalLocationUtils.getMapResourceIdsForPath(
@@ -106,7 +104,6 @@ public class ExternalLocationUtilsTest {
     session.remove(task);
     session.getTransaction().commit();
     NormalizedURL releasedPath = NormalizedURL.from(task.getStorageLocation());
-    externalLocationUtils.validateNotOverlapWithPendingCleanup(releasedPath);
     assertThat(externalLocationUtils.getMapResourceIdsForPath(releasedPath))
         .containsOnlyKeys(SecurableType.EXTERNAL_LOCATION)
         .containsEntry(SecurableType.EXTERNAL_LOCATION, externalLocation.getId());

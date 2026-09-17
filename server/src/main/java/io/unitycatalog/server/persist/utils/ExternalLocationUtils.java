@@ -589,18 +589,6 @@ public class ExternalLocationUtils {
     validateNotOverlapWithPendingCleanup(session, url);
   }
 
-  /** Checks pending cleanup in a new read transaction when the caller has no session. */
-  public void validateNotOverlapWithPendingCleanup(NormalizedURL url) {
-    TransactionManager.executeWithTransaction(
-        sessionFactory,
-        session -> {
-          validateNotOverlapWithPendingCleanup(session, url);
-          return null;
-        },
-        "Failed to check storage cleanup path",
-        /* readOnly= */ true);
-  }
-
   /**
    * Rejects paths above, equal to, or below a pending cleanup task using the caller's transaction.
    * Task details are not included in the error because the caller may not have access to them.
