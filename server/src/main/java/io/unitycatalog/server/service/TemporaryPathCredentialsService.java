@@ -12,6 +12,8 @@ import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.server.model.PathOperation;
+import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -20,9 +22,12 @@ import java.util.Set;
 
 public class TemporaryPathCredentialsService implements UnityCatalogRestService {
   private final StorageCredentialVendor storageCredentialVendor;
+  private final ExternalLocationUtils externalLocationUtils;
 
-  public TemporaryPathCredentialsService(StorageCredentialVendor storageCredentialVendor) {
+  public TemporaryPathCredentialsService(
+      StorageCredentialVendor storageCredentialVendor, Repositories repositories) {
     this.storageCredentialVendor = storageCredentialVendor;
+    this.externalLocationUtils = repositories.getExternalLocationUtils();
   }
 
   private Set<CredentialContext.Privilege> pathOperationToPrivileges(PathOperation pathOperation) {
@@ -107,9 +112,10 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
   public HttpResponse generateTemporaryPathCredential(
       @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "url") @AuthorizeKey(key = "operation")
           GenerateTemporaryPathCredential generateTemporaryPathCredential) {
+    NormalizedURL url = NormalizedURL.from(generateTemporaryPathCredential.getUrl());
+    externalLocationUtils.validateNotOverlapWithPendingCleanup(url);
     return HttpResponse.ofJson(
         storageCredentialVendor.vendCredential(
-            NormalizedURL.from(generateTemporaryPathCredential.getUrl()),
-            pathOperationToPrivileges(generateTemporaryPathCredential.getOperation())));
+            url, pathOperationToPrivileges(generateTemporaryPathCredential.getOperation())));
   }
 }

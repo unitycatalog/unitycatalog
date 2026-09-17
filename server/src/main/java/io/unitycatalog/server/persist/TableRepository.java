@@ -25,9 +25,8 @@ import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
-import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
-import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
@@ -40,6 +39,7 @@ import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.UriScheme;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -815,7 +815,9 @@ public class TableRepository {
                 !storageLocation.isCloudStorageRoot(),
                 "External table storage location must include a non-empty path prefix: %s",
                 createTable.getStorageLocation());
-            ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
+            repositories
+                .getExternalLocationUtils()
+                .validateNotOverlapWithManagedStorage(session, storageLocation);
             tableUUID = UUID.randomUUID();
           } else if (tableType == TableType.MANAGED) {
             storageLocation = NormalizedURL.from(createTable.getStorageLocation());
@@ -1167,11 +1169,7 @@ public class TableRepository {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
     }
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
-      try {
-        FileOperations.deleteDirectory(NormalizedURL.from(tableInfoDAO.getUrl()));
-      } catch (Throwable e) {
-        LOGGER.error("Error deleting table directory: {}", tableInfoDAO.getUrl(), e);
-      }
+      createCleanupTaskIfSupported(session, tableInfoDAO);
       repositories
           .getDeltaCommitRepository()
           .permanentlyDeleteTableCommits(session, tableInfoDAO.getId());
@@ -1185,6 +1183,19 @@ public class TableRepository {
         .forEach(session::remove);
     session.remove(tableInfoDAO);
     return tableInfoDAO;
+  }
+
+  private void createCleanupTaskIfSupported(Session session, TableInfoDAO tableInfoDAO) {
+    NormalizedURL location = NormalizedURL.from(tableInfoDAO.getUrl());
+    switch (UriScheme.fromURI(location.toUri())) {
+      case FILE, NULL, S3, GS ->
+          repositories
+              .getStorageCleanupTaskRepository()
+              .create(session, ResourceType.TABLE, tableInfoDAO.getId(), location.toString());
+      case ABFS, ABFSS -> {
+        // Cleanup adapters for these providers will be added later.
+      }
+    }
   }
 
   /**

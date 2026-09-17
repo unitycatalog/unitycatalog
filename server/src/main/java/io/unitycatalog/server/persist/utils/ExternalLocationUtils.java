@@ -7,6 +7,7 @@ import com.google.common.annotations.VisibleForTesting;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
@@ -52,9 +53,12 @@ import org.hibernate.query.Query;
 public class ExternalLocationUtils {
 
   private final SessionFactory sessionFactory;
+  private final StorageCleanupTaskRepository storageCleanupTaskRepository;
 
-  public ExternalLocationUtils(SessionFactory sessionFactory) {
+  public ExternalLocationUtils(
+      SessionFactory sessionFactory, StorageCleanupTaskRepository storageCleanupTaskRepository) {
     this.sessionFactory = sessionFactory;
+    this.storageCleanupTaskRepository = storageCleanupTaskRepository;
   }
 
   /**
@@ -118,6 +122,7 @@ public class ExternalLocationUtils {
    *     data securables, this will be a 3-entry map.
    */
   public Map<SecurableType, UUID> getMapResourceIdsForPath(NormalizedURL url) {
+    validateNotOverlapWithPendingCleanup(url);
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> getMapResourceIdsForPath(session, url),
@@ -574,11 +579,19 @@ public class ExternalLocationUtils {
    *
    * @param session the Hibernate session for database queries
    * @param url the URL to validate
-   * @throws BaseException with ErrorCode.INVALID_ARGUMENT if the URL overlaps with managed storage
+   * @throws BaseException if the URL overlaps with managed storage or pending cleanup
    */
-  public static void validateNotOverlapWithManagedStorage(Session session, NormalizedURL url) {
+  public void validateNotOverlapWithManagedStorage(Session session, NormalizedURL url) {
     validateNotSameOrUnderManagedStoragePrefix(url);
     validateNotAboveManagedStorage(session, url);
+    validateNotOverlapWithPendingCleanup(url);
+  }
+
+  public void validateNotOverlapWithPendingCleanup(NormalizedURL url) {
+    if (storageCleanupTaskRepository.hasPathOverlap(url.toString())) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup.");
+    }
   }
 
   /**

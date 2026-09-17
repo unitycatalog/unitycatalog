@@ -1,6 +1,11 @@
 package io.unitycatalog.server.sdk.tempcredential;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
@@ -12,10 +17,15 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
+import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -39,6 +49,52 @@ public class SdkTemporaryPathCredentialTest extends BaseCRUDTestWithMockCredenti
   public void setUp() {
     super.setUp();
     temporaryCredentialsApi = new TemporaryCredentialsApi(TestUtils.createApiClient(serverConfig));
+  }
+
+  @Override
+  protected void setUpCredentialOperations(ServerProperties serverProperties) {
+    super.setUpCredentialOperations(serverProperties);
+    cloudCredentialVendor = spy(cloudCredentialVendor);
+  }
+
+  @Test
+  public void testPendingCleanupPathsAreRejectedBeforeCredentialVending() throws ApiException {
+    String cleanupPath = AWS_EXTERNAL_LOCATION_PATH + "/deleted";
+    createCleanupTask(cleanupPath);
+    clearInvocations(cloudCredentialVendor);
+
+    for (String url :
+        List.of(AWS_EXTERNAL_LOCATION_PATH, cleanupPath, cleanupPath + "/data/file.parquet")) {
+      TestUtils.assertApiException(
+          () ->
+              temporaryCredentialsApi.generateTemporaryPathCredentials(
+                  new GenerateTemporaryPathCredential()
+                      .url(url)
+                      .operation(PathOperation.PATH_READ)),
+          ErrorCode.PERMISSION_DENIED,
+          "Input path overlaps pending storage cleanup");
+    }
+    verify(cloudCredentialVendor, never()).vendCredential(any());
+
+    String nonOverlappingPath = AWS_EXTERNAL_LOCATION_PATH + "/active";
+    temporaryCredentialsApi.generateTemporaryPathCredentials(
+        new GenerateTemporaryPathCredential()
+            .url(nonOverlappingPath)
+            .operation(PathOperation.PATH_READ));
+    verify(cloudCredentialVendor).vendCredential(any());
+  }
+
+  private void createCleanupTask(String storageLocation) {
+    StorageCleanupTaskRepository repository =
+        new StorageCleanupTaskRepository(hibernateConfigurator.getSessionFactory());
+    TransactionManager.executeWithTransaction(
+        hibernateConfigurator.getSessionFactory(),
+        session -> {
+          repository.create(session, ResourceType.TABLE, UUID.randomUUID(), storageLocation);
+          return null;
+        },
+        "Failed to create test cleanup task",
+        /* readOnly= */ false);
   }
 
   @ParameterizedTest

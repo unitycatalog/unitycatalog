@@ -25,7 +25,11 @@ import io.unitycatalog.server.base.model.ModelOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.base.volume.VolumeOperations;
+import io.unitycatalog.server.cleanup.StorageCleanupWorker;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.models.SdkModelOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
@@ -33,10 +37,16 @@ import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.sdk.volume.SdkVolumeOperations;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.SneakyThrows;
+import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
 
 public class SdkManagedLocationTest extends BaseManagedLocationTest {
@@ -103,8 +113,7 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
         ErrorCode.INVALID_ARGUMENT,
         "overlaps with staging table");
 
-    // To remove the staging table, promote it to a real table then delete it. Then the external
-    // volume can be created.
+    // To remove the staging table, promote it to a real table then delete it.
     createSchema(false);
     tablesApi.createTable(
         new CreateTable()
@@ -116,6 +125,35 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
             .storageLocation(stagingTableInfo.getStagingLocation())
             .properties(Map.of(TableProperties.UC_TABLE_ID, stagingTableInfo.getId())));
     tablesApi.deleteTable(TABLE_FULL_NAME);
+
+    TestUtils.assertApiException(
+        () -> volumeOperations.createVolume(createExternalVolume),
+        ErrorCode.PERMISSION_DENIED,
+        "overlaps pending storage cleanup");
+
+    ServerProperties properties = new ServerProperties(serverProperties);
+    properties.set(Property.STORAGE_CLEANUP_INITIAL_DELAY, "PT0.001S");
+    properties.set(Property.STORAGE_CLEANUP_POLL_INTERVAL, "PT0.01S");
+    UUID resourceId = UUID.fromString(stagingTableInfo.getId());
+    try (StorageCleanupWorker worker =
+        new StorageCleanupWorker(
+            new StorageCleanupTaskRepository(hibernateConfigurator.getSessionFactory()),
+            new FileOperations(null, properties),
+            Clock.systemUTC(),
+            properties)) {
+      worker.start();
+      long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+      boolean cleanupPending = true;
+      while (cleanupPending && System.nanoTime() < deadline) {
+        try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+          cleanupPending = session.get(StorageCleanupTaskDAO.class, resourceId) != null;
+        }
+        if (cleanupPending) {
+          Thread.sleep(10);
+        }
+      }
+      assertThat(cleanupPending).as("cleanup task remains after waiting for the worker").isFalse();
+    }
 
     VolumeInfo externalVolumeInfo = volumeOperations.createVolume(createExternalVolume);
     assertThat(externalVolumeInfo.getStorageLocation())
