@@ -17,10 +17,6 @@ public final class BoundedKeyedCache<K, V> {
   private final LinkedHashMap<K, V> cache = new LinkedHashMap<>(16, 0.75f, true);
   private final IdLockMap<K> keyLocks = new IdLockMap<>();
 
-  public BoundedKeyedCache(int maxSize) {
-    this(maxSize, noOpListener(), alwaysFresh());
-  }
-
   public BoundedKeyedCache(int maxSize, Consumer<V> evictionListener) {
     this(maxSize, evictionListener, alwaysFresh());
   }
@@ -37,8 +33,9 @@ public final class BoundedKeyedCache<K, V> {
   public BoundedKeyedCache(int maxSize, Consumer<V> evictionListener, Predicate<V> isFresh) {
     Preconditions.checkArgument(maxSize > 0, "maxSize must be positive, got %s", maxSize);
     this.maxSize = maxSize;
-    this.evictionListener = Objects.requireNonNull(evictionListener, "evictionListener");
-    this.isFresh = Objects.requireNonNull(isFresh, "isFresh");
+    this.evictionListener =
+        Objects.requireNonNull(evictionListener, "evictionListener cannot be null");
+    this.isFresh = Objects.requireNonNull(isFresh, "isFresh cannot be null");
   }
 
   /** Freshness policy keeping every cached value usable until it is evicted. */

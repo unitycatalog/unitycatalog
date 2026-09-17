@@ -1,5 +1,7 @@
 package io.unitycatalog.hadoop.internal.util;
 
+import static io.unitycatalog.hadoop.internal.util.BoundedKeyedCache.alwaysFresh;
+import static io.unitycatalog.hadoop.internal.util.BoundedKeyedCache.noOpListener;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -90,7 +92,8 @@ class BoundedKeyedCacheTest {
 
   @Test
   void loaderReturningNullThrows() {
-    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2);
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, noOpListener(), alwaysFresh());
 
     assertThatThrownBy(() -> cache.getOrLoad("k", () -> null))
         .isInstanceOf(NullPointerException.class)
@@ -99,19 +102,19 @@ class BoundedKeyedCacheTest {
   }
 
   @Test
-  void constructorWithoutEvictionListenerUsesNoOpListener() {
-    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(1);
-
+  void constructorWithoutFreshnessPolicyKeepsEveryCachedValue() throws Exception {
+    // The two-argument constructor is the one CredScopedFileSystem uses: with no policy a cached
+    // value stays usable until it is evicted, so an entry is never reloaded underneath a caller.
+    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2, noOpListener());
     cache.put("a", "value-a");
-    cache.put("b", "value-b");
 
-    assertThat(cache.getIfPresent("a")).isNull();
-    assertThat(cache.getIfPresent("b")).isEqualTo("value-b");
+    assertThat(cache.getOrLoad("a", () -> fail("loader must not be invoked"))).isEqualTo("value-a");
   }
 
   @Test
   void getOrLoadPropagatesCheckedException() {
-    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2);
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, noOpListener(), alwaysFresh());
     IOException boom = new IOException("loader boom");
 
     assertThatThrownBy(
@@ -126,7 +129,8 @@ class BoundedKeyedCacheTest {
 
   @Test
   void keyLockReleasedAfterLoaderThrows() throws Exception {
-    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2);
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, noOpListener(), alwaysFresh());
 
     assertThatThrownBy(
             () ->
@@ -151,7 +155,8 @@ class BoundedKeyedCacheTest {
 
   @Test
   void getOrLoadLoadsSameKeyOnlyOnce() throws Exception {
-    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2);
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, noOpListener(), alwaysFresh());
     CountDownLatch firstLoadStarted = new CountDownLatch(1);
     CountDownLatch releaseFirstLoad = new CountDownLatch(1);
     AtomicInteger loadCount = new AtomicInteger();
@@ -186,7 +191,8 @@ class BoundedKeyedCacheTest {
   @Test
   void manyThreadsOnSameKeyInvokeLoaderExactlyOnce() throws Exception {
     int threads = 64;
-    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2);
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, noOpListener(), alwaysFresh());
     AtomicInteger loadCount = new AtomicInteger();
     CyclicBarrier startBarrier = new CyclicBarrier(threads);
     String singleton = "value";
@@ -218,7 +224,8 @@ class BoundedKeyedCacheTest {
 
   @Test
   void getOrLoadDifferentKeysProgressIndependently() throws Exception {
-    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(4);
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(4, noOpListener(), alwaysFresh());
     CountDownLatch slowLoaderStarted = new CountDownLatch(1);
     CountDownLatch releaseSlowLoader = new CountDownLatch(1);
 
@@ -251,8 +258,7 @@ class BoundedKeyedCacheTest {
   @Test
   void getOrLoadReloadsWhenFreshnessPolicyRejectsCachedValue() throws Exception {
     BoundedKeyedCache<String, String> cache =
-        new BoundedKeyedCache<>(
-            2, BoundedKeyedCache.noOpListener(), value -> !value.equals("stale"));
+        new BoundedKeyedCache<>(2, noOpListener(), value -> !value.equals("stale"));
     AtomicInteger loadCount = new AtomicInteger();
     cache.put("k", "stale");
 
@@ -272,7 +278,7 @@ class BoundedKeyedCacheTest {
   @Test
   void getOrLoadSkipsLoaderWhenFreshnessPolicyAcceptsCachedValue() throws Exception {
     BoundedKeyedCache<String, String> cache =
-        new BoundedKeyedCache<>(2, BoundedKeyedCache.noOpListener(), value -> true);
+        new BoundedKeyedCache<>(2, noOpListener(), value -> true);
     cache.put("k", "valid");
 
     String value = cache.getOrLoad("k", () -> "other");
@@ -284,8 +290,7 @@ class BoundedKeyedCacheTest {
   @Test
   void staleValueReloadedOnlyOnceAcrossThreads() throws Exception {
     Predicate<String> isFresh = value -> value.equals("fresh");
-    BoundedKeyedCache<String, String> cache =
-        new BoundedKeyedCache<>(2, BoundedKeyedCache.noOpListener(), isFresh);
+    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2, noOpListener(), isFresh);
     cache.put("key", "stale");
     CountDownLatch reloadStarted = new CountDownLatch(1);
     CountDownLatch releaseReload = new CountDownLatch(1);
@@ -329,8 +334,7 @@ class BoundedKeyedCacheTest {
   @Test
   void freshCachedValueIsReturnedWhileTheSameKeyIsLoading() throws Exception {
     BoundedKeyedCache<String, String> cache =
-        new BoundedKeyedCache<>(
-            2, BoundedKeyedCache.noOpListener(), value -> value.equals("fresh"));
+        new BoundedKeyedCache<>(2, noOpListener(), value -> value.equals("fresh"));
     cache.put("key", "stale");
     CountDownLatch loadStarted = new CountDownLatch(1);
     CountDownLatch releaseLoad = new CountDownLatch(1);
@@ -367,7 +371,8 @@ class BoundedKeyedCacheTest {
   @Test
   void loaderFailureDoesNotWedgeWaitersOnTheSameKey() throws Exception {
     int threads = 8;
-    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2);
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, noOpListener(), alwaysFresh());
     AtomicInteger loadAttempts = new AtomicInteger();
     CyclicBarrier startBarrier = new CyclicBarrier(threads);
 
@@ -421,7 +426,7 @@ class BoundedKeyedCacheTest {
     // vended with less remaining lifetime than the renewal lead time. Callers must each settle
     // for their own load rather than retrying until the policy is satisfied.
     BoundedKeyedCache<String, String> cache =
-        new BoundedKeyedCache<>(2, BoundedKeyedCache.noOpListener(), value -> false);
+        new BoundedKeyedCache<>(2, noOpListener(), value -> false);
     AtomicInteger loadCount = new AtomicInteger();
     CyclicBarrier startBarrier = new CyclicBarrier(threads);
 
