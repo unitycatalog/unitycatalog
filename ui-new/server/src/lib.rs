@@ -1,3 +1,5 @@
+#![allow(refining_impl_trait)]
+
 use std::sync::Arc;
 
 use axum::http::{header, HeaderName, HeaderValue, Method};
@@ -8,7 +10,22 @@ use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
 pub mod config;
+mod mapping;
 pub mod proxy;
+mod services;
+mod upstream;
+
+pub mod proto {
+    connectrpc::include_generated!();
+}
+
+mod validation {
+    #![allow(dead_code, unused_imports)]
+
+    use crate::proto::uc;
+    pub(crate) use crate::proto::uc::v1::*;
+    include!(concat!(env!("OUT_DIR"), "/validation/uc.v1.mod.rs"));
+}
 
 pub use config::Config;
 
@@ -42,18 +59,27 @@ async fn healthz() -> &'static str {
 pub fn app(state: AppState) -> Router {
     let index = state.config.web_dist.join("index.html");
     let spa = ServeDir::new(&state.config.web_dist).fallback(ServeFile::new(index));
+    let rpc = services::router(state.clone()).into_axum_service();
 
     let mut router = Router::new()
         .route("/uc.v1.UnityProxyService/Call", post(proxy::call_handler))
         .route("/config", get(config_handler))
         .route("/healthz", get(healthz))
+        .route_service("/uc.v1.CatalogService/{method}", rpc.clone())
+        .route_service("/uc.v1.SchemaService/{method}", rpc.clone())
+        .route_service("/uc.v1.TableService/{method}", rpc.clone())
+        .route_service("/uc.v1.VolumeService/{method}", rpc.clone())
+        .route_service("/uc.v1.FunctionService/{method}", rpc.clone())
+        .route_service("/uc.v1.ModelService/{method}", rpc.clone())
+        .route_service("/uc.v1.ViewService/{method}", rpc)
+        .with_state(state.clone())
         .fallback_service(spa);
 
     if let Some(cors) = build_cors(&state.config.allowed_origins) {
         router = router.layer(cors);
     }
 
-    router.layer(TraceLayer::new_for_http()).with_state(state)
+    router.layer(TraceLayer::new_for_http())
 }
 
 /// CORS is only needed when the SPA is served from a different origin than the

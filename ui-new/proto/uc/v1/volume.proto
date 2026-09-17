@@ -93,10 +93,7 @@ message UpdateVolumeRequest {
   };
 
   SchemaObjectRef volume = 1 [(buf.validate.field).required = true];
-  optional string comment = 2 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 65536
-  }];
+  optional string comment = 2 [(buf.validate.field).string.max_len = 65536];
   optional string new_name = 3 [(buf.validate.field).string.(securable_name) = true];
 }
 

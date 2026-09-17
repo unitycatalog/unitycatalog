@@ -47,10 +47,8 @@ fn call_request(json: serde_json::Value) -> Request<Body> {
 async fn call_forwards_get_and_maps_status_ok() {
     let uc = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/api/2.1/unity-catalog/catalogs"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_string(r#"{"catalogs":[{"name":"main"}]}"#),
-        )
+        .and(path("/api/2.1/unity-catalog/permissions/catalog/main"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"privilege_assignments":[]}"#))
         .mount(&uc)
         .await;
 
@@ -58,7 +56,7 @@ async fn call_forwards_get_and_maps_status_ok() {
     let resp = app
         .oneshot(call_request(serde_json::json!({
             "method": "GET",
-            "path": "/api/2.1/unity-catalog/catalogs"
+            "path": "/api/2.1/unity-catalog/permissions/catalog/main"
         })))
         .await
         .unwrap();
@@ -67,14 +65,17 @@ async fn call_forwards_get_and_maps_status_ok() {
     let json = body_json(resp).await;
     assert_eq!(json["httpStatus"], 200);
     assert_eq!(json["ok"], true);
-    assert!(json["body"].as_str().unwrap().contains("\"main\""));
+    assert!(json["body"]
+        .as_str()
+        .unwrap()
+        .contains("\"privilege_assignments\""));
 }
 
 #[tokio::test]
 async fn call_maps_non_2xx_to_ok_false() {
     let uc = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/api/2.1/unity-catalog/catalogs/missing"))
+        .and(path("/api/2.1/unity-catalog/permissions/catalog/missing"))
         .respond_with(ResponseTemplate::new(404).set_body_string(r#"{"error_code":"NOT_FOUND"}"#))
         .mount(&uc)
         .await;
@@ -83,7 +84,7 @@ async fn call_maps_non_2xx_to_ok_false() {
     let resp = app
         .oneshot(call_request(serde_json::json!({
             "method": "GET",
-            "path": "/api/2.1/unity-catalog/catalogs/missing"
+            "path": "/api/2.1/unity-catalog/permissions/catalog/missing"
         })))
         .await
         .unwrap();
@@ -144,6 +145,37 @@ async fn call_requires_path() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let json = body_json(resp).await;
     assert_eq!(json["code"], "invalid_argument");
+}
+
+#[tokio::test]
+async fn call_rejects_client_selected_upstream() {
+    let app = build_app("http://127.0.0.1:1".to_string());
+    let resp = app
+        .oneshot(call_request(serde_json::json!({
+            "serverUrl": "http://169.254.169.254",
+            "method": "GET",
+            "path": "/api/1.0/unity-control/scim2/Me"
+        })))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(resp).await;
+    assert_eq!(json["code"], "invalid_argument");
+}
+
+#[tokio::test]
+async fn call_rejects_typed_domain_bypass() {
+    let app = build_app("http://127.0.0.1:1".to_string());
+    let resp = app
+        .oneshot(call_request(serde_json::json!({
+            "method": "DELETE",
+            "path": "/api/2.1/unity-catalog/catalogs/main"
+        })))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let json = body_json(resp).await;
+    assert_eq!(json["code"], "permission_denied");
 }
 
 #[tokio::test]
