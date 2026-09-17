@@ -20,8 +20,10 @@ import io.unitycatalog.hadoop.internal.auth.AwsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.spark.sql.connector.catalog.Identifier;
+import org.apache.spark.sql.connector.catalog.Table;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -89,8 +91,21 @@ public class WriteIntentCredentialSuite {
     assertThat(readAttempts.get()).isEqualTo(0);
   }
 
+  @Test
+  public void legacyLoadDropsUserProvidedMaintenanceOperations() throws Exception {
+    stubTable("t_forged")
+        .tableType(TableType.MANAGED)
+        .dataSourceFormat(DataSourceFormat.DELTA)
+        .properties(Map.of("delta.clientMaintenanceOperations", "DATA_CLEANUP"));
+    grantAllOperations();
+
+    Table table = proxy.loadTable(Identifier.of(NAMESPACE, "t_forged"));
+
+    assertThat(table.properties()).doesNotContainKey("option.delta.clientMaintenanceOperations");
+  }
+
   /** Table ids are unique per test: the hadoop credential cache is JVM-global. */
-  private void stubTable(String name) throws Exception {
+  private TableInfo stubTable(String name) throws Exception {
     String tableId = "table-id-" + name;
     TableInfo ucTable =
         new TableInfo()
@@ -115,6 +130,7 @@ public class WriteIntentCredentialSuite {
     when(fixture.mockTablesApi.getTable(
             eq(CATALOG_NAME + "." + SCHEMA_NAME + "." + name), eq(true), eq(true)))
         .thenReturn(ucTable);
+    return ucTable;
   }
 
   private void denyReadWriteGrantRead() {

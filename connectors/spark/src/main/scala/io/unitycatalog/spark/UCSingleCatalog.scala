@@ -1065,7 +1065,10 @@ private[spark] class UCProxy(
       enableServerSidePlanningConfig(identifier)
     }
 
-    val storageProperties = (t.getProperties.asScala.toMap ++ extraSerdeProps).asJava
+    // The legacy API has no maintenance allowlist, so ignore any user-provided permission.
+    val storageProperties =
+      ((t.getProperties.asScala.toMap ++ extraSerdeProps) -
+        "delta.clientMaintenanceOperations").asJava
     val sparkTable = CatalogTable(
       identifier,
       tableType = if (t.getTableType == TableType.MANAGED) {
