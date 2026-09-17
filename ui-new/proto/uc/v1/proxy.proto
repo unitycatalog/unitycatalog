@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package uc.v1;
+
+message KeyValue {
+  string key = 1;
+  string value = 2;
+}
+
+// Generic Unity Catalog REST passthrough. This single RPC performs any operation
+// the browser needs against the Unity Catalog server (catalogs, schemas, tables,
+// volumes, functions, models, plus the control-plane auth + SCIM endpoints) by
+// issuing the underlying REST call from the Rust bridge. The browser is shielded
+// from CORS because the bridge is same-origin and makes the actual request. The
+// bridge forwards the caller's auth cookie and propagates any Set-Cookie back.
+message CallRequest {
+  // UC base URL for the session. Optional; the bridge falls back to its
+  // configured UC_SERVER when empty.
+  string server_url = 1;
+  // Optional bearer token. When empty, cookie-based auth is used (forwarded by
+  // the bridge from the browser's request).
+  string token = 2;
+  // HTTP method: GET | POST | PATCH | PUT | DELETE.
+  string method = 3;
+  // Full request path, e.g. /api/2.1/unity-catalog/catalogs.
+  string path = 4;
+  repeated KeyValue query = 5;
+  // Raw request body (ignored for GET/DELETE without a body). Usually JSON, but
+  // the OAuth token endpoint sends url-encoded form data; see content_type.
+  string json_body = 6;
+  // Content-Type for the request body. Defaults to application/json when empty.
+  // The OAuth token-exchange endpoint requires application/x-www-form-urlencoded.
+  string content_type = 7;
+}
+
+message CallResponse {
+  int32 http_status = 1;
+  // Response body verbatim (JSON or text).
+  string body = 2;
+  bool ok = 3;
+}
+
+service UnityProxyService {
+  rpc Call(CallRequest) returns (CallResponse);
+}
