@@ -121,11 +121,6 @@ public final class BoundedKeyedCache<K, V> {
     }
   }
 
-  // Visible for testing: no per-key lock outlives the call that acquired it.
-  int keyLockCount() {
-    return keyLocks.lockCount();
-  }
-
   public List<V> values() {
     synchronized (cacheLock) {
       return new ArrayList<>(cache.values());

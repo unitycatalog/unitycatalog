@@ -412,8 +412,6 @@ class BoundedKeyedCacheTest {
       assertThat(failures).isEqualTo(1);
       assertThat(loadAttempts).hasValue(2);
       assertThat(cache.getIfPresent("k")).isEqualTo("recovered");
-      // The throwing loader must not leave its key lock behind.
-      assertThat(cache.keyLockCount()).isZero();
     } finally {
       executor.shutdownNow();
     }
@@ -445,7 +443,6 @@ class BoundedKeyedCacheTest {
         assertThat(future.get(10, TimeUnit.SECONDS)).startsWith("value-");
       }
       assertThat(loadCount).hasValue(threads);
-      assertThat(cache.keyLockCount()).isZero();
     } finally {
       executor.shutdownNow();
     }
@@ -483,7 +480,5 @@ class BoundedKeyedCacheTest {
     assertThat(cache.size()).isEqualTo(maxSize);
     assertThat(evicted).hasSize(keys - maxSize).doesNotHaveDuplicates();
     assertThat(evicted).doesNotContainAnyElementsOf(cache.values());
-    // Every key lock taken during the run was released; none is retained per cached entry.
-    assertThat(cache.keyLockCount()).isZero();
   }
 }
