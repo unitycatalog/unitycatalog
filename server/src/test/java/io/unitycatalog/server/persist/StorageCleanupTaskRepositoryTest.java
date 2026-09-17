@@ -58,10 +58,24 @@ public class StorageCleanupTaskRepositoryTest {
 
   @Test
   void createsNormalizedTask() {
+    UUID resourceId = UUID.randomUUID();
     Date before = databaseNow();
-    StorageCleanupTaskDAO task = create("s3://bucket/a/unused/../b/c///");
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session ->
+            repository.create(
+                session,
+                ResourceType.TABLE,
+                resourceId,
+                "orders",
+                "s3://bucket/a/unused/../b/c///"),
+        "Failed to create test storage cleanup task",
+        /* readOnly= */ false);
     Date after = databaseNow();
 
+    StorageCleanupTaskDAO task = get(resourceId);
+    assertThat(task.getId()).isEqualTo(resourceId);
+    assertThat(task.getName()).isEqualTo("orders");
     assertThat(task.getStorageLocation()).isEqualTo("s3://bucket/a/b/c");
     assertThat(task.getDeletedAt()).isBetween(before, after);
   }
@@ -76,7 +90,7 @@ public class StorageCleanupTaskRepositoryTest {
                     sessionFactory,
                     session -> {
                       repository.create(
-                          session, ResourceType.TABLE, resourceId, "s3://bucket/path");
+                          session, ResourceType.TABLE, resourceId, "orders", "s3://bucket/path");
                       throw new IllegalStateException("rollback");
                     },
                     "Expected rollback",
@@ -98,16 +112,16 @@ public class StorageCleanupTaskRepositoryTest {
     Date beforeClaim = databaseNow();
     Claim first = repository.claim(LEASE_DURATION, INITIAL_DELAY).orElseThrow();
     Date afterClaim = databaseNow();
-    assertThat(first.resourceId()).isEqualTo(earliest.getResourceId());
+    assertThat(first.resourceId()).isEqualTo(earliest.getId());
     assertThat(first.resourceType()).isEqualTo(ResourceType.TABLE);
     assertThat(first.storageLocation()).isEqualTo("s3://bucket/earliest");
-    assertThat(get(earliest.getResourceId()).getLeaseToken()).isEqualTo(first.leaseToken());
-    assertThat(get(earliest.getResourceId()).getLeaseExpiresAt().getTime())
+    assertThat(get(earliest.getId()).getLeaseToken()).isEqualTo(first.leaseToken());
+    assertThat(get(earliest.getId()).getLeaseExpiresAt().getTime())
         .isBetween(
             add(beforeClaim, LEASE_DURATION).getTime(), add(afterClaim, LEASE_DURATION).getTime());
 
     Claim second = repository.claim(LEASE_DURATION, INITIAL_DELAY).orElseThrow();
-    assertThat(second.resourceId()).isEqualTo(later.getResourceId());
+    assertThat(second.resourceId()).isEqualTo(later.getId());
     assertThat(repository.claim(LEASE_DURATION, INITIAL_DELAY)).isEmpty();
   }
 
@@ -120,14 +134,14 @@ public class StorageCleanupTaskRepositoryTest {
     StorageCleanupTaskDAO failed = create("s3://bucket/failed", add(now, INITIAL_DELAY.negated()));
     StorageCleanupTaskDAO crashed =
         create("s3://bucket/crashed", add(now, INITIAL_DELAY.negated()));
-    setState(partial.getResourceId(), null, add(now, Duration.ofMinutes(-70)), 0);
-    setState(failed.getResourceId(), null, add(now, Duration.ofMinutes(-75)), 1);
-    setState(crashed.getResourceId(), UUID.randomUUID(), add(now, Duration.ofMinutes(-80)), 0);
+    setState(partial.getId(), null, add(now, Duration.ofMinutes(-70)), 0);
+    setState(failed.getId(), null, add(now, Duration.ofMinutes(-75)), 1);
+    setState(crashed.getId(), UUID.randomUUID(), add(now, Duration.ofMinutes(-80)), 0);
 
     assertThat(repository.claim(LEASE_DURATION, INITIAL_DELAY))
         .get()
         .extracting(Claim::resourceId)
-        .isEqualTo(crashed.getResourceId());
+        .isEqualTo(crashed.getId());
   }
 
   @Test
@@ -193,12 +207,12 @@ public class StorageCleanupTaskRepositoryTest {
 
     assertThat(
             repository.reportFailure(
-                task.getResourceId(),
+                task.getId(),
                 first.leaseToken(),
                 new CleanupFailureReport("x".repeat(2100), RETRY_BACKOFF)))
         .isTrue();
     Date afterReport = databaseNow();
-    StorageCleanupTaskDAO failed = get(task.getResourceId());
+    StorageCleanupTaskDAO failed = get(task.getId());
     assertThat(failed.getLeaseToken()).isNull();
     assertThat(failed.getLeaseExpiresAt().getTime())
         .isBetween(
@@ -213,25 +227,23 @@ public class StorageCleanupTaskRepositoryTest {
     StorageCleanupTaskDAO task =
         create("s3://bucket/stale", add(databaseNow(), Duration.ofMinutes(-1)));
     Claim stale = repository.claim(LEASE_DURATION, Duration.ZERO).orElseThrow();
-    setState(
-        task.getResourceId(), stale.leaseToken(), add(databaseNow(), Duration.ofMillis(-1)), 0);
+    setState(task.getId(), stale.leaseToken(), add(databaseNow(), Duration.ofMillis(-1)), 0);
     Claim current = repository.claim(LEASE_DURATION, Duration.ZERO).orElseThrow();
 
     assertThat(
             repository.reportFailure(
-                task.getResourceId(),
-                stale.leaseToken(),
-                new CleanupFailureReport("stale", RETRY_BACKOFF)))
+                task.getId(), stale.leaseToken(), new CleanupFailureReport("stale", RETRY_BACKOFF)))
         .isFalse();
-    assertThat(repository.finish(task.getResourceId(), stale.leaseToken())).isFalse();
-    assertThat(repository.finish(task.getResourceId(), current.leaseToken())).isTrue();
-    assertThat(find(task.getResourceId())).isEmpty();
+    assertThat(repository.finish(task.getId(), stale.leaseToken())).isFalse();
+    assertThat(repository.finish(task.getId(), current.leaseToken())).isTrue();
+    assertThat(find(task.getId())).isEmpty();
   }
 
   private StorageCleanupTaskDAO create(String location) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
-        session -> repository.create(session, ResourceType.TABLE, UUID.randomUUID(), location),
+        session ->
+            repository.create(session, ResourceType.TABLE, UUID.randomUUID(), "orders", location),
         "Failed to create test storage cleanup task",
         /* readOnly= */ false);
   }
@@ -241,7 +253,7 @@ public class StorageCleanupTaskRepositoryTest {
         sessionFactory,
         session -> {
           StorageCleanupTaskDAO task =
-              repository.create(session, ResourceType.TABLE, UUID.randomUUID(), location);
+              repository.create(session, ResourceType.TABLE, UUID.randomUUID(), "orders", location);
           task.setDeletedAt(deletedAt);
           return task;
         },

@@ -34,14 +34,20 @@ public class StorageCleanupTaskRepository {
 
   /**
    * Creates a cleanup task in the caller's current database transaction. If the resource deletion
-   * or task creation fails, both changes are rolled back.
+   * or task creation fails, both changes are rolled back. The task keeps the deleted resource's ID
+   * and name.
    */
   public StorageCleanupTaskDAO create(
-      Session session, ResourceType resourceType, UUID resourceId, String storageLocation) {
+      Session session,
+      ResourceType resourceType,
+      UUID resourceId,
+      String resourceName,
+      String storageLocation) {
     StorageCleanupTaskDAO task =
         StorageCleanupTaskDAO.builder()
             .resourceType(resourceType)
-            .resourceId(resourceId)
+            .id(resourceId)
+            .name(resourceName)
             .storageLocation(NormalizedURL.normalize(storageLocation))
             .deletedAt(currentDatabaseTime(session))
             .build();
@@ -85,13 +91,13 @@ public class StorageCleanupTaskRepository {
               session
                   .createMutationQuery(
                       "UPDATE StorageCleanupTaskDAO SET leaseToken = :token, "
-                          + "leaseExpiresAt = :expires WHERE resourceId = :id "
+                          + "leaseExpiresAt = :expires WHERE id = :id "
                           + "AND storageLocation = :location "
                           + "AND deletedAt <= :cutoff "
                           + "AND (leaseExpiresAt IS NULL OR leaseExpiresAt <= :now)")
                   .setParameter("token", leaseToken)
                   .setParameter("expires", expires)
-                  .setParameter("id", task.getResourceId())
+                  .setParameter("id", task.getId())
                   .setParameter("location", task.getStorageLocation())
                   .setParameter("cutoff", cutoff)
                   .setParameter("now", now)
@@ -99,10 +105,7 @@ public class StorageCleanupTaskRepository {
           return updated == 1
               ? Optional.of(
                   new Claim(
-                      task.getResourceType(),
-                      task.getResourceId(),
-                      task.getStorageLocation(),
-                      leaseToken))
+                      task.getResourceType(), task.getId(), task.getStorageLocation(), leaseToken))
               : Optional.empty();
         },
         "Failed to claim storage cleanup task",
@@ -127,7 +130,7 @@ public class StorageCleanupTaskRepository {
                   .createMutationQuery(
                       "UPDATE StorageCleanupTaskDAO SET leaseToken = NULL, "
                           + "leaseExpiresAt = :nextAttempt, failureCount = failureCount + 1, "
-                          + "lastError = :error WHERE resourceId = :id AND leaseToken = :token "
+                          + "lastError = :error WHERE id = :id AND leaseToken = :token "
                           + "AND leaseExpiresAt > :now")
                   .setParameter("nextAttempt", nextAttempt)
                   .setParameter("id", resourceId)
@@ -151,7 +154,7 @@ public class StorageCleanupTaskRepository {
           Date now = currentDatabaseTime(session);
           return session
                   .createMutationQuery(
-                      "DELETE FROM StorageCleanupTaskDAO WHERE resourceId = :id "
+                      "DELETE FROM StorageCleanupTaskDAO WHERE id = :id "
                           + "AND leaseToken = :token AND leaseExpiresAt > :now")
                   .setParameter("id", resourceId)
                   .setParameter("token", leaseToken)
