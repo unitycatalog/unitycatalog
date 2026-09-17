@@ -81,9 +81,7 @@ public class VolumeRepository {
                 !storageLocation.isCloudStorageRoot(),
                 "External volume storage location must include a non-empty path prefix: %s",
                 createVolumeRequest.getStorageLocation());
-            repositories
-                .getExternalLocationUtils()
-                .validateNotOverlapWithManagedStorage(session, storageLocation);
+            ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
           }
           Date now = new Date();
 

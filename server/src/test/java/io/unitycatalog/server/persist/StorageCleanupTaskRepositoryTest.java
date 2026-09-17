@@ -78,11 +78,6 @@ public class StorageCleanupTaskRepositoryTest {
     assertThat(task.getName()).isEqualTo("orders");
     assertThat(task.getStorageLocation()).isEqualTo("s3://bucket/a/b/c");
     assertThat(task.getDeletedAt()).isBetween(before, after);
-    assertThat(repository.hasPathOverlap("s3://bucket/a/b")).isTrue();
-    assertThat(repository.hasPathOverlap("s3://bucket/a/b/c/")).isTrue();
-    assertThat(repository.hasPathOverlap("s3://bucket/a/b/c/child")).isTrue();
-    assertThat(repository.hasPathOverlap("s3://bucket/a/b/d")).isFalse();
-    assertThat(repository.hasPathOverlap("s3://bucket/A/b/c")).isFalse();
   }
 
   @Test
@@ -103,27 +98,6 @@ public class StorageCleanupTaskRepositoryTest {
         .isInstanceOf(RuntimeException.class);
 
     assertThat(find(resourceId)).isEmpty();
-  }
-
-  @Test
-  void findsLongPathOverlapsUsingFullLocation() {
-    String commonPrefix = "s3://bucket/" + "a".repeat(800);
-    String location = commonPrefix + "/stored";
-    create(location);
-
-    assertThat(repository.hasPathOverlap(commonPrefix)).isTrue();
-    assertThat(repository.hasPathOverlap(location)).isTrue();
-    assertThat(repository.hasPathOverlap(location + "/child")).isTrue();
-    assertThat(repository.hasPathOverlap(commonPrefix + "/sibling")).isFalse();
-  }
-
-  @Test
-  void escapesLikeMetacharactersInPathChecks() {
-    create("s3://bucket/literalX/child");
-    create("s3://bucket/percentXYZ25/child");
-
-    assertThat(repository.hasPathOverlap("s3://bucket/literal_")).isFalse();
-    assertThat(repository.hasPathOverlap("s3://bucket/percent%25")).isFalse();
   }
 
   @Test

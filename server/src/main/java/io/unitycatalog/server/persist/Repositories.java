@@ -52,9 +52,7 @@ public class Repositories {
       ServerProperties serverProperties,
       CloudCredentialVendor cloudCredentialVendor) {
     this.sessionFactory = sessionFactory;
-    this.storageCleanupTaskRepository = new StorageCleanupTaskRepository(sessionFactory);
-    this.externalLocationUtils =
-        new ExternalLocationUtils(sessionFactory, storageCleanupTaskRepository);
+    this.externalLocationUtils = new ExternalLocationUtils(sessionFactory);
     CloudCredentialVendor resolvedCloudCredentialVendor =
         cloudCredentialVendor != null
             ? cloudCredentialVendor
@@ -78,6 +76,8 @@ public class Repositories {
     this.deltaCommitRepository =
         new DeltaCommitRepository(sessionFactory, serverProperties, fileOperations);
     this.dependencyRepository = new DependencyRepository();
+    this.storageCleanupTaskRepository = new StorageCleanupTaskRepository(sessionFactory);
+
     // KeyMapper uses all the repositories above.
     this.keyMapper = new KeyMapper(this);
   }

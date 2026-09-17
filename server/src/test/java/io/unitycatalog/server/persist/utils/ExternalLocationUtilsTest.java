@@ -2,26 +2,26 @@ package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.utils.NormalizedURL;
-import io.unitycatalog.server.utils.ServerProperties;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Tests for ExternalLocationUtils including both unit tests for static helper methods and
@@ -29,21 +29,28 @@ import org.junit.jupiter.api.Test;
  */
 public class ExternalLocationUtilsTest {
 
-  private static SessionFactory sessionFactory;
-  private static Session session;
+  @TempDir Path tempDir;
 
-  @BeforeAll
-  public static void setUp() {
-    // Create minimal properties
-    ServerProperties serverProperties = new ServerProperties(new Properties());
-    // Create Hibernate configurator and session factory
-    HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
-    sessionFactory = hibernateConfigurator.getSessionFactory();
+  private SessionFactory sessionFactory;
+  private Session session;
+
+  @BeforeEach
+  public void setUp() {
+    Properties properties = new Properties();
+    properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    properties.setProperty("hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID());
+    properties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
+    // A nested transaction cannot borrow a second connection while the caller is using this one.
+    properties.setProperty("hibernate.connection.pool_size", "1");
+    sessionFactory = new HibernateConfigurator(properties).getSessionFactory();
     session = sessionFactory.openSession();
   }
 
-  @AfterAll
-  public static void tearDown() {
+  @AfterEach
+  public void tearDown() {
+    if (session.getTransaction().isActive()) {
+      session.getTransaction().rollback();
+    }
     session.close();
     sessionFactory.close();
   }
@@ -66,21 +73,165 @@ public class ExternalLocationUtilsTest {
 
   @Test
   public void testPendingCleanupIsRejectedBeforePathFallback() {
-    SessionFactory unusedSessionFactory = mock(SessionFactory.class);
-    StorageCleanupTaskRepository cleanupTaskRepository = mock(StorageCleanupTaskRepository.class);
-    NormalizedURL url = NormalizedURL.from("s3://bucket/external/deleted");
-    when(cleanupTaskRepository.hasPathOverlap(url.toString())).thenReturn(true);
+    session.beginTransaction();
+    ExternalLocationDAO externalLocation =
+        ExternalLocationDAO.builder()
+            .id(UUID.randomUUID())
+            .name("external")
+            .url("s3://bucket/external")
+            .credentialId(UUID.randomUUID())
+            .build();
+    session.persist(externalLocation);
+    StorageCleanupTaskDAO task = createCleanupTask("s3://bucket/external/deleted");
+    session.getTransaction().commit();
 
-    ExternalLocationUtils externalLocationUtils =
-        new ExternalLocationUtils(unusedSessionFactory, cleanupTaskRepository);
-    assertThatThrownBy(() -> externalLocationUtils.getMapResourceIdsForPath(url))
+    ExternalLocationUtils externalLocationUtils = new ExternalLocationUtils(sessionFactory);
+    for (String path :
+        List.of(
+            externalLocation.getUrl(),
+            task.getStorageLocation(),
+            task.getStorageLocation() + "/data")) {
+      NormalizedURL url = NormalizedURL.from(path);
+      assertPendingCleanupDenied(() -> externalLocationUtils.getMapResourceIdsForPath(url));
+      assertPendingCleanupDenied(
+          () -> externalLocationUtils.validateNotOverlapWithPendingCleanup(url));
+    }
+    assertThat(
+            externalLocationUtils.getMapResourceIdsForPath(
+                NormalizedURL.from("s3://bucket/external/active")))
+        .containsOnlyKeys(SecurableType.EXTERNAL_LOCATION)
+        .containsEntry(SecurableType.EXTERNAL_LOCATION, externalLocation.getId());
+
+    session.beginTransaction();
+    session.remove(task);
+    session.getTransaction().commit();
+    NormalizedURL releasedPath = NormalizedURL.from(task.getStorageLocation());
+    externalLocationUtils.validateNotOverlapWithPendingCleanup(releasedPath);
+    assertThat(externalLocationUtils.getMapResourceIdsForPath(releasedPath))
+        .containsOnlyKeys(SecurableType.EXTERNAL_LOCATION)
+        .containsEntry(SecurableType.EXTERNAL_LOCATION, externalLocation.getId());
+  }
+
+  @Test
+  public void testPendingCleanupUsesCallerTransaction() {
+    session.beginTransaction();
+    for (String base :
+        List.of(
+            NormalizedURL.from(tempDir.toUri().toString()).toString(),
+            "s3://bucket",
+            "gs://bucket",
+            "abfs://container@account.dfs.core.windows.net",
+            "abfss://container@account.dfs.core.windows.net")) {
+      String location = base + "/reserved/deleted";
+      StorageCleanupTaskDAO task = createCleanupTask(location);
+      for (String overlappingPath :
+          List.of(
+              base.startsWith("file:") ? "file:///" : base,
+              base + "/reserved",
+              location,
+              location + "/",
+              location + "/data",
+              base + "/reserved/unused/../deleted")) {
+        assertPendingCleanupDenied(
+            () ->
+                ExternalLocationUtils.validateNotOverlapWithPendingCleanup(
+                    session, NormalizedURL.from(overlappingPath)));
+      }
+      assertPendingCleanupDenied(
+          () ->
+              ExternalLocationUtils.validateNotOverlapWithManagedStorage(
+                  session, NormalizedURL.from(location)));
+
+      for (String unrelatedPath :
+          List.of(location + "-sibling", base + "/other", base + "/RESERVED/deleted")) {
+        ExternalLocationUtils.validateNotOverlapWithPendingCleanup(
+            session, NormalizedURL.from(unrelatedPath));
+      }
+      session.remove(task);
+      ExternalLocationUtils.validateNotOverlapWithPendingCleanup(
+          session, NormalizedURL.from(location));
+    }
+  }
+
+  @Test
+  public void testLocalRootSubdirectoryQueryExcludesRootItself() {
+    session.beginTransaction();
+    String child = NormalizedURL.from(tempDir.toUri().toString()).toString();
+    for (String url : List.of("file:///", child)) {
+      session.persist(
+          ExternalLocationDAO.builder()
+              .id(UUID.randomUUID())
+              .name("location")
+              .url(url)
+              .credentialId(UUID.randomUUID())
+              .build());
+    }
+    assertThat(
+            ExternalLocationUtils.<ExternalLocationDAO>getEntityDAOsWithURLOverlap(
+                session,
+                NormalizedURL.from("file:///"),
+                SecurableType.EXTERNAL_LOCATION,
+                /* limit= */ 10,
+                /* includeParent= */ false,
+                /* includeSelf= */ false,
+                /* includeSubdir= */ true))
+        .extracting(ExternalLocationDAO::getUrl)
+        .containsExactly(child);
+  }
+
+  @Test
+  public void testPendingCleanupCoversEveryResourceType() {
+    session.beginTransaction();
+    StorageCleanupTaskRepository repository = new StorageCleanupTaskRepository(sessionFactory);
+    for (ResourceType resourceType : ResourceType.values()) {
+      NormalizedURL location = NormalizedURL.from("s3://bucket/" + resourceType);
+      repository.create(
+          session, resourceType, UUID.randomUUID(), "deleted_resource", location.toString());
+      assertPendingCleanupDenied(
+          () -> ExternalLocationUtils.validateNotOverlapWithPendingCleanup(session, location));
+    }
+  }
+
+  @Test
+  public void testPendingCleanupChecksFullPathsAndLiteralWildcards() {
+    session.beginTransaction();
+    String commonPrefix = "s3://bucket/" + "a".repeat(800);
+    createCleanupTask(commonPrefix + "/stored");
+    for (String path :
+        List.of(commonPrefix, commonPrefix + "/stored", commonPrefix + "/stored/child")) {
+      assertPendingCleanupDenied(
+          () ->
+              ExternalLocationUtils.validateNotOverlapWithPendingCleanup(
+                  session, NormalizedURL.from(path)));
+    }
+    ExternalLocationUtils.validateNotOverlapWithPendingCleanup(
+        session, NormalizedURL.from(commonPrefix + "/sibling"));
+
+    createCleanupTask("s3://bucket/literalX/child");
+    createCleanupTask("s3://bucket/percentXYZ25/child");
+    for (String path : List.of("s3://bucket/literal_", "s3://bucket/percent%25")) {
+      ExternalLocationUtils.validateNotOverlapWithPendingCleanup(session, NormalizedURL.from(path));
+      createCleanupTask(path + "/child");
+      assertPendingCleanupDenied(
+          () ->
+              ExternalLocationUtils.validateNotOverlapWithPendingCleanup(
+                  session, NormalizedURL.from(path)));
+    }
+  }
+
+  private StorageCleanupTaskDAO createCleanupTask(String location) {
+    return new StorageCleanupTaskRepository(sessionFactory)
+        .create(session, ResourceType.TABLE, UUID.randomUUID(), "orders", location);
+  }
+
+  private static void assertPendingCleanupDenied(Runnable action) {
+    assertThatThrownBy(action::run)
         .isInstanceOfSatisfying(
             BaseException.class,
             exception -> {
               assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PERMISSION_DENIED);
               assertThat(exception).hasMessage("Input path overlaps pending storage cleanup.");
             });
-    verifyNoInteractions(unusedSessionFactory);
   }
 
   @Test

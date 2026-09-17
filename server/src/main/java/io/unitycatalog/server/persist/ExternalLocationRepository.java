@@ -231,10 +231,8 @@ public class ExternalLocationRepository {
           }
           // Check if the external location is in use by any data objects (tables, volumes, models)
           if (!force) {
-            repositories
-                .getExternalLocationUtils()
-                .validateNotOverlapWithPendingCleanup(
-                    NormalizedURL.from(existingLocation.getUrl()));
+            ExternalLocationUtils.validateNotOverlapWithPendingCleanup(
+                session, NormalizedURL.from(existingLocation.getUrl()));
             ExternalLocationUtils.getAllEntityDAOsWithURLOverlap(
                     session,
                     NormalizedURL.from(existingLocation.getUrl()),

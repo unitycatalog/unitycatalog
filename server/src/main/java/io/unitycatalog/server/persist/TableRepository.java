@@ -27,6 +27,7 @@ import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
@@ -815,9 +816,7 @@ public class TableRepository {
                 !storageLocation.isCloudStorageRoot(),
                 "External table storage location must include a non-empty path prefix: %s",
                 createTable.getStorageLocation());
-            repositories
-                .getExternalLocationUtils()
-                .validateNotOverlapWithManagedStorage(session, storageLocation);
+            ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
             tableUUID = UUID.randomUUID();
           } else if (tableType == TableType.MANAGED) {
             storageLocation = NormalizedURL.from(createTable.getStorageLocation());

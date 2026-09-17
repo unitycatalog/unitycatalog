@@ -7,7 +7,6 @@ import com.google.common.annotations.VisibleForTesting;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
-import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
@@ -15,6 +14,7 @@ import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.Constants;
@@ -53,12 +53,9 @@ import org.hibernate.query.Query;
 public class ExternalLocationUtils {
 
   private final SessionFactory sessionFactory;
-  private final StorageCleanupTaskRepository storageCleanupTaskRepository;
 
-  public ExternalLocationUtils(
-      SessionFactory sessionFactory, StorageCleanupTaskRepository storageCleanupTaskRepository) {
+  public ExternalLocationUtils(SessionFactory sessionFactory) {
     this.sessionFactory = sessionFactory;
-    this.storageCleanupTaskRepository = storageCleanupTaskRepository;
   }
 
   /**
@@ -88,6 +85,10 @@ public class ExternalLocationUtils {
   @VisibleForTesting
   static final DaoClassInfo UNCOMMITTED_STAGING_TABLE_DAO_INFO =
       new DaoClassInfo(StagingTableDAO.class, "stagingLocation", "stageCommitted=false");
+
+  // Cleanup tasks reserve paths but are not securables and cannot own path credentials.
+  private static final DaoClassInfo STORAGE_CLEANUP_TASK_DAO_INFO =
+      new DaoClassInfo(StorageCleanupTaskDAO.class, "storageLocation");
 
   /**
    * List of securable types that represent data objects (tables, volumes, registered models). Used
@@ -122,7 +123,6 @@ public class ExternalLocationUtils {
    *     data securables, this will be a 3-entry map.
    */
   public Map<SecurableType, UUID> getMapResourceIdsForPath(NormalizedURL url) {
-    validateNotOverlapWithPendingCleanup(url);
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> getMapResourceIdsForPath(session, url),
@@ -131,6 +131,7 @@ public class ExternalLocationUtils {
   }
 
   private Map<SecurableType, UUID> getMapResourceIdsForPath(Session session, NormalizedURL url) {
+    validateNotOverlapWithPendingCleanup(session, url);
     // 1. Fail if it's parent of any of the data securable or external location
     if (!getAllEntityDAOsWithURLOverlap(
             session,
@@ -417,7 +418,8 @@ public class ExternalLocationUtils {
     if (includeSubdir) {
       // Construct a LIKE pattern to match all child URLs. Escape special LIKE characters.
       String escapedUrl = escapeLikePattern(url.toString());
-      likePattern = escapedUrl + "/%";
+      // A filesystem root already ends in '/', but a child must add at least one character.
+      likePattern = escapedUrl + (escapedUrl.endsWith("/") ? "_%" : "/%");
       hasLikeCondition = true;
     }
 
@@ -581,14 +583,43 @@ public class ExternalLocationUtils {
    * @param url the URL to validate
    * @throws BaseException if the URL overlaps with managed storage or pending cleanup
    */
-  public void validateNotOverlapWithManagedStorage(Session session, NormalizedURL url) {
+  public static void validateNotOverlapWithManagedStorage(Session session, NormalizedURL url) {
     validateNotSameOrUnderManagedStoragePrefix(url);
     validateNotAboveManagedStorage(session, url);
-    validateNotOverlapWithPendingCleanup(url);
+    validateNotOverlapWithPendingCleanup(session, url);
   }
 
+  /** Checks pending cleanup in a new read transaction when the caller has no session. */
   public void validateNotOverlapWithPendingCleanup(NormalizedURL url) {
-    if (storageCleanupTaskRepository.hasPathOverlap(url.toString())) {
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          validateNotOverlapWithPendingCleanup(session, url);
+          return null;
+        },
+        "Failed to check storage cleanup path",
+        /* readOnly= */ true);
+  }
+
+  /**
+   * Rejects paths above, equal to, or below a pending cleanup task using the caller's transaction.
+   * Task details are not included in the error because the caller may not have access to them.
+   *
+   * @param session the caller's Hibernate session
+   * @param url the normalized path to check
+   * @throws BaseException with PERMISSION_DENIED if any cleanup task overlaps the path
+   */
+  public static void validateNotOverlapWithPendingCleanup(Session session, NormalizedURL url) {
+    if (!generateEntitiesDAOsWithURLOverlapQuery(
+            session,
+            url,
+            STORAGE_CLEANUP_TASK_DAO_INFO,
+            /* limit= */ 1,
+            /* includeParent= */ true,
+            /* includeSelf= */ true,
+            /* includeSubdir= */ true)
+        .getResultList()
+        .isEmpty()) {
       throw new BaseException(
           ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup.");
     }
