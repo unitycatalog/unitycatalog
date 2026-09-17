@@ -131,7 +131,12 @@ class ManagedTableCleanupTaskTest {
         session -> {
           repositories
               .getStorageCleanupTaskRepository()
-              .create(session, ResourceType.TABLE, table.getId(), existingTaskLocation);
+              .create(
+                  session,
+                  ResourceType.TABLE,
+                  table.getId(),
+                  table.getName(),
+                  existingTaskLocation);
           return null;
         },
         "Failed to create existing cleanup task",
@@ -172,6 +177,8 @@ class ManagedTableCleanupTaskTest {
     StorageCleanupTaskDAO task = findTask(table.getId());
     assertThat(findTable(table.getId())).isNull();
     assertThat(task).isNotNull();
+    assertThat(task.getId()).isEqualTo(table.getId());
+    assertThat(task.getName()).isEqualTo(table.getName());
     assertThat(task.getResourceType()).isEqualTo(ResourceType.TABLE);
     assertThat(task.getStorageLocation()).isEqualTo(NormalizedURL.normalize(table.getUrl()));
     assertThat(task.getDeletedAt()).isBetween(beforeDrop, new Date());

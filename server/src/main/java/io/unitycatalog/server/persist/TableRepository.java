@@ -1191,7 +1191,12 @@ public class TableRepository {
       case FILE, NULL, S3, GS ->
           repositories
               .getStorageCleanupTaskRepository()
-              .create(session, ResourceType.TABLE, tableInfoDAO.getId(), location.toString());
+              .create(
+                  session,
+                  ResourceType.TABLE,
+                  tableInfoDAO.getId(),
+                  tableInfoDAO.getName(),
+                  location.toString());
       case ABFS, ABFSS -> {
         // Cleanup adapters for these providers will be added later.
       }

@@ -384,7 +384,8 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     TransactionManager.executeWithTransaction(
         hibernateConfigurator.getSessionFactory(),
         session -> {
-          repository.create(session, ResourceType.TABLE, UUID.randomUUID(), storageLocation);
+          repository.create(
+              session, ResourceType.TABLE, UUID.randomUUID(), "orders", storageLocation);
           return null;
         },
         "Failed to create test cleanup task",
