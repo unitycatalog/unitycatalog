@@ -1,16 +1,76 @@
-import { useUcQuery } from "@/lib/ucQuery";
-import { UC_API_PREFIX } from "@/lib/uc";
-import type { FunctionInfo, ListFunctionsResponse } from "@/lib/types";
+import { createClient } from "@connectrpc/connect";
+import {
+  createConnectQueryKey,
+  useMutation,
+  useQuery,
+  useTransport,
+} from "@connectrpc/connect-query";
+import { useQuery as useTanstackQuery } from "@tanstack/react-query";
+import { FunctionService } from "@/gen/uc/v1/function_pb";
+import { collectAllPages, useInvalidateMethod } from "@/hooks/query";
 
-export function useListFunctions(catalogName: string, schemaName: string) {
-  return useUcQuery<ListFunctionsResponse>("GET", `${UC_API_PREFIX}/functions`, {
-    query: { catalog_name: catalogName, schema_name: schemaName },
-    queryOptions: { enabled: !!catalogName && !!schemaName },
+export function useListFunctions(
+  catalogName: string,
+  schemaName: string,
+  enabled = true,
+) {
+  const transport = useTransport();
+  const client = createClient(FunctionService, transport);
+  const input = { schema: { catalogName, name: schemaName } };
+  return useTanstackQuery({
+    queryKey: createConnectQueryKey({
+      schema: FunctionService.method.listFunctions,
+      input,
+      transport,
+      cardinality: "finite",
+    }),
+    enabled: enabled && !!catalogName && !!schemaName,
+    queryFn: () =>
+      collectAllPages(
+        (pageToken) =>
+          client.listFunctions({
+            ...input,
+            page: pageToken ? { pageToken } : undefined,
+          }),
+        (response) => response.functions,
+        (response) => response.page?.nextPageToken ?? "",
+        (response, functions) => ({
+          ...response,
+          functions,
+          page: response.page
+            ? { ...response.page, nextPageToken: "" }
+            : undefined,
+        }),
+      ),
   });
 }
 
 export function useGetFunction(fullName: string) {
-  return useUcQuery<FunctionInfo>("GET", `${UC_API_PREFIX}/functions/${encodeURIComponent(fullName)}`, {
-    queryOptions: { enabled: !!fullName },
+  const [catalogName = "", schemaName = "", name = ""] = fullName.split(".");
+  return useQuery(
+    FunctionService.method.getFunction,
+    { function: { catalogName, schemaName, name } },
+    {
+      enabled: !!catalogName && !!schemaName && !!name,
+      select: (response) => response.function,
+    },
+  );
+}
+
+export function useCreateFunction() {
+  const invalidateList = useInvalidateMethod(
+    FunctionService.method.listFunctions,
+  );
+  return useMutation(FunctionService.method.createFunction, {
+    onSuccess: invalidateList,
+  });
+}
+
+export function useDeleteFunction() {
+  const invalidateList = useInvalidateMethod(
+    FunctionService.method.listFunctions,
+  );
+  return useMutation(FunctionService.method.deleteFunction, {
+    onSuccess: invalidateList,
   });
 }

@@ -1,11 +1,19 @@
 import { HardDrive } from "lucide-react";
-import { useGetVolume } from "@/hooks/volumes";
-import { formatEpoch } from "@/lib/uc";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  useDeleteVolume,
+  useGetVolume,
+  useUpdateVolume,
+} from "@/hooks/volumes";
+import { formatTimestamp } from "@/lib/uc";
+import { VolumeType } from "@/gen/uc/v1/volume_pb";
 import EntityHeader from "@/components/EntityHeader";
 import { QueryState } from "@/components/QueryState";
 import DescriptionCard from "@/components/DescriptionCard";
 import MetaGrid from "@/components/MetaGrid";
 import PermissionsPanel from "@/components/PermissionsPanel";
+import OwnerDeleteAction from "@/components/OwnerDeleteAction";
+import EditMetadataAction from "@/components/EditMetadataAction";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -18,8 +26,11 @@ export default function VolumeDetails({
   schema: string;
   volume: string;
 }) {
+  const navigate = useNavigate();
   const fullName = `${catalog}.${schema}.${volume}`;
   const { data, isLoading, error } = useGetVolume(fullName);
+  const updateVolume = useUpdateVolume();
+  const deleteVolume = useDeleteVolume();
 
   return (
     <div>
@@ -28,7 +39,55 @@ export default function VolumeDetails({
         Icon={HardDrive}
         catalog={catalog}
         schema={schema}
-        badges={[data?.volume_type, "VOLUME"].filter(Boolean) as string[]}
+        badges={
+          [data ? VolumeType[data.volumeType] : undefined, "VOLUME"].filter(
+            Boolean,
+          ) as string[]
+        }
+        actions={
+          <>
+            <EditMetadataAction
+              name={volume}
+              comment={data?.comment}
+              onSubmit={async (changes) => {
+                await updateVolume.mutateAsync({
+                  volume: {
+                    catalogName: catalog,
+                    schemaName: schema,
+                    name: volume,
+                  },
+                  ...changes,
+                });
+                if (changes.newName) {
+                  navigate({
+                    to: "/catalog/$catalog/$schema/volume/$volume",
+                    params: { catalog, schema, volume: changes.newName },
+                  });
+                }
+              }}
+            />
+            <OwnerDeleteAction
+              entityName={volume}
+              entityType="volume"
+              owner={data?.audit?.owner}
+              onDelete={() =>
+                deleteVolume.mutateAsync({
+                  volume: {
+                    catalogName: catalog,
+                    schemaName: schema,
+                    name: volume,
+                  },
+                })
+              }
+              onDeleted={() =>
+                navigate({
+                  to: "/catalog/$catalog/$schema",
+                  params: { catalog, schema },
+                })
+              }
+            />
+          </>
+        }
       />
       <div className="p-6">
         <QueryState isLoading={isLoading} error={error}>
@@ -49,13 +108,25 @@ export default function VolumeDetails({
                   <MetaGrid
                     items={[
                       { label: "Name", value: data?.name },
-                      { label: "Full name", value: data?.full_name || fullName },
-                      { label: "Type", value: data?.volume_type || "—" },
-                      { label: "Owner", value: data?.owner || "—" },
-                      { label: "Storage location", value: data?.storage_location || "—" },
-                      { label: "Created", value: formatEpoch(data?.created_at) },
-                      { label: "Updated", value: formatEpoch(data?.updated_at) },
-                      { label: "Volume ID", value: data?.volume_id || "—" },
+                      { label: "Full name", value: data?.fullName || fullName },
+                      {
+                        label: "Type",
+                        value: data ? VolumeType[data.volumeType] : "—",
+                      },
+                      { label: "Owner", value: data?.audit?.owner || "—" },
+                      {
+                        label: "Storage location",
+                        value: data?.storageLocation || "—",
+                      },
+                      {
+                        label: "Created",
+                        value: formatTimestamp(data?.audit?.createdAt),
+                      },
+                      {
+                        label: "Updated",
+                        value: formatTimestamp(data?.audit?.updatedAt),
+                      },
+                      { label: "Volume ID", value: data?.id || "—" },
                     ]}
                   />
                 </CardContent>

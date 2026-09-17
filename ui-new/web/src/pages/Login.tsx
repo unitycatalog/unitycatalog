@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAppConfig } from "@/lib/appConfig";
 import { useAuth } from "@/context/auth-context";
@@ -12,32 +12,52 @@ import { Label } from "@/components/ui/label";
 export default function Login() {
   const navigate = useNavigate();
   const { data: appConfig } = useAppConfig();
-  const { loginWithToken, signInWithAccessToken } = useAuth();
+  const { authenticating, currentUser, loginWithToken, signInWithAccessToken } =
+    useAuth();
   const [error, setError] = useState<string | null>(null);
   const [pastedToken, setPastedToken] = useState("");
+  const [isVerifyingToken, setIsVerifyingToken] = useState(false);
+
+  useEffect(() => {
+    if (currentUser) {
+      void navigate({ to: "/" });
+    }
+  }, [currentUser, navigate]);
 
   const onGoogleCredential = async (idToken: string) => {
     setError(null);
     try {
       await loginWithToken(idToken);
-      navigate({ to: "/" });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Login failed. Contact your administrator.");
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Login failed. Contact your administrator.",
+      );
     }
   };
 
-  const onPasteToken = () => {
+  const onPasteToken = async () => {
     setError(null);
     if (!pastedToken.trim()) {
       setError("Paste a JWT access token.");
       return;
     }
-    signInWithAccessToken(pastedToken);
-    navigate({ to: "/" });
+    setIsVerifyingToken(true);
+    try {
+      await signInWithAccessToken(pastedToken);
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : "Token verification failed.";
+      setError(`Unable to sign in: ${message}`);
+    } finally {
+      setIsVerifyingToken(false);
+    }
   };
 
   const googleClientId = appConfig?.googleClientId ?? "";
-  const anyProvider = googleClientId || appConfig?.oktaEnabled || appConfig?.keycloakEnabled;
+  const anyProvider =
+    googleClientId || appConfig?.oktaEnabled || appConfig?.keycloakEnabled;
 
   return (
     <div className="flex min-h-full items-center justify-center bg-neutral-900 p-6">
@@ -49,31 +69,58 @@ export default function Login() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Login</CardTitle>
+            <CardTitle className="text-base">
+              {authenticating ? "Authenticating" : "Login"}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {googleClientId && (
-              <div className="flex justify-center">
-                <GoogleAuthButton clientId={googleClientId} onCredential={onGoogleCredential} />
+            {authenticating ? (
+              <div
+                className="flex flex-col items-center gap-3 py-5 text-muted-foreground"
+                role="status"
+                aria-live="polite"
+              >
+                <div className="flex gap-2" aria-hidden="true">
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-current [animation-delay:-0.3s] motion-reduce:animate-none" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-current [animation-delay:-0.15s] motion-reduce:animate-none" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-current motion-reduce:animate-none" />
+                </div>
+                <p className="text-sm">Refreshing your session…</p>
               </div>
-            )}
-            {appConfig?.oktaEnabled && (
-              <p className="text-sm text-muted-foreground">
-                Okta sign-in is enabled on the server. Complete the Okta flow, then return here.
-              </p>
-            )}
-            {appConfig?.keycloakEnabled && (
-              <p className="text-sm text-muted-foreground">
-                Keycloak sign-in is enabled on the server. Complete the Keycloak flow, then return here.
-              </p>
-            )}
-            {!anyProvider && (
-              <p className="text-sm text-muted-foreground">
-                No auth providers are enabled. Set them in the server configuration.
-              </p>
-            )}
-            {error && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+            ) : (
+              <>
+                {googleClientId && (
+                  <div className="flex justify-center">
+                    <GoogleAuthButton
+                      clientId={googleClientId}
+                      onCredential={onGoogleCredential}
+                    />
+                  </div>
+                )}
+                {appConfig?.oktaEnabled && (
+                  <p className="text-sm text-muted-foreground">
+                    Okta sign-in is enabled on the server. Complete the Okta
+                    flow, then return here.
+                  </p>
+                )}
+                {appConfig?.keycloakEnabled && (
+                  <p className="text-sm text-muted-foreground">
+                    Keycloak sign-in is enabled on the server. Complete the
+                    Keycloak flow, then return here.
+                  </p>
+                )}
+                {!anyProvider && (
+                  <p className="text-sm text-muted-foreground">
+                    No auth providers are enabled. Set them in the server
+                    configuration.
+                  </p>
+                )}
+                {error && (
+                  <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {error}
+                  </p>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -90,15 +137,25 @@ export default function Login() {
                 placeholder="eyJ..."
                 value={pastedToken}
                 onChange={(e) => setPastedToken(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && onPasteToken()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void onPasteToken();
+                  }
+                }}
               />
             </div>
-            <Button variant="outline" className="w-full" onClick={onPasteToken}>
-              Use token &amp; continue
+            <Button
+              variant="outline"
+              className="w-full"
+              disabled={isVerifyingToken}
+              onClick={() => void onPasteToken()}
+            >
+              {isVerifyingToken ? "Verifying token…" : "Use token & continue"}
             </Button>
             <p className="text-xs text-muted-foreground">
-              The token is sent as a bearer credential on every request and stored in this browser
-              until you log out.
+              The token is sent as a bearer credential on every request and
+              stored in this browser until you log out.
             </p>
           </CardContent>
         </Card>

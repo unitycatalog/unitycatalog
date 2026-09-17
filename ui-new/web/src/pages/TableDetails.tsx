@@ -1,13 +1,16 @@
 import { Table as TableIcon } from "lucide-react";
-import { useGetTable } from "@/hooks/tables";
-import { formatEpoch } from "@/lib/uc";
-import type { ColumnInfo } from "@/lib/types";
+import { useNavigate } from "@tanstack/react-router";
+import { useDeleteTable, useGetTable } from "@/hooks/tables";
+import { formatTimestamp } from "@/lib/uc";
+import { ColumnTypeName, type ColumnInfo } from "@/gen/uc/v1/common_pb";
+import { DataSourceFormat, TableType } from "@/gen/uc/v1/table_pb";
 import EntityHeader from "@/components/EntityHeader";
 import { QueryState } from "@/components/QueryState";
 import DescriptionCard from "@/components/DescriptionCard";
 import MetaGrid from "@/components/MetaGrid";
 import PropertiesCard from "@/components/PropertiesCard";
 import PermissionsPanel from "@/components/PermissionsPanel";
+import OwnerDeleteAction from "@/components/OwnerDeleteAction";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -20,7 +23,7 @@ import {
 } from "@/components/ui/table";
 
 function columnType(c: ColumnInfo): string {
-  return c.type_text || c.type_name || "—";
+  return c.typeText || ColumnTypeName[c.typeName] || "—";
 }
 
 function ColumnsTable({ columns }: { columns: ColumnInfo[] }) {
@@ -46,13 +49,19 @@ function ColumnsTable({ columns }: { columns: ColumnInfo[] }) {
             <TableBody>
               {columns.map((c, i) => (
                 <TableRow key={c.name}>
-                  <TableCell className="text-muted-foreground">{c.position ?? i}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {c.position ?? i}
+                  </TableCell>
                   <TableCell className="font-medium">{c.name}</TableCell>
-                  <TableCell className="font-mono text-xs">{columnType(c)}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {columnType(c)}
+                  </TableCell>
                   <TableCell className="text-muted-foreground">
                     {c.nullable === false ? "false" : "true"}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{c.comment || "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {c.comment || "—"}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -72,13 +81,46 @@ export default function TableDetails({
   schema: string;
   table: string;
 }) {
+  const navigate = useNavigate();
   const fullName = `${catalog}.${schema}.${table}`;
   const { data, isLoading, error } = useGetTable(fullName);
-  const badges = [data?.table_type, data?.data_source_format].filter(Boolean) as string[];
+  const deleteTable = useDeleteTable();
+  const badges = [
+    data ? TableType[data.tableType] : undefined,
+    data ? DataSourceFormat[data.dataSourceFormat] : undefined,
+  ].filter(Boolean) as string[];
 
   return (
     <div>
-      <EntityHeader name={table} Icon={TableIcon} catalog={catalog} schema={schema} badges={badges} />
+      <EntityHeader
+        name={table}
+        Icon={TableIcon}
+        catalog={catalog}
+        schema={schema}
+        badges={badges}
+        actions={
+          <OwnerDeleteAction
+            entityName={table}
+            entityType="table"
+            owner={data?.audit?.owner}
+            onDelete={() =>
+              deleteTable.mutateAsync({
+                table: {
+                  catalogName: catalog,
+                  schemaName: schema,
+                  name: table,
+                },
+              })
+            }
+            onDeleted={() =>
+              navigate({
+                to: "/catalog/$catalog/$schema",
+                params: { catalog, schema },
+              })
+            }
+          />
+        }
+      />
       <div className="p-6">
         <QueryState isLoading={isLoading} error={error}>
           <Tabs defaultValue="overview">
@@ -99,19 +141,36 @@ export default function TableDetails({
                   <MetaGrid
                     items={[
                       { label: "Name", value: data?.name },
-                      { label: "Full name", value: data?.full_name || fullName },
-                      { label: "Type", value: data?.table_type || "—" },
-                      { label: "Format", value: data?.data_source_format || "—" },
-                      { label: "Owner", value: data?.owner || "—" },
-                      { label: "Storage location", value: data?.storage_location || "—" },
-                      { label: "Created", value: formatEpoch(data?.created_at) },
-                      { label: "Updated", value: formatEpoch(data?.updated_at) },
-                      { label: "Table ID", value: data?.table_id || "—" },
+                      { label: "Full name", value: data?.fullName || fullName },
+                      {
+                        label: "Type",
+                        value: data ? TableType[data.tableType] : "—",
+                      },
+                      {
+                        label: "Format",
+                        value: data
+                          ? DataSourceFormat[data.dataSourceFormat]
+                          : "—",
+                      },
+                      { label: "Owner", value: data?.audit?.owner || "—" },
+                      {
+                        label: "Storage location",
+                        value: data?.storageLocation || "—",
+                      },
+                      {
+                        label: "Created",
+                        value: formatTimestamp(data?.audit?.createdAt),
+                      },
+                      {
+                        label: "Updated",
+                        value: formatTimestamp(data?.audit?.updatedAt),
+                      },
+                      { label: "Table ID", value: data?.id || "—" },
                     ]}
                   />
                 </CardContent>
               </Card>
-              <PropertiesCard properties={data?.properties} />
+              <PropertiesCard properties={data?.properties?.values} />
             </TabsContent>
 
             <TabsContent value="permissions">

@@ -1,4 +1,12 @@
-import { describe, expect, it, vi, beforeEach, afterEach, type Mock } from "vitest";
+import {
+  describe,
+  expect,
+  it,
+  vi,
+  beforeEach,
+  afterEach,
+  type Mock,
+} from "vitest";
 import type { ReactNode } from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
 
@@ -12,7 +20,10 @@ import { getToken } from "@/lib/session";
 const call = proxyClient.call as unknown as Mock;
 
 function stubConfig(cfg: Record<string, unknown>) {
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => cfg }));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({ ok: true, json: async () => cfg }),
+  );
 }
 
 const wrapper = ({ children }: { children: ReactNode }) => (
@@ -36,9 +47,64 @@ describe("AuthProvider", () => {
 
   it("auth-enabled: resolves the current user via SCIM", async () => {
     stubConfig({ authEnabled: true });
-    call.mockResolvedValue({ httpStatus: 200, ok: true, body: JSON.stringify({ displayName: "Ada" }) });
+    call.mockResolvedValue({
+      httpStatus: 200,
+      ok: true,
+      body: JSON.stringify({ displayName: "Ada" }),
+    });
     const { result } = renderHook(() => useAuth(), { wrapper });
-    await waitFor(() => expect(result.current.currentUser?.displayName).toBe("Ada"));
+    await waitFor(() =>
+      expect(result.current.currentUser?.displayName).toBe("Ada"),
+    );
+  });
+
+  it("shows authentication progress until the new session is verified", async () => {
+    stubConfig({ authEnabled: true });
+    let tokenExchanged = false;
+    let resolveCurrentUser!: (value: {
+      httpStatus: number;
+      ok: boolean;
+      body: string;
+    }) => void;
+    const currentUserResponse = new Promise<{
+      httpStatus: number;
+      ok: boolean;
+      body: string;
+    }>((resolve) => {
+      resolveCurrentUser = resolve;
+    });
+
+    call.mockImplementation(async (input: { path: string }) => {
+      if (input.path.endsWith("/auth/tokens")) {
+        tokenExchanged = true;
+        return { httpStatus: 200, ok: true, body: "{}" };
+      }
+      if (!tokenExchanged) {
+        return { httpStatus: 401, ok: false, body: "" };
+      }
+      return currentUserResponse;
+    });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let loginPromise!: Promise<void>;
+    act(() => {
+      loginPromise = result.current.loginWithToken("google-id-token");
+    });
+    await waitFor(() => expect(result.current.authenticating).toBe(true));
+
+    await act(async () => {
+      resolveCurrentUser({
+        httpStatus: 200,
+        ok: true,
+        body: JSON.stringify({ displayName: "Ada" }),
+      });
+      await loginPromise;
+    });
+
+    expect(result.current.authenticating).toBe(false);
+    expect(result.current.currentUser?.displayName).toBe("Ada");
   });
 
   it("signInWithAccessToken stores the token and authenticates via bearer", async () => {
@@ -46,7 +112,11 @@ describe("AuthProvider", () => {
     // A user is only returned when a bearer token is forwarded.
     call.mockImplementation(async (input: { token: string }) =>
       input.token
-        ? { httpStatus: 200, ok: true, body: JSON.stringify({ displayName: "Ada" }) }
+        ? {
+            httpStatus: 200,
+            ok: true,
+            body: JSON.stringify({ displayName: "Ada" }),
+          }
         : { httpStatus: 401, ok: false, body: "" },
     );
 
@@ -54,10 +124,29 @@ describe("AuthProvider", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.currentUser).toBeNull();
 
-    act(() => result.current.signInWithAccessToken("jwt-xyz"));
+    await act(async () => {
+      await result.current.signInWithAccessToken("jwt-xyz");
+    });
     expect(getToken()).toBe("jwt-xyz");
     await waitFor(() => expect(result.current.hasAccessToken).toBe(true));
-    await waitFor(() => expect(result.current.currentUser?.displayName).toBe("Ada"));
+    await waitFor(() =>
+      expect(result.current.currentUser?.displayName).toBe("Ada"),
+    );
+  });
+
+  it("clears a pasted token when current-user validation fails", async () => {
+    stubConfig({ authEnabled: true });
+    call.mockResolvedValue({ httpStatus: 401, ok: false, body: "" });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await expect(
+        result.current.signInWithAccessToken("bad-jwt"),
+      ).rejects.toThrow("rejected this access token");
+    });
+    expect(getToken()).toBe("");
   });
 
   it("logout clears the pasted token", async () => {
@@ -66,7 +155,9 @@ describe("AuthProvider", () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    act(() => result.current.signInWithAccessToken("jwt-xyz"));
+    await act(async () => {
+      await result.current.signInWithAccessToken("jwt-xyz");
+    });
     await waitFor(() => expect(getToken()).toBe("jwt-xyz"));
 
     await act(async () => {

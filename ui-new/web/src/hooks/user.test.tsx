@@ -7,7 +7,11 @@ vi.mock("@/lib/transport", () => ({
 
 import { proxyClient } from "@/lib/transport";
 import { renderHookWithProviders } from "@/test/providers";
-import { useGetCurrentUser, useLoginWithToken, useLogoutCurrentUser } from "@/hooks/user";
+import {
+  useGetCurrentUser,
+  useLoginWithToken,
+  useLogoutCurrentUser,
+} from "@/hooks/user";
 
 const call = proxyClient.call as unknown as Mock;
 
@@ -18,7 +22,10 @@ describe("useGetCurrentUser", () => {
     call.mockResolvedValue({
       httpStatus: 200,
       ok: true,
-      body: JSON.stringify({ displayName: "Ada", emails: [{ value: "ada@x.io" }] }),
+      body: JSON.stringify({
+        displayName: "Ada",
+        emails: [{ value: "ada@x.io" }],
+      }),
     });
     const { result } = renderHookWithProviders(() => useGetCurrentUser(true));
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -52,13 +59,21 @@ describe("useLoginWithToken", () => {
     expect(arg.contentType).toBe("application/x-www-form-urlencoded");
     expect(arg.query).toEqual([{ key: "ext", value: "cookie" }]);
     expect(arg.jsonBody).toContain("subject_token=google-id-token");
-    expect(arg.jsonBody).toContain("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange");
+    expect(arg.jsonBody).toContain(
+      "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange",
+    );
   });
 
   it("rejects on a non-2xx response", async () => {
-    call.mockResolvedValue({ httpStatus: 400, ok: false, body: "bad" });
+    call.mockResolvedValue({
+      httpStatus: 400,
+      ok: false,
+      body: JSON.stringify({ message: "User not allowed" }),
+    });
     const { result } = renderHookWithProviders(() => useLoginWithToken());
-    await expect(result.current.mutateAsync("x")).rejects.toThrow(/Login failed/);
+    await expect(result.current.mutateAsync("x")).rejects.toThrow(
+      "Login failed (HTTP 400): User not allowed",
+    );
   });
 });
 
@@ -67,6 +82,8 @@ describe("useLogoutCurrentUser", () => {
     call.mockResolvedValue({ httpStatus: 200, ok: true, body: "" });
     const { result } = renderHookWithProviders(() => useLogoutCurrentUser());
     await result.current.mutateAsync();
-    expect(call.mock.calls[0][0].path).toBe("/api/1.0/unity-control/auth/logout");
+    expect(call.mock.calls[0][0].path).toBe(
+      "/api/1.0/unity-control/auth/logout",
+    );
   });
 });

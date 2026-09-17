@@ -13,6 +13,13 @@ export interface UserInterface {
 
 export const CURRENT_USER_QUERY_KEY = ["getCurrentUser"] as const;
 
+export async function fetchCurrentUser(): Promise<UserInterface | null> {
+  const res = await ucCall("GET", `${UC_AUTH_API_PREFIX}/scim2/Me`);
+  if (res.httpStatus === 401) return null;
+  if (!res.ok) throw new Error(`Failed to fetch user (HTTP ${res.httpStatus})`);
+  return res.body ? (JSON.parse(res.body) as UserInterface) : null;
+}
+
 // useGetCurrentUser fetches the caller's identity from the control-plane SCIM
 // endpoint. A 401 means "not signed in" and resolves to null (not an error) so
 // the auth gate can redirect to /login without surfacing a failure.
@@ -21,27 +28,35 @@ export function useGetCurrentUser(enabled = true) {
     queryKey: CURRENT_USER_QUERY_KEY,
     enabled,
     retry: false,
-    queryFn: async () => {
-      const res = await ucCall("GET", `${UC_AUTH_API_PREFIX}/scim2/Me`);
-      if (res.httpStatus === 401) return null;
-      if (!res.ok) throw new Error(`Failed to fetch user (HTTP ${res.httpStatus})`);
-      return res.body ? (JSON.parse(res.body) as UserInterface) : null;
-    },
+    queryFn: fetchCurrentUser,
   });
 }
 
 // The subset of GrantType / TokenType values the token-exchange login uses.
 // Mirrors the current ui's control.gen enums without pulling the whole spec.
-const GRANT_TYPE_TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange";
+const GRANT_TYPE_TOKEN_EXCHANGE =
+  "urn:ietf:params:oauth:grant-type:token-exchange";
 const TOKEN_TYPE_ACCESS = "urn:ietf:params:oauth:token-type:access_token";
 const TOKEN_TYPE_ID = "urn:ietf:params:oauth:token-type:id_token";
+
+function loginError(status: number, body: string): Error {
+  let detail = body.trim();
+  try {
+    const response = JSON.parse(body) as { message?: unknown };
+    if (typeof response.message === "string") detail = response.message;
+  } catch {
+    // Preserve a non-JSON upstream error as-is.
+  }
+  return new Error(
+    `Login failed (HTTP ${status})${detail ? `: ${detail.slice(0, 500)}` : ""}`,
+  );
+}
 
 // useLoginWithToken exchanges a provider id_token (e.g. Google) for a UC session
 // cookie via POST /auth/tokens with ext=cookie. The endpoint requires
 // application/x-www-form-urlencoded; the bridge propagates the Set-Cookie back
 // to the browser so subsequent same-origin calls carry the session.
 export function useLoginWithToken() {
-  const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
     mutationFn: async (idToken: string) => {
       const form = new URLSearchParams({
@@ -55,10 +70,7 @@ export function useLoginWithToken() {
         body: form,
         contentType: "application/x-www-form-urlencoded",
       });
-      if (!res.ok) throw new Error(`Login failed (HTTP ${res.httpStatus})`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY });
+      if (!res.ok) throw loginError(res.httpStatus, res.body);
     },
   });
 }

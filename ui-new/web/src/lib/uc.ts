@@ -1,5 +1,6 @@
 import { proxyClient } from "@/lib/transport";
 import { getToken } from "@/lib/session";
+import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
 // Native Unity Catalog REST surface prefixes. Mirrors the current ui's constants.
 export const UC_API_PREFIX = "/api/2.1/unity-catalog";
@@ -41,14 +42,15 @@ function toKV(query?: Record<string, string | undefined>) {
   return out;
 }
 
-// ucCall returns the raw proxied response (status + body string). Auth is
-// cookie-based and handled by the bridge, so serverUrl/token are left empty and
-// resolved server-side (the bridge falls back to its configured UC_SERVER).
-export async function ucCall(method: string, path: string, opts: CallOpts = {}): Promise<RawResult> {
+// ucCall returns the raw proxied response (status + body string). Authentication
+// is carried by the transport header, browser cookie, and legacy token field.
+export async function ucCall(
+  method: string,
+  path: string,
+  opts: CallOpts = {},
+): Promise<RawResult> {
   const res = await proxyClient.call({
     serverUrl: "",
-    // When set, the bridge forwards this as `Authorization: Bearer`, bypassing
-    // cookie login. Empty means rely on the forwarded session cookie.
     token: getToken(),
     method,
     path,
@@ -78,7 +80,11 @@ export class UCError extends Error {
 }
 
 // ucJson parses the response as JSON and throws UCError on non-2xx.
-export async function ucJson<T = unknown>(method: string, path: string, opts: CallOpts = {}): Promise<T> {
+export async function ucJson<T = unknown>(
+  method: string,
+  path: string,
+  opts: CallOpts = {},
+): Promise<T> {
   const res = await ucCall(method, path, opts);
   if (!res.ok) throw new UCError(res.httpStatus, res.body);
   if (!res.body) return undefined as T;
@@ -104,4 +110,11 @@ export function formatEpoch(ms?: number | string | null): string {
   const n = typeof ms === "string" ? Number(ms) : ms;
   if (!Number.isFinite(n) || n <= 0) return "—";
   return new Date(n).toLocaleString();
+}
+
+export function formatTimestamp(value?: Timestamp): string {
+  if (!value) return "—";
+  return new Date(
+    Number(value.seconds) * 1000 + value.nanos / 1_000_000,
+  ).toLocaleString();
 }

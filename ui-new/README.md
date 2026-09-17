@@ -34,12 +34,17 @@ and which providers to show — the runtime replacement for the old build-time
 
 The protobuf package defines typed services for catalogs, schemas, tables,
 volumes, functions, registered models and model versions, and metric views.
-The bridge generates the Rust Connect services from these contracts, enforces
-their `buf.validate` rules with
-[protovalidate-buffa](https://docs.rs/protovalidate-buffa/latest/protovalidate_buffa/)
-before calling UC, and translates each typed request to the UC REST API.
-See [issue #1888](https://github.com/unitycatalog/unitycatalog/issues/1888) for
-the design.
+The implementation is split across the two-PR stack tracked by
+[issue #1888](https://github.com/unitycatalog/unitycatalog/issues/1888) and
+[issue #1889](https://github.com/unitycatalog/unitycatalog/issues/1889):
+
+1. The contract PR adds the messages and `buf.validate` rules and keeps
+   TypeScript generation working.
+2. The implementation PR generates and registers the Rust Connect services,
+   enforces the rules with
+   [protovalidate-buffa](https://docs.rs/protovalidate-buffa/latest/protovalidate_buffa/),
+   translates the typed requests to UC REST, and uses typed connect-query hooks
+   in the SPA.
 
 `UnityProxyService/Call` remains for auth, SCIM, and permissions endpoints that
 are outside these domain contracts. Generated files under `web/src/gen/` and
@@ -116,6 +121,7 @@ gated at 80% (statements/branches/functions/lines).
 
 ```bash
 cd ui-new/web
+bun run proto:check      # protobuf lint + build
 bun run typecheck        # tsr generate + tsc
 bun run test             # vitest run
 bun run test:watch       # vitest (watch mode)

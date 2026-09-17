@@ -1,19 +1,34 @@
 import type { ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
-import { Box, Database, FunctionSquare, HardDrive, Table as TableIcon } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import {
+  Box,
+  ChartNoAxesCombined,
+  Database,
+  FunctionSquare,
+  HardDrive,
+  Table as TableIcon,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useGetSchema } from "@/hooks/schemas";
+import {
+  useDeleteSchema,
+  useGetSchema,
+  useUpdateSchema,
+} from "@/hooks/schemas";
 import { useListTables } from "@/hooks/tables";
 import { useListVolumes } from "@/hooks/volumes";
 import { useListFunctions } from "@/hooks/functions";
 import { useListModels } from "@/hooks/models";
-import { formatEpoch } from "@/lib/uc";
+import { useListViews } from "@/hooks/views";
+import { formatTimestamp } from "@/lib/uc";
 import EntityHeader from "@/components/EntityHeader";
 import { QueryState } from "@/components/QueryState";
 import DescriptionCard from "@/components/DescriptionCard";
 import MetaGrid from "@/components/MetaGrid";
 import PropertiesCard from "@/components/PropertiesCard";
 import PermissionsPanel from "@/components/PermissionsPanel";
+import OwnerDeleteAction from "@/components/OwnerDeleteAction";
+import CreateSchemaObjectAction from "@/components/CreateSchemaObjectAction";
+import EditMetadataAction from "@/components/EditMetadataAction";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -39,7 +54,11 @@ function ObjectSection({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {count === 0 ? <p className="text-sm text-muted-foreground">None.</p> : <ul className="divide-y">{children}</ul>}
+        {count === 0 ? (
+          <p className="text-sm text-muted-foreground">None.</p>
+        ) : (
+          <ul className="divide-y">{children}</ul>
+        )}
       </CardContent>
     </Card>
   );
@@ -47,17 +66,68 @@ function ObjectSection({
 
 const rowCls = "flex items-center gap-2 py-2 hover:text-chart-1";
 
-export default function SchemaDetails({ catalog, schema }: { catalog: string; schema: string }) {
+export default function SchemaDetails({
+  catalog,
+  schema,
+}: {
+  catalog: string;
+  schema: string;
+}) {
+  const navigate = useNavigate();
   const fullName = `${catalog}.${schema}`;
   const { data, isLoading, error } = useGetSchema(fullName);
+  const updateSchema = useUpdateSchema();
+  const deleteSchema = useDeleteSchema();
   const tables = useListTables(catalog, schema);
+  const views = useListViews(catalog, schema);
   const volumes = useListVolumes(catalog, schema);
   const functions = useListFunctions(catalog, schema);
   const models = useListModels(catalog, schema);
 
   return (
     <div>
-      <EntityHeader name={schema} Icon={Database} catalog={catalog} schema={schema} badges={["SCHEMA"]} />
+      <EntityHeader
+        name={schema}
+        Icon={Database}
+        catalog={catalog}
+        schema={schema}
+        badges={["SCHEMA"]}
+        actions={
+          <>
+            <EditMetadataAction
+              name={schema}
+              comment={data?.comment}
+              onSubmit={async (changes) => {
+                await updateSchema.mutateAsync({
+                  schema: { catalogName: catalog, name: schema },
+                  ...changes,
+                });
+                if (changes.newName) {
+                  navigate({
+                    to: "/catalog/$catalog/$schema",
+                    params: { catalog, schema: changes.newName },
+                  });
+                }
+              }}
+            />
+            <CreateSchemaObjectAction catalog={catalog} schema={schema} />
+            <OwnerDeleteAction
+              entityName={schema}
+              entityType="schema"
+              owner={data?.audit?.owner}
+              onDelete={() =>
+                deleteSchema.mutateAsync({
+                  schema: { catalogName: catalog, name: schema },
+                  force: false,
+                })
+              }
+              onDeleted={() =>
+                navigate({ to: "/catalog/$catalog", params: { catalog } })
+              }
+            />
+          </>
+        }
+      />
       <div className="p-6">
         <QueryState isLoading={isLoading} error={error}>
           <Tabs defaultValue="overview">
@@ -85,6 +155,25 @@ export default function SchemaDetails({ catalog, schema }: { catalog: string; sc
                       >
                         <TableIcon className="h-4 w-4 text-chart-2" />
                         <span className="font-medium">{t.name}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ObjectSection>
+                <ObjectSection
+                  title="Metric views"
+                  Icon={ChartNoAxesCombined}
+                  color="text-chart-5"
+                  count={views.data?.views.length ?? 0}
+                >
+                  {(views.data?.views ?? []).map((view) => (
+                    <li key={view.name}>
+                      <Link
+                        to="/catalog/$catalog/$schema/view/$view"
+                        params={{ catalog, schema, view: view.name }}
+                        className={rowCls}
+                      >
+                        <ChartNoAxesCombined className="h-4 w-4 text-chart-5" />
+                        <span className="font-medium">{view.name}</span>
                       </Link>
                     </li>
                   ))}
@@ -131,9 +220,9 @@ export default function SchemaDetails({ catalog, schema }: { catalog: string; sc
                   title="Models"
                   Icon={Box}
                   color="text-chart-1"
-                  count={models.data?.registered_models?.length ?? 0}
+                  count={models.data?.models.length ?? 0}
                 >
-                  {(models.data?.registered_models ?? []).map((m) => (
+                  {(models.data?.models ?? []).map((m) => (
                     <li key={m.name}>
                       <Link
                         to="/catalog/$catalog/$schema/model/$model"
@@ -155,16 +244,22 @@ export default function SchemaDetails({ catalog, schema }: { catalog: string; sc
                   <MetaGrid
                     items={[
                       { label: "Name", value: data?.name },
-                      { label: "Catalog", value: data?.catalog_name },
-                      { label: "Owner", value: data?.owner || "—" },
-                      { label: "Created", value: formatEpoch(data?.created_at) },
-                      { label: "Updated", value: formatEpoch(data?.updated_at) },
-                      { label: "Schema ID", value: data?.schema_id || "—" },
+                      { label: "Catalog", value: data?.catalogName },
+                      { label: "Owner", value: data?.audit?.owner || "—" },
+                      {
+                        label: "Created",
+                        value: formatTimestamp(data?.audit?.createdAt),
+                      },
+                      {
+                        label: "Updated",
+                        value: formatTimestamp(data?.audit?.updatedAt),
+                      },
+                      { label: "Schema ID", value: data?.id || "—" },
                     ]}
                   />
                 </CardContent>
               </Card>
-              <PropertiesCard properties={data?.properties} />
+              <PropertiesCard properties={data?.properties?.values} />
             </TabsContent>
 
             <TabsContent value="permissions">

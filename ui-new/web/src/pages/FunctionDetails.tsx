@@ -1,11 +1,14 @@
 import { FunctionSquare } from "lucide-react";
-import { useGetFunction } from "@/hooks/functions";
-import { formatEpoch } from "@/lib/uc";
+import { useNavigate } from "@tanstack/react-router";
+import { useDeleteFunction, useGetFunction } from "@/hooks/functions";
+import { formatTimestamp } from "@/lib/uc";
+import { ColumnTypeName } from "@/gen/uc/v1/common_pb";
 import EntityHeader from "@/components/EntityHeader";
 import { QueryState } from "@/components/QueryState";
 import DescriptionCard from "@/components/DescriptionCard";
 import MetaGrid from "@/components/MetaGrid";
 import PermissionsPanel from "@/components/PermissionsPanel";
+import OwnerDeleteAction from "@/components/OwnerDeleteAction";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -26,13 +29,43 @@ export default function FunctionDetails({
   schema: string;
   ucFunction: string;
 }) {
+  const navigate = useNavigate();
   const fullName = `${catalog}.${schema}.${ucFunction}`;
   const { data, isLoading, error } = useGetFunction(fullName);
-  const params = data?.input_params?.parameters ?? [];
+  const deleteFunction = useDeleteFunction();
+  const params = data?.inputParameters ?? [];
 
   return (
     <div>
-      <EntityHeader name={ucFunction} Icon={FunctionSquare} catalog={catalog} schema={schema} badges={["FUNCTION"]} />
+      <EntityHeader
+        name={ucFunction}
+        Icon={FunctionSquare}
+        catalog={catalog}
+        schema={schema}
+        badges={["FUNCTION"]}
+        actions={
+          <OwnerDeleteAction
+            entityName={ucFunction}
+            entityType="function"
+            owner={data?.audit?.owner}
+            onDelete={() =>
+              deleteFunction.mutateAsync({
+                function: {
+                  catalogName: catalog,
+                  schemaName: schema,
+                  name: ucFunction,
+                },
+              })
+            }
+            onDeleted={() =>
+              navigate({
+                to: "/catalog/$catalog/$schema",
+                params: { catalog, schema },
+              })
+            }
+          />
+        }
+      />
       <div className="p-6">
         <QueryState isLoading={isLoading} error={error}>
           <Tabs defaultValue="overview">
@@ -46,11 +79,15 @@ export default function FunctionDetails({
               <DescriptionCard comment={data?.comment} />
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm">Input parameters ({params.length})</CardTitle>
+                  <CardTitle className="text-sm">
+                    Input parameters ({params.length})
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {params.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No parameters.</p>
+                    <p className="text-sm text-muted-foreground">
+                      No parameters.
+                    </p>
                   ) : (
                     <Table>
                       <TableHeader>
@@ -64,10 +101,18 @@ export default function FunctionDetails({
                       <TableBody>
                         {params.map((p, i) => (
                           <TableRow key={p.name}>
-                            <TableCell className="text-muted-foreground">{p.position ?? i}</TableCell>
-                            <TableCell className="font-medium">{p.name}</TableCell>
-                            <TableCell className="font-mono text-xs">{p.type_text || p.type_name || "—"}</TableCell>
-                            <TableCell className="text-muted-foreground">{p.comment || "—"}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {p.position ?? i}
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {p.name}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {p.typeText || ColumnTypeName[p.typeName] || "—"}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {p.comment || "—"}
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -75,14 +120,16 @@ export default function FunctionDetails({
                   )}
                 </CardContent>
               </Card>
-              {data?.routine_definition && (
+              {data?.routineDefinition && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-sm">Routine definition</CardTitle>
+                    <CardTitle className="text-sm">
+                      Routine definition
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <pre className="overflow-auto rounded-md bg-muted p-3 font-mono text-xs">
-                      {data.routine_definition}
+                      {data.routineDefinition}
                     </pre>
                   </CardContent>
                 </Card>
@@ -95,12 +142,23 @@ export default function FunctionDetails({
                   <MetaGrid
                     items={[
                       { label: "Name", value: data?.name },
-                      { label: "Full name", value: data?.full_name || fullName },
-                      { label: "Return type", value: data?.full_data_type || data?.data_type || "—" },
-                      { label: "Owner", value: data?.owner || "—" },
-                      { label: "Created", value: formatEpoch(data?.created_at) },
-                      { label: "Updated", value: formatEpoch(data?.updated_at) },
-                      { label: "Function ID", value: data?.function_id || "—" },
+                      { label: "Full name", value: data?.fullName || fullName },
+                      {
+                        label: "Return type",
+                        value:
+                          data?.fullDataType ||
+                          (data ? ColumnTypeName[data.dataType] : "—"),
+                      },
+                      { label: "Owner", value: data?.audit?.owner || "—" },
+                      {
+                        label: "Created",
+                        value: formatTimestamp(data?.audit?.createdAt),
+                      },
+                      {
+                        label: "Updated",
+                        value: formatTimestamp(data?.audit?.updatedAt),
+                      },
+                      { label: "Function ID", value: data?.id || "—" },
                     ]}
                   />
                 </CardContent>

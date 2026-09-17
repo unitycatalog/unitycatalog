@@ -23,7 +23,7 @@ beforeEach(() => {
 });
 
 describe("ucCall", () => {
-  it("forwards method/path/query and the active bearer token", async () => {
+  it("forwards method, path, query, and the active bearer token", async () => {
     setToken("jwt-1");
     call.mockResolvedValue({ httpStatus: 200, body: "{}", ok: true });
 
@@ -43,7 +43,10 @@ describe("ucCall", () => {
 
   it("JSON-stringifies object bodies and passes a content type", async () => {
     call.mockResolvedValue({ httpStatus: 200, body: "{}", ok: true });
-    await ucCall("POST", "/x", { body: { a: 1 }, contentType: "application/json" });
+    await ucCall("POST", "/x", {
+      body: { a: 1 },
+      contentType: "application/json",
+    });
     const arg = call.mock.calls[0][0];
     expect(arg.jsonBody).toBe('{"a":1}');
     expect(arg.contentType).toBe("application/json");
@@ -58,7 +61,11 @@ describe("ucCall", () => {
 
 describe("ucJson", () => {
   it("parses a 2xx JSON body", async () => {
-    call.mockResolvedValue({ httpStatus: 200, body: '{"name":"main"}', ok: true });
+    call.mockResolvedValue({
+      httpStatus: 200,
+      body: '{"name":"main"}',
+      ok: true,
+    });
     await expect(ucJson("GET", "/x")).resolves.toEqual({ name: "main" });
   });
 

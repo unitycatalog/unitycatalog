@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import {
   Box,
+  ChartNoAxesCombined,
   ChevronDown,
   ChevronRight,
   Database,
@@ -11,12 +12,24 @@ import {
   Table as TableIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useUcQuery } from "@/lib/ucQuery";
-import { UC_API_PREFIX, withListTablesQuery } from "@/lib/uc";
-import type { Named } from "@/lib/types";
+import { useListCatalogs } from "@/hooks/catalog";
+import { useListFunctions } from "@/hooks/functions";
+import { useListModels } from "@/hooks/models";
+import { useListSchemas } from "@/hooks/schemas";
+import { useListTables } from "@/hooks/tables";
+import { useListViews } from "@/hooks/views";
+import { useListVolumes } from "@/hooks/volumes";
 import { cn } from "@/lib/utils";
 
-type RouteParams = { catalog?: string; schema?: string; table?: string };
+type RouteParams = {
+  catalog?: string;
+  schema?: string;
+  table?: string;
+  view?: string;
+  volume?: string;
+  function?: string;
+  model?: string;
+};
 
 // CatalogTree is the persistent left-hand navigation: a lazily expanded
 // catalog > schema tree where each schema fans out into grouped securable
@@ -24,13 +37,17 @@ type RouteParams = { catalog?: string; schema?: string; table?: string };
 // routes; the active node + expansion are derived from the current route params.
 export default function CatalogTree() {
   const params = useParams({ strict: false }) as RouteParams;
-  const catalogs = useUcQuery<{ catalogs?: Named[] }>("GET", `${UC_API_PREFIX}/catalogs`);
+  const catalogs = useListCatalogs();
 
   return (
     <div>
-      {catalogs.isLoading && <p className="px-2 py-1 text-xs text-muted-foreground">Loading…</p>}
+      {catalogs.isLoading && (
+        <p className="px-2 py-1 text-xs text-muted-foreground">Loading…</p>
+      )}
       {!!catalogs.error && (
-        <p className="px-2 py-1 text-xs text-destructive">{catalogs.error.message}</p>
+        <p className="px-2 py-1 text-xs text-destructive">
+          {catalogs.error.message}
+        </p>
       )}
       {catalogs.isSuccess && (catalogs.data.catalogs ?? []).length === 0 && (
         <p className="px-2 py-1 text-xs text-muted-foreground">No catalogs.</p>
@@ -45,7 +62,10 @@ export default function CatalogTree() {
 }
 
 const rowCls = (active: boolean) =>
-  cn("flex items-center gap-0.5 rounded-md", active ? "bg-accent text-accent-foreground" : "hover:bg-accent/60");
+  cn(
+    "flex items-center gap-0.5 rounded-md",
+    active ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
+  );
 
 const linkCls = (active: boolean) =>
   cn(
@@ -61,22 +81,29 @@ function Chevron({ open, onClick }: { open: boolean; onClick: () => void }) {
       aria-label={open ? "Collapse" : "Expand"}
       className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
     >
-      {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+      {open ? (
+        <ChevronDown className="h-3.5 w-3.5" />
+      ) : (
+        <ChevronRight className="h-3.5 w-3.5" />
+      )}
     </button>
   );
 }
 
-function CatalogNode({ catalog, params }: { catalog: string; params: RouteParams }) {
+function CatalogNode({
+  catalog,
+  params,
+}: {
+  catalog: string;
+  params: RouteParams;
+}) {
   const [open, setOpen] = useState(params.catalog === catalog);
   useEffect(() => {
     if (params.catalog === catalog) setOpen(true);
   }, [params.catalog, catalog]);
 
   const active = params.catalog === catalog && !params.schema;
-  const schemas = useUcQuery<{ schemas?: Named[] }>("GET", `${UC_API_PREFIX}/schemas`, {
-    query: { catalog_name: catalog },
-    queryOptions: { enabled: open },
-  });
+  const schemas = useListSchemas(catalog, open);
 
   return (
     <li>
@@ -94,13 +121,28 @@ function CatalogNode({ catalog, params }: { catalog: string; params: RouteParams
       </div>
       {open && (
         <ul className="ml-3.5 mt-0.5 space-y-0.5 border-l pl-1.5">
-          {schemas.isLoading && <li className="px-2 py-1 text-xs text-muted-foreground">Loading…</li>}
-          {!!schemas.error && <li className="px-2 py-1 text-xs text-destructive">{schemas.error.message}</li>}
+          {schemas.isLoading && (
+            <li className="px-2 py-1 text-xs text-muted-foreground">
+              Loading…
+            </li>
+          )}
+          {!!schemas.error && (
+            <li className="px-2 py-1 text-xs text-destructive">
+              {schemas.error.message}
+            </li>
+          )}
           {schemas.isSuccess && (schemas.data.schemas ?? []).length === 0 && (
-            <li className="px-2 py-0.5 text-xs text-muted-foreground">No schemas.</li>
+            <li className="px-2 py-0.5 text-xs text-muted-foreground">
+              No schemas.
+            </li>
           )}
           {(schemas.data?.schemas ?? []).map((s) => (
-            <SchemaNode key={s.name} catalog={catalog} schema={s.name ?? ""} params={params} />
+            <SchemaNode
+              key={s.name}
+              catalog={catalog}
+              schema={s.name ?? ""}
+              params={params}
+            />
           ))}
         </ul>
       )}
@@ -108,14 +150,28 @@ function CatalogNode({ catalog, params }: { catalog: string; params: RouteParams
   );
 }
 
-function SchemaNode({ catalog, schema, params }: { catalog: string; schema: string; params: RouteParams }) {
+function SchemaNode({
+  catalog,
+  schema,
+  params,
+}: {
+  catalog: string;
+  schema: string;
+  params: RouteParams;
+}) {
   const here = params.catalog === catalog && params.schema === schema;
   const [open, setOpen] = useState(here);
   useEffect(() => {
     if (here) setOpen(true);
   }, [here]);
 
-  const active = here && !params.table;
+  const active =
+    here &&
+    !params.table &&
+    !params.view &&
+    !params.volume &&
+    !params.function &&
+    !params.model;
 
   return (
     <li>
@@ -133,80 +189,115 @@ function SchemaNode({ catalog, schema, params }: { catalog: string; schema: stri
       </div>
       {open && (
         <ul className="ml-3.5 mt-0.5 space-y-0.5 border-l pl-1.5">
-          <SchemaGroup kind="tables" catalog={catalog} schema={schema} defaultOpen />
-          <SchemaGroup kind="volumes" catalog={catalog} schema={schema} />
-          <SchemaGroup kind="functions" catalog={catalog} schema={schema} />
-          <SchemaGroup kind="models" catalog={catalog} schema={schema} />
+          <SchemaGroup
+            kind="tables"
+            catalog={catalog}
+            schema={schema}
+            params={params}
+            defaultOpen
+          />
+          <SchemaGroup
+            kind="views"
+            catalog={catalog}
+            schema={schema}
+            params={params}
+          />
+          <SchemaGroup
+            kind="volumes"
+            catalog={catalog}
+            schema={schema}
+            params={params}
+          />
+          <SchemaGroup
+            kind="functions"
+            catalog={catalog}
+            schema={schema}
+            params={params}
+          />
+          <SchemaGroup
+            kind="models"
+            catalog={catalog}
+            schema={schema}
+            params={params}
+          />
         </ul>
       )}
     </li>
   );
 }
 
-type GroupKind = "tables" | "volumes" | "functions" | "models";
+type GroupKind = "tables" | "views" | "volumes" | "functions" | "models";
+type Named = { name: string };
 
-type GroupData = {
-  tables?: Named[];
-  volumes?: Named[];
-  functions?: Named[];
-  registered_models?: Named[];
-};
-
-const GROUP_META: Record<GroupKind, { label: string; Icon: LucideIcon; color: string }> = {
+const GROUP_META: Record<
+  GroupKind,
+  { label: string; Icon: LucideIcon; color: string }
+> = {
   tables: { label: "Tables", Icon: TableIcon, color: "text-chart-2" },
+  views: {
+    label: "Metric views",
+    Icon: ChartNoAxesCombined,
+    color: "text-chart-5",
+  },
   volumes: { label: "Volumes", Icon: HardDrive, color: "text-chart-4" },
-  functions: { label: "Functions", Icon: FunctionSquare, color: "text-chart-3" },
+  functions: {
+    label: "Functions",
+    Icon: FunctionSquare,
+    color: "text-chart-3",
+  },
   models: { label: "Models", Icon: Box, color: "text-chart-1" },
 };
 
-function groupItems(kind: GroupKind, data?: GroupData): Named[] {
-  const d = data ?? {};
-  switch (kind) {
-    case "tables":
-      return d.tables ?? [];
-    case "volumes":
-      return d.volumes ?? [];
-    case "functions":
-      return d.functions ?? [];
-    case "models":
-      return d.registered_models ?? [];
-  }
-}
-
-function groupPathAndQuery(kind: GroupKind, catalog: string, schema: string) {
-  switch (kind) {
-    case "tables":
-      return {
-        path: `${UC_API_PREFIX}/tables`,
-        query: withListTablesQuery({ catalog_name: catalog, schema_name: schema }),
-      };
-    case "volumes":
-      return { path: `${UC_API_PREFIX}/volumes`, query: { catalog_name: catalog, schema_name: schema } };
-    case "functions":
-      return { path: `${UC_API_PREFIX}/functions`, query: { catalog_name: catalog, schema_name: schema } };
-    case "models":
-      return { path: `${UC_API_PREFIX}/models`, query: { catalog_name: catalog, schema_name: schema } };
-  }
-}
+const GROUP_ROUTE_PARAM: Record<GroupKind, keyof RouteParams> = {
+  tables: "table",
+  views: "view",
+  volumes: "volume",
+  functions: "function",
+  models: "model",
+};
 
 function SchemaGroup({
   kind,
   catalog,
   schema,
+  params,
   defaultOpen = false,
 }: {
   kind: GroupKind;
   catalog: string;
   schema: string;
+  params: RouteParams;
   defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const activeName = params[GROUP_ROUTE_PARAM[kind]];
+  const routeOpen =
+    params.catalog === catalog && params.schema === schema && !!activeName;
+  const [open, setOpen] = useState(defaultOpen || routeOpen);
+  useEffect(() => {
+    if (routeOpen) setOpen(true);
+  }, [routeOpen]);
   const meta = GROUP_META[kind];
-  const { path, query } = groupPathAndQuery(kind, catalog, schema);
-  const q = useUcQuery<GroupData>("GET", path, { query, queryOptions: { enabled: open } });
-
-  const items = groupItems(kind, q.data);
-  const count = q.isSuccess ? items.length : undefined;
+  const tables = useListTables(catalog, schema, open && kind === "tables");
+  const views = useListViews(catalog, schema, open && kind === "views");
+  const volumes = useListVolumes(catalog, schema, open && kind === "volumes");
+  const functions = useListFunctions(
+    catalog,
+    schema,
+    open && kind === "functions",
+  );
+  const models = useListModels(catalog, schema, open && kind === "models");
+  const result = { tables, views, volumes, functions, models }[kind];
+  const items: Named[] =
+    kind === "tables"
+      ? (tables.data?.tables ?? [])
+      : kind === "views"
+        ? (views.data?.views ?? [])
+        : kind === "volumes"
+          ? (volumes.data?.volumes ?? [])
+          : kind === "functions"
+            ? (functions.data?.functions ?? [])
+            : (models.data?.models ?? []);
+  const count = result.isSuccess ? items.length : undefined;
 
   return (
     <li>
@@ -226,13 +317,28 @@ function SchemaGroup({
       </div>
       {open && (
         <ul className="ml-3.5 mt-0.5 space-y-0.5 border-l pl-1.5">
-          {q.isLoading && <li className="px-2 py-0.5 text-xs text-muted-foreground">Loading…</li>}
-          {!!q.error && <li className="px-2 py-0.5 text-xs text-destructive">{q.error.message}</li>}
-          {q.isSuccess && items.length === 0 && (
+          {result.isLoading && (
+            <li className="px-2 py-0.5 text-xs text-muted-foreground">
+              Loading…
+            </li>
+          )}
+          {!!result.error && (
+            <li className="px-2 py-0.5 text-xs text-destructive">
+              {result.error.message}
+            </li>
+          )}
+          {result.isSuccess && items.length === 0 && (
             <li className="px-2 py-0.5 text-xs text-muted-foreground">None</li>
           )}
           {items.map((it) => (
-            <GroupItem key={it.name} kind={kind} catalog={catalog} schema={schema} name={it.name ?? ""} />
+            <GroupItem
+              key={it.name}
+              kind={kind}
+              catalog={catalog}
+              schema={schema}
+              name={it.name ?? ""}
+              active={activeName === it.name}
+            />
           ))}
         </ul>
       )}
@@ -248,11 +354,13 @@ function GroupItem({
   catalog,
   schema,
   name,
+  active,
 }: {
   kind: GroupKind;
   catalog: string;
   schema: string;
   name: string;
+  active: boolean;
 }) {
   const meta = GROUP_META[kind];
   const icon = <meta.Icon className={cn("h-3.5 w-3.5 shrink-0", meta.color)} />;
@@ -260,7 +368,11 @@ function GroupItem({
   if (kind === "tables") {
     return (
       <li>
-        <Link to="/catalog/$catalog/$schema/table/$table" params={{ catalog, schema, table: name }} className={itemCls}>
+        <Link
+          to="/catalog/$catalog/$schema/table/$table"
+          params={{ catalog, schema, table: name }}
+          className={cn(itemCls, active && "bg-accent text-accent-foreground")}
+        >
           {icon}
           <span className="truncate">{name}</span>
         </Link>
@@ -270,7 +382,25 @@ function GroupItem({
   if (kind === "volumes") {
     return (
       <li>
-        <Link to="/catalog/$catalog/$schema/volume/$volume" params={{ catalog, schema, volume: name }} className={itemCls}>
+        <Link
+          to="/catalog/$catalog/$schema/volume/$volume"
+          params={{ catalog, schema, volume: name }}
+          className={cn(itemCls, active && "bg-accent text-accent-foreground")}
+        >
+          {icon}
+          <span className="truncate">{name}</span>
+        </Link>
+      </li>
+    );
+  }
+  if (kind === "views") {
+    return (
+      <li>
+        <Link
+          to="/catalog/$catalog/$schema/view/$view"
+          params={{ catalog, schema, view: name }}
+          className={cn(itemCls, active && "bg-accent text-accent-foreground")}
+        >
           {icon}
           <span className="truncate">{name}</span>
         </Link>
@@ -283,7 +413,7 @@ function GroupItem({
         <Link
           to="/catalog/$catalog/$schema/function/$function"
           params={{ catalog, schema, function: name }}
-          className={itemCls}
+          className={cn(itemCls, active && "bg-accent text-accent-foreground")}
         >
           {icon}
           <span className="truncate">{name}</span>
@@ -293,7 +423,11 @@ function GroupItem({
   }
   return (
     <li>
-      <Link to="/catalog/$catalog/$schema/model/$model" params={{ catalog, schema, model: name }} className={itemCls}>
+      <Link
+        to="/catalog/$catalog/$schema/model/$model"
+        params={{ catalog, schema, model: name }}
+        className={cn(itemCls, active && "bg-accent text-accent-foreground")}
+      >
         {icon}
         <span className="truncate">{name}</span>
       </Link>
