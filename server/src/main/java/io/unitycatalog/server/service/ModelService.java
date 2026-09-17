@@ -4,6 +4,7 @@ import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+import static io.unitycatalog.server.utils.ValidationUtils.parseBooleanParam;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
@@ -150,9 +151,10 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteRegisteredModel(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullName,
-      @Param("force") Optional<Boolean> force) {
+      @Param("force") Optional<String> force) {
     RegisteredModelInfo registeredModelInfo = modelRepository.getRegisteredModel(fullName);
-    modelRepository.deleteRegisteredModel(fullName, force.orElse(false));
+    modelRepository.deleteRegisteredModel(
+        fullName, parseBooleanParam("force", force).orElse(false));
 
     SchemaInfo schemaInfo =
         schemaRepository.getSchema(

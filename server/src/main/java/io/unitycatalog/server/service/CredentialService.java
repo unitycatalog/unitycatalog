@@ -2,6 +2,7 @@ package io.unitycatalog.server.service;
 
 import static io.unitycatalog.server.model.SecurableType.CREDENTIAL;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.utils.ValidationUtils.parseBooleanParam;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
@@ -111,8 +112,10 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteCredential(
       @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name,
-      @Param("force") Optional<Boolean> force) {
-    UUID deletedCredentialId = credentialRepository.deleteCredential(name, force.orElse(false));
+      @Param("force") Optional<String> force) {
+    UUID deletedCredentialId =
+        credentialRepository.deleteCredential(
+            name, parseBooleanParam("force", force).orElse(false));
     removeAuthorizations(deletedCredentialId.toString());
     return HttpResponse.of(HttpStatus.OK);
   }

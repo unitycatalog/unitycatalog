@@ -3,6 +3,7 @@ package io.unitycatalog.server.service;
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.utils.ValidationUtils.parseBooleanParam;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
@@ -124,8 +125,9 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteCatalog(
       @Param("name") @AuthorizeResourceKey(CATALOG) String name,
-      @Param("force") Optional<Boolean> force) {
-    List<DeletedResource> deleted = catalogRepository.deleteCatalog(name, force.orElse(false));
+      @Param("force") Optional<String> force) {
+    List<DeletedResource> deleted =
+        catalogRepository.deleteCatalog(name, parseBooleanParam("force", force).orElse(false));
     clearDeletedResourceAuthorizations(deleted);
     return HttpResponse.of(HttpStatus.OK);
   }

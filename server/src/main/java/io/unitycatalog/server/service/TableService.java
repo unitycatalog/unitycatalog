@@ -5,6 +5,7 @@ import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
+import static io.unitycatalog.server.utils.ValidationUtils.parseBooleanParam;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
@@ -123,8 +124,8 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
       @Param("schema_name") @AuthorizeResourceKey(SCHEMA) String schemaName,
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken,
-      @Param("omit_properties") Optional<Boolean> omitProperties,
-      @Param("omit_columns") Optional<Boolean> omitColumns) {
+      @Param("omit_properties") Optional<String> omitProperties,
+      @Param("omit_columns") Optional<String> omitColumns) {
 
     ListTablesResponse listTablesResponse =
         tableRepository.listTables(
@@ -132,8 +133,8 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
             schemaName,
             maxResults,
             pageToken,
-            omitProperties.orElse(false),
-            omitColumns.orElse(false));
+            parseBooleanParam("omit_properties", omitProperties).orElse(false),
+            parseBooleanParam("omit_columns", omitColumns).orElse(false));
 
     applyResponseFilter(SecurableType.TABLE, listTablesResponse.getTables());
     return HttpResponse.ofJson(listTablesResponse);

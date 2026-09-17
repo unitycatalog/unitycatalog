@@ -3,6 +3,7 @@ package io.unitycatalog.server.service;
 import static io.unitycatalog.server.model.SecurableType.CREDENTIAL;
 import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.utils.ValidationUtils.parseBooleanParam;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
@@ -113,9 +114,10 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteExternalLocation(
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
-      @Param("force") Optional<Boolean> force) {
+      @Param("force") Optional<String> force) {
     ExternalLocationDAO externalLocationDAO =
-        externalLocationRepository.deleteExternalLocation(name, force.orElse(false));
+        externalLocationRepository.deleteExternalLocation(
+            name, parseBooleanParam("force", force).orElse(false));
     removeAuthorizations(externalLocationDAO.getId().toString());
     return HttpResponse.of(HttpStatus.OK);
   }
