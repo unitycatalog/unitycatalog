@@ -113,11 +113,10 @@ This guide outlines how to deploy the Unity Catalog server.
 The server uses `hibernate.hbm2ddl.auto=update`. Hibernate can create missing tables and
 columns, but **it does not change the type or length of a column that already exists**.
 
-`uc_properties.property_value` used to be created as `varchar(255)`. Spark stores datasource
-schema JSON in table properties (`spark.sql.sources.schema.part.N`), which is often longer than
-255 characters (for example `CREATE TABLE … USING PARQUET` with more than a couple of columns).
-New installs get a wider column from Hibernate. **Existing databases keep `varchar(255)` until
-you run one of the statements below**; upgrading the server JAR alone has no effect.
+`uc_properties.property_value` used to be created as `varchar(255)`. Table and view properties
+(user `TBLPROPERTIES`, Spark `view.sqlConfig.*`, and any other REST-sent property) can exceed
+that. New installs get a wider column from Hibernate. **Existing databases keep `varchar(255)`
+until you run one of the statements below**; upgrading the server JAR alone has no effect.
 
 PostgreSQL:
 
