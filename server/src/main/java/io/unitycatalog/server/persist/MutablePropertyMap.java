@@ -117,5 +117,6 @@ public final class MutablePropertyMap {
         session.merge(existing);
       }
     }
+    PropertyRepository.flush(session, current);
   }
 }

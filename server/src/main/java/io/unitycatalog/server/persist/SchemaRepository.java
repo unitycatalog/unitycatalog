@@ -89,8 +89,10 @@ public class SchemaRepository {
           }
           SchemaInfoDAO schemaInfoDAO = SchemaInfoDAO.from(schemaInfo);
           schemaInfoDAO.setCatalogId(catalogDAO.getId());
-          PropertyDAO.from(schemaInfo.getProperties(), schemaInfoDAO.getId(), Constants.SCHEMA)
-              .forEach(session::persist);
+          PropertyRepository.persistAll(
+              session,
+              PropertyDAO.from(
+                  schemaInfo.getProperties(), schemaInfoDAO.getId(), Constants.SCHEMA));
           session.persist(schemaInfoDAO);
           addNamespaceData(schemaInfo, createSchema.getCatalogName());
           return schemaInfo;
@@ -260,8 +262,8 @@ public class SchemaRepository {
           PropertyRepository.findProperties(session, schemaInfoDAO.getId(), Constants.SCHEMA)
               .forEach(session::remove);
           session.flush();
-          PropertyDAO.from(properties, schemaInfoDAO.getId(), Constants.SCHEMA)
-              .forEach(session::persist);
+          PropertyRepository.persistAll(
+              session, PropertyDAO.from(properties, schemaInfoDAO.getId(), Constants.SCHEMA));
           schemaInfoDAO.setUpdatedAt(new Date());
           schemaInfoDAO.setUpdatedBy(callerId);
           session.merge(schemaInfoDAO);
@@ -301,8 +303,10 @@ public class SchemaRepository {
             PropertyRepository.findProperties(session, schemaInfoDAO.getId(), Constants.SCHEMA)
                 .forEach(session::remove);
             session.flush();
-            PropertyDAO.from(updateSchema.getProperties(), schemaInfoDAO.getId(), Constants.SCHEMA)
-                .forEach(session::persist);
+            PropertyRepository.persistAll(
+                session,
+                PropertyDAO.from(
+                    updateSchema.getProperties(), schemaInfoDAO.getId(), Constants.SCHEMA));
           }
           schemaInfoDAO.setUpdatedAt(new Date());
           schemaInfoDAO.setUpdatedBy(callerId);

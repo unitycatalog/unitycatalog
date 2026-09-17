@@ -890,8 +890,9 @@ public class TableRepository {
                     c.setTable(tableInfoDAO);
                   });
           // create properties
-          PropertyDAO.from(tableInfo.getProperties(), tableInfoDAO.getId(), Constants.TABLE)
-              .forEach(session::persist);
+          PropertyRepository.persistAll(
+              session,
+              PropertyDAO.from(tableInfo.getProperties(), tableInfoDAO.getId(), Constants.TABLE));
           // UniForm Iceberg fields (when supplied by the Delta create path) are written while the
           // entity is still transient so they're folded into the single INSERT below.
           DeltaUniformUtils.applyToDao(tableInfoDAO, uniformFields);

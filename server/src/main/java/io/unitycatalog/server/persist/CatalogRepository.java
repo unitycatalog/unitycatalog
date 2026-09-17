@@ -77,8 +77,10 @@ public class CatalogRepository {
                 "Catalog already exists: " + createCatalog.getName());
           }
           CatalogInfoDAO catalogInfoDAO = CatalogInfoDAO.from(catalogInfo);
-          PropertyDAO.from(catalogInfo.getProperties(), catalogInfoDAO.getId(), Constants.CATALOG)
-              .forEach(session::persist);
+          PropertyRepository.persistAll(
+              session,
+              PropertyDAO.from(
+                  catalogInfo.getProperties(), catalogInfoDAO.getId(), Constants.CATALOG));
           session.persist(catalogInfoDAO);
           LOGGER.info("Added catalog: {}", catalogInfo.getName());
           return catalogInfo;
@@ -177,9 +179,10 @@ public class CatalogRepository {
             PropertyRepository.findProperties(session, catalogInfoDAO.getId(), Constants.CATALOG)
                 .forEach(session::remove);
             session.flush();
-            PropertyDAO.from(
-                    updateCatalog.getProperties(), catalogInfoDAO.getId(), Constants.CATALOG)
-                .forEach(session::persist);
+            PropertyRepository.persistAll(
+                session,
+                PropertyDAO.from(
+                    updateCatalog.getProperties(), catalogInfoDAO.getId(), Constants.CATALOG));
           }
           catalogInfoDAO.setUpdatedAt(new Date());
           catalogInfoDAO.setUpdatedBy(callerId);

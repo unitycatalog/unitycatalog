@@ -1104,8 +1104,9 @@ public class DeltaCommitRepository {
       // Update properties. They aren't part of TableInfoDAO so they'll do a separate update.
       PropertyRepository.findProperties(session, tableId, Constants.TABLE).forEach(session::remove);
       session.flush();
-      PropertyDAO.from(metadata.getProperties().getProperties(), tableId, Constants.TABLE)
-          .forEach(session::persist);
+      PropertyRepository.persistAll(
+          session,
+          PropertyDAO.from(metadata.getProperties().getProperties(), tableId, Constants.TABLE));
     }
 
     if (metadata.getSchema() != null) {
