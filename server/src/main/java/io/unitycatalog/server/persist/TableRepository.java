@@ -1067,24 +1067,29 @@ public class TableRepository {
 
   /**
    * One page of the tables in a schema that carry an Iceberg metadata pointer, and the token for
-   * the page after it. An empty {@code nextPageToken} means the listing is complete. The names are
-   * only the tables that carry one, so a page can be empty while more pages remain.
+   * the page after it. An empty {@code nextPageToken} means the listing is complete.
    */
   public record IcebergTablePage(List<String> tableNames, Optional<String> nextPageToken) {}
 
   /**
    * Lists the tables in a schema that carry an Iceberg metadata pointer -- a Delta UniForm
-   * projection or a native Iceberg table -- one repository page at a time.
+   * projection or a native Iceberg table.
    *
-   * <p>Whether a table carries one is read from the very row the page was read from, so a table
-   * created or dropped after this page was read cannot affect it. Callers that resolved each listed
-   * name a second time to answer the same question would instead fail the whole listing when a
-   * table was dropped in between.
+   * <p>Whether a table carries one is decided in the query, so a page of rows is a page of names
+   * and the token resumes after a name the caller was given. It is also read from the very row the
+   * page was read from, so a table created or dropped after this page was read cannot affect it:
+   * callers that resolved each listed name a second time to answer the same question would instead
+   * fail the whole listing when a table was dropped in between.
    *
-   * @param pageToken the token from the previous page, or empty to start at the first page
+   * @param pageToken the token from the previous page, or empty to start at the first table
+   * @param maxResults how many names to answer with at most; empty answers with one page of them,
+   *     which is what a caller following the token to the end of the schema wants
    */
   public IcebergTablePage listIcebergTables(
-      String catalogName, String schemaName, Optional<String> pageToken) {
+      String catalogName,
+      String schemaName,
+      Optional<String> pageToken,
+      Optional<Integer> maxResults) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -1092,16 +1097,16 @@ public class TableRepository {
               repositories
                   .getSchemaRepository()
                   .getSchemaIdOrThrow(session, catalogName, schemaName);
-          List<TableInfoDAO> page =
-              LISTING_HELPER.listEntity(session, Optional.empty(), pageToken, schemaId);
-          String nextPageToken = LISTING_HELPER.getNextPageToken(page, Optional.empty());
-          List<String> tableNames =
-              page.stream()
-                  .filter(dao -> dao.getUniformIcebergMetadataLocation() != null)
-                  .map(TableInfoDAO::getName)
-                  .toList();
+          List<TableInfoDAO> rows =
+              LISTING_HELPER.listEntity(
+                  session,
+                  maxResults,
+                  pageToken,
+                  schemaId,
+                  Optional.of(root -> root.get("uniformIcebergMetadataLocation").isNotNull()));
           return new IcebergTablePage(
-              tableNames, Optional.ofNullable(nextPageToken).filter(token -> !token.isEmpty()));
+              rows.stream().map(TableInfoDAO::getName).toList(),
+              Optional.ofNullable(LISTING_HELPER.getNextPageToken(rows, maxResults)));
         },
         "Failed to list tables",
         /* readOnly= */ true);
