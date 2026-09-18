@@ -229,6 +229,31 @@ public class ServerPropertiesTest {
   }
 
   @Test
+  public void testStorageCleanupConfiguration() {
+    ServerProperties defaults = new ServerProperties();
+    assertThat(defaults.getStorageCleanupPollInterval()).isEqualTo(Duration.ofMinutes(1));
+    assertThat(defaults.getStorageCleanupAttemptTimeout()).isEqualTo(Duration.ofMinutes(30));
+    assertThat(defaults.getStorageCleanupLeaseDuration()).isEqualTo(Duration.ofHours(2));
+    assertThat(defaults.getStorageCleanupInitialDelay()).isEqualTo(Duration.ofDays(7));
+    assertThat(defaults.getStorageCleanupRetryBackoff()).isEqualTo(Duration.ofHours(1));
+
+    testInvalidProperty(
+        Property.STORAGE_CLEANUP_POLL_INTERVAL,
+        "PT0.000000001S",
+        "server.storage-cleanup.poll-interval",
+        "Expected at least one millisecond");
+    Properties leaseTooShort = new Properties();
+    leaseTooShort.setProperty(Property.STORAGE_CLEANUP_ATTEMPT_TIMEOUT.getKey(), "PT20S");
+    leaseTooShort.setProperty(Property.STORAGE_CLEANUP_LEASE_DURATION.getKey(), "PT20S");
+    assertThatThrownBy(() -> new ServerProperties(leaseTooShort))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("lease-duration must exceed the attempt timeout");
+    leaseTooShort.setProperty(Property.STORAGE_CLEANUP_LEASE_DURATION.getKey(), "PT21S");
+    assertThat(new ServerProperties(leaseTooShort).getStorageCleanupLeaseDuration())
+        .isEqualTo(Duration.ofSeconds(21));
+  }
+
+  @Test
   public void testEffectiveCookieTimeout() {
     ServerProperties serverProperties = new ServerProperties();
     assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT24H"));
