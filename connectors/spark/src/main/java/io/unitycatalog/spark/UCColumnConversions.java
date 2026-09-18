@@ -6,12 +6,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.internal.Preconditions;
+import io.unitycatalog.client.model.ColumnInfo;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.connector.expressions.NamedReference;
 import org.apache.spark.sql.connector.expressions.Transform;
 import org.apache.spark.sql.types.DataType;
+import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 
 /**
@@ -96,8 +98,7 @@ public final class UCColumnConversions {
         nameNode);
     String name = nameNode.asText();
 
-    // Re-serialize the type sub-node to a compact string for DataType.fromJson.
-    DataType dataType = DataType.fromJson(writeValueAsString(parsed.get(FIELD_TYPE)));
+    DataType dataType = dataTypeOf(parsed);
 
     JsonNode nullableNode = parsed.get(FIELD_NULLABLE);
     Preconditions.checkArgument(
@@ -118,6 +119,32 @@ public final class UCColumnConversions {
     String metadataInJSON = metadataObj.isEmpty() ? null : writeValueAsString(metadataObj);
 
     return Column.create(name, dataType, nullable, comment, metadataInJSON);
+  }
+
+  /**
+   * Wire -&gt; Spark {@link StructField}: build the field for one UC table column.
+   *
+   * <p>The type comes from {@code type_json}, not {@code type_text}: the latter is a {@code
+   * catalogString} that leaves nested struct field names unquoted, so {@code struct<`a.b`:string>}
+   * is stored as {@code struct<a.b:string>} -- text Spark's type parser rejects.
+   *
+   * <p>{@code type_json} is optional in the spec, so a column without it falls back to parsing
+   * {@code type_text} as DDL (the old behaviour, quoting failure included).
+   */
+  public static StructField toStructField(ColumnInfo col) {
+    String typeJson = col.getTypeJson();
+    DataType dataType =
+        (typeJson == null || typeJson.isEmpty())
+            ? DataType.fromDDL(col.getTypeText())
+            : dataTypeOf(readTree(typeJson));
+    return new StructField(col.getName(), dataType, col.getNullable(), Metadata.empty())
+        .withComment(col.getComment());
+  }
+
+  /** Reads the {@code type} sub-node of a {@code StructField}-shape JSON as a Spark type. */
+  private static DataType dataTypeOf(JsonNode structFieldJson) {
+    // Re-serialize the type sub-node to a compact string for DataType.fromJson.
+    return DataType.fromJson(writeValueAsString(structFieldJson.get(FIELD_TYPE)));
   }
 
   /**
