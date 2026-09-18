@@ -3,6 +3,7 @@ package io.unitycatalog.server;
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 
 import com.linecorp.armeria.server.Server;
+import com.linecorp.armeria.server.ServerListener;
 import com.linecorp.armeria.server.healthcheck.HealthCheckService;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
@@ -12,6 +13,7 @@ import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.observability.DbReadinessChecker;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
@@ -49,6 +51,7 @@ import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.concurrent.CompletionException;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
@@ -172,6 +175,21 @@ public class UnityCatalogServer implements AutoCloseable {
     // Observability: unauthenticated liveness probe at root. HealthCheckService.of() has no
     // checkers, so it is always healthy while the process is serving (never touches the DB).
     armeriaServerBuilder.service("/livez", HealthCheckService.of());
+
+    // Readiness: 503 until the DB is reachable. The check runs on a background scheduler
+    // (never on the request path); start()/close() are tied to the Armeria server lifecycle so
+    // the synchronous initial probe runs on the startup thread and the scheduler is torn down on
+    // shutdown. HealthCheckService also flips these probes to 503 during graceful shutdown.
+    DbReadinessChecker readinessChecker =
+        DbReadinessChecker.forSessionFactory(
+            hibernateConfigurator.getSessionFactory(), Duration.ofSeconds(5));
+    armeriaServerBuilder.service(
+        "/readyz", HealthCheckService.builder().checkers(readinessChecker.healthChecker()).build());
+    armeriaServerBuilder.serverListener(
+        ServerListener.builder()
+            .whenStarting(server -> readinessChecker.start())
+            .whenStopped(server -> readinessChecker.close())
+            .build());
 
     return armeriaServerBuilder.build();
   }

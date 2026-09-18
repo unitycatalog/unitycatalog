@@ -16,6 +16,7 @@ import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.HttpService;
 import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerBuilder;
+import com.linecorp.armeria.server.ServerListener;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
@@ -189,6 +190,12 @@ public class ArmeriaServerBuilder {
    */
   ArmeriaServerBuilder service(String path, HttpService service) {
     armeriaServerBuilder.service(path, service);
+    return this;
+  }
+
+  /** Registers a server lifecycle listener (used to start/stop background probes). */
+  ArmeriaServerBuilder serverListener(ServerListener listener) {
+    armeriaServerBuilder.serverListener(listener);
     return this;
   }
 
