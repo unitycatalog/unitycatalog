@@ -332,14 +332,34 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   public void testPendingCleanupBlocksNormalLocationDeletion() throws ApiException {
     String externalLocationName = EXTERNAL_LOCATION_NAME + "_cleanup";
     String externalLocationRoot = testUrl() + "/cleanup";
-    String cleanupPath = externalLocationRoot + "/deleted";
     create(externalLocationName, externalLocationRoot);
-    createCleanupTask(cleanupPath);
+    List<UUID> taskIds =
+        List.of(
+            createCleanupTask(externalLocationRoot + "/first"),
+            createCleanupTask(externalLocationRoot + "/second"));
 
-    assertPendingCleanupDenied(
-        () ->
-            externalLocationOperations.deleteExternalLocation(
-                externalLocationName, Optional.of(false)));
+    for (UUID taskId : taskIds) {
+      assertPendingCleanupDenied(
+          () ->
+              externalLocationOperations.deleteExternalLocation(
+                  externalLocationName, Optional.of(false)));
+      int deleted =
+          TransactionManager.executeWithTransaction(
+              hibernateConfigurator.getSessionFactory(),
+              session ->
+                  session
+                      .createMutationQuery("DELETE FROM StorageCleanupTaskDAO WHERE id = :id")
+                      .setParameter("id", taskId)
+                      .executeUpdate(),
+              "Failed to remove test cleanup task",
+              /* readOnly= */ false);
+      assertThat(deleted).isEqualTo(1);
+    }
+    delete(externalLocationName, Optional.of(false));
+
+    // Force deletion remains allowed while cleanup is pending.
+    create(externalLocationName, externalLocationRoot);
+    createCleanupTask(externalLocationRoot + "/third");
     delete(externalLocationName, Optional.of(true));
   }
 
@@ -348,16 +368,15 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
         action, ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup");
   }
 
-  private void createCleanupTask(String storageLocation) {
+  private UUID createCleanupTask(String storageLocation) {
     StorageCleanupTaskRepository repository =
         new StorageCleanupTaskRepository(hibernateConfigurator.getSessionFactory());
-    TransactionManager.executeWithTransaction(
+    return TransactionManager.executeWithTransaction(
         hibernateConfigurator.getSessionFactory(),
-        session -> {
-          repository.create(
-              session, ResourceType.TABLE, UUID.randomUUID(), "orders", storageLocation);
-          return null;
-        },
+        session ->
+            repository
+                .create(session, ResourceType.TABLE, UUID.randomUUID(), "orders", storageLocation)
+                .getId(),
         "Failed to create test cleanup task",
         /* readOnly= */ false);
   }

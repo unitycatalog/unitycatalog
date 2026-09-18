@@ -11,6 +11,7 @@ import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Properties;
@@ -37,10 +38,11 @@ public class ExternalLocationUtilsTest {
 
   @BeforeEach
   public void setUp() {
-    Properties properties = new Properties();
-    properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    Properties serverProperties = new Properties();
+    serverProperties.setProperty("server.env", "test");
+    Properties properties =
+        HibernateConfigurator.setupHibernateProperties(new ServerProperties(serverProperties));
     properties.setProperty("hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID());
-    properties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
     // A nested transaction cannot borrow a second connection while the caller is using this one.
     properties.setProperty("hibernate.connection.pool_size", "1");
     sessionFactory = new HibernateConfigurator(properties).getSessionFactory();

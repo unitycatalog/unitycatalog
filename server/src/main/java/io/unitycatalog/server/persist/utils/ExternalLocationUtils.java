@@ -138,6 +138,7 @@ public class ExternalLocationUtils {
       throw new BaseException(
           ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup.");
     }
+
     // 2. Fail if it's parent of any of the data securable or external location
     if (!getAllEntityDAOsWithURLOverlap(
             session,

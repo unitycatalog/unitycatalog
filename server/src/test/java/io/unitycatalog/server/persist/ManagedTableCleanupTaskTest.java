@@ -38,14 +38,15 @@ class ManagedTableCleanupTaskTest {
 
   @BeforeEach
   void setUp() {
-    Properties hibernateProperties = new Properties();
-    hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    Properties properties = new Properties();
+    properties.setProperty("server.env", "test");
+    ServerProperties serverProperties = new ServerProperties(properties);
+    Properties hibernateProperties =
+        HibernateConfigurator.setupHibernateProperties(serverProperties);
     hibernateProperties.setProperty(
         "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
-    hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
-    hibernateProperties.setProperty("hibernate.show_sql", "false");
     sessionFactory = new HibernateConfigurator(hibernateProperties).getSessionFactory();
-    repositories = new Repositories(sessionFactory, new ServerProperties(new Properties()));
+    repositories = new Repositories(sessionFactory, serverProperties);
 
     UUID catalogId = UUID.randomUUID();
     schemaId = UUID.randomUUID();
