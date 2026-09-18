@@ -22,6 +22,7 @@ import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CreateExternalLocation;
+import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.CredentialPurpose;
@@ -29,22 +30,32 @@ import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.ExternalLocationInfo;
 import io.unitycatalog.client.model.ListExternalLocationsResponse;
 import io.unitycatalog.client.model.SecurableType;
+import io.unitycatalog.client.model.StagingTableInfo;
+import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdateExternalLocation;
 import io.unitycatalog.client.model.VolumeInfo;
 import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.function.Consumer;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
 import lombok.SneakyThrows;
+import org.hibernate.Session;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCRUDTest {
 
@@ -210,6 +221,206 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
     // Admin can delete any external location
     assertDeleteSuccess(adminApi, userCLocation2);
     assertDeleteSuccess(adminApi, adminLocation);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  public void testLocationDeletionWaitsForAllTablesAndCleanup(boolean dropBothBeforeCleanup)
+      throws Exception {
+    String locationName = "managed_location";
+    adminApi.createExternalLocation(
+        new CreateExternalLocation()
+            .name(locationName)
+            .url(tableStorageRoot)
+            .credentialName(CREDENTIAL_NAME));
+    TablesApi tablesApi = new TablesApi(adminApiClient);
+    TableInfo first = createManagedTable(tablesApi, "first_table");
+    TableInfo second = createManagedTable(tablesApi, "second_table");
+    assertApiException(
+        () -> adminApi.deleteExternalLocation(locationName, false),
+        ErrorCode.INVALID_ARGUMENT,
+        "External location still used by");
+
+    dropManagedTable(tablesApi, first);
+    assertApiException(
+        () -> adminApi.deleteExternalLocation(locationName, false),
+        ErrorCode.PERMISSION_DENIED,
+        "Input path overlaps pending storage cleanup");
+    if (dropBothBeforeCleanup) {
+      dropManagedTable(tablesApi, second);
+    }
+
+    // Removing one task must not release a location still needed by another table or task.
+    removeCleanupTask(first);
+    assertApiException(
+        () -> adminApi.deleteExternalLocation(locationName, false),
+        dropBothBeforeCleanup ? ErrorCode.PERMISSION_DENIED : ErrorCode.INVALID_ARGUMENT,
+        dropBothBeforeCleanup
+            ? "Input path overlaps pending storage cleanup"
+            : "External location still used by");
+    assertThat(adminApi.getExternalLocation(locationName).getUrl()).isEqualTo(tableStorageRoot);
+
+    if (!dropBothBeforeCleanup) {
+      dropManagedTable(tablesApi, second);
+    }
+    assertApiException(
+        () -> adminApi.deleteExternalLocation(locationName, false),
+        ErrorCode.PERMISSION_DENIED,
+        "Input path overlaps pending storage cleanup");
+    removeCleanupTask(second);
+    assertDeleteSuccess(adminApi, locationName);
+  }
+
+  @Test
+  public void testExternalTableAndVolumePathReuseAfterCleanup() throws Exception {
+    TablesApi tablesApi = new TablesApi(adminApiClient);
+    VolumesApi volumesApi = new VolumesApi(adminApiClient);
+    TableInfo managedTable = createManagedTable(tablesApi, TestUtils.TABLE_NAME);
+    // Use the parent path so the permanent reserved-namespace check cannot mask cleanup checks.
+    CreateTable tableRequest = createExternalTableRequest("replacement_table", tableStorageRoot);
+    CreateVolumeRequestContent volumeRequest =
+        createExternalVolumeRequest("replacement_volume", tableStorageRoot);
+    List<Executable> createAttempts =
+        List.of(
+            () -> tablesApi.createTable(tableRequest),
+            () -> volumesApi.createVolume(volumeRequest));
+
+    for (Executable attempt : createAttempts) {
+      assertApiException(attempt, ErrorCode.PERMISSION_DENIED, "overlaps with other entities");
+    }
+    dropManagedTable(tablesApi, managedTable);
+    for (String path :
+        List.of(
+            tableStorageRoot,
+            managedTable.getStorageLocation(),
+            managedTable.getStorageLocation() + "/data")) {
+      assertApiException(
+          () -> tablesApi.createTable(createExternalTableRequest("replacement_table", path)),
+          ErrorCode.PERMISSION_DENIED,
+          "Input path overlaps pending storage cleanup");
+      assertApiException(
+          () -> volumesApi.createVolume(createExternalVolumeRequest("replacement_volume", path)),
+          ErrorCode.PERMISSION_DENIED,
+          "Input path overlaps pending storage cleanup");
+    }
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      assertThat(
+              session
+                  .createQuery("SELECT COUNT(*) FROM TableInfoDAO WHERE name = :name", Long.class)
+                  .setParameter("name", tableRequest.getName())
+                  .getSingleResult())
+          .isZero();
+      assertThat(
+              session
+                  .createQuery("SELECT COUNT(*) FROM VolumeInfoDAO WHERE name = :name", Long.class)
+                  .setParameter("name", volumeRequest.getName())
+                  .getSingleResult())
+          .isZero();
+    }
+
+    // Cleanup reserves only overlapping paths; a sibling remains usable.
+    String siblingPath = tableStorageRoot + "/sibling";
+    TableInfo sibling =
+        tablesApi.createTable(createExternalTableRequest("sibling_table", siblingPath));
+    String siblingName = TestUtils.SCHEMA_FULL_NAME + "." + sibling.getName();
+    assertThat(tablesApi.getTable(siblingName, null, null).getStorageLocation())
+        .isEqualTo(siblingPath);
+    tablesApi.deleteTable(siblingName);
+
+    removeCleanupTask(managedTable);
+    TableInfo replacement = tablesApi.createTable(tableRequest);
+    String replacementName = TestUtils.SCHEMA_FULL_NAME + "." + replacement.getName();
+    TableInfo persisted = tablesApi.getTable(replacementName, null, null);
+    assertThat(persisted.getTableType()).isEqualTo(TableType.EXTERNAL);
+    assertThat(persisted.getStorageLocation()).isEqualTo(tableStorageRoot);
+    tablesApi.deleteTable(replacementName);
+
+    VolumeInfo volume = volumesApi.createVolume(volumeRequest);
+    VolumeInfo persistedVolume = volumesApi.getVolume(volume.getFullName());
+    assertThat(persistedVolume.getVolumeType()).isEqualTo(VolumeType.EXTERNAL);
+    assertThat(persistedVolume.getStorageLocation()).isEqualTo(tableStorageRoot);
+  }
+
+  @Test
+  public void testRecreatedManagedTableKeepsSeparateCleanupTasks() throws Exception {
+    TablesApi tablesApi = new TablesApi(adminApiClient);
+    TableInfo original = createManagedTable(tablesApi, TestUtils.TABLE_NAME);
+    dropManagedTable(tablesApi, original);
+
+    // Reusing a table name must allocate a new path without replacing the old cleanup task.
+    TableInfo recreated = createManagedTable(tablesApi, TestUtils.TABLE_NAME);
+    assertThat(recreated.getTableId()).isNotEqualTo(original.getTableId());
+    assertThat(recreated.getStorageLocation()).isNotEqualTo(original.getStorageLocation());
+    dropManagedTable(tablesApi, recreated);
+
+    CreateTable request = createExternalTableRequest("external_table", tableStorageRoot);
+    assertApiException(
+        () -> tablesApi.createTable(request),
+        ErrorCode.PERMISSION_DENIED,
+        "Input path overlaps pending storage cleanup");
+    removeCleanupTask(original);
+    assertApiException(
+        () -> tablesApi.createTable(request),
+        ErrorCode.PERMISSION_DENIED,
+        "Input path overlaps pending storage cleanup");
+
+    removeCleanupTask(recreated);
+    TableInfo external = tablesApi.createTable(request);
+    assertThat(
+            tablesApi
+                .getTable(TestUtils.SCHEMA_FULL_NAME + "." + external.getName(), null, null)
+                .getStorageLocation())
+        .isEqualTo(tableStorageRoot);
+  }
+
+  private TableInfo createManagedTable(TablesApi tablesApi, String name) throws ApiException {
+    StagingTableInfo staging =
+        tablesApi.createStagingTable(
+            new CreateStagingTable()
+                .catalogName(TestUtils.CATALOG_NAME)
+                .schemaName(TestUtils.SCHEMA_NAME)
+                .name(name));
+    TableInfo table =
+        tablesApi.createTable(
+            createExternalTableRequest(name, staging.getStagingLocation())
+                .tableType(TableType.MANAGED)
+                .properties(Map.of(TableProperties.UC_TABLE_ID, staging.getId())));
+    TableInfo persisted =
+        tablesApi.getTable(TestUtils.SCHEMA_FULL_NAME + "." + table.getName(), null, null);
+    assertThat(persisted.getTableType()).isEqualTo(TableType.MANAGED);
+    assertThat(persisted.getTableId()).isEqualTo(staging.getId());
+    assertThat(persisted.getStorageLocation()).isEqualTo(staging.getStagingLocation());
+    return persisted;
+  }
+
+  private void dropManagedTable(TablesApi tablesApi, TableInfo table) throws ApiException {
+    String fullName = TestUtils.SCHEMA_FULL_NAME + "." + table.getName();
+    tablesApi.deleteTable(fullName);
+    assertApiException(
+        () -> tablesApi.getTable(fullName, null, null),
+        ErrorCode.TABLE_NOT_FOUND,
+        "Table not found");
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      StorageCleanupTaskDAO task =
+          session.get(StorageCleanupTaskDAO.class, UUID.fromString(table.getTableId()));
+      assertThat(task).isNotNull();
+      assertThat(task.getName()).isEqualTo(table.getName());
+      assertThat(task.getStorageLocation()).isEqualTo(table.getStorageLocation());
+    }
+  }
+
+  private void removeCleanupTask(TableInfo table) {
+    int deletedTasks =
+        TransactionManager.executeWithTransaction(
+            hibernateConfigurator.getSessionFactory(),
+            session ->
+                session
+                    .createMutationQuery("DELETE FROM StorageCleanupTaskDAO WHERE id = :id")
+                    .setParameter("id", UUID.fromString(table.getTableId()))
+                    .executeUpdate(),
+            "Failed to remove test cleanup task",
+            /* readOnly= */ false);
+    assertThat(deletedTasks).isEqualTo(1);
   }
 
   private void assertCreateSuccess(ExternalLocationsApi api, String name) throws ApiException {
