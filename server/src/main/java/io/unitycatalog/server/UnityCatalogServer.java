@@ -5,6 +5,8 @@ import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerListener;
 import com.linecorp.armeria.server.healthcheck.HealthCheckService;
+import com.linecorp.armeria.server.metric.PrometheusExpositionService;
+import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -14,6 +16,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.observability.DbReadinessChecker;
+import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
@@ -150,6 +153,13 @@ public class UnityCatalogServer implements AutoCloseable {
             BASE_PATH,
             CONTROL_PATH,
             unityCatalogServerBuilder.serverProperties);
+
+    // Metrics: one process-wide Prometheus registry. Armeria records its own request metrics into
+    // it (via meterRegistry + the MetricCollectingService decorator); /metrics scrapes it.
+    PrometheusMeterRegistry meterRegistry = MetricsRegistries.createPrometheus();
+    armeriaServerBuilder.meterRegistry(meterRegistry);
+    armeriaServerBuilder.service(
+        "/metrics", PrometheusExpositionService.of(meterRegistry.getPrometheusRegistry()));
 
     // Init all repositories
     Repositories repositories =
