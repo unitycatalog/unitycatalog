@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
 import org.apache.iceberg.aws.AwsClientProperties;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
 import org.apache.iceberg.azure.AzureProperties;
+import org.apache.iceberg.azure.adlsv2.ADLSFileIO;
 import org.apache.iceberg.gcp.GCPProperties;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.ResolvingFileIO;
@@ -127,9 +128,11 @@ public class FileOperations {
         fileIO.initialize(getFileIOConfig(path, CredentialContext.READ_WRITE));
         yield new InterruptiblePrefixOperations(fileIO, path + "/", deadline);
       }
-      default ->
-          throw new BaseException(
-              ErrorCode.INVALID_ARGUMENT, "Storage cleanup supports only local files, S3, and GCS");
+      case ABFS, ABFSS -> {
+        ADLSFileIO fileIO = new ADLSFileIO();
+        fileIO.initialize(getFileIOConfig(path, CredentialContext.READ_WRITE));
+        yield new ADLSPrefixOperations(fileIO, path + "/", deadline);
+      }
     };
   }
 

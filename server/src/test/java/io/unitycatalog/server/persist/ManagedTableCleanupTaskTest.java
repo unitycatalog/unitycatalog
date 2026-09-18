@@ -100,26 +100,29 @@ class ManagedTableCleanupTaskTest {
     beforeDrop = new Date();
     repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, "gcs_table");
     assertDroppedWithTask(gcs, beforeDrop);
+
+    for (String scheme : java.util.List.of("abfs", "abfss")) {
+      TableInfoDAO adls =
+          createTable(
+              scheme + "_table",
+              TableType.MANAGED,
+              id -> scheme + "://container@account.dfs.core.windows.net/root/tables/" + id);
+      beforeDrop = new Date();
+      repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, adls.getName());
+      assertDroppedWithTask(adls, beforeDrop);
+    }
   }
 
   @Test
-  void externalAndDeferredProviderDropsDoNotCreateTasks() {
+  void externalDropsDoNotCreateTasks() {
     TableInfoDAO external =
         createTable(
             "external_table",
             TableType.EXTERNAL,
             id -> tempDir.resolve("external").resolve(id.toString()).toString());
-    TableInfoDAO adls =
-        createTable(
-            "adls_table",
-            TableType.MANAGED,
-            id -> "abfs://container@account.dfs.core.windows.net/root/tables/" + id);
-
-    for (TableInfoDAO table : java.util.List.of(external, adls)) {
-      repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, table.getName());
-      assertThat(findTable(table.getId())).isNull();
-      assertThat(findTask(table.getId())).isNull();
-    }
+    repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, external.getName());
+    assertThat(findTable(external.getId())).isNull();
+    assertThat(findTask(external.getId())).isNull();
   }
 
   @Test
