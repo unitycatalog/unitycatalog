@@ -5,6 +5,7 @@ import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
+import static io.unitycatalog.server.utils.ValidationUtils.parseBooleanParam;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
@@ -127,9 +128,14 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
       @Param("schema_name") @AuthorizeResourceKey(SCHEMA) String schemaName,
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken,
-      @Param("include_browse") Optional<Boolean> includeBrowse) {
+      @Param("include_browse") Optional<String> includeBrowse) {
     ListVolumesResponseContent listVolumesResponse =
-        volumeRepository.listVolumes(catalogName, schemaName, maxResults, pageToken, includeBrowse);
+        volumeRepository.listVolumes(
+            catalogName,
+            schemaName,
+            maxResults,
+            pageToken,
+            parseBooleanParam("include_browse", includeBrowse));
     applyResponseFilter(SecurableType.VOLUME, listVolumesResponse.getVolumes());
     return HttpResponse.ofJson(listVolumesResponse);
   }
@@ -139,7 +145,9 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getVolume(
       @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName,
-      @Param("include_browse") Optional<Boolean> includeBrowse) {
+      @Param("include_browse") Optional<String> includeBrowse) {
+    // The value is not acted on here, but a value that is not a boolean is still a bad request.
+    parseBooleanParam("include_browse", includeBrowse);
     return HttpResponse.ofJson(volumeRepository.getVolume(fullName));
   }
 

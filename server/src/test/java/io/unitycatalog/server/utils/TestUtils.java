@@ -314,6 +314,20 @@ public class TestUtils {
   }
 
   /**
+   * Sends a raw GET, for query strings the generated client can't produce (e.g. a boolean spelled
+   * {@code True}, which its {@code parameters_to_url_query} lowercases).
+   */
+  public static HttpResponse<String> sendRawGet(ServerConfig config, String path) throws Exception {
+    return sendRawRequest(config, "GET", path, HttpRequest.BodyPublishers.noBody(), null);
+  }
+
+  /** As {@link #sendRawGet}, for DELETE. */
+  public static HttpResponse<String> sendRawDelete(ServerConfig config, String path)
+      throws Exception {
+    return sendRawRequest(config, "DELETE", path, HttpRequest.BodyPublishers.noBody(), null);
+  }
+
+  /**
    * Sends a raw POST with the given JSON body and {@code Content-Type}. Use to exercise body and
    * content-type shapes the generated SDK can't produce (e.g. a trailing newline, or a
    * charset-qualified content-type) against authorization paths that read the request body.

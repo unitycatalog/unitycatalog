@@ -4,6 +4,7 @@ import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+import static io.unitycatalog.server.utils.ValidationUtils.parseBooleanParam;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
@@ -153,9 +154,10 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteSchema(
       @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,
-      @Param("force") Optional<Boolean> force) {
+      @Param("force") Optional<String> force) {
     schemaRepository.getSchema(fullName);
-    List<DeletedResource> deleted = schemaRepository.deleteSchema(fullName, force.orElse(false));
+    List<DeletedResource> deleted =
+        schemaRepository.deleteSchema(fullName, parseBooleanParam("force", force).orElse(false));
     clearDeletedResourceAuthorizations(deleted);
     return HttpResponse.of(HttpStatus.OK);
   }
