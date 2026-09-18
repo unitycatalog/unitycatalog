@@ -3,6 +3,7 @@ package io.unitycatalog.server;
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 
 import com.linecorp.armeria.server.Server;
+import com.linecorp.armeria.server.healthcheck.HealthCheckService;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -167,6 +168,10 @@ public class UnityCatalogServer implements AutoCloseable {
     // Init security decorators
     addSecurityDecorators(
         armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
+
+    // Observability: unauthenticated liveness probe at root. HealthCheckService.of() has no
+    // checkers, so it is always healthy while the process is serving (never touches the DB).
+    armeriaServerBuilder.service("/livez", HealthCheckService.of());
 
     return armeriaServerBuilder.build();
   }
