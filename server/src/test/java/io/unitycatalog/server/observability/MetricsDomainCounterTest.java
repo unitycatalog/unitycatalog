@@ -56,5 +56,18 @@ public class MetricsDomainCounterTest extends BaseTableCRUDTestEnv {
 
     assertThat(response.statusCode()).isEqualTo(200);
     assertThat(response.body()).contains("uc_tables_created");
+
+    // Parse and verify the counter value increased after creating a table.
+    double created =
+        response
+            .body()
+            .lines()
+            .filter(line -> line.startsWith("uc_tables_created_total "))
+            .mapToDouble(line -> Double.parseDouble(line.substring(line.lastIndexOf(' ') + 1)))
+            .findFirst()
+            .orElse(0.0);
+    assertThat(created)
+        .as("uc_tables_created_total should be >= 1 after creating a table")
+        .isGreaterThanOrEqualTo(1.0);
   }
 }
