@@ -54,6 +54,7 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.exception.ConstraintViolationException;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -898,6 +899,18 @@ public class TableRepository {
           nativeIcebergMetadataLocation.ifPresent(
               location -> tableInfoDAO.setUniformIcebergMetadataLocation(location.toString()));
           session.persist(tableInfoDAO);
+          // Flush here rather than at commit: the unique constraint on (schema_id, name) is what
+          // actually decides a race that the check above cannot, and the violation has to surface
+          // inside this block to be reported as a conflict instead of an internal error.
+          try {
+            session.flush();
+          } catch (ConstraintViolationException e) {
+            if (isDuplicateTableNameViolation(e)) {
+              throw new BaseException(
+                  ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + fullName, e);
+            }
+            throw e;
+          }
           if (RepositoryUtils.isViewLike(tableType.getValue())) {
             DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
             // view_dependencies is optional (see validateViewLike); treat an absent list as empty.
@@ -918,6 +931,18 @@ public class TableRepository {
         },
         "Error creating table: " + fullName,
         /* readOnly= */ false);
+  }
+
+  /**
+   * Whether the violation is the table-name constraint rather than another one on the same insert
+   * (a request with duplicate column names trips the column constraint, and must keep reporting
+   * that). Matched by containment because dialects name it differently: Postgres reports the
+   * constraint, H2 the backing index, which carries a generated suffix.
+   */
+  private static boolean isDuplicateTableNameViolation(ConstraintViolationException e) {
+    String constraintName = e.getConstraintName();
+    return constraintName != null
+        && constraintName.toLowerCase(Locale.ROOT).contains(TableInfoDAO.SCHEMA_ID_NAME_CONSTRAINT);
   }
 
   @FunctionalInterface
@@ -1219,6 +1244,18 @@ public class TableRepository {
           tableInfoDAO.setUpdatedAt(new Date());
           tableInfoDAO.setUpdatedBy(callerId);
           session.merge(tableInfoDAO);
+          // Same reason as the create path: the lookup above cannot see a name another
+          // transaction is still committing, so the constraint is what settles the collision and
+          // the violation has to be caught here to be reported as one.
+          try {
+            session.flush();
+          } catch (ConstraintViolationException e) {
+            if (isDuplicateTableNameViolation(e)) {
+              throw new BaseException(
+                  ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + newName, e);
+            }
+            throw e;
+          }
           return null;
         },
         "Failed to rename table " + catalog + "." + schema + "." + table,
