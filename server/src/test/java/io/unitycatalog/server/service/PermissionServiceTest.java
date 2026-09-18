@@ -129,6 +129,17 @@ public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
         "authorization");
   }
 
+  @Test
+  public void permissionsOnAVolumeThatDoesNotExistAreNotFound() {
+    // The securable is resolved through VolumeRepository.getVolume, so this endpoint answered the
+    // same 500 as GET /volumes for a volume that was never created.
+    String missingVolume = SCHEMA_FULL_NAME + ".no_such_volume";
+    assertApiException(
+        () -> grantsApi.get(SecurableType.VOLUME, missingVolume, null),
+        ErrorCode.NOT_FOUND,
+        "Volume not found: " + missingVolume);
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
