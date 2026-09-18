@@ -12,6 +12,7 @@ import com.linecorp.armeria.common.AggregatedHttpRequest;
 import com.linecorp.armeria.common.Http1HeaderNaming;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.SessionProtocol;
+import com.linecorp.armeria.common.metric.MeterIdPrefixFunction;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.HttpService;
 import com.linecorp.armeria.server.Server;
@@ -23,6 +24,8 @@ import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.annotation.RequestConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
+import com.linecorp.armeria.server.metric.MetricCollectingService;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.unitycatalog.server.auth.decorator.AuthorizationGateConverter;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -190,6 +193,17 @@ public class ArmeriaServerBuilder {
    */
   ArmeriaServerBuilder service(String path, HttpService service) {
     armeriaServerBuilder.service(path, service);
+    return this;
+  }
+
+  /**
+   * Sets the Micrometer registry Armeria records into and installs a global decorator that emits
+   * per-endpoint request count / latency / error metrics under the {@code http.server} prefix.
+   */
+  ArmeriaServerBuilder meterRegistry(MeterRegistry meterRegistry) {
+    armeriaServerBuilder.meterRegistry(meterRegistry);
+    armeriaServerBuilder.decorator(
+        MetricCollectingService.newDecorator(MeterIdPrefixFunction.ofDefault("http.server")));
     return this;
   }
 
