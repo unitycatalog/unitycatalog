@@ -46,6 +46,17 @@ lazy val openApiToolsJacksonBindNullableVersion = "0.2.6"
 lazy val log4jVersion = "2.25.3"
 val orgApacheHttpVersion = "4.5.14"
 
+// Connector Jackson follows Spark's line: 4.0 ships 2.18.x, 4.1+ ships 2.21.x.
+// Spark 4.2 vendors at.yawk.lz4:lz4-java 1.11.0; 1.11.3 is the current CVE-2026-59949 patch line.
+lazy val sparkJacksonVersion =
+  if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 1)) "2.21.6" else "2.18.2"
+lazy val sparkJacksonAnnotationsVersion =
+  if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 1)) "2.21" else "2.18.2"
+def sparkLz4Deps: Seq[ModuleID] =
+  if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 2))
+    Seq("at.yawk.lz4" % "lz4-java" % "1.11.3" % Provided)
+  else Seq.empty
+
 lazy val commonSettings = Seq(
   organization := orgName,
   // Compilation configs
@@ -675,17 +686,17 @@ lazy val spark = (project in file("connectors/spark"))
     },
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-databind" % sparkJacksonVersion,
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % sparkJacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % sparkJacksonAnnotationsVersion,
+      "com.fasterxml.jackson.core" % "jackson-core" % sparkJacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % sparkJacksonVersion,
       "org.antlr" % "antlr4-runtime" % "4.13.1",
       "org.antlr" % "antlr4" % "4.13.1",
       "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Provided,
       "software.amazon.awssdk" % "auth" % "2.25.37" % Provided,
-    ),
+    ) ++ sparkLz4Deps,
     libraryDependencies ++= Seq(
       // Test dependencies
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
@@ -700,12 +711,11 @@ lazy val spark = (project in file("connectors/spark"))
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
     ) ++ deltaSparkTestDeps,
     dependencyOverrides ++= Seq(
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      // jackson-core >= 2.18 required by Spark 4.2's jackson-dataformat-yaml (YAMLParser._updateToken).
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.19.2",
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-databind" % sparkJacksonVersion,
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % sparkJacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % sparkJacksonAnnotationsVersion,
+      "com.fasterxml.jackson.core" % "jackson-core" % sparkJacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % sparkJacksonVersion,
       "org.antlr" % "antlr4-runtime" % "4.13.1",
       "org.antlr" % "antlr4" % "4.13.1",
     ),
@@ -791,11 +801,11 @@ lazy val integrationTests = (project in file("integration-tests"))
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
     ) ++ deltaSparkTestDeps,
     dependencyOverrides ++= Seq(
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-databind" % sparkJacksonVersion,
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % sparkJacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % sparkJacksonAnnotationsVersion,
+      "com.fasterxml.jackson.core" % "jackson-core" % sparkJacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % sparkJacksonVersion,
       "org.antlr" % "antlr4-runtime" % "4.13.1",
       "org.antlr" % "antlr4" % "4.13.1",
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
