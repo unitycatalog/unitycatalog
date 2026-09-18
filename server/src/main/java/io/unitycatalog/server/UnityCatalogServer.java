@@ -270,7 +270,7 @@ public class UnityCatalogServer implements AutoCloseable {
             new TemporaryModelVersionCredentialsService(storageCredentialVendor, repositories))
         .annotate(
             "temporary-path-credentials",
-            new TemporaryPathCredentialsService(storageCredentialVendor, repositories))
+            new TemporaryPathCredentialsService(storageCredentialVendor))
         .annotate("credentials", new CredentialService(authorizer, repositories, serverProperties))
         .annotate(
             "delta/preview/commits",

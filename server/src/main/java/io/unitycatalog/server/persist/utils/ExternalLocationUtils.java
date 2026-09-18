@@ -109,6 +109,7 @@ public class ExternalLocationUtils {
    * For a input URL, find out the actual owner securables of the URL.
    *
    * <ul>
+   *   <li>If the URL overlaps a pending cleanup task, deny access.
    *   <li>If the URL is a parent path of one or more securable, we can not figure out the actual
    *       owner but have to deny the access
    *   <li>If the URL is under or the same path of any data securable, we'll figure out the UUID of
@@ -130,9 +131,14 @@ public class ExternalLocationUtils {
         /* readOnly= */ true);
   }
 
-  private Map<SecurableType, UUID> getMapResourceIdsForPath(Session session, NormalizedURL url) {
-    validateNotOverlapWithPendingCleanup(session, url);
-    // 1. Fail if it's parent of any of the data securable or external location
+  @VisibleForTesting
+  Map<SecurableType, UUID> getMapResourceIdsForPath(Session session, NormalizedURL url) {
+    // 1. Fail if the path overlaps a pending cleanup task.
+    if (hasPendingCleanupOverlap(session, url)) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup.");
+    }
+    // 2. Fail if it's parent of any of the data securable or external location
     if (!getAllEntityDAOsWithURLOverlap(
             session,
             url,
@@ -146,14 +152,14 @@ public class ExternalLocationUtils {
           ErrorCode.PERMISSION_DENIED, "Input path '" + url + "' overlaps with other entities.");
     }
 
-    // 2. If it's under only one data securable, use that securable as resource id
+    // 3. If it's under only one data securable, use that securable as resource id
     Optional<Map<SecurableType, UUID>> result =
         getResourceIdOfOwnerEntity(session, url, DATA_SECURABLE_TYPES);
     if (result.isPresent()) {
       return result.get();
     }
 
-    // 3. If it's under only one external location, use that external location as resource id
+    // 4. If it's under only one external location, use that external location as resource id
     return getResourceIdOfOwnerEntity(session, url, List.of(SecurableType.EXTERNAL_LOCATION))
         .orElse(Map.of());
   }
@@ -581,24 +587,22 @@ public class ExternalLocationUtils {
    *
    * @param session the Hibernate session for database queries
    * @param url the URL to validate
-   * @throws BaseException if the URL overlaps with managed storage or pending cleanup
+   * @throws BaseException with ErrorCode.INVALID_ARGUMENT if the URL overlaps with managed storage
    */
   public static void validateNotOverlapWithManagedStorage(Session session, NormalizedURL url) {
     validateNotSameOrUnderManagedStoragePrefix(url);
     validateNotAboveManagedStorage(session, url);
-    validateNotOverlapWithPendingCleanup(session, url);
   }
 
   /**
-   * Rejects paths above, equal to, or below a pending cleanup task using the caller's transaction.
-   * Task details are not included in the error because the caller may not have access to them.
+   * Checks whether a pending cleanup task is above, equal to, or below the given path.
    *
    * @param session the caller's Hibernate session
    * @param url the normalized path to check
-   * @throws BaseException with PERMISSION_DENIED if any cleanup task overlaps the path
+   * @return whether the path overlaps pending cleanup
    */
-  public static void validateNotOverlapWithPendingCleanup(Session session, NormalizedURL url) {
-    if (!generateEntitiesDAOsWithURLOverlapQuery(
+  public static boolean hasPendingCleanupOverlap(Session session, NormalizedURL url) {
+    return !generateEntitiesDAOsWithURLOverlapQuery(
             session,
             url,
             STORAGE_CLEANUP_TASK_DAO_INFO,
@@ -607,10 +611,7 @@ public class ExternalLocationUtils {
             /* includeSelf= */ true,
             /* includeSubdir= */ true)
         .getResultList()
-        .isEmpty()) {
-      throw new BaseException(
-          ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup.");
-    }
+        .isEmpty();
   }
 
   /**

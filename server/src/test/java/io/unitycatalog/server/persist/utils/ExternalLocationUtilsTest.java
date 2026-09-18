@@ -33,6 +33,7 @@ public class ExternalLocationUtilsTest {
 
   private SessionFactory sessionFactory;
   private Session session;
+  private ExternalLocationUtils externalLocationUtils;
 
   @BeforeEach
   public void setUp() {
@@ -44,6 +45,7 @@ public class ExternalLocationUtilsTest {
     properties.setProperty("hibernate.connection.pool_size", "1");
     sessionFactory = new HibernateConfigurator(properties).getSessionFactory();
     session = sessionFactory.openSession();
+    externalLocationUtils = new ExternalLocationUtils(sessionFactory);
   }
 
   @AfterEach
@@ -85,7 +87,6 @@ public class ExternalLocationUtilsTest {
     StorageCleanupTaskDAO task = createCleanupTask("s3://bucket/external/deleted");
     session.getTransaction().commit();
 
-    ExternalLocationUtils externalLocationUtils = new ExternalLocationUtils(sessionFactory);
     for (String path :
         List.of(
             externalLocation.getUrl(),
@@ -131,22 +132,21 @@ public class ExternalLocationUtilsTest {
               base + "/reserved/unused/../deleted")) {
         assertPendingCleanupDenied(
             () ->
-                ExternalLocationUtils.validateNotOverlapWithPendingCleanup(
+                externalLocationUtils.getMapResourceIdsForPath(
                     session, NormalizedURL.from(overlappingPath)));
       }
-      assertPendingCleanupDenied(
-          () ->
-              ExternalLocationUtils.validateNotOverlapWithManagedStorage(
-                  session, NormalizedURL.from(location)));
 
       for (String unrelatedPath :
           List.of(location + "-sibling", base + "/other", base + "/RESERVED/deleted")) {
-        ExternalLocationUtils.validateNotOverlapWithPendingCleanup(
-            session, NormalizedURL.from(unrelatedPath));
+        assertThat(
+                externalLocationUtils.getMapResourceIdsForPath(
+                    session, NormalizedURL.from(unrelatedPath)))
+            .isEmpty();
       }
       session.remove(task);
-      ExternalLocationUtils.validateNotOverlapWithPendingCleanup(
-          session, NormalizedURL.from(location));
+      assertThat(
+              externalLocationUtils.getMapResourceIdsForPath(session, NormalizedURL.from(location)))
+          .isEmpty();
     }
   }
 
@@ -185,7 +185,7 @@ public class ExternalLocationUtilsTest {
       repository.create(
           session, resourceType, UUID.randomUUID(), "deleted_resource", location.toString());
       assertPendingCleanupDenied(
-          () -> ExternalLocationUtils.validateNotOverlapWithPendingCleanup(session, location));
+          () -> externalLocationUtils.getMapResourceIdsForPath(session, location));
     }
   }
 
@@ -197,22 +197,21 @@ public class ExternalLocationUtilsTest {
     for (String path :
         List.of(commonPrefix, commonPrefix + "/stored", commonPrefix + "/stored/child")) {
       assertPendingCleanupDenied(
-          () ->
-              ExternalLocationUtils.validateNotOverlapWithPendingCleanup(
-                  session, NormalizedURL.from(path)));
+          () -> externalLocationUtils.getMapResourceIdsForPath(session, NormalizedURL.from(path)));
     }
-    ExternalLocationUtils.validateNotOverlapWithPendingCleanup(
-        session, NormalizedURL.from(commonPrefix + "/sibling"));
+    assertThat(
+            externalLocationUtils.getMapResourceIdsForPath(
+                session, NormalizedURL.from(commonPrefix + "/sibling")))
+        .isEmpty();
 
     createCleanupTask("s3://bucket/literalX/child");
     createCleanupTask("s3://bucket/percentXYZ25/child");
     for (String path : List.of("s3://bucket/literal_", "s3://bucket/percent%25")) {
-      ExternalLocationUtils.validateNotOverlapWithPendingCleanup(session, NormalizedURL.from(path));
+      assertThat(externalLocationUtils.getMapResourceIdsForPath(session, NormalizedURL.from(path)))
+          .isEmpty();
       createCleanupTask(path + "/child");
       assertPendingCleanupDenied(
-          () ->
-              ExternalLocationUtils.validateNotOverlapWithPendingCleanup(
-                  session, NormalizedURL.from(path)));
+          () -> externalLocationUtils.getMapResourceIdsForPath(session, NormalizedURL.from(path)));
     }
   }
 

@@ -329,42 +329,12 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   }
 
   @Test
-  public void testPendingCleanupBlocksExternalResourcesAndNormalLocationDeletion()
-      throws ApiException {
+  public void testPendingCleanupBlocksNormalLocationDeletion() throws ApiException {
     String externalLocationName = EXTERNAL_LOCATION_NAME + "_cleanup";
     String externalLocationRoot = testUrl() + "/cleanup";
     String cleanupPath = externalLocationRoot + "/deleted";
     create(externalLocationName, externalLocationRoot);
     createCleanupTask(cleanupPath);
-
-    CreateTable createTable =
-        new CreateTable()
-            .name(TABLE_NAME)
-            .catalogName(CATALOG_NAME)
-            .schemaName(SCHEMA_NAME)
-            .tableType(TableType.EXTERNAL)
-            .dataSourceFormat(DataSourceFormat.DELTA)
-            .storageLocation(cleanupPath + "/table")
-            .columns(
-                List.of(
-                    new ColumnInfo()
-                        .name("id")
-                        .typeText("integer")
-                        .typeName(ColumnTypeName.INT)
-                        .typeJson(
-                            "{\"name\":\"id\",\"type\":\"integer\","
-                                + "\"nullable\":true,\"metadata\":{}}")
-                        .position(0)));
-    assertPendingCleanupDenied(() -> tableOperations.createTable(createTable));
-
-    CreateVolumeRequestContent createVolume =
-        new CreateVolumeRequestContent()
-            .name(VOLUME_NAME)
-            .catalogName(CATALOG_NAME)
-            .schemaName(SCHEMA_NAME)
-            .volumeType(VolumeType.EXTERNAL)
-            .storageLocation(externalLocationRoot);
-    assertPendingCleanupDenied(() -> volumeOperations.createVolume(createVolume));
 
     assertPendingCleanupDenied(
         () ->
