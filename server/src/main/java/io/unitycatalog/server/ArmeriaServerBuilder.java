@@ -12,15 +12,20 @@ import com.linecorp.armeria.common.AggregatedHttpRequest;
 import com.linecorp.armeria.common.Http1HeaderNaming;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.SessionProtocol;
+import com.linecorp.armeria.common.metric.MeterIdPrefixFunction;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
+import com.linecorp.armeria.server.HttpService;
 import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerBuilder;
+import com.linecorp.armeria.server.ServerListener;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.annotation.RequestConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
+import com.linecorp.armeria.server.metric.MetricCollectingService;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.unitycatalog.server.auth.decorator.AuthorizationGateConverter;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -178,6 +183,33 @@ public class ArmeriaServerBuilder {
     // Also registered globally, where it is outermost and can catch what the route decorators above
     // throw. This instance carries no dialect: it finds the per-service one for the matched route.
     armeriaServerBuilder.decorator(GlobalExceptionHandlingDecorator::new);
+    return this;
+  }
+
+  /**
+   * Registers an unauthenticated service at an absolute path (e.g. health/metrics probes). Because
+   * the path is absolute, it is not under the API path prefixes and so bypasses the security
+   * decorators attached in {@link #withSecurityDecorators}.
+   */
+  ArmeriaServerBuilder service(String path, HttpService service) {
+    armeriaServerBuilder.service(path, service);
+    return this;
+  }
+
+  /**
+   * Sets the Micrometer registry Armeria records into and installs a global decorator that emits
+   * per-endpoint request count / latency / error metrics under the {@code http.server} prefix.
+   */
+  ArmeriaServerBuilder meterRegistry(MeterRegistry meterRegistry) {
+    armeriaServerBuilder.meterRegistry(meterRegistry);
+    armeriaServerBuilder.decorator(
+        MetricCollectingService.newDecorator(MeterIdPrefixFunction.ofDefault("http.server")));
+    return this;
+  }
+
+  /** Registers a server lifecycle listener (used to start/stop background probes). */
+  ArmeriaServerBuilder serverListener(ServerListener listener) {
+    armeriaServerBuilder.serverListener(listener);
     return this;
   }
 

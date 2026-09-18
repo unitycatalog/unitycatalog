@@ -3,6 +3,11 @@ package io.unitycatalog.server;
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 
 import com.linecorp.armeria.server.Server;
+import com.linecorp.armeria.server.ServerListener;
+import com.linecorp.armeria.server.healthcheck.HealthCheckService;
+import com.linecorp.armeria.server.metric.PrometheusExpositionService;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -11,6 +16,8 @@ import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.observability.DbReadinessChecker;
+import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
@@ -48,6 +55,7 @@ import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.concurrent.CompletionException;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
@@ -147,6 +155,13 @@ public class UnityCatalogServer implements AutoCloseable {
             CONTROL_PATH,
             unityCatalogServerBuilder.serverProperties);
 
+    // Metrics: one process-wide Prometheus registry. Armeria records its own request metrics into
+    // it (via meterRegistry + the MetricCollectingService decorator); /metrics scrapes it.
+    PrometheusMeterRegistry meterRegistry = MetricsRegistries.createPrometheus();
+    armeriaServerBuilder.meterRegistry(meterRegistry);
+    armeriaServerBuilder.service(
+        "/metrics", PrometheusExpositionService.of(meterRegistry.getPrometheusRegistry()));
+
     // Init all repositories
     Repositories repositories =
         new Repositories(
@@ -163,10 +178,30 @@ public class UnityCatalogServer implements AutoCloseable {
     BaseExceptionHandler.setIncludeStackTrace(
         unityCatalogServerBuilder.serverProperties.isIncludeStackTraceInError());
     // Init services
-    addApiServices(armeriaServerBuilder, unityCatalogServerBuilder, authorizer, repositories);
+    addApiServices(
+        armeriaServerBuilder, unityCatalogServerBuilder, authorizer, repositories, meterRegistry);
     // Init security decorators
     addSecurityDecorators(
         armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
+
+    // Observability: unauthenticated liveness probe at root. HealthCheckService.of() has no
+    // checkers, so it is always healthy while the process is serving (never touches the DB).
+    armeriaServerBuilder.service("/livez", HealthCheckService.of());
+
+    // Readiness: 503 until the DB is reachable. The check runs on a background scheduler
+    // (never on the request path); start()/close() are tied to the Armeria server lifecycle so
+    // the synchronous initial probe runs on the startup thread and the scheduler is torn down on
+    // shutdown. HealthCheckService also flips these probes to 503 during graceful shutdown.
+    DbReadinessChecker readinessChecker =
+        DbReadinessChecker.forSessionFactory(
+            hibernateConfigurator.getSessionFactory(), Duration.ofSeconds(5));
+    armeriaServerBuilder.service(
+        "/readyz", HealthCheckService.builder().checkers(readinessChecker.healthChecker()).build());
+    armeriaServerBuilder.serverListener(
+        ServerListener.builder()
+            .whenStarting(server -> readinessChecker.start())
+            .whenStopped(server -> readinessChecker.close())
+            .build());
 
     return armeriaServerBuilder.build();
   }
@@ -200,7 +235,8 @@ public class UnityCatalogServer implements AutoCloseable {
       ArmeriaServerBuilder armeriaServerBuilder,
       UnityCatalogServer.Builder unityCatalogServerBuilder,
       UnityCatalogAuthorizer authorizer,
-      Repositories repositories) {
+      Repositories repositories,
+      MeterRegistry meterRegistry) {
     LOGGER.info("Adding Unity Catalog API services...");
     ServerProperties serverProperties = unityCatalogServerBuilder.serverProperties;
     // The credential/file-IO chain is built and owned by Repositories (so repositories can read
@@ -221,7 +257,8 @@ public class UnityCatalogServer implements AutoCloseable {
         .annotate("catalogs", new CatalogService(authorizer, repositories, serverProperties))
         .annotate("schemas", schemaService)
         .annotate("volumes", new VolumeService(authorizer, repositories, serverProperties))
-        .annotate("tables", new TableService(authorizer, repositories, serverProperties))
+        .annotate(
+            "tables", new TableService(authorizer, repositories, serverProperties, meterRegistry))
         .annotate(
             "staging-tables", new StagingTableService(authorizer, repositories, serverProperties))
         .annotate("functions", new FunctionService(authorizer, repositories, serverProperties))
