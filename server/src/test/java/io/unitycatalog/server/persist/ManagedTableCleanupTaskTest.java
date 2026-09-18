@@ -182,7 +182,8 @@ class ManagedTableCleanupTaskTest {
     assertThat(task.getName()).isEqualTo(table.getName());
     assertThat(task.getResourceType()).isEqualTo(ResourceType.TABLE);
     assertThat(task.getStorageLocation()).isEqualTo(NormalizedURL.normalize(table.getUrl()));
-    assertThat(task.getDeletedAt()).isBetween(beforeDrop, new Date());
+    assertThat(task.getDeletedAt().getTime())
+        .isBetween(beforeDrop.getTime(), System.currentTimeMillis());
   }
 
   private TableInfoDAO findTable(UUID id) {
