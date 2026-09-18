@@ -13,6 +13,7 @@ import com.linecorp.armeria.common.Http1HeaderNaming;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.SessionProtocol;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
+import com.linecorp.armeria.server.HttpService;
 import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.ServiceRequestContext;
@@ -178,6 +179,16 @@ public class ArmeriaServerBuilder {
     // Also registered globally, where it is outermost and can catch what the route decorators above
     // throw. This instance carries no dialect: it finds the per-service one for the matched route.
     armeriaServerBuilder.decorator(GlobalExceptionHandlingDecorator::new);
+    return this;
+  }
+
+  /**
+   * Registers an unauthenticated service at an absolute path (e.g. health/metrics probes). Because
+   * the path is absolute, it is not under the API path prefixes and so bypasses the security
+   * decorators attached in {@link #withSecurityDecorators}.
+   */
+  ArmeriaServerBuilder service(String path, HttpService service) {
+    armeriaServerBuilder.service(path, service);
     return this;
   }
 
