@@ -749,28 +749,18 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     // resolved a second time: doing that made a table dropped mid-listing fail the entire request.
     org.apache.iceberg.rest.responses.ListTablesResponse.Builder listed =
         org.apache.iceberg.rest.responses.ListTablesResponse.builder();
-    if (pageToken.isEmpty()) {
-      // Without the parameter the whole listing is the answer, so follow the repository's page
-      // token to the end and say nothing about pages.
-      Optional<String> cursor = Optional.empty();
-      do {
-        IcebergTablePage page =
-            tableRepository.listIcebergTables(catalog, namespace, cursor, Optional.empty());
-        page.tableNames()
-            .forEach(table -> listed.add(TableIdentifier.of(Namespace.of(namespace), table)));
-        cursor = page.nextPageToken();
-      } while (cursor.isPresent());
-      return listed.build();
-    }
-
-    IcebergTablePage page =
-        tableRepository.listIcebergTables(
-            catalog,
-            namespace,
-            requestedCursor(pageToken.get()),
-            Optional.of(requestedPageSize(pageSize)));
-    page.tableNames()
-        .forEach(table -> listed.add(TableIdentifier.of(Namespace.of(namespace), table)));
+    // Without pageToken the whole listing is the answer, so the repository's token is followed to
+    // the end here and the answer says nothing about pages. With it, one page is the answer and the
+    // client follows the token itself.
+    Optional<String> cursor = pageToken.flatMap(IcebergRestCatalogService::requestedCursor);
+    Optional<Integer> pageOf = pageToken.map(requested -> requestedPageSize(pageSize));
+    IcebergTablePage page;
+    do {
+      page = tableRepository.listIcebergTables(catalog, namespace, cursor, pageOf);
+      page.tableNames()
+          .forEach(table -> listed.add(TableIdentifier.of(Namespace.of(namespace), table)));
+      cursor = page.nextPageToken();
+    } while (pageToken.isEmpty() && cursor.isPresent());
     return listed.nextPageToken(page.nextPageToken().orElse(null)).build();
   }
 

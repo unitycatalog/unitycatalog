@@ -1104,21 +1104,26 @@ public class IcebergRestCatalogTest extends BaseServerTest {
             TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table_b"));
     assertThat(listed.nextPageToken()).isNull();
 
-    // A page of one, opened the way Iceberg's client opens a paginated listing. The rows before the
-    // first uniform table carry no Iceberg metadata, so filling this page reads past them rather
-    // than answering the empty page those rows would make on their own.
+    // A page of one, opened the way Iceberg's client opens a paginated listing. The hundred rows
+    // that carry no Iceberg metadata are not part of this listing at all, so the first page is the
+    // first uniform table rather than the empty page those rows would otherwise make.
     ListTablesResponse firstPage = listedTables("?pageToken=&pageSize=1");
     assertThat(firstPage.identifiers())
         .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table"));
     assertThat(firstPage.nextPageToken()).isNotNull();
 
-    // The token resumes after the table just listed, not after the page of rows it was found in.
-    ListTablesResponse secondPage =
-        listedTables("?pageToken=" + firstPage.nextPageToken() + "&pageSize=1");
-    assertThat(secondPage.identifiers())
-        .containsExactly(
-            TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table_b"));
-    assertThat(secondPage.nextPageToken()).isNull();
+    // The token resumes after the table just listed, and following it to the end yields the same
+    // listing once. A full page always carries a token, so the last one holds nothing: a client
+    // must follow the token rather than stop at an empty page -- which is also what the response
+    // filter can leave behind once permissions are applied to a page.
+    List<TableIdentifier> paged = new ArrayList<>(firstPage.identifiers());
+    String pageToken = firstPage.nextPageToken();
+    do {
+      ListTablesResponse page = listedTables("?pageToken=" + pageToken + "&pageSize=1");
+      paged.addAll(page.identifiers());
+      pageToken = page.nextPageToken();
+    } while (pageToken != null);
+    assertThat(paged).containsExactlyElementsOf(listed.identifiers());
   }
 
   @Test
