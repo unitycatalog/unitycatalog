@@ -474,13 +474,20 @@ public final class DeltaUpdateTableMapper {
       newColumns.forEach(c -> c.setPartitionIndex(null));
     }
     // Source of the partition list: the request when set-partition-columns is present, otherwise
-    // the existing DAO's partition columns (preserved by name across a column-only action).
+    // resolve the existing DAO's partition columns by physical-identity to their names in the new
+    // schema (supports partition-column renames when set-columns is present and
+    // set-partition-columns is absent).
     List<String> partitionNames;
     if (setPartition.isPresent()) {
       partitionNames =
           ValidationUtils.checkNotNull(
               setPartition.get().getPartitionColumns(),
               "set-partition-columns requires a partition-columns list.");
+    } else if (setSchema.isPresent()) {
+      // Resolve partition columns by physical identity to names in the new schema.
+      partitionNames =
+          resolvePartitionColumnsByPhysicalIdentity(
+              dao.getColumns(), newColumns, columnMappingMode);
     } else {
       partitionNames = currentPartitionColumnNames(dao);
     }
@@ -1286,6 +1293,81 @@ public final class DeltaUpdateTableMapper {
         .sorted(Comparator.comparingInt(ColumnInfo::getPartitionIndex))
         .map(ColumnInfo::getName)
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Resolves the current partition columns to their names in the incoming schema by
+   * physical-identity matching. For each current partition column, determines its CM identity key
+   * and finds the corresponding column in the incoming schema by that key. Returns the incoming
+   * column's logical name. If a partition column has no CM metadata and the incoming schema carries
+   * any CM metadata, falls back to logical-name resolution (no CM metadata at all, so physical
+   * identity is undefined). Rejects with {@code INVALID_ARGUMENT} if a partition column's physical
+   * identity is absent from the incoming schema (genuine drop).
+   */
+  private static List<String> resolvePartitionColumnsByPhysicalIdentity(
+      List<ColumnInfoDAO> currentColumns,
+      List<ColumnInfo> incomingColumns,
+      String columnMappingMode) {
+    List<ColumnInfo> curList = ColumnInfoDAO.toList(currentColumns);
+    List<ColumnInfo> partitionCols =
+        curList.stream()
+            .filter(c -> c.getPartitionIndex() != null)
+            .sorted(Comparator.comparingInt(ColumnInfo::getPartitionIndex))
+            .collect(Collectors.toList());
+    if (partitionCols.isEmpty()) {
+      return List.of();
+    }
+
+    // Build incoming-column index by physical-identity key (prefers id over physicalName).
+    String activeCmKey = activeCmKeyForMode(columnMappingMode);
+    boolean incomingHasActiveCm =
+        activeCmKey != null && hasCmKeyAnywhere(incomingColumns, activeCmKey);
+    boolean currentHasActiveCm = activeCmKey != null && hasCmKeyAnywhere(curList, activeCmKey);
+    Map<String, String> incomingByKey = new HashMap<>();
+    for (ColumnInfo inc : incomingColumns) {
+      String key = mappingKeyOf(inc);
+      if (key != null) {
+        incomingByKey.put(key, inc.getName());
+      }
+    }
+
+    // Resolve each partition column to its new name.
+    List<String> resolved = new ArrayList<>();
+    for (ColumnInfo cur : partitionCols) {
+      String curKey = mappingKeyOf(cur);
+      if (curKey != null && incomingHasActiveCm) {
+        // Current partition has CM metadata and incoming has the active CM key: resolve by
+        // identity.
+        String newName = incomingByKey.get(curKey);
+        if (newName == null) {
+          // Partition column's physical identity is absent from incoming schema: genuine drop.
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              "partition column '" + cur.getName() + "' dropped: no matching physical identity.");
+        }
+        resolved.add(newName);
+      } else if (curKey == null && !incomingHasActiveCm) {
+        // No CM metadata anywhere: fall back to logical-name resolution.
+        resolved.add(cur.getName());
+      } else if (curKey != null && !incomingHasActiveCm) {
+        // Current has CM but incoming dropped it: fall back to logical-name resolution.
+        resolved.add(cur.getName());
+      } else if (currentHasActiveCm) {
+        // curKey == null, incoming carries CM, and the current table has CM on other columns:
+        // mixed/malformed metadata. Fail closed rather than fall back to logical name, which could
+        // stamp the partition onto a different column that reuses the old name.
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "partition column '"
+                + cur.getName()
+                + "' has no column mapping identity while the table uses column mapping.");
+      } else {
+        // curKey == null and the current table has no CM at all (e.g. enabling column mapping):
+        // physical identity is undefined, so resolve by logical name.
+        resolved.add(cur.getName());
+      }
+    }
+    return resolved;
   }
 
   private static void applySetDomainMetadata(

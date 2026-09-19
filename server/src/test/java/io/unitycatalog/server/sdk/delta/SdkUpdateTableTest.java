@@ -1956,6 +1956,111 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       assertThat(r.getMetadata().getPartitionColumns()).containsExactly("b");
     }
 
+    // -------- Support: partition-column rename resolved by physicalName (no explicit
+    // set-partition-columns) --------
+    // Partition on "a" (physicalName "col-1"); rename "a"→"b" (same physicalName);
+    // set-partition-columns is ABSENT. The mapper resolves "a" to "b" by physicalName match.
+    {
+      Handle h = createCmNameModeManaged("tbl_guards_part_rename_implicit_name_mode");
+      // First make "a" a partition column.
+      Handle h1 =
+          h.withEtag(
+              updateTable(h, new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("a")))
+                  .getMetadata()
+                  .getEtag());
+      // Now rename "a" → "b" WITHOUT sending set-partition-columns.
+      DeltaStructFieldMetadata meta = new DeltaStructFieldMetadata();
+      meta.put("delta.columnMapping.id", 1);
+      meta.put("delta.columnMapping.physicalName", "col-1"); // same physicalName
+      DeltaLoadTableResponse r =
+          updateTable(
+              h1,
+              new DeltaSetSchemaUpdate()
+                  .columns(
+                      new DeltaStructType()
+                          .type("struct")
+                          .fields(
+                              List.of(
+                                  new DeltaStructField()
+                                      .name("b")
+                                      .type(new DeltaPrimitiveType().type("long"))
+                                      .nullable(false)
+                                      .metadata(meta)))));
+      assertThat(columnNames(r)).containsExactly("b");
+      // The partition should have followed the rename to "b".
+      assertThat(r.getMetadata().getPartitionColumns()).containsExactly("b");
+    }
+
+    // -------- Support: partition-column rename resolved by id (id-mode, no explicit
+    // set-partition-columns) --------
+    // Partition on "a" (id=1); rename "a"→"b" (same id=1); set-partition-columns is ABSENT.
+    // The mapper resolves "a" to "b" by id match.
+    {
+      Handle h = createCmIdModeManaged("tbl_guards_part_rename_implicit_id_mode");
+      // First make "a" a partition column.
+      Handle h1 =
+          h.withEtag(
+              updateTable(h, new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("a")))
+                  .getMetadata()
+                  .getEtag());
+      // Now rename "a" → "b" WITHOUT sending set-partition-columns.
+      DeltaStructFieldMetadata meta = new DeltaStructFieldMetadata();
+      meta.put("delta.columnMapping.id", 1); // same id
+      meta.put("delta.columnMapping.physicalName", "col-1");
+      DeltaLoadTableResponse r =
+          updateTable(
+              h1,
+              new DeltaSetSchemaUpdate()
+                  .columns(
+                      new DeltaStructType()
+                          .type("struct")
+                          .fields(
+                              List.of(
+                                  new DeltaStructField()
+                                      .name("b")
+                                      .type(new DeltaPrimitiveType().type("long"))
+                                      .nullable(false)
+                                      .metadata(meta)))));
+      assertThat(columnNames(r)).containsExactly("b");
+      // The partition should have followed the rename to "b".
+      assertThat(r.getMetadata().getPartitionColumns()).containsExactly("b");
+    }
+
+    // -------- Reject: partition-column dropped (no physical identity match) --------
+    // Partition on "a" (id=1, physicalName "col-1"); drop "a"; send set-columns with different
+    // column. No set-partition-columns sent. Mapper resolves "a" by id/physicalName: cannot find
+    // it in new schema → reject with "partition column dropped".
+    {
+      Handle h = createCmNameModeManaged("tbl_guards_part_drop");
+      // First make "a" a partition column.
+      Handle h1 =
+          h.withEtag(
+              updateTable(h, new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("a")))
+                  .getMetadata()
+                  .getEtag());
+      // Now try to drop "a" by sending a new column without "a".
+      DeltaStructFieldMetadata newMeta = new DeltaStructFieldMetadata();
+      newMeta.put("delta.columnMapping.id", 2); // different id
+      newMeta.put("delta.columnMapping.physicalName", "col-2");
+      TestUtils.assertDeltaApiException(
+          () ->
+              updateTable(
+                  h1,
+                  new DeltaSetSchemaUpdate()
+                      .columns(
+                          new DeltaStructType()
+                              .type("struct")
+                              .fields(
+                                  List.of(
+                                      new DeltaStructField()
+                                          .name("c")
+                                          .type(new DeltaPrimitiveType().type("string"))
+                                          .nullable(true)
+                                          .metadata(newMeta))))),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "partition column");
+    }
+
     // -------- Reject: rename/drop without column mapping --------
     // External (non-CM) table; send set-columns that removes "amount" without CM metadata.
     {
@@ -2556,6 +2661,25 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                                       .nullable(true)
                                       .metadata(newAMeta)))));
       assertThat(columnNames(r)).containsExactly("x", "b", "a");
+    }
+
+    // -------- Behavior: a rename regenerates the DB row UUID while preserving CM identity --------
+    {
+      Handle h = createCmNameModeManaged("tbl_guards_uuid_regen");
+      UUID before = columnIdByName(h, "a");
+      DeltaLoadTableResponse r = updateTable(h, setColumnsRenaming("a", "b", "col-1"));
+      assertThat(columnNames(r)).containsExactly("b");
+      // Row UUID is regenerated on set-columns; nothing keys on it, and the column-mapping identity
+      // (physicalName) is what carries the column's identity across the rename.
+      assertThat(columnIdByName(h, "b")).isNotEqualTo(before);
+      assertThat(
+              r.getMetadata()
+                  .getColumns()
+                  .getFields()
+                  .get(0)
+                  .getMetadata()
+                  .get("delta.columnMapping.physicalName"))
+          .isEqualTo("col-1");
     }
 
     // -------- Reject: duplicate top-level physicalName (name-mode) --------
