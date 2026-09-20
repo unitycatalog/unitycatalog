@@ -40,7 +40,6 @@ import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
-import io.unitycatalog.server.utils.UriScheme;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -1168,7 +1167,14 @@ public class TableRepository {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
     }
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
-      createCleanupTask(session, tableInfoDAO);
+      repositories
+          .getStorageCleanupTaskRepository()
+          .create(
+              session,
+              ResourceType.TABLE,
+              tableInfoDAO.getId(),
+              tableInfoDAO.getName(),
+              tableInfoDAO.getUrl());
       repositories
           .getDeltaCommitRepository()
           .permanentlyDeleteTableCommits(session, tableInfoDAO.getId());
@@ -1182,24 +1188,6 @@ public class TableRepository {
         .forEach(session::remove);
     session.remove(tableInfoDAO);
     return tableInfoDAO;
-  }
-
-  private void createCleanupTask(Session session, TableInfoDAO tableInfoDAO) {
-    NormalizedURL location = NormalizedURL.from(tableInfoDAO.getUrl());
-    switch (UriScheme.fromURI(location.toUri())) {
-      case FILE, NULL, S3, GS ->
-          repositories
-              .getStorageCleanupTaskRepository()
-              .create(
-                  session,
-                  ResourceType.TABLE,
-                  tableInfoDAO.getId(),
-                  tableInfoDAO.getName(),
-                  location.toString());
-      case ABFS, ABFSS -> {
-        // Cleanup adapters for these providers will be added later.
-      }
-    }
   }
 
   /**
