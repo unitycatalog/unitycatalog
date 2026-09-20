@@ -9,6 +9,7 @@ import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
+import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.UriScheme;
@@ -25,6 +26,7 @@ import org.apache.iceberg.azure.AzureProperties;
 import org.apache.iceberg.gcp.GCPProperties;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.ResolvingFileIO;
+import org.apache.iceberg.io.SupportsPrefixOperations;
 
 /**
  * Single entry point for all storage/file access in the server. Covers both directory lifecycle
@@ -107,6 +109,27 @@ public class FileOperations {
         fileio.initialize(getFileIOConfig(path, privileges));
         yield fileio;
       }
+    };
+  }
+
+  /**
+   * Returns fresh, write-enabled prefix operations sharing the attempt's cancellation checks.
+   *
+   * <p>Cloud cleanup uses the provider's default request settings. Cancellation is checked between
+   * batches and does not impose a timeout on an in-flight storage call.
+   */
+  public SupportsPrefixOperations getCleanupFileIO(
+      NormalizedURL path, CooperativeDeadline deadline) {
+    return switch (UriScheme.fromURI(path.toUri())) {
+      case FILE, NULL -> new SimpleLocalFileIO(deadline);
+      case S3, GS -> {
+        ResolvingFileIO fileIO = new ResolvingFileIO();
+        fileIO.initialize(getFileIOConfig(path, CredentialContext.READ_WRITE));
+        yield new InterruptiblePrefixOperations(fileIO, path + "/", deadline);
+      }
+      default ->
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT, "Storage cleanup supports only local files, S3, and GCS");
     };
   }
 
