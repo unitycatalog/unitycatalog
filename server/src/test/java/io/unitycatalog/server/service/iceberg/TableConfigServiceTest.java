@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -27,10 +28,15 @@ public class TableConfigServiceTest {
   }
 
   @Test
-  public void passesThroughRequestedPrivileges() {
+  public void passesThroughRequestedPrivilegesAndCredentialsEndpoint() {
     tableConfigService.getTableConfig(
-        NormalizedURL.from("gs://test-bucket/table"), CredentialContext.READ_WRITE);
+        NormalizedURL.from("gs://test-bucket/table"),
+        CredentialContext.READ_WRITE,
+        "v1/catalogs/c/namespaces/n/tables/t/credentials");
     verify(mockFileOperations)
-        .getFileIOConfig(any(NormalizedURL.class), eq(CredentialContext.READ_WRITE));
+        .getFileIOConfig(
+            any(NormalizedURL.class),
+            eq(CredentialContext.READ_WRITE),
+            eq(Optional.of("v1/catalogs/c/namespaces/n/tables/t/credentials")));
   }
 }

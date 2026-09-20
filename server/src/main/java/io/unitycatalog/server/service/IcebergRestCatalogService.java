@@ -78,6 +78,8 @@ import org.apache.iceberg.exceptions.NoSuchViewException;
 import org.apache.iceberg.rest.Endpoint;
 import org.apache.iceberg.rest.RESTCatalogProperties;
 import org.apache.iceberg.rest.RESTCatalogProperties.SnapshotMode;
+import org.apache.iceberg.rest.RESTUtil;
+import org.apache.iceberg.rest.credentials.ImmutableCredential;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.RenameTableRequest;
@@ -87,7 +89,9 @@ import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.ConfigResponse;
 import org.apache.iceberg.rest.responses.CreateNamespaceResponse;
 import org.apache.iceberg.rest.responses.GetNamespaceResponse;
+import org.apache.iceberg.rest.responses.ImmutableLoadCredentialsResponse;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
+import org.apache.iceberg.rest.responses.LoadCredentialsResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.rest.responses.LoadViewResponse;
 import org.apache.iceberg.rest.responses.UpdateNamespacePropertiesResponse;
@@ -107,6 +111,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
           Endpoint.V1_NAMESPACE_EXISTS,
           Endpoint.V1_TABLE_EXISTS,
           Endpoint.V1_LOAD_TABLE,
+          Endpoint.V1_TABLE_CREDENTIALS,
           Endpoint.V1_LOAD_VIEW,
           Endpoint.V1_REPORT_METRICS,
           Endpoint.V1_LIST_TABLES);
@@ -351,7 +356,10 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
               .build();
     }
     Map<String, String> config =
-        tableConfigService.getTableConfig(tableLocation, getLoadCredentialPrivileges(state));
+        tableConfigService.getTableConfig(
+            tableLocation,
+            getLoadCredentialPrivileges(state),
+            credentialsEndpoint(catalog, namespace, table));
 
     return HttpResult.of(
         ResponseHeaders.builder(HttpStatus.OK)
@@ -359,6 +367,51 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
             .add(HttpHeaderNames.ETAG, etag)
             .build(),
         LoadTableResponse.builder().withTableMetadata(tableMetadata).addAllConfig(config).build());
+  }
+
+  @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/credentials")
+  @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public LoadCredentialsResponse loadCredentials(
+      @Param("catalog") String catalog,
+      @Param("namespace") String namespace,
+      @Param("table") String table) {
+    TableRepository.IcebergTableState state =
+        tableRepository.getIcebergTableState(catalog, namespace, table);
+    if (state.metadataLocation() == null) {
+      throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
+    }
+
+    NormalizedURL tableLocation = NormalizedURL.from(state.storageLocation());
+    Map<String, String> config =
+        tableConfigService.getTableConfig(
+            tableLocation,
+            // Deliberately the same derivation loadTable uses, so renewing a credential can never
+            // widen what the first one granted.
+            getLoadCredentialPrivileges(state),
+            credentialsEndpoint(catalog, namespace, table));
+    if (config.isEmpty()) {
+      // A local (file://) table vends nothing. The response is a list, so answer an empty one:
+      // Iceberg's own Credential type rejects an empty config.
+      return ImmutableLoadCredentialsResponse.builder().build();
+    }
+    return ImmutableLoadCredentialsResponse.builder()
+        .addCredentials(
+            ImmutableCredential.builder().prefix(tableLocation.toString()).config(config).build())
+        .build();
+  }
+
+  /**
+   * Path of a table's loadCredentials endpoint, relative to the catalog URI, which is how Iceberg's
+   * clients resolve it. Handed to clients in a table's config so they can renew vended credentials
+   * before the storage session behind them expires; without it a client holding a table loses
+   * access when that session ends.
+   */
+  private static String credentialsEndpoint(String catalog, String namespace, String table) {
+    return "v1/%s%s/namespaces/%s/tables/%s/credentials"
+        .formatted(
+            PREFIX_BASE, catalog, RESTUtil.encodeString(namespace), RESTUtil.encodeString(table));
   }
 
   Set<CredentialContext.Privilege> getLoadCredentialPrivileges(
@@ -422,7 +475,9 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       metadataService.prepareTableLocation(tableMetadata, location);
       return LoadTableResponse.builder()
           .withTableMetadata(tableMetadata)
-          .addAllConfig(tableConfigService.getTableConfig(location, READ_WRITE))
+          .addAllConfig(
+              tableConfigService.getTableConfig(
+                  location, READ_WRITE, credentialsEndpoint(catalog, namespace, request.name())))
           .build();
     }
 
@@ -488,7 +543,9 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     NormalizedURL persistedTableLocation = NormalizedURL.from(tableInfo.getStorageLocation());
     return LoadTableResponse.builder()
         .withTableMetadata(committed)
-        .addAllConfig(tableConfigService.getTableConfig(persistedTableLocation, READ_WRITE))
+        .addAllConfig(
+            tableConfigService.getTableConfig(
+                persistedTableLocation, READ_WRITE, credentialsEndpoint(catalog, namespace, name)))
         .build();
   }
 
@@ -526,7 +583,9 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       // No-op update: requirements were validated, but there is no new metadata file or DAO write.
       return LoadTableResponse.builder()
           .withTableMetadata(base)
-          .addAllConfig(tableConfigService.getTableConfig(tableLocation, READ_WRITE))
+          .addAllConfig(
+              tableConfigService.getTableConfig(
+                  tableLocation, READ_WRITE, credentialsEndpoint(catalog, namespace, table)))
           .build();
     }
 
@@ -561,7 +620,9 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
     return LoadTableResponse.builder()
         .withTableMetadata(updated)
-        .addAllConfig(tableConfigService.getTableConfig(tableLocation, READ_WRITE))
+        .addAllConfig(
+            tableConfigService.getTableConfig(
+                tableLocation, READ_WRITE, credentialsEndpoint(catalog, namespace, table)))
         .build();
   }
 
