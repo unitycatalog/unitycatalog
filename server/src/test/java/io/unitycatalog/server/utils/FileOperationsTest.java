@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
@@ -12,8 +14,11 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.azure.core.http.rest.PagedIterable;
+import com.azure.storage.file.datalake.DataLakeDirectoryClient;
+import com.azure.storage.file.datalake.DataLakeFileSystemClient;
+import com.azure.storage.file.datalake.models.PathItem;
 import io.unitycatalog.server.exception.BaseException;
-import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
@@ -38,6 +43,7 @@ import org.apache.iceberg.aws.HttpClientProperties;
 import org.apache.iceberg.aws.s3.S3FileIO;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
 import org.apache.iceberg.azure.AzureProperties;
+import org.apache.iceberg.azure.adlsv2.ADLSFileIO;
 import org.apache.iceberg.gcp.GCPProperties;
 import org.apache.iceberg.gcp.gcs.GCSFileIO;
 import org.apache.iceberg.io.BulkDeletionFailureException;
@@ -498,23 +504,47 @@ public class FileOperationsTest {
   }
 
   @Test
-  public void testGetCleanupFileIORejectsUnsupportedSchemeBeforeVending() {
+  @SuppressWarnings("unchecked")
+  public void testGetCleanupFileIOForAdlsUsesFreshCredentials() {
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("first-token")),
+            new TemporaryCredentials()
+                .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("second-token")));
     FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
-
-    for (String location :
-        List.of(
-            "abfs://container@account.dfs.core.windows.net/tables/id",
-            "abfss://container@account.dfs.core.windows.net/tables/id")) {
-      assertThatThrownBy(
-              () ->
-                  fileOps.getCleanupFileIO(
-                      NormalizedURL.from(location), CooperativeDeadline.NO_DEADLINE))
-          .isInstanceOf(BaseException.class)
-          .hasMessage("Storage cleanup supports only local files, S3, and GCS")
-          .extracting("errorCode")
-          .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+    DataLakeFileSystemClient client = mock(DataLakeFileSystemClient.class);
+    DataLakeDirectoryClient directory = mock(DataLakeDirectoryClient.class);
+    PagedIterable<PathItem> listing = mock(PagedIterable.class);
+    when(listing.iterator()).thenAnswer(ignored -> List.<PathItem>of().iterator());
+    when(client.listPaths(any(), isNull())).thenReturn(listing);
+    when(client.getDirectoryClient("tables/id")).thenReturn(directory);
+    try (MockedConstruction<ADLSFileIO> adlsFiles =
+        mockConstruction(
+            ADLSFileIO.class,
+            (adls, context) -> when(adls.client(anyString())).thenReturn(client))) {
+      List<String> schemes = List.of("abfs", "abfss");
+      List<String> tokens = List.of("first-token", "second-token");
+      for (int attempt = 0; attempt < schemes.size(); attempt++) {
+        NormalizedURL path =
+            NormalizedURL.from(
+                schemes.get(attempt) + "://container@account.dfs.core.windows.net/tables/id");
+        try (SupportsPrefixOperations operations =
+            fileOps.getCleanupFileIO(path, CooperativeDeadline.NO_DEADLINE)) {
+          operations.deletePrefix(path + "/");
+        }
+        assertThat(adlsFiles.constructed()).hasSize(attempt + 1);
+        ADLSFileIO adls = adlsFiles.constructed().get(attempt);
+        verify(adls)
+            .initialize(
+                Map.of(
+                    AzureProperties.ADLS_SAS_TOKEN_PREFIX + "account.dfs.core.windows.net",
+                    tokens.get(attempt)));
+        verify(adls).close();
+        verify(vendor).vendCredential(path, CredentialContext.READ_WRITE);
+      }
     }
-    verify(vendor, never()).vendCredential(any(), any());
+    verify(directory, times(2)).deleteIfExists();
   }
 }
