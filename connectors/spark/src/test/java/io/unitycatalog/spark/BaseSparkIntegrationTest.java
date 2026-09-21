@@ -129,10 +129,12 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
           ServerProperties.Property.MANAGED_TABLE_USE_DELTA_API_ONLY.getKey(), "true");
     }
     serverProperties.put("s3.bucketPath.0", "s3://test-bucket0");
+    serverProperties.put("s3.region.0", TestUtils.TEST_AWS_REGION);
     serverProperties.put("s3.accessKey.0", "accessKey0");
     serverProperties.put("s3.secretKey.0", "secretKey0");
     serverProperties.put("s3.sessionToken.0", "sessionToken0");
     serverProperties.put("s3.bucketPath.1", "s3://test-bucket1");
+    serverProperties.put("s3.region.1", TestUtils.TEST_AWS_REGION);
     serverProperties.put("s3.accessKey.1", "accessKey1");
     serverProperties.put("s3.secretKey.1", "secretKey1");
     serverProperties.put("s3.sessionToken.1", "sessionToken1");
