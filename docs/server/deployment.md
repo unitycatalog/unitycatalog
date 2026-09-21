@@ -135,3 +135,66 @@ H2:
 ```sql
 ALTER TABLE uc_properties ALTER COLUMN property_value SET DATA TYPE VARCHAR(16777215);
 ```
+
+### Pre-populating `uc_tables.delta_latest_backfilled_version` (optional)
+
+Managed Delta tables track the highest published (backfilled) commit version in
+`uc_tables.delta_latest_backfilled_version`. Hibernate adds the column on upgrade but leaves it
+null on existing rows; the server reconstructs the value from `uc_delta_commits` the first time
+it touches a table and persists it, so **no action is required** and the statements below can be
+run before, during, or after the upgrade.
+
+Running them up front populates every table in one pass, which makes the values inspectable
+immediately rather than appearing table by table as traffic arrives. They only touch rows that
+are still null, so they are safe to re-run and safe to run against an already-upgraded server.
+
+PostgreSQL:
+
+```sql
+UPDATE uc_tables t
+SET delta_latest_backfilled_version = c.backfilled_through
+FROM (
+  SELECT table_id,
+         COALESCE(
+           MAX(commit_version) FILTER (WHERE is_backfilled_latest_commit),
+           MIN(commit_version) - 1
+         ) AS backfilled_through
+  FROM uc_delta_commits
+  GROUP BY table_id
+) c
+WHERE t.id = c.table_id
+  AND t.delta_latest_backfilled_version IS NULL;
+```
+
+MySQL:
+
+```sql
+UPDATE uc_tables t
+JOIN (
+  SELECT table_id,
+         COALESCE(
+           MAX(CASE WHEN is_backfilled_latest_commit THEN commit_version END),
+           MIN(commit_version) - 1
+         ) AS backfilled_through
+  FROM uc_delta_commits
+  GROUP BY table_id
+) c ON c.table_id = t.id
+SET t.delta_latest_backfilled_version = c.backfilled_through
+WHERE t.delta_latest_backfilled_version IS NULL;
+```
+
+H2:
+
+```sql
+UPDATE uc_tables t
+SET delta_latest_backfilled_version = (
+  SELECT COALESCE(
+           MAX(CASE WHEN c.is_backfilled_latest_commit THEN c.commit_version END),
+           MIN(c.commit_version) - 1
+         )
+  FROM uc_delta_commits c
+  WHERE c.table_id = t.id
+)
+WHERE t.delta_latest_backfilled_version IS NULL
+  AND EXISTS (SELECT 1 FROM uc_delta_commits c WHERE c.table_id = t.id);
+```
