@@ -51,6 +51,18 @@ public class Repositories {
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
       CloudCredentialVendor cloudCredentialVendor) {
+    this(sessionFactory, serverProperties, cloudCredentialVendor, null);
+  }
+
+  /**
+   * @param fileOperations an injected FileIO facade (e.g. an emulated-cloud test adapter), or
+   *     {@code null} to construct the production implementation
+   */
+  public Repositories(
+      SessionFactory sessionFactory,
+      ServerProperties serverProperties,
+      CloudCredentialVendor cloudCredentialVendor,
+      FileOperations fileOperations) {
     this.sessionFactory = sessionFactory;
     this.externalLocationUtils = new ExternalLocationUtils(sessionFactory);
     CloudCredentialVendor resolvedCloudCredentialVendor =
@@ -59,7 +71,10 @@ public class Repositories {
             : new CloudCredentialVendor(serverProperties);
     this.storageCredentialVendor =
         new StorageCredentialVendor(resolvedCloudCredentialVendor, externalLocationUtils);
-    this.fileOperations = new FileOperations(storageCredentialVendor, serverProperties);
+    this.fileOperations =
+        fileOperations != null
+            ? fileOperations
+            : new FileOperations(storageCredentialVendor, serverProperties);
 
     this.catalogRepository = new CatalogRepository(this, sessionFactory);
     this.schemaRepository = new SchemaRepository(this, sessionFactory);
@@ -74,7 +89,7 @@ public class Repositories {
     this.credentialRepository = new CredentialRepository(this, sessionFactory, serverProperties);
     this.externalLocationRepository = new ExternalLocationRepository(this, sessionFactory);
     this.deltaCommitRepository =
-        new DeltaCommitRepository(sessionFactory, serverProperties, fileOperations);
+        new DeltaCommitRepository(sessionFactory, serverProperties, this.fileOperations);
     this.dependencyRepository = new DependencyRepository();
     this.storageCleanupTaskRepository = new StorageCleanupTaskRepository(sessionFactory);
 

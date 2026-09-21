@@ -826,6 +826,9 @@ public class TableRepository {
                   ErrorCode.INVALID_ARGUMENT,
                   "Managed table creation is only supported for Delta and Iceberg formats.");
             }
+            if (createTable.getDataSourceFormat() == DataSourceFormat.DELTA) {
+              repositories.getFileOperations().validateReadAccessConfiguration(storageLocation);
+            }
             // Find and commit the staging table with the same staging location. This single
             // transaction validates ownership and prevents a staging location from being reused.
             StagingTableDAO stagingTableDAO =

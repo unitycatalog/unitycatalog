@@ -370,7 +370,7 @@ public class DeltaCommitRepository {
             tableInfoDAO,
             fileOperations,
             commit.getLatestBackfilledVersion(),
-            firstCommitDAO.getCommitVersion(),
+            firstCommitDAO,
             lastCommitDAO.getCommitVersion());
       } else {
         handleNormalCommit(
@@ -429,7 +429,7 @@ public class DeltaCommitRepository {
    * @param tableInfoDAO the table information data access object
    * @param fileOperations used to verify the published commit files before purging
    * @param latestBackfilledVersion the version up to which backfilling has already been performed
-   * @param firstCommitVersion the version number of the first commit currently in the database
+   * @param firstCommitDAO the first commit currently in the database
    * @param lastCommitVersion the version number of the last commit currently in the database
    * @throws BaseException if the backfilled version is greater than the last commit version
    */
@@ -439,7 +439,7 @@ public class DeltaCommitRepository {
       TableInfoDAO tableInfoDAO,
       FileOperations fileOperations,
       long latestBackfilledVersion,
-      long firstCommitVersion,
+      DeltaCommitDAO firstCommitDAO,
       long lastCommitVersion) {
     if (latestBackfilledVersion > lastCommitVersion) {
       throw new BaseException(
@@ -454,7 +454,7 @@ public class DeltaCommitRepository {
         tableInfoDAO,
         fileOperations,
         latestBackfilledVersion,
-        firstCommitVersion,
+        firstCommitDAO,
         lastCommitVersion,
         Optional.empty());
   }
@@ -569,7 +569,6 @@ public class DeltaCommitRepository {
       DeltaCommitDAO firstCommitDAO,
       DeltaCommitDAO lastCommitDAO) {
     DeltaCommitInfo commitInfo = Objects.requireNonNull(commit.getCommitInfo());
-    long firstCommitVersion = firstCommitDAO.getCommitVersion();
     long lastCommitVersion = lastCommitDAO.getCommitVersion();
     long newCommitVersion = commitInfo.getVersion();
     if (newCommitVersion <= lastCommitVersion) {
@@ -612,7 +611,7 @@ public class DeltaCommitRepository {
                 tableInfoDAO,
                 fileOperations,
                 latestBackfilled,
-                firstCommitVersion,
+                firstCommitDAO,
                 lastCommitVersion,
                 Optional.of(newCommitVersion)));
   }
@@ -706,11 +705,12 @@ public class DeltaCommitRepository {
    * most recent commit is always preserved as it serves as an indicator of the current table
    * version.
    *
-   * <p>Before any purge or mark, every published {@code _delta_log/<version>.json} in [{@code
-   * firstCommitVersion}, {@code latestBackfilledVersion}] must exist. Purging DB rows while an
-   * intermediate published file is missing leaves coordinated-commit clients that retry a prior
-   * version stuck on {@code COMMIT_STATE_UNKNOWN} (HTTP 500). Rejecting the backfill instead keeps
-   * the rows so recovery remains possible.
+   * <p>Before any purge or mark, every newly backfilled published {@code _delta_log/<version>.json}
+   * must exist. If the first retained row is the marker for an already backfilled version,
+   * verification starts at the following version. Purging DB rows while an intermediate published
+   * file is missing leaves coordinated-commit clients that retry a prior version stuck on {@code
+   * COMMIT_STATE_UNKNOWN} (HTTP 500). Rejecting the backfill instead keeps the rows so recovery
+   * remains possible.
    *
    * <p>For backfill-only requests (when newCommitVersion is empty), if the backfilled version
    * equals the last commit version, that commit is marked as backfilled rather than deleted.
@@ -723,8 +723,7 @@ public class DeltaCommitRepository {
    * @param tableInfoDAO the table information data access object
    * @param fileOperations used to HEAD the published commit files before purging
    * @param latestBackfilledVersion the version up to which backfilling should be performed
-   * @param firstCommitVersion the version number of the first commit currently in the database with
-   *     the lowest version number
+   * @param firstCommitDAO the first commit currently in the database with the lowest version number
    * @param lastCommitVersion the version number of the last commit currently in the database with
    *     the highest version number
    * @param newCommitVersion optional new commit version being added (empty for backfill-only
@@ -736,25 +735,32 @@ public class DeltaCommitRepository {
       TableInfoDAO tableInfoDAO,
       FileOperations fileOperations,
       long latestBackfilledVersion,
-      long firstCommitVersion,
+      DeltaCommitDAO firstCommitDAO,
       long lastCommitVersion,
       Optional<Long> newCommitVersion) {
     // These asserts are already validated before calling this function
     assert latestBackfilledVersion <= lastCommitVersion;
     assert newCommitVersion.isEmpty() || newCommitVersion.get() == lastCommitVersion + 1;
 
+    long firstCommitVersion = firstCommitDAO.getCommitVersion();
     if (latestBackfilledVersion < firstCommitVersion) {
       // Backfilling a version that is already backfilled is fine. But no-op.
       return;
     }
 
-    // Refuse to purge (or mark) until every version in the range has a readable published commit
-    // file. Already-purged versions below firstCommitVersion are not re-checked.
-    requirePublishedCommitFiles(
-        fileOperations,
-        NormalizedURL.from(tableInfoDAO.getUrl()),
-        firstCommitVersion,
-        latestBackfilledVersion);
+    // Refuse to purge (or mark) until every newly backfilled version has a readable published
+    // commit file. The first retained row may be the marker for a version already backfilled; its
+    // published JSON may have since been legitimately removed and must not be re-checked.
+    if (!firstCommitDAO.isBackfilledLatestCommit()
+        || latestBackfilledVersion > firstCommitVersion) {
+      long firstUnbackfilledVersion =
+          firstCommitDAO.isBackfilledLatestCommit() ? firstCommitVersion + 1L : firstCommitVersion;
+      requirePublishedCommitFiles(
+          fileOperations,
+          NormalizedURL.from(tableInfoDAO.getUrl()),
+          firstUnbackfilledVersion,
+          latestBackfilledVersion);
+    }
 
     long highestCommitVersion = newCommitVersion.orElse(lastCommitVersion);
     // The last commit version, be it a new one or existing one, is never deleted.
@@ -834,6 +840,7 @@ public class DeltaCommitRepository {
     // Record a miss inside the FileIO block and throw INVALID_ARGUMENT after it, so credential
     // vending, HEAD, and close failures (which also throw BaseException) are not passed through
     // as a client 400. v == toVersion is an explicit stop so v++ cannot overflow at MAX_VALUE.
+    fileOperations.validateReadAccessConfiguration(tableLocation);
     String missingPath = null;
     try (FileIO fileIO = fileOperations.getFileIO(tableLocation)) {
       for (long v = fromVersion; ; v++) {

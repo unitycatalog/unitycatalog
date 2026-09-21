@@ -98,6 +98,25 @@ public class FileOperations {
     return getFileIO(path, CredentialContext.READ_ONLY);
   }
 
+  /**
+   * Validates configuration required for the server itself to read {@code path}.
+   *
+   * <p>Credential vending can serve S3 credentials without a region, but server-side S3 FileIO
+   * cannot construct a client without one. Managed Delta backfill verification reads published
+   * commit files from the server, so reject that permanent configuration error before attempting
+   * storage I/O.
+   */
+  public void validateReadAccessConfiguration(NormalizedURL path) {
+    if (UriScheme.fromURI(path.toUri()) == UriScheme.S3
+        && !s3BucketRegionMap.containsKey(path.getStorageBase())) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Managed Delta storage requires an S3 region for bucket "
+              + path.getStorageBase()
+              + "; configure the matching s3.bucketPath.N and s3.region.N.");
+    }
+  }
+
   /** Returns a FileIO configured for the requested storage privileges. */
   public FileIO getFileIO(NormalizedURL path, Set<CredentialContext.Privilege> privileges) {
     return switch (UriScheme.fromURI(path.toUri())) {
