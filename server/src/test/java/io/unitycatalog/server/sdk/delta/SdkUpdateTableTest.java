@@ -58,6 +58,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -1294,9 +1295,9 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       assertThat(r.getMetadata().getLastCommitTimestampMs()).isEqualTo(1700000001L);
     }
 
-    // -------- content-based idempotency for a backfilled-and-purged version --------
-    // Once a version is backfilled and purged, its staged file name is no longer tracked, so a
-    // replay is settled by comparing the incoming staged file against the published commit file.
+    // -------- idempotency for a backfilled version --------
+    // While the row is retained the recorded file name settles the replay; once it is gone the
+    // staged file is compared against the published commit file instead.
     {
       DeltaStagingTableResponse staging = createDeltaStaging("tbl_content_idem_purged");
       Handle h = createDeltaManaged("tbl_content_idem_purged", staging, Map.of());
@@ -1317,7 +1318,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                         .fileModificationTimestamp(1700000000L + v));
         cur = cur.withEtag(updateTable(cur, commits[i]).getMetadata().getEtag());
       }
-      // Publish v1 and v2 before backfill so purge verification succeeds; then purge leaves [v3].
+      // Publish v1 and v2 before backfill so verification succeeds; the live window becomes [v3].
       byte[] v1Content = "delta-commit-v1\n".getBytes(StandardCharsets.UTF_8);
       byte[] v2Content = "delta-commit-v2\n".getBytes(StandardCharsets.UTF_8);
       writeTableFile(loc, "_delta_log/00000000000000000001.json", v1Content);
@@ -1325,6 +1326,33 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       DeltaLoadTableResponse afterBackfill =
           updateTable(cur, new DeltaSetLatestBackfilledVersionUpdate().latestPublishedVersion(2L));
       final Handle h3 = cur.withEtag(afterBackfill.getMetadata().getEtag());
+      assertThat(afterBackfill.getLatestTableVersion()).isEqualTo(3L);
+      // v1 and v2 drop out of the live window even though their rows are still there.
+      assertThat(afterBackfill.getCommits())
+          .extracting(DeltaCommit::getVersion)
+          .containsExactly(3L);
+
+      // v2's row is retained, so replaying it is a no-op even though no staged file exists: this
+      // is the retry that used to stall, since backfill is what removes the staged file.
+      assertThat(updateTable(h3, commits[1]).getLatestTableVersion()).isEqualTo(3L);
+
+      DeltaAddCommitUpdate v2OtherWriter =
+          new DeltaAddCommitUpdate()
+              .commit(
+                  new DeltaCommit()
+                      .version(2L)
+                      .timestamp(1700000002L)
+                      .fileName("other-writer.json")
+                      .fileSize(1024L)
+                      .fileModificationTimestamp(1700000002L));
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h3, v2OtherWriter),
+          DeltaErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION,
+          "already accepted");
+
+      // Drop v2's row to stand in for a version that has aged out of the retention window. From
+      // here the outcome comes from the files.
+      deleteCommitRow(h3.tableId(), 2L);
 
       // Stage a byte-identical file for v2: the replay is recognized by content and is an
       // idempotent no-op success (table still at v3).
@@ -1374,6 +1402,23 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     Path path = Path.of(URI.create(storageLocation + "/" + relativePath));
     Files.createDirectories(path.getParent());
     Files.write(path, content);
+  }
+
+  /**
+   * Drops the commit row for {@code version}, standing in for a version that has aged out of the
+   * retention window or was backfilled before rows were retained at all.
+   */
+  private void deleteCommitRow(UUID tableId, long version) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      session.beginTransaction();
+      session
+          .createMutationQuery(
+              "DELETE FROM DeltaCommitDAO WHERE tableId = :tableId AND commitVersion = :version")
+          .setParameter("tableId", tableId)
+          .setParameter("version", version)
+          .executeUpdate();
+      session.getTransaction().commit();
+    }
   }
 
   /** Delete {@code relativePath} under the table's (file://) storage location. */
