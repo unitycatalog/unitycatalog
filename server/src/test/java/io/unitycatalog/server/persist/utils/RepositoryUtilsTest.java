@@ -24,13 +24,17 @@ public class RepositoryUtilsTest {
   /**
    * A failed pessimistic lock acquisition means a concurrent commit is in progress and this
    * request's outcome is unknown (the in-flight attempt may still land). It must surface as the
-   * retryable {@code COMMIT_STATE_UNKNOWN}, never as a conflict that would invite a rebase. Both
-   * the Hibernate and Jakarta {@code PessimisticLockException}, and the Jakarta {@code
-   * LockTimeoutException} a lock-wait can raise instead, are covered.
+   * retryable {@code COMMIT_STATE_UNKNOWN}, never as a conflict that would invite a rebase. The
+   * lock failure can arrive as Hibernate's own {@code PessimisticLockException} or its native
+   * {@code LockAcquisitionException} / {@code LockTimeoutException} (dialect-translated JDBC
+   * errors), or as the Jakarta {@code PessimisticLockException} / {@code LockTimeoutException}; all
+   * are covered.
    */
   static RuntimeException[] lockAcquisitionFailures() {
     return new RuntimeException[] {
       new org.hibernate.PessimisticLockException("locked", new SQLException("locked"), "sql"),
+      new org.hibernate.exception.LockAcquisitionException("locked", new SQLException("locked")),
+      new org.hibernate.exception.LockTimeoutException("timed out", new SQLException("timed out")),
       new jakarta.persistence.PessimisticLockException("locked"),
       new jakarta.persistence.LockTimeoutException("timed out"),
     };

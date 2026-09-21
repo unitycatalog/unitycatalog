@@ -47,6 +47,8 @@ public class RepositoryUtils {
       session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
     } catch (RuntimeException e) {
       if (!(e instanceof org.hibernate.PessimisticLockException)
+          && !(e instanceof org.hibernate.exception.LockAcquisitionException)
+          && !(e instanceof org.hibernate.exception.LockTimeoutException)
           && !(e instanceof jakarta.persistence.PessimisticLockException)
           && !(e instanceof jakarta.persistence.LockTimeoutException)) {
         throw e;

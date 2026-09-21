@@ -8,6 +8,7 @@ import lombok.SneakyThrows;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.CommitFailedException;
+import org.apache.iceberg.exceptions.CommitStateUnknownException;
 import org.apache.iceberg.exceptions.ForbiddenException;
 import org.apache.iceberg.exceptions.NamespaceNotEmptyException;
 import org.apache.iceberg.exceptions.NoSuchNamespaceException;
@@ -100,7 +101,11 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
       case UNAUTHENTICATED -> NotAuthorizedException.class;
       case PERMISSION_DENIED -> ForbiddenException.class;
       case UNIMPLEMENTED -> UnsupportedOperationException.class;
-      case INTERNAL, DATA_LOSS, COMMIT_STATE_UNKNOWN -> ServiceFailureException.class;
+      case INTERNAL, DATA_LOSS -> ServiceFailureException.class;
+      // A commit whose outcome the server could not determine. Iceberg's own client treats this
+      // type specially -- it does not assume the commit failed -- which is exactly the intent: the
+      // client should resend the identical commit, not rebase and risk committing twice.
+      case COMMIT_STATE_UNKNOWN -> CommitStateUnknownException.class;
       case RESOURCE_EXHAUSTED -> RESTException.class;
     };
   }
