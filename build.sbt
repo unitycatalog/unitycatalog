@@ -47,15 +47,13 @@ lazy val log4jVersion = "2.25.3"
 val orgApacheHttpVersion = "4.5.14"
 
 // Connector Jackson follows Spark's line: 4.0 ships 2.18.x, 4.1+ ships 2.21.x.
-// Spark 4.2 vendors at.yawk.lz4:lz4-java 1.11.0; 1.11.3 is the current CVE-2026-59949 patch line.
+// jackson-core >= 2.18 is required by Spark 4.2's jackson-dataformat-yaml
+// (YAMLParser._updateToken).
 lazy val sparkJacksonVersion =
   if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 1)) "2.21.6" else "2.18.2"
+// jackson-annotations dropped the patch segment in 2.20; 2.21.6 does not exist.
 lazy val sparkJacksonAnnotationsVersion =
   if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 1)) "2.21" else "2.18.2"
-def sparkLz4Deps: Seq[ModuleID] =
-  if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 2))
-    Seq("at.yawk.lz4" % "lz4-java" % "1.11.3" % Provided)
-  else Seq.empty
 
 lazy val commonSettings = Seq(
   organization := orgName,
@@ -696,7 +694,7 @@ lazy val spark = (project in file("connectors/spark"))
       "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Provided,
       "software.amazon.awssdk" % "auth" % "2.25.37" % Provided,
-    ) ++ sparkLz4Deps,
+    ),
     libraryDependencies ++= Seq(
       // Test dependencies
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
