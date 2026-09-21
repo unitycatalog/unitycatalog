@@ -788,12 +788,26 @@ public class DeltaCommitRepository {
     }
   }
 
+  /** Absolute path of the table's {@code _delta_log} directory. */
+  static String deltaLogDir(NormalizedURL tableLocation) {
+    return tableLocation + "/_delta_log";
+  }
+
   /**
    * Absolute path of the published Delta commit file for {@code version} under {@code
    * tableLocation}. Locale.ROOT keeps the zero-padded name ASCII-digit regardless of server locale.
    */
   static String publishedCommitPath(NormalizedURL tableLocation, long version) {
-    return String.format(Locale.ROOT, "%s/_delta_log/%020d.json", tableLocation, version);
+    return String.format(Locale.ROOT, "%s/%020d.json", deltaLogDir(tableLocation), version);
+  }
+
+  /**
+   * Absolute path of the staged commit file {@code fileName} under {@code
+   * tableLocation/_delta_log/_staged_commits}.
+   */
+  static String stagedCommitPath(NormalizedURL tableLocation, String fileName) {
+    return String.format(
+        Locale.ROOT, "%s/_staged_commits/%s", deltaLogDir(tableLocation), fileName);
   }
 
   /**
@@ -951,12 +965,8 @@ public class DeltaCommitRepository {
    */
   static void verifyContentReplayOrThrowConflict(
       FileOperations fileOperations, CommitContentCheckRequiredException check) {
-    String logDir = check.tableLocation + "/_delta_log";
-    // Locale.ROOT: the published file name is ASCII digits regardless of the server's locale, so it
-    // matches the actual _delta_log/<v>.json path (some locales render %d with non-ASCII digits).
-    String publishedPath = String.format(Locale.ROOT, "%s/%020d.json", logDir, check.version);
-    String stagedPath =
-        String.format(Locale.ROOT, "%s/_staged_commits/%s", logDir, check.stagedFileName);
+    String publishedPath = publishedCommitPath(check.tableLocation, check.version);
+    String stagedPath = stagedCommitPath(check.tableLocation, check.stagedFileName);
     boolean sameContent;
     // getFileIO can vend credentials (cloud paths) and open resources, so it is acquired inside the
     // guarded block (and closed): a vend or read failure is equally "cannot determine" and must
