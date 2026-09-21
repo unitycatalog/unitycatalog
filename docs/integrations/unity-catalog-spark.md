@@ -34,7 +34,8 @@ data stored in Unity Catalog through a controlled mechanism.
 !!! tip "SQL views and metric views"
     On Apache Spark 4.2 and later, the connector also supports Unity Catalog **SQL views** and
     **metric views** — the latter being reusable dimensions and measures defined over a source table
-    or SQL query. See [Metric Views](../usage/metric-views.md).
+    or SQL query. `CREATE OR REPLACE VIEW` updates an existing view in place, preserving its identity
+    and grants, or creates it when it does not exist. See [Metric Views](../usage/metric-views.md).
 
 ## Download and Configure Unity Catalog for Apache Spark
 

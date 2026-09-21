@@ -420,6 +420,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TableInfo'
+    patch:
+      tags:
+        - Tables
+      operationId: updateView
+      summary: Update a view
+      description: >-
+        Atomically updates the complete metadata of an existing view while preserving its identity,
+        ownership, and grants. The target must be a VIEW or METRIC_VIEW. This operation does not
+        create a missing view.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateView'
+      responses:
+        '200':
+          description: The view was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableInfo'
     delete:
       tags:
         - Tables
@@ -1795,6 +1817,33 @@ components:
         - schema_name
         - table_type
         - columns
+    UpdateView:
+      type: object
+      description: Complete replacement metadata for an existing view.
+      properties:
+        table_type:
+          $ref: '#/components/schemas/TableType'
+        columns:
+          description: The array of __ColumnInfo__ definitions exposed by the view.
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnInfo'
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+        view_definition:
+          description: >-
+            Definition text for the view. The format depends on the table type (SQL for views,
+            YAML for metric views).
+          type: string
+        view_dependencies:
+          "$ref": "#/components/schemas/DependencyList"
+      required:
+        - table_type
+        - columns
+        - view_definition
     StagingTableInfo:
       type: object
       properties:

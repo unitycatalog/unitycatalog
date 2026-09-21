@@ -202,6 +202,11 @@ ORDER BY region;
     Measures must be read through the `measure(...)` function; selecting a measure column directly
     (for example `SELECT cnt_sum FROM ...`) is not supported.
 
+## Update a metric view
+
+Use `CREATE OR REPLACE VIEW` with the same syntax as creation. Existing metric views are updated in
+place, preserving their catalog identity and grants; a missing view is created normally.
+
 ## Drop a metric view
 
 ```sql

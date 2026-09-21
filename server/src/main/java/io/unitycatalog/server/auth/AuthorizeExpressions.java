@@ -73,12 +73,12 @@ public final class AuthorizeExpressions {
       """;
 
   /**
-   * Authorization policy for updating / committing to a table (UC REST {@code
-   * DeltaCommitsService.postCommit} and the Delta {@code updateTable}). The Delta {@code POST
-   * /tables/{name}} endpoint covers both metadata-only updates (properties, columns, comment,
-   * protocol, domain metadata) and CCv2 commits, so the privilege bundle is the same as the UC REST
-   * commit path: USE_CATALOG on catalog, USE_SCHEMA on schema, and MODIFY on the table (OWNER
-   * satisfies each tier).
+   * Authorization policy for updating / committing to a table or view (UC REST {@code updateView}
+   * and {@code DeltaCommitsService.postCommit}, and the Delta {@code updateTable}). The Delta
+   * {@code POST /tables/{name}} endpoint covers both metadata-only updates (properties, columns,
+   * comment, protocol, domain metadata) and CCv2 commits, so the privilege bundle is the same as
+   * the UC REST update paths: USE_CATALOG on catalog, USE_SCHEMA on schema, and MODIFY on the table
+   * (OWNER satisfies each tier).
    */
   public static final String UPDATE_TABLE =
       """

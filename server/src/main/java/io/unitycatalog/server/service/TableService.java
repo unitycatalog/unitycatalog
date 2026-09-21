@@ -11,6 +11,7 @@ import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -24,6 +25,7 @@ import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.UpdateView;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.TableRepository;
@@ -103,6 +105,14 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
     assert fullName != null;
     TableInfo tableInfo = tableRepository.getTable(fullName);
     return HttpResponse.ofJson(tableInfo);
+  }
+
+  @Patch("/{full_name}")
+  @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
+  public HttpResponse updateView(
+      @Param("full_name") @AuthorizeResourceKey(TABLE) String fullName, UpdateView updateView) {
+    assert updateView != null;
+    return HttpResponse.ofJson(tableRepository.updateView(fullName, updateView));
   }
 
   @Get("")

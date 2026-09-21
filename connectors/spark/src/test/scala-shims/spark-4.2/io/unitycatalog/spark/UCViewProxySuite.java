@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -22,7 +23,9 @@ import io.unitycatalog.client.model.ListTablesResponse;
 import io.unitycatalog.client.model.TableDependency;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.UpdateView;
 import java.lang.reflect.Field;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
@@ -344,13 +347,11 @@ public class UCViewProxySuite {
   }
 
   @Test
-  public void testUCSingleCatalogLoadRelationRejectsNonDeltaPathWithoutDelegate()
-      throws Exception {
+  public void testUCSingleCatalogLoadRelationRejectsNonDeltaPathWithoutDelegate() throws Exception {
     // Spark 4.2 RelationResolution.loadRelation only falls back to SQL-on-file for
     // NoSuchTableException. Non-Delta path idents (parquet.`s3://...`) must not reach the
     // delegate, which would call UC and surface "Invalid table name" instead.
-    Identifier ident =
-        Identifier.of(new String[] {"parquet"}, "s3://bucket/dir/file.parquet");
+    Identifier ident = Identifier.of(new String[] {"parquet"}, "s3://bucket/dir/file.parquet");
     TableCatalog delegate = org.mockito.Mockito.mock(TableCatalog.class);
 
     UCSingleCatalog catalog = new UCSingleCatalog();
@@ -460,19 +461,101 @@ public class UCViewProxySuite {
   }
 
   @Test
-  public void testReplaceViewThrowsUnsupportedOperation() throws Exception {
+  public void testReplaceViewUpdatesFullMetadataAndReturnsResponse() throws Exception {
     View view =
         new View.Builder()
             .withColumns(new Column[] {Column.create("c", DataTypes.StringType, true)})
             .withProperties(
-                Map.of(TableCatalog.PROP_TABLE_TYPE, TableSummary.METRIC_VIEW_TABLE_TYPE))
+                Map.of(
+                    TableCatalog.PROP_TABLE_TYPE,
+                    TableSummary.METRIC_VIEW_TABLE_TYPE,
+                    TableCatalog.PROP_COMMENT,
+                    "Updated metric view",
+                    "refresh",
+                    "hourly"))
             .withQueryText("version: \"0.1\"")
             .withCurrentCatalog(CATALOG_NAME)
             .withCurrentNamespace(NAMESPACE)
+            .withViewDependencies(
+                org.apache.spark.sql.connector.catalog.DependencyList.of(
+                    new org.apache.spark.sql.connector.catalog.Dependency[] {
+                      org.apache.spark.sql.connector.catalog.Dependency.table(
+                          new String[] {CATALOG_NAME, SCHEMA_NAME, "events"})
+                    }))
             .build();
+    TableInfo updated =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("mv1")
+            .tableType(TableType.METRIC_VIEW)
+            .viewDefinition("version: \"0.1\"")
+            .columns(
+                List.of(
+                    new ColumnInfo()
+                        .name("c")
+                        .typeName(ColumnTypeName.STRING)
+                        .typeText("string")
+                        .typeJson(
+                            "{\"name\":\"c\",\"type\":\"string\",\"nullable\":true,"
+                                + "\"metadata\":{}}")
+                        .nullable(true)
+                        .position(0)));
+    when(mockTablesApi.updateView(eq("test_catalog.test_schema.mv1"), any(UpdateView.class)))
+        .thenReturn(updated);
 
-    assertThatThrownBy(() -> proxyViews.replaceView(Identifier.of(NAMESPACE, "mv1"), view))
-        .isInstanceOf(UnsupportedOperationException.class);
+    View result = proxyViews.replaceView(Identifier.of(NAMESPACE, "mv1"), view);
+
+    ArgumentCaptor<UpdateView> captor = ArgumentCaptor.forClass(UpdateView.class);
+    verify(mockTablesApi).updateView(eq("test_catalog.test_schema.mv1"), captor.capture());
+    assertThat(captor.getValue().getTableType()).isEqualTo(TableType.METRIC_VIEW);
+    assertThat(captor.getValue().getViewDefinition()).isEqualTo("version: \"0.1\"");
+    assertThat(captor.getValue().getColumns()).extracting(ColumnInfo::getName).containsExactly("c");
+    assertThat(captor.getValue().getComment()).isEqualTo("Updated metric view");
+    assertThat(captor.getValue().getProperties()).containsEntry("refresh", "hourly");
+    assertThat(captor.getValue().getViewDependencies().getDependencies())
+        .extracting(dependency -> dependency.getTable().getTableFullName())
+        .containsExactly("test_catalog.test_schema.events");
+    assertThat(result.queryText()).isEqualTo("version: \"0.1\"");
+  }
+
+  @Test
+  public void testReplaceMissingViewMapsNotFound() throws Exception {
+    when(mockTablesApi.updateView(eq("test_catalog.test_schema.v1"), any(UpdateView.class)))
+        .thenThrow(
+            new ApiException(404, "not found", null, "{\"error_code\":\"TABLE_NOT_FOUND\"}"));
+
+    assertThatThrownBy(
+            () ->
+                proxyViews.replaceView(Identifier.of(NAMESPACE, "v1"), plainViewBuilder().build()))
+        .isInstanceOf(NoSuchViewException.class);
+  }
+
+  @Test
+  public void testReplaceViewPreservesOtherNotFoundErrors() throws Exception {
+    View view =
+        plainViewBuilder()
+            .withViewDependencies(
+                org.apache.spark.sql.connector.catalog.DependencyList.of(
+                    new org.apache.spark.sql.connector.catalog.Dependency[0]))
+            .build();
+    for (String body :
+        Arrays.asList(
+            null,
+            "",
+            "null",
+            "{}",
+            "not JSON",
+            "{\"error_code\":\"NOT_FOUND\",\"message\":\"View dependency table does not exist\"}",
+            "{\"error_code\":\"SCHEMA_NOT_FOUND\"}")) {
+      ApiException error = new ApiException(404, "not found", null, body);
+      doThrow(error)
+          .when(mockTablesApi)
+          .updateView(eq("test_catalog.test_schema.v1"), any(UpdateView.class));
+
+      assertThatThrownBy(() -> proxyViews.replaceView(Identifier.of(NAMESPACE, "v1"), view))
+          .isSameAs(error);
+    }
   }
 
   @Test
@@ -546,6 +629,41 @@ public class UCViewProxySuite {
 
     assertThatThrownBy(() -> proxyViews.createView(Identifier.of(NAMESPACE, "mv1"), view))
         .isInstanceOf(ViewAlreadyExistsException.class);
+  }
+
+  @Test
+  public void testCreateViewMapsLegacyTableAlreadyExistsToViewAlreadyExistsException()
+      throws Exception {
+    when(mockTablesApi.createTable(any(CreateTable.class)))
+        .thenThrow(
+            new ApiException(
+                400, "bad request", null, "{\"error_code\":\"TABLE_ALREADY_EXISTS\"}"));
+
+    assertThatThrownBy(
+            () -> proxyViews.createView(Identifier.of(NAMESPACE, "v1"), plainViewBuilder().build()))
+        .isInstanceOf(ViewAlreadyExistsException.class);
+  }
+
+  @Test
+  public void testCreateViewPreservesOtherBadRequestErrors() throws Exception {
+    View view =
+        plainViewBuilder()
+            .withViewDependencies(
+                org.apache.spark.sql.connector.catalog.DependencyList.of(
+                    new org.apache.spark.sql.connector.catalog.Dependency[0]))
+            .build();
+    for (String body :
+        Arrays.asList(
+            null,
+            "not JSON",
+            "{\"error_code\":\"INVALID_ARGUMENT\",\"message\":\"Invalid name:"
+                + " TABLE_ALREADY_EXISTS\"}")) {
+      ApiException error = new ApiException(400, "bad request", null, body);
+      doThrow(error).when(mockTablesApi).createTable(any(CreateTable.class));
+
+      assertThatThrownBy(() -> proxyViews.createView(Identifier.of(NAMESPACE, "v1"), view))
+          .isSameAs(error);
+    }
   }
 
   @Test
