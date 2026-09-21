@@ -31,7 +31,7 @@ trait UCProxyViewSupport { self: UCProxy =>
   protected[spark] def buildV1ViewTable(t: UCTableInfo): Table = {
     val identifier = TableIdentifier(t.getName, Some(t.getSchemaName), Some(t.getCatalogName))
     val fields = Option(t.getColumns).map(_.asScala).getOrElse(Seq.empty)
-      .map(self.toStructField).toArray
+      .map(UCColumnConversions.toStructField).toArray
     val base = Option(t.getProperties).map(_.asScala.toMap).getOrElse(Map.empty[String, String])
     // Spark 4.2 surfaces these through the View API (withQueryColumnNames / withSchemaMode); on v1
     // they are read from properties (viewQueryColumnNames / viewSchemaModeFromProperties), so
