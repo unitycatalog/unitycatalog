@@ -628,6 +628,16 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         createCommitObject(tableInfo.getTableId(), 6L, tableInfo.getStorageLocation());
     deltaCommitsApi.commit(commit6);
     verifyDeltaCommits(/* expectedLatestTableVersion= */ 6, /* expectedCommits= */ 6);
+
+    // v5 is the retained marker for an already-backfilled version. Its published JSON may be
+    // removed by later metadata cleanup; advancing the backfill to v6 must verify only newly
+    // backfilled v6 rather than rechecking v5 forever.
+    Files.delete(
+        Path.of(
+            URI.create(tableInfo.getStorageLocation() + "/_delta_log/00000000000000000005.json")));
+    writePublishedCommitFiles(6L, 6L);
+    deltaCommitsApi.commit(createBackfillOnlyCommitObject(6L));
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 6);
   }
 
   @Test
