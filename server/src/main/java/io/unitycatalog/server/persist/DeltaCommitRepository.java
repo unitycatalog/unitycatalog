@@ -815,12 +815,13 @@ public class DeltaCommitRepository {
    * toVersion}]. No-op when {@code fromVersion > toVersion}.
    *
    * <p>A definitively absent file means the client reported a backfill that did not complete:
-   * {@code INVALID_ARGUMENT} (400), since retrying cannot help until the file is published. A
-   * storage failure (credential vending, timeout) leaves existence undetermined and must not be
-   * charged to the caller as a bad request: {@code COMMIT_STATE_UNKNOWN} (500, retriable), matching
-   * {@link #verifyContentReplayOrThrowConflict}. This matters most on a combined add-commit +
-   * backfill request, where both share one transaction and a flaky HEAD would otherwise roll the
-   * new commit back as a client error.
+   * {@code INVALID_ARGUMENT} (400), since retrying cannot help until the file is published. FileIO
+   * acquisition, HEAD, and close failures (including {@link BaseException}s from credential
+   * vending) leave existence undetermined and must not be charged to the caller as a bad request:
+   * {@code COMMIT_STATE_UNKNOWN} (500, retriable), matching {@link
+   * #verifyContentReplayOrThrowConflict}. This matters most on a combined add-commit + backfill
+   * request, where both share one transaction and a flaky HEAD would otherwise roll the new commit
+   * back as a client error.
    */
   static void requirePublishedCommitFiles(
       FileOperations fileOperations,
@@ -830,20 +831,21 @@ public class DeltaCommitRepository {
     if (fromVersion > toVersion) {
       return;
     }
+    // Record a miss inside the FileIO block and throw INVALID_ARGUMENT after it, so credential
+    // vending, HEAD, and close failures (which also throw BaseException) are not passed through
+    // as a client 400. v == toVersion is an explicit stop so v++ cannot overflow at MAX_VALUE.
+    String missingPath = null;
     try (FileIO fileIO = fileOperations.getFileIO(tableLocation)) {
-      for (long v = fromVersion; v <= toVersion; v++) {
+      for (long v = fromVersion; ; v++) {
         String path = publishedCommitPath(tableLocation, v);
         if (!fileIO.newInputFile(path).exists()) {
-          throw new BaseException(
-              ErrorCode.INVALID_ARGUMENT,
-              "Cannot backfill through version "
-                  + toVersion
-                  + ": published commit file is missing: "
-                  + path);
+          missingPath = path;
+          break;
+        }
+        if (v == toVersion) {
+          break;
         }
       }
-    } catch (BaseException e) {
-      throw e;
     } catch (Exception e) {
       throw new BaseException(
           ErrorCode.COMMIT_STATE_UNKNOWN,
@@ -853,6 +855,14 @@ public class DeltaCommitRepository {
               + toVersion
               + "; retry the request.",
           e);
+    }
+    if (missingPath != null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Cannot backfill through version "
+              + toVersion
+              + ": published commit file is missing: "
+              + missingPath);
     }
   }
 

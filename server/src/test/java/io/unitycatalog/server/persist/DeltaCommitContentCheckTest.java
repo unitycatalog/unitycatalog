@@ -3,6 +3,8 @@ package io.unitycatalog.server.persist;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -14,6 +16,8 @@ import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.nio.charset.StandardCharsets;
 import org.apache.iceberg.aws.s3.S3FileIO;
+import org.apache.iceberg.io.FileIO;
+import org.apache.iceberg.io.InputFile;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -103,11 +107,33 @@ public class DeltaCommitContentCheckTest {
         .isEqualTo(ErrorCode.INVALID_ARGUMENT);
 
     // Storage itself failed, so existence is undetermined: retriable 500, not a bad request.
-    when(fileOperations.getFileIO(any())).thenThrow(new RuntimeException("credential vend failed"));
+    doThrow(new RuntimeException("credential vend failed")).when(fileOperations).getFileIO(any());
     assertThatThrownBy(() -> requirePublishedCommitFiles("tbl_published", 1L, 2L))
         .isInstanceOf(BaseException.class)
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN);
+
+    // A BaseException from FileIO acquisition (credential / region config) must also fail open to
+    // 500, not pass through as the caller's INVALID_ARGUMENT.
+    doThrow(new BaseException(ErrorCode.INVALID_ARGUMENT, "No S3 region configured for bucket"))
+        .when(fileOperations)
+        .getFileIO(any());
+    assertThatThrownBy(() -> requirePublishedCommitFiles("tbl_published", 1L, 2L))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN);
+  }
+
+  @Test
+  public void backfillVerificationInclusiveRangeDoesNotOverflowAtMaxValue() {
+    FileIO fileIO = mock();
+    InputFile inputFile = mock();
+    when(inputFile.exists()).thenReturn(true);
+    when(fileIO.newInputFile(anyString())).thenReturn(inputFile);
+    when(fileOperations.getFileIO(any())).thenReturn(fileIO);
+
+    assertThatCode(() -> requirePublishedCommitFiles("tbl_max", Long.MAX_VALUE, Long.MAX_VALUE))
+        .doesNotThrowAnyException();
   }
 
   private void requirePublishedCommitFiles(String tableName, long fromVersion, long toVersion) {
