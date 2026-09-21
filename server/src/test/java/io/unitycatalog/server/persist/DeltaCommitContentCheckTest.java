@@ -122,6 +122,16 @@ public class DeltaCommitContentCheckTest {
         .isInstanceOf(BaseException.class)
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN);
+
+    // Permanent configuration errors are validated before FileIO acquisition and remain a
+    // non-retriable 400 rather than entering the client's transient retry loop.
+    doThrow(new BaseException(ErrorCode.INVALID_ARGUMENT, "Managed Delta storage requires region"))
+        .when(fileOperations)
+        .validateReadAccessConfiguration(any());
+    assertThatThrownBy(() -> requirePublishedCommitFiles("tbl_published", 1L, 2L))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
   }
 
   @Test
