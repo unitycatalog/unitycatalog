@@ -34,6 +34,10 @@ import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TestUtils;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -209,6 +213,7 @@ public class SdkLoadTableTest extends BaseServerTest {
       assertThat(r3.getLatestTableVersion()).isEqualTo(2L);
 
       // Backfill v1, load: v1 removed, only v2 remains
+      writePublishedCommitFile(tableUri, 1L);
       commitsApi.commit(
           new DeltaCommit().tableId(tableId).tableUri(tableUri).latestBackfilledVersion(1L));
       DeltaLoadTableResponse r4 = loadTable(tableName);
@@ -217,6 +222,7 @@ public class SdkLoadTableTest extends BaseServerTest {
       assertThat(r4.getLatestTableVersion()).isEqualTo(2L);
 
       // Backfill v2, load: all backfilled, empty commits
+      writePublishedCommitFile(tableUri, 2L);
       commitsApi.commit(
           new DeltaCommit().tableId(tableId).tableUri(tableUri).latestBackfilledVersion(2L));
       DeltaLoadTableResponse r5 = loadTable(tableName);
@@ -425,6 +431,13 @@ public class SdkLoadTableTest extends BaseServerTest {
       assertThat(response.getMetadata()).isNotNull();
       assertThat(response.getMetadata().getColumns().getFields()).isEmpty();
     }
+  }
+
+  private void writePublishedCommitFile(String storageLocation, long version) throws Exception {
+    Path path =
+        Path.of(URI.create(storageLocation + String.format("/_delta_log/%020d.json", version)));
+    Files.createDirectories(path.getParent());
+    Files.write(path, ("delta-commit-v" + version + "\n").getBytes(StandardCharsets.UTF_8));
   }
 
   private DeltaLoadTableResponse loadTable(String tableName) throws ApiException {
