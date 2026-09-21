@@ -14,6 +14,7 @@ import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.nio.charset.StandardCharsets;
 import org.apache.iceberg.aws.s3.S3FileIO;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,10 +23,11 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 
 /**
- * Exercises {@link DeltaCommitRepository#verifyContentReplayOrThrowConflict} against a real
- * (in-process, s3mock-backed) {@code S3FileIO}, so the cloud read path -- path construction, {@code
- * newInputFile}/{@code newStream}, and the streamed lockstep comparison -- is covered rather than
- * only the local {@code SimpleLocalFileIO} path the SDK tests use.
+ * Exercises {@link DeltaCommitRepository#verifyContentReplayOrThrowConflict} and {@link
+ * DeltaCommitRepository#requirePublishedCommitFiles} against a real (in-process, s3mock-backed)
+ * {@code S3FileIO}, so the cloud read path -- path construction, {@code newInputFile}/{@code
+ * newStream}/{@code exists}, and the streamed lockstep comparison -- is covered rather than only
+ * the local {@code SimpleLocalFileIO} path the SDK tests use.
  *
  * <p>Like {@code MetadataServiceTest}, {@code getFileIO} is stubbed to return a real {@code
  * S3FileIO}; credential vending itself is not exercised here.
@@ -41,10 +43,15 @@ public class DeltaCommitContentCheckTest {
   private final FileOperations fileOperations = mock();
   private final S3Client s3 = S3_MOCK.createS3ClientV2();
 
+  @BeforeAll
+  public static void createBucket() {
+    // The mock server is shared by all tests in this class, so the bucket is created once.
+    S3_MOCK.createS3ClientV2().createBucket(b -> b.bucket(BUCKET).build());
+  }
+
   @BeforeEach
   public void setUp() {
     when(fileOperations.getFileIO(any())).thenReturn(new S3FileIO(() -> s3));
-    s3.createBucket(b -> b.bucket(BUCKET).build());
   }
 
   /** version 2 -> _delta_log/00000000000000000002.json (matches the %020d.json layout). */
@@ -78,6 +85,39 @@ public class DeltaCommitContentCheckTest {
         .isEqualTo(ErrorCode.COMMIT_VERSION_CONFLICT);
   }
 
+  @Test
+  public void backfillVerificationSeparatesMissingFilesFromStorageFailures() {
+    // Published files for the whole range present: the backfill may proceed.
+    putPublished("tbl_published", 1L, "v1\n");
+    putPublished("tbl_published", 2L, "v2\n");
+    assertThatCode(() -> requirePublishedCommitFiles("tbl_published", 1L, 2L))
+        .doesNotThrowAnyException();
+
+    // A gap in the range (v2 was never published) is a client error: retrying cannot help until
+    // the file is published, and the DB rows must be kept.
+    putPublished("tbl_gap", 1L, "v1\n");
+    putPublished("tbl_gap", 3L, "v3\n");
+    assertThatThrownBy(() -> requirePublishedCommitFiles("tbl_gap", 1L, 3L))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+
+    // Storage itself failed, so existence is undetermined: retriable 500, not a bad request.
+    when(fileOperations.getFileIO(any())).thenThrow(new RuntimeException("credential vend failed"));
+    assertThatThrownBy(() -> requirePublishedCommitFiles("tbl_published", 1L, 2L))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN);
+  }
+
+  private void requirePublishedCommitFiles(String tableName, long fromVersion, long toVersion) {
+    DeltaCommitRepository.requirePublishedCommitFiles(
+        fileOperations,
+        NormalizedURL.from("s3://" + BUCKET + "/" + tableName),
+        fromVersion,
+        toVersion);
+  }
+
   private void runContentCheck(String tableName) {
     DeltaCommitRepository.verifyContentReplayOrThrowConflict(
         fileOperations,
@@ -86,7 +126,11 @@ public class DeltaCommitContentCheckTest {
   }
 
   private void putPublished(String tableName, String content) {
-    put(tableName + "/_delta_log/00000000000000000002.json", content);
+    putPublished(tableName, VERSION, content);
+  }
+
+  private void putPublished(String tableName, long version, String content) {
+    put(String.format("%s/_delta_log/%020d.json", tableName, version), content);
   }
 
   private void putStaged(String tableName, String content) {
