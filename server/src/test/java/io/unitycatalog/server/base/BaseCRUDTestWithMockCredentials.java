@@ -96,9 +96,15 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
   protected void setUpProperties() {
     super.setUpProperties();
     serverProperties.put("s3.bucketPath.0", "s3://test-bucket0");
+    serverProperties.put("s3.region.0", TestUtils.TEST_AWS_REGION);
     serverProperties.put("s3.accessKey.0", "accessKey0");
     serverProperties.put("s3.secretKey.0", "secretKey0");
     serverProperties.put("s3.sessionToken.0", "sessionToken0");
+    // Credentials without a region: enough to vend to Spark, not enough for server-side FileIO.
+    serverProperties.put("s3.bucketPath.1", "s3://test-bucket-no-region");
+    serverProperties.put("s3.accessKey.1", "accessKey1");
+    serverProperties.put("s3.secretKey.1", "secretKey1");
+    serverProperties.put("s3.sessionToken.1", "sessionToken1");
 
     // AWS S3 master role config
     serverProperties.put(
