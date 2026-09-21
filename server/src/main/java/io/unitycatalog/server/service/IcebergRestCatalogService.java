@@ -53,7 +53,6 @@ import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -193,28 +192,21 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       return ListNamespacesResponse.builder().build();
     }
 
-    if (pageToken.isEmpty()) {
-      // Without the parameter the whole listing is the answer, so follow the repository's page
-      // token to the end and say nothing about pages.
-      List<Namespace> namespaces = new ArrayList<>();
-      Optional<String> cursor = Optional.empty();
-      do {
-        ListSchemasResponse resp = schemaRepository.listSchemas(catalog, Optional.empty(), cursor);
-        assert resp.getSchemas() != null;
-        resp.getSchemas().forEach(schemaInfo -> namespaces.add(Namespace.of(schemaInfo.getName())));
-        cursor = nextPageToken(resp.getNextPageToken());
-      } while (cursor.isPresent());
-      return ListNamespacesResponse.builder().addAll(namespaces).build();
-    }
-
-    ListSchemasResponse page =
-        schemaRepository.listSchemas(
-            catalog, Optional.of(requestedPageSize(pageSize)), requestedCursor(pageToken.get()));
-    assert page.getSchemas() != null;
-    return ListNamespacesResponse.builder()
-        .addAll(page.getSchemas().stream().map(schema -> Namespace.of(schema.getName())).toList())
-        .nextPageToken(nextPageToken(page.getNextPageToken()).orElse(null))
-        .build();
+    // Without pageToken the whole listing is the answer, so the repository's token is followed to
+    // the end here and the answer says nothing about pages. With it, one page is the answer and the
+    // client follows the token itself.
+    ListNamespacesResponse.Builder listed = ListNamespacesResponse.builder();
+    Optional<String> cursor = pageToken.flatMap(IcebergRestCatalogService::requestedCursor);
+    Optional<Integer> pageOf = pageToken.map(requested -> requestedPageSize(pageSize));
+    Optional<String> nextPage;
+    do {
+      ListSchemasResponse page = schemaRepository.listSchemas(catalog, pageOf, cursor);
+      assert page.getSchemas() != null;
+      page.getSchemas().forEach(schema -> listed.add(Namespace.of(schema.getName())));
+      nextPage = nextPageToken(page.getNextPageToken());
+      cursor = nextPage;
+    } while (pageToken.isEmpty() && cursor.isPresent());
+    return listed.nextPageToken(nextPage.orElse(null)).build();
   }
 
   @Head("/v1/catalogs/{catalog}/namespaces/{namespace}")
