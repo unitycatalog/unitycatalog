@@ -107,6 +107,30 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
         .containsEntry(TableProperties.CLUSTERING_COLUMNS, "[[\"id\"]]")
         .containsEntry("delta.enableDeletionVectors", "true");
 
+    // -------- MANAGED create requires s3.region.N for the table's bucket --------
+    // Credentials-only S3 config is enough to vend to Spark, but the server itself cannot HEAD
+    // published commit files without a region. Fail at create with an actionable 400 rather than
+    // letting the first backfill enter a retry loop.
+    String noRegionCatalog = "uc_noregion_catalog";
+    catalogOperations.createCatalog(
+        new CreateCatalog()
+            .name(noRegionCatalog)
+            .storageRoot("s3://test-bucket-no-region/catalogs/delta-api"));
+    schemaOperations.createSchema(
+        new CreateSchema().name(TestUtils.SCHEMA_NAME2).catalogName(noRegionCatalog));
+    DeltaStagingTableResponse stagingNoRegion =
+        deltaTablesApi.createStagingTable(
+            noRegionCatalog,
+            TestUtils.SCHEMA_NAME2,
+            new DeltaCreateStagingTableRequest().name("tbl_no_region"));
+    assertDeltaInvalidParam(
+        () ->
+            deltaTablesApi.createTable(
+                noRegionCatalog,
+                TestUtils.SCHEMA_NAME2,
+                managedTableRequest("tbl_no_region", stagingNoRegion)),
+        "Managed Delta storage requires an S3 region");
+
     // -------- EXTERNAL happy path at a fresh (unregistered) storage path --------
     String externalName = "tbl_external";
     String externalLocation = "s3://test-bucket0/external-path/tbl_external";
