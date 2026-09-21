@@ -1019,8 +1019,9 @@ public class DeltaCommitRepository {
 
   /**
    * Deletes commit rows that have fallen more than {@link #NUM_BACKFILLED_COMMITS_RETAINED}
-   * versions behind {@code latestBackfilledVersion}. A retry at a version this old goes back to the
-   * staged-vs-published content check, which is the behaviour from before rows were retained.
+   * versions behind {@code latestBackfilledVersion}. The version exactly that far behind is kept. A
+   * retry at an older version goes back to the staged-vs-published content check, which is the
+   * behaviour from before rows were retained.
    *
    * <p>Called on every watermark advance, so in steady state there are only a handful of newly
    * aged-out rows and a single batch clears them. A large jump may leave some behind; the next
@@ -1030,10 +1031,13 @@ public class DeltaCommitRepository {
    */
   private static int pruneRetainedCommits(
       Session session, UUID tableId, long latestBackfilledVersion) {
-    long pruneThrough = latestBackfilledVersion - NUM_BACKFILLED_COMMITS_RETAINED;
-    if (pruneThrough < 0) {
+    // latest - retention is still inside the window. Subtract one more, but only once latest is
+    // past the window: otherwise latest - retention - 1 underflows through the non-negative
+    // versions and would delete rows that must be kept.
+    if (latestBackfilledVersion <= NUM_BACKFILLED_COMMITS_RETAINED) {
       return 0;
     }
+    long pruneThrough = latestBackfilledVersion - NUM_BACKFILLED_COMMITS_RETAINED - 1L;
     int total = 0;
     for (int i = 0; i < MAX_DELETE_BATCHES; i++) {
       NativeQuery<?> query =

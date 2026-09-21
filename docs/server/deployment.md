@@ -139,14 +139,25 @@ ALTER TABLE uc_properties ALTER COLUMN property_value SET DATA TYPE VARCHAR(1677
 ### Pre-populating `uc_tables.delta_latest_backfilled_version` (optional)
 
 Managed Delta tables track the highest published (backfilled) commit version in
-`uc_tables.delta_latest_backfilled_version`. Hibernate adds the column on upgrade but leaves it
-null on existing rows; the server reconstructs the value from `uc_delta_commits` the first time
-it touches a table and persists it, so **no action is required** and the statements below can be
-run before, during, or after the upgrade.
+`uc_tables.delta_latest_backfilled_version`. Hibernate adds the nullable column when an upgraded
+server starts and leaves it null on existing rows. The server reconstructs the value from
+`uc_delta_commits` the first time it commits to that table and persists it, so **no action is
+required**.
 
-Running them up front populates every table in one pass, which makes the values inspectable
-immediately rather than appearing table by table as traffic arrives. They only touch rows that
-are still null, so they are safe to re-run and safe to run against an already-upgraded server.
+Run the statements below only after both of the following are true:
+
+- The column exists. The statements reference `delta_latest_backfilled_version` and fail if they
+  are run before the upgrade has added it.
+- Every server process has been upgraded, and no pre-upgrade process is still accepting writes.
+  Upgraded servers keep backfilled commit rows and do not set `is_backfilled_latest_commit`. A
+  pre-upgrade server treats every unflagged row as a live commit, so a retained window can exceed
+  the per-table commit limit and reject writes, or the old backfill path can delete those rows.
+  The statements also freeze a watermark that a pre-upgrade writer will not advance.
+
+Do not run them before the upgrade, and do not run them during a rolling upgrade. Once every
+writer is on the new version they only touch rows that are still null, so they are safe to
+re-run. Running them then populates every table in one pass, which makes the values inspectable
+immediately rather than appearing table by table as traffic arrives.
 
 PostgreSQL:
 
