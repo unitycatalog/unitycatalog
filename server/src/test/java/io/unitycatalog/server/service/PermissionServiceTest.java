@@ -95,6 +95,16 @@ public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
     assertThat(privilegesFor(tablePermissions, REGULAR_1))
         .containsExactlyInAnyOrder(Privilege.SELECT, Privilege.MODIFY);
     assertThat(privilegesFor(tablePermissions, REGULAR_2)).isEmpty();
+
+    // A securable that does not exist is a not-found, whatever privileges the caller holds. The
+    // volume case is the one worth reading back: the securable is resolved through
+    // VolumeRepository.getVolume, which used its lookup without checking it found anything, so this
+    // endpoint answered a 500 that named an internal class.
+    String missingVolume = SCHEMA_FULL_NAME + ".no_such_volume";
+    assertApiException(
+        () -> grantsApi.get(SecurableType.VOLUME, missingVolume, null),
+        ErrorCode.NOT_FOUND,
+        "Volume not found: " + missingVolume);
   }
 
   @Test
@@ -127,17 +137,6 @@ public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
         () -> unauthGrantsApi.get(SecurableType.CATALOG, CATALOG_NAME, null),
         ErrorCode.UNAUTHENTICATED,
         "authorization");
-  }
-
-  @Test
-  public void permissionsOnAVolumeThatDoesNotExistAreNotFound() {
-    // The securable is resolved through VolumeRepository.getVolume, so this endpoint answered the
-    // same 500 as GET /volumes for a volume that was never created.
-    String missingVolume = SCHEMA_FULL_NAME + ".no_such_volume";
-    assertApiException(
-        () -> grantsApi.get(SecurableType.VOLUME, missingVolume, null),
-        ErrorCode.NOT_FOUND,
-        "Volume not found: " + missingVolume);
   }
 
   // ---------------------------------------------------------------------------
