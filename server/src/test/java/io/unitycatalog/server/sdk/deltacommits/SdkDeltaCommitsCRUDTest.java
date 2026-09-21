@@ -646,7 +646,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertApiException(
         () -> deltaCommitsApi.commit(createBackfillOnlyCommitObject(2L)),
         ErrorCode.INVALID_ARGUMENT,
-        "published commit file missing or unreadable");
+        "published commit file is missing");
 
     // All three versions remain tracked.
     verifyDeltaCommits(/* expectedLatestTableVersion= */ 3, /* expectedCommits= */ 3, 2, 1);

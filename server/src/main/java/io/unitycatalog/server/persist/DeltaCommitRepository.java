@@ -707,10 +707,10 @@ public class DeltaCommitRepository {
    * version.
    *
    * <p>Before any purge or mark, every published {@code _delta_log/<version>.json} in [{@code
-   * firstCommitVersion}, {@code latestBackfilledVersion}] must exist and be readable. Purging DB
-   * rows while an intermediate published file is missing leaves coordinated-commit clients that
-   * retry a prior version stuck on {@code COMMIT_STATE_UNKNOWN} (HTTP 500). Rejecting with {@code
-   * INVALID_ARGUMENT} keeps the rows so recovery remains possible.
+   * firstCommitVersion}, {@code latestBackfilledVersion}] must exist. Purging DB rows while an
+   * intermediate published file is missing leaves coordinated-commit clients that retry a prior
+   * version stuck on {@code COMMIT_STATE_UNKNOWN} (HTTP 500). Rejecting the backfill instead keeps
+   * the rows so recovery remains possible.
    *
    * <p>For backfill-only requests (when newCommitVersion is empty), if the backfilled version
    * equals the last commit version, that commit is marked as backfilled rather than deleted.
@@ -812,8 +812,15 @@ public class DeltaCommitRepository {
 
   /**
    * HEADs each published {@code _delta_log/<version>.json} in [{@code fromVersion}, {@code
-   * toVersion}] and throws {@link ErrorCode#INVALID_ARGUMENT} if any file is missing or unreadable.
-   * No-op when {@code fromVersion > toVersion}.
+   * toVersion}]. No-op when {@code fromVersion > toVersion}.
+   *
+   * <p>A definitively absent file means the client reported a backfill that did not complete:
+   * {@code INVALID_ARGUMENT} (400), since retrying cannot help until the file is published. A
+   * storage failure (credential vending, timeout) leaves existence undetermined and must not be
+   * charged to the caller as a bad request: {@code COMMIT_STATE_UNKNOWN} (500, retriable), matching
+   * {@link #verifyContentReplayOrThrowConflict}. This matters most on a combined add-commit +
+   * backfill request, where both share one transaction and a flaky HEAD would otherwise roll the
+   * new commit back as a client error.
    */
   static void requirePublishedCommitFiles(
       FileOperations fileOperations,
@@ -831,7 +838,7 @@ public class DeltaCommitRepository {
               ErrorCode.INVALID_ARGUMENT,
               "Cannot backfill through version "
                   + toVersion
-                  + ": published commit file missing or unreadable: "
+                  + ": published commit file is missing: "
                   + path);
         }
       }
@@ -839,12 +846,12 @@ public class DeltaCommitRepository {
       throw e;
     } catch (Exception e) {
       throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "Cannot backfill through version "
+          ErrorCode.COMMIT_STATE_UNKNOWN,
+          "Could not verify the published commit files under "
+              + deltaLogDir(tableLocation)
+              + " for backfill through version "
               + toVersion
-              + ": failed to verify published commit files under "
-              + tableLocation
-              + "/_delta_log",
+              + "; retry the request.",
           e);
     }
   }
