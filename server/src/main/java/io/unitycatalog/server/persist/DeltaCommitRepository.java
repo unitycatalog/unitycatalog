@@ -368,12 +368,21 @@ public class DeltaCommitRepository {
         handleBackfillOnlyCommit(
             session,
             tableId,
+            tableInfoDAO,
+            fileOperations,
             commit.getLatestBackfilledVersion(),
             firstCommitDAO.getCommitVersion(),
             lastCommitDAO.getCommitVersion());
       } else {
         handleNormalCommit(
-            session, tableId, tableInfoDAO, commit, uniformFields, firstCommitDAO, lastCommitDAO);
+            session,
+            tableId,
+            tableInfoDAO,
+            fileOperations,
+            commit,
+            uniformFields,
+            firstCommitDAO,
+            lastCommitDAO);
       }
     }
   }
@@ -418,6 +427,8 @@ public class DeltaCommitRepository {
    *
    * @param session the Hibernate session for database operations
    * @param tableId the unique identifier of the table
+   * @param tableInfoDAO the table information data access object
+   * @param fileOperations used to verify the published commit files before purging
    * @param latestBackfilledVersion the version up to which backfilling has already been performed
    * @param firstCommitVersion the version number of the first commit currently in the database
    * @param lastCommitVersion the version number of the last commit currently in the database
@@ -426,6 +437,8 @@ public class DeltaCommitRepository {
   private static void handleBackfillOnlyCommit(
       Session session,
       UUID tableId,
+      TableInfoDAO tableInfoDAO,
+      FileOperations fileOperations,
       long latestBackfilledVersion,
       long firstCommitVersion,
       long lastCommitVersion) {
@@ -439,6 +452,8 @@ public class DeltaCommitRepository {
     backfillCommits(
         session,
         tableId,
+        tableInfoDAO,
+        fileOperations,
         latestBackfilledVersion,
         firstCommitVersion,
         lastCommitVersion,
@@ -537,6 +552,7 @@ public class DeltaCommitRepository {
    * @param session the Hibernate session for database operations
    * @param tableId the unique identifier of the table
    * @param tableInfoDAO the table information data access object
+   * @param fileOperations used to verify the published commit files before purging
    * @param commit the commit request containing version info, optional backfill, and metadata
    * @param firstCommitDAO the first commit already in the database
    * @param lastCommitDAO the last commit already in the database
@@ -548,6 +564,7 @@ public class DeltaCommitRepository {
       Session session,
       UUID tableId,
       TableInfoDAO tableInfoDAO,
+      FileOperations fileOperations,
       DeltaCommit commit,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
       DeltaCommitDAO firstCommitDAO,
@@ -593,6 +610,8 @@ public class DeltaCommitRepository {
             backfillCommits(
                 session,
                 tableId,
+                tableInfoDAO,
+                fileOperations,
                 latestBackfilled,
                 firstCommitVersion,
                 lastCommitVersion,
@@ -688,6 +707,12 @@ public class DeltaCommitRepository {
    * most recent commit is always preserved as it serves as an indicator of the current table
    * version.
    *
+   * <p>Before any purge or mark, every published {@code _delta_log/<version>.json} in [{@code
+   * firstCommitVersion}, {@code latestBackfilledVersion}] must exist and be readable. Purging DB
+   * rows while an intermediate published file is missing leaves coordinated-commit clients that
+   * retry a prior version stuck on {@code COMMIT_STATE_UNKNOWN} (HTTP 500). Rejecting with {@code
+   * INVALID_ARGUMENT} keeps the rows so recovery remains possible.
+   *
    * <p>For backfill-only requests (when newCommitVersion is empty), if the backfilled version
    * equals the last commit version, that commit is marked as backfilled rather than deleted.
    *
@@ -696,6 +721,8 @@ public class DeltaCommitRepository {
    *
    * @param session the Hibernate session for database operations
    * @param tableId the unique identifier of the table
+   * @param tableInfoDAO the table information data access object
+   * @param fileOperations used to HEAD the published commit files before purging
    * @param latestBackfilledVersion the version up to which backfilling should be performed
    * @param firstCommitVersion the version number of the first commit currently in the database with
    *     the lowest version number
@@ -707,6 +734,8 @@ public class DeltaCommitRepository {
   private static void backfillCommits(
       Session session,
       UUID tableId,
+      TableInfoDAO tableInfoDAO,
+      FileOperations fileOperations,
       long latestBackfilledVersion,
       long firstCommitVersion,
       long lastCommitVersion,
@@ -719,6 +748,14 @@ public class DeltaCommitRepository {
       // Backfilling a version that is already backfilled is fine. But no-op.
       return;
     }
+
+    // Refuse to purge (or mark) until every version in the range has a readable published commit
+    // file. Already-purged versions below firstCommitVersion are not re-checked.
+    requirePublishedCommitFiles(
+        fileOperations,
+        NormalizedURL.from(tableInfoDAO.getUrl()),
+        firstCommitVersion,
+        latestBackfilledVersion);
 
     long highestCommitVersion = newCommitVersion.orElse(lastCommitVersion);
     // The last commit version, be it a new one or existing one, is never deleted.
@@ -749,6 +786,53 @@ public class DeltaCommitRepository {
             i,
             numCommitsToDelete);
       }
+    }
+  }
+
+  /**
+   * Absolute path of the published Delta commit file for {@code version} under {@code
+   * tableLocation}. Locale.ROOT keeps the zero-padded name ASCII-digit regardless of server locale.
+   */
+  static String publishedCommitPath(NormalizedURL tableLocation, long version) {
+    return String.format(Locale.ROOT, "%s/_delta_log/%020d.json", tableLocation, version);
+  }
+
+  /**
+   * HEADs each published {@code _delta_log/<version>.json} in [{@code fromVersion}, {@code
+   * toVersion}] and throws {@link ErrorCode#INVALID_ARGUMENT} if any file is missing or unreadable.
+   * No-op when {@code fromVersion > toVersion}.
+   */
+  static void requirePublishedCommitFiles(
+      FileOperations fileOperations,
+      NormalizedURL tableLocation,
+      long fromVersion,
+      long toVersion) {
+    if (fromVersion > toVersion) {
+      return;
+    }
+    try (FileIO fileIO = fileOperations.getFileIO(tableLocation)) {
+      for (long v = fromVersion; v <= toVersion; v++) {
+        String path = publishedCommitPath(tableLocation, v);
+        if (!fileIO.newInputFile(path).exists()) {
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              "Cannot backfill through version "
+                  + toVersion
+                  + ": published commit file missing or unreadable: "
+                  + path);
+        }
+      }
+    } catch (BaseException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Cannot backfill through version "
+              + toVersion
+              + ": failed to verify published commit files under "
+              + tableLocation
+              + "/_delta_log",
+          e);
     }
   }
 

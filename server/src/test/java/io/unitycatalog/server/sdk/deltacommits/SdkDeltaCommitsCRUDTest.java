@@ -313,6 +313,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         response, /* expectedLatestTableVersion= */ 3, /* expectedCommits= */ commit2);
 
     // Add a new commit (version 4) and backfill up to version 1 in the same request
+    writePublishedCommitFiles(1L, 1L);
     DeltaCommit commit4 =
         createCommitObject(tableInfo.getTableId(), 4L, tableInfo.getStorageLocation())
             .latestBackfilledVersion(1L);
@@ -326,6 +327,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     verifyDeltaCommits(
         /* expectedLatestTableVersion= */ 4, /* expectedCommits= */ commit4, commit3, commit2);
 
+    writePublishedCommitFiles(2L, 4L);
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(4L));
     verifyDeltaCommits(/* expectedLatestTableVersion= */ 4);
 
@@ -400,6 +402,20 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     List<DeltaCommitDAO> remaining = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
     assertThat(remaining.size()).isEqualTo(2);
     verifyDeltaCommits(/* expectedLatestTableVersion= */ 2, /* expectedCommits= */ 2L, 1L);
+  }
+
+  /**
+   * Write dummy published {@code _delta_log/<version>.json} files for each version in [{@code
+   * from}, {@code to}].
+   */
+  private void writePublishedCommitFiles(long from, long to) throws IOException {
+    String loc = tableInfo.getStorageLocation();
+    for (long v = from; v <= to; v++) {
+      writeTableFile(
+          loc,
+          String.format("_delta_log/%020d.json", v),
+          ("delta-commit-v" + v + "\n").getBytes(StandardCharsets.UTF_8));
+    }
   }
 
   /** Write {@code content} to {@code relativePath} under the table's (file://) storage location. */
@@ -543,7 +559,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   }
 
   @Test
-  public void testBackfillCommitAtDifferentVersions() throws ApiException {
+  public void testBackfillCommitAtDifferentVersions() throws ApiException, IOException {
     // Backfill when there's no commit
     assertApiException(
         () -> deltaCommitsApi.commit(createBackfillOnlyCommitObject(1L)),
@@ -570,6 +586,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         "metadata shouldn't be set for backfill only commit");
 
     // Backfill up to version 2 (should keep versions 3, 4, 5)
+    writePublishedCommitFiles(1L, 2L);
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(2L));
 
     // Verify versions 3, 4, 5 are present
@@ -596,10 +613,12 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         "Latest backfilled version 6 cannot be greater than the last commit version = 5");
 
     // Backfill up to version 4 (should keep only version 5)
+    writePublishedCommitFiles(3L, 4L);
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(4L));
     verifyDeltaCommits(/* expectedLatestTableVersion= */ 5, /* expectedCommits= */ 5);
 
     // Backfill up to version 5 (the latest)
+    writePublishedCommitFiles(5L, 5L);
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(5L));
     // The commit should be marked as backfilled, so no commits should be returned
     verifyDeltaCommits(/* expectedLatestTableVersion= */ 5);
@@ -612,7 +631,34 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   }
 
   @Test
-  public void testCommitLimit() throws ApiException {
+  public void testBackfillRejectsMissingIntermediatePublishedFile() throws Exception {
+    // Commit v1, v2, v3. Publish only v1 and v3 -- leave v2's published file missing.
+    for (long i = 1; i <= 3; i++) {
+      deltaCommitsApi.commit(
+          createCommitObject(tableInfo.getTableId(), i, tableInfo.getStorageLocation()));
+    }
+    writePublishedCommitFiles(1L, 1L);
+    writePublishedCommitFiles(3L, 3L);
+
+    // Backfill through v2 must refuse: purging would drop the DB row for v2 while its published
+    // file is unreadable, which is the precondition for the OSS Delta COMMIT_STATE_UNKNOWN retry
+    // loop.
+    assertApiException(
+        () -> deltaCommitsApi.commit(createBackfillOnlyCommitObject(2L)),
+        ErrorCode.INVALID_ARGUMENT,
+        "published commit file missing or unreadable");
+
+    // All three versions remain tracked.
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 3, /* expectedCommits= */ 3, 2, 1);
+
+    // Once the gap is filled, the same backfill succeeds and purges v1 and v2.
+    writePublishedCommitFiles(2L, 2L);
+    deltaCommitsApi.commit(createBackfillOnlyCommitObject(2L));
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 3, /* expectedCommits= */ 3);
+  }
+
+  @Test
+  public void testCommitLimit() throws ApiException, IOException {
     // MAX_NUM_COMMITS_PER_TABLE is 10, so we'll try to add 10 commits
     // First add 10 commits - should succeed
     for (long i = 1; i <= 10; i++) {
@@ -634,6 +680,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         "Max number of commits per table reached");
 
     // Backfill the first 6 commits
+    writePublishedCommitFiles(1L, 6L);
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(6L));
 
     // Verify we now have 4 commits (7~10)
@@ -651,6 +698,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         /* expectedLatestTableVersion= */ 14, /* expectedCommits= */ 14, 13, 12, 11, 10, 9, 8, 7);
 
     // Backfill all commits again
+    writePublishedCommitFiles(7L, 14L);
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(14L));
 
     // Verify there's no unbackfilled commits
