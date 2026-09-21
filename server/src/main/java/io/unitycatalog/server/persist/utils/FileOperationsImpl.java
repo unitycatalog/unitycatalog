@@ -79,6 +79,18 @@ public class FileOperationsImpl implements FileOperations {
             });
   }
 
+  @Override
+  public void validateReadAccessConfiguration(NormalizedURL path) {
+    if (UriScheme.fromURI(path.toUri()) == UriScheme.S3
+        && !s3BucketRegionMap.containsKey(path.getStorageBase())) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Managed Delta storage requires an S3 region for bucket "
+              + path.getStorageBase()
+              + "; configure the matching s3.bucketPath.N and s3.region.N.");
+    }
+  }
+
   // TODO: Cache fileIOs
   @Override
   public FileIO getFileIO(NormalizedURL path, Set<CredentialContext.Privilege> privileges) {

@@ -82,6 +82,10 @@ To have Unity Catalog work with cloud object storage as the storage location for
     s3.secretKey.0=<SECRET>
     ```
 
+    `s3.region.N` is required for managed Delta storage. The server reads published Delta commit
+    files during backfill verification; credentials that are sufficient only for vending to Spark
+    are not sufficient unless the server can also construct a storage client for the bucket.
+
 === "Azure ADLSgen2"
 
     ```sh
