@@ -331,17 +331,29 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(4L));
     verifyDeltaCommits(/* expectedLatestTableVersion= */ 4);
 
-    // The latest backfilled version (v4) is retained as a marker row that keeps its file name (it
-    // is flagged, not purged), so an identical replay of that commit is still recognized as an
-    // idempotent no-op success rather than a conflict.
+    // Backfill no longer removes rows, so a retry at a backfilled version is still answered from
+    // the file name recorded for it. No staged or published file is read, which is what keeps a
+    // retrying writer from stalling: backfill is exactly what removes its staged file.
     deltaCommitsApi.commit(commit4);
     verifyDeltaCommits(/* expectedLatestTableVersion= */ 4);
+    deltaCommitsApi.commit(commit2);
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 4);
 
-    // Replay of a backfilled-and-purged version (v1/v2/v3 are purged; only the v4 marker remains)
-    // can no longer be matched by file name, so it is settled by comparing the incoming staged file
-    // against the published _delta_log/<v>.json.
+    DeltaCommit commit2OtherWriter =
+        createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation());
+    commit2OtherWriter.getCommitInfo().setFileName("other_writer_" + UUID.randomUUID());
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit2OtherWriter),
+        ErrorCode.COMMIT_VERSION_CONFLICT,
+        "Commit version already accepted.");
+
+    // A version whose row has aged out of the retention window (or predates retention) has no
+    // recorded file name left, so it falls back to comparing the staged file against the published
+    // _delta_log/<v>.json.
     String loc = tableInfo.getStorageLocation();
-    // Publish v2 and stage a byte-identical file -> replay recognized by content: idempotent no-op.
+    UUID tableId = UUID.fromString(tableInfo.getTableId());
+    deleteCommitRow(tableId, 2L);
+    // Byte-identical staged file -> replay recognized by content: idempotent no-op.
     byte[] v2Content = "delta-commit-v2\n".getBytes(StandardCharsets.UTF_8);
     writeTableFile(loc, "_delta_log/00000000000000000002.json", v2Content);
     writeTableFile(loc, "_delta_log/_staged_commits/file2", v2Content);
@@ -356,10 +368,10 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         ErrorCode.COMMIT_VERSION_CONFLICT,
         "Commit version already accepted.");
 
-    // v3 is purged too. Its published _delta_log/<v>.json is absent here (in normal operation a
-    // backfilled version has one; a missing file models log truncation, deletion, or a transient
-    // storage read error). The content check cannot read it, so the outcome is unknown and surfaces
-    // as a retriable 500 rather than a false conflict.
+    // v3's row is gone too, and its staged file was cleaned up after backfill, so the content
+    // check cannot read one side. The outcome is undetermined and surfaces as a retriable 500
+    // rather than a false conflict.
+    deleteCommitRow(tableId, 3L);
     assertApiException(
         () -> deltaCommitsApi.commit(commit3), ErrorCode.COMMIT_STATE_UNKNOWN, "retry");
 
@@ -424,6 +436,23 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     Path path = Path.of(URI.create(storageLocation + "/" + relativePath));
     Files.createDirectories(path.getParent());
     Files.write(path, content);
+  }
+
+  /**
+   * Drops the commit row for {@code version}, standing in for a version that has aged out of the
+   * retention window or was backfilled before rows were retained at all.
+   */
+  private void deleteCommitRow(UUID tableId, long version) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      session.beginTransaction();
+      session
+          .createMutationQuery(
+              "DELETE FROM DeltaCommitDAO WHERE tableId = :tableId AND commitVersion = :version")
+          .setParameter("tableId", tableId)
+          .setParameter("version", version)
+          .executeUpdate();
+      session.getTransaction().commit();
+    }
   }
 
   private void checkCommitInvalidParameter(
