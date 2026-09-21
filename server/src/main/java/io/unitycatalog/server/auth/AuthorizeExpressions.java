@@ -37,6 +37,24 @@ public final class AuthorizeExpressions {
       """;
 
   /**
+   * Authorization policy for reading schema metadata, shared by {@code GET /schemas/{full_name}}
+   * and the {@code GET /schemas} listing. Metastore admin and catalog owner pass unconditionally;
+   * anyone else needs {@code USE_CATALOG} on the catalog plus {@code OWNER} or {@code USE_SCHEMA}
+   * on the schema.
+   *
+   * <p>The listing shares it because the two must answer the same question: the listing's response
+   * filter asks it per schema, so an expression narrower than {@code getSchema}'s hides a schema
+   * the caller can read one URL over -- which is what a schema's own owner used to see.
+   */
+  public static final String GET_SCHEMA =
+      """
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+          #authorizeAny(#principal, #catalog, USE_CATALOG))
+      """;
+
+  /**
    * Authorization policy for creating a staging table (UC REST {@code POST /staging-tables} and UC
    * Delta API {@code createStagingTable}). Catalog {@code USE_CATALOG}/{@code OWNER} plus either
    * schema {@code OWNER} or schema {@code USE_SCHEMA}+{@code CREATE_TABLE}. Catalog OWNER alone is

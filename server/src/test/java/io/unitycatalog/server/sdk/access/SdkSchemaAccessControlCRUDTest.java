@@ -73,6 +73,14 @@ public class SdkSchemaAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest
     SchemaInfo schemaRg2Info = regular2SchemasApi.createSchema(schemaRg2);
     assertThat(schemaRg2Info).isNotNull();
 
+    // list schemas (regular-2) -> owner of the schema it just created -> allowed - that schema
+    // Asserted before the USE SCHEMA grant below, because creating a schema makes the creator its
+    // owner and the listing has to honour that on its own -- the grant would otherwise hide that it
+    // did not.
+    List<SchemaInfo> regular2OwnSchemas =
+        regular2SchemasApi.listSchemas("cat_pr1", null, null).getSchemas();
+    assertThat(regular2OwnSchemas).extracting(SchemaInfo::getName).containsExactly("sch_rg2");
+
     // give user USE SCHEMA on sch_rg2
     grantPermissions(REGULAR_2, SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.USE_SCHEMA);
 
@@ -188,30 +196,6 @@ public class SdkSchemaAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest
             .catalogName("cat_pr1")
             .storageRoot("file:///tmp/external_location/ext_table");
     assertPermissionDenied(() -> principal1SchemasApi.createSchema(schemaWithLoc2));
-  }
-
-  @Test
-  @SneakyThrows
-  public void schemaCreatorSeesTheirOwnSchemaInTheListing() {
-    createCommonTestUsers();
-    setupCommonCatalogAndSchema();
-
-    // A user who may create schemas in cat_pr1 but owns nothing else in it.
-    grantPermissions(REGULAR_2, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
-    grantPermissions(REGULAR_2, SecurableType.CATALOG, "cat_pr1", Privileges.CREATE_SCHEMA);
-    SchemasApi regular2SchemasApi =
-        new SchemasApi(TestUtils.createApiClient(createTestUserServerConfig(REGULAR_2)));
-
-    regular2SchemasApi.createSchema(new CreateSchema().name("sch_own").catalogName("cat_pr1"));
-
-    // Creating a schema makes the creator its owner, which getSchema already honours.
-    assertThat(regular2SchemasApi.getSchema("cat_pr1.sch_own")).isNotNull();
-
-    // The listing has to agree: the owner sees the schema they just created without USE SCHEMA
-    // granted on top of ownership, and still does not see sch_pr1, which belongs to someone else.
-    assertThat(regular2SchemasApi.listSchemas("cat_pr1", null, null).getSchemas())
-        .extracting(SchemaInfo::getName)
-        .containsExactly("sch_own");
   }
 
   @Test
