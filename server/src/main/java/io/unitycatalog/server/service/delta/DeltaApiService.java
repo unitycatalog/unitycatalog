@@ -319,7 +319,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
   }
 
   /** Drop identity sequences under a table. Requires {@code MODIFY}. */
-  @Delete("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities")
+  @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities/drop")
   @ProducesJson
   @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
   public DeltaDropIdentitySequencesResponse dropIdentitySequences(
