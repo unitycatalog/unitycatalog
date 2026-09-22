@@ -51,6 +51,7 @@ import io.vertx.core.Vertx;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.concurrent.CompletionException;
+import java.util.function.UnaryOperator;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -159,7 +160,8 @@ public class UnityCatalogServer implements AutoCloseable {
         new Repositories(
             hibernateConfigurator.getSessionFactory(),
             unityCatalogServerBuilder.serverProperties,
-            unityCatalogServerBuilder.cloudCredentialVendor);
+            unityCatalogServerBuilder.cloudCredentialVendor,
+            unityCatalogServerBuilder.fileOperationsDecorator);
     // Init metastore
     repositories.getMetastoreRepository().initMetastoreIfNeeded();
     // Init authorizer
@@ -415,6 +417,7 @@ public class UnityCatalogServer implements AutoCloseable {
     private ServerProperties serverProperties;
     private HibernateConfigurator hibernateConfigurator;
     private CloudCredentialVendor cloudCredentialVendor;
+    private UnaryOperator<FileOperations> fileOperationsDecorator = UnaryOperator.identity();
 
     private Builder() {}
 
@@ -443,6 +446,17 @@ public class UnityCatalogServer implements AutoCloseable {
     public UnityCatalogServer.Builder credentialOperations(
         CloudCredentialVendor cloudCredentialVendor) {
       this.cloudCredentialVendor = cloudCredentialVendor;
+      return this;
+    }
+
+    /**
+     * Decorates the {@link FileOperations} the server builds, e.g. to wrap file IO in tests. Treats
+     * {@code null} as {@link UnaryOperator#identity()}.
+     */
+    public UnityCatalogServer.Builder fileOperations(
+        UnaryOperator<FileOperations> fileOperationsDecorator) {
+      this.fileOperationsDecorator =
+          fileOperationsDecorator != null ? fileOperationsDecorator : UnaryOperator.identity();
       return this;
     }
 

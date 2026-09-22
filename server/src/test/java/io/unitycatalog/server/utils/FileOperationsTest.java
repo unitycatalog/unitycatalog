@@ -25,6 +25,7 @@ import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
+import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.persist.utils.InterruptiblePrefixOperations;
 import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
 import io.unitycatalog.server.service.credential.CredentialContext;
@@ -192,7 +193,7 @@ public class FileOperationsTest {
   public void testGetFileIOConfigLocalPathSkipsVending() {
     // Local paths must short-circuit to an empty config WITHOUT vending credentials.
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     Map<String, String> config =
         fileOps.getFileIOConfig(NormalizedURL.from("file:///tmp/some/table"));
@@ -218,7 +219,7 @@ public class FileOperationsTest {
                         .secretAccessKey("secret")
                         .sessionToken("token"))
                 .expirationTime(12345L));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(props));
 
     Map<String, String> config =
         fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
@@ -249,7 +250,7 @@ public class FileOperationsTest {
                         .accessKeyId("AKIA")
                         .secretAccessKey("secret")
                         .sessionToken("token")));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(props));
 
     Map<String, String> config =
         fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
@@ -311,7 +312,7 @@ public class FileOperationsTest {
         (credential, expected) -> {
           StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
           when(vendor.vendCredential(any(), any())).thenReturn(credential);
-          FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+          FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(props));
 
           assertThat(
                   fileOps.getFileIOConfig(
@@ -330,7 +331,7 @@ public class FileOperationsTest {
             new TemporaryCredentials()
                 .gcpOauthToken(new GcpOauthToken().oauthToken("gcs-token"))
                 .expirationTime(12345L));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     Map<String, String> config =
         fileOps.getFileIOConfig(NormalizedURL.from("gs://my-bucket/table"));
@@ -346,7 +347,7 @@ public class FileOperationsTest {
     when(vendor.vendCredential(any(), any()))
         .thenReturn(
             new TemporaryCredentials().gcpOauthToken(new GcpOauthToken().oauthToken("gcs-token")));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     Map<String, String> config =
         fileOps.getFileIOConfig(NormalizedURL.from("gs://my-bucket/table"));
@@ -362,7 +363,7 @@ public class FileOperationsTest {
         .thenReturn(
             new TemporaryCredentials()
                 .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("sas-token")));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     Map<String, String> config =
         fileOps.getFileIOConfig(
@@ -381,7 +382,7 @@ public class FileOperationsTest {
     // silently returning a credential-less config.
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
     when(vendor.vendCredential(any(), any())).thenReturn(new TemporaryCredentials());
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     assertThatThrownBy(() -> fileOps.getFileIOConfig(NormalizedURL.from("gs://my-bucket/table")))
         .isInstanceOf(BaseException.class)
@@ -405,7 +406,7 @@ public class FileOperationsTest {
                         .accessKeyId("AKIA")
                         .secretAccessKey("secret")
                         .sessionToken("token")));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(props));
     NormalizedURL path = NormalizedURL.from("s3://my-bucket/table");
 
     assertThatThrownBy(() -> fileOps.getFileIOConfig(path))
@@ -421,7 +422,7 @@ public class FileOperationsTest {
     // Local paths must not be vended and must resolve to SimpleLocalFileIO (no ResolvingFileIO,
     // which would require hadoop-client-runtime for the file:// scheme).
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from("file:///tmp/some/table"))) {
       assertThat(fileIO).isInstanceOf(SimpleLocalFileIO.class);
@@ -437,7 +438,7 @@ public class FileOperationsTest {
     Files.writeString(file, "hello world");
 
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from(file.toUri().toString()))) {
       InputFile input = fileIO.newInputFile(file.toUri().toString());
@@ -450,7 +451,7 @@ public class FileOperationsTest {
   public void testGetFileIOForLocalPathWritesThroughReturnedFileIO() {
     Path file = rootBase.resolve("metadata-" + UUID.randomUUID() + ".json");
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from(file.toUri().toString()))) {
       OutputFile output = fileIO.newOutputFile(file.toUri().toString());
@@ -477,7 +478,7 @@ public class FileOperationsTest {
                         .accessKeyId("AKIA")
                         .secretAccessKey("secret")
                         .sessionToken("token")));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(props));
 
     try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from("s3://my-bucket/table"))) {
       assertThat(fileIO).isInstanceOf(ResolvingFileIO.class);
@@ -500,7 +501,7 @@ public class FileOperationsTest {
                         .accessKeyId("AKIA")
                         .secretAccessKey("secret")
                         .sessionToken("token")));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(props));
     NormalizedURL path = NormalizedURL.from("s3://my-bucket/tables/" + UUID.randomUUID());
 
     String prefix = path + "/";
@@ -551,7 +552,7 @@ public class FileOperationsTest {
             new TemporaryCredentials()
                 .gcpOauthToken(new GcpOauthToken().oauthToken("second-token"))
                 .expirationTime(expiration));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
     NormalizedURL path = NormalizedURL.from("gs://bucket/tables/" + UUID.randomUUID());
     String prefix = path + "/";
 
@@ -590,7 +591,7 @@ public class FileOperationsTest {
   @Test
   public void testGetCleanupFileIOForLocalPathDoesNotVendCredentials() {
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     try (SupportsPrefixOperations operations =
         fileOps.getCleanupFileIO(
@@ -610,7 +611,7 @@ public class FileOperationsTest {
                 .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("first-token")),
             new TemporaryCredentials()
                 .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("second-token")));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
     DataLakeFileSystemClient client = mock(DataLakeFileSystemClient.class);
     DataLakeDirectoryClient directory = mock(DataLakeDirectoryClient.class);
     PagedIterable<PathItem> listing = mock(PagedIterable.class);
