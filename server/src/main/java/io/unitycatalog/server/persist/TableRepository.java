@@ -25,9 +25,9 @@ import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
-import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
@@ -1167,11 +1167,14 @@ public class TableRepository {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
     }
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
-      try {
-        FileOperations.deleteDirectory(NormalizedURL.from(tableInfoDAO.getUrl()));
-      } catch (Throwable e) {
-        LOGGER.error("Error deleting table directory: {}", tableInfoDAO.getUrl(), e);
-      }
+      repositories
+          .getStorageCleanupTaskRepository()
+          .create(
+              session,
+              ResourceType.TABLE,
+              tableInfoDAO.getId(),
+              tableInfoDAO.getName(),
+              tableInfoDAO.getUrl());
       repositories
           .getDeltaCommitRepository()
           .permanentlyDeleteTableCommits(session, tableInfoDAO.getId());
