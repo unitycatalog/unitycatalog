@@ -5,7 +5,7 @@ All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog*
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
 | [**createIdentitySequences**](DeltaIdentitySequencesApi.md#createIdentitySequences) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities | Create (or idempotently get) one or more monotonic identity sequences under a table. WARNING: This API is experimental and may change in future versions.  |
-| [**dropIdentitySequences**](DeltaIdentitySequencesApi.md#dropIdentitySequences) | **DELETE** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities | Drop one or more identity sequences. WARNING: This API is experimental and may change in future versions.  |
+| [**dropIdentitySequences**](DeltaIdentitySequencesApi.md#dropIdentitySequences) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities/drop | Drop one or more identity sequences. WARNING: This API is experimental and may change in future versions.  |
 | [**reserveIdentityRanges**](DeltaIdentitySequencesApi.md#reserveIdentityRanges) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities/reserve | Reserve a contiguous range of identity values from one or more sequences. WARNING: This API is experimental and may change in future versions.  |
 
 
