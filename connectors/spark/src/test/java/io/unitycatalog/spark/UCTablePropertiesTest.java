@@ -52,8 +52,7 @@ public class UCTablePropertiesTest {
             UCTableProperties.shouldPersistProperty(
                 TableCatalog.OPTION_PREFIX + "fs.s3a.session.token"))
         .isFalse();
-    assertThat(
-            UCTableProperties.shouldPersistProperty("spark.sql.sources.schema.part.0"))
+    assertThat(UCTableProperties.shouldPersistProperty("spark.sql.sources.schema.part.0"))
         .isFalse();
     assertThat(
             UCTableProperties.shouldPersistProperty(
