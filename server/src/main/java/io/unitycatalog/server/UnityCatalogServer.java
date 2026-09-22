@@ -24,7 +24,6 @@ import io.unitycatalog.server.service.DeltaCommitsService;
 import io.unitycatalog.server.service.ExternalLocationService;
 import io.unitycatalog.server.service.FunctionService;
 import io.unitycatalog.server.service.IcebergRestCatalogService;
-import io.unitycatalog.server.service.IdentitySequenceService;
 import io.unitycatalog.server.service.MetastoreService;
 import io.unitycatalog.server.service.ModelService;
 import io.unitycatalog.server.service.PermissionService;
@@ -245,10 +244,7 @@ public class UnityCatalogServer implements AutoCloseable {
             new DeltaCommitsService(authorizer, repositories, serverProperties))
         .annotate(
             "external-locations",
-            new ExternalLocationService(authorizer, repositories, serverProperties))
-        .annotate(
-            "identity/sequence",
-            new IdentitySequenceService(authorizer, repositories, serverProperties));
+            new ExternalLocationService(authorizer, repositories, serverProperties));
     addIcebergApiServices(
         armeriaServerBuilder, authorizer, repositories, fileOperations, serverProperties);
     addDeltaApiServices(

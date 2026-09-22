@@ -20,13 +20,18 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.delta.model.DeltaCatalogConfig;
+import io.unitycatalog.server.delta.model.DeltaCreateIdentitySequences;
 import io.unitycatalog.server.delta.model.DeltaCreateStagingTableRequest;
 import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
 import io.unitycatalog.server.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.server.delta.model.DeltaCredentialsResponse;
+import io.unitycatalog.server.delta.model.DeltaDropIdentitySequences;
+import io.unitycatalog.server.delta.model.DeltaDropIdentitySequencesResponse;
 import io.unitycatalog.server.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.server.delta.model.DeltaRenameTableRequest;
 import io.unitycatalog.server.delta.model.DeltaReportMetricsRequest;
+import io.unitycatalog.server.delta.model.DeltaReserveIdentityRanges;
+import io.unitycatalog.server.delta.model.DeltaReserveIdentityRangesResponse;
 import io.unitycatalog.server.delta.model.DeltaStagingTableResponse;
 import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
@@ -38,6 +43,7 @@ import io.unitycatalog.server.model.CreateStagingTable;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.CatalogRepository;
+import io.unitycatalog.server.persist.IdentitySequenceRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.StagingTableRepository;
@@ -83,6 +89,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
   private final SchemaRepository schemaRepository;
   private final TableRepository tableRepository;
   private final StagingTableRepository stagingTableRepository;
+  private final IdentitySequenceRepository identitySequenceRepository;
   private final StorageCredentialVendor storageCredentialVendor;
 
 
@@ -101,6 +108,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
     this.schemaRepository = repositories.getSchemaRepository();
     this.tableRepository = repositories.getTableRepository();
     this.stagingTableRepository = repositories.getStagingTableRepository();
+    this.identitySequenceRepository = repositories.getIdentitySequenceRepository();
     this.storageCredentialVendor = storageCredentialVendor;
   }
 
@@ -274,6 +282,59 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
       @Param("table") @AuthorizeResourceKey(TABLE) String table,
       DeltaUpdateTableRequest request) {
     return tableRepository.updateTableForDelta(catalog, schema, table, request);
+  }
+
+  // ==================== Identity Sequences API ====================
+
+  /**
+   * Create (or idempotently get) the concurrent-identity-column sequences under a table. All three
+   * identity operations mutate identity state on the table, so each requires {@code MODIFY} on it
+   * (via {@link AuthorizeExpressions#UPDATE_TABLE}). The table is named in the path; its id is
+   * resolved here and passed to the repository, which keys sequences by table id.
+   */
+  @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities")
+  @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
+  public HttpResponse createIdentitySequences(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table,
+      DeltaCreateIdentitySequences request) {
+    serverProperties.checkIdentitySequencesEnabled();
+    identitySequenceRepository.createSequences(resolveTableId(catalog, schema, table), request);
+    return HttpResponse.of(HttpStatus.OK);
+  }
+
+  /** Reserve identity value ranges from sequences under a table. Requires {@code MODIFY}. */
+  @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities/reserve")
+  @ProducesJson
+  @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
+  public DeltaReserveIdentityRangesResponse reserveIdentityRanges(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table,
+      DeltaReserveIdentityRanges request) {
+    serverProperties.checkIdentitySequencesEnabled();
+    return identitySequenceRepository.reserveRanges(
+        resolveTableId(catalog, schema, table), request);
+  }
+
+  /** Drop identity sequences under a table. Requires {@code MODIFY}. */
+  @Delete("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities")
+  @ProducesJson
+  @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
+  public DeltaDropIdentitySequencesResponse dropIdentitySequences(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table,
+      DeltaDropIdentitySequences request) {
+    serverProperties.checkIdentitySequencesEnabled();
+    return identitySequenceRepository.dropSequences(
+        resolveTableId(catalog, schema, table), request);
+  }
+
+  /** Resolve a three-part table name to its UC table id for the identity sequence repository. */
+  private String resolveTableId(String catalog, String schema, String table) {
+    return tableRepository.findTableOrThrow(catalog, schema, table).getId().toString();
   }
 
   // ==================== Rename Table API ====================
