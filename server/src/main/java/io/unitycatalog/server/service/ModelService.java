@@ -129,7 +129,7 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
       (#authorize(#principal, #catalog, USE_CATALOG) &&
           #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorizeAny(#principal, #registered_model, OWNER, MODIFY))
+          #authorize(#principal, #registered_model, OWNER))
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateRegisteredModel(
@@ -168,9 +168,11 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   @Post("/versions")
   @AuthorizeExpression(
       """
-      (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-          #authorizeAny(#principal, #registered_model, OWNER, MODIFY))
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #registered_model, OWNER))
       """)
   public HttpResponse createModelVersion(
       @AuthorizeResourceKeys({
@@ -233,7 +235,7 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
       (#authorize(#principal, #catalog, USE_CATALOG) &&
           #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorizeAny(#principal, #registered_model, OWNER, MODIFY))
+          #authorize(#principal, #registered_model, OWNER))
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateModelVersion(
@@ -266,9 +268,11 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   @Patch("/{full_name}/versions/{version}/finalize")
   @AuthorizeExpression(
       """
-      (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-          #authorizeAny(#principal, #registered_model, OWNER, MODIFY))
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #registered_model, OWNER))
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse finalizeModelVersion(
