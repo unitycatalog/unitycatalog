@@ -11,6 +11,7 @@ import io.unitycatalog.client.model.TableDependency;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdateView;
+import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Files;
@@ -21,12 +22,24 @@ import java.util.Optional;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
+
+  protected ViewOperations viewOperations;
+
+  protected abstract ViewOperations createViewOperations(ServerConfig serverConfig);
+
+  @BeforeEach
+  @Override
+  public void setUp() {
+    super.setUp();
+    viewOperations = createViewOperations(serverConfig);
+  }
 
   protected static final String VIEW_NAME = "uc_test_view";
   protected static final String VIEW_FULL_NAME =
@@ -91,7 +104,7 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
             .comment("new comment")
             .properties(Map.of("new", "value"));
 
-    TableInfo updated = tableOperations.updateView(VIEW_FULL_NAME, update);
+    TableInfo updated = viewOperations.updateView(VIEW_FULL_NAME, update);
 
     assertThat(updated.getTableId()).isEqualTo(created.getTableId());
     assertThat(updated.getOwner()).isEqualTo(created.getOwner());
@@ -120,7 +133,7 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
             .properties(Map.of("new", "value"));
 
     assertApiException(
-        () -> tableOperations.updateView(VIEW_FULL_NAME, invalidUpdate),
+        () -> viewOperations.updateView(VIEW_FULL_NAME, invalidUpdate),
         ErrorCode.INVALID_ARGUMENT,
         "view_definition is required for view");
     assertThat(tableOperations.getTable(VIEW_FULL_NAME)).isEqualTo(created);
@@ -129,7 +142,7 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
         .viewDefinition(VIEW_DEFINITION)
         .viewDependencies(makeDependencyList(SOURCE_TABLE_FULL_NAME + "_missing"));
     assertApiException(
-        () -> tableOperations.updateView(VIEW_FULL_NAME, invalidUpdate),
+        () -> viewOperations.updateView(VIEW_FULL_NAME, invalidUpdate),
         ErrorCode.NOT_FOUND,
         "View dependency table does not exist: " + SOURCE_TABLE_FULL_NAME + "_missing");
     assertThat(tableOperations.getTable(VIEW_FULL_NAME)).isEqualTo(created);
@@ -157,19 +170,19 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
     UpdateView update =
         new UpdateView().tableType(TableType.VIEW).columns(COLUMNS).viewDefinition("SELECT 1");
     assertApiException(
-        () -> tableOperations.updateView(VIEW_FULL_NAME, update),
+        () -> viewOperations.updateView(VIEW_FULL_NAME, update),
         ErrorCode.TABLE_NOT_FOUND,
         "View not found");
 
     createSourceTable();
     assertApiException(
-        () -> tableOperations.updateView(SOURCE_TABLE_FULL_NAME, update),
+        () -> viewOperations.updateView(SOURCE_TABLE_FULL_NAME, update),
         ErrorCode.TABLE_NOT_FOUND,
         "View not found");
 
     update.setTableType(TableType.EXTERNAL);
     assertApiException(
-        () -> tableOperations.updateView(VIEW_FULL_NAME, update),
+        () -> viewOperations.updateView(VIEW_FULL_NAME, update),
         ErrorCode.INVALID_ARGUMENT,
         "requires table_type VIEW or METRIC_VIEW");
   }

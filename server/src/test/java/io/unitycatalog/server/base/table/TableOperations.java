@@ -3,7 +3,6 @@ package io.unitycatalog.server.base.table;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.TableInfo;
-import io.unitycatalog.client.model.UpdateView;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
@@ -15,8 +14,6 @@ public interface TableOperations {
       throws ApiException;
 
   TableInfo getTable(String tableFullName) throws ApiException;
-
-  TableInfo updateView(String tableFullName, UpdateView updateView) throws ApiException;
 
   // TableInfo updateTable(UpdateTableRequestContent updateTableRequest) throws IOException;
   void deleteTable(String tableFullName) throws ApiException;

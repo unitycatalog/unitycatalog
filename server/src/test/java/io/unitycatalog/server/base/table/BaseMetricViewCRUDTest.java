@@ -48,14 +48,18 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
       TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + SOURCE_FUNCTION_NAME;
 
   protected FunctionOperations functionOperations;
+  protected ViewOperations viewOperations;
 
   protected abstract FunctionOperations createFunctionOperations(ServerConfig serverConfig);
+
+  protected abstract ViewOperations createViewOperations(ServerConfig serverConfig);
 
   @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
     functionOperations = createFunctionOperations(serverConfig);
+    viewOperations = createViewOperations(serverConfig);
   }
 
   private void createSourceTable() throws Exception {
@@ -189,7 +193,7 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
             .comment("Updated metric view")
             .properties(Map.of("refresh", "hourly"));
 
-    TableInfo updated = tableOperations.updateView(METRIC_VIEW_FULL_NAME, update);
+    TableInfo updated = viewOperations.updateView(METRIC_VIEW_FULL_NAME, update);
 
     assertThat(updated.getTableId()).isEqualTo(created.getTableId());
     assertThat(updated.getTableType()).isEqualTo(TableType.METRIC_VIEW);
