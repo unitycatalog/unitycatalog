@@ -16,8 +16,10 @@ and assigns those values locally. Because the ranges are disjoint by constructio
 uniqueness no longer depends on winning the commit.
 
 The Delta RFC leaves the allocation wire protocol to the catalog. This RFC defines it for
-Unity Catalog proposing three batch endpoints on a new sub-resource of a catalog-managed
-Delta table, and the arithmetic and guarantees they adhere to.
+Unity Catalog proposing three batch endpoints on a new `identities` sub-resource of a
+catalog-managed Delta table, and the arithmetic and guarantees they adhere to. The paths say
+`identities` because the resource is not a standalone sequence: a sequence bound to one table,
+sharing that table's lifetime and its permissions, is an identity.
 
 The feature depends on `catalogManaged`, so the surface belongs to the Delta v1 API and is
 specified as an addition to the
