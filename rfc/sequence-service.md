@@ -1,7 +1,6 @@
 # Sequences for Concurrent Identity Columns
 
-**Associated Github issue for discussions: https://github.com/unitycatalog/unitycatalog/issues/XXXX**
-<!-- Replace XXXX with the actual issue number once the change request is filed. -->
+**Associated Github issue for discussions: https://github.com/unitycatalog/unitycatalog/issues/1832**
 
 **Companion Delta protocol RFC:
 [Concurrent Identity Columns](https://github.com/delta-io/delta/pull/7272)**
@@ -17,15 +16,16 @@ and assigns those values locally. Because the ranges are disjoint by constructio
 uniqueness no longer depends on winning the commit.
 
 The Delta RFC leaves the allocation wire protocol to the catalog. This RFC defines it for
-Unity Catalog proposing three endpoints on a new sequences sub-resource of a catalog-managed
+Unity Catalog proposing three batch endpoints on a new sub-resource of a catalog-managed
 Delta table, and the arithmetic and guarantees they adhere to.
 
 The feature depends on `catalogManaged`, so the surface belongs to the Delta v1 API and is
 specified as an addition to the
-[Unity Catalog Managed Tables Specification](https://github.com/unitycatalog/unitycatalog/blob/main/spec/protocols/ManagedTablesSpec.md).
-It reuses that specification's conventions unchanged: the `/delta/v1` endpoint root,
-hyphenated wire field names, bearer-token authentication, the `DeltaErrorResponse` error
-body, and endpoint advertisement through `config`. It adds no new `DeltaErrorType` value.
+[Unity Catalog Managed Tables Specification](https://github.com/unitycatalog/unitycatalog/blob/main/spec/protocols/ManagedTablesSpec.md)
+and to [`api/delta.yaml`](https://github.com/unitycatalog/unitycatalog/blob/main/api/delta.yaml).
+It reuses that specification's conventions: the `/delta/v1` endpoint root, bearer-token
+authentication, the `DeltaErrorResponse` error body, and endpoint advertisement through
+`config`. Wire field names are `snake_case`. It adds no new `DeltaErrorType` value.
 
 ## Motivation
 
@@ -48,13 +48,13 @@ path and gaps in the generated values, both of which this RFC makes explicit.
 ## Sequences
 
 A **sequence** is a monotonic counter owned by one catalog-managed table, identified by an
-opaque `sequence-id`, from which clients reserve ranges of identity-column values. A
+opaque `sequence_id`, from which clients reserve ranges of identity-column values. A
 concurrent identity column carries its sequence's identifier in the
 `delta.identity.concurrent.sequenceId` column-metadata key. The Delta schema is source of
 truth for the binding, the catalog for what the identifier resolves to and which values it
 has issued.
 
-`sequence-id` is client-generated. A server **must not** parse, interpret, or generate one; it
+`sequence_id` is client-generated. A server **must not** parse, interpret, or generate one; it
 is stored verbatim. Clients **must** use a UUID. It **must** be 1 to 128 characters.
 
 Each identity column has its own sequence; sequences are never shared between columns or
@@ -70,22 +70,22 @@ a contiguous run of them continuing strictly after every value the sequence has 
 issued, which fixes the result:
 
 ```text
-range-start = start        on the first reservation
-range-start = liv + step   afterwards
-range-end   = range-start + step * (count - 1)
+range_start = start        on the first reservation
+range_start = liv + step   afterwards
+range_end   = range_start + step * (count - 1)
 ```
 
 The reserved range is the inclusive set of `count` values
-`range-start, range-start + step, ..., range-end`, and `liv` becomes `range-end`. Ordering is
-by `k`, not by numeric value, so a negative `step` needs no special case. `range-end` is then
-numerically less than `range-start`.
+`range_start, range_start + step, ..., range_end`, and `liv` becomes `range_end`. Ordering is
+by `k`, not by numeric value, so a negative `step` needs no special case. `range_end` is then
+numerically less than `range_start`.
 
 **`count` must be at least 1.** A `count` of 0 or negative is invalid and **must** be
 rejected with `BadRequestException` (400) without advancing any sequence. An empty range
 cannot satisfy the formula, and every successful reservation consumes values.
 
 `count` of 1 is valid, and is how the Delta feature reads back a single value as a classic
-high-water mark when removing the binding. Then `range-end` equals `range-start`, and that
+high-water mark when removing the binding. Then `range_end` equals `range_start`, and that
 value is consumed like any other and never assigned to a row.
 
 All arithmetic **must** be checked. If any intermediate or final value would fall outside the
@@ -115,23 +115,23 @@ treat the values as consumed and reserve again.
 ### Lifecycle
 
 A sequence exists from [Create Sequences](#create-sequences) until
-[Drop Sequences](#drop-sequences), which deletes it together with its allocation state.
-Reservations against a dropped sequence fail with `NotFoundException` (404).
+[Delete Sequences](#delete-sequences), which deletes it together with its allocation state.
+Reservations against a deleted sequence fail with `NotFoundException` (404).
 
-A client **must never** reuse a dropped `sequence-id`. Re-creating one restarts allocation at
+A client **must never** reuse a deleted `sequence_id`. Re-creating one restarts allocation at
 `start` and re-issues values already committed to data files. A client that needs values again
 mints a fresh identifier, as Delta's repair operation already does.
 
 ### Authorization and preconditions
 
 Every endpoint requires `MODIFY` on the table, plus `USE CATALOG` and `USE SCHEMA` on the
-parents; table ownership satisfies `MODIFY`. The `sequence-id` currently is not used in the
+parents; table ownership satisfies `MODIFY`. The `sequence_id` currently is not used in the
 authentication, a server **must** authorize against the table on every request.
 
 A server **must** reject requests for a table that is not a catalog-managed Delta table with
 `BadRequestException` (400). It **must not** additionally require `concurrentIdentityColumns`
 in `writerFeatures`: Delta enables the feature and persists its bindings in one version, so
-sequences are created *before* that commit and dropped *after* the commit that removes it.
+sequences are created *before* that commit and deleted *after* the commit that removes it.
 Gating on the feature would reject both.
 
 A request carries at most 64 entries. Exceeding that **must** fail the whole request with
@@ -145,7 +145,7 @@ errors. Every endpoint may also return `NotAuthorizedException` (401),
 ### Create Sequences
 
 ```text
-POST .../v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/sequences
+POST .../v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities:batchCreate
 ```
 
 Creates sequences on a table, atomically. **Create-or-get**: repeating the request with the
@@ -153,38 +153,36 @@ same `start` and `step` succeeds and changes nothing, in particular it does not 
 frontier, so a retry after the client has committed the binding is safe. Creation reserves no
 value; the first reservation begins at `start`.
 
+The request body is a JSON array of sequences to create.
+
 Field Name | Data Type | Description | Optional/Required
 -|-|-|-
-table-id | string (uuid) | Table UUID. Must identify the table named by the path; the server rejects a mismatch. From `loadTable` response `metadata.table-uuid`. | required
-sequences | array of object | Must be non-empty, with `sequence-id` unique within the array. | required
-&nbsp;&nbsp;sequences[].sequence-id | string | Client-generated opaque identifier, 1 to 128 characters. | required
-&nbsp;&nbsp;sequences[].start | int64 | First value issued. The column's `delta.identity.start`. | required
-&nbsp;&nbsp;sequences[].step | int64 | Increment. The column's `delta.identity.step`. Must not be zero. | required
-&nbsp;&nbsp;sequences[].column-information | string | Audit only, at most 256 characters: which column this sequence was minted for, for debugging. Never a key. A server **must not** store it or behave differently on it. For Delta, the column's physical (rename-stable) name. | optional
+*body* | array of object | Must be non-empty, with `sequence_id` unique within the array. | required
+&nbsp;&nbsp;[].sequence_id | string | Client-generated opaque identifier, 1 to 128 characters. | required
+&nbsp;&nbsp;[].start | int64 | First value issued. The column's `delta.identity.start`. | required
+&nbsp;&nbsp;[].step | int64 | Increment. The column's `delta.identity.step`. Must not be zero. | required
 
-**204: All sequences exist with the requested parameters.** No response body.
+**204: All sequences exist with the requested parameters.** No response body; the
+acknowledgement is the status code.
 
 ```json
-{
-  "table-id": "550e8400-e29b-41d4-a716-446655440000",
-  "sequences": [
-    { "sequence-id": "5f0a1c9e-1f4d-4a2b-9f1e-6d3a7c2b8e04", "start": 1, "step": 1 },
-    { "sequence-id": "b71c4f2a-88de-4c6f-9a03-2e5b1d7f6c11", "start": 0, "step": -10 }
-  ]
-}
+[
+  { "sequence_id": "5f0a1c9e-1f4d-4a2b-9f1e-6d3a7c2b8e04", "start": 1, "step": 1 },
+  { "sequence_id": "b71c4f2a-88de-4c6f-9a03-2e5b1d7f6c11", "start": 0, "step": -10 }
+]
 ```
 
 Error Type | HTTP Status | Description
 -|-|-
-BadRequestException | 400 | Empty `sequences`, more than 64 entries, duplicate `sequence-id`, `step` of zero, identifier longer than 128 characters, or the table is not a catalog-managed Delta table.
-InvalidParameterValueException | 400 | `table-id` does not identify the table named by the path, or a required field is missing.
+BadRequestException | 400 | Empty body, more than 64 entries, duplicate `sequence_id`, `step` of zero, identifier longer than 128 characters, or the table is not a catalog-managed Delta table.
+InvalidParameterValueException | 400 | A required field is missing.
 NoSuchTableException | 404 | The table does not exist.
 AlreadyExistsException | 409 | An identifier already names a sequence with a different `start` or `step`.
 
 ### Reserve Ranges
 
 ```text
-POST .../v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/sequences/reserve
+POST .../v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities:batchReserve
 ```
 
 Reserves one range from each named sequence and advances each frontier past the range
@@ -192,23 +190,24 @@ returned, atomically. **Not idempotent**, see [Guarantees](#guarantees) before w
 logic. Clients **should** reserve more than one row's worth of values, buffer the remainder
 locally, and batch all of a table's columns into one request.
 
-Field Name | Data Type | Description | Optional/Required
--|-|-|-
-table-id | string (uuid) | Table UUID. Must identify the table named by the path. | required
-reservations | array of object | Must be non-empty, with `sequence-id` unique within the array. | required
-&nbsp;&nbsp;reservations[].sequence-id | string | Sequence to advance. | required
-&nbsp;&nbsp;reservations[].count | int64 | Number of values to reserve. Must be at least 1; 0 is invalid. | required
-&nbsp;&nbsp;reservations[].step | int64 | Advisory: the client's schema-declared `delta.identity.step`. A server does not validate it; the field exists for future server-side validation. | optional
-
-**200: All ranges reserved.**
+The request body is a JSON array of reservations.
 
 Field Name | Data Type | Description | Optional/Required
 -|-|-|-
-ranges | array of object | One entry per reservation, positional with the request array. Clients **must** match by position, not by searching on `sequence-id`. | required
-&nbsp;&nbsp;ranges[].sequence-id | string | The sequence the range came from. | required
-&nbsp;&nbsp;ranges[].range-start | int64 | First reserved value, inclusive. | required
-&nbsp;&nbsp;ranges[].range-end | int64 | Last reserved value, inclusive. Equals `range-start` when `count` is 1; numerically below it when `step` is negative. | required
-&nbsp;&nbsp;ranges[].step | int64 | The stored `step` the range was reserved against. | required
+*body* | array of object | Must be non-empty, with `sequence_id` unique within the array. | required
+&nbsp;&nbsp;[].sequence_id | string | Sequence to advance. | required
+&nbsp;&nbsp;[].count | int64 | Number of values to reserve. Must be at least 1; 0 is invalid. | required
+&nbsp;&nbsp;[].step | int64 | Advisory: the client's schema-declared `delta.identity.step`. A server does not validate it; the field exists for future server-side validation. | optional
+
+**200: All ranges reserved.** The response body is a JSON array of ranges.
+
+Field Name | Data Type | Description | Optional/Required
+-|-|-|-
+*body* | array of object | One entry per reservation, positional with the request array. Clients **must** match by position, not by searching on `sequence_id`. | required
+&nbsp;&nbsp;[].sequence_id | string | The sequence the range came from. | required
+&nbsp;&nbsp;[].range_start | int64 | First reserved value, inclusive. | required
+&nbsp;&nbsp;[].range_end | int64 | Last reserved value, inclusive. Equals `range_start` when `count` is 1; numerically below it when `step` is negative. | required
+&nbsp;&nbsp;[].step | int64 | The stored `step` the range was reserved against. | required
 
 Because a server does not validate the advisory request `step`, a client **must** compare the
 returned `step` against its schema-declared `delta.identity.step` before using a range, and
@@ -218,70 +217,80 @@ Request, then a response in which both sequences had already issued values (fron
 and -70), so each range starts one `step` past its frontier:
 
 ```json
-{
-  "table-id": "550e8400-e29b-41d4-a716-446655440000",
-  "reservations": [
-    { "sequence-id": "5f0a1c9e-1f4d-4a2b-9f1e-6d3a7c2b8e04", "count": 1024, "step": 1 },
-    { "sequence-id": "b71c4f2a-88de-4c6f-9a03-2e5b1d7f6c11", "count": 8, "step": -10 }
-  ]
-}
+[
+  { "sequence_id": "5f0a1c9e-1f4d-4a2b-9f1e-6d3a7c2b8e04", "count": 1024, "step": 1 },
+  { "sequence_id": "b71c4f2a-88de-4c6f-9a03-2e5b1d7f6c11", "count": 8, "step": -10 }
+]
 ```
 
 ```json
-{
-  "ranges": [
-    { "sequence-id": "5f0a1c9e-1f4d-4a2b-9f1e-6d3a7c2b8e04", "range-start": 4097, "range-end": 5120, "step": 1 },
-    { "sequence-id": "b71c4f2a-88de-4c6f-9a03-2e5b1d7f6c11", "range-start": -80, "range-end": -150, "step": -10 }
-  ]
-}
+[
+  { "sequence_id": "5f0a1c9e-1f4d-4a2b-9f1e-6d3a7c2b8e04", "range_start": 4097, "range_end": 5120, "step": 1 },
+  { "sequence_id": "b71c4f2a-88de-4c6f-9a03-2e5b1d7f6c11", "range_start": -80, "range_end": -150, "step": -10 }
+]
 ```
 
 Error Type | HTTP Status | Description
 -|-|-
-BadRequestException | 400 | Empty `reservations`, more than 64 entries, duplicate `sequence-id`, `count` less than 1, the range would fall outside the signed 64-bit domain, or the table is not a catalog-managed Delta table.
-InvalidParameterValueException | 400 | `table-id` does not identify the table named by the path, or a required field is missing.
+BadRequestException | 400 | Empty body, more than 64 entries, duplicate `sequence_id`, `count` less than 1, the range would fall outside the signed 64-bit domain, or the table is not a catalog-managed Delta table.
+InvalidParameterValueException | 400 | A required field is missing.
 NoSuchTableException | 404 | The table does not exist.
-NotFoundException | 404 | A named sequence does not exist on this table, or has been dropped.
+NotFoundException | 404 | A named sequence does not exist on this table, or has been deleted.
 CommitStateUnknownException | 500 | Outcome unknown. The values may or may not have been consumed; the client must treat them as consumed.
 
-### Drop Sequences
+### Delete Sequences
 
 ```text
-DELETE .../v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/sequences
+DELETE .../v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities:batchDelete
 ```
 
 Deletes sequences together with their allocation state. Idempotent and de-duplicated: a
-repeated identifier yields one result, and an unknown or already-dropped identifier succeeds
+repeated identifier yields one result, and an unknown or already-deleted identifier succeeds
 rather than failing. Clients call this *after* the Delta transaction that stops referencing the
 sequence has committed, so a failure can strand a sequence nothing points at but can never
-leave a live column pointing at a dropped one. Deleting the table drops its sequences, so no
+leave a live column pointing at a deleted one. Deleting the table deletes its sequences, so no
 per-sequence call is needed then.
 
-Field Name | Data Type | Description | Optional/Required
--|-|-|-
-table-id | string (uuid) | Table UUID. Must identify the table named by the path. | required
-sequence-ids | array of string | Identifiers to drop. Must be non-empty, at most 64 entries, each at most 128 characters. | required
-
-**200: None of the named sequences exists any more.**
+The request body is a JSON array of identifiers.
 
 Field Name | Data Type | Description | Optional/Required
 -|-|-|-
-results | array of object | One entry per unique requested identifier. | required
-&nbsp;&nbsp;results[].sequence-id | string | The requested identifier, echoed. | required
-&nbsp;&nbsp;results[].existed | boolean | `true` if this call deleted a live sequence, `false` if the identifier was unknown or already dropped. Informational: a client's behaviour does not depend on it. | required
+*body* | array of string | Identifiers to delete. Must be non-empty, at most 64 entries, each at most 128 characters. | required
+
+**200: None of the named sequences exists any more.** The response body is a JSON array of
+results.
+
+Field Name | Data Type | Description | Optional/Required
+-|-|-|-
+*body* | array of object | One entry per unique requested identifier. | required
+&nbsp;&nbsp;[].sequence_id | string | The requested identifier, echoed. | required
+&nbsp;&nbsp;[].existed | boolean | `true` if this call deleted a live sequence, `false` if the identifier was unknown or already deleted. Informational: a client's behaviour does not depend on it. | required
+
+```json
+[
+  "5f0a1c9e-1f4d-4a2b-9f1e-6d3a7c2b8e04",
+  "b71c4f2a-88de-4c6f-9a03-2e5b1d7f6c11"
+]
+```
+
+```json
+[
+  { "sequence_id": "5f0a1c9e-1f4d-4a2b-9f1e-6d3a7c2b8e04", "existed": true },
+  { "sequence_id": "b71c4f2a-88de-4c6f-9a03-2e5b1d7f6c11", "existed": false }
+]
+```
 
 Error Type | HTTP Status | Description
 -|-|-
-BadRequestException | 400 | Empty `sequence-ids`, more than 64 entries, or the table is not a catalog-managed Delta table.
-InvalidParameterValueException | 400 | `table-id` does not identify the table named by the path.
+BadRequestException | 400 | Empty body, more than 64 entries, or the table is not a catalog-managed Delta table.
 NoSuchTableException | 404 | The table does not exist.
 
 > ***Add the following to the endpoint list returned by [Get Configuration](https://github.com/unitycatalog/unitycatalog/blob/main/spec/protocols/ManagedTablesSpec.md#get-configuration).***
 
 ```text
-POST   /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/sequences
-POST   /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/sequences/reserve
-DELETE /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/sequences
+POST   /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities:batchCreate
+POST   /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities:batchReserve
+DELETE /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities:batchDelete
 ```
 
 A server advertises all three or none. A client **must not** write to a table with the
@@ -296,7 +305,7 @@ absence of the endpoints, not a failed request, is the signal that the feature i
 - **A read endpoint.** Nothing in the write path needs one, and values **must never** be
   derived from an observed frontier. A catalog may add one for diagnosis.
 - **Gapless or commit-ordered values; shared or cross-table sequences.**
-- **Garbage collection, storage engine, and service topology.** Policy for dropped records is
+- **Garbage collection, storage engine, and service topology.** Policy for deleted records is
   a server concern, bounded only by [Lifecycle](#lifecycle). The contract is stated in
   observable request behaviour only.
 - **Explicitly inserted values.** With `delta.identity.allowExplicitInsert`, a user-supplied
