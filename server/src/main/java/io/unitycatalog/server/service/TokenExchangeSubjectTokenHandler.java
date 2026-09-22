@@ -117,11 +117,12 @@ public class TokenExchangeSubjectTokenHandler {
   }
 
   /**
-   * The bootstrap "admin" user (metastore OWNER) is provisioned only for the internal service token
-   * and must never be assumable through external token exchange, by either the email-claim or the
-   * OAuth-client resolution path. Comparing the resolved user's email -- rather than the incoming
-   * subject -- also rejects case variants such as "ADMIN" that a case-insensitive database
-   * collation would otherwise resolve back to the admin user.
+   * The bootstrap admin user is provisioned with the literal email "admin" (not a conventional
+   * name@domain address) and holds metastore OWNER; it exists only for the internal service token
+   * and must never be assumable through external token exchange, via either the email-claim or the
+   * OAuth-client resolution path. The incoming subject is only a lookup key: we compare the
+   * resolved user's stored email so that a case variant like "ADMIN", which a case-insensitive
+   * database collation resolves back to the same stored "admin" user, is rejected as well.
    */
   private static boolean isAssumablePrincipal(User user) {
     return !"admin".equals(user.getEmail());
