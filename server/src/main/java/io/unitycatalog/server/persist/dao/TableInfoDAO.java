@@ -82,15 +82,18 @@ public class TableInfoDAO extends IdentifiableDAO {
   private String viewDefinition;
 
   /**
-   * Iceberg metadata pointer for either a Delta UniForm projection or a native Iceberg table. The
-   * {@code uniform_iceberg_} name predates native Iceberg support and is a misnomer here: a
+   * Iceberg metadata pointer for either a Delta UniForm projection or a native Iceberg table. A
    * non-null value does NOT imply a Delta/UniForm table. The owning format is distinguished by
    * {@link #dataSourceFormat} -- Delta is authoritative for UniForm, Iceberg is authoritative for
    * native Iceberg tables -- so always read this field together with {@code dataSourceFormat},
    * never on its own.
+   *
+   * <p>The database column keeps its legacy {@code uniform_iceberg_metadata_location} name, which
+   * predates native Iceberg support and is a misnomer; the Java field is named for what it actually
+   * holds.
    */
   @Column(name = "uniform_iceberg_metadata_location", length = 65535)
-  private String uniformIcebergMetadataLocation;
+  private String icebergMetadataLocation;
 
   @Column(name = "uniform_iceberg_converted_delta_version")
   private Long uniformIcebergConvertedDeltaVersion;
@@ -154,7 +157,7 @@ public class TableInfoDAO extends IdentifiableDAO {
    */
   public void updateUniformIcebergMetadata(
       NormalizedURL metadataLocation, long convertedDeltaVersion, long convertedDeltaTimestampMs) {
-    setUniformIcebergMetadataLocation(metadataLocation.toString());
+    setIcebergMetadataLocation(metadataLocation.toString());
     setUniformIcebergConvertedDeltaVersion(convertedDeltaVersion);
     setUniformIcebergConvertedDeltaTimestamp(new Date(convertedDeltaTimestampMs));
   }
