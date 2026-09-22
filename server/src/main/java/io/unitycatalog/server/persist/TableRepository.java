@@ -557,7 +557,7 @@ public class TableRepository {
   }
 
   private static void populateUniformMetadata(DeltaLoadTableResponse response, TableInfoDAO dao) {
-    String uniformLocation = dao.getUniformIcebergMetadataLocation();
+    String uniformLocation = dao.getIcebergMetadataLocation();
     if (uniformLocation == null) {
       return;
     }
@@ -605,7 +605,7 @@ public class TableRepository {
                     + fullName);
           }
           return new IcebergTableState(
-              dao.getId(), dataSourceFormat, dao.getUniformIcebergMetadataLocation(), dao.getUrl());
+              dao.getId(), dataSourceFormat, dao.getIcebergMetadataLocation(), dao.getUrl());
         },
         "Failed to load Iceberg table state for " + fullName,
         /* readOnly= */ true);
@@ -646,7 +646,7 @@ public class TableRepository {
                     + fullName);
           }
           RepositoryUtils.lockTableForCommit(session, dao, dao.getId(), Optional.of(fullName));
-          if (!Objects.equals(dao.getUniformIcebergMetadataLocation(), expectedMetadataLocation)) {
+          if (!Objects.equals(dao.getIcebergMetadataLocation(), expectedMetadataLocation)) {
             throw new BaseException(
                 ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
                 "Metadata location for "
@@ -654,7 +654,7 @@ public class TableRepository {
                     + " changed concurrently: expected "
                     + expectedMetadataLocation
                     + " but found "
-                    + dao.getUniformIcebergMetadataLocation());
+                    + dao.getIcebergMetadataLocation());
           }
           List<ColumnInfoDAO> newColumns = ColumnInfoDAO.fromList(columns);
           newColumns.forEach(
@@ -675,7 +675,7 @@ public class TableRepository {
           properties.putAll(tableProperties);
           properties.flush(session, dao.getId());
 
-          dao.setUniformIcebergMetadataLocation(newMetadataLocation.toString());
+          dao.setIcebergMetadataLocation(newMetadataLocation.toString());
           dao.setUpdatedAt(new Date());
           dao.setUpdatedBy(callerId);
           session.merge(dao);
@@ -896,7 +896,7 @@ public class TableRepository {
           // entity is still transient so they're folded into the single INSERT below.
           DeltaUniformUtils.applyToDao(tableInfoDAO, uniformFields);
           nativeIcebergMetadataLocation.ifPresent(
-              location -> tableInfoDAO.setUniformIcebergMetadataLocation(location.toString()));
+              location -> tableInfoDAO.setIcebergMetadataLocation(location.toString()));
           session.persist(tableInfoDAO);
           if (RepositoryUtils.isViewLike(tableType.getValue())) {
             DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
@@ -1097,7 +1097,7 @@ public class TableRepository {
           String nextPageToken = LISTING_HELPER.getNextPageToken(page, Optional.empty());
           List<String> tableNames =
               page.stream()
-                  .filter(dao -> dao.getUniformIcebergMetadataLocation() != null)
+                  .filter(dao -> dao.getIcebergMetadataLocation() != null)
                   .map(TableInfoDAO::getName)
                   .toList();
           return new IcebergTablePage(

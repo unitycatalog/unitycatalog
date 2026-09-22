@@ -199,7 +199,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
    * truncation to milliseconds since DB only stores millisecond precision.
    *
    * @param dao The TableInfoDAO to verify
-   * @param expectedIcebergMetadataLocation Expected value for uniformIcebergMetadataLocation
+   * @param expectedIcebergMetadataLocation Expected value for icebergMetadataLocation
    * @param expectedConvertedDeltaVersion Expected value for uniformIcebergConvertedDeltaVersion
    * @param expectedConvertedDeltaTimestamp Expected value for uniformIcebergConvertedDeltaTimestamp
    *     (ISO-8601 format)
@@ -209,7 +209,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
       String expectedIcebergMetadataLocation,
       Long expectedConvertedDeltaVersion,
       String expectedConvertedDeltaTimestamp) {
-    assertEquals(expectedIcebergMetadataLocation, dao.getUniformIcebergMetadataLocation());
+    assertEquals(expectedIcebergMetadataLocation, dao.getIcebergMetadataLocation());
     assertEquals(expectedConvertedDeltaVersion, dao.getUniformIcebergConvertedDeltaVersion());
     // Truncate expected timestamp to milliseconds since DB only stores millisecond precision
     assertEquals(
