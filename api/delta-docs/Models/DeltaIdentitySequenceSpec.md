@@ -1,4 +1,4 @@
-# IdentitySequenceSpec
+# DeltaIdentitySequenceSpec
 ## Properties
 
 | Name | Type | Description | Notes |

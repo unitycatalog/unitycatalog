@@ -1,4 +1,4 @@
-# DropIdentitySequenceResult
+# DeltaDropIdentitySequenceResult
 ## Properties
 
 | Name | Type | Description | Notes |

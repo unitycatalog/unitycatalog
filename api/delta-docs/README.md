@@ -8,6 +8,9 @@ All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog*
 | Class | Method | HTTP request | Description |
 |------------ | ------------- | ------------- | -------------|
 | *DeltaConfigurationApi* | [**getConfig**](Apis/DeltaConfigurationApi.md#getconfig) | **GET** /delta/v1/config | Get catalog configuration |
+| *DeltaIdentitySequencesApi* | [**createIdentitySequences**](Apis/DeltaIdentitySequencesApi.md#createidentitysequences) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities | Create (or idempotently get) one or more monotonic identity sequences under a table. WARNING: This API is experimental and may change in future versions.  |
+*DeltaIdentitySequencesApi* | [**dropIdentitySequences**](Apis/DeltaIdentitySequencesApi.md#dropidentitysequences) | **DELETE** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities | Drop one or more identity sequences. WARNING: This API is experimental and may change in future versions.  |
+*DeltaIdentitySequencesApi* | [**reserveIdentityRanges**](Apis/DeltaIdentitySequencesApi.md#reserveidentityranges) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities/reserve | Reserve a contiguous range of identity values from one or more sequences. WARNING: This API is experimental and may change in future versions.  |
 | *DeltaTablesApi* | [**createStagingTable**](Apis/DeltaTablesApi.md#createstagingtable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables | Create a staging table |
 *DeltaTablesApi* | [**createTable**](Apis/DeltaTablesApi.md#createtable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables | Create a table |
 *DeltaTablesApi* | [**deleteTable**](Apis/DeltaTablesApi.md#deletetable) | **DELETE** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Delete a table |
@@ -31,6 +34,7 @@ All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog*
  - [DeltaCatalogConfig](./Models/DeltaCatalogConfig.md)
  - [DeltaClusteringDomainMetadata](./Models/DeltaClusteringDomainMetadata.md)
  - [DeltaCommit](./Models/DeltaCommit.md)
+ - [DeltaCreateIdentitySequences](./Models/DeltaCreateIdentitySequences.md)
  - [DeltaCreateStagingTableRequest](./Models/DeltaCreateStagingTableRequest.md)
  - [DeltaCreateTableRequest](./Models/DeltaCreateTableRequest.md)
  - [DeltaCredentialOperation](./Models/DeltaCredentialOperation.md)
@@ -38,9 +42,15 @@ All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog*
  - [DeltaDataType](./Models/DeltaDataType.md)
  - [DeltaDecimalType](./Models/DeltaDecimalType.md)
  - [DeltaDomainMetadataUpdates](./Models/DeltaDomainMetadataUpdates.md)
+ - [DeltaDropIdentitySequenceResult](./Models/DeltaDropIdentitySequenceResult.md)
+ - [DeltaDropIdentitySequences](./Models/DeltaDropIdentitySequences.md)
+ - [DeltaDropIdentitySequencesResponse](./Models/DeltaDropIdentitySequencesResponse.md)
  - [DeltaErrorModel](./Models/DeltaErrorModel.md)
  - [DeltaErrorResponse](./Models/DeltaErrorResponse.md)
  - [DeltaErrorType](./Models/DeltaErrorType.md)
+ - [DeltaIdentityIdRange](./Models/DeltaIdentityIdRange.md)
+ - [DeltaIdentityReservation](./Models/DeltaIdentityReservation.md)
+ - [DeltaIdentitySequenceSpec](./Models/DeltaIdentitySequenceSpec.md)
  - [DeltaLoadTableResponse](./Models/DeltaLoadTableResponse.md)
  - [DeltaMapType](./Models/DeltaMapType.md)
  - [DeltaPrimitiveType](./Models/DeltaPrimitiveType.md)
@@ -52,6 +62,8 @@ All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog*
  - [DeltaReportMetricsRequest_report](./Models/DeltaReportMetricsRequest_report.md)
  - [DeltaReportMetricsRequest_report_commit_report](./Models/DeltaReportMetricsRequest_report_commit_report.md)
  - [DeltaReportMetricsRequest_report_commit_report_file_size_histogram](./Models/DeltaReportMetricsRequest_report_commit_report_file_size_histogram.md)
+ - [DeltaReserveIdentityRanges](./Models/DeltaReserveIdentityRanges.md)
+ - [DeltaReserveIdentityRangesResponse](./Models/DeltaReserveIdentityRangesResponse.md)
  - [DeltaRowTrackingDomainMetadata](./Models/DeltaRowTrackingDomainMetadata.md)
  - [DeltaSetDomainMetadataUpdate](./Models/DeltaSetDomainMetadataUpdate.md)
  - [DeltaSetLatestBackfilledVersionUpdate](./Models/DeltaSetLatestBackfilledVersionUpdate.md)

@@ -1,17 +1,17 @@
-# IdentitySequencesApi
+# DeltaIdentitySequencesApi
 
-All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
+All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**createIdentitySequences**](IdentitySequencesApi.md#createIdentitySequences) | **POST** /identity/sequence | Create (or idempotently get) one or more monotonic identity sequences under a table. WARNING: This API is experimental and may change in future versions.  |
-| [**dropIdentitySequences**](IdentitySequencesApi.md#dropIdentitySequences) | **DELETE** /identity/sequence | Drop one or more identity sequences. WARNING: This API is experimental and may change in future versions.  |
-| [**reserveIdentityRanges**](IdentitySequencesApi.md#reserveIdentityRanges) | **POST** /identity/sequence/reserve | Reserve a contiguous range of identity values from one or more sequences. WARNING: This API is experimental and may change in future versions.  |
+| [**createIdentitySequences**](DeltaIdentitySequencesApi.md#createIdentitySequences) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities | Create (or idempotently get) one or more monotonic identity sequences under a table. WARNING: This API is experimental and may change in future versions.  |
+| [**dropIdentitySequences**](DeltaIdentitySequencesApi.md#dropIdentitySequences) | **DELETE** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities | Drop one or more identity sequences. WARNING: This API is experimental and may change in future versions.  |
+| [**reserveIdentityRanges**](DeltaIdentitySequencesApi.md#reserveIdentityRanges) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities/reserve | Reserve a contiguous range of identity values from one or more sequences. WARNING: This API is experimental and may change in future versions.  |
 
 
 <a name="createIdentitySequences"></a>
 # **createIdentitySequences**
-> createIdentitySequences(CreateIdentitySequences)
+> createIdentitySequences(catalog, schema, table, DeltaCreateIdentitySequences)
 
 Create (or idempotently get) one or more monotonic identity sequences under a table. WARNING: This API is experimental and may change in future versions. 
 
@@ -21,7 +21,10 @@ Create (or idempotently get) one or more monotonic identity sequences under a ta
 
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **CreateIdentitySequences** | [**CreateIdentitySequences**](../Models/CreateIdentitySequences.md)|  | |
+| **catalog** | **String**| Catalog name | [default to null] |
+| **schema** | **String**| Schema name | [default to null] |
+| **table** | **String**| Table name | [default to null] |
+| **DeltaCreateIdentitySequences** | [**DeltaCreateIdentitySequences**](../Models/DeltaCreateIdentitySequences.md)|  | |
 
 ### Return type
 
@@ -34,11 +37,11 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: application/json
-- **Accept**: Not defined
+- **Accept**: application/json
 
 <a name="dropIdentitySequences"></a>
 # **dropIdentitySequences**
-> DropIdentitySequencesResponse dropIdentitySequences(DropIdentitySequences)
+> DeltaDropIdentitySequencesResponse dropIdentitySequences(catalog, schema, table, DeltaDropIdentitySequences)
 
 Drop one or more identity sequences. WARNING: This API is experimental and may change in future versions. 
 
@@ -48,11 +51,14 @@ Drop one or more identity sequences. WARNING: This API is experimental and may c
 
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **DropIdentitySequences** | [**DropIdentitySequences**](../Models/DropIdentitySequences.md)|  | |
+| **catalog** | **String**| Catalog name | [default to null] |
+| **schema** | **String**| Schema name | [default to null] |
+| **table** | **String**| Table name | [default to null] |
+| **DeltaDropIdentitySequences** | [**DeltaDropIdentitySequences**](../Models/DeltaDropIdentitySequences.md)|  | |
 
 ### Return type
 
-[**DropIdentitySequencesResponse**](../Models/DropIdentitySequencesResponse.md)
+[**DeltaDropIdentitySequencesResponse**](../Models/DeltaDropIdentitySequencesResponse.md)
 
 ### Authorization
 
@@ -65,7 +71,7 @@ No authorization required
 
 <a name="reserveIdentityRanges"></a>
 # **reserveIdentityRanges**
-> ReserveIdentityRangesResponse reserveIdentityRanges(ReserveIdentityRanges)
+> DeltaReserveIdentityRangesResponse reserveIdentityRanges(catalog, schema, table, DeltaReserveIdentityRanges)
 
 Reserve a contiguous range of identity values from one or more sequences. WARNING: This API is experimental and may change in future versions. 
 
@@ -75,11 +81,14 @@ Reserve a contiguous range of identity values from one or more sequences. WARNIN
 
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **ReserveIdentityRanges** | [**ReserveIdentityRanges**](../Models/ReserveIdentityRanges.md)|  | |
+| **catalog** | **String**| Catalog name | [default to null] |
+| **schema** | **String**| Schema name | [default to null] |
+| **table** | **String**| Table name | [default to null] |
+| **DeltaReserveIdentityRanges** | [**DeltaReserveIdentityRanges**](../Models/DeltaReserveIdentityRanges.md)|  | |
 
 ### Return type
 
-[**ReserveIdentityRangesResponse**](../Models/ReserveIdentityRangesResponse.md)
+[**DeltaReserveIdentityRangesResponse**](../Models/DeltaReserveIdentityRangesResponse.md)
 
 ### Authorization
 

@@ -1,4 +1,4 @@
-# IdentityReservation
+# DeltaIdentityReservation
 ## Properties
 
 | Name | Type | Description | Notes |
