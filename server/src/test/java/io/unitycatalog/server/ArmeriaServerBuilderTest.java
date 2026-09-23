@@ -3,14 +3,34 @@ package io.unitycatalog.server;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.linecorp.armeria.common.util.BlockingTaskExecutor;
 import com.linecorp.armeria.server.Server;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Properties;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 public class ArmeriaServerBuilderTest {
+
+  private static BlockingTaskExecutor blockingTaskExecutor;
+
+  @BeforeAll
+  public static void createBlockingTaskExecutor() {
+    blockingTaskExecutor = BlockingTaskExecutor.builder().numThreads(1).build();
+  }
+
+  @AfterAll
+  public static void shutdownBlockingTaskExecutor() {
+    blockingTaskExecutor.shutdown();
+  }
+
+  private static ArmeriaServerBuilder newBuilder(int port) {
+    return new ArmeriaServerBuilder(
+        port, "/api/", "/control/", new ServerProperties(new Properties()), blockingTaskExecutor);
+  }
 
   @Test
   public void apiPortBindsLoopbackObservabilityPortBindsAllInterfaces() {
@@ -21,7 +41,7 @@ public class ArmeriaServerBuilderTest {
     // by
     // network policy (see the source comment on the port binding).
     try (Server server =
-        new ArmeriaServerBuilder(8080, "/api/", "/control/", new ServerProperties(new Properties()))
+        newBuilder(8080)
             .observabilityPort(8090)
             .build()) {
       // The API port is reached only through the in-process URL transcoder, so it binds the
@@ -48,8 +68,7 @@ public class ArmeriaServerBuilderTest {
     // endpoints onto a single listener, defeating the isolation. Fails fast at construction.
     assertThatThrownBy(
             () ->
-                new ArmeriaServerBuilder(
-                        8080, "/api/", "/control/", new ServerProperties(new Properties()))
+                newBuilder(8080)
                     .observabilityPort(8080))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Observability port");
@@ -58,7 +77,7 @@ public class ArmeriaServerBuilderTest {
   @Test
   public void defaultConfigurationBindsOnlyTheApiPort() {
     try (Server server =
-        new ArmeriaServerBuilder(8080, "/api/", "/control/", new ServerProperties(new Properties()))
+        newBuilder(8080)
             .build()) {
       assertThat(server.config().ports())
           .isNotEmpty()
@@ -74,7 +93,7 @@ public class ArmeriaServerBuilderTest {
   @ValueSource(ints = {1, 9464, 65535})
   public void bindsExplicitObservabilityPort(int observabilityPort) {
     try (Server server =
-        new ArmeriaServerBuilder(9001, "/api/", "/control/", new ServerProperties(new Properties()))
+        newBuilder(9001)
             .observabilityPort(observabilityPort)
             .build()) {
       assertThat(server.config().ports())
@@ -88,8 +107,7 @@ public class ArmeriaServerBuilderTest {
   public void rejectsOutOfRangeObservabilityPort(int configuredPort) {
     assertThatThrownBy(
             () ->
-                new ArmeriaServerBuilder(
-                        9001, "/api/", "/control/", new ServerProperties(new Properties()))
+                newBuilder(9001)
                     .observabilityPort(configuredPort))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("between 1 and 65535");
@@ -98,7 +116,7 @@ public class ArmeriaServerBuilderTest {
   @Test
   public void standaloneServerDoesNotReserveAnAbsentClientPort() {
     try (Server server =
-        new ArmeriaServerBuilder(9001, "/api/", "/control/", new ServerProperties(new Properties()))
+        newBuilder(9001)
             .observabilityPort(9000)
             .build()) {
       assertThat(server.config().ports())
