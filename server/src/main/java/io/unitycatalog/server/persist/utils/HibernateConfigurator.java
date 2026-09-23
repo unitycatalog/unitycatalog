@@ -43,6 +43,7 @@ import org.slf4j.LoggerFactory;
 public class HibernateConfigurator {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(HibernateConfigurator.class);
+  private static final int DEFAULT_CONNECTION_POOL_SIZE = 20;
 
   private final SessionFactory sessionFactory;
   private final Properties hibernateProperties;
@@ -58,6 +59,17 @@ public class HibernateConfigurator {
   public HibernateConfigurator(Properties hibernateProperties) {
     this.hibernateProperties = hibernateProperties;
     this.sessionFactory = createSessionFactory(hibernateProperties);
+  }
+
+  /** Number of JDBC connections available to serve blocking requests. */
+  public int getConnectionPoolSize() {
+    return connectionPoolSize(hibernateProperties);
+  }
+
+  static int connectionPoolSize(Properties hibernateProperties) {
+    return Integer.parseInt(
+        hibernateProperties.getProperty(
+            "hibernate.connection.pool_size", Integer.toString(DEFAULT_CONNECTION_POOL_SIZE)));
   }
 
   private static SessionFactory createSessionFactory(Properties hibernateProperties) {
