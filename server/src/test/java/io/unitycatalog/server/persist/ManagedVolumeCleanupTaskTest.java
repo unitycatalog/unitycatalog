@@ -74,11 +74,20 @@ class ManagedVolumeCleanupTaskTest {
   }
 
   @Test
-  void cloudManagedVolumeDropsCreateTasks() {
+  void managedVolumeDropsCreateCleanupTasksForAllSchemes() {
+    VolumeInfoDAO local =
+        createVolume(
+            "local_volume",
+            VolumeType.MANAGED,
+            id -> tempDir.resolve("__unitystorage/volumes").resolve(id.toString()).toString());
+    Date beforeDrop = new Date();
+    repositories.getVolumeRepository().deleteVolume(CATALOG + "." + SCHEMA + ".local_volume");
+    assertDroppedWithTask(local, beforeDrop);
+
     VolumeInfoDAO s3 =
         createVolume(
             "s3_volume", VolumeType.MANAGED, id -> "s3://bucket/root/volumes/" + id + "///");
-    Date beforeDrop = new Date();
+    beforeDrop = new Date();
     repositories.getVolumeRepository().deleteVolume(CATALOG + "." + SCHEMA + ".s3_volume");
     assertDroppedWithTask(s3, beforeDrop);
 
@@ -103,7 +112,7 @@ class ManagedVolumeCleanupTaskTest {
   }
 
   @Test
-  void localManagedVolumeDropDeletesImmediatelyWithoutTask() throws Exception {
+  void localManagedVolumeDropQueuesCleanupWithoutDeletingFilesSynchronously() throws Exception {
     VolumeInfoDAO local =
         createVolume(
             "local_volume",
@@ -115,9 +124,11 @@ class ManagedVolumeCleanupTaskTest {
 
     repositories.getVolumeRepository().deleteVolume(CATALOG + "." + SCHEMA + ".local_volume");
 
+    // The drop only queues a cleanup task; the background worker reclaims the files later, so the
+    // files must still be present immediately after the drop returns.
     assertThat(findVolume(local.getId())).isNull();
-    assertThat(findTask(local.getId())).isNull();
-    assertThat(localFile).doesNotExist();
+    assertThat(findTask(local.getId())).isNotNull();
+    assertThat(localFile).exists();
   }
 
   @Test

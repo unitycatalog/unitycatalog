@@ -132,7 +132,7 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
 
   @SneakyThrows
   @Test
-  public void testManagedVolumeDropDeletesLocalStorageWithoutCleanupTask() {
+  public void testManagedVolumeDropQueuesCleanupTask() {
     createCatalog(true);
     createSchema(false);
     String volumeFullName = CATALOG_NAME + "." + SCHEMA_NAME + "." + MANAGED_VOLUME_NAME1;
@@ -150,11 +150,13 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
 
     volumeOperations.deleteVolume(volumeFullName);
 
+    // The drop removes the volume and queues a cleanup task; storage is reclaimed later by the
+    // background worker (default initial delay), so the files are still present right after the
+    // drop rather than deleted synchronously.
     assertThatThrownBy(() -> volumeOperations.getVolume(volumeFullName))
         .isInstanceOf(ApiException.class);
-    assertThat(Files.exists(marker)).isFalse();
-    assertThat(Files.exists(volumeDirectory)).isFalse();
-    assertThat(findCleanupTask(UUID.fromString(volume.getVolumeId()))).isNull();
+    assertThat(findCleanupTask(UUID.fromString(volume.getVolumeId()))).isNotNull();
+    assertThat(Files.exists(marker)).isTrue();
   }
 
   private StorageCleanupTaskDAO findCleanupTask(UUID resourceId) {
