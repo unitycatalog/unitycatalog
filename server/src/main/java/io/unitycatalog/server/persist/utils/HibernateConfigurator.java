@@ -73,6 +73,11 @@ public class HibernateConfigurator implements AutoCloseable {
     }
   }
 
+  /** Number of JDBC connections available to serve blocking requests. */
+  public int getConnectionPoolSize() {
+    return dataSource.getMaximumPoolSize();
+  }
+
   private static HikariDataSource createDataSource(Properties hibernateProperties) {
     Properties hikariProperties = new Properties();
     hibernateProperties.stringPropertyNames().stream()
