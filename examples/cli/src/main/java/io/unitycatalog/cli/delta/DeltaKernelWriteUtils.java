@@ -143,7 +143,9 @@ public class DeltaKernelWriteUtils {
     }
   }
 
-  /** @return */
+  /**
+   * @return
+   */
   static FilteredColumnarBatch generateUnpartitionedDataBatch(
       StructType tableSchema, int count, int offset) {
     ColumnVector[] vectors = createVectorsFromSchema(tableSchema, count, offset);

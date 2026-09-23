@@ -5,17 +5,22 @@ import static io.unitycatalog.server.model.SecurableType.FUNCTION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
+import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.model.CreateFunctionRequest;
-import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.ListFunctionsResponse;
 import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.FunctionRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
@@ -23,17 +28,9 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Optional;
-import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.Delete;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
-import com.linecorp.armeria.server.annotation.Get;
-import com.linecorp.armeria.server.annotation.Param;
-import com.linecorp.armeria.server.annotation.Post;
 import lombok.SneakyThrows;
 
-@ExceptionHandler(GlobalExceptionHandler.class)
-public class FunctionService extends AuthorizedService {
+public class FunctionService extends AuthorizedService implements UnityCatalogRestService {
 
   private final FunctionRepository functionRepository;
   private final SchemaRepository schemaRepository;
@@ -54,17 +51,18 @@ public class FunctionService extends AuthorizedService {
 
   @Post("")
   // TODO: for now, we are not supporting CREATE FUNCTION privilege
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
           #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createFunction(
       @AuthorizeResourceKeys({
-        @AuthorizeResourceKey(value = CATALOG, key = "function_info.catalog_name"),
-        @AuthorizeResourceKey(value = SCHEMA, key = "function_info.schema_name")
-      })
-      CreateFunctionRequest createFunctionRequest) {
+            @AuthorizeResourceKey(value = CATALOG, key = "function_info.catalog_name"),
+            @AuthorizeResourceKey(value = SCHEMA, key = "function_info.schema_name")
+          })
+          CreateFunctionRequest createFunctionRequest) {
     FunctionInfo functionInfo = functionRepository.createFunction(createFunctionRequest);
 
     String catalogName = functionInfo.getCatalogName();
@@ -76,7 +74,8 @@ public class FunctionService extends AuthorizedService {
   }
 
   @Get("")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #schema, OWNER) &&
@@ -100,7 +99,8 @@ public class FunctionService extends AuthorizedService {
 
   @Get("/{name}")
   @AuthorizeResourceKey(METASTORE)
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #schema, OWNER) &&
@@ -115,7 +115,8 @@ public class FunctionService extends AuthorizedService {
 
   @Delete("/{name}")
   @AuthorizeResourceKey(METASTORE)
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       (#authorize(#principal, #function, OWNER) &&
           #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
@@ -134,6 +135,4 @@ public class FunctionService extends AuthorizedService {
 
     return HttpResponse.of(HttpStatus.OK);
   }
-
 }
-

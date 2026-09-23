@@ -7,6 +7,8 @@ import io.delta.tables.DeltaTable;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
+import io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
@@ -14,9 +16,7 @@ import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.spark.CredentialTestFileSystem;
-import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.UCSingleCatalog;
-import io.unitycatalog.spark.fs.CredScopedFileSystem;
 import java.io.File;
 import java.net.URI;
 import java.time.Duration;
@@ -86,8 +86,8 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
             .config(
                 "spark.sql.catalog.spark_catalog",
                 "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-            .config("spark.hadoop." + UCHadoopConf.UC_TEST_CLOCK_NAME, CLOCK_NAME)
-            .config("spark.hadoop." + UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 0L)
+            .config("spark.hadoop." + UCHadoopConfConstants.UC_TEST_CLOCK_NAME, CLOCK_NAME)
+            .config("spark.hadoop." + UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 0L)
             .config("spark.sql.shuffle.partitions", "1");
 
     // Set the default catalog properties.

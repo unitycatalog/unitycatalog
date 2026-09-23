@@ -1315,6 +1315,8 @@ export interface components {
        *
        */
       expiration_time?: number;
+      /** @description The normalized URL of the storage path the temporary credential was generated for. */
+      url?: string;
     };
     /** @enum {string} */
     PathOperation: PathOperation;
@@ -2474,6 +2476,7 @@ export enum TableType {
   MANAGED = 'MANAGED',
   EXTERNAL = 'EXTERNAL',
   METRIC_VIEW = 'METRIC_VIEW',
+  VIEW = 'VIEW',
 }
 export enum DataSourceFormat {
   DELTA = 'DELTA',

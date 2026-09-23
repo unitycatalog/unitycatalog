@@ -24,12 +24,14 @@ public class BaseSparkTest {
             .appName("test")
             .master("local[*]")
             .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-            .config("spark.sql.catalog.spark_catalog",
+            .config(
+                "spark.sql.catalog.spark_catalog",
                 "org.apache.spark.sql.delta.catalog.DeltaCatalog")
             // s3 conf
             .config("spark.hadoop.fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
             // GCS conf
-            .config("spark.hadoop.fs.AbstractFileSystem.gs.impl",
+            .config(
+                "spark.hadoop.fs.AbstractFileSystem.gs.impl",
                 "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS");
 
     for (String catalog : catalogs) {

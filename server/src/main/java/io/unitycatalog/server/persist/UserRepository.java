@@ -44,17 +44,21 @@ public class UserRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          if (getUserByEmail(session, user.getEmail()) != null
-              || (user.getExternalId() != null
-                  && getUserByExternalId(session, user.getExternalId()) != null)) {
+          if (getUserByEmail(session, user.getEmail()) != null) {
             throw new BaseException(
                 ErrorCode.ALREADY_EXISTS, "User already exists: " + user.getEmail());
+          }
+          if (user.getExternalId() != null
+              && getUserByExternalId(session, user.getExternalId()) != null) {
+            throw new BaseException(
+                ErrorCode.ALREADY_EXISTS,
+                "User already exists with external id: " + user.getExternalId());
           }
           session.persist(UserDAO.from(user));
           return user;
         },
         "Failed to create user",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   public List<User> listUsers(int startIndex, int maxUsers, Predicate<User> filter) {
@@ -98,7 +102,7 @@ public class UserRepository {
           return users.subList(0, Math.min(users.size(), maxUsers));
         },
         "Failed to list users",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public User getUser(String id) {
@@ -112,7 +116,7 @@ public class UserRepository {
           return userDAO.toUser();
         },
         "Failed to get user",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public UserDAO getUserById(Session session, String id) {
@@ -133,7 +137,21 @@ public class UserRepository {
           return userDAO.toUser();
         },
         "Failed to get user by email",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
+  }
+
+  public User getUserByExternalId(String externalId) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UserDAO userDAO = getUserByExternalId(session, externalId);
+          if (userDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + externalId);
+          }
+          return userDAO.toUser();
+        },
+        "Failed to get user by external id",
+        /* readOnly= */ true);
   }
 
   public UserDAO getUserByEmail(Session session, String email) {
@@ -169,13 +187,21 @@ public class UserRepository {
                     : User.StateEnum.DISABLED.toString());
           }
           if (updateUser.getExternalId() != null) {
+            UserDAO existingExternalIdUser =
+                getUserByExternalId(session, updateUser.getExternalId());
+            if (existingExternalIdUser != null
+                && !existingExternalIdUser.getId().equals(userDAO.getId())) {
+              throw new BaseException(
+                  ErrorCode.ALREADY_EXISTS,
+                  "User already exists with external id: " + updateUser.getExternalId());
+            }
             userDAO.setExternalId(updateUser.getExternalId());
           }
           session.merge(userDAO);
           return userDAO.toUser();
         },
         "Failed to update user",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   public void deleteUser(String id) {
@@ -193,7 +219,7 @@ public class UserRepository {
           }
         },
         "Failed to delete user",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   public UUID findPrincipalId() {

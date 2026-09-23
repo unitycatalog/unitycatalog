@@ -32,14 +32,12 @@ public class VolumeRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(VolumeRepository.class);
   private final Repositories repositories;
   private final SessionFactory sessionFactory;
-  private final FileOperations fileOperations;
   private static final PagedListingHelper<VolumeInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(VolumeInfoDAO.class);
 
   public VolumeRepository(Repositories repositories, SessionFactory sessionFactory) {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
-    this.fileOperations = repositories.getFileOperations();
   }
 
   public VolumeInfo createVolume(CreateVolumeRequestContent createVolumeRequest) {
@@ -79,6 +77,10 @@ public class VolumeRepository {
                   ErrorCode.INVALID_ARGUMENT, "Storage location is required for external volume");
             }
             storageLocation = NormalizedURL.from(createVolumeRequest.getStorageLocation());
+            ValidationUtils.checkArgument(
+                !storageLocation.isCloudStorageRoot(),
+                "External volume storage location must include a non-empty path prefix: %s",
+                createVolumeRequest.getStorageLocation());
             ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
           }
           Date now = new Date();
@@ -103,7 +105,7 @@ public class VolumeRepository {
               createVolumeRequest.getCatalogName(), createVolumeRequest.getSchemaName());
         },
         "Failed to create volume",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   public VolumeInfo getVolume(String fullName) {
@@ -121,7 +123,7 @@ public class VolumeRepository {
               .toVolumeInfo(catalogName, schemaName);
         },
         "Failed to get volume",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public VolumeInfoDAO getVolumeDAO(
@@ -157,7 +159,7 @@ public class VolumeRepository {
           return volumeInfo;
         },
         "Failed to get volume by ID",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   /**
@@ -186,7 +188,7 @@ public class VolumeRepository {
           return listVolumes(session, schemaId, catalogName, schemaName, maxResults, pageToken);
         },
         "Failed to list volumes",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public ListVolumesResponseContent listVolumes(
@@ -248,7 +250,7 @@ public class VolumeRepository {
           return volumeInfo.toVolumeInfo(catalog, schema);
         },
         "Failed to update volume",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   public void deleteVolume(String name) {
@@ -266,7 +268,7 @@ public class VolumeRepository {
           return null;
         },
         "Failed to delete volume",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   public void deleteVolume(Session session, UUID schemaId, String volumeName) {

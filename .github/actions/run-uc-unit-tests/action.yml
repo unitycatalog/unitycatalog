@@ -1,0 +1,83 @@
+name: Run UC unit tests
+description: >-
+  Prepare the Spark environment (via the prepare-spark-env action) and then run the UC
+  tests for a Spark/Delta matrix row: publish UC locally, build Delta when needed, and
+  run the connector/unit tests. The calling job must run actions/checkout first.
+
+inputs:
+  spark-version:
+    description: Spark version for this matrix row.
+    required: true
+  delta-version:
+    description: Delta version for this matrix row.
+    required: true
+  validation-mode:
+    description: all-tests or spark-tests.
+    required: true
+  use-spark-source-cache:
+    description: >-
+      When 'true', prepare a source-built Spark (restore/build/cache) before running tests.
+      Leave 'false' for published Spark.
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    # Prepare the environment: JDK, and for source-built Spark restore/build/cache the
+    # Spark Maven artifacts (exports SPARK_COMMIT / SPARK_ARTIFACT_VERSION for later steps).
+    - name: Prepare Spark environment
+      uses: ./.github/actions/prepare-spark-env
+      with:
+        spark-version: ${{ inputs.spark-version }}
+        use-spark-source-cache: ${{ inputs.use-spark-source-cache }}
+
+    # Publish UC to local caches BEFORE building Delta — Delta's build resolves
+    # UC artifacts from ~/.ivy2/local via -DunityCatalogVersion.
+    - name: Build, package, and publish UC locally
+      shell: bash
+      run: |
+        SKIP_DELTA=""
+        if [[ "${{ inputs.delta-version }}" == "master-SNAPSHOT" ]]; then
+          SKIP_DELTA="-DskipDeltaSpark=true"
+        fi
+        build/sbt -DsparkVersion=${{ inputs.spark-version }} $SKIP_DELTA -J-Xmx2G package publishLocal publishM2
+
+    - name: Build Delta SNAPSHOT from source
+      if: inputs.delta-version == 'master-SNAPSHOT'
+      id: delta-build
+      shell: bash
+      run: |
+        export SPARK_MAJOR_MINOR=$(echo "${{ inputs.spark-version }}" | cut -d. -f1,2)
+        bash project/scripts/build_delta.sh
+
+    - name: Set effective Delta version
+      shell: bash
+      run: |
+        if [[ "${{ inputs.delta-version }}" == "master-SNAPSHOT" ]]; then
+          echo "DELTA_VERSION=${{ steps.delta-build.outputs.DELTA_VERSION }}" >> $GITHUB_ENV
+        else
+          echo "DELTA_VERSION=${{ inputs.delta-version }}" >> $GITHUB_ENV
+        fi
+
+    # integrationTests is not in the root aggregate test task; compile it explicitly
+    # to catch cross-version compilation and checkstyle issues early.
+    - name: Compile integration tests to verify compilation and checkstyle issues.
+      shell: bash
+      run: build/sbt -DsparkVersion=${{ inputs.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G integrationTests/test:compile
+
+    - name: Run tests with coverage
+      shell: bash
+      run: |
+        if [[ "${{ inputs.validation-mode }}" == "spark-tests" ]]; then
+          echo "Running spark connector tests"
+          build/sbt -DsparkVersion=${{ inputs.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G spark/jacoco
+        else
+          echo "Running all tests"
+          build/sbt -DsparkVersion=${{ inputs.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G +jacoco
+        fi
+
+    - name: Run license check
+      if: inputs.validation-mode == 'all-tests'
+      shell: bash
+      run: build/sbt -DsparkVersion=${{ inputs.spark-version }} -DdeltaVersion=$DELTA_VERSION licenseCheck

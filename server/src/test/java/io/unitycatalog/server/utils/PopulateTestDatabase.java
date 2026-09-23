@@ -194,7 +194,7 @@ public class PopulateTestDatabase {
             .createdAt(new Date())
             .updatedAt(new Date())
             .url(uniformTablePath)
-            .uniformIcebergMetadataLocation(
+            .icebergMetadataLocation(
                 uniformTablePath
                     + "/metadata/00002-5b7aa739-d074-4764-b49d-ad6c63419576.metadata.json")
             .build();

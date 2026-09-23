@@ -1,15 +1,15 @@
 package io.unitycatalog.server.service.delta;
 
-import io.unitycatalog.server.delta.model.CredentialOperation;
-import io.unitycatalog.server.delta.model.CredentialsResponse;
-import io.unitycatalog.server.delta.model.StorageCredential;
-import io.unitycatalog.server.delta.model.StorageCredentialConfig;
+import io.unitycatalog.server.delta.model.DeltaCredentialOperation;
+import io.unitycatalog.server.delta.model.DeltaCredentialsResponse;
+import io.unitycatalog.server.delta.model.DeltaStorageCredential;
+import io.unitycatalog.server.delta.model.DeltaStorageCredentialConfig;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import java.util.List;
 
 /**
  * Maps Unity Catalog's nested {@link TemporaryCredentials} (with provider-specific sub-objects) to
- * Delta REST Catalog's flat {@link StorageCredential} wire format (with a provider-agnostic typed
+ * UC Delta API's flat {@link DeltaStorageCredential} wire format (with a provider-agnostic typed
  * config of {@code s3.*} / {@code azure.*} / {@code gcs.*} fields).
  *
  * <p>The spec currently returns a single-element {@code storage-credentials} array; the response
@@ -21,18 +21,19 @@ public final class DeltaCredentialsMapper {
   private DeltaCredentialsMapper() {}
 
   /**
-   * Build a Delta {@link CredentialsResponse} from UC {@link TemporaryCredentials} for a given
-   * storage prefix and operation.
+   * Build a {@link DeltaCredentialsResponse} from UC {@link TemporaryCredentials} for a given
+   * operation. The storage prefix is taken from the credential's own {@code url}, which the
+   * credential vendor scopes to the requested location.
    */
-  public static CredentialsResponse toCredentialsResponse(
-      String prefix, TemporaryCredentials credentials, CredentialOperation operation) {
-    return new CredentialsResponse()
-        .storageCredentials(List.of(toStorageCredential(prefix, credentials, operation)));
+  public static DeltaCredentialsResponse toCredentialsResponse(
+      TemporaryCredentials credentials, DeltaCredentialOperation operation) {
+    return new DeltaCredentialsResponse()
+        .storageCredentials(List.of(toStorageCredential(credentials, operation)));
   }
 
-  private static StorageCredential toStorageCredential(
-      String prefix, TemporaryCredentials credentials, CredentialOperation operation) {
-    StorageCredentialConfig config = new StorageCredentialConfig();
+  private static DeltaStorageCredential toStorageCredential(
+      TemporaryCredentials credentials, DeltaCredentialOperation operation) {
+    DeltaStorageCredentialConfig config = new DeltaStorageCredentialConfig();
     var aws = credentials.getAwsTempCredentials();
     if (aws != null) {
       config.setS3AccessKeyId(aws.getAccessKeyId());
@@ -48,8 +49,8 @@ public final class DeltaCredentialsMapper {
       config.setGcsOauthToken(gcp.getOauthToken());
     }
 
-    return new StorageCredential()
-        .prefix(prefix)
+    return new DeltaStorageCredential()
+        .prefix(credentials.getUrl())
         .operation(operation)
         .config(config)
         .expirationTimeMs(credentials.getExpirationTime());

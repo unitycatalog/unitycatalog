@@ -510,7 +510,7 @@ def sample_python_func(a: int, b: int) -> int:
 # Create the function within Unity Catalog
 client.create_python_function(catalog=CATALOG, schema=SCHEMA, func=sample_python_func, replace=True)
 
-my_callable = client.get_function_as_callable(function_name=f"{CATALOG}.{SCHEMA}.sample_python_func)
+my_callable = client.get_function_as_callable(function_name=f"{CATALOG}.{SCHEMA}.sample_python_func")
 
 # Use the callable directly
 my_callable(2, 4)

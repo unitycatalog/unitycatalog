@@ -35,16 +35,19 @@ public class SparkParquetTableCRUDTest extends BaseSparkTest {
 
   @AfterAll
   public static void teardownSchema() {
-    locationTypes().forEach(locationType ->
-        spark.sql(format("DROP TABLE IF EXISTS %s", getTableName(locationType))));
+    locationTypes()
+        .forEach(
+            locationType ->
+                spark.sql(format("DROP TABLE IF EXISTS %s", getTableName(locationType))));
     spark.sql(format("DROP SCHEMA IF EXISTS %s", SCHEMA));
   }
 
   private List<String> getData(String table) {
-    return spark.sql(format("SELECT * FROM %s ORDER BY as_int ASC", table))
-        .toJSON().collectAsList();
+    return spark
+        .sql(format("SELECT * FROM %s ORDER BY as_int ASC", table))
+        .toJSON()
+        .collectAsList();
   }
-
 
   @SneakyThrows
   @ParameterizedTest
@@ -55,13 +58,12 @@ public class SparkParquetTableCRUDTest extends BaseSparkTest {
     String location = baseLocation + "/integration/" + RUN_ID + "/numbers";
     String table = getTableName(locationType);
 
-    spark.sql(format(
-        "CREATE TABLE %s(as_int INT, as_double DOUBLE) USING PARQUET LOCATION '%s'",
-        table, location));
+    spark.sql(
+        format(
+            "CREATE TABLE %s(as_int INT, as_double DOUBLE) USING PARQUET LOCATION '%s'",
+            table, location));
 
-    assertThat(getData(table))
-        .as("Data after CREATE should be empty")
-        .isEqualTo(List.of());
+    assertThat(getData(table)).as("Data after CREATE should be empty").isEqualTo(List.of());
   }
 
   @ParameterizedTest
@@ -69,18 +71,19 @@ public class SparkParquetTableCRUDTest extends BaseSparkTest {
   @Order(2)
   public void insert(LocationType locationType) {
     String table = getTableName(locationType);
-    spark.sql(format(
-        "INSERT INTO %s VALUES (0, 0), (1, 1.5), (42, 244.25), (539, 425.66102859000944)",
-        table));
+    spark.sql(
+        format(
+            "INSERT INTO %s VALUES (0, 0), (1, 1.5), (42, 244.25), (539, 425.66102859000944)",
+            table));
 
     assertThat(getData(table))
         .as("Data after INSERT")
-        .isEqualTo(List.of(
-            "{\"as_int\":0,\"as_double\":0.0}",
-            "{\"as_int\":1,\"as_double\":1.5}",
-            "{\"as_int\":42,\"as_double\":244.25}",
-            "{\"as_int\":539,\"as_double\":425.66102859000944}"
-        ));
+        .isEqualTo(
+            List.of(
+                "{\"as_int\":0,\"as_double\":0.0}",
+                "{\"as_int\":1,\"as_double\":1.5}",
+                "{\"as_int\":42,\"as_double\":244.25}",
+                "{\"as_int\":539,\"as_double\":425.66102859000944}"));
   }
 
   @ParameterizedTest
@@ -88,26 +91,29 @@ public class SparkParquetTableCRUDTest extends BaseSparkTest {
   @Order(3)
   public void merge(LocationType locationType) {
     String table = getTableName(locationType);
-    assertThatThrownBy(() -> spark.sql(format("""
-        MERGE INTO %s target
-        USING (SELECT * FROM VALUES (1, 1.001), (3, 3.75), (5, 2.5)
-          AS mock_data(as_int, as_double)) source
-        ON source.as_int = target.as_int
-        WHEN MATCHED THEN DELETE
-        WHEN NOT MATCHED THEN INSERT *
-        """, table)))
+    assertThatThrownBy(
+            () ->
+                spark.sql(
+                    format(
+                        """
+                        MERGE INTO %s target
+                        USING (SELECT * FROM VALUES (1, 1.001), (3, 3.75), (5, 2.5)
+                          AS mock_data(as_int, as_double)) source
+                        ON source.as_int = target.as_int
+                        WHEN MATCHED THEN DELETE
+                        WHEN NOT MATCHED THEN INSERT *
+                        """,
+                        table)))
         .isInstanceOf(SparkUnsupportedOperationException.class)
         .hasMessageContaining("MERGE INTO TABLE is not supported temporarily");
   }
-
 
   @ParameterizedTest
   @MethodSource("locationTypes")
   @Order(4)
   public void delete(LocationType locationType) {
     String table = getTableName(locationType);
-    assertThatThrownBy(() ->
-        spark.sql(format("DELETE FROM %s WHERE as_int < 20", table)))
+    assertThatThrownBy(() -> spark.sql(format("DELETE FROM %s WHERE as_int < 20", table)))
         .isInstanceOf(AnalysisException.class)
         .hasMessageContaining("does not support DELETE");
   }
@@ -118,8 +124,10 @@ public class SparkParquetTableCRUDTest extends BaseSparkTest {
   public void update(LocationType locationType) {
     String table = getTableName(locationType);
 
-    assertThatThrownBy(() -> spark.sql(format(
-        "UPDATE %s SET as_double = as_int * 1.5 WHERE as_int = 42", table)))
+    assertThatThrownBy(
+            () ->
+                spark.sql(
+                    format("UPDATE %s SET as_double = as_int * 1.5 WHERE as_int = 42", table)))
         .isInstanceOf(SparkUnsupportedOperationException.class)
         .hasMessageContaining("UPDATE TABLE is not supported temporarily");
   }

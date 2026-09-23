@@ -55,8 +55,17 @@ server.audiences=<Client ID provided earlier>
 
 When authorization is enabled, the server validates incoming identity tokens against configured issuers and audiences:
 
-- **server.allowed-issuers**: Comma-separated list of allowed token issuers (exact match). Tokens from issuers not in this list will be rejected. This prevents attackers from using their own identity provider to forge tokens.
-- **server.audiences**: Comma-separated list of expected JWT audience values. Tokens must contain one of these audience values. This is typically your application's client ID.
+- **server.allowed-issuers**: Comma-separated list of allowed token issuers (exact match or wildcard with `*`). Tokens from issuers not in this list will be rejected. This prevents attackers from using their own identity provider to forge tokens.
+- **server.audiences**: Comma-separated list of expected JWT audience values. Tokens must contain an `aud` value matching one of these entries (exact match or wildcard with `*`). A single value of `*` disables audience validation (issuer and user checks still apply); that sentinel cannot be combined with other values.
+
+#### Programmatic exchange (service principals)
+
+Service integrations exchange an upstream OAuth access token on `POST /auth/tokens` without client credentials on the UC request. UC resolves the principal as follows:
+
+1. **Email mode** — look up the user by the token `email` claim (or `sub` fallback). CLI and browser `id_token` exchange uses this path only; `azp` / `client_id` is not used, because that claim identifies the OAuth application, not the human.
+2. **External id mode** — for `access_token` subjects, look up the user by OAuth client id (`azp`, or `client_id`) mapped to `externalId`. When the access token has no `email` claim, this is tried before `sub`.
+
+Create UC users with a human-readable `email` for grants and set `externalId` to the OAuth client id for programmatic exchange. The issued UC access token always uses the resolved user's `email`.
 
 #### Multiple Identity Providers
 
@@ -66,6 +75,63 @@ You can configure multiple issuers and audiences by separating them with commas:
 server.allowed-issuers=https://accounts.google.com,https://login.microsoftonline.com/{tenant-id}/v2.0
 server.audiences=your-google-client-id,your-azure-client-id
 ```
+
+Wildcard issuers match a single DNS label per `*`:
+
+```properties
+server.allowed-issuers=https://*.dev.example.com
+```
+
+Wildcard audience patterns use the same `*` rules. For example, `https://*.dev.example.com`
+accepts tokens whose `aud` includes `https://dev.dev.example.com` or
+`https://backend.dev.example.com`:
+
+```properties
+server.audiences=unity-catalog-local,https://*.dev.example.com
+```
+
+When the identity provider issues per-client UUID audiences that cannot be pre-listed (for example
+dynamic OAuth client IDs in `id_token.aud`), use `*` alone to skip audience validation while still
+enforcing issuer and user checks:
+
+```properties
+server.audiences=*
+server.allowed-issuers=https://*.dev.example.com
+```
+
+#### Wildcard issuer security
+
+With exact-match issuers, the server only fetches JWKS from a fixed set of identity providers.
+Wildcard issuer patterns such as `https://*.dev.example.com` are evaluated **before** signature
+verification: a token whose `iss` matches the pattern determines which host the server contacts
+for OIDC discovery and JWKS. An unauthenticated caller who can mint tokens with arbitrary `iss`
+values under that pattern can steer JWKS fetches (an SSRF-style surface).
+
+Use wildcard issuers only where necessary, only for domains you control, and avoid patterns that
+cover internal or sensitive hosts. Prefer exact issuer URLs and `https://` issuers when possible.
+
+### Multiple server instances
+
+Authorization decisions use an in-memory Casbin policy loaded from the shared `casbin_rule` table.
+A grant or revoke written on one server process is not visible to other processes until they reload
+that table.
+
+Refresh is **off by default**. For any multi-instance deployment that shares one database (HA,
+rolling updates, horizontal scale), set:
+
+```properties
+server.authorization.policy-refresh=true
+```
+
+Optional tuning:
+
+| Property | Default | Purpose |
+|---|---|---|
+| `server.authorization.policy-refresh-interval` | `PT1M` | How often each instance polls `casbin_rule` |
+| `server.authorization.policy-refresh-debounce-interval` | `PT1S` | Minimum gap between deny-triggered reloads |
+
+Revocations propagate on the poll interval. A stale deny (a grant not yet seen) can trigger one
+debounced reload before returning 403.
 
 ### Restart the UC Server
 
@@ -268,6 +334,31 @@ SHOW ALL TABLES;
 SELECT * from unity.default.numbers;
 ```
 
+## Spark and Java client authentication types
+
+The Java and Spark clients always construct a token provider (`TokenProvider.create`).
+`type` is required (`static`, `oauth`, or a custom class name). Omitting it fails with
+`Required configuration key 'type' is missing or empty. Must be 'static',
+'oauth', or a fully qualified TokenProvider class name.`
+
+Key names differ by client:
+
+- **Java** (`TokenProvider.create`): `type` and `token` (not `auth.type` / `auth.token`).
+- **Spark** (`AuthConfigUtils.buildAuthConfigs`): catalog properties `auth.type` and
+  `auth.token`, which are stripped to `type` and `token` before `TokenProvider.create`.
+  A present legacy `spark.sql.catalog.<name>.token` key (including empty) is mapped to
+  `type=static`. Do not set both `token` and `auth.token`.
+
+| Server | Client |
+| --- | --- |
+| `server.authorization=disable` (default) | Java: `type=static` with `token=""`. Spark: legacy `token=""` (`export UC_TOKEN=`), or `auth.type=static` with `auth.token=""`. The client may send `Authorization: Bearer ` with an empty token; the server ignores it. |
+| `server.authorization=enable` | Java: `type=static` with a real token, or `type=oauth` with `oauth.uri`, `oauth.clientId`, and `oauth.clientSecret`. Spark: the same keys under the `auth.` prefix, or a non-empty legacy `token`. See the sections below. |
+
+Spark maps a present `token` catalog property to `type=static` even when the value is empty.
+Hive JDBC / Beeline URLs that omit empty query parameters cannot express an empty token;
+use `auth.type=static` with a dummy non-empty `auth.token` against an auth-disabled server,
+or the legacy `token` property if the URL keeps it, or configure Spark with `--conf` instead.
+
 ## Using Spark with a User Token
 
 Now that you have enabled Google Authentication for your UC instance, any unauthenticated clients such as a spark-sql
@@ -288,20 +379,56 @@ To solve this issue, ensure that the configuration spark.sql.catalog.unity.token
 step.
 
 ```sh
+export CATALOG_NAME=unity
+export UC_URI=http://localhost:8080
+export UC_TOKEN=$token
+
 bin/spark-sql --name "local-uc-test" \
     --master "local[*]" \
-    --packages "io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
+    --packages "io.delta:delta-spark_4.2_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.2_2.13:0.6.0" \
     --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
-    --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
-    --conf "spark.sql.catalog.unity=io.unitycatalog.spark.UCSingleCatalog" \
-    --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
-    --conf "spark.sql.catalog.unity.token=$token" \
-    --conf "spark.sql.defaultCatalog=unity"
+    --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+    --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+    --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+    --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+    --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
 ```
 
 With this set, now you can continue your [Using Spark SQL to query Unity Catalog schemas and tables](../integrations/unity-catalog-spark.md#using-spark-sql-to-query-unity-catalog-schemas-and-tables)
 and [Running CRUD Operations on a Unity Catalog table](../integrations/unity-catalog-spark.md#running-crud-operations-on-a-unity-catalog-table)
 steps with Spark as an authenticated client to UC.
+
+## Using OAuth Client Credentials
+
+Java clients that use the OAuth token provider request the `all-apis` scope by default. If your
+Identity Provider expects a different scope, configure it with `oauth.scope`. The client passes the
+configured scope to the Identity Provider's token endpoint; Unity Catalog does not define or
+interpret it. Follow the scope format required by your Identity Provider and resource server.
+
+For example, Microsoft Entra ID Java client configuration can include:
+
+```java
+Map<String, String> configs = Map.of(
+    "type", "oauth",
+    "oauth.uri", "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token",
+    "oauth.clientId", "<client ID>",
+    "oauth.clientSecret", "<client secret>",
+    "oauth.scope", "<resource-application-id-uri>/.default");
+```
+
+Spark catalog configuration uses the same key with the catalog auth prefix:
+
+```sh
+--conf "spark.sql.catalog.<catalog_name>.auth.type=oauth" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.uri=https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientId=<client ID>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientSecret=<client secret>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.scope=<resource-application-id-uri>/.default"
+```
+
+The value can contain one or more space-separated scopes defined by the Identity Provider. For
+Microsoft Entra ID, a resource's default scope typically has the form
+`<resource-application-id-uri>/.default`.
 
 ## Using Google Identity with Unity Catalog UI
 
@@ -322,8 +449,8 @@ If you have not already done so, restart the UI.
 
 ```sh
 cd ui
-yarn install
-yarn start
+bun install
+bun run start
 ```
 
 This will open a new browser window with your identity provider login (e.g., Google Identity).
@@ -349,7 +476,7 @@ Modify the `server.properties` file to disable the server authentication by chan
 server.authorization=disable
 ```
 
-Restarting your UC server (i.e., `bin/start-uc-server`) and UI (i.e., `yarn start`) will open a new browser window
+Restarting your UC server (i.e., `bin/start-uc-server`) and UI (i.e., `bun run start`) will open a new browser window
 with the Google Auth login but fail with the following login failed error.
 
 ![UC Google Auth UI Enabled Server Disabled](../assets/images/uc_googleauth_ui-enabled_server-disabled.png)
@@ -370,7 +497,7 @@ REACT_APP_GOOGLE_AUTH_ENABLED=false
 REACT_APP_GOOGLE_CLIENT_ID=
 ```
 
-Restarting your UC server (i.e., `bin/start-uc-server`)  and UI (i.e., `yarn start`) will open a new browser window
+Restarting your UC server (i.e., `bin/start-uc-server`)  and UI (i.e., `bun run start`) will open a new browser window
 with the Google Auth login. You will successfully log into the UI but fail to show any Unity Catalog assets as the UI
 is not authenticated to query those assets.
 
@@ -391,6 +518,6 @@ REACT_APP_GOOGLE_AUTH_ENABLED=false
 REACT_APP_GOOGLE_CLIENT_ID=
 ```
 
-Restarting your UC server (i.e., `bin/start-uc-server`) and UI (i.e., `yarn start`) will open a new browser window
+Restarting your UC server (i.e., `bin/start-uc-server`) and UI (i.e., `bun run start`) will open a new browser window
 with the Google Auth login. In this case, there will be **no profile menu nor any login screen** but you will be able
 to see your UC assets.

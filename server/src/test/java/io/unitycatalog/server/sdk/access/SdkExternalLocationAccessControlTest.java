@@ -1,7 +1,6 @@
 package io.unitycatalog.server.sdk.access;
 
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
-import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiClient;
@@ -10,11 +9,20 @@ import io.unitycatalog.client.api.CredentialsApi;
 import io.unitycatalog.client.api.ExternalLocationsApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.VolumesApi;
+import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
+import io.unitycatalog.client.delta.model.DeltaProtocol;
+import io.unitycatalog.client.delta.model.DeltaStructField;
+import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
+import io.unitycatalog.client.delta.model.DeltaStructType;
+import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CreateExternalLocation;
+import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.CredentialPurpose;
@@ -22,21 +30,30 @@ import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.ExternalLocationInfo;
 import io.unitycatalog.client.model.ListExternalLocationsResponse;
 import io.unitycatalog.client.model.SecurableType;
+import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdateExternalLocation;
 import io.unitycatalog.client.model.VolumeInfo;
 import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.function.Consumer;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
 import lombok.SneakyThrows;
+import org.hibernate.Session;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
 public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCRUDTest {
 
@@ -204,6 +221,151 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
     assertDeleteSuccess(adminApi, adminLocation);
   }
 
+  @Test
+  public void testExternalTableAndVolumePathReuseAfterCleanup() throws Exception {
+    TablesApi tablesApi = new TablesApi(adminApiClient);
+    VolumesApi volumesApi = new VolumesApi(adminApiClient);
+    TableInfo managedTable = createManagedTable(tablesApi, TestUtils.TABLE_NAME);
+    // Use the parent path so the permanent reserved-namespace check cannot mask cleanup checks.
+    CreateTable tableRequest = createExternalTableRequest("replacement_table", tableStorageRoot);
+    CreateVolumeRequestContent volumeRequest =
+        createExternalVolumeRequest("replacement_volume", tableStorageRoot);
+    List<Executable> createAttempts =
+        List.of(
+            () -> tablesApi.createTable(tableRequest),
+            () -> volumesApi.createVolume(volumeRequest));
+
+    for (Executable attempt : createAttempts) {
+      assertApiException(attempt, ErrorCode.PERMISSION_DENIED, "overlaps with other entities");
+    }
+    dropManagedTable(tablesApi, managedTable);
+    for (String path :
+        List.of(
+            tableStorageRoot,
+            managedTable.getStorageLocation(),
+            managedTable.getStorageLocation() + "/data")) {
+      assertApiException(
+          () -> tablesApi.createTable(createExternalTableRequest("replacement_table", path)),
+          ErrorCode.PERMISSION_DENIED,
+          "Input path overlaps pending storage cleanup");
+      assertApiException(
+          () -> volumesApi.createVolume(createExternalVolumeRequest("replacement_volume", path)),
+          ErrorCode.PERMISSION_DENIED,
+          "Input path overlaps pending storage cleanup");
+    }
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      assertThat(
+              session
+                  .createQuery("SELECT COUNT(*) FROM TableInfoDAO WHERE name = :name", Long.class)
+                  .setParameter("name", tableRequest.getName())
+                  .getSingleResult())
+          .isZero();
+      assertThat(
+              session
+                  .createQuery("SELECT COUNT(*) FROM VolumeInfoDAO WHERE name = :name", Long.class)
+                  .setParameter("name", volumeRequest.getName())
+                  .getSingleResult())
+          .isZero();
+    }
+
+    // Cleanup reserves only overlapping paths; a sibling remains usable.
+    String siblingPath = tableStorageRoot + "/sibling";
+    TableInfo sibling =
+        tablesApi.createTable(createExternalTableRequest("sibling_table", siblingPath));
+    String siblingName = TestUtils.SCHEMA_FULL_NAME + "." + sibling.getName();
+    assertThat(tablesApi.getTable(siblingName, null, null).getStorageLocation())
+        .isEqualTo(siblingPath);
+    tablesApi.deleteTable(siblingName);
+
+    TableInfo recreated = createManagedTable(tablesApi, managedTable.getName());
+    assertThat(recreated.getTableId()).isNotEqualTo(managedTable.getTableId());
+    assertThat(recreated.getStorageLocation()).isNotEqualTo(managedTable.getStorageLocation());
+    dropManagedTable(tablesApi, recreated);
+
+    List<UUID> taskIds =
+        List.of(
+            UUID.fromString(managedTable.getTableId()), UUID.fromString(recreated.getTableId()));
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      assertThat(
+              session
+                  .createQuery(
+                      "FROM StorageCleanupTaskDAO WHERE id IN :ids", StorageCleanupTaskDAO.class)
+                  .setParameter("ids", taskIds)
+                  .getResultList())
+          .extracting(StorageCleanupTaskDAO::getId)
+          .containsExactlyInAnyOrderElementsOf(taskIds);
+    }
+
+    removeCleanupTask(managedTable);
+    for (Executable attempt : createAttempts) {
+      assertApiException(
+          attempt, ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup");
+    }
+    removeCleanupTask(recreated);
+
+    TableInfo replacement = tablesApi.createTable(tableRequest);
+    String replacementName = TestUtils.SCHEMA_FULL_NAME + "." + replacement.getName();
+    TableInfo persisted = tablesApi.getTable(replacementName, null, null);
+    assertThat(persisted.getTableType()).isEqualTo(TableType.EXTERNAL);
+    assertThat(persisted.getStorageLocation()).isEqualTo(tableStorageRoot);
+    tablesApi.deleteTable(replacementName);
+
+    VolumeInfo volume = volumesApi.createVolume(volumeRequest);
+    VolumeInfo persistedVolume = volumesApi.getVolume(volume.getFullName());
+    assertThat(persistedVolume.getVolumeType()).isEqualTo(VolumeType.EXTERNAL);
+    assertThat(persistedVolume.getStorageLocation()).isEqualTo(tableStorageRoot);
+  }
+
+  private TableInfo createManagedTable(TablesApi tablesApi, String name) throws ApiException {
+    StagingTableInfo staging =
+        tablesApi.createStagingTable(
+            new CreateStagingTable()
+                .catalogName(TestUtils.CATALOG_NAME)
+                .schemaName(TestUtils.SCHEMA_NAME)
+                .name(name));
+    TableInfo table =
+        tablesApi.createTable(
+            createExternalTableRequest(name, staging.getStagingLocation())
+                .tableType(TableType.MANAGED)
+                .properties(Map.of(TableProperties.UC_TABLE_ID, staging.getId())));
+    TableInfo persisted =
+        tablesApi.getTable(TestUtils.SCHEMA_FULL_NAME + "." + table.getName(), null, null);
+    assertThat(persisted.getTableType()).isEqualTo(TableType.MANAGED);
+    assertThat(persisted.getTableId()).isEqualTo(staging.getId());
+    assertThat(persisted.getStorageLocation()).isEqualTo(staging.getStagingLocation());
+    return persisted;
+  }
+
+  private void dropManagedTable(TablesApi tablesApi, TableInfo table) throws ApiException {
+    String fullName = TestUtils.SCHEMA_FULL_NAME + "." + table.getName();
+    tablesApi.deleteTable(fullName);
+    assertApiException(
+        () -> tablesApi.getTable(fullName, null, null),
+        ErrorCode.TABLE_NOT_FOUND,
+        "Table not found");
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      StorageCleanupTaskDAO task =
+          session.get(StorageCleanupTaskDAO.class, UUID.fromString(table.getTableId()));
+      assertThat(task).isNotNull();
+      assertThat(task.getName()).isEqualTo(table.getName());
+      assertThat(task.getStorageLocation()).isEqualTo(table.getStorageLocation());
+    }
+  }
+
+  private void removeCleanupTask(TableInfo table) {
+    int deletedTasks =
+        TransactionManager.executeWithTransaction(
+            hibernateConfigurator.getSessionFactory(),
+            session ->
+                session
+                    .createMutationQuery("DELETE FROM StorageCleanupTaskDAO WHERE id = :id")
+                    .setParameter("id", UUID.fromString(table.getTableId()))
+                    .executeUpdate(),
+            "Failed to remove test cleanup task",
+            /* readOnly= */ false);
+    assertThat(deletedTasks).isEqualTo(1);
+  }
+
   private void assertCreateSuccess(ExternalLocationsApi api, String name) throws ApiException {
     ExternalLocationInfo created = api.createExternalLocation(createRequest(name));
     assertThat(created.getName()).isEqualTo(name);
@@ -219,7 +381,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   }
 
   private void assertCreateFailure(ExternalLocationsApi api, String name) {
-    assertPermissionDenied(() -> api.createExternalLocation(createRequest(name)));
+    TestUtils.assertPermissionDenied(() -> api.createExternalLocation(createRequest(name)));
   }
 
   @SneakyThrows
@@ -235,7 +397,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
       assertThat(retrieved.getUrl()).isNotNull().isNotEmpty();
     }
     for (String name : deniedExternalLocationNames) {
-      assertPermissionDenied(() -> api.getExternalLocation(name));
+      TestUtils.assertPermissionDenied(() -> api.getExternalLocation(name));
     }
     // Test list operation
     ListExternalLocationsResponse response = api.listExternalLocations(100, null);
@@ -262,7 +424,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   }
 
   private void assertUpdateUrlFailure(ExternalLocationsApi api, String name) {
-    assertPermissionDenied(
+    TestUtils.assertPermissionDenied(
         () ->
             api.updateExternalLocation(
                 name, new UpdateExternalLocation().url("s3://test-bucket/fail-path-" + name)));
@@ -270,7 +432,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
 
   private void assertUpdateCredentialFailure(
       ExternalLocationsApi api, String name, String newCredentialName) {
-    assertPermissionDenied(
+    TestUtils.assertPermissionDenied(
         () ->
             api.updateExternalLocation(
                 name, new UpdateExternalLocation().credentialName(newCredentialName)));
@@ -283,7 +445,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   }
 
   private void assertDeleteFailure(ExternalLocationsApi api, String name) {
-    assertPermissionDenied(() -> api.deleteExternalLocation(name, false));
+    TestUtils.assertPermissionDenied(() -> api.deleteExternalLocation(name, false));
   }
 
   /**
@@ -320,6 +482,41 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
    */
   @Test
   public void testCreateExternalTableVolumePermissions() throws Exception {
+    runExternalTableVolumePermissionsTest(
+        (apiClient, name, location) ->
+            new TablesApi(apiClient)
+                .createTable(createExternalTableRequest(name, location))
+                .getStorageLocation(),
+        TestUtils::assertPermissionDenied);
+  }
+
+  /**
+   * Test that creating external tables and volumes requires appropriate permissions on external
+   * locations, using Delta RPCs.
+   */
+  @Test
+  public void testCreateExternalTableVolumePermissionsViaDelta() throws Exception {
+    runExternalTableVolumePermissionsTest(
+        (apiClient, name, location) ->
+            new DeltaTablesApi(apiClient)
+                .createTable(
+                    TestUtils.CATALOG_NAME,
+                    TestUtils.SCHEMA_NAME,
+                    deltaExternalTableRequest(name, location))
+                .getMetadata()
+                .getLocation(),
+        TestUtils::assertDeltaPermissionDenied);
+  }
+
+  @FunctionalInterface
+  private interface ExternalTableCreator {
+    /** Creates the table and returns the resulting storage location; throws on denial. */
+    String create(ApiClient apiClient, String name, String location) throws Exception;
+  }
+
+  private void runExternalTableVolumePermissionsTest(
+      ExternalTableCreator tableCreator, Consumer<Executable> assertCreateTableDenied)
+      throws Exception {
     // Create external location as userC
     String externalLocationName = "test_external_loc";
     String extLocationUrl = "s3://ext-bucket/tables";
@@ -407,10 +604,12 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
       // Grant test case specific permissions
       for (Privileges privilege : testCase.grantPermissions) {
         switch (privilege) {
-          case CREATE_TABLE, CREATE_VOLUME -> grantPermissions(
-              testCase.email, SecurableType.SCHEMA, TestUtils.SCHEMA_FULL_NAME, privilege);
-          case CREATE_EXTERNAL_TABLE, CREATE_EXTERNAL_VOLUME -> grantPermissions(
-              testCase.email, SecurableType.EXTERNAL_LOCATION, externalLocationName, privilege);
+          case CREATE_TABLE, CREATE_VOLUME ->
+              grantPermissions(
+                  testCase.email, SecurableType.SCHEMA, TestUtils.SCHEMA_FULL_NAME, privilege);
+          case CREATE_EXTERNAL_TABLE, CREATE_EXTERNAL_VOLUME ->
+              grantPermissions(
+                  testCase.email, SecurableType.EXTERNAL_LOCATION, externalLocationName, privilege);
           default -> throw new RuntimeException("Unknown privilege: " + privilege);
         }
       }
@@ -420,21 +619,18 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
       // Verify that the Table creation is as expected
       String tableName = TestUtils.TABLE_NAME + counter;
       String tableLocation = storageRoot + "/" + tableName;
-      TablesApi tablesApi = new TablesApi(apiClient);
       if (testCase.expectCanCreateExternalTable) {
-        TableInfo tableInfo =
-            tablesApi.createTable(createExternalTableRequest(tableName, tableLocation));
-        assertThat(tableInfo).isNotNull();
-        assertThat(tableInfo.getStorageLocation()).startsWith(storageRoot);
+        String resultLocation = tableCreator.create(apiClient, tableName, tableLocation);
+        assertThat(resultLocation).startsWith(storageRoot);
 
         // Verify that we can not create another under the same path, or subdir, or parent
         for (String url : List.of(tableLocation, tableLocation + "/subdir", storageRoot)) {
-          assertPermissionDenied(
-              () -> tablesApi.createTable(createExternalTableRequest(tableName + "_another", url)));
+          assertCreateTableDenied.accept(
+              () -> tableCreator.create(apiClient, tableName + "_another", url));
         }
       } else {
-        assertPermissionDenied(
-            () -> tablesApi.createTable(createExternalTableRequest(tableName, tableLocation)));
+        assertCreateTableDenied.accept(
+            () -> tableCreator.create(apiClient, tableName, tableLocation));
       }
 
       // Verify that the Volume creation is as expected
@@ -449,29 +645,53 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
 
         // Verify that we can not create another under the same path, or subdir, or parent
         for (String url : List.of(volumeLocation, volumeLocation + "/subdir", storageRoot)) {
-          assertPermissionDenied(
+          TestUtils.assertPermissionDenied(
               () ->
                   volumesApi.createVolume(
                       createExternalVolumeRequest(volumeName + "_another", url)));
         }
       } else {
-        assertPermissionDenied(
+        TestUtils.assertPermissionDenied(
             () -> volumesApi.createVolume(createExternalVolumeRequest(volumeName, volumeLocation)));
       }
 
       // Verify that creation of a table at storage location of an existing volume should fail,
       // vice versa.
       if (testCase.expectCanCreateExternalTable && testCase.expectCanCreateExternalVolume) {
-        assertPermissionDenied(
+        TestUtils.assertPermissionDenied(
             () ->
                 volumesApi.createVolume(
                     createExternalVolumeRequest(volumeName + "_another", tableLocation)));
-        assertPermissionDenied(
-            () ->
-                tablesApi.createTable(
-                    createExternalTableRequest(tableName + "_another", volumeLocation)));
+        assertCreateTableDenied.accept(
+            () -> tableCreator.create(apiClient, tableName + "_another", volumeLocation));
       }
     }
+  }
+
+  /** Minimum valid DeltaCreateTableRequest for an EXTERNAL Delta table. */
+  private static DeltaCreateTableRequest deltaExternalTableRequest(String name, String location) {
+    return new DeltaCreateTableRequest()
+        .name(name)
+        .location(location)
+        .tableType(DeltaTableType.EXTERNAL)
+        .protocol(
+            new DeltaProtocol()
+                .minReaderVersion(3)
+                .minWriterVersion(7)
+                .readerFeatures(List.of("deletionVectors"))
+                .writerFeatures(List.of("deletionVectors")))
+        .columns(
+            new DeltaStructType()
+                .type("struct")
+                .fields(
+                    List.of(
+                        new DeltaStructField()
+                            .name("id")
+                            .type(new DeltaPrimitiveType().type("long"))
+                            .nullable(true)
+                            .metadata(new DeltaStructFieldMetadata()))))
+        .properties(java.util.Map.of("delta.enableDeletionVectors", "true"))
+        .lastCommitTimestampMs(1700000000000L);
   }
 
   private CreateTable createExternalTableRequest(String name, String storageLocation) {
@@ -488,7 +708,9 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
                     .name("id")
                     .typeName(ColumnTypeName.INT)
                     .typeText("INTEGER")
-                    .typeJson("{\"type\": \"integer\"}")
+                    .typeJson(
+                        "{\"name\":\"id\",\"type\":\"integer\","
+                            + "\"nullable\":true,\"metadata\":{}}")
                     .position(0)
                     .nullable(true)));
   }

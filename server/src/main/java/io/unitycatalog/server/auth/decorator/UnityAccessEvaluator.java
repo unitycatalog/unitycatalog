@@ -76,6 +76,9 @@ public class UnityAccessEvaluator {
   /**
    * Evaluate authorization expression with resource IDs and parameter values.
    *
+   * <p>On deny, attempts one debounced policy refresh and re-evaluates the SpEL expression (context
+   * is reused). If refresh is disabled, debounced, or throws, the original deny is kept.
+   *
    * @param principal The principal UUID
    * @param expression The SpEL authorization expression
    * @param resourceIds Map of resource types to their UUIDs
@@ -100,8 +103,29 @@ public class UnityAccessEvaluator {
     resourceIds.forEach((k, v) -> context.setVariable(k.name().toLowerCase(), v));
     nonResourceValues.forEach(context::setVariable);
 
-    Boolean result = parser.parseExpression(expression).getValue(context, Boolean.class);
+    if (eval(expression, context)) {
+      return true;
+    }
 
-    return result != null ? result : false;
+    try {
+      if (!authorizer.refreshAuthorizations()) {
+        return false;
+      }
+    } catch (RuntimeException e) {
+      LOGGER.warn(
+          "Authorization refresh failed for principal {}; keeping original deny", principal, e);
+      return false;
+    }
+
+    boolean allowedAfterRefresh = eval(expression, context);
+    if (allowedAfterRefresh) {
+      LOGGER.debug("Access allowed after refreshing authorizations for principal {}", principal);
+    }
+    return allowedAfterRefresh;
+  }
+
+  private boolean eval(String expression, StandardEvaluationContext context) {
+    Boolean result = parser.parseExpression(expression).getValue(context, Boolean.class);
+    return result != null && result;
   }
 }

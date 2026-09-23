@@ -1,5 +1,7 @@
 package io.unitycatalog.server.service.credential.azure;
 
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.net.URI;
 
@@ -10,7 +12,12 @@ public class ADLSLocationUtils {
   public static ADLSLocationParts parseLocation(NormalizedURL location) {
     URI locationUri = location.toUri();
 
-    String[] authorityParts = locationUri.getAuthority().split("@");
+    String authority = locationUri.getAuthority();
+    if (authority == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Invalid ADLS location, missing authority: " + location);
+    }
+    String[] authorityParts = authority.split("@");
     if (authorityParts.length > 1) {
       return new ADLSLocationParts(
           locationUri.getScheme(),

@@ -6,14 +6,19 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 
+import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
@@ -22,19 +27,12 @@ import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Optional;
-import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.Delete;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
-import com.linecorp.armeria.server.annotation.Get;
-import com.linecorp.armeria.server.annotation.Param;
-import com.linecorp.armeria.server.annotation.Post;
 import lombok.SneakyThrows;
 
-@ExceptionHandler(GlobalExceptionHandler.class)
-public class TableService extends AuthorizedService {
+public class TableService extends AuthorizedService implements UnityCatalogRestService {
 
   private final TableRepository tableRepository;
   private final SchemaRepository schemaRepository;
@@ -77,24 +75,18 @@ public class TableService extends AuthorizedService {
    * @return HTTP response containing the created TableInfo
    */
   @Post("")
-  @AuthorizeExpression("""
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-      (#authorize(#principal, #schema, OWNER) ||
-        #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE)) &&
-      (#table_type != 'EXTERNAL' ||
-        (#no_overlap_with_data_securable &&
-          (#external_location == null ||
-           #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE))))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.CREATE_TABLE)
   public HttpResponse createTable(
       @AuthorizeResourceKeys({
-        @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
-        @AuthorizeResourceKey(value = CATALOG, key = "catalog_name"),
-        @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_location")
-      })
-      @AuthorizeKey(key = "table_type")
-      CreateTable createTable) {
+            @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
+            @AuthorizeResourceKey(value = CATALOG, key = "catalog_name"),
+            @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_location")
+          })
+          @AuthorizeKey(key = "table_type")
+          CreateTable createTable) {
     assert createTable != null;
+    serverProperties.checkDeltaApiOnlyForManagedTable(
+        createTable.getTableType(), "POST /delta/v1/catalogs/{catalog}/schemas/{schema}/tables");
     TableInfo tableInfo = tableRepository.createTable(createTable);
 
     SchemaInfo schemaInfo =
@@ -114,7 +106,8 @@ public class TableService extends AuthorizedService {
   }
 
   @Get("")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #schema, OWNER) &&
@@ -133,35 +126,25 @@ public class TableService extends AuthorizedService {
       @Param("omit_properties") Optional<Boolean> omitProperties,
       @Param("omit_columns") Optional<Boolean> omitColumns) {
 
-    ListTablesResponse listTablesResponse = tableRepository.listTables(
-        catalogName,
-        schemaName,
-        maxResults,
-        pageToken,
-        omitProperties.orElse(false),
-        omitColumns.orElse(false));
+    ListTablesResponse listTablesResponse =
+        tableRepository.listTables(
+            catalogName,
+            schemaName,
+            maxResults,
+            pageToken,
+            omitProperties.orElse(false),
+            omitColumns.orElse(false));
 
     applyResponseFilter(SecurableType.TABLE, listTablesResponse.getTables());
     return HttpResponse.ofJson(listTablesResponse);
   }
 
   @Delete("/{full_name}")
-  @AuthorizeExpression("""
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #table, OWNER))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
   public HttpResponse deleteTable(
       @Param("full_name") @AuthorizeResourceKey(TABLE) String fullName) {
-    TableInfo tableInfo = tableRepository.getTable(fullName);
-    tableRepository.deleteTable(fullName);
-
-    SchemaInfo schemaInfo =
-        schemaRepository.getSchema(tableInfo.getCatalogName() + "." + tableInfo.getSchemaName());
-    removeHierarchicalAuthorizations(tableInfo.getTableId(), schemaInfo.getSchemaId());
-
+    TableInfoDAO deleted = tableRepository.deleteTable(fullName);
+    removeHierarchicalAuthorizations(deleted.getId().toString(), deleted.getSchemaId().toString());
     return HttpResponse.of(HttpStatus.OK);
   }
 }

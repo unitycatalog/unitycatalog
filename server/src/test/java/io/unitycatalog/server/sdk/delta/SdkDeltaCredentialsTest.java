@@ -4,11 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
-import io.unitycatalog.client.delta.api.TemporaryCredentialsApi;
-import io.unitycatalog.client.delta.model.CredentialOperation;
-import io.unitycatalog.client.delta.model.CredentialsResponse;
-import io.unitycatalog.client.delta.model.ErrorType;
-import io.unitycatalog.client.delta.model.StorageCredential;
+import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
+import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
+import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
+import io.unitycatalog.client.delta.model.DeltaErrorType;
+import io.unitycatalog.client.delta.model.DeltaStorageCredential;
 import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableInfo;
@@ -30,8 +30,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Integration tests for the Delta REST Catalog credential-vending endpoints. One test with
- * sections, to amortize the server + mock-cloud setup cost.
+ * Integration tests for the UC Delta API credential-vending endpoints. One test with sections, to
+ * amortize the server + mock-cloud setup cost.
  *
  * <p>Uses {@link BaseCRUDTestWithMockCredentials} which configures mock cloud-credential
  * infrastructure so {@code s3://test-bucket0/...} paths can be vended. Authorization is NOT enabled
@@ -40,7 +40,7 @@ import org.junit.jupiter.api.Test;
  */
 public class SdkDeltaCredentialsTest extends BaseCRUDTestWithMockCredentials {
 
-  private TemporaryCredentialsApi deltaCredentialsApi;
+  private DeltaTemporaryCredentialsApi deltaCredentialsApi;
   private TableOperations tableOperations;
   private TablesApi tablesApi;
 
@@ -63,7 +63,7 @@ public class SdkDeltaCredentialsTest extends BaseCRUDTestWithMockCredentials {
   public void setUp() {
     super.setUp();
     var apiClient = TestUtils.createApiClient(serverConfig);
-    deltaCredentialsApi = new TemporaryCredentialsApi(apiClient);
+    deltaCredentialsApi = new DeltaTemporaryCredentialsApi(apiClient);
     tableOperations = createTableOperations(serverConfig);
     tablesApi = new TablesApi(apiClient);
   }
@@ -75,15 +75,15 @@ public class SdkDeltaCredentialsTest extends BaseCRUDTestWithMockCredentials {
 
     // -------- getTableCredentials: READ (S3) --------
     {
-      CredentialsResponse resp =
+      DeltaCredentialsResponse resp =
           deltaCredentialsApi.getTableCredentials(
-              CredentialOperation.READ,
+              DeltaCredentialOperation.READ,
               TestUtils.CATALOG_NAME,
               TestUtils.SCHEMA_NAME,
               readTable.getName());
       assertThat(resp.getStorageCredentials()).hasSize(1);
-      StorageCredential sc = resp.getStorageCredentials().get(0);
-      assertThat(sc.getOperation()).isEqualTo(CredentialOperation.READ);
+      DeltaStorageCredential sc = resp.getStorageCredentials().get(0);
+      assertThat(sc.getOperation()).isEqualTo(DeltaCredentialOperation.READ);
       assertThat(sc.getPrefix()).startsWith("s3://");
       assertThat(sc.getConfig().getS3AccessKeyId()).isEqualTo("accessKey0");
       assertThat(sc.getConfig().getS3SecretAccessKey()).isNotBlank();
@@ -91,14 +91,14 @@ public class SdkDeltaCredentialsTest extends BaseCRUDTestWithMockCredentials {
 
     // -------- getTableCredentials: READ_WRITE (S3) --------
     {
-      CredentialsResponse resp =
+      DeltaCredentialsResponse resp =
           deltaCredentialsApi.getTableCredentials(
-              CredentialOperation.READ_WRITE,
+              DeltaCredentialOperation.READ_WRITE,
               TestUtils.CATALOG_NAME,
               TestUtils.SCHEMA_NAME,
               readWriteTable.getName());
-      StorageCredential sc = resp.getStorageCredentials().get(0);
-      assertThat(sc.getOperation()).isEqualTo(CredentialOperation.READ_WRITE);
+      DeltaStorageCredential sc = resp.getStorageCredentials().get(0);
+      assertThat(sc.getOperation()).isEqualTo(DeltaCredentialOperation.READ_WRITE);
       assertThat(sc.getConfig().getS3AccessKeyId()).isNotBlank();
     }
 
@@ -106,17 +106,17 @@ public class SdkDeltaCredentialsTest extends BaseCRUDTestWithMockCredentials {
     TestUtils.assertDeltaApiException(
         () ->
             deltaCredentialsApi.getTableCredentials(
-                CredentialOperation.READ,
+                DeltaCredentialOperation.READ,
                 TestUtils.CATALOG_NAME,
                 TestUtils.SCHEMA_NAME,
                 "nonexistent"),
-        ErrorType.NO_SUCH_TABLE_EXCEPTION,
+        DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
         "not found");
 
     // -------- getTableCredentials: missing `operation` param (SDK-side required check) --------
     // This ApiException is thrown locally by the generated client before the server is reached,
     // so there is no Delta-format response body to verify -- use the generic assertApiException.
-    TestUtils.assertApiException(
+    TestUtils.assertClientException(
         () ->
             deltaCredentialsApi.getTableCredentials(
                 /* operation= */ null,
@@ -134,12 +134,12 @@ public class SdkDeltaCredentialsTest extends BaseCRUDTestWithMockCredentials {
                 .schemaName(TestUtils.SCHEMA_NAME)
                 .name("staging_for_creds"));
     {
-      CredentialsResponse resp =
+      DeltaCredentialsResponse resp =
           deltaCredentialsApi.getStagingTableCredentials(UUID.fromString(staging.getId()));
       assertThat(resp.getStorageCredentials()).hasSize(1);
-      StorageCredential sc = resp.getStorageCredentials().get(0);
+      DeltaStorageCredential sc = resp.getStorageCredentials().get(0);
       // Staging creds are always READ_WRITE for writing the initial commit.
-      assertThat(sc.getOperation()).isEqualTo(CredentialOperation.READ_WRITE);
+      assertThat(sc.getOperation()).isEqualTo(DeltaCredentialOperation.READ_WRITE);
       assertThat(sc.getPrefix()).isEqualTo(staging.getStagingLocation());
     }
 
@@ -147,7 +147,7 @@ public class SdkDeltaCredentialsTest extends BaseCRUDTestWithMockCredentials {
     UUID randomId = UUID.randomUUID();
     TestUtils.assertDeltaApiException(
         () -> deltaCredentialsApi.getStagingTableCredentials(randomId),
-        ErrorType.NO_SUCH_TABLE_EXCEPTION,
+        DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
         "Staging table not found");
 
     // -------- getStagingTableCredentials: rejects regular-table UUID --------
@@ -155,7 +155,7 @@ public class SdkDeltaCredentialsTest extends BaseCRUDTestWithMockCredentials {
     UUID regularTableId = UUID.fromString(readTable.getTableId());
     TestUtils.assertDeltaApiException(
         () -> deltaCredentialsApi.getStagingTableCredentials(regularTableId),
-        ErrorType.NO_SUCH_TABLE_EXCEPTION,
+        DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
         "Staging table not found");
   }
 

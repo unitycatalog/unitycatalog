@@ -33,7 +33,7 @@ public class MetastoreRepository {
           return metastoreDAO.toGetMetastoreSummaryResponse();
         },
         "Failed to get metastore summary",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public UUID getMetastoreId() {
@@ -61,6 +61,6 @@ public class MetastoreRepository {
           return metastoreDAO;
         },
         "Failed to initialize metastore",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 }

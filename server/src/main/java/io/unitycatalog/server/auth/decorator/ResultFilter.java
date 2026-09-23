@@ -1,5 +1,9 @@
 package io.unitycatalog.server.auth.decorator;
 
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CredentialInfo;
@@ -10,20 +14,14 @@ import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.VolumeInfo;
-
+import io.unitycatalog.server.service.AuthorizedService;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import io.unitycatalog.server.service.AuthorizedService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static io.unitycatalog.server.model.SecurableType.CATALOG;
-import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
-import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 /**
  * Filters list responses based on user authorization permissions.
@@ -167,17 +165,18 @@ public class ResultFilter {
   }
 
   private UUID resolveResourceId(SecurableType securableType, Object item) {
-    String id = switch (securableType) {
-      case TABLE -> ((TableInfo)item).getTableId();
-      case VOLUME -> ((VolumeInfo)item).getVolumeId();
-      case FUNCTION -> ((FunctionInfo)item).getFunctionId();
-      case REGISTERED_MODEL -> ((RegisteredModelInfo)item).getId();
-      case CATALOG -> ((CatalogInfo)item).getId();
-      case SCHEMA -> ((SchemaInfo)item).getSchemaId();
-      case CREDENTIAL -> ((CredentialInfo)item).getId();
-      case EXTERNAL_LOCATION -> ((ExternalLocationInfo)item).getId();
-      default -> throw new RuntimeException("Unsupported securable type: " + securableType);
-    };
+    String id =
+        switch (securableType) {
+          case TABLE -> ((TableInfo) item).getTableId();
+          case VOLUME -> ((VolumeInfo) item).getVolumeId();
+          case FUNCTION -> ((FunctionInfo) item).getFunctionId();
+          case REGISTERED_MODEL -> ((RegisteredModelInfo) item).getId();
+          case CATALOG -> ((CatalogInfo) item).getId();
+          case SCHEMA -> ((SchemaInfo) item).getSchemaId();
+          case CREDENTIAL -> ((CredentialInfo) item).getId();
+          case EXTERNAL_LOCATION -> ((ExternalLocationInfo) item).getId();
+          default -> throw new RuntimeException("Unsupported securable type: " + securableType);
+        };
     return UUID.fromString(id);
   }
 

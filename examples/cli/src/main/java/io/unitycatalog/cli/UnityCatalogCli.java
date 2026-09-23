@@ -96,7 +96,8 @@ public class UnityCatalogCli {
           } else {
             if (option.getValue() == null) {
               System.out.println(
-                  "Error occurred while parsing the command. Please check the command and try again. Missing argument for option: version");
+                  "Error occurred while parsing the command. Please check the command and try"
+                      + " again. Missing argument for option: version");
               CliUtils.printHelp();
               return;
             } else {

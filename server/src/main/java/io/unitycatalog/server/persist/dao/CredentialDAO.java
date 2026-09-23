@@ -127,7 +127,7 @@ public class CredentialDAO extends IdentifiableDAO {
         masterAwsIamRoleArn.ifPresent(awsIamRole::setUnityCatalogIamArn);
         credentialInfo.setAwsIamRole(awsIamRole);
         break;
-        // TODO: support Azure and GCP.
+      // TODO: support Azure and GCP.
       default:
         throw new IllegalArgumentException("Unknown credential type: " + credentialType);
     }

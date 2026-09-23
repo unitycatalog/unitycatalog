@@ -18,7 +18,7 @@ servers:
   - url: http://localhost:8080/api/2.1/unity-catalog
     description: Localhost reference server
 info:
-  title: Delta REST Catalog API
+  title: UC Delta API
   summary: REST API for Delta Lake table catalog operations
   version: '1.0'
   description: |
@@ -34,17 +34,17 @@ info:
     the existing UC API spec.
 
 tags:
-  - name: Configuration
+  - name: DeltaConfiguration
     description: |
       Configuration endpoint for getting catalog configuration and supported endpoints.
       This initial /config request also serves as API versioning: the server advertises versioned
       endpoints to clients so they can adapt to the correct API version.
-  - name: Tables
+  - name: DeltaTables
     description: |
       Table operations for Delta tables: create, load, update, delete, list, rename,
       and commit metrics reporting. Includes Delta-only staging table endpoints for
       managed table creation.
-  - name: TemporaryCredentials
+  - name: DeltaTemporaryCredentials
     description: |
       Temporary credential vending for accessing table data in cloud storage.
       Credentials are scoped by operation level (READ or READ_WRITE).
@@ -53,7 +53,7 @@ paths:
   /delta/v1/config:
     get:
       tags:
-        - Configuration
+        - DeltaConfiguration
       operationId: getConfig
       summary: Get catalog configuration
       description: |
@@ -82,12 +82,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CatalogConfig'
+                $ref: '#/components/schemas/DeltaCatalogConfig'
               example:
                 endpoints:
                   - "POST /v1/catalogs/{catalog}/schemas/{schema}/staging-tables"
                   - "POST /v1/catalogs/{catalog}/schemas/{schema}/tables"
-                  - "GET /v1/catalogs/{catalog}/schemas/{schema}/tables"
                   - "GET /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}"
                   - "POST /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}"
                   - "DELETE /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}"
@@ -117,7 +116,7 @@ paths:
       - $ref: '#/components/parameters/schema'
     post:
       tags:
-        - Tables
+        - DeltaTables
       operationId: createStagingTable
       summary: Create a staging table
       description: |
@@ -128,14 +127,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateStagingTableRequest'
+              $ref: '#/components/schemas/DeltaCreateStagingTableRequest'
       responses:
         '200':
           description: Staging table created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StagingTableResponse'
+                $ref: '#/components/schemas/DeltaStagingTableResponse'
               example:
                 table-id: "123e4567-e89b-12d3-a456-426614174000"
                 table-type: "MANAGED"
@@ -152,7 +151,9 @@ paths:
                   min-reader-version: 3
                   min-writer-version: 7
                   reader-features:
+                    - "catalogManaged"
                     - "deletionVectors"
+                    - "v2Checkpoint"
                     - "vacuumProtocolCheck"
                   writer-features:
                     - "catalogManaged"
@@ -162,14 +163,24 @@ paths:
                     - "vacuumProtocolCheck"
                 suggested-protocol:
                   reader-features:
-                    - "typeWidening"
+                    - "columnMapping"
                   writer-features:
+                    - "columnMapping"
                     - "domainMetadata"
                     - "rowTracking"
-                    - "typeWidening"
                 required-properties:
                   delta.checkpointPolicy: "v2"
+                  delta.enableDeletionVectors: "true"
+                  delta.enableInCommitTimestamps: "true"
+                  delta.checkpoint.writeStatsAsStruct: "true"
+                  delta.checkpoint.writeStatsAsJson: "true"
+                  io.unitycatalog.tableId: "123e4567-e89b-12d3-a456-426614174000"
                 suggested-properties:
+                  delta.columnMapping.mode: "name"
+                  delta.columnMapping.maxColumnId: null
+                  delta.enableRowTracking: "true"
+                  delta.randomizeFilePrefixes: "true"
+                  delta.parquet.compression.codec: "zstd"
                   delta.rowTracking.materializedRowIdColumnName: null
                   delta.rowTracking.materializedRowCommitVersionColumnName: null
         '400':
@@ -191,7 +202,7 @@ paths:
       - $ref: '#/components/parameters/schema'
     post:
       tags:
-        - Tables
+        - DeltaTables
       operationId: createTable
       summary: Create a table
       description: |
@@ -201,14 +212,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateTableRequest'
+              $ref: '#/components/schemas/DeltaCreateTableRequest'
       responses:
         '200':
           description: Table created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoadTableResponse'
+                $ref: '#/components/schemas/DeltaLoadTableResponse'
         '400':
           $ref: '#/components/responses/BadRequestErrorResponse'
         '401':
@@ -219,40 +230,6 @@ paths:
           $ref: '#/components/responses/NotFoundResponse'
         '409':
           $ref: '#/components/responses/AlreadyExistsResponse'
-    get:
-      tags:
-        - Tables
-      operationId: listTables
-      summary: List tables
-      description: |
-        List all tables in a schema.
-      parameters:
-        - name: maxResults
-          in: query
-          description: Maximum number of tables to return
-          required: false
-          schema:
-            type: integer
-            default: 50
-        - name: pageToken
-          in: query
-          description: Pagination token
-          required: false
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Tables listed successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ListTablesResponse'
-        '401':
-          $ref: '#/components/responses/UnauthorizedResponse'
-        '403':
-          $ref: '#/components/responses/ForbiddenResponse'
-        '404':
-          $ref: '#/components/responses/NotFoundResponse'
 
   /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}:
     parameters:
@@ -261,18 +238,22 @@ paths:
       - $ref: '#/components/parameters/table'
     get:
       tags:
-        - Tables
+        - DeltaTables
       operationId: loadTable
       summary: Load table metadata
       description: |
-        Load table metadata including columns, properties, and optionally credentials.
+        Load table metadata including columns, properties, unbackfilled commits, and the latest
+        table version. Credentials are not included; clients obtain them from the dedicated
+        credentials endpoints.
       responses:
         '200':
           description: Table loaded successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoadTableResponse'
+                $ref: '#/components/schemas/DeltaLoadTableResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestErrorResponse'
         '401':
           $ref: '#/components/responses/UnauthorizedResponse'
         '403':
@@ -281,26 +262,28 @@ paths:
           $ref: '#/components/responses/NotFoundResponse'
     post:
       tags:
-        - Tables
+        - DeltaTables
       operationId: updateTable
       summary: Update table
       description: |
         Update table properties, columns, or commit Delta changes. Unlike IRC, this endpoint
         does not support table creation. This endpoint also covers the coordinated commit flow
         described in the Unity Catalog Managed Tables Specification.
+        Replaying an already-accepted add-commit (same version and file-name) is an idempotent
+        whole-request no-op that returns 200, so a client that lost the response can safely resend.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateTableRequest'
+              $ref: '#/components/schemas/DeltaUpdateTableRequest'
       responses:
         '200':
           description: Table updated successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoadTableResponse'
+                $ref: '#/components/schemas/DeltaLoadTableResponse'
         '400':
           $ref: '#/components/responses/BadRequestErrorResponse'
         '401':
@@ -316,18 +299,18 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/DeltaErrorResponse'
         '429':
-          description: Too many unbackfilled commits. See ErrorType for details.
+          description: Too many unbackfilled commits. See DeltaErrorType for details.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/DeltaErrorResponse'
         '500':
           $ref: '#/components/responses/ServerErrorResponse'
     delete:
       tags:
-        - Tables
+        - DeltaTables
       operationId: deleteTable
       summary: Delete a table
       description: |
@@ -343,7 +326,7 @@ paths:
           $ref: '#/components/responses/NotFoundResponse'
     head:
       tags:
-        - Tables
+        - DeltaTables
       operationId: tableExists
       summary: Check if table exists
       description: |
@@ -361,7 +344,7 @@ paths:
       - $ref: '#/components/parameters/table'
     get:
       tags:
-        - TemporaryCredentials
+        - DeltaTemporaryCredentials
       operationId: getTableCredentials
       summary: Get table credentials
       description: |
@@ -373,14 +356,14 @@ paths:
           description: The operation the credential is scoped to.
           required: true
           schema:
-            $ref: '#/components/schemas/CredentialOperation'
+            $ref: '#/components/schemas/DeltaCredentialOperation'
       responses:
         '200':
           description: Credentials retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CredentialsResponse'
+                $ref: '#/components/schemas/DeltaCredentialsResponse'
         '400':
           $ref: '#/components/responses/BadRequestErrorResponse'
         '401':
@@ -397,7 +380,7 @@ paths:
       - $ref: '#/components/parameters/table'
     post:
       tags:
-        - Tables
+        - DeltaTables
       operationId: reportMetrics
       summary: Report commit metrics
       description: |
@@ -409,7 +392,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ReportMetricsRequest'
+              $ref: '#/components/schemas/DeltaReportMetricsRequest'
       responses:
         '204':
           description: Metrics received successfully
@@ -433,7 +416,7 @@ paths:
           format: uuid
     get:
       tags:
-        - TemporaryCredentials
+        - DeltaTemporaryCredentials
       operationId: getStagingTableCredentials
       summary: Get staging table credentials by UUID
       description: |
@@ -447,7 +430,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CredentialsResponse'
+                $ref: '#/components/schemas/DeltaCredentialsResponse'
         '401':
           $ref: '#/components/responses/UnauthorizedResponse'
         '403':
@@ -462,7 +445,7 @@ paths:
       - $ref: '#/components/parameters/table'
     post:
       tags:
-        - Tables
+        - DeltaTables
       operationId: renameTable
       summary: Rename a table
       description: |
@@ -473,7 +456,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RenameTableRequest'
+              $ref: '#/components/schemas/DeltaRenameTableRequest'
       responses:
         '204':
           description: Table renamed successfully
@@ -491,7 +474,7 @@ paths:
   /delta/v1/temporary-path-credentials:
     get:
       tags:
-        - TemporaryCredentials
+        - DeltaTemporaryCredentials
       operationId: getTemporaryPathCredentials
       summary: Get temporary path credentials
       description: |
@@ -511,14 +494,14 @@ paths:
           description: Operation type for the path credential.
           required: true
           schema:
-            $ref: '#/components/schemas/CredentialOperation'
+            $ref: '#/components/schemas/DeltaCredentialOperation'
       responses:
         '200':
           description: Credentials retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CredentialsResponse'
+                $ref: '#/components/schemas/DeltaCredentialsResponse'
         '400':
           $ref: '#/components/responses/BadRequestErrorResponse'
         '401':
@@ -557,37 +540,14 @@ components:
 
     # Enums
 
-    DataSourceFormat:
+    DeltaTableType:
       type: string
-      description: |
-        Data source format. Only DELTA is supported for write operations in this API.
-        Other formats may appear in list/load responses where the server returns tables of any format.
-      enum:
-        - DELTA
-        - ICEBERG
-        - CSV
-        - JSON
-        - AVRO
-        - PARQUET
-        - ORC
-        - TEXT
-
-    TableType:
-      type: string
-      description: The type of a table.
+      description: The type of a Delta table.
       enum:
         - MANAGED
         - EXTERNAL
 
-    SecurableType:
-      type: string
-      description: The type of securable object.
-      enum:
-        - TABLE
-        - VIEW
-
-
-    CredentialOperation:
+    DeltaCredentialOperation:
       type: string
       description: |
         The permission level for a storage credential.
@@ -595,9 +555,22 @@ components:
         - READ
         - READ_WRITE
 
+    DeltaMaintenanceOperation:
+      type: string
+      description: A maintenance operation that a client can run on a Delta table.
+      enum:
+        - DATA_REORGANIZATION
+        - DATA_CLEANUP
+        - METADATA_CLEANUP
+      # Keep enum order aligned with x-enum-descriptions below
+      x-enum-descriptions:
+        - 'DATA_REORGANIZATION: Rewrites data files used by the latest table version to group, cluster, or lay out the data. It must not change the data in that version.'
+        - 'DATA_CLEANUP: Deletes old data files. It must not change the data in the latest table version.'
+        - 'METADATA_CLEANUP: Deletes old metadata files from the Delta log directory or other metadata-related directories. It must not change the data in the latest table version.'
+
     # Shared Types
 
-    StorageCredential:
+    DeltaStorageCredential:
       type: object
       description: |
         Temporary storage credential with prefix and config.
@@ -614,7 +587,7 @@ components:
           type: string
           description: Storage path prefix this credential applies to
         operation:
-          $ref: '#/components/schemas/CredentialOperation'
+          $ref: '#/components/schemas/DeltaCredentialOperation'
         config:
           type: object
           description: |
@@ -644,7 +617,7 @@ components:
             This standardized field avoids the need for provider-specific expiration keys
             (e.g., s3.session-token-expires-at-ms, adls.sas-token-expires-at-ms, etc.)
 
-    CredentialsResponse:
+    DeltaCredentialsResponse:
       type: object
       required:
         - storage-credentials
@@ -653,12 +626,12 @@ components:
           type: array
           description: Temporary cloud storage credentials.
           items:
-            $ref: '#/components/schemas/StorageCredential'
+            $ref: '#/components/schemas/DeltaStorageCredential'
 
 
     # Configuration
 
-    CatalogConfig:
+    DeltaCatalogConfig:
       type: object
       properties:
         endpoints:
@@ -676,7 +649,7 @@ components:
 
     # Table Lifecycle
 
-    CreateStagingTableRequest:
+    DeltaCreateStagingTableRequest:
       type: object
       properties:
         name:
@@ -687,7 +660,7 @@ components:
       example:
         name: "sales"
 
-    StagingTableResponse:
+    DeltaStagingTableResponse:
       type: object
       properties:
         table-id:
@@ -695,7 +668,7 @@ components:
           format: uuid
           description: Table UUID allocated by UC
         table-type:
-          $ref: '#/components/schemas/TableType'
+          $ref: '#/components/schemas/DeltaTableType'
           description: Table type (always MANAGED for staging tables)
         location:
           type: string
@@ -704,7 +677,7 @@ components:
           type: array
           description: Temporary credentials for initial commit
           items:
-            $ref: '#/components/schemas/StorageCredential'
+            $ref: '#/components/schemas/DeltaStorageCredential'
         required-protocol:
           allOf:
             - $ref: '#/components/schemas/DeltaProtocol'
@@ -741,7 +714,7 @@ components:
         - required-protocol
         - required-properties
 
-    CreateTableRequest:
+    DeltaCreateTableRequest:
       type: object
       properties:
         name:
@@ -751,15 +724,12 @@ components:
           type: string
           description: Storage location
         table-type:
-          $ref: '#/components/schemas/TableType'
-        data-source-format:
-          $ref: '#/components/schemas/DataSourceFormat'
-          description: Data source format (DELTA or ICEBERG)
+          $ref: '#/components/schemas/DeltaTableType'
         comment:
           type: string
           description: Table comment
         columns:
-          $ref: '#/components/schemas/StructType'
+          $ref: '#/components/schemas/DeltaStructType'
         partition-columns:
           type: array
           description: Partition column names
@@ -774,20 +744,32 @@ components:
           additionalProperties:
             type: string
         domain-metadata:
-          $ref: '#/components/schemas/DomainMetadataUpdates'
+          $ref: '#/components/schemas/DeltaDomainMetadataUpdates'
+        last-commit-timestamp-ms:
+          type: integer
+          format: int64
+          description: |
+            Timestamp of version 0 (the commit the client wrote  before calling this endpoint),
+            in epoch milliseconds.
+        uniform:
+          $ref: '#/components/schemas/DeltaUniformMetadata'
+          description: |
+            Optional UniForm conversion metadata. When present, the table is registered as
+            UniForm-enabled, so readers can access it via either the Delta or Iceberg REST
+            Catalog. The engine generates the Iceberg metadata file at the supplied
+            metadata-location before calling createTable.
       required:
         - name
         - location
         - table-type
-        - data-source-format
         - columns
         - protocol
         - properties
+        - last-commit-timestamp-ms
       example:
         name: "sales"
         location: "s3://bucket/warehouse/catalog/schema/sales"
         table-type: "MANAGED"
-        data-source-format: "DELTA"
         columns:
           type: "struct"
           fields:
@@ -796,10 +778,7 @@ components:
               nullable: false
               metadata: {}
             - name: "amount"
-              type:
-                type: "decimal"
-                precision: 10
-                scale: 2
+              type: "decimal(10,2)"
               nullable: true
               metadata: {}
         partition-columns:
@@ -815,37 +794,46 @@ components:
         properties:
           "delta.enableDeletionVectors": "true"
 
-    LoadTableResponse:
+    DeltaLoadTableResponse:
       type: object
       properties:
         metadata:
-          $ref: '#/components/schemas/TableMetadata'
+          $ref: '#/components/schemas/DeltaTableMetadata'
           description: Complete table metadata including schema and properties
         commits:
           type: array
-          description: All unbackfilled CCv2 commits
+          description: |
+            All unbackfilled CCv2 commits, in descending version order (newest first). For managed
+            Delta tables the list is complete and contiguous up to latest-table-version and is
+            returned atomically with the metadata; the server bounds its size at write time
+            (ResourceExhaustedException) rather than truncating the response.
           items:
             $ref: '#/components/schemas/DeltaCommit'
         uniform:
-          $ref: '#/components/schemas/UniformMetadata'
+          $ref: '#/components/schemas/DeltaUniformMetadata'
         latest-table-version:
           type: integer
           format: int64
           description: The latest ratified table version tracked by the server, including data-only commits. Compare with metadata.last-commit-version which only tracks metadata-changing commits.
+        allowed-maintenance-operations:
+          type: array
+          description: |
+            Maintenance operations that the catalog permits in addition to the operations that the
+            Delta protocol permits by default. A missing or empty list permits no additional
+            operations. A client must not perform an operation that it does not recognize.
+          items:
+            $ref: '#/components/schemas/DeltaMaintenanceOperation'
       required:
         - metadata
 
-    TableMetadata:
+    DeltaTableMetadata:
       type: object
       properties:
         etag:
           type: string
           description: Entity tag for optimistic concurrency control
-        data-source-format:
-          $ref: '#/components/schemas/DataSourceFormat'
-          description: Data source format (DELTA or ICEBERG)
         table-type:
-          $ref: '#/components/schemas/TableType'
+          $ref: '#/components/schemas/DeltaTableType'
         table-uuid:
           type: string
           format: uuid
@@ -861,18 +849,21 @@ components:
           type: integer
           format: int64
           description: Last update time in epoch milliseconds
-        securable-type:
-          $ref: '#/components/schemas/SecurableType'
         columns:
-          $ref: '#/components/schemas/StructType'
+          $ref: '#/components/schemas/DeltaStructType'
         partition-columns:
           type: array
-          description: Partition column names
+          description: Partition column names (logical schema column names)
           items:
             type: string
         properties:
           type: object
-          description: Table properties
+          description: |
+            Table properties. Besides the table's metaData.configuration entries, the map carries
+            server-derived keys (delta.minReaderVersion, delta.minWriterVersion, delta.feature.*,
+            delta.clusteringColumns, delta.rowTracking.rowIdHighWaterMark, delta.lastUpdateVersion,
+            delta.lastCommitTimestamp) that clients must not write back to the Delta log or send in
+            set-properties / remove-properties.
           additionalProperties:
             type: string
         last-commit-version:
@@ -885,43 +876,15 @@ components:
           description: Timestamp of the last commit that changed table metadata, in epoch milliseconds (delta.lastCommitTimestamp).
       required:
         - etag
-        - data-source-format
         - table-type
         - table-uuid
         - location
         - created-time
         - updated-time
-        - securable-type
         - columns
         - properties
 
-    ListTablesResponse:
-      type: object
-      properties:
-        identifiers:
-          type: array
-          description: List of table identifiers
-          items:
-            $ref: '#/components/schemas/TableIdentifierWithDataSourceFormat'
-        next-page-token:
-          type: string
-          description: Token for next page
-
-    TableIdentifierWithDataSourceFormat:
-      type: object
-      description: Table identifier returned by list operations. Schema and catalog are implicit from the request path.
-      properties:
-        name:
-          type: string
-          description: Table name
-        data-source-format:
-          $ref: '#/components/schemas/DataSourceFormat'
-          description: Data source format
-      required:
-        - name
-        - data-source-format
-
-    RenameTableRequest:
+    DeltaRenameTableRequest:
       type: object
       properties:
         new-name:
@@ -933,32 +896,39 @@ components:
 
     # Table Update Operations
 
-    UpdateTableRequest:
+    DeltaUpdateTableRequest:
       type: object
-      description: Request to update a table with requirements and updates
+      description: |
+        Request to update a table with requirements and updates. All actions apply atomically.
+        Shape rules: updates must be non-empty; at most one action of each type and at most one
+        requirement of each type per request; an assert-table-uuid requirement is always required;
+        set-properties / remove-properties must not touch the same key, and set-domain-metadata /
+        remove-domain-metadata must not touch the same domain.
       properties:
         requirements:
           type: array
+          minItems: 1
           description: Pre-conditions that must be met for the update
           items:
-            $ref: '#/components/schemas/TableRequirement'
+            $ref: '#/components/schemas/DeltaTableRequirement'
         updates:
           type: array
+          minItems: 1
           description: Updates to apply to the table
           items:
-            $ref: '#/components/schemas/TableUpdate'
+            $ref: '#/components/schemas/DeltaTableUpdate'
       required:
         - requirements
         - updates
 
     # Requirements
 
-    TableRequirement:
+    DeltaTableRequirement:
       discriminator:
         propertyName: type
         mapping:
-          assert-table-uuid: '#/components/schemas/AssertTableUUID'
-          assert-etag: '#/components/schemas/AssertEtag'
+          assert-table-uuid: '#/components/schemas/DeltaAssertTableUUID'
+          assert-etag: '#/components/schemas/DeltaAssertEtag'
       type: object
       required:
         - type
@@ -966,9 +936,9 @@ components:
         type:
           type: string
 
-    AssertTableUUID:
+    DeltaAssertTableUUID:
       allOf:
-        - $ref: '#/components/schemas/TableRequirement'
+        - $ref: '#/components/schemas/DeltaTableRequirement'
       description: Assert that the table UUID matches the expected value
       properties:
         type:
@@ -981,9 +951,9 @@ components:
       required:
         - uuid
 
-    AssertEtag:
+    DeltaAssertEtag:
       allOf:
-        - $ref: '#/components/schemas/TableRequirement'
+        - $ref: '#/components/schemas/DeltaTableRequirement'
       description: Assert that the table etag matches the expected value for optimistic concurrency
       properties:
         type:
@@ -997,21 +967,21 @@ components:
 
     # Updates
 
-    TableUpdate:
+    DeltaTableUpdate:
       discriminator:
         propertyName: action
         mapping:
-          set-properties: '#/components/schemas/SetPropertiesUpdate'
-          remove-properties: '#/components/schemas/RemovePropertiesUpdate'
-          set-columns: '#/components/schemas/SetSchemaUpdate'
-          set-table-comment: '#/components/schemas/SetTableCommentUpdate'
-          add-commit: '#/components/schemas/AddCommitUpdate'
-          set-latest-backfilled-version: '#/components/schemas/SetLatestBackfilledVersionUpdate'
-          set-protocol: '#/components/schemas/SetProtocolUpdate'
-          set-domain-metadata: '#/components/schemas/SetDomainMetadataUpdate'
-          remove-domain-metadata: '#/components/schemas/RemoveDomainMetadataUpdate'
-          set-partition-columns: '#/components/schemas/SetPartitionColumnsUpdate'
-          update-metadata-snapshot-version: '#/components/schemas/UpdateSnapshotVersionUpdate'
+          set-properties: '#/components/schemas/DeltaSetPropertiesUpdate'
+          remove-properties: '#/components/schemas/DeltaRemovePropertiesUpdate'
+          set-columns: '#/components/schemas/DeltaSetSchemaUpdate'
+          set-table-comment: '#/components/schemas/DeltaSetTableCommentUpdate'
+          add-commit: '#/components/schemas/DeltaAddCommitUpdate'
+          set-latest-backfilled-version: '#/components/schemas/DeltaSetLatestBackfilledVersionUpdate'
+          set-protocol: '#/components/schemas/DeltaSetProtocolUpdate'
+          set-domain-metadata: '#/components/schemas/DeltaSetDomainMetadataUpdate'
+          remove-domain-metadata: '#/components/schemas/DeltaRemoveDomainMetadataUpdate'
+          set-partition-columns: '#/components/schemas/DeltaSetPartitionColumnsUpdate'
+          update-metadata-snapshot-version: '#/components/schemas/DeltaUpdateSnapshotVersionUpdate'
       type: object
       required:
         - action
@@ -1019,9 +989,9 @@ components:
         action:
           type: string
 
-    SetPropertiesUpdate:
+    DeltaSetPropertiesUpdate:
       allOf:
-        - $ref: '#/components/schemas/TableUpdate'
+        - $ref: '#/components/schemas/DeltaTableUpdate'
       required:
         - updates
       properties:
@@ -1034,9 +1004,9 @@ components:
           additionalProperties:
             type: string
 
-    RemovePropertiesUpdate:
+    DeltaRemovePropertiesUpdate:
       allOf:
-        - $ref: '#/components/schemas/TableUpdate'
+        - $ref: '#/components/schemas/DeltaTableUpdate'
       description: Remove table properties
       properties:
         action:
@@ -1051,9 +1021,9 @@ components:
         - action
         - removals
 
-    SetSchemaUpdate:
+    DeltaSetSchemaUpdate:
       allOf:
-        - $ref: '#/components/schemas/TableUpdate'
+        - $ref: '#/components/schemas/DeltaTableUpdate'
       description: |
         Set table columns. The metadata field on each field carries Spark/Delta field metadata
         from metaData.schemaString in the Delta commit log.
@@ -1062,14 +1032,14 @@ components:
           type: string
           const: "set-columns"
         columns:
-          $ref: '#/components/schemas/StructType'
+          $ref: '#/components/schemas/DeltaStructType'
       required:
         - action
         - columns
 
-    SetTableCommentUpdate:
+    DeltaSetTableCommentUpdate:
       allOf:
-        - $ref: '#/components/schemas/TableUpdate'
+        - $ref: '#/components/schemas/DeltaTableUpdate'
       description: Set table comment
       properties:
         action:
@@ -1082,9 +1052,9 @@ components:
         - action
         - comment
 
-    AddCommitUpdate:
+    DeltaAddCommitUpdate:
       allOf:
-        - $ref: '#/components/schemas/TableUpdate'
+        - $ref: '#/components/schemas/DeltaTableUpdate'
       description: Add a CCv2 commit to the table (managed tables only)
       properties:
         action:
@@ -1094,14 +1064,14 @@ components:
           $ref: '#/components/schemas/DeltaCommit'
           description: Commit metadata including version, timestamp, and file information
         uniform:
-          $ref: '#/components/schemas/UniformMetadata'
+          $ref: '#/components/schemas/DeltaUniformMetadata'
       required:
         - action
         - commit
 
-    SetLatestBackfilledVersionUpdate:
+    DeltaSetLatestBackfilledVersionUpdate:
       allOf:
-        - $ref: '#/components/schemas/TableUpdate'
+        - $ref: '#/components/schemas/DeltaTableUpdate'
       description: Set the latest backfilled version for the table
       properties:
         action:
@@ -1115,9 +1085,9 @@ components:
         - action
         - latest-published-version
 
-    SetProtocolUpdate:
+    DeltaSetProtocolUpdate:
       allOf:
-        - $ref: '#/components/schemas/TableUpdate'
+        - $ref: '#/components/schemas/DeltaTableUpdate'
       description: Set Delta protocol version and features (full replacement)
       properties:
         action:
@@ -1129,9 +1099,9 @@ components:
         - action
         - protocol
 
-    SetDomainMetadataUpdate:
+    DeltaSetDomainMetadataUpdate:
       allOf:
-        - $ref: '#/components/schemas/TableUpdate'
+        - $ref: '#/components/schemas/DeltaTableUpdate'
       description: |
         Set domain metadata. The `updates` object contains one or more
         domain entries, each keyed by domain name with a typed configuration.
@@ -1140,24 +1110,24 @@ components:
           type: string
           const: "set-domain-metadata"
         updates:
-          $ref: '#/components/schemas/DomainMetadataUpdates'
+          $ref: '#/components/schemas/DeltaDomainMetadataUpdates'
       required:
         - action
         - updates
 
-    DomainMetadataUpdates:
+    DeltaDomainMetadataUpdates:
       type: object
       description: |
         Domain metadata entries keyed by domain name. Include one or more.
       properties:
         delta.clustering:
-          $ref: '#/components/schemas/ClusteringDomainMetadata'
+          $ref: '#/components/schemas/DeltaClusteringDomainMetadata'
         delta.rowTracking:
-          $ref: '#/components/schemas/RowTrackingDomainMetadata'
+          $ref: '#/components/schemas/DeltaRowTrackingDomainMetadata'
 
-    RemoveDomainMetadataUpdate:
+    DeltaRemoveDomainMetadataUpdate:
       allOf:
-        - $ref: '#/components/schemas/TableUpdate'
+        - $ref: '#/components/schemas/DeltaTableUpdate'
       description: Remove domain metadata for specified domains
       properties:
         action:
@@ -1172,9 +1142,9 @@ components:
         - action
         - domains
 
-    SetPartitionColumnsUpdate:
+    DeltaSetPartitionColumnsUpdate:
       allOf:
-        - $ref: '#/components/schemas/TableUpdate'
+        - $ref: '#/components/schemas/DeltaTableUpdate'
       description: Set partition columns (table-level property, typically only during creation)
       properties:
         action:
@@ -1189,9 +1159,9 @@ components:
         - action
         - partition-columns
 
-    UpdateSnapshotVersionUpdate:
+    DeltaUpdateSnapshotVersionUpdate:
       allOf:
-        - $ref: '#/components/schemas/TableUpdate'
+        - $ref: '#/components/schemas/DeltaTableUpdate'
       description: Update snapshot version (external tables only, used by post-commit hook)
       properties:
         action:
@@ -1214,7 +1184,7 @@ components:
 
     # Domain Metadata
 
-    ClusteringDomainMetadata:
+    DeltaClusteringDomainMetadata:
       type: object
       description: Configuration for Clustered Tables. Present when the clustering writer feature is enabled.
       properties:
@@ -1228,7 +1198,7 @@ components:
       required:
         - clusteringColumns
 
-    RowTrackingDomainMetadata:
+    DeltaRowTrackingDomainMetadata:
       type: object
       description: Configuration for Row Tracking. Present when the rowTracking writer feature is enabled.
       properties:
@@ -1268,7 +1238,7 @@ components:
         - min-reader-version
         - min-writer-version
 
-    UniformMetadata:
+    DeltaUniformMetadata:
       type: object
       description: UniForm conversion metadata. Present only for Uniform (Delta + Iceberg) tables.
       properties:
@@ -1308,7 +1278,11 @@ components:
           description: In-commit timestamp, in epoch milliseconds
         file-name:
           type: string
-          description: UUID-based commit file name
+          description: |
+            UUID-based name of the staged commit file under _delta_log/_staged_commits/. Written by
+            the committing client and returned verbatim to readers, which read the file at that
+            path; when the same version is also published as _delta_log/<v>.json, this
+            catalog-named file is the authoritative copy.
         file-size:
           type: integer
           format: int64
@@ -1324,32 +1298,48 @@ components:
         - file-size
         - file-modification-timestamp
 
-    StructField:
+    DeltaStructField:
       type: object
       description: |
-        A field in a StructType. Contains the field name, type, nullability,
-        and metadata matching the Delta schema field format.
+        A field in a DeltaStructType. Contains the field name, type, nullability, and metadata
+        matching the Delta schema field format.
+        Field names are case-preserving but case-insensitive: within a DeltaStructType no two fields
+        may have names equal under ASCII lowercase comparison. Every API reference to a column
+        name (partition-columns, delta.clustering.clusteringColumns, etc.) matches
+        case-insensitively. Per Delta [PROTOCOL.md](https://github.com/delta-io/delta/blob/master/PROTOCOL.md#schema-serialization-format).
       properties:
         name:
           type: string
-          description: Column name
+          description: Column name. Case-preserving; unique case-insensitively within the parent DeltaStructType.
         type:
-          $ref: '#/components/schemas/DeltaType'
+          $ref: '#/components/schemas/DeltaDataType'
         nullable:
           type: boolean
           description: Whether this column can be null
         metadata:
-          type: object
-          description: Additional column metadata (arbitrary key-value pairs, e.g., comment, delta.columnMapping.id)
-          additionalProperties:
-            description: Metadata values can be strings, numbers, booleans, or nested objects
+          $ref: '#/components/schemas/DeltaStructFieldMetadata'
       required:
         - name
         - type
         - nullable
         - metadata
 
-    DeltaType:
+    DeltaStructFieldMetadata:
+      type: object
+      description: Additional column metadata (arbitrary key-value pairs, e.g., comment, delta.columnMapping.id)
+      additionalProperties:
+        description: Metadata values can be strings, numbers, booleans, or nested objects
+      properties:
+        _placeholder:
+          type: object
+          description: |
+            Schema-only marker; never sent on the wire. Declared so the OpenAPI generator emits a
+            wrapper class for this schema instead of inlining `metadata` on the parent DeltaStructField
+            `new HashMap<>()` -- that would erase the "metadata absent" signal. Use the Map
+            accessors (e.g., `metadata.put("comment", ...)` and `metadata.get("comment")`) for 
+            actual metadata keys.
+
+    DeltaDataType:
       description: |
         Column data type. For primitive types, a bare JSON string (e.g., "long", "string",
         "decimal(10,2)"). For complex types, a JSON object with a "type" discriminator
@@ -1357,10 +1347,10 @@ components:
       discriminator:
         propertyName: type
         mapping:
-          array: '#/components/schemas/ArrayType'
-          map: '#/components/schemas/MapType'
-          struct: '#/components/schemas/StructType'
-          decimal: '#/components/schemas/DecimalType'
+          array: '#/components/schemas/DeltaArrayType'
+          map: '#/components/schemas/DeltaMapType'
+          struct: '#/components/schemas/DeltaStructType'
+          decimal: '#/components/schemas/DeltaDecimalType'
       type: object
       required:
         - type
@@ -1369,21 +1359,21 @@ components:
           type: string
           description: Type identifier
 
-    PrimitiveType:
+    DeltaPrimitiveType:
       description: |
         Primitive data type (e.g., "long", "string", "boolean"). On the wire,
-        primitive types are bare JSON strings. The custom DeltaTypeDeserializer
-        converts them into PrimitiveType instances.
+        primitive types are bare JSON strings. The custom DeltaDataTypeModule
+        converts them into DeltaPrimitiveType instances.
       allOf:
-        - $ref: '#/components/schemas/DeltaType'
+        - $ref: '#/components/schemas/DeltaDataType'
 
-    DecimalType:
+    DeltaDecimalType:
       description: |
         Decimal data type with precision and scale. On the wire, represented as
         "decimal(precision,scale)" (e.g., "decimal(10,2)"). The custom
-        DeltaTypeDeserializer parses the string into a DecimalType instance.
+        DeltaDataTypeModule parses the string into a DeltaDecimalType instance.
       allOf:
-        - $ref: '#/components/schemas/DeltaType'
+        - $ref: '#/components/schemas/DeltaDataType'
       properties:
         precision:
           type: integer
@@ -1395,49 +1385,47 @@ components:
         - precision
         - scale
 
-    ArrayType:
+    DeltaArrayType:
       description: Array type containing elements of a specific type
       allOf:
-        - $ref: '#/components/schemas/DeltaType'
+        - $ref: '#/components/schemas/DeltaDataType'
       properties:
         element-type:
-          $ref: '#/components/schemas/DeltaType'
+          $ref: '#/components/schemas/DeltaDataType'
         contains-null:
           type: boolean
           description: Whether array elements can be null
-          default: true
       required:
         - element-type
         - contains-null
 
-    MapType:
+    DeltaMapType:
       description: Map type with key-value pairs
       allOf:
-        - $ref: '#/components/schemas/DeltaType'
+        - $ref: '#/components/schemas/DeltaDataType'
       properties:
         key-type:
-          $ref: '#/components/schemas/DeltaType'
+          $ref: '#/components/schemas/DeltaDataType'
         value-type:
-          $ref: '#/components/schemas/DeltaType'
+          $ref: '#/components/schemas/DeltaDataType'
         value-contains-null:
           type: boolean
           description: Whether map values can be null
-          default: true
       required:
         - key-type
         - value-type
         - value-contains-null
 
-    StructType:
+    DeltaStructType:
       description: Struct type containing named fields
       allOf:
-        - $ref: '#/components/schemas/DeltaType'
+        - $ref: '#/components/schemas/DeltaDataType'
       properties:
         fields:
           type: array
           description: Array of field definitions
           items:
-            $ref: '#/components/schemas/StructField'
+            $ref: '#/components/schemas/DeltaStructField'
       required:
         - fields
       example:
@@ -1455,7 +1443,7 @@ components:
 
     # Metrics
 
-    ReportMetricsRequest:
+    DeltaReportMetricsRequest:
       type: object
       required:
         - table-id
@@ -1491,14 +1479,6 @@ components:
                   type: integer
                   format: int64
                   description: Number of bytes removed by this commit
-                num-clustered-bytes-added:
-                  type: integer
-                  format: int64
-                  description: Number of clustered bytes added by this commit
-                num-clustered-bytes-removed:
-                  type: integer
-                  format: int64
-                  description: Number of clustered bytes removed by this commit
                 num-rows-inserted:
                   type: integer
                   format: int64
@@ -1520,18 +1500,21 @@ components:
                       items:
                         type: integer
                         format: int64
-                      description: Sorted bin boundary values
+                      description: |
+                        Sorted bin boundaries. Each element is the start of a bin (inclusive) and
+                        the next element is the end (exclusive). The first element must be 0.
                     file-counts:
                       type: array
                       items:
                         type: integer
-                      description: Count of files in each bin
+                        format: int64
+                      description: Count of files in each bin. Length must match sorted-bin-boundaries.
                     total-bytes:
                       type: array
                       items:
                         type: integer
                         format: int64
-                      description: Total bytes in each bin
+                      description: Total bytes in each bin. Length must match sorted-bin-boundaries.
                     commit-version:
                       type: integer
                       format: int64
@@ -1544,12 +1527,13 @@ components:
 
     # Errors
 
-    ErrorType:
+    DeltaErrorType:
       type: string
       description: Error type identifier returned in error responses.
       enum:
         - BadRequestException
         - InvalidParameterValueException
+        - UnsupportedTableFormatException
         - NotAuthorizedException
         - PermissionDeniedException
         - NotFoundException
@@ -1568,6 +1552,7 @@ components:
       x-enum-descriptions:
         - 'BadRequestException: (400) Malformed request or invalid action.'
         - 'InvalidParameterValueException: (400) Server-side validation failed (e.g., missing required fields or table features).'
+        - 'UnsupportedTableFormatException: (400) The table is not a Delta table, or a Delta table not yet supported by this endpoint. In any case, clients should fallback to the existing UC API.'
         - 'NotAuthorizedException: (401) Authentication credentials are missing, expired, or invalid.'
         - 'PermissionDeniedException: (403) Authenticated user does not have the necessary permissions.'
         - 'NotFoundException: (404) The requested resource does not exist.'
@@ -1583,7 +1568,7 @@ components:
         - 'InternalServerErrorException: (500) A server-side problem that might not be addressable from the client side.'
         - 'NotImplementedException: (501) The requested functionality is not supported by the server.'
 
-    ErrorModel:
+    DeltaErrorModel:
       type: object
       description: JSON error payload returned in a response with further details on the error
       required:
@@ -1595,7 +1580,7 @@ components:
           type: string
           description: Human-readable error message
         type:
-          $ref: '#/components/schemas/ErrorType'
+          $ref: '#/components/schemas/DeltaErrorType'
         code:
           type: integer
           minimum: 400
@@ -1607,18 +1592,18 @@ components:
           items:
             type: string
 
-    ErrorResponse:
+    DeltaErrorResponse:
       description: JSON wrapper for all error responses (non-2xx)
       type: object
       required:
         - error
       properties:
         error:
-          $ref: '#/components/schemas/ErrorModel'
+          $ref: '#/components/schemas/DeltaErrorModel'
       additionalProperties: false
 
   # Reusable Responses
-  # Error type is identified by the ErrorType enum in the response body.
+  # Error type is identified by the DeltaErrorType enum in the response body.
   responses:
     BadRequestErrorResponse:
       description: |
@@ -1627,21 +1612,21 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: '#/components/schemas/DeltaErrorResponse'
 
     UnauthorizedResponse:
       description: Unauthorized. Credentials are missing, expired, or invalid.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: '#/components/schemas/DeltaErrorResponse'
 
     ForbiddenResponse:
       description: Forbidden. Insufficient permissions.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: '#/components/schemas/DeltaErrorResponse'
 
     NotFoundResponse:
       description: |
@@ -1650,25 +1635,25 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: '#/components/schemas/DeltaErrorResponse'
 
     AlreadyExistsResponse:
       description: Conflict. A resource with the same name already exists.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: '#/components/schemas/DeltaErrorResponse'
 
     ServerErrorResponse:
       description: Internal server error.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: '#/components/schemas/DeltaErrorResponse'
 
     ServiceUnavailableResponse:
       description: Service unavailable. The client may retry after a delay.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: '#/components/schemas/DeltaErrorResponse'

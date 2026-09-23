@@ -22,6 +22,7 @@ nav:
           - Volumes: usage/api/volumes.md
           - Functions: usage/api/functions.md
           - Models: usage/api/models.md
+          - UC Delta API: usage/api/delta.md
       - Tables:
           - Delta Lake: usage/tables/deltalake.md
           - Formats: usage/tables/formats.md
@@ -29,6 +30,7 @@ nav:
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
       - Models: usage/models.md
+      - Metric Views: usage/metric-views.md
   - Server:
       - Configuration: server/configuration.md
       - Auth: server/auth.md

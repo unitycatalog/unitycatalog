@@ -11,14 +11,14 @@ To use the Unity Catalog UI, start a new terminal and ensure you have already st
 
 !!! warning "Prerequisites"
     The Unity Catalog UI requires both [Node](https://nodejs.org/en/download/package-manager) and
-    [Yarn](https://classic.yarnpkg.com/lang/en/docs/install).
+    [Bun](https://bun.com/docs/installation).
 
-To start the UI locally, run the following commands to start `yarn`
+To start the UI locally, run the following commands to start `bun`
 
 ```sh
-cd /ui
-yarn install
-yarn start
+cd ui
+bun install
+bun run start
 ```
 
 ## Assets
@@ -138,7 +138,7 @@ The following steps show how you can view your UC functions metadata and descrip
     
 === "2. View functions metadata"
 
-    Click on the volume (e.g., `unity.default.lowercase`) to view its metadata.  You have the option to delete it by
+    Click on the function (e.g., `unity.default.lowercase`) to view its metadata.  You have the option to delete it by
     click on the *three horizontal dots* to the right.
 
 ![View Functions Metadata](../assets/images/ui/uc-ui-functions-2.png)

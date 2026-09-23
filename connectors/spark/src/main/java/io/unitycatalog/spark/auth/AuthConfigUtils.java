@@ -28,11 +28,14 @@ public class AuthConfigUtils {
 
     // Unity Catalog versions 0.3.0 and earlier did not use the 'auth.token' key. To maintain
     // backward compatibility, we also copy the legacy 'token' key directly into the new config map.
+    // A present key (including an empty value) selects static auth. That is the supported way to
+    // talk to a server with server.authorization=disable; omitting both token and auth.type is not.
     String token = configs.get(AuthConfigUtils.STATIC_TOKEN);
     if (token != null) {
       Preconditions.checkArgument(
           !newConfigs.containsKey(AuthConfigUtils.STATIC_TOKEN),
-          "Static token was configured twice, choose only one: 'token' (legacy) or 'auth.token' (new-style).");
+          "Static token was configured twice, choose only one: 'token' (legacy) or 'auth.token'"
+              + " (new-style).");
 
       newConfigs.put(TYPE, STATIC_TYPE);
       newConfigs.put(STATIC_TOKEN, token);

@@ -1,6 +1,7 @@
 package io.unitycatalog.server;
 
 import io.vertx.core.AbstractVerticle;
+import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
@@ -25,7 +26,7 @@ class URLTranscoderVerticle extends AbstractVerticle {
   }
 
   @Override
-  public void start() {
+  public void start(Promise<Void> startPromise) {
     HttpServer server = vertx.createHttpServer();
     WebClient client = WebClient.create(vertx);
 
@@ -54,17 +55,23 @@ class URLTranscoderVerticle extends AbstractVerticle {
                     for (Map.Entry<String, String> entry : resp.headers()) {
                       transcodeResp.putHeader(entry.getKey(), entry.getValue());
                     }
-                    return transcodeResp.end(resp.bodyAsBuffer());
+                    // A response with no body gives a null buffer, and end(null) throws before
+                    // anything is written, leaving the client waiting on a response it never gets.
+                    Buffer body = resp.bodyAsBuffer();
+                    return body == null ? transcodeResp.end() : transcodeResp.end(body);
                   });
         });
 
+    // The port is bound asynchronously, so the deployment is only complete once it is listening:
+    // callers are told the server is ready when this verticle is deployed.
     server.listen(
         transcodePort,
         ar -> {
           if (ar.succeeded()) {
             LOGGER.info("URL transcoder started on port {}", transcodePort);
+            startPromise.complete();
           } else {
-            LOGGER.info("Failed to start URL transcoder: {}", String.valueOf(ar.cause()));
+            startPromise.fail(ar.cause());
           }
         });
   }

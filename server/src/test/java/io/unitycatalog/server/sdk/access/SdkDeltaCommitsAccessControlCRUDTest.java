@@ -1,11 +1,16 @@
 package io.unitycatalog.server.sdk.access;
 
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
+import static io.unitycatalog.server.utils.TestUtils.assertDeltaPermissionDenied;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.api.DeltaCommitsApi;
 import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.model.DeltaAddCommitUpdate;
+import io.unitycatalog.client.delta.model.DeltaAssertTableUUID;
+import io.unitycatalog.client.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateStagingTable;
@@ -22,8 +27,13 @@ import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.TestUtils;
+import java.net.http.HttpResponse;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,7 +61,9 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
           new ColumnInfo()
               .name("test_col")
               .typeText("INTEGER")
-              .typeJson("{\"type\": \"integer\"}")
+              .typeJson(
+                  "{\"name\":\"test_col\",\"type\":\"integer\","
+                      + "\"nullable\":true,\"metadata\":{}}")
               .typeName(ColumnTypeName.INT)
               .position(0)
               .nullable(true));
@@ -90,13 +102,15 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
     StagingTableInfo stagingTableInfo = adminTablesApi.createStagingTable(createStagingTable);
 
     // Then, create the managed table using the staging location
+    Map<String, String> properties = new HashMap<>(TestUtils.PROPERTIES);
+    properties.put(TableProperties.UC_TABLE_ID, stagingTableInfo.getId());
     CreateTable createTable =
         new CreateTable()
             .name(TestUtils.TABLE_NAME)
             .catalogName(TestUtils.CATALOG_NAME)
             .schemaName(TestUtils.SCHEMA_NAME)
             .columns(COLUMNS)
-            .properties(TestUtils.PROPERTIES)
+            .properties(properties)
             .comment(TestUtils.COMMENT)
             .storageLocation(stagingTableInfo.getStagingLocation())
             .tableType(TableType.MANAGED)
@@ -188,6 +202,53 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
     // No-access user attempts to get commits should fail with 403 Forbidden
     assertPermissionDenied(() -> getCommits(noAccessUserCommitsApi));
 
+    // Cross-channel probe: the same GET but with the request-body fields moved to URL query params
+    // and no body -- the body-less-GET case that motivated the decorator's fail-closed design.
+    // Today Armeria's Jackson converter rejects the body-less GET during POJO binding (400) before
+    // authz runs, so the relocated query params are never honored. Whatever happens to that path,
+    // the invariant this locks in is that an unauthorized caller never receives commit data: any
+    // 4xx is acceptable, a 2xx carrying commits is not.
+    HttpResponse<String> rawByQuery =
+        TestUtils.sendRawGet(
+            noAccessUserConfig,
+            "/api/2.1/unity-catalog/delta/preview/commits"
+                + "?tableId="
+                + tableInfo.getTableId()
+                + "&tableUri="
+                + tableInfo.getStorageLocation()
+                + "&startVersion=0",
+            Optional.empty());
+    assertThat(rawByQuery.statusCode())
+        .as("attacker must not receive commits via URL-query-only GET")
+        .isBetween(400, 499);
+    assertThat(rawByQuery.body())
+        .as("response must not contain commit data for an unauthorized caller")
+        .doesNotContain("\"commits\"");
+
+    // Cross-channel probe (write path via POST): postCommit's authorization key `table_id` is a
+    // PAYLOAD (request-body) field, authorized by the deferred gate converter on the bound body
+    // *before* the handler runs. An attacker moves `table_id` to a URL query param (which the
+    // PAYLOAD locator does not read) and omits it from the body, hoping authz is skipped. It must
+    // not be: with no `table_id` in the body the gate resolves a null table and denies before the
+    // handler runs, so no commit is ever applied. Today that denial surfaces as a 500 rather than
+    // a clean 403 -- ungraceful, but still fail-closed -- so the invariant we lock in is only "the
+    // request is rejected (never a 2xx)". The `commits.size() == 1` assertion below corroborates
+    // that no write occurred.
+    String bodyWithoutTableId =
+        "{\"table_uri\":\""
+            + tableInfo.getStorageLocation()
+            + "\",\"commit_info\":{\"version\":99,\"file_name\":\"probe\",\"file_size\":1,"
+            + "\"timestamp\":1700000000,\"file_modification_timestamp\":1700000000}}";
+    HttpResponse<String> rawPost =
+        TestUtils.sendRaw(
+            noAccessUserConfig,
+            "POST",
+            "/api/2.1/unity-catalog/delta/preview/commits?table_id=" + tableInfo.getTableId(),
+            Optional.of(bodyWithoutTableId));
+    assertThat(rawPost.statusCode())
+        .as("PAYLOAD-source authz must reject (never apply) a commit whose key is off the body")
+        .isGreaterThanOrEqualTo(400);
+
     // read user can get commits
     DeltaGetCommitsResponse commits = getCommits(readUserCommitsApi);
     assertThat(commits.getCommits()).isNotNull();
@@ -207,5 +268,33 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
         () -> unauthCommitsApi.commit(commit2), ErrorCode.UNAUTHENTICATED, "authorization");
     assertApiException(
         () -> getCommits(unauthCommitsApi), ErrorCode.UNAUTHENTICATED, "authorization");
+
+    // Delta updateTable's add-commit shares the same UPDATE_TABLE expression as DeltaCommitsApi
+    // postCommit, so SELECT-only users must be denied here too. Pins that the new action inherits
+    // the existing authz contract.
+    DeltaTablesApi readUserDeltaApi = new DeltaTablesApi(TestUtils.createApiClient(readUserConfig));
+    DeltaUpdateTableRequest addCommitRequest =
+        new DeltaUpdateTableRequest()
+            .requirements(
+                List.of(
+                    new DeltaAssertTableUUID()
+                        .uuid(java.util.UUID.fromString(tableInfo.getTableId()))))
+            .updates(
+                List.of(
+                    new DeltaAddCommitUpdate()
+                        .commit(
+                            new io.unitycatalog.client.delta.model.DeltaCommit()
+                                .version(3L)
+                                .timestamp(1700000003L)
+                                .fileName("00000003.json")
+                                .fileSize(1024L)
+                                .fileModificationTimestamp(1700000003L))));
+    assertDeltaPermissionDenied(
+        () ->
+            readUserDeltaApi.updateTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                tableInfo.getName(),
+                addCommitRequest));
   }
 }

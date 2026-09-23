@@ -4,7 +4,6 @@ import com.azure.core.credential.TokenCredential;
 import com.azure.core.http.HttpClient;
 import com.azure.core.util.Context;
 import com.azure.identity.ClientSecretCredentialBuilder;
-import com.azure.identity.DefaultAzureCredentialBuilder;
 import com.azure.storage.file.datalake.DataLakeServiceAsyncClient;
 import com.azure.storage.file.datalake.DataLakeServiceClientBuilder;
 import com.azure.storage.file.datalake.implementation.util.DataLakeSasImplUtil;
@@ -41,16 +40,12 @@ public interface AzureCredentialGenerator {
     private final TokenCredential tokenCredential;
 
     public DatalakeCredentialGenerator(ADLSStorageConfig config) {
-      if (config == null) {
-        this.tokenCredential = new DefaultAzureCredentialBuilder().build();
-      } else {
-        this.tokenCredential =
-            new ClientSecretCredentialBuilder()
-                .tenantId(config.getTenantId())
-                .clientId(config.getClientId())
-                .clientSecret(config.getClientSecret())
-                .build();
-      }
+      this.tokenCredential =
+          new ClientSecretCredentialBuilder()
+              .tenantId(config.getTenantId())
+              .clientId(config.getClientId())
+              .clientSecret(config.getClientSecret())
+              .build();
     }
 
     @Override

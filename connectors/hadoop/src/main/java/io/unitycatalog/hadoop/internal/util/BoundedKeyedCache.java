@@ -1,0 +1,134 @@
+package io.unitycatalog.hadoop.internal.util;
+
+import io.unitycatalog.client.internal.Preconditions;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+
+public final class BoundedKeyedCache<K, V> {
+  private final int maxSize;
+  private final Consumer<V> evictionListener;
+  private final Predicate<V> isFresh;
+  private final Object cacheLock = new Object();
+  private final LinkedHashMap<K, V> cache = new LinkedHashMap<>(16, 0.75f, true);
+  private final IdLockMap<K> keyLocks = new IdLockMap<>();
+
+  public BoundedKeyedCache(int maxSize, Consumer<V> evictionListener) {
+    this(maxSize, evictionListener, alwaysFresh());
+  }
+
+  /**
+   * @param maxSize greatest number of entries retained; the least recently used entry is evicted
+   *     once a put would exceed it.
+   * @param evictionListener notified for each value dropped by eviction, replacement or {@link
+   *     #clear}; use {@link #noOpListener()} when evicted values need no disposal.
+   * @param isFresh applied by {@link #getOrLoad} to a cached value; one it rejects is treated as a
+   *     miss and reloaded. Must be a pure function of the value. Use {@link #alwaysFresh()} to keep
+   *     every cached value usable until it is evicted.
+   */
+  public BoundedKeyedCache(int maxSize, Consumer<V> evictionListener, Predicate<V> isFresh) {
+    Preconditions.checkArgument(maxSize > 0, "maxSize must be positive, got %s", maxSize);
+    this.maxSize = maxSize;
+    this.evictionListener =
+        Objects.requireNonNull(evictionListener, "evictionListener cannot be null");
+    this.isFresh = Objects.requireNonNull(isFresh, "isFresh cannot be null");
+  }
+
+  /** Freshness policy keeping every cached value usable until it is evicted. */
+  public static <V> Predicate<V> alwaysFresh() {
+    return value -> true;
+  }
+
+  /** Eviction listener for caches whose evicted values need no disposal. */
+  public static <V> Consumer<V> noOpListener() {
+    return value -> {};
+  }
+
+  /**
+   * Returns the cached value as-is, without applying the freshness policy; {@code null} if absent.
+   */
+  public V getIfPresent(K key) {
+    synchronized (cacheLock) {
+      return cache.get(key);
+    }
+  }
+
+  /**
+   * Returns the cached value for {@code key}, loading and caching one when the key is absent or
+   * when the cache's freshness policy rejects what is cached. A value the policy accepts is
+   * returned without taking the key lock; threads on different keys never block each other.
+   *
+   * <p>Loads are single-flight per key in the common case: same-key waiters block for the duration
+   * of the load and then reuse the loaded value. A waiter re-applies the policy, so if the loader
+   * produced a value the policy already rejects (e.g. a credential vended with less remaining
+   * lifetime than the renewal lead time) the waiter loads again rather than returning it. The
+   * loading thread itself always gets its own result.
+   *
+   * <p>Loaders must not call back into this cache: a loader that loads other keys can form a lock
+   * cycle and deadlock. The policy must be a pure function of the value -- it is applied both
+   * outside and inside the key lock.
+   */
+  public <E extends Exception> V getOrLoad(K key, CheckedSupplier<V, E> loader) throws E {
+    V cached = getIfPresent(key);
+    if (cached != null && isFresh.test(cached)) {
+      return cached;
+    }
+    try (IdLockMap<K>.IdLock ignored = keyLocks.acquire(key)) {
+      V lockedCached = getIfPresent(key);
+      if (lockedCached != null && isFresh.test(lockedCached)) {
+        return lockedCached;
+      }
+      V loaded = Objects.requireNonNull(loader.get(), "loader returned null");
+      put(key, loaded);
+      return loaded;
+    }
+  }
+
+  public void put(K key, V value) {
+    Objects.requireNonNull(key, "key cannot be null");
+    Objects.requireNonNull(value, "value cannot be null");
+    List<V> evicted = new ArrayList<>();
+    synchronized (cacheLock) {
+      V previous = cache.put(key, value);
+      if (previous != null && previous != value) {
+        evicted.add(previous);
+      }
+      while (cache.size() > maxSize) {
+        Map.Entry<K, V> eldest = cache.entrySet().iterator().next();
+        cache.remove(eldest.getKey());
+        evicted.add(eldest.getValue());
+      }
+    }
+    evicted.forEach(evictionListener);
+  }
+
+  public void clear() {
+    List<V> evicted;
+    synchronized (cacheLock) {
+      evicted = new ArrayList<>(cache.values());
+      cache.clear();
+    }
+    evicted.forEach(evictionListener);
+  }
+
+  public int size() {
+    synchronized (cacheLock) {
+      return cache.size();
+    }
+  }
+
+  public List<V> values() {
+    synchronized (cacheLock) {
+      return new ArrayList<>(cache.values());
+    }
+  }
+
+  @FunctionalInterface
+  public interface CheckedSupplier<T, E extends Exception> {
+    T get() throws E;
+  }
+}

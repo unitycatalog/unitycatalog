@@ -1,13 +1,11 @@
 {
   "metadata": {
     "etag": "etag-123",
-    "data-source-format": "DELTA",
     "table-type": "MANAGED",
     "table-uuid": "550e8400-e29b-41d4-a716-446655440000",
     "location": "s3://bucket/warehouse/catalog/schema/sales",
     "created-time": 1700000000000,
     "updated-time": 1700000100000,
-    "securable-type": "TABLE",
     "columns": {
       "type": "struct",
       "fields": [
@@ -59,5 +57,10 @@
       "converted-delta-timestamp": 1700000100000
     }
   },
-  "latest-table-version": 5
+  "latest-table-version": 5,
+  "allowed-maintenance-operations": [
+    "DATA_REORGANIZATION",
+    "DATA_CLEANUP",
+    "METADATA_CLEANUP"
+  ]
 }

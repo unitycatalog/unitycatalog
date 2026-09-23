@@ -14,105 +14,75 @@ on:
 permissions:
   contents: read
 
+# The test matrix is inlined below. Each row sets spark-source-build, which controls ONLY how
+# Spark is provided (it has no effect on Delta):
+#   - false: run against published Spark artifacts.
+#   - true:  the test job restores the Spark Maven cache, builds Spark from the metadata
+#            ref on a miss, saves the cache, then runs tests against it.
+#
+# There is no Delta equivalent flag: when delta-version is master-SNAPSHOT the run-uc-unit-tests
+# action always builds Delta from source (project/scripts/build_delta.sh), gated on the version
+# string itself rather than a separate toggle. Every published delta-version is resolved directly.
+#
+# The source-built Spark SHA, artifact version, and cache key come from
+# project/spark-versions.json (sourceBuildDefaultRef) via project/scripts/get_spark_version_info.py.
+# Bumping the source-built Spark line is a one-line change there plus the matrix row below.
+#
+# The Spark build is inlined per row (in the prepare-spark-env action) because UC runs one
+# runner per combo. Delta keeps a dedicated build job only because it shards each Spark
+# version across many runners and must build once and restore into every shard.
+#
+# Cache model: the cache uses an exact key (no restore-keys). When the Spark SHA or
+# build_spark.sh changes, a new key is used; older entries are orphaned and GitHub evicts
+# them by LRU.
 jobs:
   test:
     runs-on: ubuntu-latest
 
+    # Build a human-readable job name from the matrix entry, e.g.:
+    #   "All tests (Spark 4.0.0, Delta 4.3.1)"
+    #   "[Non Blocking] Spark tests (Spark 4.2.0, Delta master-SNAPSHOT)"
     name: >-
       ${{ matrix.non-blocking && '[Non Blocking]' || '' }}
-      ${{ matrix.run-only-spark-tests && 'Spark tests' || 'All tests' }}
-      (Spark ${{ matrix.spark-version }}, Delta ${{ matrix.delta-version }})
+      ${{ matrix.validation-mode == 'spark-tests' && 'Spark tests' || 'All tests' }}
+      (Spark ${{ matrix.spark-version }}${{ matrix.delta-version != '' && format(', Delta {0}', matrix.delta-version) || '' }})
     continue-on-error: ${{ matrix.non-blocking || false }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - spark-version: "4.0.0"
-            delta-version: "4.1.0"
-            # This is the primary combo: runs ALL tests (unit, spark, license).
-            # Other combos run only spark connector tests since unit tests and
-            # license checks don't depend on Spark/Delta versions.
-            run-only-spark-tests: false
+            delta-version: "4.3.1"
+            # Primary combo: runs ALL tests (unit, spark, license). Other combos run only
+            # spark connector tests since unit/license checks don't depend on Spark/Delta.
+            validation-mode: "all-tests"
             non-blocking: false
+            spark-source-build: false
           - spark-version: "4.1.0"
-            delta-version: "4.1.0"
-            run-only-spark-tests: true
+            delta-version: "4.3.1"
+            validation-mode: "spark-tests"
             non-blocking: false
+            spark-source-build: false
           - spark-version: "4.1.0"
             delta-version: "master-SNAPSHOT"
-            run-only-spark-tests: true
-            # Cross-version testing with Delta master is informational; failures
-            # indicate upcoming incompatibilities but should not block PRs.
+            # Cross-version testing with Delta master is informational; failures indicate
+            # upcoming incompatibilities but should not block PRs.
+            validation-mode: "spark-tests"
             non-blocking: true
+            spark-source-build: false
+          - spark-version: "4.2.0"
+            delta-version: "master-SNAPSHOT"
+            validation-mode: "spark-tests"
+            non-blocking: true
+            spark-source-build: false
 
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-    - name: Set up JDK 17
-      uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-
-    - name: Resolve Delta master version and commit SHA
-      if: matrix.delta-version == 'master-SNAPSHOT'
-      id: delta-meta
-      run: |
-        DELTA_SHA=$(git ls-remote https://github.com/delta-io/delta.git HEAD | cut -f1)
-        DELTA_VER=$(curl -fsSL https://raw.githubusercontent.com/delta-io/delta/master/version.sbt \
-              | grep -oP '(?<=")[^"]*-SNAPSHOT(?=")')
-        echo "sha=$DELTA_SHA" >> $GITHUB_OUTPUT
-        echo "version=$DELTA_VER" >> $GITHUB_OUTPUT
-
-    - name: Cache Delta SNAPSHOT local Maven artifacts
-      if: matrix.delta-version == 'master-SNAPSHOT'
-      id: delta-cache
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-      with:
-        path: ~/.m2/repository/io/delta
-        key: delta-snapshot-${{ steps.delta-meta.outputs.sha }}
-
-    - name: Build Delta SNAPSHOT from master and publish to local Maven
-      if: matrix.delta-version == 'master-SNAPSHOT' && steps.delta-cache.outputs.cache-hit != 'true'
-      run: |
-        SPARK_MAJOR_MINOR=$(echo "${{ matrix.spark-version }}" | cut -d. -f1,2)
-        git clone --depth=1 https://github.com/delta-io/delta.git /tmp/delta
-        cd /tmp/delta
-        # Publish only delta-spark and the modules its POM references at SNAPSHOT:
-        # storage (dependsOn) and the kernel artifacts re-added via pomPostProcess.
-        # This avoids compiling unrelated Delta projects (hudi, iceberg, flink, connect, ...).
-        build/sbt -DsparkVersion=$SPARK_MAJOR_MINOR \
-          storage/publishM2 \
-          kernelApi/publishM2 \
-          kernelDefaults/publishM2 \
-          kernelUnityCatalog/publishM2 \
-          spark/publishM2
-
-    - name: Set effective Delta version
-      run: |
-        if [[ "${{ matrix.delta-version }}" == "master-SNAPSHOT" ]]; then
-          echo "DELTA_VERSION=${{ steps.delta-meta.outputs.version }}" >> $GITHUB_ENV
-        else
-          echo "DELTA_VERSION=${{ matrix.delta-version }}" >> $GITHUB_ENV
-        fi
-
-      # 'integrationTests' is not in root project, since we avoid running it via `./build/sbt test`,
-      # Here, we explicitly compile `integrationTests` to catch compilation issues early.
-    - name: Compile integration tests to verify compilation and checkstyle issues.
-      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G integrationTests/test:compile
-
-    - name: Build and verify the local deployment.
-      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G clean package publishM2
-
-    - name: Run tests with coverage
-      run: |
-        if [[ "${{ matrix.run-only-spark-tests }}" == "true" ]]; then
-          echo "Running spark connector tests only"
-          build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G spark/jacoco
-        else
-          echo "Running all tests"
-          build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G +jacoco
-        fi
-
-    - name: Run license check
-      if: ${{ !matrix.run-only-spark-tests }}
-      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION licenseCheck
+      # Local composite actions require checkout before uses: ./.github/actions/...
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Run UC unit tests
+        uses: ./.github/actions/run-uc-unit-tests
+        with:
+          spark-version: ${{ matrix.spark-version }}
+          delta-version: ${{ matrix.delta-version }}
+          validation-mode: ${{ matrix.validation-mode }}
+          use-spark-source-cache: ${{ matrix.spark-source-build }}

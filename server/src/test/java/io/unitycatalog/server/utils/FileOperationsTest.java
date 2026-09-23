@@ -1,14 +1,67 @@
 package io.unitycatalog.server.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import com.azure.core.http.rest.PagedIterable;
+import com.azure.storage.file.datalake.DataLakeDirectoryClient;
+import com.azure.storage.file.datalake.DataLakeFileSystemClient;
+import com.azure.storage.file.datalake.models.PathItem;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.model.AwsCredentials;
+import io.unitycatalog.server.model.AzureUserDelegationSAS;
+import io.unitycatalog.server.model.GcpOauthToken;
+import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
+import io.unitycatalog.server.persist.utils.InterruptiblePrefixOperations;
+import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
+import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 import lombok.SneakyThrows;
+import org.apache.iceberg.aws.AwsClientProperties;
+import org.apache.iceberg.aws.HttpClientProperties;
+import org.apache.iceberg.aws.s3.S3FileIO;
+import org.apache.iceberg.aws.s3.S3FileIOProperties;
+import org.apache.iceberg.azure.AzureProperties;
+import org.apache.iceberg.azure.adlsv2.ADLSFileIO;
+import org.apache.iceberg.gcp.GCPProperties;
+import org.apache.iceberg.gcp.gcs.GCSFileIO;
+import org.apache.iceberg.io.BulkDeletionFailureException;
+import org.apache.iceberg.io.CloseableIterable;
+import org.apache.iceberg.io.FileIO;
+import org.apache.iceberg.io.FileInfo;
+import org.apache.iceberg.io.InputFile;
+import org.apache.iceberg.io.OutputFile;
+import org.apache.iceberg.io.PositionOutputStream;
+import org.apache.iceberg.io.ResolvingFileIO;
+import org.apache.iceberg.io.SupportsPrefixOperations;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.MockedConstruction;
 
 public class FileOperationsTest {
 
@@ -26,5 +79,597 @@ public class FileOperationsTest {
 
     FileOperations.createStorageLocationDir(modelPathUri);
     FileOperations.deleteDirectory(modelPathUri);
+  }
+
+  @SneakyThrows
+  @Test
+  public void testDeleteDirectoryRemovesNestedFilesAndDirs() {
+    // Populate a directory with nested files and subdirectories, then verify deleteDirectory
+    // removes the entire tree (files and the emptied directories, bottom-up).
+    Path dir = rootBase.resolve("table-" + UUID.randomUUID());
+    Path nested = dir.resolve("sub/deeper");
+    Files.createDirectories(nested);
+    Files.writeString(dir.resolve("_metadata.json"), "{}");
+    Files.writeString(dir.resolve("sub/part-0.parquet"), "data");
+    Files.writeString(nested.resolve("part-1.parquet"), "data");
+
+    FileOperations.deleteDirectory(NormalizedURL.from(dir.toString()));
+
+    // The whole tree must be gone: nested files, the intermediate directories, and the root.
+    assertThat(Files.exists(nested.resolve("part-1.parquet"))).isFalse();
+    assertThat(Files.exists(dir.resolve("sub/part-0.parquet"))).isFalse();
+    assertThat(Files.exists(nested)).isFalse();
+    assertThat(Files.exists(dir.resolve("sub"))).isFalse();
+    assertThat(Files.exists(dir)).isFalse();
+  }
+
+  @SneakyThrows
+  @Test
+  public void testDeletePrefixOnMissingDirectorySucceeds() {
+    NormalizedURL missing =
+        NormalizedURL.from(rootBase.resolve("does-not-exist-" + UUID.randomUUID()).toString());
+    assertThatCode(() -> SimpleLocalFileIO.deleteDirectory(missing.toString()))
+        .doesNotThrowAnyException();
+  }
+
+  @SneakyThrows
+  @Test
+  public void testListPrefixReturnsRegularFilesOnly() {
+    // listPrefix must recurse into subdirectories, return every regular file, and exclude the
+    // directories themselves (per the Iceberg FileInfo listing contract).
+    Path dir = rootBase.resolve("table-" + UUID.randomUUID());
+    Files.createDirectories(dir.resolve("sub"));
+    Files.writeString(dir.resolve("a.json"), "a");
+    Files.writeString(dir.resolve("sub/b.parquet"), "bb");
+
+    List<String> listed;
+    try (CloseableIterable<FileInfo> files =
+        new SimpleLocalFileIO().listPrefix(dir.toUri().toString())) {
+      listed =
+          StreamSupport.stream(files.spliterator(), false)
+              .map(FileInfo::location)
+              .collect(Collectors.toList());
+    }
+
+    // Both files are present; neither the prefix dir nor "sub" appears in the listing.
+    assertThat(listed)
+        .containsExactlyInAnyOrder(
+            dir.resolve("a.json").toUri().toString(),
+            dir.resolve("sub/b.parquet").toUri().toString());
+  }
+
+  @SneakyThrows
+  @Test
+  public void testListPrefixReportsSize() {
+    Path dir = rootBase.resolve("table-" + UUID.randomUUID());
+    Files.createDirectories(dir);
+    Files.writeString(dir.resolve("a.json"), "hello");
+
+    try (CloseableIterable<FileInfo> files =
+        new SimpleLocalFileIO().listPrefix(dir.toUri().toString())) {
+      List<FileInfo> infos =
+          StreamSupport.stream(files.spliterator(), false).collect(Collectors.toList());
+      assertThat(infos).hasSize(1);
+      assertThat(infos.get(0).size()).isEqualTo(5L);
+    }
+  }
+
+  @SneakyThrows
+  @Test
+  public void testDeleteFilesDeletesListedFilesOnly() {
+    Path dir = rootBase.resolve("table-" + UUID.randomUUID());
+    Files.createDirectories(dir);
+    Path a = dir.resolve("a.json");
+    Path b = dir.resolve("b.json");
+    Files.writeString(a, "a");
+    Files.writeString(b, "b");
+
+    new SimpleLocalFileIO().deleteFiles(List.of(a.toUri().toString()));
+
+    assertThat(Files.exists(a)).isFalse();
+    assertThat(Files.exists(b)).isTrue();
+  }
+
+  @SneakyThrows
+  @Test
+  public void testDeleteFilesThrowsBulkFailureWhenAnyFails() {
+    Path dir = rootBase.resolve("table-" + UUID.randomUUID());
+    Files.createDirectories(dir);
+    Path existing = dir.resolve("a.json");
+    Files.writeString(existing, "a");
+    String missing = dir.resolve("missing.json").toUri().toString();
+
+    // One deletable + one nonexistent path: the batch must surface a BulkDeletionFailureException,
+    // and the deletable file is still removed.
+    assertThatThrownBy(
+            () ->
+                new SimpleLocalFileIO().deleteFiles(List.of(existing.toUri().toString(), missing)))
+        .isInstanceOf(BulkDeletionFailureException.class);
+    assertThat(Files.exists(existing)).isFalse();
+  }
+
+  @Test
+  public void testGetFileIOConfigLocalPathSkipsVending() {
+    // Local paths must short-circuit to an empty config WITHOUT vending credentials.
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("file:///tmp/some/table"));
+
+    assertThat(config).isEmpty();
+    verify(vendor, never()).vendCredential(any(), any());
+  }
+
+  @Test
+  public void testGetFileIOConfigS3() {
+    // Region for the bucket comes from server properties; credentials from the vendor.
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://my-bucket");
+    props.setProperty("s3.region.0", "us-west-2");
+    props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("AKIA")
+                        .secretAccessKey("secret")
+                        .sessionToken("token"))
+                .expirationTime(12345L));
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
+
+    assertThat(config)
+        .containsEntry(S3FileIOProperties.ACCESS_KEY_ID, "AKIA")
+        .containsEntry(S3FileIOProperties.SECRET_ACCESS_KEY, "secret")
+        .containsEntry(S3FileIOProperties.SESSION_TOKEN, "token")
+        .containsEntry(AwsClientProperties.CLIENT_REGION, "us-west-2")
+        .containsEntry(S3FileIOProperties.SESSION_TOKEN_EXPIRES_AT_MS, "12345")
+        // This overload builds config for the server's own FileIO, which has no catalog URI to
+        // resolve a refresh endpoint against.
+        .doesNotContainKey(AwsClientProperties.REFRESH_CREDENTIALS_ENDPOINT)
+        .doesNotContainKey(S3FileIOProperties.ENDPOINT)
+        .doesNotContainKey(S3FileIOProperties.PATH_STYLE_ACCESS);
+  }
+
+  @Test
+  public void testGetFileIOConfigS3HonorsEndpoint() {
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://my-bucket");
+    props.setProperty("s3.region.0", "us-west-2");
+    props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
+    props.setProperty("s3.endpoint.0", "http://localhost:8333");
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("AKIA")
+                        .secretAccessKey("secret")
+                        .sessionToken("token")));
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
+
+    assertThat(config)
+        .containsEntry(S3FileIOProperties.ENDPOINT, "http://localhost:8333")
+        .containsEntry(S3FileIOProperties.PATH_STYLE_ACCESS, "true");
+  }
+
+  @Test
+  public void testGetFileIOConfigS3OmitsExpiryWhenNull() {
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://my-bucket");
+    props.setProperty("s3.region.0", "us-west-2");
+    props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("AKIA")
+                        .secretAccessKey("secret")
+                        .sessionToken("token")));
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
+
+    assertThat(config).doesNotContainKey(S3FileIOProperties.SESSION_TOKEN_EXPIRES_AT_MS);
+  }
+
+  @Test
+  public void testGetFileIOConfigCarriesRefreshEndpointForEveryCloud() {
+    // A client that is handed an expiring credential needs both the expiry and somewhere to renew,
+    // under each cloud's own property names.
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://my-bucket");
+    props.setProperty("s3.region.0", "us-west-2");
+    props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
+    String endpoint = "v1/catalogs/c/namespaces/n/tables/t/credentials";
+
+    Map<TemporaryCredentials, Map.Entry<String, Map<String, String>>> cases = new LinkedHashMap<>();
+    cases.put(
+        new TemporaryCredentials()
+            .awsTempCredentials(
+                new AwsCredentials()
+                    .accessKeyId("AKIA")
+                    .secretAccessKey("secret")
+                    .sessionToken("token"))
+            .expirationTime(12345L),
+        Map.entry(
+            "s3://my-bucket/table",
+            Map.of(
+                S3FileIOProperties.SESSION_TOKEN_EXPIRES_AT_MS,
+                "12345",
+                AwsClientProperties.REFRESH_CREDENTIALS_ENDPOINT,
+                endpoint)));
+    cases.put(
+        new TemporaryCredentials()
+            .gcpOauthToken(new GcpOauthToken().oauthToken("gcs-token"))
+            .expirationTime(12345L),
+        Map.entry(
+            "gs://my-bucket/table",
+            Map.of(
+                GCPProperties.GCS_OAUTH2_TOKEN_EXPIRES_AT,
+                "12345",
+                GCPProperties.GCS_OAUTH2_REFRESH_CREDENTIALS_ENDPOINT,
+                endpoint)));
+    cases.put(
+        new TemporaryCredentials()
+            .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("sas-token"))
+            .expirationTime(12345L),
+        Map.entry(
+            "abfs://container@myaccount.dfs.core.windows.net/table",
+            Map.of(
+                AzureProperties.ADLS_SAS_TOKEN_EXPIRES_AT_MS_PREFIX
+                    + "myaccount.dfs.core.windows.net",
+                "12345",
+                AzureProperties.ADLS_REFRESH_CREDENTIALS_ENDPOINT,
+                endpoint)));
+
+    cases.forEach(
+        (credential, expected) -> {
+          StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+          when(vendor.vendCredential(any(), any())).thenReturn(credential);
+          FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+
+          assertThat(
+                  fileOps.getFileIOConfig(
+                      NormalizedURL.from(expected.getKey()),
+                      CredentialContext.READ_ONLY,
+                      Optional.of(endpoint)))
+              .containsAllEntriesOf(expected.getValue());
+        });
+  }
+
+  @Test
+  public void testGetFileIOConfigGcsIncludesExpiry() {
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .gcpOauthToken(new GcpOauthToken().oauthToken("gcs-token"))
+                .expirationTime(12345L));
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("gs://my-bucket/table"));
+
+    assertThat(config)
+        .containsEntry(GCPProperties.GCS_OAUTH2_TOKEN, "gcs-token")
+        .containsEntry(GCPProperties.GCS_OAUTH2_TOKEN_EXPIRES_AT, "12345");
+  }
+
+  @Test
+  public void testGetFileIOConfigGcsOmitsExpiryWhenNull() {
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials().gcpOauthToken(new GcpOauthToken().oauthToken("gcs-token")));
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("gs://my-bucket/table"));
+
+    assertThat(config).containsEntry(GCPProperties.GCS_OAUTH2_TOKEN, "gcs-token");
+    assertThat(config).doesNotContainKey(GCPProperties.GCS_OAUTH2_TOKEN_EXPIRES_AT);
+  }
+
+  @Test
+  public void testGetFileIOConfigAdls() {
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("sas-token")));
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(
+            NormalizedURL.from("abfs://container@myaccount.dfs.core.windows.net/table"));
+
+    assertThat(config)
+        .containsEntry(
+            AzureProperties.ADLS_SAS_TOKEN_PREFIX + "myaccount.dfs.core.windows.net", "sas-token")
+        .doesNotContainKey(
+            AzureProperties.ADLS_SAS_TOKEN_EXPIRES_AT_MS_PREFIX + "myaccount.dfs.core.windows.net");
+  }
+
+  @Test
+  public void testGetFileIOConfigCloudWithUnrecognizedCredentialThrows() {
+    // A cloud scheme that vends no recognized credential type must fail loudly rather than
+    // silently returning a credential-less config.
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any())).thenReturn(new TemporaryCredentials());
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+
+    assertThatThrownBy(() -> fileOps.getFileIOConfig(NormalizedURL.from("gs://my-bucket/table")))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("No recognized storage credential");
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  public void testGetFileIOConfigS3WithoutConfiguredRegionThrows(boolean hasDefaultRegion) {
+    // No region configured for the bucket: guard with a clear error instead of an opaque NPE.
+    Properties props = new Properties();
+    if (hasDefaultRegion) {
+      props.setProperty("aws.region", "us-west-2");
+    }
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("AKIA")
+                        .secretAccessKey("secret")
+                        .sessionToken("token")));
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+    NormalizedURL path = NormalizedURL.from("s3://my-bucket/table");
+
+    assertThatThrownBy(() -> fileOps.getFileIOConfig(path))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("No S3 region configured");
+    assertThatThrownBy(() -> fileOps.getCleanupFileIO(path, CooperativeDeadline.NO_DEADLINE))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("No S3 region configured");
+  }
+
+  @Test
+  public void testGetFileIOForLocalPathReturnsSimpleLocalFileIO() {
+    // Local paths must not be vended and must resolve to SimpleLocalFileIO (no ResolvingFileIO,
+    // which would require hadoop-client-runtime for the file:// scheme).
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+
+    try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from("file:///tmp/some/table"))) {
+      assertThat(fileIO).isInstanceOf(SimpleLocalFileIO.class);
+    }
+    verify(vendor, never()).vendCredential(any(), any());
+  }
+
+  @SneakyThrows
+  @Test
+  public void testGetFileIOForLocalPathReadsThroughReturnedFileIO() {
+    // End-to-end: getFileIO returns a working local FileIO that can read a real file.
+    Path file = rootBase.resolve("data-" + UUID.randomUUID() + ".txt");
+    Files.writeString(file, "hello world");
+
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+
+    try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from(file.toUri().toString()))) {
+      InputFile input = fileIO.newInputFile(file.toUri().toString());
+      assertThat(input.getLength()).isEqualTo("hello world".length());
+    }
+  }
+
+  @SneakyThrows
+  @Test
+  public void testGetFileIOForLocalPathWritesThroughReturnedFileIO() {
+    Path file = rootBase.resolve("metadata-" + UUID.randomUUID() + ".json");
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+
+    try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from(file.toUri().toString()))) {
+      OutputFile output = fileIO.newOutputFile(file.toUri().toString());
+      try (PositionOutputStream stream = output.createOrOverwrite()) {
+        stream.write("{\"table\":true}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      }
+    }
+    assertThat(Files.readString(file)).isEqualTo("{\"table\":true}");
+  }
+
+  @Test
+  public void testGetFileIOForCloudPathReturnsResolvingFileIO() {
+    // Cloud paths route through a credential-vended ResolvingFileIO.
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://my-bucket");
+    props.setProperty("s3.region.0", "us-west-2");
+    props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("AKIA")
+                        .secretAccessKey("secret")
+                        .sessionToken("token")));
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+
+    try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from("s3://my-bucket/table"))) {
+      assertThat(fileIO).isInstanceOf(ResolvingFileIO.class);
+    }
+  }
+
+  @Test
+  public void testGetCleanupFileIOUsesConfiguredBucketRegion() {
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://my-bucket");
+    props.setProperty("s3.region.0", "us-west-2");
+    props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
+    props.setProperty("aws.region", "us-east-1");
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("AKIA")
+                        .secretAccessKey("secret")
+                        .sessionToken("token")));
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+    NormalizedURL path = NormalizedURL.from("s3://my-bucket/tables/" + UUID.randomUUID());
+
+    String prefix = path + "/";
+    try (MockedConstruction<S3FileIO> s3Files =
+        mockConstruction(
+            S3FileIO.class,
+            (s3, context) ->
+                when(s3.listPrefix(prefix))
+                    .thenReturn(List.of(new FileInfo(prefix + "data", 1, 1))))) {
+      for (int attempt = 0; attempt < 2; attempt++) {
+        Map<String, String> expectedConfig;
+        try (SupportsPrefixOperations fileIO =
+            fileOps.getCleanupFileIO(path, CooperativeDeadline.NO_DEADLINE)) {
+          assertThat(fileIO).isInstanceOf(InterruptiblePrefixOperations.class);
+          assertThat(fileIO.properties())
+              .doesNotContainKey(HttpClientProperties.APACHE_SOCKET_TIMEOUT_MS)
+              .containsEntry(AwsClientProperties.CLIENT_REGION, "us-west-2")
+              .containsEntry(S3FileIOProperties.ACCESS_KEY_ID, "AKIA")
+              .containsEntry(S3FileIOProperties.SECRET_ACCESS_KEY, "secret")
+              .containsEntry(S3FileIOProperties.SESSION_TOKEN, "token");
+          expectedConfig = fileIO.properties();
+          fileIO.deletePrefix(prefix);
+        }
+        assertThat(s3Files.constructed()).hasSize(attempt + 1);
+        S3FileIO s3 = s3Files.constructed().get(attempt);
+        verify(s3)
+            .initialize(
+                argThat(config -> config.entrySet().containsAll(expectedConfig.entrySet())));
+        verify(s3).listPrefix(prefix);
+        verify(s3).deleteFiles(List.of(prefix + "data"));
+        verify(s3, never()).deleteFile(any(String.class));
+        verify(s3).close();
+      }
+    }
+
+    verify(vendor, times(2)).vendCredential(path, CredentialContext.READ_WRITE);
+  }
+
+  @Test
+  public void testGetCleanupFileIOForGcsUsesFreshCredentials() {
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    long expiration = 1900000000000L;
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .gcpOauthToken(new GcpOauthToken().oauthToken("first-token"))
+                .expirationTime(expiration),
+            new TemporaryCredentials()
+                .gcpOauthToken(new GcpOauthToken().oauthToken("second-token"))
+                .expirationTime(expiration));
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    NormalizedURL path = NormalizedURL.from("gs://bucket/tables/" + UUID.randomUUID());
+    String prefix = path + "/";
+
+    try (MockedConstruction<GCSFileIO> gcsFiles =
+        mockConstruction(
+            GCSFileIO.class,
+            (gcs, context) ->
+                when(gcs.listPrefix(prefix))
+                    .thenReturn(List.of(new FileInfo(prefix + "data", 1, 1))))) {
+      List<String> tokens = List.of("first-token", "second-token");
+      for (int attempt = 0; attempt < tokens.size(); attempt++) {
+        Map<String, String> expectedConfig =
+            Map.of(
+                GCPProperties.GCS_OAUTH2_TOKEN, tokens.get(attempt),
+                GCPProperties.GCS_OAUTH2_TOKEN_EXPIRES_AT, Long.toString(expiration));
+        try (SupportsPrefixOperations fileIO =
+            fileOps.getCleanupFileIO(path, CooperativeDeadline.NO_DEADLINE)) {
+          assertThat(fileIO).isInstanceOf(InterruptiblePrefixOperations.class);
+          assertThat(fileIO.properties()).isEqualTo(expectedConfig);
+          fileIO.deletePrefix(prefix);
+        }
+        assertThat(gcsFiles.constructed()).hasSize(attempt + 1);
+        GCSFileIO gcs = gcsFiles.constructed().get(attempt);
+        verify(gcs)
+            .initialize(
+                argThat(config -> config.entrySet().containsAll(expectedConfig.entrySet())));
+        verify(gcs).listPrefix(prefix);
+        verify(gcs).deleteFiles(List.of(prefix + "data"));
+        verify(gcs, never()).deleteFile(any(String.class));
+        verify(gcs).close();
+      }
+    }
+    verify(vendor, times(2)).vendCredential(path, CredentialContext.READ_WRITE);
+  }
+
+  @Test
+  public void testGetCleanupFileIOForLocalPathDoesNotVendCredentials() {
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+
+    try (SupportsPrefixOperations operations =
+        fileOps.getCleanupFileIO(
+            NormalizedURL.from(rootBase.toString()), CooperativeDeadline.NO_DEADLINE)) {
+      assertThat(operations).isInstanceOf(SimpleLocalFileIO.class);
+    }
+    verify(vendor, never()).vendCredential(any(), any());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testGetCleanupFileIOForAdlsUsesFreshCredentials() {
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("first-token")),
+            new TemporaryCredentials()
+                .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("second-token")));
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    DataLakeFileSystemClient client = mock(DataLakeFileSystemClient.class);
+    DataLakeDirectoryClient directory = mock(DataLakeDirectoryClient.class);
+    PagedIterable<PathItem> listing = mock(PagedIterable.class);
+    when(listing.iterator()).thenAnswer(ignored -> List.<PathItem>of().iterator());
+    when(client.listPaths(any(), isNull())).thenReturn(listing);
+    when(client.getDirectoryClient("tables/id")).thenReturn(directory);
+    try (MockedConstruction<ADLSFileIO> adlsFiles =
+        mockConstruction(
+            ADLSFileIO.class,
+            (adls, context) -> when(adls.client(anyString())).thenReturn(client))) {
+      List<String> schemes = List.of("abfs", "abfss");
+      List<String> tokens = List.of("first-token", "second-token");
+      for (int attempt = 0; attempt < schemes.size(); attempt++) {
+        NormalizedURL path =
+            NormalizedURL.from(
+                schemes.get(attempt) + "://container@account.dfs.core.windows.net/tables/id");
+        try (SupportsPrefixOperations operations =
+            fileOps.getCleanupFileIO(path, CooperativeDeadline.NO_DEADLINE)) {
+          operations.deletePrefix(path + "/");
+        }
+        assertThat(adlsFiles.constructed()).hasSize(attempt + 1);
+        ADLSFileIO adls = adlsFiles.constructed().get(attempt);
+        verify(adls)
+            .initialize(
+                Map.of(
+                    AzureProperties.ADLS_SAS_TOKEN_PREFIX + "account.dfs.core.windows.net",
+                    tokens.get(attempt)));
+        verify(adls).close();
+        verify(vendor).vendCredential(path, CredentialContext.READ_WRITE);
+      }
+    }
+    verify(directory, times(2)).deleteIfExists();
   }
 }

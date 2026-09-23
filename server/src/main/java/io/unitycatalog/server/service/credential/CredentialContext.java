@@ -23,6 +23,11 @@ public class CredentialContext {
     UPDATE
   }
 
+  // Common privilege sets: SELECT alone vends read-only storage credentials, SELECT + UPDATE vends
+  // read/write credentials.
+  public static final Set<Privilege> READ_ONLY = Set.of(Privilege.SELECT);
+  public static final Set<Privilege> READ_WRITE = Set.of(Privilege.SELECT, Privilege.UPDATE);
+
   // The storage scheme (S3, GCS, ABFS) to determine which cloud vendor to use
   private final UriScheme storageScheme;
   // The storage base (e.g., s3://bucket) for looking up per-bucket configurations

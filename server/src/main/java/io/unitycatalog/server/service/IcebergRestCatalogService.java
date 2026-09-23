@@ -1,79 +1,159 @@
 package io.unitycatalog.server.service;
 
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.service.credential.CredentialContext.READ_ONLY;
+import static io.unitycatalog.server.service.credential.CredentialContext.READ_WRITE;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+import com.google.common.hash.Hashing;
+import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.common.ResponseHeaders;
+import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Head;
+import com.linecorp.armeria.server.annotation.Header;
+import com.linecorp.armeria.server.annotation.HttpResult;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.ProducesJson;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
+import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.CreateSchema;
+import io.unitycatalog.server.model.CreateStagingTable;
+import io.unitycatalog.server.model.CreateTable;
+import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.ListSchemasResponse;
-import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.StagingTableInfo;
+import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.SchemaRepository;
+import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.TableRepository.IcebergTablePage;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.model.DeletedResource;
+import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.iceberg.IcebergSchemaConverter;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
-import io.unitycatalog.server.utils.JsonUtils;
-import java.util.Collections;
+import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ServerProperties;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.stream.Collectors;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Stream;
+import org.apache.iceberg.MetadataUpdate;
+import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.exceptions.BadRequestException;
+import org.apache.iceberg.exceptions.CommitFailedException;
+import org.apache.iceberg.exceptions.NamespaceNotEmptyException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NoSuchViewException;
 import org.apache.iceberg.rest.Endpoint;
+import org.apache.iceberg.rest.RESTCatalogProperties;
+import org.apache.iceberg.rest.RESTCatalogProperties.SnapshotMode;
+import org.apache.iceberg.rest.RESTUtil;
+import org.apache.iceberg.rest.credentials.ImmutableCredential;
+import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
+import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.RenameTableRequest;
+import org.apache.iceberg.rest.requests.ReportMetricsRequest;
+import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
+import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.ConfigResponse;
+import org.apache.iceberg.rest.responses.CreateNamespaceResponse;
 import org.apache.iceberg.rest.responses.GetNamespaceResponse;
+import org.apache.iceberg.rest.responses.ImmutableLoadCredentialsResponse;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
+import org.apache.iceberg.rest.responses.LoadCredentialsResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.rest.responses.LoadViewResponse;
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
+import org.apache.iceberg.rest.responses.UpdateNamespacePropertiesResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@ExceptionHandler(IcebergRestExceptionHandler.class)
-public class IcebergRestCatalogService {
+public class IcebergRestCatalogService extends AuthorizedService implements RegisteredService {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(IcebergRestCatalogService.class);
 
   private static final String PREFIX_BASE = "catalogs/";
 
-  private static final List<Endpoint> ENDPOINTS =
+  /** Query-parameter spellings of a boolean, lowercased; the set Armeria itself converts. */
+  private static final Set<String> BOOLEAN_SPELLINGS = Set.of("true", "false", "1", "0");
+
+  private static final List<Endpoint> READ_ENDPOINTS =
       List.of(
           Endpoint.V1_LIST_NAMESPACES,
           Endpoint.V1_LOAD_NAMESPACE,
+          Endpoint.V1_NAMESPACE_EXISTS,
           Endpoint.V1_TABLE_EXISTS,
           Endpoint.V1_LOAD_TABLE,
+          Endpoint.V1_TABLE_CREDENTIALS,
           Endpoint.V1_LOAD_VIEW,
           Endpoint.V1_REPORT_METRICS,
           Endpoint.V1_LIST_TABLES);
 
-  private final SchemaService schemaService;
+  private static final List<Endpoint> WRITE_ENDPOINTS =
+      List.of(
+          Endpoint.V1_CREATE_NAMESPACE,
+          Endpoint.V1_DELETE_NAMESPACE,
+          Endpoint.V1_UPDATE_NAMESPACE,
+          Endpoint.V1_CREATE_TABLE,
+          Endpoint.V1_UPDATE_TABLE,
+          Endpoint.V1_DELETE_TABLE,
+          Endpoint.V1_RENAME_TABLE);
+
   private final TableConfigService tableConfigService;
   private final MetadataService metadataService;
+  private final CatalogRepository catalogRepository;
+  private final SchemaRepository schemaRepository;
+  private final StagingTableRepository stagingTableRepository;
   private final TableRepository tableRepository;
-  private final SessionFactory sessionFactory;
+
+  @Override
+  public ExceptionHandlerFunction exceptionHandler() {
+    return IcebergRestExceptionHandler.INSTANCE;
+  }
 
   public IcebergRestCatalogService(
-      SchemaService schemaService,
+      UnityCatalogAuthorizer authorizer,
       TableConfigService tableConfigService,
       MetadataService metadataService,
-      Repositories repositories) {
-    this.schemaService = schemaService;
+      Repositories repositories,
+      ServerProperties serverProperties) {
+    super(authorizer, repositories, serverProperties);
     this.tableConfigService = tableConfigService;
     this.metadataService = metadataService;
+    this.catalogRepository = repositories.getCatalogRepository();
+    this.schemaRepository = repositories.getSchemaRepository();
+    this.stagingTableRepository = repositories.getStagingTableRepository();
     this.tableRepository = repositories.getTableRepository();
-    this.sessionFactory = repositories.getSessionFactory();
   }
 
   // Config APIs
@@ -87,11 +167,17 @@ public class IcebergRestCatalogService {
         catalogOpt.orElseThrow(
             () -> new BadRequestException("Must supply a proper catalog in warehouse property."));
 
-    // TODO: check catalog exists
+    // The prefix below only leads anywhere if the catalog exists. Per the REST spec a warehouse
+    // that does not is a 404 here, rather than a config whose every later request fails.
+    catalogRepository.getCatalog(catalog);
+
     // set catalog prefix
     return ConfigResponse.builder()
         .withOverride("prefix", PREFIX_BASE + catalog)
-        .withEndpoints(ENDPOINTS)
+        .withEndpoints(
+            serverProperties.isIcebergTableEnabled()
+                ? Stream.concat(READ_ENDPOINTS.stream(), WRITE_ENDPOINTS.stream()).toList()
+                : READ_ENDPOINTS)
         .build();
   }
 
@@ -102,29 +188,37 @@ public class IcebergRestCatalogService {
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public ListNamespacesResponse listNamespaces(
-      @Param("catalog") String catalog, @Param("parent") Optional<String> parent)
-      throws JsonProcessingException {
-    List<Namespace> namespaces;
+      @Param("catalog") String catalog, @Param("parent") Optional<String> parent) {
+    List<Namespace> namespaces = new ArrayList<>();
     if (parent.isPresent() && !parent.get().isEmpty()) {
-      // nested namespaces is not supported, so child namespaces will be empty
-      namespaces = Collections.emptyList();
+      // Nested namespaces are not supported, so a parent yields no child namespaces. The parent is
+      // still resolved rather than assumed: per the REST spec, listing under a namespace that does
+      // not exist is a 404, which an empty list would hide from the client.
+      schemaRepository.getSchema(String.join(".", catalog, parent.get()));
     } else {
-      String respContent =
-          schemaService
-              .listSchemas(catalog, Optional.of(Integer.MAX_VALUE), Optional.empty())
-              .aggregate()
-              .join()
-              .contentUtf8();
-      ListSchemasResponse resp =
-          JsonUtils.getInstance().readValue(respContent, ListSchemasResponse.class);
-      assert resp.getSchemas() != null;
-      namespaces =
-          resp.getSchemas().stream()
-              .map(schemaInfo -> Namespace.of(schemaInfo.getName()))
-              .collect(Collectors.toList());
+      // This endpoint returns the whole listing, so follow the repository's page token to the end.
+      Optional<String> pageToken = Optional.empty();
+      do {
+        ListSchemasResponse resp =
+            schemaRepository.listSchemas(catalog, Optional.empty(), pageToken);
+        assert resp.getSchemas() != null;
+        resp.getSchemas().forEach(schemaInfo -> namespaces.add(Namespace.of(schemaInfo.getName())));
+        pageToken = nextPageToken(resp.getNextPageToken());
+      } while (pageToken.isPresent());
     }
 
     return ListNamespacesResponse.builder().addAll(namespaces).build();
+  }
+
+  @Head("/v1/catalogs/{catalog}/namespaces/{namespace}")
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse namespaceExists(
+      @Param("catalog") String catalog, @Param("namespace") String namespace) {
+    // Without a route of its own, this HEAD was served by the GET below, which answered 200 and
+    // described a body a HEAD response must not carry. The REST spec answers it with 204.
+    schemaRepository.getSchema(String.join(".", catalog, namespace));
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}")
@@ -132,13 +226,81 @@ public class IcebergRestCatalogService {
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public GetNamespaceResponse getNamespace(
-      @Param("catalog") String catalog, @Param("namespace") String namespace)
-      throws JsonProcessingException {
+      @Param("catalog") String catalog, @Param("namespace") String namespace) {
     String schemaFullName = String.join(".", catalog, namespace);
-    String resp = schemaService.getSchema(schemaFullName).aggregate().join().contentUtf8();
+    SchemaInfo schemaInfo = schemaRepository.getSchema(schemaFullName);
     return GetNamespaceResponse.builder()
         .withNamespace(Namespace.of(namespace))
-        .setProperties(JsonUtils.getInstance().readValue(resp, SchemaInfo.class).getProperties())
+        .setProperties(schemaInfo.getProperties())
+        .build();
+  }
+
+  @Post("/v1/catalogs/{catalog}/namespaces")
+  @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public CreateNamespaceResponse createNamespace(
+      @Param("catalog") String catalog, CreateNamespaceRequest request) {
+    serverProperties.checkIcebergTableEnabled();
+    request.validate();
+    if (request.namespace().levels().length != 1) {
+      throw new BadRequestException("Nested namespaces are not supported: %s", request.namespace());
+    }
+    String schemaName = request.namespace().level(0);
+    CreateSchema createSchema =
+        new CreateSchema().name(schemaName).catalogName(catalog).properties(request.properties());
+    SchemaInfo schemaInfo = schemaRepository.createSchema(createSchema);
+    CatalogInfo catalogInfo = catalogRepository.getCatalog(catalog);
+    initializeHierarchicalAuthorization(schemaInfo.getSchemaId(), catalogInfo.getId());
+    Map<String, String> properties =
+        schemaInfo.getProperties() == null ? Map.of() : schemaInfo.getProperties();
+    return CreateNamespaceResponse.builder()
+        .withNamespace(request.namespace())
+        .setProperties(properties)
+        .build();
+  }
+
+  @Delete("/v1/catalogs/{catalog}/namespaces/{namespace}")
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse dropNamespace(
+      @Param("catalog") String catalog, @Param("namespace") String namespace) {
+    serverProperties.checkIcebergTableEnabled();
+    List<DeletedResource> deleted;
+    try {
+      deleted = schemaRepository.deleteSchema(String.join(".", catalog, namespace), false);
+    } catch (BaseException failure) {
+      if (failure.getErrorCode() == ErrorCode.FAILED_PRECONDITION) {
+        // A schema that still holds objects is a failed precondition to the repository, which is a
+        // 400; the REST spec answers a namespace that is not empty with 409.
+        throw new NamespaceNotEmptyException("Namespace is not empty: %s", namespace);
+      }
+      throw failure;
+    }
+    clearDeletedResourceAuthorizations(deleted);
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
+  }
+
+  @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/properties")
+  @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public UpdateNamespacePropertiesResponse updateNamespaceProperties(
+      @Param("catalog") String catalog,
+      @Param("namespace") String namespace,
+      UpdateNamespacePropertiesRequest request) {
+    serverProperties.checkIcebergTableEnabled();
+    // Iceberg's own request rejects a key asked to be both set and removed.
+    request.validate();
+    SchemaRepository.PropertyChanges changes =
+        schemaRepository.applyPropertyChanges(
+            String.join(".", catalog, namespace),
+            request.updates(),
+            new LinkedHashSet<>(request.removals()));
+    return UpdateNamespacePropertiesResponse.builder()
+        .addUpdated(changes.updated())
+        .addRemoved(changes.removed())
+        .addMissing(changes.missing())
         .build();
   }
 
@@ -151,44 +313,459 @@ public class IcebergRestCatalogService {
       @Param("catalog") String catalog,
       @Param("namespace") String namespace,
       @Param("table") String table) {
-    try (Session session = sessionFactory.openSession()) {
-      tableRepository.getTable(catalog + "." + namespace + "." + table);
-      String metadataLocation =
-          tableRepository.getTableUniformMetadataLocation(session, catalog, namespace, table);
-      if (metadataLocation == null) {
-        throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
-      } else {
-        return HttpResponse.of(HttpStatus.OK);
-      }
+    TableRepository.IcebergTableState state =
+        tableRepository.getIcebergTableState(catalog, namespace, table);
+    if (state.metadataLocation() == null) {
+      throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
     }
+    // The REST spec answers this HEAD with 204 and no content. Answering 200 also had Armeria
+    // describe a body ("200 OK", Content-Length: 6) that a HEAD response must not carry.
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
   @ProducesJson
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
-  public LoadTableResponse loadTable(
+  public HttpResult<LoadTableResponse> loadTable(
+      @Param("catalog") String catalog,
+      @Param("namespace") String namespace,
+      @Param("table") String table,
+      @Param(RESTCatalogProperties.SNAPSHOTS_QUERY_PARAMETER) Optional<String> snapshots,
+      @Header("if-none-match") Optional<String> ifNoneMatch) {
+    TableRepository.IcebergTableState state =
+        tableRepository.getIcebergTableState(catalog, namespace, table);
+    if (state.metadataLocation() == null) {
+      throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
+    }
+    boolean refsOnly = refsOnly(snapshots);
+
+    // A caller holding this tag already has what this request would return, so answer it without
+    // reading the metadata file at all.
+    String etag = metadataETag(state.metadataLocation(), refsOnly);
+    if (holdsETag(ifNoneMatch, etag)) {
+      return HttpResult.of(ResponseHeaders.of(HttpStatus.NOT_MODIFIED, HttpHeaderNames.ETAG, etag));
+    }
+
+    NormalizedURL tableLocation = NormalizedURL.from(state.storageLocation());
+    TableMetadata tableMetadata =
+        metadataService.readTableMetadata(
+            NormalizedURL.from(state.metadataLocation()), tableLocation);
+    if (refsOnly) {
+      tableMetadata =
+          TableMetadata.buildFrom(tableMetadata)
+              .withMetadataLocation(tableMetadata.metadataFileLocation())
+              .suppressHistoricalSnapshots()
+              .build();
+    }
+    Map<String, String> config =
+        tableConfigService.getTableConfig(
+            tableLocation,
+            getLoadCredentialPrivileges(state),
+            credentialsEndpoint(catalog, namespace, table));
+
+    return HttpResult.of(
+        ResponseHeaders.builder(HttpStatus.OK)
+            .contentType(MediaType.JSON)
+            .add(HttpHeaderNames.ETAG, etag)
+            .build(),
+        LoadTableResponse.builder().withTableMetadata(tableMetadata).addAllConfig(config).build());
+  }
+
+  @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/credentials")
+  @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public LoadCredentialsResponse loadCredentials(
       @Param("catalog") String catalog,
       @Param("namespace") String namespace,
       @Param("table") String table) {
-    String metadataLocation;
-    try (Session session = sessionFactory.openSession()) {
-      tableRepository.getTable(catalog + "." + namespace + "." + table);
-      metadataLocation =
-          tableRepository.getTableUniformMetadataLocation(session, catalog, namespace, table);
-    }
-
-    if (metadataLocation == null) {
+    TableRepository.IcebergTableState state =
+        tableRepository.getIcebergTableState(catalog, namespace, table);
+    if (state.metadataLocation() == null) {
       throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
     }
 
-    TableMetadata tableMetadata = metadataService.readTableMetadata(metadataLocation);
-    Map<String, String> config = tableConfigService.getTableConfig(tableMetadata);
+    NormalizedURL tableLocation = NormalizedURL.from(state.storageLocation());
+    Map<String, String> config =
+        tableConfigService.getTableConfig(
+            tableLocation,
+            // Deliberately the same derivation loadTable uses, so renewing a credential can never
+            // widen what the first one granted.
+            getLoadCredentialPrivileges(state),
+            credentialsEndpoint(catalog, namespace, table));
+    if (config.isEmpty()) {
+      // A local (file://) table vends nothing. The response is a list, so answer an empty one:
+      // Iceberg's own Credential type rejects an empty config.
+      return ImmutableLoadCredentialsResponse.builder().build();
+    }
+    return ImmutableLoadCredentialsResponse.builder()
+        .addCredentials(
+            ImmutableCredential.builder().prefix(tableLocation.toString()).config(config).build())
+        .build();
+  }
+
+  /**
+   * Path of a table's loadCredentials endpoint, relative to the catalog URI, which is how Iceberg's
+   * clients resolve it. Handed to clients in a table's config so they can renew vended credentials
+   * before the storage session behind them expires; without it a client holding a table loses
+   * access when that session ends.
+   */
+  private static String credentialsEndpoint(String catalog, String namespace, String table) {
+    return "v1/%s%s/namespaces/%s/tables/%s/credentials"
+        .formatted(
+            PREFIX_BASE, catalog, RESTUtil.encodeString(namespace), RESTUtil.encodeString(table));
+  }
+
+  Set<CredentialContext.Privilege> getLoadCredentialPrivileges(
+      TableRepository.IcebergTableState state) {
+    if (state.dataSourceFormat() != DataSourceFormat.ICEBERG) {
+      return READ_ONLY;
+    }
+    UUID principalId = userRepository.findPrincipalId();
+    if (principalId == null) {
+      return READ_ONLY;
+    }
+    boolean canWrite =
+        authorizer.authorize(principalId, state.tableId(), Privileges.OWNER)
+            || authorizer.authorizeAll(
+                principalId, state.tableId(), Privileges.SELECT, Privileges.MODIFY);
+    return canWrite ? READ_WRITE : READ_ONLY;
+  }
+
+  @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables")
+  @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public LoadTableResponse createTable(
+      @Param("catalog") String catalog,
+      @Param("namespace") String namespace,
+      CreateTableRequest request) {
+    serverProperties.checkIcebergTableEnabled();
+    request.validate();
+    NormalizedURL location;
+    TableType tableType;
+    if (request.location() == null || request.location().isEmpty()) {
+      StagingTableInfo stagingTable =
+          stagingTableRepository.createStagingTable(
+              new CreateStagingTable()
+                  .name(request.name())
+                  .catalogName(catalog)
+                  .schemaName(namespace));
+      initializeHierarchicalAuthorization(
+          stagingTable.getId(), schemaRepository.getSchemaIdOrThrow(catalog, namespace).toString());
+      tableType = TableType.MANAGED;
+      location = NormalizedURL.from(stagingTable.getStagingLocation());
+    } else {
+      tableType = TableType.EXTERNAL;
+      location = NormalizedURL.from(request.location());
+    }
+    Map<String, String> properties = request.properties() == null ? Map.of() : request.properties();
+    PartitionSpec spec = request.spec() == null ? PartitionSpec.unpartitioned() : request.spec();
+    SortOrder writeOrder =
+        request.writeOrder() == null ? SortOrder.unsorted() : request.writeOrder();
+    TableMetadata tableMetadata =
+        TableMetadata.newTableMetadata(
+            request.schema(), spec, writeOrder, location.toString(), properties);
+
+    if (request.stageCreate()) {
+      // The permanent table is not registered and no metadata file is written. Managed creates
+      // retain their staging row so duplicate validation, temporary credentials, and later
+      // lifecycle management use the same path as other managed tables.
+      if (tableType == TableType.EXTERNAL && ucTableExists(catalog, namespace, request.name())) {
+        throw new AlreadyExistsException("Table already exists: %s.%s", namespace, request.name());
+      }
+      metadataService.prepareTableLocation(tableMetadata, location);
+      return LoadTableResponse.builder()
+          .withTableMetadata(tableMetadata)
+          .addAllConfig(
+              tableConfigService.getTableConfig(
+                  location, READ_WRITE, credentialsEndpoint(catalog, namespace, request.name())))
+          .build();
+    }
+
+    return finalizeIcebergTableCreation(
+        catalog, namespace, request.name(), tableType, tableMetadata, false);
+  }
+
+  /**
+   * Writes a new Iceberg table's first metadata file and atomically registers the UC row, columns,
+   * properties, committed staging row, and metadata pointer. Shared by direct creates and commits
+   * of staged creates; {@code fromCommit} only changes the already-exists error shape (409 {@link
+   * CommitFailedException} for commits, 409 {@link AlreadyExistsException} for creates).
+   */
+  private LoadTableResponse finalizeIcebergTableCreation(
+      String catalog,
+      String namespace,
+      String name,
+      TableType tableType,
+      TableMetadata tableMetadata,
+      boolean fromCommit) {
+    NormalizedURL tableLocation = NormalizedURL.from(tableMetadata.location());
+    NormalizedURL metadataLocation =
+        MetadataService.newMetadataLocation(tableMetadata, 0, tableLocation);
+    TableMetadata committed =
+        TableMetadata.buildFrom(tableMetadata)
+            // Discard builder-only changes before assigning the authoritative metadata pointer.
+            .discardChanges()
+            .withMetadataLocation(MetadataService.toIcebergMetadataLocation(metadataLocation))
+            .build();
+
+    CreateTable createTable =
+        new CreateTable()
+            .name(name)
+            .catalogName(catalog)
+            .schemaName(namespace)
+            .tableType(tableType)
+            .dataSourceFormat(DataSourceFormat.ICEBERG)
+            .columns(IcebergSchemaConverter.toColumnInfos(committed.schema()))
+            .storageLocation(committed.location())
+            .properties(committed.properties());
+    metadataService.writeTableMetadata(committed, metadataLocation, tableLocation);
+    TableInfo tableInfo;
+    try {
+      tableInfo = tableRepository.createTableForIceberg(createTable, metadataLocation);
+    } catch (RuntimeException e) {
+      metadataService.deleteTableMetadata(metadataLocation, tableLocation);
+      if (fromCommit
+          && e instanceof BaseException baseException
+          && baseException.getErrorCode() == ErrorCode.TABLE_ALREADY_EXISTS) {
+        throw new CommitFailedException(
+            "Requirement failed: table already exists: %s.%s", namespace, name);
+      }
+      throw e;
+    }
+    SchemaInfo schemaInfo =
+        schemaRepository.getSchema(tableInfo.getCatalogName() + "." + tableInfo.getSchemaName());
+    if (tableType == TableType.EXTERNAL) {
+      initializeHierarchicalAuthorization(tableInfo.getTableId(), schemaInfo.getSchemaId());
+    }
+
+    // Use the location returned from the persisted UC row for credential vending, not the
+    // client-supplied metadata object used to create the row.
+    NormalizedURL persistedTableLocation = NormalizedURL.from(tableInfo.getStorageLocation());
+    return LoadTableResponse.builder()
+        .withTableMetadata(committed)
+        .addAllConfig(
+            tableConfigService.getTableConfig(
+                persistedTableLocation, READ_WRITE, credentialsEndpoint(catalog, namespace, name)))
+        .build();
+  }
+
+  @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
+  @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public LoadTableResponse updateTable(
+      @Param("catalog") String catalog,
+      @Param("namespace") String namespace,
+      @Param("table") String table,
+      UpdateTableRequest request) {
+    serverProperties.checkIcebergTableEnabled();
+    boolean isCreateCommit =
+        request.requirements().stream()
+            .anyMatch(r -> r instanceof UpdateRequirement.AssertTableDoesNotExist);
+    if (isCreateCommit) {
+      return commitStagedCreate(catalog, namespace, table, request);
+    }
+    TableRepository.IcebergTableState state =
+        tableRepository.getNativeIcebergTableState(catalog, namespace, table);
+    if (state.metadataLocation() == null) {
+      throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
+    }
+
+    NormalizedURL tableLocation = NormalizedURL.from(state.storageLocation());
+    NormalizedURL metadataLocation = NormalizedURL.from(state.metadataLocation());
+    TableMetadata base = metadataService.readTableMetadata(metadataLocation, tableLocation);
+    request.requirements().forEach(requirement -> requirement.validate(base));
+
+    TableMetadata.Builder builder = TableMetadata.buildFrom(base);
+    request.updates().forEach(update -> update.applyTo(builder));
+    TableMetadata updatedWithoutLocation = builder.build();
+    if (updatedWithoutLocation.changes().isEmpty()) {
+      // No-op update: requirements were validated, but there is no new metadata file or DAO write.
+      return LoadTableResponse.builder()
+          .withTableMetadata(base)
+          .addAllConfig(
+              tableConfigService.getTableConfig(
+                  tableLocation, READ_WRITE, credentialsEndpoint(catalog, namespace, table)))
+          .build();
+    }
+
+    NormalizedURL newMetadataLocation =
+        MetadataService.newMetadataLocation(
+            updatedWithoutLocation,
+            MetadataService.parseMetadataVersion(metadataLocation) + 1,
+            tableLocation);
+    TableMetadata updated =
+        TableMetadata.buildFrom(updatedWithoutLocation)
+            // Iceberg update builders retain pending changes; persist a clean snapshot with the
+            // newly assigned metadata location.
+            .discardChanges()
+            .withMetadataLocation(MetadataService.toIcebergMetadataLocation(newMetadataLocation))
+            .build();
+    metadataService.writeTableMetadata(updated, newMetadataLocation, tableLocation);
+    try {
+      tableRepository.commitIcebergTable(
+          catalog,
+          namespace,
+          table,
+          metadataLocation.toString(),
+          newMetadataLocation,
+          IcebergSchemaConverter.toColumnInfos(updated.schema()),
+          updated.properties());
+    } catch (RuntimeException e) {
+      // The metadata file was written before the swap, so any failure (a lost commit race or an
+      // unexpected error) leaves it orphaned unless we clean it up.
+      metadataService.deleteTableMetadata(newMetadataLocation, tableLocation);
+      throw e;
+    }
 
     return LoadTableResponse.builder()
-        .withTableMetadata(tableMetadata)
-        .addAllConfig(config)
+        .withTableMetadata(updated)
+        .addAllConfig(
+            tableConfigService.getTableConfig(
+                tableLocation, READ_WRITE, credentialsEndpoint(catalog, namespace, table)))
         .build();
+  }
+
+  @Delete("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse dropTable(
+      @Param("catalog") String catalog,
+      @Param("namespace") String namespace,
+      @Param("table") String table,
+      @Param("purgeRequested") Optional<String> purgeRequested) {
+    serverProperties.checkIcebergTableEnabled();
+    // Bound as a String rather than a Boolean so the spelling a client actually sends is accepted;
+    // still validated, so a value that is not a boolean at all remains a clear 400.
+    validatePurgeRequested(purgeRequested);
+    String fullName = catalog + "." + namespace + "." + table;
+    TableRepository.IcebergTableState state =
+        tableRepository.getIcebergTableState(catalog, namespace, table);
+    if (state.dataSourceFormat() != DataSourceFormat.ICEBERG) {
+      throw new BadRequestException(
+          "Table %s was not created through the Iceberg REST catalog; drop it through the Unity"
+              + " Catalog API instead.",
+          fullName);
+    }
+    // EXTERNAL tables leave data and metadata files in place (purgeRequested is accepted for
+    // spec compatibility but does not delete files); MANAGED tables have their storage directory
+    // removed by the repository's delete path.
+    TableInfoDAO deleted = tableRepository.deleteTable(catalog, namespace, table);
+    removeHierarchicalAuthorizations(deleted.getId().toString(), deleted.getSchemaId().toString());
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
+  }
+
+  /**
+   * Rejects a {@code purgeRequested} value that is not a boolean, reading {@code true} and {@code
+   * false} without regard to case.
+   *
+   * <p>Armeria converts a {@code Boolean} parameter through a fixed table of {@code true|TRUE|1}
+   * and {@code false|FALSE|0}, so a request carrying {@code True} or {@code False} was answered
+   * "Can't convert 'True' to type 'Boolean'". Those are the spellings pyiceberg sends -- it hands a
+   * Python {@code bool} to {@code requests}, which renders it {@code True} / {@code False} -- so
+   * neither its {@code drop_table} nor its {@code purge_table} worked. The spellings that table
+   * already accepted, {@code 1} and {@code 0} included, keep working.
+   */
+  private static void validatePurgeRequested(Optional<String> purgeRequested) {
+    String value = purgeRequested.orElse("");
+    if (!value.isEmpty() && !BOOLEAN_SPELLINGS.contains(value.toLowerCase(Locale.ROOT))) {
+      throw new BadRequestException("Invalid purgeRequested: %s. It must be true or false.", value);
+    }
+  }
+
+  /**
+   * Materializes a staged create: a commit whose requirements carry {@code assert-create}
+   * (AssertTableDoesNotExist). Mirroring Iceberg's reference CatalogHandlers, the staged metadata
+   * is rebuilt from the commit's updates against an empty base, the first metadata file is written,
+   * and the table is registered in UC. The table is MANAGED when its location matches an
+   * uncommitted staging row, EXTERNAL otherwise.
+   */
+  private LoadTableResponse commitStagedCreate(
+      String catalog, String namespace, String table, UpdateTableRequest request) {
+    String fullName = catalog + "." + namespace + "." + table;
+    for (UpdateRequirement requirement : request.requirements()) {
+      if (!(requirement instanceof UpdateRequirement.AssertTableDoesNotExist)) {
+        throw new BadRequestException(
+            "Invalid requirement for a create commit: %s", requirement.getClass().getSimpleName());
+      }
+    }
+    // Pick the format version out of the updates before building, like CatalogHandlers.create:
+    // buildFromEmpty defaults to v2, and applying an upgrade-format-version update for a lower
+    // version would otherwise fail as a downgrade.
+    Optional<Integer> formatVersion =
+        request.updates().stream()
+            .filter(update -> update instanceof MetadataUpdate.UpgradeFormatVersion)
+            .map(update -> ((MetadataUpdate.UpgradeFormatVersion) update).formatVersion())
+            .findFirst();
+    // buildFromEmpty(int) seeds the requested version; the no-arg overload uses the default.
+    TableMetadata.Builder builder =
+        formatVersion.map(TableMetadata::buildFromEmpty).orElseGet(TableMetadata::buildFromEmpty);
+    request.updates().forEach(update -> update.applyTo(builder));
+    TableMetadata tableMetadata = builder.build();
+    if (tableMetadata.location() == null || tableMetadata.location().isEmpty()) {
+      throw new BadRequestException(
+          "Create commit for %s must include a set-location update", fullName);
+    }
+
+    // Managed locations carry UC's reserved marker. The final repository transaction performs the
+    // authoritative staging-row ownership and committed-state validation.
+    TableType tableType =
+        tableMetadata.location().contains(Constants.MANAGED_STORAGE_PREFIX)
+            ? TableType.MANAGED
+            : TableType.EXTERNAL;
+    return finalizeIcebergTableCreation(catalog, namespace, table, tableType, tableMetadata, true);
+  }
+
+  private boolean ucTableExists(String catalog, String namespace, String table) {
+    try {
+      tableRepository.getTable(catalog + "." + namespace + "." + table);
+      return true;
+    } catch (BaseException e) {
+      if (e.getErrorCode() == ErrorCode.TABLE_NOT_FOUND) {
+        return false;
+      }
+      throw e;
+    }
+  }
+
+  @Post("/v1/catalogs/{catalog}/tables/rename")
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse renameTable(@Param("catalog") String catalog, RenameTableRequest request) {
+    serverProperties.checkIcebergTableEnabled();
+    // A request missing either identifier is a bad request, not the NPE reading it would raise.
+    request.validate();
+    Namespace source = request.source().namespace();
+    Namespace destination = request.destination().namespace();
+    if (!source.equals(destination)) {
+      // Unity Catalog has no way to move a table between schemas, so a rename that asks for one is
+      // reported as an operation this server does not implement rather than half-applied.
+      throw new BaseException(
+          ErrorCode.UNIMPLEMENTED,
+          "Renaming a table into another namespace is not supported: "
+              + source
+              + " to "
+              + destination);
+    }
+    String namespace = source.toString();
+    String fullName = catalog + "." + namespace + "." + request.source().name();
+    // As with dropTable, only a table created through this API may be changed through it: a UniForm
+    // table is a Delta table that these endpoints read, and renaming it here would rename the Delta
+    // table under its own API.
+    TableRepository.IcebergTableState state =
+        tableRepository.getIcebergTableState(catalog, namespace, request.source().name());
+    if (state.dataSourceFormat() != DataSourceFormat.ICEBERG) {
+      throw new BadRequestException(
+          "Table %s was not created through the Iceberg REST catalog; rename it through the Unity"
+              + " Catalog API instead.",
+          fullName);
+    }
+    tableRepository.renameTable(
+        catalog, namespace, request.source().name(), request.destination().name());
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}")
@@ -204,12 +781,29 @@ public class IcebergRestCatalogService {
     throw new NoSuchViewException("View does not exist: %s", namespace + "." + view);
   }
 
+  /**
+   * Accept a scan or commit report from an Iceberg client. Clients report after every scan and
+   * commit as long as the server advertises {@code V1_REPORT_METRICS}, which this service does. The
+   * report is acknowledged and discarded -- UC does not persist client telemetry today -- but the
+   * table is still resolved so that a report naming a table UC doesn't serve is answered with a
+   * 404, as the REST spec requires.
+   */
   @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/metrics")
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse reportMetrics(
-      @Param("namespace") String namespace, @Param("table") String table) {
-    return HttpResponse.of(HttpStatus.OK);
+      @Param("catalog") String catalog,
+      @Param("namespace") String namespace,
+      @Param("table") String table,
+      ReportMetricsRequest request) {
+    TableRepository.IcebergTableState state =
+        tableRepository.getIcebergTableState(catalog, namespace, table);
+    if (state.metadataLocation() == null) {
+      throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
+    }
+
+    LOGGER.debug("Received {} for table {}.{}.{}", request.reportType(), catalog, namespace, table);
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables")
@@ -217,31 +811,78 @@ public class IcebergRestCatalogService {
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public org.apache.iceberg.rest.responses.ListTablesResponse listTables(
-      @Param("catalog") String catalog, @Param("namespace") String namespace)
-      throws JsonProcessingException {
-    ListTablesResponse tables =
-        tableRepository.listTables(
-            catalog, namespace, Optional.of(Integer.MAX_VALUE), Optional.empty(), false, false);
-    List<TableIdentifier> filteredTables;
-    try (Session session = sessionFactory.openSession()) {
-      filteredTables =
-          Objects.requireNonNull(tables.getTables()).stream()
-              .filter(
-                  tableInfo -> {
-                    String metadataLocation =
-                        tableRepository.getTableUniformMetadataLocation(
-                            session, catalog, namespace, tableInfo.getName());
-                    return metadataLocation != null;
-                  })
-              .map(
-                  tableInfo ->
-                      TableIdentifier.of(
-                          Namespace.of(tableInfo.getSchemaName()), tableInfo.getName()))
-              .collect(Collectors.toList());
-    }
+      @Param("catalog") String catalog, @Param("namespace") String namespace) {
+    // This endpoint returns the whole listing, so follow the repository's page token to the end.
+    // Each page already says which of its tables carry Iceberg metadata, so no listed table is
+    // resolved a second time: doing that made a table dropped mid-listing fail the entire request.
+    org.apache.iceberg.rest.responses.ListTablesResponse.Builder listed =
+        org.apache.iceberg.rest.responses.ListTablesResponse.builder();
+    Optional<String> pageToken = Optional.empty();
+    do {
+      IcebergTablePage page = tableRepository.listIcebergTables(catalog, namespace, pageToken);
+      page.tableNames()
+          .forEach(table -> listed.add(TableIdentifier.of(Namespace.of(namespace), table)));
+      pageToken = page.nextPageToken();
+    } while (pageToken.isPresent());
 
-    return org.apache.iceberg.rest.responses.ListTablesResponse.builder()
-        .addAll(filteredTables)
-        .build();
+    return listed.build();
+  }
+
+  /**
+   * Whether the request asked for only the snapshots the table's refs point at. The REST spec's
+   * {@code snapshots} parameter takes "all", which is also the default, or "refs"; anything else is
+   * a bad request rather than a silently full response.
+   */
+  private static boolean refsOnly(Optional<String> snapshots) {
+    return snapshots.map(IcebergRestCatalogService::snapshotMode).orElse(SnapshotMode.ALL)
+        == SnapshotMode.REFS;
+  }
+
+  /** Reads the parameter as the mode Iceberg's client names it with, rejecting anything else. */
+  private static SnapshotMode snapshotMode(String snapshots) {
+    try {
+      return SnapshotMode.valueOf(snapshots.toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException e) {
+      throw new BadRequestException(
+          "Invalid snapshots parameter: %s. Valid values are %s and %s.",
+          snapshots, modeName(SnapshotMode.ALL), modeName(SnapshotMode.REFS));
+    }
+  }
+
+  /** The name the mode travels under on the wire, which the client lowercases. */
+  private static String modeName(SnapshotMode mode) {
+    return mode.name().toLowerCase(Locale.ROOT);
+  }
+
+  /**
+   * Names the version of the metadata this endpoint would return for the given snapshots mode. The
+   * pointer is hashed rather than returned as-is so the tag does not hand callers a storage
+   * location, and the mode is part of it because {@code refs} and {@code all} return different
+   * bodies for the same version. The tag is weak: it identifies the metadata version, not a
+   * byte-for-byte body.
+   */
+  private static String metadataETag(String metadataLocation, boolean refsOnly) {
+    String version =
+        metadataLocation + "\n" + modeName(refsOnly ? SnapshotMode.REFS : SnapshotMode.ALL);
+    return "W/\"" + Hashing.sha256().hashString(version, StandardCharsets.UTF_8) + "\"";
+  }
+
+  /**
+   * Whether the caller's {@code If-None-Match} names the tag we would return. Only an exact match
+   * short-circuits; anything else -- including {@code *} -- gets the full response, which a
+   * conditional request always tolerates.
+   */
+  private static boolean holdsETag(Optional<String> ifNoneMatch, String etag) {
+    return ifNoneMatch.stream()
+        .flatMap(header -> Arrays.stream(header.split(",")))
+        .map(String::trim)
+        .anyMatch(etag::equals);
+  }
+
+  /**
+   * Wraps the page token a listing returned, treating a missing or empty token as "no more pages".
+   */
+  private static Optional<String> nextPageToken(String token) {
+    return Optional.ofNullable(token).filter(t -> !t.isEmpty());
   }
 }

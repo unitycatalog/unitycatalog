@@ -6,11 +6,14 @@ import static io.unitycatalog.client.model.PathOperation.PATH_READ_WRITE;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_FULL_NAME;
 import static io.unitycatalog.server.utils.TestUtils.TEST_AWS_MASTER_ROLE_ARN;
-import static io.unitycatalog.server.utils.TestUtils.assertApiException;
+import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.api.CredentialsApi;
@@ -40,7 +43,11 @@ import io.unitycatalog.client.model.VolumeInfo;
 import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialGenerator;
@@ -49,6 +56,7 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
@@ -67,6 +75,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
   private static final String READWRITE_EMAIL = "readwrite@example.com";
   private static final String CREATE_TABLE_EMAIL = "createtable@example.com";
   private static final String UNAUTHORIZED_EMAIL = "unauthorized@example.com";
+
   /** User dedicated to creating external tables and volumes for testing. */
   private static final String TABLE_VOLUME_OWNER_EMAIL = "table_volume_owner@example.com";
 
@@ -335,6 +344,59 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
         List.of(TEST_EXTERNAL_LOCATION_URL), List.of(new TestCase(adminTempCredsApi, Set.of())));
   }
 
+  @Test
+  public void testPendingCleanupBlocksPathAuthorization() {
+    String cleanupPath = TEST_EXTERNAL_LOCATION_URL + "/deleted";
+    UUID resourceId = UUID.randomUUID();
+    TransactionManager.executeWithTransaction(
+        hibernateConfigurator.getSessionFactory(),
+        session -> {
+          new StorageCleanupTaskRepository(hibernateConfigurator.getSessionFactory())
+              .create(session, ResourceType.TABLE, resourceId, "orders", cleanupPath);
+          return null;
+        },
+        "Failed to create test cleanup task",
+        /* readOnly= */ false);
+    clearInvocations(mockCloudCredentialVendor);
+
+    for (String path : List.of(TEST_EXTERNAL_LOCATION_URL, cleanupPath, cleanupPath + "/data")) {
+      for (TemporaryCredentialsApi api : List.of(adminTempCredsApi, locationOwnerTempCredsApi)) {
+        for (PathOperation operation : List.of(PATH_READ, PATH_READ_WRITE, PATH_CREATE_TABLE)) {
+          TestUtils.assertApiException(
+              () ->
+                  api.generateTemporaryPathCredentials(
+                      new GenerateTemporaryPathCredential().url(path).operation(operation)),
+              ErrorCode.PERMISSION_DENIED,
+              "Input path overlaps pending storage cleanup");
+        }
+      }
+    }
+    verify(mockCloudCredentialVendor, never()).vendCredential(any());
+    TestUtils.assertApiException(
+        () -> createExternalTable(cleanupPath + "/table"),
+        ErrorCode.PERMISSION_DENIED,
+        "Input path overlaps pending storage cleanup");
+    TestUtils.assertApiException(
+        () -> createExternalVolume(TEST_EXTERNAL_LOCATION_URL),
+        ErrorCode.PERMISSION_DENIED,
+        "Input path overlaps pending storage cleanup");
+
+    testPathCredentialsSuccess(
+        adminTempCredsApi, TEST_EXTERNAL_LOCATION_URL + "/active", PATH_READ_WRITE);
+
+    TransactionManager.executeWithTransaction(
+        hibernateConfigurator.getSessionFactory(),
+        session -> {
+          session.remove(session.get(StorageCleanupTaskDAO.class, resourceId));
+          return null;
+        },
+        "Failed to remove test cleanup task",
+        /* readOnly= */ false);
+    testPathCredentialsSuccess(locationOwnerTempCredsApi, cleanupPath, PATH_READ_WRITE);
+    createExternalTable(cleanupPath + "/table");
+    createExternalVolume(cleanupPath + "/volume");
+  }
+
   private void testPathCredentials(List<String> urls, List<TestCase> testCases) {
     List<PathOperation> subTestCases = List.of(PATH_READ, PATH_READ_WRITE, PATH_CREATE_TABLE);
     for (String url : urls) {
@@ -365,10 +427,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
       TemporaryCredentialsApi api, String url, PathOperation operation) {
     GenerateTemporaryPathCredential request =
         new GenerateTemporaryPathCredential().url(url).operation(operation);
-    assertApiException(
-        () -> api.generateTemporaryPathCredentials(request),
-        ErrorCode.PERMISSION_DENIED,
-        "PERMISSION_DENIED");
+    assertPermissionDenied(() -> api.generateTemporaryPathCredentials(request));
   }
 
   private void assertValidTemporaryCredentials(TemporaryCredentials credentials) {
@@ -396,7 +455,9 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
                     new ColumnInfo()
                         .name("id")
                         .typeText("INTEGER")
-                        .typeJson("{\"type\": \"integer\"}")
+                        .typeJson(
+                            "{\"name\":\"id\",\"type\":\"integer\","
+                                + "\"nullable\":false,\"metadata\":{}}")
                         .typeName(ColumnTypeName.INT)
                         .position(0)
                         .nullable(false)))

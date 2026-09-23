@@ -3,6 +3,7 @@ package io.unitycatalog.spark;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.server.utils.TestUtils.createApiClient;
+import static io.unitycatalog.spark.DeltaVersionUtils.MIN_DELTA_VERSION_FOR_UC_DELTA_API;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CreateCatalog;
@@ -14,6 +15,7 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.service.credential.gcp.TestingCredentialGenerator;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import io.unitycatalog.spark.utils.OptionsUtil;
 import java.util.ArrayList;
@@ -29,6 +31,7 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
 
   protected ArrayList<String> createdCatalogs = new ArrayList<>();
   protected static final String SPARK_CATALOG = "spark_catalog";
+
   /** S3 bucket with no credentials configured on server - for testing SSP fallback. */
   public static final String NO_CREDS_BUCKET = "test-bucket-2-no-creds";
 
@@ -46,11 +49,7 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   }
 
   protected SparkSession createSparkSessionWithCatalogs(String... catalogs) {
-    return createSparkSessionWithCatalogs(false, false, catalogs);
-  }
-
-  protected SparkSession createSparkSessionWithCatalogs(boolean renewCred, String... catalogs) {
-    return createSparkSessionWithCatalogs(renewCred, false, catalogs);
+    return createSparkSessionWithCatalogs(true, true, catalogs);
   }
 
   protected SparkSession createSparkSessionWithCatalogs(
@@ -75,6 +74,14 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
         createTestCatalog(catalog);
       }
     }
+    // Delta requires spark.sql.catalog.spark_catalog to be set for ANY Delta operation
+    // (DeltaLog.checkRequiredConfigurations); otherwise a Delta table -- even in a named UC catalog
+    // -- fails with DELTA_CONFIGURE_SPARK_SESSION_WITH_EXTENSION_AND_CATALOG. When the caller did
+    // not configure spark_catalog above, point it at Delta's own catalog to satisfy that check.
+    if (!List.of(catalogs).contains(SPARK_CATALOG)) {
+      builder.config(
+          "spark.sql.catalog." + SPARK_CATALOG, "org.apache.spark.sql.delta.catalog.DeltaCatalog");
+    }
     // Use fake file system for cloud storage so that we can test credentials.
     builder.config("spark.hadoop.fs.s3.impl", S3CredentialTestFileSystem.class.getName());
     builder.config("spark.hadoop.fs.gs.impl", GCSCredentialTestFileSystem.class.getName());
@@ -84,6 +91,14 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
 
   protected List<Row> sql(String statement, Object... args) {
     return session.sql(String.format(statement, args)).collectAsList();
+  }
+
+  /** True when the running Spark is at least {@code major.minor} (e.g. for version-gated tests). */
+  protected static boolean isSparkAtLeast(int major, int minor) {
+    String[] parts = org.apache.spark.package$.MODULE$.SPARK_VERSION().split("\\.");
+    int runMajor = Integer.parseInt(parts[0]);
+    int runMinor = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
+    return runMajor > major || (runMajor == major && runMinor >= minor);
   }
 
   @BeforeEach
@@ -105,6 +120,14 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
+    // Delta >= 4.3.0 ships UCDeltaCatalogClientImpl / UCDeltaTokenBasedRestClient, so its
+    // managed-Delta create / commit / credential paths all go through the UC Delta API. Turn on
+    // the server-side enforcement on those matrix entries so we exercise the actual production
+    // configuration. Older Delta still has to use the UC-core writes; keep the flag off there.
+    if (DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API)) {
+      serverProperties.put(
+          ServerProperties.Property.MANAGED_TABLE_USE_DELTA_API_ONLY.getKey(), "true");
+    }
     serverProperties.put("s3.bucketPath.0", "s3://test-bucket0");
     serverProperties.put("s3.accessKey.0", "accessKey0");
     serverProperties.put("s3.secretKey.0", "secretKey0");

@@ -112,7 +112,7 @@ public class FunctionRepository {
           return functionInfo;
         },
         "Failed to create function",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   private void addNamespaceData(FunctionInfo functionInfo, String catalogName, String schemaName) {
@@ -145,7 +145,7 @@ public class FunctionRepository {
           return listFunctions(session, schemaId, catalogName, schemaName, maxResults, pageToken);
         },
         "Failed to list functions",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public ListFunctionsResponse listFunctions(
@@ -190,7 +190,7 @@ public class FunctionRepository {
           return functionInfo;
         },
         "Failed to get function",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public void addNamespaceInfo(FunctionInfo functionInfo, String catalogName, String schemaName) {
@@ -233,7 +233,7 @@ public class FunctionRepository {
           return null;
         },
         "Failed to delete function",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   public void deleteFunction(Session session, UUID schemaId, String functionName) {

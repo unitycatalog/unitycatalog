@@ -273,7 +273,7 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
     if (isConfiguredPath) {
       TemporaryCredentials temporaryCredentials =
           temporaryCredentialsApi.generateTemporaryModelVersionCredentials(generateCloudReadyCreds);
-      assertTemporaryCredentials(temporaryCredentials, scheme);
+      assertTemporaryCredentials(temporaryCredentials, scheme, url);
     } else {
       assertThatThrownBy(
               () ->

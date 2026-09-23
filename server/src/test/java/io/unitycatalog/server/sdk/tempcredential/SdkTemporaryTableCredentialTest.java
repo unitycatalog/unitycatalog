@@ -59,9 +59,10 @@ public class SdkTemporaryTableCredentialTest extends BaseCRUDTestWithMockCredent
     String url = getTestCloudPath(scheme, isConfiguredPath);
     URI uri = URI.create(url);
     String tableName = "testtable-" + uri.getScheme();
+    String tableLocation = url + "/" + tableName;
     TableInfo tableInfo =
         BaseTableCRUDTest.createTestingTable(
-            tableName, TableType.EXTERNAL, Optional.of(url + "/" + tableName), tableOperations);
+            tableName, TableType.EXTERNAL, Optional.of(tableLocation), tableOperations);
 
     GenerateTemporaryTableCredential generateTemporaryTableCredential =
         new GenerateTemporaryTableCredential()
@@ -71,7 +72,7 @@ public class SdkTemporaryTableCredentialTest extends BaseCRUDTestWithMockCredent
       TemporaryCredentials temporaryCredentials =
           temporaryCredentialsApi.generateTemporaryTableCredentials(
               generateTemporaryTableCredential);
-      assertTemporaryCredentials(temporaryCredentials, scheme);
+      assertTemporaryCredentials(temporaryCredentials, scheme, tableLocation);
     } else {
       assertThatThrownBy(
               () ->

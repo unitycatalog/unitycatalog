@@ -37,7 +37,9 @@ This is a community effort. Unity Catalog is supported by
 - [NVIDIA](https://www.nvidia.com/)
 - [Onehouse](https://www.onehouse.ai/)
 - [PuppyGraph](https://www.puppygraph.com/)
+- [RisingWave](https://risingwave.com/)
 - [Salesforce](https://www.salesforce.com/)
+- [Starburst](https://www.starburst.io/)
 - [StarRocks (CelerData)](https://celerdata.com/)
 - [Spice AI](https://github.com/spiceai/spiceai)
 - [Tecton](https://www.tecton.ai/)
@@ -155,14 +157,14 @@ To use the Unity Catalog UI, start a new terminal and ensure you have already st
 **Prerequisites**
 
 - Node: https://nodejs.org/en/download/package-manager
-- Yarn: https://classic.yarnpkg.com/lang/en/docs/install
+- Bun: https://bun.com/docs/installation
 
-**How to start the UI through yarn**
+**How to start the UI through bun**
 
 ```
 cd /ui
-yarn install
-yarn start
+bun install
+bun run start
 ```
 
 ## CLI tutorial
@@ -234,6 +236,10 @@ IntelliJ is the recommended IDE to use when developing Unity Catalog. The below 
 Java code adheres to the [Google style](https://google.github.io/styleguide/javaguide.html), which is verified via `build/sbt javafmtCheckAll` during builds.
 In order to automatically fix Java code style issues, please use `build/sbt javafmtAll`.
 
+The build uses [sbt-java-formatter](https://github.com/sbt/sbt-java-formatter) 0.13.1 with
+`javafmtFormatterCompatibleJavaVersion := 17` (google-java-format **1.28.0**). Point IDE plugins
+at that same GJF version; a newer plugin will fight `javafmtCheck`.
+
 ### Configuring Code Formatter for Eclipse/IntelliJ
 
 Follow the instructions for [Eclipse](https://github.com/google/google-java-format#eclipse) or
@@ -248,3 +254,26 @@ imposes an upper bound. Please check the [JDK compatibility](https://docs.scala-
 
 For an overview of how to contribute to the documentation, please see our introduction [here](./docs/README.md).
 For the official documentation, please take a look at [https://docs.unitycatalog.io/](https://docs.unitycatalog.io/).
+
+# Docker Builds
+
+You can build a local version of the Unity Catalog Server or UI for local testing. All you need is Docker on your machine. In addition,
+if you are working behind a corporate firewall, simply add the environment variable `MAVEN_PROXY_URL=https://maven-proxy.your-company.com` for the Unity Catalog server build, or `NPM_PROXY_URL=https://npm-proxy.your-company.com/` for the Unity Catalog UI build. If you don't need a proxy, you can safely still run the following commands without any variables set.
+
+## Unity Catalog Server
+
+```bash
+docker build \
+  --build-arg MAVEN_PROXY_URL="$MAVEN_PROXY_URL" \
+  -t unitycatalog/unitycatalog:local \
+  .
+```
+
+## Unity Catalog UI
+
+```bash
+docker build \
+  --build-arg NPM_PROXY_URL="$NPM_PROXY_URL" \
+  -t unitycatalog/unitycatalog-ui:local \
+  ./ui
+```

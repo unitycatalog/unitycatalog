@@ -14,4 +14,10 @@ public class Preconditions {
       throw new NullPointerException(String.format(message, args));
     }
   }
+
+  public static void checkState(boolean expression, String message, Object... args) {
+    if (!expression) {
+      throw new IllegalStateException(String.format(message, args));
+    }
+  }
 }

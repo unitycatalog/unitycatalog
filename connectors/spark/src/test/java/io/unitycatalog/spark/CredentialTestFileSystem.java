@@ -76,10 +76,10 @@ public abstract class CredentialTestFileSystem extends RawLocalFileSystem {
         new Path(path));
   }
 
-  private Path toLocalPath(Path f) {
+  private Path toLocalPath(Path f) throws IOException {
     checkCredentials(f);
     return new Path(f.toString().replaceAll(scheme() + "//.*?/", "file:///"));
   }
 
-  protected abstract void checkCredentials(Path f);
+  protected abstract void checkCredentials(Path f) throws IOException;
 }

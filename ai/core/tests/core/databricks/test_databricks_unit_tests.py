@@ -26,6 +26,13 @@ from unitycatalog.ai.core.databricks import (
     extract_function_name,
 )
 from unitycatalog.ai.core.envs.databricks_env_vars import UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS
+from unitycatalog.ai.core.utils.callable_utils import ServiceCredential
+from unitycatalog.ai.core.utils.function_processing_utils import (
+    FunctionEnvironment,
+    get_function_credentials,
+    get_function_environment,
+    get_function_secrets,
+)
 from unitycatalog.ai.core.utils.retry_utils import (
     SESSION_CHANGED_MESSAGE,
     SESSION_EXPIRED_MESSAGE,
@@ -1017,12 +1024,14 @@ def test_create_python_function_with_dependencies(client: DatabricksFunctionClie
         )
 
         mock_generate_sql.assert_called_once_with(
-            sample_func,
-            "catalog",
-            "schema",
-            False,
-            dependencies,
-            "None",
+            func=sample_func,
+            catalog="catalog",
+            schema="schema",
+            replace=False,
+            dependencies=dependencies,
+            environment_version="None",
+            credentials=None,
+            secrets=None,
         )
 
         client.create_function.assert_called_once_with(sql_function_body=expected_sql_body)
@@ -1072,12 +1081,14 @@ def test_create_python_function_with_environment_version(client: DatabricksFunct
         )
 
         mock_generate_sql.assert_called_once_with(
-            another_sample_func,
-            "catalog",
-            "schema",
-            False,
-            None,
-            environment_version,
+            func=another_sample_func,
+            catalog="catalog",
+            schema="schema",
+            replace=False,
+            dependencies=None,
+            environment_version=environment_version,
+            credentials=None,
+            secrets=None,
         )
 
         client.create_function.assert_called_once_with(sql_function_body=expected_sql_body)
@@ -1245,6 +1256,8 @@ def test_create_wrapped_function_databricks(mock_workspace_client, mock_spark_se
                 replace=True,
                 dependencies=None,
                 environment_version="None",
+                credentials=None,
+                secrets=None,
             )
             mock_create_func.assert_called_once_with(sql_function_body=dummy_sql_body)
             assert result == "dummy_func_info"
@@ -1282,6 +1295,8 @@ def test_create_wrapped_function_with_dependencies(mock_workspace_client, mock_s
                 replace=True,
                 dependencies=["scipy==1.15.0"],
                 environment_version="1",
+                credentials=None,
+                secrets=None,
             )
             mock_create_func.assert_called_once_with(sql_function_body=dummy_sql_body)
             assert result == "dummy_func_info"
@@ -1730,3 +1745,168 @@ def test_no_spark_session_created_for_local_execution_mode():
     ):
         client = DatabricksFunctionClient(execution_mode="local")
         assert client.spark is None
+
+
+# The property payloads below were captured from a live `get_function` response for a scalar
+# UDF created with dependencies, credentials, and secrets.
+_LIVE_PROPERTIES = {
+    "environment.dependencies": '["requests>=2.31"]',
+    "environment.environment_version": "6",
+    "featureTags.dependencies": "",
+    "isolation.strict": "false",
+    "routine_credential.credentials_mappings": '{"bedrock":"bedrock_sandbox"}',
+    "routine_credential.default_credential": '"bedrock_sandbox"',
+    "routine_secrets.secrets": (
+        '{"secrets":[{"catalog":"magrund","schema":"ucai_probe","key":"probe_key"}]}'
+    ),
+    "sqlConfig.spark.databricks.ai.adaptiveBatch.initialSize": "4",
+}
+
+
+def _function_info_with_properties(properties):
+    return FunctionInfo(
+        catalog_name="catalog",
+        schema_name="schema",
+        name="fn",
+        full_name="catalog.schema.fn",
+        data_type=ColumnTypeName.STRING,
+        properties=None if properties is None else json.dumps(properties),
+    )
+
+
+def test_get_function_environment_reads_live_payload():
+    env = get_function_environment(_function_info_with_properties(_LIVE_PROPERTIES))
+
+    assert env.dependencies == ["requests>=2.31"]
+    assert env.environment_version == "6"
+
+
+def test_get_function_credentials_reads_live_payload():
+    credentials = get_function_credentials(_function_info_with_properties(_LIVE_PROPERTIES))
+
+    assert credentials == [
+        ServiceCredential(name="bedrock_sandbox", alias="bedrock", is_default=True)
+    ]
+
+
+def test_get_function_secrets_reads_live_payload():
+    secrets = get_function_secrets(_function_info_with_properties(_LIVE_PROPERTIES))
+
+    assert secrets == ["magrund.ucai_probe.probe_key"]
+
+
+def test_get_function_credentials_without_alias():
+    # An omitted alias is stored as an alias equal to the credential name, so it must not be
+    # reported back as an explicit alias.
+    info = _function_info_with_properties(
+        {
+            "routine_credential.credentials_mappings": '{"cred":"cred"}',
+            "routine_credential.default_credential": "null",
+        }
+    )
+
+    assert get_function_credentials(info) == [ServiceCredential(name="cred", alias=None)]
+
+
+def test_get_function_credentials_multiple_are_sorted_and_only_one_is_default():
+    info = _function_info_with_properties(
+        {
+            "routine_credential.credentials_mappings": '{"z":"z_cred","a":"a_cred"}',
+            "routine_credential.default_credential": '"z_cred"',
+        }
+    )
+
+    assert get_function_credentials(info) == [
+        ServiceCredential(name="a_cred", alias="a", is_default=False),
+        ServiceCredential(name="z_cred", alias="z", is_default=True),
+    ]
+
+
+def test_get_function_secrets_multiple():
+    info = _function_info_with_properties(
+        {
+            "routine_secrets.secrets": (
+                '{"secrets":[{"catalog":"c1","schema":"s1","key":"k1"},'
+                '{"catalog":"c2","schema":"s2","key":"k2"}]}'
+            )
+        }
+    )
+
+    assert get_function_secrets(info) == ["c1.s1.k1", "c2.s2.k2"]
+
+
+@pytest.mark.parametrize("properties", [None, {}, {"sqlConfig.spark.foo": "bar"}])
+def test_readback_helpers_on_functions_without_declarations(properties):
+    info = _function_info_with_properties(properties)
+
+    assert get_function_environment(info) == FunctionEnvironment(
+        dependencies=[], environment_version=None
+    )
+    assert get_function_credentials(info) == []
+    assert get_function_secrets(info) == []
+
+
+@pytest.mark.parametrize(
+    "properties",
+    [
+        {"routine_credential.credentials_mappings": "not json"},
+        {"routine_credential.credentials_mappings": '"a string"'},
+        {"routine_secrets.secrets": "not json"},
+        {"routine_secrets.secrets": '{"secrets":[{"catalog":"c"}]}'},
+        {"environment.dependencies": "not json"},
+    ],
+)
+def test_readback_helpers_tolerate_malformed_properties(properties):
+    info = _function_info_with_properties(properties)
+
+    assert get_function_environment(info).dependencies == []
+    assert get_function_credentials(info) == []
+    assert get_function_secrets(info) == []
+
+
+def test_readback_helpers_tolerate_undecodable_properties():
+    info = FunctionInfo(
+        catalog_name="catalog", schema_name="schema", name="fn", properties="{not json"
+    )
+
+    assert get_function_credentials(info) == []
+
+
+@pytest.mark.parametrize(
+    ("properties", "expected_message"),
+    [
+        (
+            {"routine_credential.credentials_mappings": '{"c":"c"}'},
+            "declares service credentials",
+        ),
+        (
+            {"routine_secrets.secrets": '{"secrets":[{"catalog":"c","schema":"s","key":"k"}]}'},
+            "declares secrets",
+        ),
+        (_LIVE_PROPERTIES, "declares service credentials and secrets"),
+    ],
+)
+def test_local_execution_rejects_declared_securables(properties, expected_message):
+    client = DatabricksFunctionClient(client=MagicMock(), execution_mode="local")
+    info = FunctionInfo(
+        catalog_name="catalog",
+        schema_name="schema",
+        name="fn",
+        full_name="catalog.schema.fn",
+        data_type=ColumnTypeName.STRING,
+        routine_body=CreateFunctionRoutineBody.EXTERNAL,
+        routine_definition="return 'x'",
+        input_params=FunctionParameterInfos(parameters=[]),
+        properties=json.dumps(properties),
+    )
+
+    with pytest.raises(ValueError, match=expected_message):
+        client._execute_uc_functions_with_local(info, {})
+
+
+def test_get_function_secrets_ignores_non_dict_entries():
+    info = _function_info_with_properties(
+        {"routine_secrets.secrets": '{"secrets":["oops",{"catalog":"c","schema":"s","key":"k"}]}'}
+    )
+
+    assert get_function_secrets(info) == ["c.s.k"]

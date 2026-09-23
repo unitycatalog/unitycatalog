@@ -1,0 +1,8 @@
+{
+  "default": "4.1.0",
+  "versions": [
+    {"version": "4.0.0", "sourceDirs": ["scala-shims/spark-4.0-4.1"]},
+    {"version": "4.1.0", "sourceDirs": ["scala-shims/spark-4.0-4.1"]},
+    {"version": "4.2.0", "sourceDirs": ["scala-shims/spark-4.2"]}
+  ]
+}

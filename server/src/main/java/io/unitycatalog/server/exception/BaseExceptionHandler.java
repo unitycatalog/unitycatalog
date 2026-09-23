@@ -20,8 +20,7 @@ public abstract class BaseExceptionHandler implements ExceptionHandlerFunction {
   private static volatile boolean includeStackTrace = false;
 
   @Override
-  public HttpResponse handleException(
-      ServiceRequestContext ctx, HttpRequest req, Throwable cause) {
+  public HttpResponse handleException(ServiceRequestContext ctx, HttpRequest req, Throwable cause) {
     return createErrorResponse(toBaseException(cause));
   }
 

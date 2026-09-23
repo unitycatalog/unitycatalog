@@ -2,7 +2,6 @@
   "name": "sales",
   "location": "s3://bucket/warehouse/catalog/schema/sales",
   "table-type": "MANAGED",
-  "data-source-format": "DELTA",
   "columns": {
     "type": "struct",
     "fields": [

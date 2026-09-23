@@ -3,31 +3,52 @@ package io.unitycatalog.server.service.credential.aws;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
-import lombok.SneakyThrows;
-import org.apache.iceberg.exceptions.NotAuthorizedException;
-
 import java.net.URI;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import lombok.SneakyThrows;
+import org.apache.iceberg.exceptions.NotAuthorizedException;
+import software.amazon.awssdk.arns.Arn;
+import software.amazon.awssdk.regions.PartitionMetadata;
+import software.amazon.awssdk.regions.Region;
 
 public class AwsPolicyGenerator {
 
-  static final List<String> SELECT_ACTIONS = List.of("s3:GetO*");
-  static final List<String> UPDATE_ACTIONS = List.of(
-      "s3:GetO*", "s3:PutO*", "s3:DeleteO*", "s3:*Multipart*");
+  static final String AWS_PARTITION = "aws";
 
-  static final String POLICY_STATEMENT = """
+  // Exact action names: some S3-compatible STS implementations reject partial
+  // wildcards such as s3:GetO*. On AWS, multipart initiate/upload/complete are
+  // authorized by s3:PutObject; abort and list-parts are separate actions.
+  static final List<String> SELECT_ACTIONS = List.of("s3:GetObject");
+  static final List<String> UPDATE_ACTIONS =
+      List.of(
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:AbortMultipartUpload",
+          "s3:ListMultipartUploadParts");
+
+  // Reading an object encrypted with SSE-KMS requires kms:Decrypt, and writing one additionally
+  // requires kms:GenerateDataKey*. Without these the vended session credentials can't touch a
+  // table stored in a bucket with SSE-KMS, even when the assumed role itself is allowed to.
+  static final List<String> SELECT_KMS_ACTIONS = List.of("kms:Decrypt");
+  static final List<String> UPDATE_KMS_ACTIONS = List.of("kms:Decrypt", "kms:GenerateDataKey*");
+
+  static final String POLICY_STATEMENT =
+      """
       Version: 2012-10-17
       Statement: []
       """;
 
-  static final String BUCKET_STATEMENT = """
+  static final String BUCKET_STATEMENT =
+      """
       Effect: Allow
       Action:
         - s3:ListBucket
@@ -37,10 +58,27 @@ public class AwsPolicyGenerator {
           "s3:prefix": []
       """;
 
-  static final String OPERATION_STATEMENT = """
+  static final String OPERATION_STATEMENT =
+      """
       Effect: Allow
       Action: []
       Resource: []
+      """;
+
+  // Unity Catalog doesn't know which KMS key a bucket is configured with, so the resource stays
+  // open and the statement is narrowed to KMS calls made through S3. A session policy can only
+  // narrow what the assumed role is already allowed to do, so a role without KMS access still
+  // gets none. Encryption-context ARNs are omitted on purpose: they duplicate every S3 resource
+  // in this policy, and on long managed-table paths that blows the STS packed-policy limit
+  // ("Packed policy consumes 100% of allotted space"). S3 resource statements already constrain
+  // which objects the session can Get/Put. GovCloud/China hit the limit sooner because those
+  // ARN prefixes are longer, but commercial paths of the same length overflow too.
+  static final String KMS_STATEMENT =
+      """
+      Effect: Allow
+      Action: []
+      Resource:
+        - "*"
       """;
 
   private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
@@ -48,71 +86,196 @@ public class AwsPolicyGenerator {
 
   // This can support generating a policy across multiple buckets and paths, however, the assumed
   // role the policy is applied to for a scoped-session needs to have access across those buckets
+  /**
+   * Test helper: commercial {@link #AWS_PARTITION} (no role ARN or region). Production always calls
+   * {@link #generatePolicy(Set, List, String, Region)}.
+   */
+  @SneakyThrows
+  static String generatePolicy(
+      Set<CredentialContext.Privilege> privileges, List<NormalizedURL> locations) {
+    return generatePolicy(privileges, locations, null, null);
+  }
+
+  /**
+   * Builds the AssumeRole session policy for the given locations.
+   *
+   * <p>IAM partition is taken from {@code roleArn} when that ARN is well-formed ({@code
+   * arn:aws-us-gov:...} → {@code aws-us-gov}), then from the STS region catalog, then commercial
+   * {@code aws}. The same partition is used for S3 resources and {@code kms:ViaService} ({@code
+   * s3.*.amazonaws.com} vs {@code s3.*.amazonaws.com.cn}).
+   */
   @SneakyThrows
   public static String generatePolicy(
       Set<CredentialContext.Privilege> privileges,
-      List<NormalizedURL> locations) {
+      List<NormalizedURL> locations,
+      String roleArn,
+      Region awsRegion) {
+    PartitionMetadata partition = iamPartition(roleArn, awsRegion);
     JsonNode policyRoot = loadYaml(POLICY_STATEMENT);
     ArrayNode policyStatement = (ArrayNode) policyRoot.findPath("Statement");
     JsonNode operationsStatement = loadYaml(OPERATION_STATEMENT);
     policyStatement.add(operationsStatement);
+    JsonNode kmsStatement = loadYaml(KMS_STATEMENT);
+    ((ObjectNode) kmsStatement)
+        .putObject("Condition")
+        .putObject("StringLike")
+        .put("kms:ViaService", kmsViaService(partition));
 
-    // Add the appropriate S3 operations for the privileges requested
+    // Add the appropriate S3 and KMS operations for the privileges requested
     ArrayNode actions = (ArrayNode) operationsStatement.findPath("Action");
+    ArrayNode kmsActions = (ArrayNode) kmsStatement.findPath("Action");
     if (privileges.contains(CredentialContext.Privilege.UPDATE)) {
       UPDATE_ACTIONS.forEach(actions::add);
+      UPDATE_KMS_ACTIONS.forEach(kmsActions::add);
     } else if (privileges.contains(CredentialContext.Privilege.SELECT)) {
       SELECT_ACTIONS.forEach(actions::add);
+      SELECT_KMS_ACTIONS.forEach(kmsActions::add);
     } else {
       throw new NotAuthorizedException(
-          String.format("Can't generate policy for unknown privileges '%s' for locations: '%s'",
+          String.format(
+              "Can't generate policy for unknown privileges '%s' for locations: '%s'",
               privileges, locations));
     }
 
     // Group each location by s3 bucket it's located in, then for each
     // bucket, add the bucket arn for the listBucket and operations statements,
     // then add each path as a conditional prefix
-    getBucketToPathsMap(locations).forEach((bucketName, paths) -> {
-      JsonNode listStatement = loadYaml(BUCKET_STATEMENT);
-      policyStatement.add(listStatement);
+    getBucketToPathsMap(locations)
+        .forEach(
+            (bucketName, paths) -> {
+              JsonNode listStatement = loadYaml(BUCKET_STATEMENT);
+              policyStatement.add(listStatement);
 
-      ArrayNode bucketResource = (ArrayNode) listStatement.findPath("Resource");
-      ArrayNode operationsResource = (ArrayNode) operationsStatement.findPath("Resource");
-      bucketResource.add(String.format("arn:aws:s3:::%s", bucketName));
+              ArrayNode bucketResource = (ArrayNode) listStatement.findPath("Resource");
+              ArrayNode operationsResource = (ArrayNode) operationsStatement.findPath("Resource");
+              bucketResource.add(s3Arn(partition, bucketName));
 
-      ArrayNode conditionalPrefixes = (ArrayNode) listStatement.findPath("s3:prefix");
-      paths.forEach(path -> {
-        // remove any preceding forward slashes
-        // TODO: potentially sanitize/encode the whole path to deal with problematic chars
-        String sanitizedPath = path.replaceAll("^/+", "");
+              ArrayNode conditionalPrefixes = (ArrayNode) listStatement.findPath("s3:prefix");
+              paths.forEach(
+                  path -> {
+                    // remove any preceding forward slashes
+                    String sanitizedPath = escapeIamSpecialCharacters(path.replaceAll("^/+", ""));
 
-        if (sanitizedPath.isEmpty()) {
-          conditionalPrefixes.add("*");
-          operationsResource.add(String.format("arn:aws:s3:::%s/*", bucketName));
-        } else {
-          conditionalPrefixes.add(sanitizedPath);
-          conditionalPrefixes.add(sanitizedPath + "/");
-          conditionalPrefixes.add(sanitizedPath + "/*");
+                    if (sanitizedPath.isEmpty()) {
+                      conditionalPrefixes.add("*");
+                      operationsResource.add(s3Arn(partition, bucketName + "/*"));
+                    } else {
+                      conditionalPrefixes.add(sanitizedPath);
+                      conditionalPrefixes.add(sanitizedPath + "/");
+                      conditionalPrefixes.add(sanitizedPath + "/*");
 
-          operationsResource.add(String.format("arn:aws:s3:::%s/%s/*", bucketName, sanitizedPath));
-          operationsResource.add(String.format("arn:aws:s3:::%s/%s", bucketName, sanitizedPath));
-        }
-      });
-    });
+                      operationsResource.add(
+                          s3Arn(partition, bucketName + "/" + sanitizedPath + "/*"));
+                      operationsResource.add(s3Arn(partition, bucketName + "/" + sanitizedPath));
+                    }
+                  });
+            });
+
+    // Appended after the per-bucket statements so that the position of the S3 statements
+    // within the policy doesn't change
+    policyStatement.add(kmsStatement);
 
     return JSON_MAPPER.writeValueAsString(policyRoot);
+  }
+
+  /**
+   * IAM partition for S3 ARNs and KMS conditions. Prefers the assumed role ARN (the session is
+   * bound to that role's partition), then the STS region catalog, then commercial {@code aws}.
+   */
+  static PartitionMetadata iamPartition(String roleArn, Region awsRegion) {
+    PartitionMetadata fromRole = partitionFromArn(roleArn);
+    if (fromRole != null) {
+      return fromRole;
+    }
+    return partitionFromRegion(awsRegion);
+  }
+
+  static PartitionMetadata partitionFromArn(String arn) {
+    if (arn == null || arn.isBlank()) {
+      return null;
+    }
+    try {
+      String partition = Arn.fromString(arn).partition();
+      if (partition == null || partition.isBlank()) {
+        return null;
+      }
+      return PartitionMetadata.of(partition);
+    } catch (RuntimeException e) {
+      return null;
+    }
+  }
+
+  static PartitionMetadata partitionFromRegion(Region awsRegion) {
+    if (awsRegion == null) {
+      return commercialPartition();
+    }
+    try {
+      if (awsRegion.metadata() != null && awsRegion.metadata().partition() != null) {
+        return awsRegion.metadata().partition();
+      }
+    } catch (RuntimeException ignored) {
+      // Unknown regions fall through to commercial aws.
+    }
+    return commercialPartition();
+  }
+
+  private static String kmsViaService(PartitionMetadata partition) {
+    String dnsSuffix = partition.dnsSuffix();
+    if (dnsSuffix == null || dnsSuffix.isBlank()) {
+      dnsSuffix = "aws-cn".equals(partition.id()) ? "amazonaws.com.cn" : "amazonaws.com";
+    }
+    return "s3.*." + dnsSuffix;
+  }
+
+  private static PartitionMetadata commercialPartition() {
+    return PartitionMetadata.of(AWS_PARTITION);
+  }
+
+  private static String s3Arn(PartitionMetadata partition, String resource) {
+    return String.format("arn:%s:s3:::%s", partition.id(), resource);
+  }
+
+  /**
+   * Makes an S3 path safe to include in an IAM policy.
+   *
+   * <p>S3 treats {@code *}, {@code ?}, and {@code $} as ordinary characters in object names. IAM
+   * gives them special meanings:
+   *
+   * <ul>
+   *   <li>{@code *} matches any number of characters. For example, {@code reports/*} matches every
+   *       object under {@code reports/}.
+   *   <li>{@code ?} matches exactly one character. For example, {@code file?.txt} matches {@code
+   *       file1.txt}.
+   *   <li>{@code ${...}} is a policy variable whose value IAM fills in when it evaluates the
+   *       policy. For example, {@code ${aws:username}} is replaced with the caller's IAM username.
+   * </ul>
+   *
+   * <p>Therefore, copying an S3 path directly into a policy could grant access to more objects than
+   * the path names. AWS provides {@code ${*}}, {@code ${?}}, and {@code ${$}} to make IAM match the
+   * literal {@code *}, {@code ?}, and {@code $} characters instead.
+   *
+   * <p>We replace {@code $} first because the replacements for {@code *} and {@code ?} also contain
+   * a dollar sign.
+   *
+   * @see <a
+   *     href="https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_variables.html">
+   *     AWS documentation for IAM policy variables</a>
+   */
+  private static String escapeIamSpecialCharacters(String keyPrefix) {
+    return keyPrefix.replace("$", "${$}").replace("*", "${*}").replace("?", "${?}");
   }
 
   private static Map<String, List<String>> getBucketToPathsMap(List<NormalizedURL> locations) {
     return locations.stream()
         .map(NormalizedURL::toUri)
-        .collect(Collectors.toMap(
-            URI::getHost,
-            uri -> new LinkedList<>(List.of(uri.getPath())),
-            (map, newPaths) -> {
-              map.addAll(newPaths);
-              return map;
-            }));
+        .collect(
+            Collectors.toMap(
+                URI::getHost,
+                uri -> new LinkedList<>(List.of(uri.getPath())),
+                (map, newPaths) -> {
+                  map.addAll(newPaths);
+                  return map;
+                }));
   }
 
   @SneakyThrows

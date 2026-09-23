@@ -5,8 +5,8 @@ import java.util.Map;
 
 /**
  * Re-runs the AWS credential-renewal test with {@code credScopedFs.enabled=true} to verify that
- * {@link io.unitycatalog.spark.fs.CredScopedFileSystem} wraps the delegate transparently and
- * credential renewal still works correctly end-to-end.
+ * {@link io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem} wraps the delegate transparently
+ * and credential renewal still works correctly end-to-end.
  *
  * <p>Sets {@code fs.s3.impl} and {@code fs.s3a.impl} at the session level to {@link
  * S3CredFileSystem} so that {@code CredPropsUtil} reads them as the original impls and saves them

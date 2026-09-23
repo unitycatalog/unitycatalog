@@ -73,9 +73,18 @@ public class ModelRepository {
 
   public List<RegisteredModelInfoDAO> getAllRegisteredModelsDao(
       Session session, Optional<String> token, Optional<Integer> maxResults) {
+    if (maxResults.isPresent() && maxResults.get() < 0) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "maxResults must be greater than or equal to 0");
+    }
     UUID tokenToUse = new UUID(0, 0);
     if (token.isPresent()) {
-      tokenToUse = UUID.fromString(token.get());
+      try {
+        tokenToUse = UUID.fromString(token.get());
+      } catch (IllegalArgumentException e) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT, "Invalid page token received: " + token.get());
+      }
     }
     String hql = "FROM RegisteredModelInfoDAO t WHERE t.id > :token ORDER BY t.id ASC";
     Query<RegisteredModelInfoDAO> query = session.createQuery(hql, RegisteredModelInfoDAO.class);
@@ -86,7 +95,8 @@ public class ModelRepository {
 
   public ModelVersionInfoDAO getModelVersionDao(Session session, UUID modelId, Long version) {
     String hql =
-        "FROM ModelVersionInfoDAO t WHERE t.registeredModelId = :registeredModelId AND t.version = :version";
+        "FROM ModelVersionInfoDAO t WHERE t.registeredModelId = :registeredModelId AND t.version ="
+            + " :version";
     Query<ModelVersionInfoDAO> query = session.createQuery(hql, ModelVersionInfoDAO.class);
     query.setParameter("registeredModelId", modelId);
     query.setParameter("version", version.toString());
@@ -117,7 +127,8 @@ public class ModelRepository {
   public List<ModelVersionInfoDAO> getModelVersionsDao(
       Session session, UUID registeredModelId, String token, int maxResults) {
     String hql =
-        "FROM ModelVersionInfoDAO t WHERE t.registeredModelId = :registeredModelId AND t.version > :token ORDER BY t.version ASC";
+        "FROM ModelVersionInfoDAO t WHERE t.registeredModelId = :registeredModelId AND t.version >"
+            + " :token ORDER BY t.version ASC";
     Query<ModelVersionInfoDAO> query = session.createQuery(hql, ModelVersionInfoDAO.class);
     query.setParameter("registeredModelId", registeredModelId);
     query.setParameter("token", Long.parseLong(token));
@@ -147,6 +158,17 @@ public class ModelRepository {
     }
     // return the last version
     return entities.get(entities.size() - 1).getVersion().toString();
+  }
+
+  private String getNextPageTokenById(
+      List<RegisteredModelInfoDAO> entities, Optional<Integer> maxResults) {
+    if (entities == null
+        || entities.isEmpty()
+        || entities.size() < PagedListingHelper.getPageSize(maxResults)) {
+      return null;
+    }
+    // return the last id
+    return entities.get(entities.size() - 1).getId().toString();
   }
 
   /** **************** Registered Model handlers ***************** */
@@ -290,9 +312,8 @@ public class ModelRepository {
           LOGGER.info("Listing all registered models in the metastore.");
           List<RegisteredModelInfoDAO> registeredModelInfoDAOList =
               getAllRegisteredModelsDao(session, pageToken, maxResults);
-          String nextPageToken =
-              REGISTERED_MODEL_LISTING_HELPER.getNextPageToken(
-                  registeredModelInfoDAOList, maxResults);
+          // Model names are not unique across the metastore, so this branch pages by id, not name.
+          String nextPageToken = getNextPageTokenById(registeredModelInfoDAOList, maxResults);
           List<RegisteredModelInfo> result = new ArrayList<>();
           for (RegisteredModelInfoDAO registeredModelInfoDAO : registeredModelInfoDAOList) {
             RepositoryUtils.CatalogAndSchemaNames names =

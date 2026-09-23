@@ -22,7 +22,7 @@ The MLflow client connects both MLflow and Unity Catalog services (via `port:500
 ## Setting up MLflow and Unity Catalog
 
 !!! warning "Prerequisites"
-    For Unity Catalog MLflow Integration, ensure you are using MLflow version >= 2.16.1 and Unity Catalog >= 0.2.
+    For Unity Catalog MLflow Integration, ensure you are using MLflow version >= 2.16.1 and Unity Catalog >= 0.4.
 
 ### Spin up Unity Catalog
 
@@ -37,6 +37,19 @@ Spin up a local UC server by running the following code in a terminal from the r
 
 ```sh
 bin/start-uc-server
+```
+
+Model registration requires a managed storage location. For local development, add the following to
+`etc/conf/server.properties` before starting the server (or restart after editing):
+
+```properties
+storage-root.models=file:/tmp/ucroot
+```
+
+Then create the storage directory:
+
+```sh
+mkdir -p /tmp/ucroot
 ```
 
 ### Install (or upgrade) MLflow

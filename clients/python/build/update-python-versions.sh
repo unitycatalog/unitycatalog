@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script for updating the Python versions in pyproject.toml and setup.py to keep versions 
+# Script for updating the Python version in pyproject.toml to keep it
 # synchronized with version.sbt
 
 set -e
@@ -46,26 +46,6 @@ update_version_in_pyproject() {
   fi
 }
 
-update_version_in_setup() {
-  local file_path="$1"
-  local python_version="$2"
-  if [[ -f "$file_path" ]]; then
-    > tmp
-    while IFS= read -r line; do
-      if [[ $line =~ ^[[:space:]]*version[[:space:]]*= ]]; then
-        echo "    version=\"$python_version\"," >> tmp
-      else
-        echo "$line" >> tmp
-      fi
-    done < "$file_path"
-    mv tmp "$file_path"
-    echo "Updated version in $file_path to $python_version"
-  else
-    echo "Error: File not found: $file_path" >&2
-    exit 1
-  fi
-}
-
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 version_sbt_path="$script_dir/../../../version.sbt"
 
@@ -81,4 +61,3 @@ python_version="$(convert_version_for_python "$sbt_version")"
 echo "Python version: $python_version"
 
 update_version_in_pyproject "$script_dir/pyproject.toml" "$python_version"
-update_version_in_setup "$script_dir/setup.py" "$python_version"

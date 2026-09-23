@@ -17,8 +17,24 @@ data stored in Unity Catalog through a controlled mechanism.
 - Provides easy access to different file formats without end users needing to know how the data is stored.
 
 !!! warning "Prerequisites"
-    For Apache Spark and Delta Lake to work together with Unity Catalog, you will need atleast Apache Spark 3.5.3 and
-    Delta Lake 3.2.1.
+    For Apache Spark and Delta Lake to work together with Unity Catalog, use **Apache Spark 4.0.x, 4.1.x, or 4.2.x**,
+    **Delta Lake 4.4.0 or later**, and **Unity Catalog 0.6.0 or later**.
+
+    Starting with Unity Catalog 0.5.0, the Spark connector is published as separate Maven artifacts per Spark
+    minor version. Pick the artifact that matches your Spark installation:
+
+    | Spark version | UC Spark connector artifact | Delta Spark artifact |
+    | --- | --- | --- |
+    | Apache Spark 4.0.x | `io.unitycatalog:unitycatalog-spark_4.0_2.13` | `io.delta:delta-spark_4.0_2.13` |
+    | Apache Spark 4.1.x | `io.unitycatalog:unitycatalog-spark_4.1_2.13` | `io.delta:delta-spark_4.1_2.13` |
+    | Apache Spark 4.2.x | `io.unitycatalog:unitycatalog-spark_4.2_2.13` | `io.delta:delta-spark_4.2_2.13` |
+
+    The Spark 4.2.x connector artifact is new in Unity Catalog 0.6.0.
+
+!!! tip "SQL views and metric views"
+    On Apache Spark 4.2 and later, the connector also supports Unity Catalog **SQL views** and
+    **metric views** — the latter being reusable dimensions and measures defined over a source table
+    or SQL query. See [Metric Views](../usage/metric-views.md).
 
 ## Download and Configure Unity Catalog for Apache Spark
 
@@ -26,13 +42,28 @@ The following steps are required to download and configure Unity Catalog for Apa
 
 ### Download Apache Spark
 
-[Download](https://spark.apache.org/downloads.html) the latest version of Apache Spark >= 3.5.3 or using the following
-command.
+[Download](https://spark.apache.org/downloads.html) Apache Spark 4.0.x, 4.1.x, or 4.2.x, or use one of the following commands.
 
-```sh title="Download Apache Spark 3.5.3 using curl"
-curl -O https://archive.apache.org/dist/spark/spark-3.5.3/spark-3.5.3-bin-hadoop3.tgz
-tar xzf spark-3.5.3-bin-hadoop3.tgz
-```
+=== "Spark 4.0.x"
+
+    ```sh title="Download Apache Spark 4.0.1 using curl"
+    curl -O https://archive.apache.org/dist/spark/spark-4.0.1/spark-4.0.1-bin-hadoop3.tgz
+    tar xzf spark-4.0.1-bin-hadoop3.tgz
+    ```
+
+=== "Spark 4.1.x"
+
+    ```sh title="Download Apache Spark 4.1.0 using curl"
+    curl -O https://archive.apache.org/dist/spark/spark-4.1.0/spark-4.1.0-bin-hadoop3.tgz
+    tar xzf spark-4.1.0-bin-hadoop3.tgz
+    ```
+
+=== "Spark 4.2.x"
+
+    ```sh title="Download Apache Spark 4.2.0 using curl"
+    curl -O https://archive.apache.org/dist/spark/spark-4.2.0/spark-4.2.0-bin-hadoop3.tgz
+    tar xzf spark-4.2.0-bin-hadoop3.tgz
+    ```
 
 ### [Optional] Configure server properties for cloud storage
 
@@ -82,52 +113,136 @@ bin/start-uc-server
 ## Working with Unity Catalog Tables with Apache Spark and Delta Lake Locally
 
 Let’s start running some Spark SQL queries in the Spark SQL shell (`bin/spark-sql`) or PySpark shell (`bin/pyspark`)
-within the terminal of your Apache Spark 3.5.3 folder against your local UC.
+within the terminal of your Apache Spark installation against your local UC.
 
-You can run the code below to work with data stored in a Unity Catalog server.
+You can run the code below to work with data stored in a Unity Catalog server. The examples use the preloaded
+`unity` catalog; change `CATALOG_NAME` if you are using a different catalog.
 
-=== "Spark SQL"
+=== "Spark SQL (Spark 4.0.x)"
 
     ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
     bin/spark-sql --name "local-uc-test" \
         --master "local[*]" \
-        --packages "io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
+        --packages "io.delta:delta-spark_4.0_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.6.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
-        --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
-        --conf "spark.sql.catalog.<catalog_name>.token=" \
-        --conf "spark.sql.defaultCatalog=<catalog_name>"
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
     ```
 
-=== "PySpark"
+=== "PySpark (Spark 4.0.x)"
 
     ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
     bin/pyspark --name "local-uc-test" \
         --master "local[*]" \
-        --packages "io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
+        --packages "io.delta:delta-spark_4.0_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.6.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
-        --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
-        --conf "spark.sql.catalog.<catalog_name>.token=" \
-        --conf "spark.sql.defaultCatalog=<catalog_name>"
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
+    ```
+
+=== "Spark SQL (Spark 4.1.x)"
+
+    ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
+    bin/spark-sql --name "local-uc-test" \
+        --master "local[*]" \
+        --packages "io.delta:delta-spark_4.1_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.1_2.13:0.6.0" \
+        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
+    ```
+
+=== "PySpark (Spark 4.1.x)"
+
+    ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
+    bin/pyspark --name "local-uc-test" \
+        --master "local[*]" \
+        --packages "io.delta:delta-spark_4.1_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.1_2.13:0.6.0" \
+        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
+    ```
+
+=== "Spark SQL (Spark 4.2.x)"
+
+    ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
+    bin/spark-sql --name "local-uc-test" \
+        --master "local[*]" \
+        --packages "io.delta:delta-spark_4.2_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.2_2.13:0.6.0" \
+        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
+    ```
+
+=== "PySpark (Spark 4.2.x)"
+
+    ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
+    bin/pyspark --name "local-uc-test" \
+        --master "local[*]" \
+        --packages "io.delta:delta-spark_4.2_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.2_2.13:0.6.0" \
+        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
     ```
 
 !!! tip "Tip"
     Initially, this may take a few minutes to run to download the necessary dependencies. Afterwards, you can run some
     quick commands to see your UC assets within Spark SQL shell.
 
-!!! warning "Configuring Spark session catalog"
-
-    Depending on your use case, you may need to configure the Spark session catalog, using for example:
-    ```sh
-    --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog"
-    ```
-
 Notice the following packages (`--packages`) and configurations (`--conf`)
 
-- `--packages` points to the delta-spark and unitycatalog-spark packages; update the version numbers to your current versions.
-- `spark.sql.catalog.<catalog_name>.uri` points to your local development UC instance
-- `spark.sql.catalog.<catalog_name>.token` is empty indicating there is no authentication; refer to [auth](../server/auth.md) for more information.
+- `--packages` points to the version-matched `delta-spark` and `unitycatalog-spark` artifacts. Use the Spark 4.0.x,
+  4.1.x, or 4.2.x coordinates from the prerequisites table above.
+- `spark.sql.catalog.spark_catalog` should be set to Delta's session catalog when working with Delta tables.
+- `spark.sql.catalog.<catalog_name>.uri` points to your local development UC instance.
+- `spark.sql.catalog.<catalog_name>.token` is the static bearer token. When the
+  server has `server.authorization=disable` (the default), set this key to an
+  empty string (`export UC_TOKEN=` as in the examples above). Do not omit both
+  `token` and `auth.type`. Client auth types, empty tokens, and Hive JDBC /
+  Beeline workarounds are documented in
+  [Spark and Java client authentication types](../server/auth.md#spark-and-java-client-authentication-types).
+  When authorization is enabled, set a real token; see [auth](../server/auth.md).
 - `spark.sql.defaultCatalog=<catalog_name>` must be filled out to indicate the default catalog.
 
 ??? note "Three-part and two-part naming conventions"
@@ -141,51 +256,223 @@ Notice the following packages (`--packages`) and configurations (`--conf`)
 
 ### [Optional] Running Spark SQL for Cloud Object Stores
 
-If you would like to run this against cloud object storage, the following versions of the `bin/spark-sql` shell
-command.
+If you would like to run this against cloud object storage, use the matching Spark and UC connector artifacts for
+your Spark version. Use `hadoop-aws` and `hadoop-azure` **3.4.1** with Spark 4.0.x and **3.4.2** with Spark 4.1.x
+and 4.2.x (`hadoop-azure` requires 3.4.1 or later; see [issue #1175](https://github.com/unitycatalog/unitycatalog/issues/1175)).
 
-=== "AWS S3"
+=== "AWS S3 (Spark 4.0.x)"
 
     ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
     bin/spark-sql --name "s3-uc-test" \
         --master "local[*]" \
-        --packages "org.apache.hadoop:hadoop-aws:3.4.1,io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
+        --packages "org.apache.hadoop:hadoop-aws:3.4.1,io.delta:delta-spark_4.0_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.6.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
         --conf "spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem" \
-        --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
-        --conf "spark.sql.catalog.<catalog_name>.token=" \
-        --conf "spark.sql.defaultCatalog=<catalog_name>"
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
     ```
 
-=== "Azure ADLSgen2"
+=== "AWS S3 (Spark 4.1.x)"
 
     ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
+    bin/spark-sql --name "s3-uc-test" \
+        --master "local[*]" \
+        --packages "org.apache.hadoop:hadoop-aws:3.4.2,io.delta:delta-spark_4.1_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.1_2.13:0.6.0" \
+        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem" \
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
+    ```
+
+=== "AWS S3 (Spark 4.2.x)"
+
+    ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
+    bin/spark-sql --name "s3-uc-test" \
+        --master "local[*]" \
+        --packages "org.apache.hadoop:hadoop-aws:3.4.2,io.delta:delta-spark_4.2_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.2_2.13:0.6.0" \
+        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem" \
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
+    ```
+
+=== "Azure ADLSgen2 (Spark 4.0.x)"
+
+    ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
     bin/spark-sql --name "azure-uc-test" \
         --master "local[*]" \
-        --packages "org.apache.hadoop:hadoop-azure:3.3.6,io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
+        --packages "org.apache.hadoop:hadoop-azure:3.4.1,io.delta:delta-spark_4.0_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.6.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
-        --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
-        --conf "spark.sql.catalog.<catalog_name>.token=" \
-        --conf "spark.sql.defaultCatalog=<catalog_name>"
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
     ```
 
-=== "Google Cloud Storage"
+=== "Azure ADLSgen2 (Spark 4.1.x)"
 
     ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
+    bin/spark-sql --name "azure-uc-test" \
+        --master "local[*]" \
+        --packages "org.apache.hadoop:hadoop-azure:3.4.2,io.delta:delta-spark_4.1_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.1_2.13:0.6.0" \
+        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
+    ```
+
+=== "Azure ADLSgen2 (Spark 4.2.x)"
+
+    ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
+    bin/spark-sql --name "azure-uc-test" \
+        --master "local[*]" \
+        --packages "org.apache.hadoop:hadoop-azure:3.4.2,io.delta:delta-spark_4.2_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.2_2.13:0.6.0" \
+        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
+    ```
+
+=== "Google Cloud Storage (Spark 4.0.x)"
+
+    ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
     bin/spark-sql --name "gcs-uc-test" \
         --master "local[*]" \
         --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/3.0.2/gcs-connector-3.0.2-shaded.jar" \
-        --packages "io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
+        --packages "io.delta:delta-spark_4.0_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.6.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
         --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
         --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
-        --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
-        --conf "spark.sql.catalog.<catalog_name>.token=" \
-        --conf "spark.sql.defaultCatalog=<catalog_name>"
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
     ```
+
+=== "Google Cloud Storage (Spark 4.1.x)"
+
+    ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
+    bin/spark-sql --name "gcs-uc-test" \
+        --master "local[*]" \
+        --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/3.0.2/gcs-connector-3.0.2-shaded.jar" \
+        --packages "io.delta:delta-spark_4.1_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.1_2.13:0.6.0" \
+        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
+        --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
+    ```
+
+=== "Google Cloud Storage (Spark 4.2.x)"
+
+    ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
+    bin/spark-sql --name "gcs-uc-test" \
+        --master "local[*]" \
+        --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/3.0.2/gcs-connector-3.0.2-shaded.jar" \
+        --packages "io.delta:delta-spark_4.2_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.2_2.13:0.6.0" \
+        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
+        --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
+    ```
+
+## Querying cloud paths with Unity Catalog credentials
+
+Registered catalog tables already receive vended credentials from `UCSingleCatalog.loadTable`. Spark SQL that names a
+cloud URI directly never calls `loadTable`, so the session must also register the Unity Catalog Spark extension.
+
+Add it on the same `spark.sql.extensions` line as Delta in the cloud examples above:
+
+```properties
+spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension,io.unitycatalog.spark.UCSparkSessionExtensions
+```
+
+The session's current catalog must be a `UCSingleCatalog` (`spark.sql.defaultCatalog` in those examples, or `SET CATALOG`). Path credential vending is **off by default** so Unity Catalog does not override ambient Hadoop or instance-profile credentials. Enable it per catalog:
+
+```properties
+spark.sql.catalog.<catalog_name>.vendPathCredentials.enabled=true
+```
+
+```sql
+-- Read (parquet, json, csv, orc, …)
+SELECT * FROM parquet.`s3://my-bucket/path/to/data`;
+
+-- Write
+INSERT OVERWRITE DIRECTORY 's3://my-bucket/path/to/data' USING parquet
+SELECT 1 AS i, 'a' AS s;
+```
+
+`s3://` and `s3a://` both work; Unity Catalog looks up the path as `s3://`. The same vending applies to `gs://`,
+`abfs://`, and `abfss://`.
+
+!!! note
+    Path credential vending applies to **Spark SQL** `` format.`path` `` reads and `INSERT OVERWRITE DIRECTORY` only.
+    `spark.read.parquet("s3://...")` and `DataFrameWriter` path saves do not go through this rule; use a registered
+    table or ambient `spark.hadoop.fs.*` credentials.
+
+    Bare `` delta.`s3://...` `` paths are skipped so they keep using ambient storage credentials. Catalog Delta tables
+    are unchanged.
+
+    If Unity Catalog cannot vend for a path (not managed by UC, or no permission), Spark falls back to ambient Hadoop
+    credentials already configured on the session.
 
 ## Using Spark SQL to query Unity Catalog schemas and tables
 

@@ -215,8 +215,8 @@ public class TableCli {
     return objectWriter.writeValueAsString(
         tablesApi.getTable(
             fullName,
-            /* readStreamingTableAsManaged = */ true,
-            /* readMaterializedViewAsManaged = */ true));
+            /* readStreamingTableAsManaged= */ true,
+            /* readMaterializedViewAsManaged= */ true));
   }
 
   private static String readTable(
@@ -226,8 +226,8 @@ public class TableCli {
     TableInfo info =
         tablesApi.getTable(
             fullTableName,
-            /* readStreamingTableAsManaged = */ true,
-            /* readMaterializedViewAsManaged = */ true);
+            /* readStreamingTableAsManaged= */ true,
+            /* readMaterializedViewAsManaged= */ true);
     if (!DataSourceFormat.DELTA.equals(info.getDataSourceFormat())) {
       throw new CliException("Only Delta tables are supported for read operations");
     }
@@ -256,8 +256,8 @@ public class TableCli {
     TableInfo info =
         tablesApi.getTable(
             fullTableName,
-            /* readStreamingTableAsManaged = */ true,
-            /* readMaterializedViewAsManaged = */ true);
+            /* readStreamingTableAsManaged= */ true,
+            /* readMaterializedViewAsManaged= */ true);
     if (!DataSourceFormat.DELTA.equals(info.getDataSourceFormat())) {
       throw new CliException("Only Delta tables are supported for write operations");
     }
