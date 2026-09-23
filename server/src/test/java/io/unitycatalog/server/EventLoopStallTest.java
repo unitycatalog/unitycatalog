@@ -132,7 +132,7 @@ class EventLoopStallTest {
     try {
       int port = server.activeLocalPort();
       // h2c prior knowledge, one connection: both calls are streams on the same channel, which is
-      // what Storium's single JDK HttpClient does against this server.
+      // what a single JDK HttpClient does against this server.
       WebClient client =
           WebClient.builder("h2c://127.0.0.1:" + port).responseTimeoutMillis(5_000).build();
 
