@@ -2,9 +2,12 @@ package io.unitycatalog.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.model.TableInfo;
 import java.io.File;
 import java.util.List;
 import org.apache.spark.sql.Row;
@@ -115,6 +118,37 @@ public class MetricViewE2ETest extends BaseSparkIntegrationTest {
     assertThat(rows.get(0).getLong(1)).isEqualTo(3L);
     assertThat(rows.get(1).getString(0)).isEqualTo("us");
     assertThat(rows.get(1).getLong(1)).isEqualTo(3L);
+
+    TablesApi tablesApi = new TablesApi(createApiClient(serverConfig));
+    TableInfo before = tablesApi.getTable(tbl("mv_e2e"), true, true);
+    sql(
+        "CREATE OR REPLACE VIEW %s WITH METRICS LANGUAGE YAML AS $$\n"
+            + "version: \"0.1\"\n"
+            + "source: %s\n"
+            + "dimensions:\n"
+            + "  - name: region\n"
+            + "    expr: region\n"
+            + "measures:\n"
+            + "  - name: cnt_max\n"
+            + "    expr: max(cnt)\n"
+            + "$$",
+        tbl("mv_e2e"), tbl("events"));
+    TableInfo after = tablesApi.getTable(tbl("mv_e2e"), true, true);
+    assertThat(after.getTableId()).isEqualTo(before.getTableId());
+    assertThat(after.getCreatedAt()).isEqualTo(before.getCreatedAt());
+    assertThat(after.getViewDefinition()).contains("max(cnt)").doesNotContain("sum(cnt)");
+    assertThat(after.getColumns())
+        .extracting(column -> column.getName())
+        .containsExactly("region", "cnt_max");
+    List<Row> replacedRows =
+        sql(
+            "SELECT region, measure(cnt_max) FROM %s GROUP BY region ORDER BY region",
+            tbl("mv_e2e"));
+    assertThat(replacedRows).hasSize(2);
+    assertThat(replacedRows.get(0).getString(0)).isEqualTo("eu");
+    assertThat(replacedRows.get(0).getInt(1)).isEqualTo(3);
+    assertThat(replacedRows.get(1).getString(0)).isEqualTo("us");
+    assertThat(replacedRows.get(1).getInt(1)).isEqualTo(2);
 
     // ALTER VIEW ... RENAME TO delegates to UCSingleCatalogViewSupport.renameView ->
     // ucProxy.renameView, which is unsupported today, so the rename fails with a clear

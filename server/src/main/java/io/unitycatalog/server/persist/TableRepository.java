@@ -20,6 +20,7 @@ import io.unitycatalog.server.model.DependencyList;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.model.UpdateView;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
@@ -773,14 +774,7 @@ public class TableRepository {
     // normalize before streaming. Whether an empty column list is acceptable is a per-table-type
     // rule decided in the create branches below, and those checks must be the ones that reject the
     // request so the caller gets INVALID_ARGUMENT instead of an NPE here.
-    List<ColumnInfo> columnInfos =
-        Optional.ofNullable(createTable.getColumns()).orElse(List.of()).stream()
-            .map(
-                c -> {
-                  ColumnUtils.validateTypeJson(c, format);
-                  return c.typeText(c.getTypeText().toLowerCase(Locale.ROOT));
-                })
-            .toList();
+    List<ColumnInfo> columnInfos = normalizeColumns(createTable.getColumns(), format);
     Long createTime = System.currentTimeMillis();
     String fullName = getTableFullName(createTable);
     LOGGER.debug("Creating table: {}", fullName);
@@ -918,6 +912,112 @@ public class TableRepository {
         },
         "Error creating table: " + fullName,
         /* readOnly= */ false);
+  }
+
+  /** Atomically updates an existing view while preserving its identity and authorization grants. */
+  public TableInfo updateView(String fullName, UpdateView updateView) {
+    String[] parts = fullName.split("\\.");
+    if (parts.length != 3) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
+    }
+    TableType updatedType = updateView.getTableType();
+    if (updatedType == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "table_type is required for updating a view");
+    }
+    if (!RepositoryUtils.isViewLike(updatedType.getValue())) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Updating a view requires table_type VIEW or METRIC_VIEW; got: " + updatedType);
+    }
+    List<ColumnInfo> columns = normalizeColumns(updateView.getColumns(), null);
+    CreateTable validationRequest =
+        new CreateTable()
+            .name(parts[2])
+            .catalogName(parts[0])
+            .schemaName(parts[1])
+            .tableType(updatedType)
+            .columns(columns)
+            .comment(updateView.getComment())
+            .properties(updateView.getProperties())
+            .viewDefinition(updateView.getViewDefinition())
+            .viewDependencies(updateView.getViewDependencies());
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
+
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UUID schemaId =
+              repositories.getSchemaRepository().getSchemaIdOrThrow(session, parts[0], parts[1]);
+          TableInfoDAO dao = findBySchemaIdAndName(session, schemaId, parts[2]);
+          if (dao == null || !RepositoryUtils.isViewLike(dao.getType())) {
+            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "View not found: " + fullName);
+          }
+          RepositoryUtils.lockTableForCommit(session, dao, dao.getId(), Optional.of(fullName));
+          if (updatedType == TableType.METRIC_VIEW) {
+            validateMetricView(session, validationRequest);
+          } else {
+            validateView(session, validationRequest);
+          }
+
+          List<ColumnInfoDAO> updatedColumns = ColumnInfoDAO.fromList(columns);
+          updatedColumns.forEach(
+              column -> {
+                column.setId(UUID.randomUUID());
+                column.setTable(dao);
+              });
+          dao.getColumns().clear();
+          session.flush();
+          dao.getColumns().addAll(updatedColumns);
+
+          MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
+          properties.removeAll(new ArrayList<>(properties.asMap().keySet()));
+          properties.putAll(Optional.ofNullable(updateView.getProperties()).orElse(Map.of()));
+          properties.flush(session, dao.getId());
+
+          DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
+          repositories
+              .getDependencyRepository()
+              .deleteDependencies(session, dao.getId(), dependentType);
+          List<DependencyDAO> dependencies =
+              Optional.ofNullable(updateView.getViewDependencies())
+                  .map(DependencyList::getDependencies)
+                  .orElse(List.of())
+                  .stream()
+                  .map(dep -> DependencyDAO.from(dep, dao.getId(), dependentType))
+                  .toList();
+          repositories
+              .getDependencyRepository()
+              .createDependencies(session, dao.getId(), dependentType, dependencies);
+
+          dao.setType(updatedType.getValue());
+          dao.setViewDefinition(updateView.getViewDefinition());
+          dao.setComment(updateView.getComment());
+          dao.setColumnCount(columns.size());
+          dao.setUpdatedAt(new Date());
+          dao.setUpdatedBy(callerId);
+          session.merge(dao);
+          session.flush();
+
+          TableInfo result = dao.toTableInfo(true, parts[0], parts[1]);
+          result.setProperties(properties.asMap());
+          RepositoryUtils.attachDependencies(
+              result, dao, session, repositories.getDependencyRepository());
+          return result;
+        },
+        "Failed to update view: " + fullName,
+        /* readOnly= */ false);
+  }
+
+  private static List<ColumnInfo> normalizeColumns(
+      List<ColumnInfo> columns, DataSourceFormat format) {
+    return Optional.ofNullable(columns).orElse(List.of()).stream()
+        .map(
+            column -> {
+              ColumnUtils.validateTypeJson(column, format);
+              return column.typeText(column.getTypeText().toLowerCase(Locale.ROOT));
+            })
+        .toList();
   }
 
   @FunctionalInterface

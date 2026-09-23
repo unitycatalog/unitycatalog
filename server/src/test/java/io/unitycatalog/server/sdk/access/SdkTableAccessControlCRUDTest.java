@@ -24,9 +24,13 @@ import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.PermissionsChange;
+import io.unitycatalog.client.model.Privilege;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.UpdatePermissions;
+import io.unitycatalog.client.model.UpdateView;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
@@ -50,6 +54,66 @@ import org.junit.jupiter.api.Test;
  * </ul>
  */
 public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest {
+
+  @Test
+  @SneakyThrows
+  public void testUpdateViewRequiresModify() {
+    createCommonTestUsers();
+    setupCommonCatalogAndSchema();
+
+    TablesApi principal1TablesApi =
+        new TablesApi(TestUtils.createApiClient(createTestUserServerConfig(PRINCIPAL_1)));
+    TablesApi regular1TablesApi =
+        new TablesApi(TestUtils.createApiClient(createTestUserServerConfig(REGULAR_1)));
+    String fullName = "cat_pr1.sch_pr1.update_view";
+    TableInfo created =
+        principal1TablesApi.createTable(
+            new CreateTable()
+                .name("update_view")
+                .catalogName("cat_pr1")
+                .schemaName("sch_pr1")
+                .columns(TEST_COLUMNS)
+                .tableType(TableType.VIEW)
+                .viewDefinition("SELECT 1 AS id"));
+    UpdateView update =
+        new UpdateView()
+            .tableType(TableType.VIEW)
+            .columns(TEST_COLUMNS)
+            .viewDefinition("SELECT 2 AS id");
+
+    grantPermissions(REGULAR_1, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    grantPermissions(REGULAR_1, SecurableType.SCHEMA, "cat_pr1.sch_pr1", Privileges.USE_SCHEMA);
+    grantPermissions(REGULAR_1, SecurableType.TABLE, fullName, Privileges.SELECT);
+    assertPermissionDenied(() -> regular1TablesApi.updateView(fullName, update));
+
+    grantPermissions(REGULAR_1, SecurableType.TABLE, fullName, Privileges.MODIFY);
+    for (var entry :
+        Map.of(
+                SecurableType.CATALOG, Privileges.USE_CATALOG,
+                SecurableType.SCHEMA, Privileges.USE_SCHEMA)
+            .entrySet()) {
+      String resourceName = entry.getKey() == SecurableType.CATALOG ? "cat_pr1" : "cat_pr1.sch_pr1";
+      PermissionsChange change =
+          new PermissionsChange()
+              .principal(REGULAR_1)
+              .remove(List.of(Privilege.fromValue(entry.getValue().getValue())));
+      grantsApi.update(
+          entry.getKey(), resourceName, new UpdatePermissions().changes(List.of(change)));
+      assertPermissionDenied(() -> regular1TablesApi.updateView(fullName, update));
+      grantPermissions(REGULAR_1, entry.getKey(), resourceName, entry.getValue());
+    }
+    assertThat(getTable(principal1TablesApi, fullName)).isEqualTo(created);
+    var grantsBefore = grantsApi.get(SecurableType.TABLE, fullName, null);
+    TableInfo updated = regular1TablesApi.updateView(fullName, update);
+    assertThat(updated.getTableId()).isEqualTo(created.getTableId());
+    assertThat(updated.getViewDefinition()).isEqualTo("SELECT 2 AS id");
+    assertThat(updated.getOwner()).isEqualTo(created.getOwner());
+    assertThat(updated.getUpdatedBy()).isEqualTo(REGULAR_1);
+    assertThat(grantsApi.get(SecurableType.TABLE, fullName, null)).isEqualTo(grantsBefore);
+    assertThat(getTable(regular1TablesApi, fullName)).isEqualTo(updated);
+    assertThat(regular1TablesApi.updateView(fullName, update).getTableId())
+        .isEqualTo(created.getTableId());
+  }
 
   @Test
   @SneakyThrows

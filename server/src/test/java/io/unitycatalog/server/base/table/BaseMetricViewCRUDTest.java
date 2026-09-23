@@ -16,6 +16,7 @@ import io.unitycatalog.client.model.FunctionParameterInfos;
 import io.unitycatalog.client.model.TableDependency;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.UpdateView;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.function.FunctionOperations;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -47,14 +48,18 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
       TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + SOURCE_FUNCTION_NAME;
 
   protected FunctionOperations functionOperations;
+  protected ViewOperations viewOperations;
 
   protected abstract FunctionOperations createFunctionOperations(ServerConfig serverConfig);
+
+  protected abstract ViewOperations createViewOperations(ServerConfig serverConfig);
 
   @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
     functionOperations = createFunctionOperations(serverConfig);
+    viewOperations = createViewOperations(serverConfig);
   }
 
   private void createSourceTable() throws Exception {
@@ -152,6 +157,54 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
         .columns(METRIC_VIEW_COLUMNS)
         .viewDefinition(VIEW_DEFINITION_ASSET_SOURCE)
         .viewDependencies(makeDependencyList(SOURCE_TABLE_FULL_NAME));
+  }
+
+  @Test
+  public void testUpdateMetricView() throws Exception {
+    createSourceTable();
+    TableInfo created = tableOperations.createTable(validMetricViewRequest());
+    String replacementDependency =
+        TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".replacement_events";
+    createTestingTable(
+        "replacement_events",
+        TableType.EXTERNAL,
+        Optional.of(Files.createTempDirectory(testDirectoryRoot, "replacement").toString()),
+        tableOperations);
+    ColumnInfo updatedColumn =
+        new ColumnInfo()
+            .name("event_total")
+            .typeName(ColumnTypeName.LONG)
+            .typeText("bigint")
+            .typeJson(
+                "{\"name\":\"event_total\",\"type\":\"long\",\"nullable\":true,"
+                    + "\"metadata\":{\"metric_view.type\":\"measure\","
+                    + "\"metric_view.expr\":\"sum(as_int)\"}}")
+            .nullable(true)
+            .position(0);
+    UpdateView update =
+        new UpdateView()
+            .tableType(TableType.METRIC_VIEW)
+            .columns(List.of(updatedColumn))
+            .viewDefinition(
+                "version: \"0.1\"\nsource: "
+                    + replacementDependency
+                    + "\nmeasures:\n  - name: event_total\n    expr: sum(as_int)")
+            .viewDependencies(makeDependencyList(replacementDependency))
+            .comment("Updated metric view")
+            .properties(Map.of("refresh", "hourly"));
+
+    TableInfo updated = viewOperations.updateView(METRIC_VIEW_FULL_NAME, update);
+
+    assertThat(updated.getTableId()).isEqualTo(created.getTableId());
+    assertThat(updated.getTableType()).isEqualTo(TableType.METRIC_VIEW);
+    assertThat(updated.getComment()).isEqualTo("Updated metric view");
+    assertThat(updated.getProperties()).containsExactly(Map.entry("refresh", "hourly"));
+    assertThat(updated.getViewDefinition()).isEqualTo(update.getViewDefinition());
+    assertThat(updated.getColumns()).containsExactly(updatedColumn);
+    assertThat(updated.getViewDependencies().getDependencies())
+        .extracting(dependency -> dependency.getTable().getTableFullName())
+        .containsExactly(replacementDependency);
+    assertThat(tableOperations.getTable(METRIC_VIEW_FULL_NAME)).isEqualTo(updated);
   }
 
   @Test

@@ -9,6 +9,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 | [**deleteTable**](TablesApi.md#deleteTable) | **DELETE** /tables/{full_name} | Delete a table |
 | [**getTable**](TablesApi.md#getTable) | **GET** /tables/{full_name} | Get a table |
 | [**listTables**](TablesApi.md#listTables) | **GET** /tables | List tables |
+| [**updateView**](TablesApi.md#updateView) | **PATCH** /tables/{full_name} | Update a view |
 
 
 <a name="createStagingTable"></a>
@@ -149,5 +150,33 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: Not defined
+- **Accept**: application/json
+
+<a name="updateView"></a>
+# **updateView**
+> TableInfo updateView(full\_name, UpdateView)
+
+Update a view
+
+    Atomically updates the complete metadata of an existing view while preserving its identity, ownership, and grants. The target must be a VIEW or METRIC_VIEW. This operation does not create a missing view.
+
+### Parameters
+
+|Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String**| Full name of the table. | [default to null] |
+| **UpdateView** | [**UpdateView**](../Models/UpdateView.md)|  | |
+
+### Return type
+
+[**TableInfo**](../Models/TableInfo.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: application/json
 - **Accept**: application/json
 

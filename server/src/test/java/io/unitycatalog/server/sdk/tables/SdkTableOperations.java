@@ -8,7 +8,9 @@ import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.UpdateView;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.base.table.ViewOperations;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import java.util.HashMap;
 import java.util.List;
@@ -16,7 +18,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-public class SdkTableOperations implements TableOperations {
+public class SdkTableOperations implements TableOperations, ViewOperations {
   private final TablesApi tablesApi;
 
   public SdkTableOperations(ApiClient apiClient) {
@@ -62,6 +64,11 @@ public class SdkTableOperations implements TableOperations {
         tableFullName,
         /* readStreamingTableAsManaged= */ true,
         /* readMaterializedViewAsManaged= */ true);
+  }
+
+  @Override
+  public TableInfo updateView(String tableFullName, UpdateView updateView) throws ApiException {
+    return tablesApi.updateView(tableFullName, updateView);
   }
 
   @Override

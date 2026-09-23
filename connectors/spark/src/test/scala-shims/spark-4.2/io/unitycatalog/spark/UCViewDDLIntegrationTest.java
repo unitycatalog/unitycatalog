@@ -1,10 +1,12 @@
 package io.unitycatalog.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
+import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME2;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
 import java.util.List;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
@@ -75,6 +77,41 @@ public class UCViewDDLIntegrationTest extends AbstractViewReadIntegrationTest {
     assertThat(getServerTable(VIEW_FULL_NAME).getViewDependencies().getDependencies())
         .extracting(dependency -> dependency.getTable().getTableFullName())
         .containsExactly(DEP_SRC_TABLE_FULL_NAME);
+  }
+
+  @Test
+  public void testCreateOrReplaceExistingViewPreservesIdentityAndRefreshesMetadata() {
+    createSessionAndView();
+    TableInfo before = getServerTable(VIEW_FULL_NAME);
+
+    sql(
+        "CREATE OR REPLACE VIEW %s AS SELECT id AS employee_id FROM %s WHERE id = 2",
+        VIEW_FULL_NAME, EMPLOYEES_TABLE_NAME);
+
+    TableInfo after = getServerTable(VIEW_FULL_NAME);
+    assertThat(after.getTableId()).isEqualTo(before.getTableId());
+    assertThat(after.getCreatedAt()).isEqualTo(before.getCreatedAt());
+    assertThat(after.getColumns())
+        .extracting(column -> column.getName())
+        .containsExactly("employee_id");
+    assertThat(after.getViewDependencies().getDependencies())
+        .extracting(dependency -> dependency.getTable().getTableFullName())
+        .containsExactly(EMPLOYEES_TABLE_FULL_NAME);
+    assertThat(sql("SELECT employee_id FROM %s", VIEW_FULL_NAME).get(0).getInt(0)).isEqualTo(2);
+  }
+
+  @Test
+  public void testCreateOrReplaceCreatesMissingView() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME, CATALOG_NAME2);
+    createSourceTables();
+    sql("USE %s.%s", CATALOG_NAME, SCHEMA_NAME);
+
+    sql(
+        "CREATE OR REPLACE VIEW %s AS SELECT id AS employee_id FROM %s WHERE id = 1",
+        VIEW_FULL_NAME, EMPLOYEES_TABLE_NAME);
+
+    assertThat(sql("SELECT employee_id FROM %s", VIEW_FULL_NAME).get(0).getInt(0)).isEqualTo(1);
+    assertThat(getServerTable(VIEW_FULL_NAME).getTableType()).isEqualTo(TableType.VIEW);
   }
 
   @SneakyThrows
