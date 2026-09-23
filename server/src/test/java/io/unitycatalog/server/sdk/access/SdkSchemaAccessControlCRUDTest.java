@@ -73,6 +73,14 @@ public class SdkSchemaAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest
     SchemaInfo schemaRg2Info = regular2SchemasApi.createSchema(schemaRg2);
     assertThat(schemaRg2Info).isNotNull();
 
+    // list schemas (regular-2) -> owner of the schema it just created -> allowed - that schema
+    // Asserted before the USE SCHEMA grant below, because creating a schema makes the creator its
+    // owner and the listing has to honour that on its own -- the grant would otherwise hide that it
+    // did not.
+    List<SchemaInfo> regular2OwnSchemas =
+        regular2SchemasApi.listSchemas("cat_pr1", null, null).getSchemas();
+    assertThat(regular2OwnSchemas).extracting(SchemaInfo::getName).containsExactly("sch_rg2");
+
     // give user USE SCHEMA on sch_rg2
     grantPermissions(REGULAR_2, SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.USE_SCHEMA);
 
