@@ -8,6 +8,7 @@ import io.unitycatalog.server.model.UpdateVolumeRequestContent;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.model.VolumeType;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
@@ -16,6 +17,7 @@ import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.UriScheme;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Date;
@@ -277,13 +279,31 @@ public class VolumeRepository {
       throw new BaseException(ErrorCode.NOT_FOUND, "Volume not found: " + volumeName);
     }
     if (VolumeType.MANAGED.getValue().equals(volumeInfoDAO.getVolumeType())) {
-      try {
-        FileOperations.deleteDirectory(NormalizedURL.from(volumeInfoDAO.getStorageLocation()));
-      } catch (Exception e) {
-        LOGGER.error("Error deleting volume directory", e);
-      }
+      cleanUpManagedVolumeStorage(session, volumeInfoDAO);
     }
     session.remove(volumeInfoDAO);
     LOGGER.info("Deleted volume: {}", volumeInfoDAO.getName());
+  }
+
+  /**
+   * Reclaims a managed volume's storage on drop. Local (file://) volumes are deleted synchronously
+   * so dev and test workflows do not wait out the cleanup delay. Cloud volumes queue a cleanup task
+   * in the caller's transaction, so the row removal and task creation commit or roll back together
+   * and the background worker deletes the files after the configured delay.
+   */
+  private void cleanUpManagedVolumeStorage(Session session, VolumeInfoDAO volumeInfoDAO) {
+    NormalizedURL location = NormalizedURL.from(volumeInfoDAO.getStorageLocation());
+    switch (UriScheme.fromURI(location.toUri())) {
+      case FILE, NULL -> FileOperations.deleteDirectory(location);
+      case S3, GS, ABFS, ABFSS ->
+          repositories
+              .getStorageCleanupTaskRepository()
+              .create(
+                  session,
+                  ResourceType.VOLUME,
+                  volumeInfoDAO.getId(),
+                  volumeInfoDAO.getName(),
+                  location.toString());
+    }
   }
 }

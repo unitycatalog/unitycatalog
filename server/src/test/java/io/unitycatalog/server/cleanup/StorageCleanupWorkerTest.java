@@ -246,6 +246,21 @@ class StorageCleanupWorkerTest {
     verifyFailure("Storage cleanup failed: IllegalArgumentException");
   }
 
+  @Test
+  void processesManagedVolumeCleanupTask() {
+    NormalizedURL volumeLocation = NormalizedURL.from("s3://bucket/volumes/" + RESOURCE_ID);
+    String volumePrefix = volumeLocation + "/";
+    setClaim(ResourceType.VOLUME, volumeLocation.toString());
+    when(fileOperations.getCleanupFileIO(eq(volumeLocation), any())).thenReturn(fileIO);
+    when(fileIO.listPrefix(volumePrefix)).thenReturn(List.of());
+
+    assertThat(worker.runOnce()).isTrue();
+
+    verify(fileIO).deletePrefix(volumePrefix);
+    verify(taskRepository).finish(RESOURCE_ID, LEASE_TOKEN);
+    verify(taskRepository, never()).reportFailure(any(), any(), any());
+  }
+
   @ParameterizedTest
   @ValueSource(strings = {"?query", "#fragment"})
   void rejectsQueryAndFragmentLocations(String suffix) {

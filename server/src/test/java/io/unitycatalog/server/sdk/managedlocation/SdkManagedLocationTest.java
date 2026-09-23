@@ -7,7 +7,9 @@ import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME2;
 import static io.unitycatalog.server.utils.TestUtils.TABLE_FULL_NAME;
 import static io.unitycatalog.server.utils.TestUtils.TABLE_NAME;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateStagingTable;
@@ -26,6 +28,7 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.base.volume.VolumeOperations;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.models.SdkModelOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
@@ -34,9 +37,14 @@ import io.unitycatalog.server.sdk.volume.SdkVolumeOperations;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.TestUtils;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.SneakyThrows;
+import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
 
 public class SdkManagedLocationTest extends BaseManagedLocationTest {
@@ -120,5 +128,38 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
     VolumeInfo externalVolumeInfo = volumeOperations.createVolume(createExternalVolume);
     assertThat(externalVolumeInfo.getStorageLocation())
         .isEqualTo(NormalizedURL.normalize(storageRootDir.toString()));
+  }
+
+  @SneakyThrows
+  @Test
+  public void testManagedVolumeDropDeletesLocalStorageWithoutCleanupTask() {
+    createCatalog(true);
+    createSchema(false);
+    String volumeFullName = CATALOG_NAME + "." + SCHEMA_NAME + "." + MANAGED_VOLUME_NAME1;
+    VolumeInfo volume =
+        volumeOperations.createVolume(
+            new CreateVolumeRequestContent()
+                .name(MANAGED_VOLUME_NAME1)
+                .catalogName(CATALOG_NAME)
+                .schemaName(SCHEMA_NAME)
+                .volumeType(VolumeType.MANAGED));
+    Path volumeDirectory = Path.of(URI.create(volume.getStorageLocation()));
+    Path marker = volumeDirectory.resolve("data/marker.txt");
+    Files.createDirectories(marker.getParent());
+    Files.writeString(marker, "data");
+
+    volumeOperations.deleteVolume(volumeFullName);
+
+    assertThatThrownBy(() -> volumeOperations.getVolume(volumeFullName))
+        .isInstanceOf(ApiException.class);
+    assertThat(Files.exists(marker)).isFalse();
+    assertThat(Files.exists(volumeDirectory)).isFalse();
+    assertThat(findCleanupTask(UUID.fromString(volume.getVolumeId()))).isNull();
+  }
+
+  private StorageCleanupTaskDAO findCleanupTask(UUID resourceId) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      return session.get(StorageCleanupTaskDAO.class, resourceId);
+    }
   }
 }
