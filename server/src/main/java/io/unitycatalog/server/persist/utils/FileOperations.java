@@ -17,7 +17,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.iceberg.aws.AwsClientProperties;
@@ -150,6 +152,23 @@ public class FileOperations {
   /** Builds FileIO configuration using the requested storage privileges. */
   public Map<String, String> getFileIOConfig(
       NormalizedURL path, Set<CredentialContext.Privilege> privileges) {
+    return getFileIOConfig(path, privileges, Optional.empty());
+  }
+
+  /**
+   * Builds FileIO configuration that also tells the client where to renew the vended credentials.
+   *
+   * <p>The endpoint is only meaningful in a configuration handed to a REST client: Iceberg's
+   * clients resolve it against their catalog URI, which the server's own FileIO does not have, so
+   * the server's internal callers must leave it empty.
+   *
+   * @param credentialsEndpoint path of the loadCredentials endpoint for this table, relative to the
+   *     catalog URI, or empty for a configuration the server builds for itself
+   */
+  public Map<String, String> getFileIOConfig(
+      NormalizedURL path,
+      Set<CredentialContext.Privilege> privileges,
+      Optional<String> credentialsEndpoint) {
     UriScheme scheme = UriScheme.fromURI(path.toUri());
     if (scheme == UriScheme.FILE || scheme == UriScheme.NULL) {
       // Local (file://) paths need no cloud credentials, so short-circuit before vending: the
@@ -160,11 +179,13 @@ public class FileOperations {
 
     TemporaryCredentials cred = storageCredentialVendor.vendCredential(path, privileges);
     if (cred.getAzureUserDelegationSas() != null) {
-      return getADLSConfig(path, cred.getAzureUserDelegationSas());
+      return getADLSConfig(
+          path, cred.getAzureUserDelegationSas(), cred.getExpirationTime(), credentialsEndpoint);
     } else if (cred.getGcpOauthToken() != null) {
-      return getGCSConfig(cred.getGcpOauthToken(), cred.getExpirationTime());
+      return getGCSConfig(cred.getGcpOauthToken(), cred.getExpirationTime(), credentialsEndpoint);
     } else if (cred.getAwsTempCredentials() != null) {
-      return getS3Config(path, cred.getAwsTempCredentials());
+      return getS3Config(
+          path, cred.getAwsTempCredentials(), cred.getExpirationTime(), credentialsEndpoint);
     } else {
       // Cloud vend returned no recognized credential type. This should not happen for a cloud
       // scheme, so fail loudly rather than silently returning an empty (credential-less) config
@@ -175,41 +196,64 @@ public class FileOperations {
   }
 
   private Map<String, String> getADLSConfig(
-      NormalizedURL path, AzureUserDelegationSAS azureUserDelegationSAS) {
+      NormalizedURL path,
+      AzureUserDelegationSAS azureUserDelegationSAS,
+      Long expirationTime,
+      Optional<String> credentialsEndpoint) {
     ADLSLocationUtils.ADLSLocationParts locationParts = ADLSLocationUtils.parseLocation(path);
-    // NOTE: when fileio caching is implemented, need to set/deal with expiry here
-    return Map.of(
+    Map<String, String> config = new HashMap<>();
+    config.put(
         AzureProperties.ADLS_SAS_TOKEN_PREFIX + locationParts.account(),
         azureUserDelegationSAS.getSasToken());
-  }
-
-  private Map<String, String> getGCSConfig(GcpOauthToken gcpOauthToken, Long expirationTime) {
     if (expirationTime != null) {
-      return Map.of(
-          GCPProperties.GCS_OAUTH2_TOKEN,
-          gcpOauthToken.getOauthToken(),
-          GCPProperties.GCS_OAUTH2_TOKEN_EXPIRES_AT,
+      config.put(
+          AzureProperties.ADLS_SAS_TOKEN_EXPIRES_AT_MS_PREFIX + locationParts.account(),
           Long.toString(expirationTime));
-    } else {
-      return Map.of(GCPProperties.GCS_OAUTH2_TOKEN, gcpOauthToken.getOauthToken());
     }
+    credentialsEndpoint.ifPresent(
+        endpoint -> config.put(AzureProperties.ADLS_REFRESH_CREDENTIALS_ENDPOINT, endpoint));
+    return Map.copyOf(config);
   }
 
-  private Map<String, String> getS3Config(NormalizedURL path, AwsCredentials awsCredentials) {
+  private Map<String, String> getGCSConfig(
+      GcpOauthToken gcpOauthToken, Long expirationTime, Optional<String> credentialsEndpoint) {
+    Map<String, String> config = new HashMap<>();
+    config.put(GCPProperties.GCS_OAUTH2_TOKEN, gcpOauthToken.getOauthToken());
+    if (expirationTime != null) {
+      config.put(GCPProperties.GCS_OAUTH2_TOKEN_EXPIRES_AT, Long.toString(expirationTime));
+    }
+    credentialsEndpoint.ifPresent(
+        endpoint -> config.put(GCPProperties.GCS_OAUTH2_REFRESH_CREDENTIALS_ENDPOINT, endpoint));
+    return Map.copyOf(config);
+  }
+
+  private Map<String, String> getS3Config(
+      NormalizedURL path,
+      AwsCredentials awsCredentials,
+      Long expirationTime,
+      Optional<String> credentialsEndpoint) {
     // TODO: if region isn't configured, use HEAD bucket to figure out
     String s3Region = s3BucketRegionMap.get(path.getStorageBase());
     if (s3Region == null) {
       // s3BucketRegionMap has no entry for this bucket (Map.get returns null on a miss). Guard
-      // here with a clear message rather than letting Map.of throw an opaque NullPointerException
-      // below.
+      // here with a clear message rather than letting Map.copyOf throw an opaque
+      // NullPointerException below.
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           "No S3 region configured for bucket: " + path.getStorageBase());
     }
-    return Map.of(
-        S3FileIOProperties.ACCESS_KEY_ID, awsCredentials.getAccessKeyId(),
-        S3FileIOProperties.SECRET_ACCESS_KEY, awsCredentials.getSecretAccessKey(),
-        S3FileIOProperties.SESSION_TOKEN, awsCredentials.getSessionToken(),
-        AwsClientProperties.CLIENT_REGION, s3Region);
+    Map<String, String> config = new HashMap<>();
+    config.put(S3FileIOProperties.ACCESS_KEY_ID, awsCredentials.getAccessKeyId());
+    config.put(S3FileIOProperties.SECRET_ACCESS_KEY, awsCredentials.getSecretAccessKey());
+    config.put(S3FileIOProperties.SESSION_TOKEN, awsCredentials.getSessionToken());
+    config.put(AwsClientProperties.CLIENT_REGION, s3Region);
+    if (expirationTime != null) {
+      // Without this, an Iceberg client cannot tell when the session it was handed dies, so it
+      // neither renews ahead of the expiry nor treats the credential as expiring at all.
+      config.put(S3FileIOProperties.SESSION_TOKEN_EXPIRES_AT_MS, Long.toString(expirationTime));
+    }
+    credentialsEndpoint.ifPresent(
+        endpoint -> config.put(AwsClientProperties.REFRESH_CREDENTIALS_ENDPOINT, endpoint));
+    return Map.copyOf(config);
   }
 }
