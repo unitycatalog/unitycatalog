@@ -2,6 +2,7 @@ package io.unitycatalog.server;
 
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 
+import com.linecorp.armeria.common.util.BlockingTaskExecutor;
 import com.linecorp.armeria.server.Server;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
@@ -51,6 +52,7 @@ import io.vertx.core.Vertx;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,6 +66,7 @@ public class UnityCatalogServer implements AutoCloseable {
   private final Server server;
   private final SecurityContext securityContext;
   private final HibernateConfigurator hibernateConfigurator;
+  private final BlockingTaskExecutor blockingTaskExecutor;
 
   /** True when this server built the configurator itself and must therefore close it. */
   private final boolean ownsHibernateConfigurator;
@@ -92,7 +95,14 @@ public class UnityCatalogServer implements AutoCloseable {
         ownsHibernateConfigurator
             ? new HibernateConfigurator(unityCatalogServerBuilder.serverProperties)
             : unityCatalogServerBuilder.hibernateConfigurator;
+    BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
+      createdBlockingTaskExecutor =
+          BlockingTaskExecutor.builder()
+              .numThreads(hibernateConfigurator.getConnectionPoolSize())
+              .threadNamePrefix("unity-catalog-blocking")
+              .build();
+      this.blockingTaskExecutor = createdBlockingTaskExecutor;
       this.server = initializeServer(unityCatalogServerBuilder);
     } catch (Throwable t) {
       // Construction failed after the SessionFactory was built; close it so a failed boot does
@@ -100,8 +110,40 @@ public class UnityCatalogServer implements AutoCloseable {
       // NoClassDefFoundError out of initializeServer() would leak the pool just the same.
       closeCleanupWorker(t);
       closeAuthorizer(t);
+      closeBlockingTaskExecutor(createdBlockingTaskExecutor, t);
       closeOwnedSessionFactory(t);
       throw t;
+    }
+  }
+
+  /**
+   * Shuts down and drains the server-owned blocking executor without masking an earlier failure.
+   */
+  private static void closeBlockingTaskExecutor(
+      BlockingTaskExecutor executor, Throwable primaryFailure) {
+    if (executor == null) {
+      return;
+    }
+    boolean interrupted = false;
+    try {
+      executor.shutdown();
+      while (!executor.isTerminated()) {
+        try {
+          executor.awaitTermination(1, TimeUnit.HOURS);
+        } catch (InterruptedException ignored) {
+          interrupted = true;
+        }
+      }
+    } catch (Throwable closeFailure) {
+      if (primaryFailure != null) {
+        primaryFailure.addSuppressed(closeFailure);
+      } else {
+        LOGGER.warn("Failed to close the blocking task executor", closeFailure);
+      }
+    } finally {
+      if (interrupted) {
+        Thread.currentThread().interrupt();
+      }
     }
   }
 
@@ -146,12 +188,14 @@ public class UnityCatalogServer implements AutoCloseable {
   }
 
   private Server initializeServer(UnityCatalogServer.Builder unityCatalogServerBuilder) {
+    // One blocking thread per JDBC connection. Extra threads only wait in getConnection().
     ArmeriaServerBuilder armeriaServerBuilder =
         new ArmeriaServerBuilder(
             unityCatalogServerBuilder.port,
             BASE_PATH,
             CONTROL_PATH,
-            unityCatalogServerBuilder.serverProperties);
+            unityCatalogServerBuilder.serverProperties,
+            blockingTaskExecutor);
 
     // Init all repositories
     Repositories repositories =
@@ -340,8 +384,13 @@ public class UnityCatalogServer implements AutoCloseable {
     // before this process reports itself started, and fail rather than serve only the internal
     // port if it cannot bind.
     Vertx vertx = Vertx.vertx();
+    // Same capacity as the Armeria blocking pool. HTTP/1.1 is one request per connection, so a
+    // smaller proxy pool would be the limit no matter how large the JDBC pool is.
     Verticle transcodeVerticle =
-        new URLTranscoderVerticle(options.getPort(), options.getPort() + 1);
+        new URLTranscoderVerticle(
+            options.getPort(),
+            options.getPort() + 1,
+            unityCatalogServer.hibernateConfigurator.getConnectionPoolSize());
     try {
       vertx.deployVerticle(transcodeVerticle).toCompletionStage().toCompletableFuture().join();
     } catch (CompletionException e) {
@@ -380,10 +429,20 @@ public class UnityCatalogServer implements AutoCloseable {
     try {
       stop();
     } finally {
-      closeCleanupWorker(null);
-      closeAuthorizer(null);
-      if (ownsHibernateConfigurator) {
-        hibernateConfigurator.getSessionFactory().close();
+      try {
+        closeCleanupWorker(null);
+      } finally {
+        try {
+          closeAuthorizer(null);
+        } finally {
+          try {
+            closeBlockingTaskExecutor(blockingTaskExecutor, null);
+          } finally {
+            if (ownsHibernateConfigurator) {
+              hibernateConfigurator.getSessionFactory().close();
+            }
+          }
+        }
       }
     }
   }

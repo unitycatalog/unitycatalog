@@ -8,27 +8,39 @@ import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.ext.web.client.HttpRequest;
 import io.vertx.ext.web.client.WebClient;
+import io.vertx.ext.web.client.WebClientOptions;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** URL transcoder. */
+/**
+ * Rewrites the external port onto Armeria. The forward uses HTTP/1.1, which carries one request per
+ * connection, so {@code backendPoolSize} is how many requests can be in flight. The Vert.x default
+ * of 5 would cap that below the server's blocking pool.
+ */
 class URLTranscoderVerticle extends AbstractVerticle {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(URLTranscoderVerticle.class);
 
   private final int transcodePort;
   private final int servicePort;
+  private final int backendPoolSize;
 
-  URLTranscoderVerticle(int transcodePort, int servicePort) {
+  URLTranscoderVerticle(int transcodePort, int servicePort, int backendPoolSize) {
+    if (backendPoolSize < 1) {
+      throw new IllegalArgumentException(
+          "backendPoolSize: " + backendPoolSize + " (expected: >= 1)");
+    }
     this.transcodePort = transcodePort;
     this.servicePort = servicePort;
+    this.backendPoolSize = backendPoolSize;
   }
 
   @Override
   public void start(Promise<Void> startPromise) {
     HttpServer server = vertx.createHttpServer();
-    WebClient client = WebClient.create(vertx);
+    WebClient client =
+        WebClient.create(vertx, new WebClientOptions().setMaxPoolSize(backendPoolSize));
 
     server.requestHandler(
         transcodeRequest -> {
