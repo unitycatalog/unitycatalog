@@ -15,6 +15,7 @@ import io.unitycatalog.server.model.UpdateRegisteredModel;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
@@ -498,6 +499,15 @@ public class ModelRepository {
                 + registeredModelName);
       }
     }
+    // Versions live under the model directory, so one task covers a forced model deletion.
+    repositories
+        .getStorageCleanupTaskRepository()
+        .create(
+            session,
+            ResourceType.REGISTERED_MODEL,
+            registeredModelInfoDAO.getId(),
+            registeredModelInfoDAO.getName(),
+            registeredModelInfoDAO.getUrl());
     session.remove(registeredModelInfoDAO);
   }
 
@@ -781,6 +791,14 @@ public class ModelRepository {
       throw new BaseException(
           ErrorCode.NOT_FOUND, "Model version not found: " + fullName + "/" + version);
     }
+    repositories
+        .getStorageCleanupTaskRepository()
+        .create(
+            session,
+            ResourceType.MODEL_VERSION,
+            modelVersionInfoDAO.getId(),
+            modelVersionInfoDAO.getVersion().toString(),
+            modelVersionInfoDAO.getUrl());
     session.remove(modelVersionInfoDAO);
   }
 
