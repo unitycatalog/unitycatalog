@@ -408,6 +408,13 @@ which will return the updated model version metadata:
 
 Using the Unity Catalog CLI you can also delete model versions and registered models.
 
+Deletion removes the catalog entry and queues its managed storage for background cleanup.
+The worker waits for `server.storage-cleanup.initial-delay` before deleting files and retries failed
+attempts. Deleting one version leaves the other versions unchanged. Deleting a registered model
+with `force=true` queues the whole model directory, including its versions. Forced schema and
+catalog deletion use the same process. Source artifact locations are not deleted.
+The delay does not provide an undelete operation.
+
 ```sh title="Delete model version"
 # Delete model version 
 bin/uc model_version delete --full_name unity.default.iris2 --version 1
