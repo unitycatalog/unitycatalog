@@ -124,9 +124,10 @@ public final class AuthorizeExpressions {
    * needs {@code OWNER}/{@code CREATE_EXTERNAL_TABLE} on the external location (if one resolves)
    * and the storage path must not overlap a data securable.
    *
-   * <p>The {@code #table_type} SpEL variable comes from {@code @AuthorizeKey(key = "table-type")};
-   * kebab-case payload keys surface with hyphens mapped to underscores (see {@link
-   * io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator#getVariableName}).
+   * <p>The {@code #table_type} SpEL variable is {@code 'MANAGED'} or {@code 'EXTERNAL'}, supplied
+   * by the calling endpoint: a payload field for Delta ({@code @AuthorizeKey(key = "table-type")}),
+   * or a value derived by the Iceberg {@code *TableTypeExtractor} for the REST create and
+   * staged-commit paths.
    */
   public static final String CREATE_TABLE =
       """
@@ -134,23 +135,6 @@ public final class AuthorizeExpressions {
       (#authorize(#principal, #schema, OWNER) ||
         #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE)) &&
       (#table_type != 'EXTERNAL' ||
-        (#no_overlap_with_data_securable &&
-          (#external_location == null ||
-           #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE))))
-      """;
-
-  /**
-   * Iceberg {@code createTable} policy: same as {@link #CREATE_TABLE}, but discriminates MANAGED vs
-   * EXTERNAL on the request's {@code location} (Iceberg has no table_type). Keying on location (not
-   * the resolved external location) keeps the no-overlap guard running when a path resolves to no
-   * external location.
-   */
-  public static final String CREATE_ICEBERG_TABLE =
-      """
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-      (#authorize(#principal, #schema, OWNER) ||
-        #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE)) &&
-      (#location == null ||
         (#no_overlap_with_data_securable &&
           (#external_location == null ||
            #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE))))
@@ -172,6 +156,17 @@ public final class AuthorizeExpressions {
       (#authorize(#principal, #table, OWNER) ||
           #authorizeAll(#principal, #table, SELECT, MODIFY))
       """;
+
+  /**
+   * Iceberg {@code updateTable} ({@code POST /tables/{table}}) policy for this dual-purpose
+   * endpoint: a staged-create commit ({@code #staged_create}, an {@code assert-create} requirement)
+   * is authorized exactly as {@link #CREATE_TABLE}; any other commit as {@link #UPDATE_TABLE}. The
+   * handler binds the {@code TABLE} resource key with {@code skipWhen = "staged_create"}, so it is
+   * not resolved for a staged create (no table row exists yet) and the two branches key on {@code
+   * #table} or not without one shape's resolution failing the other.
+   */
+  public static final String UPDATE_ICEBERG_TABLE =
+      "#staged_create ? (" + CREATE_TABLE + ") : (" + UPDATE_TABLE + ")";
 
   /**
    * Authorization policy for deleting a table, shared by the UC REST, UC Delta API, and Iceberg

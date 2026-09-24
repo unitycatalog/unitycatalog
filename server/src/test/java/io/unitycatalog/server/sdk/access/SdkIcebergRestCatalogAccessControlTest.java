@@ -11,10 +11,14 @@ import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.SneakyThrows;
+import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.metrics.ImmutableScanReport;
@@ -23,15 +27,16 @@ import org.apache.iceberg.metrics.ScanMetricsResult;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
+import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 
 /**
- * Exhaustive access-control tests for the Iceberg REST catalog endpoints (all except {@code
- * updateTable}, still gated on metastore-owner), driving each through {@link IcebergRestClient}
- * (one per test user) to exercise every branch of its authorization expression. Resources are
- * created in create-then-use order; in-body section comments document each expression and case.
+ * Exhaustive access-control tests for the Iceberg REST catalog endpoints, driving each through
+ * {@link IcebergRestClient} (one per test user) to exercise every branch of its authorization
+ * expression. Resources are created in create-then-use order; in-body section comments document
+ * each expression and case.
  */
 public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBaseCRUDTest {
 
@@ -106,7 +111,7 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     // USE_SCHEMA without USE_CATALOG -> deny (creator-only never receives USE_CATALOG).
     assertApiExceptionStatusOnly(() -> creatorOnly.namespaceExists(CAT, SCHEMA), 403);
 
-    // ===== createTable (CREATE_ICEBERG_TABLE) =====
+    // ===== createTable (CREATE_TABLE, #table_type from IcebergCreateTableTypeExtractor) =====
     // catalog tier deny: creator-only has CREATE_SCHEMA + USE_SCHEMA but no USE_CATALOG/OWNER.
     assertDenied(() -> createTable(creatorOnly, SCHEMA, "ct_deny_cat"));
     // schema tier deny: regular-2 has USE_CATALOG but no schema OWNER / USE_SCHEMA+CREATE_TABLE.
@@ -114,7 +119,7 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     // catalog + schema OWNER (principal-1 owns CAT and SCHEMA) -> allowed.
     createTable(p1, SCHEMA, "ct_owner");
     // schema OWNER with catalog USE_CATALOG (principal-2): a managed create (no location, so
-    // #location == null takes the managed branch).
+    // #table_type is MANAGED and the external-location check is skipped).
     createTable(p2, SCHEMA_P2, "tbl_p2");
     // USE_SCHEMA + CREATE_TABLE lets regular-1 create (and own what it creates). External-table
     // tier is a 2x2: {path under a registered external location?} x {holds CREATE_EXTERNAL_TABLE?}.
@@ -200,6 +205,41 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     assertDenied(() -> r1.reportMetrics(CAT, SCHEMA, "tbl_none", report)); // no privilege -> 403
     p1.reportMetrics(CAT, SCHEMA, "tbl_none", report); // catalog OWNER -> report accepted
 
+    // ===== updateTable (UPDATE_ICEBERG_TABLE) =====
+    // A staged-create commit (assert-create requirement) is authorized as CREATE_TABLE, not as an
+    // update. Managed commit: the location carries the reserved marker, so #table_type is MANAGED
+    // and the external-location check is skipped.
+    TableMetadata stagedManaged = stageCreate(p1, SCHEMA, "uc_managed_ok", null);
+    p1.updateTable(
+        CAT, SCHEMA, "uc_managed_ok", commitCreate(stagedManaged)); // catalog + schema OWNER
+    // A separate staged create that regular-2 (USE_CATALOG only, no schema create) may not commit:
+    // the create policy's schema tier denies it before the staging row is touched.
+    TableMetadata stagedDeny = stageCreate(p1, SCHEMA, "uc_managed_deny", null);
+    assertDenied(() -> r2.updateTable(CAT, SCHEMA, "uc_managed_deny", commitCreate(stagedDeny)));
+    // External commit: a non-marker location takes the external branch. An unregistered path
+    // leaves #external_location null, so regular-1 (schema USE_SCHEMA + CREATE_TABLE) passes.
+    TableMetadata stagedExternal =
+        stageCreate(r1, SCHEMA, "uc_external_ok", tmpLocation("uc_external_ok"));
+    r1.updateTable(CAT, SCHEMA, "uc_external_ok", commitCreate(stagedExternal));
+    // Confused-deputy guard: regular-1 passes the create policy (schema CREATE_TABLE) but may not
+    // finalize a managed staged create owned by principal-1 -- the staging-ownership pre-check
+    // rejects it before any metadata is written. principal-1 can still finalize its own afterwards.
+    TableMetadata stagedByP1 = stageCreate(p1, SCHEMA, "uc_p1_owned", null);
+    assertIcebergApiException(
+        () -> r1.updateTable(CAT, SCHEMA, "uc_p1_owned", commitCreate(stagedByP1)), 403);
+    p1.updateTable(CAT, SCHEMA, "uc_p1_owned", commitCreate(stagedByP1));
+
+    // A regular commit (no assert-create) is authorized as UPDATE_TABLE (TABLE is resolved since
+    // #staged_create is false): catalog/schema tier plus a table tier of OWNER, or SELECT + MODIFY.
+    p1.updateTable(CAT, SCHEMA, "tbl_sel", setProperty()); // table OWNER
+    // USE_CATALOG + USE_SCHEMA but no table privilege: passes catalog/schema, denied at the table.
+    assertDenied(() -> r1.updateTable(CAT, SCHEMA, "tbl_none", setProperty()));
+    assertDenied(() -> r1.updateTable(CAT, SCHEMA, "tbl_sel", setProperty())); // SELECT only
+    assertDenied(() -> r1.updateTable(CAT, SCHEMA, "tbl_mod", setProperty())); // MODIFY only
+    grantPermissions(
+        REGULAR_1, SecurableType.TABLE, CAT + "." + SCHEMA + ".tbl_mod", Privileges.SELECT);
+    r1.updateTable(CAT, SCHEMA, "tbl_mod", setProperty()); // SELECT + MODIFY
+
     // ===== dropTable (DELETE_TABLE) =====
     // As with reads, each owner drops a table it does NOT own; metastore-owner alone cannot delete.
     createTable(p1, SCHEMA, "tbl_drop_deny"); // owned by principal-1
@@ -210,9 +250,21 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     p2.dropTable(CAT, SCHEMA_P2, "tbl_p2_r1"); // schema OWNER + USE_CATALOG (not table owner)
     r1.dropTable(CAT, SCHEMA, "tbl_r1own"); // table OWNER (creator) + USE_CATALOG + USE_SCHEMA
 
+    // ===== renameTable (RENAME_TABLE = DELETE_TABLE on the source + create in the schema) =====
+    // Rename needs BOTH the right to drop the source name and to create the new name: metastore
+    // owner alone is not enough, and create rights without delete rights on the source are not
+    // either. Source schema == destination schema (a cross-namespace rename is rejected).
+    createTable(p1, SCHEMA, "tbl_rn"); // owned by principal-1
+    assertDenied(() -> admin.renameTable(CAT, SCHEMA, "tbl_rn", SCHEMA, "tbl_rn_x")); // metastore
+    // regular-1 can create in SCHEMA but cannot drop the source table principal-1 owns -> deny.
+    assertDenied(() -> r1.renameTable(CAT, SCHEMA, "tbl_rn", SCHEMA, "tbl_rn_x"));
+    p1.renameTable(CAT, SCHEMA, "tbl_rn", SCHEMA, "tbl_rn_p1"); // catalog OWNER -> allowed
+    // regular-1 owns what it creates (drop right) and holds CREATE_TABLE (create right) -> allowed.
+    createTable(r1, SCHEMA, "tbl_rn_r1", tmpLocation("tbl_rn_r1"));
+    r1.renameTable(CAT, SCHEMA, "tbl_rn_r1", SCHEMA, "tbl_rn_r1b");
+
     // ===== updateNamespaceProperties (UPDATE_SCHEMA): catalog OWNER, or USE_CATALOG + schema
-    // OWNER;
-    // metastore owner alone is not sufficient =====
+    // OWNER; metastore owner alone is not sufficient =====
     p1.createNamespace(CAT, "sch_props"); // owned by principal-1 (catalog owner)
     assertDenied(
         () -> admin.updateNamespaceProperties(CAT, "sch_props", propsUpdate())); // metastore
@@ -248,9 +300,9 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
   }
 
   /**
-   * Creates a native managed Iceberg table as {@code owner} (no location, so {@code #location} is
-   * null -- the managed branch). The common fixture case: managed vs external is irrelevant to the
-   * read/drop authorization the fixtures exercise.
+   * Creates a native managed Iceberg table as {@code owner} (no location, so {@code #table_type} is
+   * MANAGED). The common fixture case: managed vs external is irrelevant to the read/drop
+   * authorization the fixtures exercise.
    */
   @SneakyThrows
   private void createTable(IcebergRestClient owner, String schema, String name) {
@@ -264,6 +316,46 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
   @SneakyThrows
   private void createTable(IcebergRestClient owner, String schema, String name, String location) {
     owner.createTable(CAT, schema, tableRequest(name, location));
+  }
+
+  /** Stages a create (managed when {@code location} is null) and returns the staged metadata. */
+  @SneakyThrows
+  private TableMetadata stageCreate(
+      IcebergRestClient owner, String schema, String name, String location) {
+    CreateTableRequest.Builder builder =
+        CreateTableRequest.builder()
+            .withName(name)
+            .withSchema(new Schema(Types.NestedField.required(1, "id", Types.LongType.get())))
+            .stageCreate();
+    if (location != null) {
+      builder.withLocation(location);
+    }
+    return owner.createTable(CAT, schema, builder.build()).tableMetadata();
+  }
+
+  /**
+   * A create commit (assert-create requirement) rebuilding {@code staged}, as Iceberg clients do.
+   */
+  private static UpdateTableRequest commitCreate(TableMetadata staged) {
+    return new UpdateTableRequest(
+        List.of(new UpdateRequirement.AssertTableDoesNotExist()),
+        List.of(
+            new MetadataUpdate.AssignUUID(staged.uuid()),
+            new MetadataUpdate.UpgradeFormatVersion(staged.formatVersion()),
+            new MetadataUpdate.AddSchema(staged.schema()),
+            new MetadataUpdate.SetCurrentSchema(-1),
+            new MetadataUpdate.AddPartitionSpec(staged.spec()),
+            new MetadataUpdate.SetDefaultPartitionSpec(-1),
+            new MetadataUpdate.AddSortOrder(staged.sortOrder()),
+            new MetadataUpdate.SetDefaultSortOrder(-1),
+            new MetadataUpdate.SetLocation(staged.location()),
+            new MetadataUpdate.SetProperties(Map.of("staged", "true"))));
+  }
+
+  /** A regular (non-create) commit that only sets a property. */
+  private static UpdateTableRequest setProperty() {
+    return new UpdateTableRequest(
+        List.of(), List.of(new MetadataUpdate.SetProperties(Map.of("k", "v"))));
   }
 
   @SneakyThrows

@@ -160,6 +160,12 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
         locators.stream().filter(l -> l.getSource().equals(PARAM)).toList();
     List<AuthorizeKeyLocator> payloadLocators =
         locators.stream().filter(l -> l.getSource().equals(PAYLOAD)).toList();
+    // Resource keys that are conditionally skipped (their skipWhen variable decides at resolve
+    // time). Applied by mapResourceKeys, once that variable has been populated.
+    List<AuthorizeKeyLocator> conditionalResourceLocators =
+        locators.stream()
+            .filter(l -> l.getSkipWhen() != null && !l.getSkipWhen().isEmpty())
+            .toList();
 
     // Add system-type keys, just metastore for now.
     systemLocators.forEach(l -> resourceKeys.put(l.getType().get(), "metastore"));
@@ -185,7 +191,8 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
     if (payloadLocators.isEmpty()) {
       // All keys are already available, so authorize now.
-      Map<SecurableType, UUID> resourceIds = mapResourceKeys(resourceKeys, nonResourceValues);
+      Map<SecurableType, UUID> resourceIds =
+          mapResourceKeys(conditionalResourceLocators, resourceKeys, nonResourceValues);
       evaluateAction.runBeforeRequest(principal, expression, resourceIds, nonResourceValues);
       // The method may still bind a body (e.g. updateCatalog authorizes on the "name" path param),
       // so the gate converter still runs and needs to be told the check is done.
@@ -202,6 +209,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
                   body,
                   mapper,
                   payloadLocators,
+                  conditionalResourceLocators,
                   resourceKeys,
                   nonResourceValues,
                   principal,
@@ -211,22 +219,6 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
     // runAfterRequest confirms at response time that beforeRequest actually ran.
     return evaluateAction.runAfterRequest(delegate.serve(ctx, req));
-  }
-
-  private static Object findPayloadValue(String key, Map<String, Object> payload) {
-    // TODO: investigate better object traversal functionality
-    String[] args = key.split("[.]", 2);
-    if (args.length == 1) {
-      return payload.get(args[0]);
-    } else {
-      if (payload.get(args[0]) instanceof Map) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> value = (Map<String, Object>) payload.get(args[0]);
-        return findPayloadValue(args[1], value);
-      } else {
-        return null;
-      }
-    }
   }
 
   /**
@@ -398,7 +390,12 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
   }
 
   private Map<SecurableType, UUID> mapResourceKeys(
-      Map<SecurableType, Object> resourceKeys, Map<String, Object> nonResourceValues) {
+      List<AuthorizeKeyLocator> conditionalLocators,
+      Map<SecurableType, Object> resourceKeys,
+      Map<String, Object> nonResourceValues) {
+    // Drop conditionally-skipped resource keys first, so a key that does not apply to this request
+    // shape is never resolved (and cannot fail resolving).
+    applyConditionalSkips(conditionalLocators, resourceKeys, nonResourceValues);
     Map<SecurableType, UUID> resourceIds = keyMapper.mapResourceKeys(resourceKeys);
 
     if (resourceKeys.containsKey(SecurableType.EXTERNAL_LOCATION)) {
@@ -505,6 +502,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       Object body,
       ObjectMapper mapper,
       List<AuthorizeKeyLocator> payloadLocators,
+      List<AuthorizeKeyLocator> conditionalLocators,
       Map<SecurableType, Object> resourceKeys,
       Map<String, Object> nonResourceValues,
       UUID principal,
@@ -516,14 +514,13 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       throw new BaseException(ErrorCode.PERMISSION_DENIED, ERR_AUTH_NOT_EXECUTED);
     }
 
-    // Locators hold JSON wire names (e.g. "table_id"), so go back through the same mapper rather
-    // than reflection: the wire names come from its naming strategy / @JsonProperty, not the Java
-    // field names.
-    Map<String, Object> payload = mapper.convertValue(body, new TypeReference<>() {});
+    // Convert the typed body to a JSON map once, shared by the field-lookup locators. (Extractor
+    // locators read the typed body object directly and ignore this map.)
+    Map<String, Object> bodyMap = mapper.convertValue(body, new TypeReference<>() {});
 
     payloadLocators.forEach(
         l -> {
-          Object value = findPayloadValue(l.getKey(), payload);
+          Object value = l.findPayloadValue(body, bodyMap);
           if (l.getType().isPresent()) {
             resourceKeys.put(l.getType().get(), value);
           } else {
@@ -535,7 +532,28 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
           }
         });
 
-    Map<SecurableType, UUID> resourceIds = mapResourceKeys(resourceKeys, nonResourceValues);
+    Map<SecurableType, UUID> resourceIds =
+        mapResourceKeys(conditionalLocators, resourceKeys, nonResourceValues);
     evaluateAction.runBeforeRequest(principal, expression, resourceIds, nonResourceValues);
+  }
+
+  /**
+   * Drops each conditional resource key whose {@code skipWhen} variable evaluated truthy, so it is
+   * not resolved to an id (and cannot fail resolving) on the request shape it does not apply to.
+   * Called first by {@link #mapResourceKeys}, once the deciding variables have been populated.
+   */
+  private static void applyConditionalSkips(
+      List<AuthorizeKeyLocator> conditionalLocators,
+      Map<SecurableType, Object> resourceKeys,
+      Map<String, Object> nonResourceValues) {
+    for (AuthorizeKeyLocator locator : conditionalLocators) {
+      if (locator.getType().isPresent() && isTruthy(nonResourceValues.get(locator.getSkipWhen()))) {
+        resourceKeys.remove(locator.getType().get());
+      }
+    }
+  }
+
+  private static boolean isTruthy(Object value) {
+    return value instanceof Boolean b ? b : Boolean.parseBoolean(String.valueOf(value));
   }
 }
