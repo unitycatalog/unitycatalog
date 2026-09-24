@@ -414,7 +414,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(tableInfo.getTableId()).isNotNull();
       session.load(tableInfoDAO, UUID.fromString(tableInfo.getTableId()));
       tableInfoDAO.setUrl(tableLocation.toString());
-      tableInfoDAO.setUniformIcebergMetadataLocation(metadataLocation);
+      tableInfoDAO.setIcebergMetadataLocation(metadataLocation);
       session.merge(tableInfoDAO);
       tx.commit();
     }
@@ -618,7 +618,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
           .containsEntry("created-by", "iceberg-rest-test");
       try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
         TableInfoDAO tableInfoDAO = getTableByName(session, TestUtils.TABLE_NAME);
-        assertThat(tableInfoDAO.getUniformIcebergMetadataLocation())
+        assertThat(tableInfoDAO.getIcebergMetadataLocation())
             .isEqualTo(NormalizedURL.from(initialMetadataLocation).toString());
       }
 
@@ -1672,7 +1672,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       UUID tableId = UUID.fromString(Objects.requireNonNull(tableInfo.getTableId()));
       TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
       assertThat(tableInfoDAO).isNotNull();
-      tableInfoDAO.setUniformIcebergMetadataLocation(metadataFile.toUri().toString());
+      tableInfoDAO.setIcebergMetadataLocation(metadataFile.toUri().toString());
       session.merge(tableInfoDAO);
       tx.commit();
     }

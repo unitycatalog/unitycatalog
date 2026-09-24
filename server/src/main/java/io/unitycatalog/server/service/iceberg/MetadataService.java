@@ -15,9 +15,13 @@ import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.io.FileIO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Reads and writes Iceberg table metadata for the Iceberg REST catalog. */
 public class MetadataService {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(MetadataService.class);
 
   private static final Pattern METADATA_FILE_VERSION =
       Pattern.compile("^(?:v)?(\\d+)-?.*\\.metadata\\.json(?:\\.gz)?$");
@@ -75,7 +79,10 @@ public class MetadataService {
     try (FileIO fileIO = fileOperations.getFileIO(metadataLocation, CredentialContext.READ_WRITE)) {
       fileIO.deleteFile(metadataLocation.toString());
     } catch (Exception e) {
-      // Orphaned metadata files are harmless; the commit outcome is decided by the catalog.
+      // Orphaned metadata files are harmless; the commit outcome is decided by the catalog. Still
+      // log at warn so a persistent cleanup failure (e.g. a credential or permission problem) stays
+      // diagnosable rather than being silently swallowed.
+      LOGGER.warn("Best-effort cleanup of Iceberg metadata file {} failed", metadataLocation, e);
     }
   }
 

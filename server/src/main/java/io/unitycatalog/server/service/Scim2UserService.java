@@ -191,6 +191,8 @@ public class Scim2UserService implements ScimService {
   }
 
   @Patch("/{id}")
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse patchUser(@Param("id") String id, PatchRequest patchRequest) {
     return patchRequest.getOperations().stream()
         .filter(

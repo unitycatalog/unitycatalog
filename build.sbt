@@ -41,9 +41,9 @@ lazy val hadoopVersion = sys.props.getOrElse("hadoopVersion", "3.4.2")
 
 // Library versions
 lazy val icebergVersion = "1.11.0"
-lazy val jacksonVersion = "2.17.0"
-lazy val openApiToolsJacksonBindNullableVersion = "0.2.6"
-lazy val log4jVersion = "2.25.3"
+lazy val jacksonVersion = "2.18.10"
+lazy val openApiToolsJacksonBindNullableVersion = "0.2.11"
+lazy val log4jVersion = "2.26.1"
 val orgApacheHttpVersion = "4.5.14"
 
 lazy val commonSettings = Seq(
@@ -67,8 +67,6 @@ lazy val commonSettings = Seq(
   libraryDependencies ++= Seq(
     "org.slf4j" % "slf4j-api" % "2.0.13",
     "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
-    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % log4jVersion,
-    "org.apache.logging.log4j" % "log4j-api" % log4jVersion
   ),
   excludeDependencies ++= Seq(
     ExclusionRule("org.slf4j", "slf4j-reload4j")
@@ -124,6 +122,13 @@ lazy val commonSettings = Seq(
   },
   
   assembly / test := {}
+)
+
+lazy val log4jProcessSettings = Seq(
+  libraryDependencies ++= Seq(
+    "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
+    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % log4jVersion,
+  )
 )
 
 // Configure resolvers
@@ -356,6 +361,7 @@ lazy val server = (project in file("server"))
     name := s"$artifactNamePrefix-server",
     mainClass := Some(orgName + ".server.UnityCatalogServer"),
     commonSettings,
+    log4jProcessSettings,
     javaOnlyReleaseSettings,
     javafmtCheckSettings(),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
@@ -388,12 +394,12 @@ lazy val server = (project in file("server"))
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
 
       // For ALDS access
-      "com.azure" % "azure-identity" % "1.13.2",
-      "com.azure" % "azure-storage-file-datalake" % "12.20.0",
+      "com.azure" % "azure-identity" % "1.18.6",
+      "com.azure" % "azure-storage-file-datalake" % "12.28.1",
 
       // For GCS Access
-      "com.google.cloud" % "google-cloud-storage" % "2.30.1",
-      "com.google.auth" % "google-auth-library-oauth2-http" % "1.20.0",
+      "com.google.cloud" % "google-cloud-storage" % "2.73.0",
+      "com.google.auth" % "google-auth-library-oauth2-http" % "1.52.0",
 
       //For s3 access
       "com.amazonaws" % "aws-java-sdk-s3" % "1.12.728",
@@ -420,14 +426,14 @@ lazy val server = (project in file("server"))
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
 
       // Auth dependencies
-      "com.unboundid.product.scim2" % "scim2-sdk-common" % "3.1.0",
-      "org.casbin" % "jcasbin" % "1.55.0",
-      "org.casbin" % "jdbc-adapter" % "2.7.0"
+      "com.unboundid.product.scim2" % "scim2-sdk-common" % "3.2.0",
+      "org.casbin" % "jcasbin" % "1.99.0",
+      "org.casbin" % "jdbc-adapter" % "2.13.0"
         exclude("com.microsoft.sqlserver", "mssql-jdbc")
         exclude("com.oracle.database.jdbc", "ojdbc6"),
-      "org.springframework" % "spring-expression" % "6.1.11",
-      "com.auth0" % "java-jwt" % "4.4.0",
-      "com.auth0" % "jwks-rsa" % "0.22.1",
+      "org.springframework" % "spring-expression" % "6.2.19",
+      "com.auth0" % "java-jwt" % "4.6.1",
+      "com.auth0" % "jwks-rsa" % "0.24.1",
 
       // Test dependencies
       "org.junit.jupiter" %  "junit-jupiter" % "5.10.3" % Test,
@@ -445,7 +451,7 @@ lazy val server = (project in file("server"))
       "org.testcontainers" % "postgresql" % "1.19.8" % Test,
       "org.testcontainers" % "mysql" % "1.19.8" % Test,
       "org.testcontainers" % "junit-jupiter" % "1.19.8" % Test,
-      "org.postgresql" % "postgresql" % "42.7.12" % Test,
+      "org.postgresql" % "postgresql" % "42.7.13" % Test,
       "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
 
       // CLI dependencies
@@ -573,6 +579,7 @@ lazy val cli = (project in file("examples") / "cli")
     name := s"$artifactNamePrefix-cli",
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
+    log4jProcessSettings,
     skipReleaseSettings,
     javafmtCheckSettings(),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
