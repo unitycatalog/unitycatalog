@@ -44,6 +44,10 @@ lazy val icebergVersion = "1.11.0"
 lazy val jacksonVersion = "2.17.0"
 lazy val openApiToolsJacksonBindNullableVersion = "0.2.6"
 lazy val log4jVersion = "2.25.3"
+lazy val armeriaVersion = "1.41.1"
+lazy val nettyVersion = "4.2.18.Final"
+lazy val nettyTcnativeVersion = "2.0.84.Final"
+lazy val vertxVersion = "4.5.34"
 val orgApacheHttpVersion = "4.5.14"
 
 lazy val commonSettings = Seq(
@@ -364,11 +368,15 @@ lazy val server = (project in file("server"))
       "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
     ) ++ javacRelease17,
     libraryDependencies ++= Seq(
-      "com.linecorp.armeria" %  "armeria" % "1.28.4",
+      "com.linecorp.armeria" %  "armeria" % armeriaVersion,
       "org.apache.commons" % "commons-lang3" % "3.19.0",
 
-      // Netty dependencies
-      "io.netty" % "netty-all" % "4.1.111.Final",
+      // Netty dependencies. Armeria 1.33+ requires Netty 4.2; 4.2.x OpenSSL engine
+      // calls SSL.getGroupName, which exists only in tcnative 2.0.81+ (azure-core-http-netty
+      // otherwise wins with tcnative-classes 2.0.65 and Azure credential work hangs).
+      "io.netty" % "netty-all" % nettyVersion,
+      "io.netty" % "netty-tcnative-classes" % nettyTcnativeVersion,
+      "io.netty" % "netty-tcnative-boringssl-static" % nettyTcnativeVersion,
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       // Jackson dependencies
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
@@ -411,9 +419,9 @@ lazy val server = (project in file("server"))
       "software.amazon.awssdk" % "sts" % "2.24.0",
       // iceberg-aws transitively requires this dependency for table encryption support
       "software.amazon.awssdk" % "kms" % "2.24.0",
-      "io.vertx" % "vertx-core" % "4.3.5",
-      "io.vertx" % "vertx-web" % "4.3.5",
-      "io.vertx" % "vertx-web-client" % "4.3.5",
+      "io.vertx" % "vertx-core" % vertxVersion,
+      "io.vertx" % "vertx-web" % vertxVersion,
+      "io.vertx" % "vertx-web-client" % vertxVersion,
 
       // Hadoop dependencies for ExternalLocationUtils
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
@@ -452,6 +460,9 @@ lazy val server = (project in file("server"))
     ),
     // Iceberg 1.11.0 brings its own Jackson version that conflicts with the project's pinned jackson version
     dependencyOverrides ++= Seq(
+      "io.netty" % "netty-all" % nettyVersion,
+      "io.netty" % "netty-tcnative-classes" % nettyTcnativeVersion,
+      "io.netty" % "netty-tcnative-boringssl-static" % nettyTcnativeVersion,
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,

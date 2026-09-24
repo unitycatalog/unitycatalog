@@ -64,12 +64,14 @@ public final class UnroutedIcebergRequestHandler implements ServerErrorHandler {
   @Nullable
   @Override
   public AggregatedHttpResponse renderStatus(
-      @Nullable ServiceConfig config,
-      RequestHeaders headers,
+      @Nullable ServiceRequestContext ctx,
+      ServiceConfig config,
+      @Nullable RequestHeaders headers,
       HttpStatus status,
       @Nullable String description,
       @Nullable Throwable cause) {
-    if (!isIcebergPath(headers.path())) {
+    // headers is null on a severe protocol violation, where there is no path to match on.
+    if (headers == null || !isIcebergPath(headers.path())) {
       return null;
     }
     String message =
