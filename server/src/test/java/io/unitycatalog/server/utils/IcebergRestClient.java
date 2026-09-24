@@ -8,8 +8,10 @@ import java.net.http.HttpResponse;
 import java.util.Optional;
 import lombok.SneakyThrows;
 import org.apache.iceberg.catalog.Namespace;
+import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequestParser;
 import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
@@ -134,6 +136,22 @@ public class IcebergRestClient {
 
   public void dropTable(String catalog, String namespace, String table) throws ApiException {
     checkSuccess(delete(tablePath(catalog, namespace, table)));
+  }
+
+  public void renameTable(
+      String catalog,
+      String sourceNamespace,
+      String sourceTable,
+      String destinationNamespace,
+      String destinationTable)
+      throws ApiException {
+    RenameTableRequest request =
+        RenameTableRequest.builder()
+            .withSource(TableIdentifier.of(Namespace.of(sourceNamespace), sourceTable))
+            .withDestination(
+                TableIdentifier.of(Namespace.of(destinationNamespace), destinationTable))
+            .build();
+    checkSuccess(post("/v1/catalogs/" + catalog + "/tables/rename", toJson(request)));
   }
 
   public LoadViewResponse loadView(String catalog, String namespace, String view)

@@ -52,7 +52,12 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.iceberg.IcebergCommitLocationExtractor;
+import io.unitycatalog.server.service.iceberg.IcebergCommitTableTypeExtractor;
+import io.unitycatalog.server.service.iceberg.IcebergCreateTableTypeExtractor;
+import io.unitycatalog.server.service.iceberg.IcebergRenameSourceSchemaExtractor;
 import io.unitycatalog.server.service.iceberg.IcebergSchemaConverter;
+import io.unitycatalog.server.service.iceberg.IcebergStagedCreateExtractor;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.Constants;
@@ -461,13 +466,13 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables")
   @ProducesJson
-  @AuthorizeExpression(AuthorizeExpressions.CREATE_ICEBERG_TABLE)
+  @AuthorizeExpression(AuthorizeExpressions.CREATE_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public LoadTableResponse createTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
       @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "location")
-          @AuthorizeKey(key = "location")
+          @AuthorizeKey(key = "table_type", extractor = IcebergCreateTableTypeExtractor.class)
           CreateTableRequest request) {
     serverProperties.checkIcebergTableEnabled();
     request.validate();
@@ -580,28 +585,24 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
         .build();
   }
 
-  // TODO(auth): still on the metastore-owner placeholder. One endpoint, two operations with
-  // different privileges chosen by the request body: a plain commit to the existing table
-  // (needs UPDATE_TABLE = SELECT+MODIFY) vs. a staged-create commit. An AssertTableDoesNotExist
-  // requirement routes to commitStagedCreate, which needs create authorization like createTable
-  // plus a check that the write location matches a staging table the caller can access, closing
-  // a confused-deputy write gap. A declarative expression cannot branch on that without
-  // body-derived inputs it lacks here; wire it next with an AuthorizeValueExtractor + skipWhen
-  // exposing a staging-table variable.
   @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
   @ProducesJson
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.UPDATE_ICEBERG_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public LoadTableResponse updateTable(
-      @Param("catalog") String catalog,
-      @Param("namespace") String namespace,
-      @Param("table") String table,
-      UpdateTableRequest request) {
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
+      // TABLE is skipped for a staged-create commit (skipWhen below): no table row exists yet, so
+      // resolving it would 404. See UPDATE_ICEBERG_TABLE for how the two commit shapes authorize.
+      @Param("table") @AuthorizeResourceKey(value = TABLE, skipWhen = "staged_create") String table,
+      @AuthorizeResourceKey(
+              value = EXTERNAL_LOCATION,
+              extractor = IcebergCommitLocationExtractor.class)
+          @AuthorizeKey(key = "table_type", extractor = IcebergCommitTableTypeExtractor.class)
+          @AuthorizeKey(key = "staged_create", extractor = IcebergStagedCreateExtractor.class)
+          UpdateTableRequest request) {
     serverProperties.checkIcebergTableEnabled();
-    boolean isCreateCommit =
-        request.requirements().stream()
-            .anyMatch(r -> r instanceof UpdateRequirement.AssertTableDoesNotExist);
-    if (isCreateCommit) {
+    if (IcebergStagedCreateExtractor.isStagedCreate(request)) {
       return commitStagedCreate(catalog, namespace, table, request);
     }
     TableRepository.IcebergTableState state =
@@ -752,6 +753,12 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
         tableMetadata.location().contains(Constants.MANAGED_STORAGE_PREFIX)
             ? TableType.MANAGED
             : TableType.EXTERNAL;
+    if (tableType == TableType.MANAGED) {
+      // A managed create is authorized only on the catalog/schema tier, which does not check that
+      // the caller owns the staging table at this location. Verify that here before writing
+      // metadata.
+      stagingTableRepository.requireOwnedStagingTable(NormalizedURL.from(tableMetadata.location()));
+    }
     return finalizeIcebergTableCreation(catalog, namespace, table, tableType, tableMetadata, true);
   }
 
@@ -767,17 +774,19 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     }
   }
 
-  // TODO(auth): still on the metastore-owner placeholder. Rename needs DELETE_TABLE on the source
-  // table plus create in the destination schema (which, since a cross-namespace rename is rejected
-  // below, is the source schema). The source/destination are TableIdentifiers in the request body
-  // whose full identity also spans the URL {catalog}, so a scalar field-key @AuthorizeResourceKey
-  // cannot resolve them: it reads a single leaf value and can neither index the namespace array nor
-  // compose the catalog param with the body fields into a "catalog.schema.table" name. Wire it with
-  // a body-derived AuthorizeValueExtractor (as for updateTable) that computes those names.
   @Post("/v1/catalogs/{catalog}/tables/rename")
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.RENAME_TABLE)
   @AuthorizeResourceKey(METASTORE)
-  public HttpResponse renameTable(@Param("catalog") String catalog, RenameTableRequest request) {
+  public HttpResponse renameTable(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      // The source table and schema come from the request body; the URL has only the catalog.
+      // KeyMapper combines the catalog param with the body schema and table names. The table name
+      // is a plain nested field (source.name); the schema needs an extractor because
+      // source.namespace deserializes to a list, not a name. A cross-namespace rename is rejected
+      // below, so the source schema is also the destination the create tier authorizes.
+      @AuthorizeResourceKey(value = SCHEMA, extractor = IcebergRenameSourceSchemaExtractor.class)
+          @AuthorizeResourceKey(value = TABLE, key = "source.name")
+          RenameTableRequest request) {
     serverProperties.checkIcebergTableEnabled();
     // A request missing either identifier is a bad request, not the NPE reading it would raise.
     request.validate();
