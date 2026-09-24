@@ -404,6 +404,59 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
     createExternalVolume(cleanupPath + "/volume");
   }
 
+  @Test
+  public void testPendingCleanupBlocksPathAuthorization() {
+    String cleanupPath = TEST_EXTERNAL_LOCATION_URL + "/deleted";
+    UUID resourceId = UUID.randomUUID();
+    TransactionManager.executeWithTransaction(
+        hibernateConfigurator.getSessionFactory(),
+        session -> {
+          new StorageCleanupTaskRepository(hibernateConfigurator.getSessionFactory())
+              .create(session, ResourceType.TABLE, resourceId, "orders", cleanupPath);
+          return null;
+        },
+        "Failed to create test cleanup task",
+        /* readOnly= */ false);
+    clearInvocations(mockCloudCredentialVendor);
+
+    for (String path : List.of(TEST_EXTERNAL_LOCATION_URL, cleanupPath, cleanupPath + "/data")) {
+      for (TemporaryCredentialsApi api : List.of(adminTempCredsApi, locationOwnerTempCredsApi)) {
+        for (PathOperation operation : List.of(PATH_READ, PATH_READ_WRITE, PATH_CREATE_TABLE)) {
+          TestUtils.assertApiException(
+              () ->
+                  api.generateTemporaryPathCredentials(
+                      new GenerateTemporaryPathCredential().url(path).operation(operation)),
+              ErrorCode.PERMISSION_DENIED,
+              "Input path overlaps pending storage cleanup");
+        }
+      }
+    }
+    verify(mockCloudCredentialVendor, never()).vendCredential(any());
+    TestUtils.assertApiException(
+        () -> createExternalTable(cleanupPath + "/table"),
+        ErrorCode.PERMISSION_DENIED,
+        "Input path overlaps pending storage cleanup");
+    TestUtils.assertApiException(
+        () -> createExternalVolume(TEST_EXTERNAL_LOCATION_URL),
+        ErrorCode.PERMISSION_DENIED,
+        "Input path overlaps pending storage cleanup");
+
+    testPathCredentialsSuccess(
+        adminTempCredsApi, TEST_EXTERNAL_LOCATION_URL + "/active", PATH_READ_WRITE);
+
+    TransactionManager.executeWithTransaction(
+        hibernateConfigurator.getSessionFactory(),
+        session -> {
+          session.remove(session.get(StorageCleanupTaskDAO.class, resourceId));
+          return null;
+        },
+        "Failed to remove test cleanup task",
+        /* readOnly= */ false);
+    testPathCredentialsSuccess(locationOwnerTempCredsApi, cleanupPath, PATH_READ_WRITE);
+    createExternalTable(cleanupPath + "/table");
+    createExternalVolume(cleanupPath + "/volume");
+  }
+
   private void testPathCredentials(List<String> urls, List<TestCase> testCases) {
     List<PathOperation> subTestCases = List.of(PATH_READ, PATH_READ_WRITE, PATH_CREATE_TABLE);
     for (String url : urls) {
