@@ -25,9 +25,9 @@ import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
-import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
@@ -557,7 +557,7 @@ public class TableRepository {
   }
 
   private static void populateUniformMetadata(DeltaLoadTableResponse response, TableInfoDAO dao) {
-    String uniformLocation = dao.getUniformIcebergMetadataLocation();
+    String uniformLocation = dao.getIcebergMetadataLocation();
     if (uniformLocation == null) {
       return;
     }
@@ -605,7 +605,7 @@ public class TableRepository {
                     + fullName);
           }
           return new IcebergTableState(
-              dao.getId(), dataSourceFormat, dao.getUniformIcebergMetadataLocation(), dao.getUrl());
+              dao.getId(), dataSourceFormat, dao.getIcebergMetadataLocation(), dao.getUrl());
         },
         "Failed to load Iceberg table state for " + fullName,
         /* readOnly= */ true);
@@ -646,7 +646,7 @@ public class TableRepository {
                     + fullName);
           }
           RepositoryUtils.lockTableForCommit(session, dao, dao.getId(), Optional.of(fullName));
-          if (!Objects.equals(dao.getUniformIcebergMetadataLocation(), expectedMetadataLocation)) {
+          if (!Objects.equals(dao.getIcebergMetadataLocation(), expectedMetadataLocation)) {
             throw new BaseException(
                 ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
                 "Metadata location for "
@@ -654,7 +654,7 @@ public class TableRepository {
                     + " changed concurrently: expected "
                     + expectedMetadataLocation
                     + " but found "
-                    + dao.getUniformIcebergMetadataLocation());
+                    + dao.getIcebergMetadataLocation());
           }
           List<ColumnInfoDAO> newColumns = ColumnInfoDAO.fromList(columns);
           newColumns.forEach(
@@ -675,7 +675,7 @@ public class TableRepository {
           properties.putAll(tableProperties);
           properties.flush(session, dao.getId());
 
-          dao.setUniformIcebergMetadataLocation(newMetadataLocation.toString());
+          dao.setIcebergMetadataLocation(newMetadataLocation.toString());
           dao.setUpdatedAt(new Date());
           dao.setUpdatedBy(callerId);
           session.merge(dao);
@@ -896,7 +896,7 @@ public class TableRepository {
           // entity is still transient so they're folded into the single INSERT below.
           DeltaUniformUtils.applyToDao(tableInfoDAO, uniformFields);
           nativeIcebergMetadataLocation.ifPresent(
-              location -> tableInfoDAO.setUniformIcebergMetadataLocation(location.toString()));
+              location -> tableInfoDAO.setIcebergMetadataLocation(location.toString()));
           session.persist(tableInfoDAO);
           if (RepositoryUtils.isViewLike(tableType.getValue())) {
             DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
@@ -1103,7 +1103,7 @@ public class TableRepository {
                   maxResults,
                   pageToken,
                   schemaId,
-                  Optional.of(root -> root.get("uniformIcebergMetadataLocation").isNotNull()));
+                  Optional.of(root -> root.get("icebergMetadataLocation").isNotNull()));
           return new IcebergTablePage(
               rows.stream().map(TableInfoDAO::getName).toList(),
               Optional.ofNullable(LISTING_HELPER.getNextPageToken(rows, maxResults)));
@@ -1172,11 +1172,14 @@ public class TableRepository {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
     }
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
-      try {
-        FileOperations.deleteDirectory(NormalizedURL.from(tableInfoDAO.getUrl()));
-      } catch (Throwable e) {
-        LOGGER.error("Error deleting table directory: {}", tableInfoDAO.getUrl(), e);
-      }
+      repositories
+          .getStorageCleanupTaskRepository()
+          .create(
+              session,
+              ResourceType.TABLE,
+              tableInfoDAO.getId(),
+              tableInfoDAO.getName(),
+              tableInfoDAO.getUrl());
       repositories
           .getDeltaCommitRepository()
           .permanentlyDeleteTableCommits(session, tableInfoDAO.getId());

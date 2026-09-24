@@ -452,7 +452,7 @@ public class SdkLoadTableTest extends BaseServerTest {
     try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       TableInfoDAO dao = session.get(TableInfoDAO.class, tableId);
-      dao.setUniformIcebergMetadataLocation(metadataLocation);
+      dao.setIcebergMetadataLocation(metadataLocation);
       dao.setUniformIcebergConvertedDeltaVersion(convertedVersion);
       dao.setUniformIcebergConvertedDeltaTimestamp(convertedTimestamp);
       tx.commit();
