@@ -3,6 +3,13 @@
 
 * @tdas @dennyglee
 
+# Build
+/build.sbt @tdas @yili-db
+/version.sbt @tdas @yili-db
+
+# Etc
+/etc/ @tdas @yili-db
+
 # Spark Connector
 /connectors/spark/ @tdas @openinx @yili-db @TimothyW553
 
