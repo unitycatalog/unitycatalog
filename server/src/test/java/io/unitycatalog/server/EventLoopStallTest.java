@@ -83,13 +83,13 @@ class EventLoopStallTest {
   void stopWaitsForBlockedRequestAndExecutorRemainsActive() throws Exception {
     CountDownLatch entered = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
-    CountDownLatch fastEntered = new CountDownLatch(1);
+    CountDownLatch finished = new CountDownLatch(1);
     BlockingTaskExecutor blockingTaskExecutor =
         BlockingTaskExecutor.builder().numThreads(2).build();
     ArmeriaServerBuilder builder =
         new ArmeriaServerBuilder(
             0, "/api/", "/control/", new ServerProperties(new Properties()), blockingTaskExecutor);
-    builder.annotate("probe", new BlockingProbe(entered, release, fastEntered));
+    builder.annotate("probe", new BlockingProbe(entered, release, new CountDownLatch(1), finished));
 
     Server server = builder.build();
     try {
@@ -98,7 +98,7 @@ class EventLoopStallTest {
       WebClient client =
           WebClient.builder("h2c://127.0.0.1:" + port).responseTimeoutMillis(5_000).build();
 
-      CompletableFuture<AggregatedHttpResponse> held = client.get("/api/probe/hold").aggregate();
+      client.get("/api/probe/hold").aggregate();
       assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
 
       CompletableFuture<Void> stopping = server.stop();
@@ -106,7 +106,10 @@ class EventLoopStallTest {
           .isInstanceOf(TimeoutException.class);
 
       release.countDown();
-      assertThat(held.join().status()).isEqualTo(HttpStatus.OK);
+      // stop() can RST the HTTP/2 stream, so the client may see 500 even when hold() returned.
+      assertThat(finished.await(5, TimeUnit.SECONDS))
+          .as("the blocked handler ran to completion after release")
+          .isTrue();
       stopping.join();
 
       assertThat(blockingTaskExecutor.submit(() -> "still active").get()).isEqualTo("still active");
@@ -187,18 +190,29 @@ class EventLoopStallTest {
     private final CountDownLatch entered;
     private final CountDownLatch release;
     private final CountDownLatch fastEntered;
+    private final CountDownLatch finished;
 
     private BlockingProbe(
         CountDownLatch entered, CountDownLatch release, CountDownLatch fastEntered) {
+      this(entered, release, fastEntered, new CountDownLatch(1));
+    }
+
+    private BlockingProbe(
+        CountDownLatch entered,
+        CountDownLatch release,
+        CountDownLatch fastEntered,
+        CountDownLatch finished) {
       this.entered = entered;
       this.release = release;
       this.fastEntered = fastEntered;
+      this.finished = finished;
     }
 
     @Get("/hold")
     public HttpResponse hold() throws InterruptedException {
       entered.countDown();
       release.await();
+      finished.countDown();
       return HttpResponse.of("hold");
     }
 
