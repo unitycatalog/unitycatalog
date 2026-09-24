@@ -6,13 +6,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.ext.web.client.HttpResponse;
 import io.vertx.ext.web.client.WebClient;
+import io.vertx.ext.web.client.WebClientOptions;
 import java.io.IOException;
 import java.net.BindException;
 import java.net.ServerSocket;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -35,7 +42,7 @@ public class URLTranscoderVerticleTest {
     transcodePort = findAvailablePort();
     startService();
     vertx
-        .deployVerticle(new URLTranscoderVerticle(transcodePort, servicePort))
+        .deployVerticle(new URLTranscoderVerticle(transcodePort, servicePort, 1))
         .toCompletionStage()
         .toCompletableFuture()
         .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -87,6 +94,71 @@ public class URLTranscoderVerticleTest {
     assertThat(response.bodyAsString()).isEqualTo("/echo/catalog.schema");
   }
 
+  @Test
+  public void testLivenessIsAnsweredByTheTranscoder() throws Exception {
+    // The backend echoes the path, so a forwarded probe would come back as "/livez".
+    HttpResponse<Buffer> response = send(HttpMethod.GET, URLTranscoderVerticle.LIVENESS_PATH);
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.bodyAsString()).isEqualTo("OK");
+  }
+
+  @Test
+  public void testLivenessIsAnsweredWhileTheBackendPoolIsFull() throws Exception {
+    // A saturated process must still pass liveness; otherwise a restart drops every held request.
+    CountDownLatch entered = new CountDownLatch(1);
+    List<HttpServerResponse> parked = Collections.synchronizedList(new ArrayList<>());
+    int backendPort = findAvailablePort();
+    int frontPort = findAvailablePort();
+    vertx
+        .createHttpServer()
+        .requestHandler(
+            request -> {
+              parked.add(request.response());
+              entered.countDown();
+            })
+        .listen(backendPort)
+        .toCompletionStage()
+        .toCompletableFuture()
+        .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    vertx
+        .deployVerticle(new URLTranscoderVerticle(frontPort, backendPort, 1))
+        .toCompletionStage()
+        .toCompletableFuture()
+        .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+    WebClient caller = WebClient.create(vertx, new WebClientOptions().setMaxPoolSize(2));
+    try {
+      CompletableFuture<HttpResponse<Buffer>> held =
+          caller
+              .request(HttpMethod.GET, frontPort, HOST, "/hold")
+              .send()
+              .toCompletionStage()
+              .toCompletableFuture();
+      assertThat(entered.await(2, TimeUnit.SECONDS))
+          .as("the only backend connection is in use")
+          .isTrue();
+
+      HttpResponse<Buffer> liveness =
+          caller
+              .request(HttpMethod.GET, frontPort, HOST, URLTranscoderVerticle.LIVENESS_PATH)
+              .send()
+              .toCompletionStage()
+              .toCompletableFuture()
+              .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(liveness.statusCode()).isEqualTo(200);
+      assertThat(liveness.bodyAsString()).isEqualTo("OK");
+      assertThat(parked).as("the probe never reached the backend").hasSize(1);
+
+      end(parked, new AtomicBoolean(false));
+      assertThat(held.get(TIMEOUT_SECONDS, TimeUnit.SECONDS).statusCode()).isEqualTo(200);
+    } finally {
+      end(parked, new AtomicBoolean(false));
+      caller.close();
+    }
+  }
+
   private static HttpResponse<Buffer> send(HttpMethod method, String path) throws Exception {
     // A bounded wait, so a response that is never written fails the test instead of hanging it.
     return client
@@ -98,11 +170,108 @@ public class URLTranscoderVerticleTest {
   }
 
   @Test
+  public void testConfiguredPoolAllowsMoreThanTheVertxDefault() throws Exception {
+    // Vert.x WebClient defaults to 5. A configured size of 6 must all be in flight together.
+    assertConcurrentRequests(/* backendPoolSize= */ 6, /* sent= */ 6, /* inFlight= */ 6);
+  }
+
+  @Test
+  public void testConfiguredPoolSizeIsTheInFlightCap() throws Exception {
+    // One more request than the configured pool must wait. That is what keeps the proxy aligned
+    // with the capacity the caller passed in.
+    assertConcurrentRequests(/* backendPoolSize= */ 2, /* sent= */ 3, /* inFlight= */ 2);
+  }
+
+  private static void assertConcurrentRequests(int backendPoolSize, int sent, int inFlight)
+      throws Exception {
+    CountDownLatch entered = new CountDownLatch(inFlight);
+    CountDownLatch overflow = new CountDownLatch(inFlight + 1);
+    List<HttpServerResponse> parked = Collections.synchronizedList(new ArrayList<>());
+    AtomicBoolean release = new AtomicBoolean(false);
+    int backendPort = findAvailablePort();
+    int frontPort = findAvailablePort();
+    vertx
+        .createHttpServer()
+        .requestHandler(
+            request -> {
+              synchronized (parked) {
+                // Arrivals after the cap check complete immediately, including the request that
+                // was waiting for a pool slot.
+                if (release.get()) {
+                  request.response().end("ok");
+                  return;
+                }
+                parked.add(request.response());
+              }
+              entered.countDown();
+              overflow.countDown();
+            })
+        .listen(backendPort)
+        .toCompletionStage()
+        .toCompletableFuture()
+        .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    vertx
+        .deployVerticle(new URLTranscoderVerticle(frontPort, backendPort, backendPoolSize))
+        .toCompletionStage()
+        .toCompletableFuture()
+        .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+    WebClient caller = WebClient.create(vertx, new WebClientOptions().setMaxPoolSize(sent));
+    List<CompletableFuture<HttpResponse<Buffer>>> calls = new ArrayList<>();
+    try {
+      for (int i = 0; i < sent; i++) {
+        calls.add(
+            caller
+                .request(HttpMethod.GET, frontPort, HOST, "/hold")
+                .send()
+                .toCompletionStage()
+                .toCompletableFuture());
+      }
+      assertThat(entered.await(2, TimeUnit.SECONDS))
+          .as("requests in flight at the backend")
+          .isTrue();
+      if (sent > inFlight) {
+        assertThat(overflow.await(1, TimeUnit.SECONDS))
+            .as("a request beyond the configured pool must wait")
+            .isFalse();
+      }
+      end(parked, release);
+      for (CompletableFuture<HttpResponse<Buffer>> call : calls) {
+        assertThat(call.get(TIMEOUT_SECONDS, TimeUnit.SECONDS).statusCode()).isEqualTo(200);
+      }
+    } finally {
+      end(parked, release);
+      caller.close();
+    }
+  }
+
+  /** Completes any backend response still held open. Later arrivals finish themselves. */
+  private static void end(List<HttpServerResponse> parked, AtomicBoolean release)
+      throws InterruptedException {
+    CountDownLatch done = new CountDownLatch(1);
+    vertx.runOnContext(
+        ignored -> {
+          List<HttpServerResponse> held;
+          synchronized (parked) {
+            release.set(true);
+            held = List.copyOf(parked);
+          }
+          for (HttpServerResponse response : held) {
+            if (!response.ended()) {
+              response.end("ok");
+            }
+          }
+          done.countDown();
+        });
+    assertThat(done.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+  }
+
+  @Test
   public void testDeploymentFailsWhenTheTranscodePortIsTaken() throws Exception {
     try (ServerSocket occupied = new ServerSocket(0)) {
       CompletableFuture<String> deployment =
           vertx
-              .deployVerticle(new URLTranscoderVerticle(occupied.getLocalPort(), servicePort))
+              .deployVerticle(new URLTranscoderVerticle(occupied.getLocalPort(), servicePort, 1))
               .toCompletionStage()
               .toCompletableFuture();
 

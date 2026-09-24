@@ -12,6 +12,7 @@ import com.linecorp.armeria.common.AggregatedHttpRequest;
 import com.linecorp.armeria.common.Http1HeaderNaming;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.SessionProtocol;
+import com.linecorp.armeria.common.util.BlockingTaskExecutor;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerBuilder;
@@ -39,6 +40,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.ParameterizedType;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Wraps Armeria's {@link ServerBuilder} with Unity-Catalog-aware registration. Callers register
@@ -86,7 +88,12 @@ public class ArmeriaServerBuilder {
   private final JacksonResponseConverterFunction deltaResponseConverter;
 
   ArmeriaServerBuilder(
-      int port, String basePath, String controlPath, ServerProperties serverProperties) {
+      int port,
+      String basePath,
+      String controlPath,
+      ServerProperties serverProperties,
+      BlockingTaskExecutor blockingTaskExecutor) {
+    Objects.requireNonNull(blockingTaskExecutor, "blockingTaskExecutor");
     this.armeriaServerBuilder =
         Server.builder()
             .localPort(port, SessionProtocol.HTTP)
@@ -95,6 +102,11 @@ public class ArmeriaServerBuilder {
             // received, so a header they look up by its traditional spelling -- "ETag" for a
             // conditional loadTable -- is invisible to them unless we write it that way.
             .http1HeaderNaming(Http1HeaderNaming.traditional())
+            // One HTTP/2 connection is pinned to one event loop. JDBC runs on this pool instead.
+            // UnityCatalogServer owns it so stop/start can reuse it; only close shuts it down.
+            // Keep stop() request-safe even though it no longer shuts down the executor.
+            .gracefulShutdownTimeoutMillis(1, Long.MAX_VALUE)
+            .blockingTaskExecutor(blockingTaskExecutor, false)
             .serviceUnder("/docs", new DocService());
     this.armeriaServerBuilder.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"));
     this.basePath = basePath;
@@ -166,19 +178,49 @@ public class ArmeriaServerBuilder {
       DecoratingHttpServiceFunction accessDecorator, DecoratingHttpServiceFunction authDecorator) {
     Objects.requireNonNull(accessDecorator, "accessDecorator");
     Objects.requireNonNull(authDecorator, "authDecorator");
+    // routeDecorator is outside annotatedService(), so useBlockingTaskExecutor does not cover it.
+    // Auth and access do the user lookup and Casbin check; leaving them on the event loop stalls
+    // every other stream on the same connection.
     for (DecoratingHttpServiceFunction decorator : List.of(accessDecorator, authDecorator)) {
-      armeriaServerBuilder.routeDecorator().pathPrefix(basePath).build(decorator);
+      DecoratingHttpServiceFunction offLoop = offEventLoop(decorator);
+      armeriaServerBuilder.routeDecorator().pathPrefix(basePath).build(offLoop);
       armeriaServerBuilder
           .routeDecorator()
           .pathPrefix(controlPath)
           .exclude(controlPath + "auth/tokens")
-          .build(decorator);
+          .build(offLoop);
     }
 
     // Also registered globally, where it is outermost and can catch what the route decorators above
     // throw. This instance carries no dialect: it finds the per-service one for the matched route.
     armeriaServerBuilder.decorator(GlobalExceptionHandlingDecorator::new);
     return this;
+  }
+
+  /**
+   * Runs {@code blocking} on the blocking task executor when invoked from an event loop. Already
+   * off the event loop, it runs inline so the access decorator does not take a second pool thread
+   * while the auth decorator still holds one. A failure completes the response exceptionally, which
+   * {@link io.unitycatalog.server.exception.ExceptionHandlingDecorator} renders.
+   */
+  private static DecoratingHttpServiceFunction offEventLoop(
+      DecoratingHttpServiceFunction blocking) {
+    return (delegate, ctx, req) -> {
+      if (!ctx.eventLoop().inEventLoop()) {
+        return blocking.serve(delegate, ctx, req);
+      }
+      CompletableFuture<HttpResponse> response = new CompletableFuture<>();
+      ctx.blockingTaskExecutor()
+          .execute(
+              () -> {
+                try {
+                  response.complete(blocking.serve(delegate, ctx, req));
+                } catch (Throwable failure) {
+                  response.completeExceptionally(failure);
+                }
+              });
+      return HttpResponse.of(response);
+    };
   }
 
   /** Builds the Armeria {@link Server}. */
@@ -245,8 +287,11 @@ public class ArmeriaServerBuilder {
     // covers exceptions thrown inside the handler, the per-service decorator covers those thrown by
     // decorators sitting outside it.
     ExceptionHandlerFunction handler = service.exceptionHandler();
+    // Handlers do blocking JDBC. Without this, Armeria invokes them on the event loop and the
+    // next stream on that connection cannot be read until the method returns.
     armeriaServerBuilder
         .annotatedService()
+        .useBlockingTaskExecutor(true)
         .pathPrefix(protocol.basePath(basePath, controlPath) + relativePath)
         .requestConverters(requestConverter)
         .responseConverters(responseConverters)
