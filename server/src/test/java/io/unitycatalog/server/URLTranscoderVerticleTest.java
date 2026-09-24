@@ -94,6 +94,71 @@ public class URLTranscoderVerticleTest {
     assertThat(response.bodyAsString()).isEqualTo("/echo/catalog.schema");
   }
 
+  @Test
+  public void testLivenessIsAnsweredByTheTranscoder() throws Exception {
+    // The backend echoes the path, so a forwarded probe would come back as "/livez".
+    HttpResponse<Buffer> response = send(HttpMethod.GET, URLTranscoderVerticle.LIVENESS_PATH);
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.bodyAsString()).isEqualTo("OK");
+  }
+
+  @Test
+  public void testLivenessIsAnsweredWhileTheBackendPoolIsFull() throws Exception {
+    // A saturated process must still pass liveness; otherwise a restart drops every held request.
+    CountDownLatch entered = new CountDownLatch(1);
+    List<HttpServerResponse> parked = Collections.synchronizedList(new ArrayList<>());
+    int backendPort = findAvailablePort();
+    int frontPort = findAvailablePort();
+    vertx
+        .createHttpServer()
+        .requestHandler(
+            request -> {
+              parked.add(request.response());
+              entered.countDown();
+            })
+        .listen(backendPort)
+        .toCompletionStage()
+        .toCompletableFuture()
+        .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    vertx
+        .deployVerticle(new URLTranscoderVerticle(frontPort, backendPort, 1))
+        .toCompletionStage()
+        .toCompletableFuture()
+        .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+    WebClient caller = WebClient.create(vertx, new WebClientOptions().setMaxPoolSize(2));
+    try {
+      CompletableFuture<HttpResponse<Buffer>> held =
+          caller
+              .request(HttpMethod.GET, frontPort, HOST, "/hold")
+              .send()
+              .toCompletionStage()
+              .toCompletableFuture();
+      assertThat(entered.await(2, TimeUnit.SECONDS))
+          .as("the only backend connection is in use")
+          .isTrue();
+
+      HttpResponse<Buffer> liveness =
+          caller
+              .request(HttpMethod.GET, frontPort, HOST, URLTranscoderVerticle.LIVENESS_PATH)
+              .send()
+              .toCompletionStage()
+              .toCompletableFuture()
+              .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(liveness.statusCode()).isEqualTo(200);
+      assertThat(liveness.bodyAsString()).isEqualTo("OK");
+      assertThat(parked).as("the probe never reached the backend").hasSize(1);
+
+      end(parked, new AtomicBoolean(false));
+      assertThat(held.get(TIMEOUT_SECONDS, TimeUnit.SECONDS).statusCode()).isEqualTo(200);
+    } finally {
+      end(parked, new AtomicBoolean(false));
+      caller.close();
+    }
+  }
+
   private static HttpResponse<Buffer> send(HttpMethod method, String path) throws Exception {
     // A bounded wait, so a response that is never written fails the test instead of hanging it.
     return client

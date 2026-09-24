@@ -17,10 +17,18 @@ import org.slf4j.LoggerFactory;
  * Rewrites the external port onto Armeria. The forward uses HTTP/1.1, which carries one request per
  * connection, so {@code backendPoolSize} is how many requests can be in flight. The Vert.x default
  * of 5 would cap that below the server's blocking pool.
+ *
+ * <p>{@link #LIVENESS_PATH} is answered here and never forwarded. A liveness probe that went
+ * through the forward would wait for a pool slot like any catalog request, so a process that is
+ * merely saturated would time out the probe and be restarted, dropping every request it was
+ * serving.
  */
 class URLTranscoderVerticle extends AbstractVerticle {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(URLTranscoderVerticle.class);
+
+  /** Liveness endpoint answered by the transcoder itself. Readiness should keep probing Armeria. */
+  static final String LIVENESS_PATH = "/livez";
 
   private final int transcodePort;
   private final int servicePort;
@@ -44,6 +52,10 @@ class URLTranscoderVerticle extends AbstractVerticle {
 
     server.requestHandler(
         transcodeRequest -> {
+          if (LIVENESS_PATH.equals(transcodeRequest.path())) {
+            transcodeRequest.response().end("OK");
+            return;
+          }
           transcodeRequest
               .body()
               .compose(
