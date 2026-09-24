@@ -43,7 +43,10 @@ def icebergSparkTestDeps: Seq[ModuleID] =
   if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 2)) Seq.empty
   else
     Seq(
-      "org.apache.iceberg" % s"iceberg-spark-runtime-${sparkMajorMinorVersion}_2.13" % icebergVersion % Test)
+      "org.apache.iceberg" % s"iceberg-spark-runtime-${sparkMajorMinorVersion}_2.13" % icebergVersion % Test,
+      // iceberg-spark-runtime does not bundle the AWS SDK, so add it (test-only) for the fake-S3
+      // Iceberg tests that inject a mock S3 client into S3FileIO via s3.client-factory-impl.
+      "software.amazon.awssdk" % "bundle" % "2.29.52" % Test)
 
 // Apache Snapshots resolver is in build/sbt-config/repositories (global).
 // No per-module sparkResolvers needed.

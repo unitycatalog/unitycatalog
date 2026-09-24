@@ -26,11 +26,13 @@ import org.junit.jupiter.params.provider.Arguments;
  * catalog-scoped paths, exercising the server's config / namespace / create / commit / load / drop
  * endpoints exactly as an external Iceberg client would.
  *
- * <p>Storage is a local {@code file://} warehouse: the server writes the first metadata file
- * through its native local FileIO and Spark's Iceberg {@code HadoopFileIO} reads and writes data
- * files and later metadata to the same directory, so the full create / write / read / commit path
- * round-trips without cloud credentials. Cloud credential-vending is covered separately by the
- * server-side Iceberg REST catalog tests.
+ * <p>Storage is a local {@code file://} warehouse by default: the server writes the first metadata
+ * file through its native local FileIO and Spark's Iceberg {@code HadoopFileIO} reads and writes
+ * data files and later metadata to the same directory, so the full create / write / read / commit
+ * path round-trips without cloud credentials. A subclass that overrides {@code
+ * managedStorageCloudScheme()} to a cloud scheme (e.g. the s3 emulation) switches both sides onto
+ * the shared fake-bucket harness with credential validation; cloud credential-vending is also
+ * covered by the server-side Iceberg REST catalog tests.
  *
  * <p>Concrete subclasses pick managed ({@link IcebergManagedTableReadWriteTest}) or external
  * ({@link IcebergExternalTableReadWriteTest}) tables, mirroring the Delta {@code
