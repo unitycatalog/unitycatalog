@@ -449,6 +449,9 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       return READ_ONLY;
     }
     UUID principalId = userRepository.findPrincipalId();
+    // No need to check principalId==null:
+    // 1. with auth off: AllowingAuthorizer allows READ_WRITE anyway even if it's null
+    // 2. with auth on and principalId==null: It should have failed earlier before hitting here.
     boolean canWrite =
         authorizer.authorize(principalId, state.tableId(), Privileges.OWNER)
             || authorizer.authorizeAll(
