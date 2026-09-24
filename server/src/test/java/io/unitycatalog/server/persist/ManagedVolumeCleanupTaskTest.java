@@ -3,6 +3,7 @@ package io.unitycatalog.server.persist;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.VolumeType;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
@@ -175,8 +176,13 @@ class ManagedVolumeCleanupTaskTest {
                 repositories
                     .getVolumeRepository()
                     .deleteVolume(CATALOG + "." + SCHEMA + ".rollback_volume"))
-        .isInstanceOf(RuntimeException.class);
+        .isInstanceOf(BaseException.class);
 
+    // The rollback is what these assertions prove: the volume delete and the duplicate task insert
+    // share one transaction, so the insert failure must undo both writes. The volume row is still
+    // present, and the pre-existing task keeps its original location (the failed insert, which
+    // would
+    // have used the volume's own location, left no trace).
     assertThat(findVolume(volume.getId())).isNotNull();
     assertThat(findTask(volume.getId()).getStorageLocation()).isEqualTo(existingTaskLocation);
   }
