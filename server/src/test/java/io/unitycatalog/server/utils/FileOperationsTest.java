@@ -414,6 +414,9 @@ public class FileOperationsTest {
     assertThatThrownBy(() -> fileOps.getCleanupFileIO(path, CooperativeDeadline.NO_DEADLINE))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("No S3 region configured");
+    assertThatThrownBy(() -> fileOps.validateReadAccessConfiguration(path))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("Managed Delta storage requires an S3 region");
   }
 
   @Test
