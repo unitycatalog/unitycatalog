@@ -1,10 +1,17 @@
+import { useMemo } from 'react';
 import { Typography } from 'antd';
 import MetadataList, { MetadataListType } from '../MetadataList';
+import PropertiesDisplay from '../PropertiesDisplay';
 import { formatTimestamp } from '../../utils/formatTimestamp';
 import { FunctionInterface, useGetFunction } from '../../hooks/functions';
 
 const FUNCTION_METADATA: MetadataListType<Omit<FunctionInterface, 'columns'>> =
   [
+    {
+      key: 'owner',
+      label: 'Owner',
+      dataIndex: 'owner',
+    },
     {
       key: 'created_at',
       label: 'Created at',
@@ -43,13 +50,25 @@ export default function FunctionSidebar({
     name: [catalog, schema, ucFunction].join('.'),
   });
 
+  const parsedProperties = useMemo(() => {
+    if (!data?.properties) return undefined;
+    try {
+      return JSON.parse(data.properties);
+    } catch {
+      return undefined;
+    }
+  }, [data?.properties]);
+
   if (!data) return null;
 
   return (
-    <MetadataList
-      title="Function details"
-      metadata={FUNCTION_METADATA}
-      data={data}
-    />
+    <>
+      <MetadataList
+        title="Function details"
+        metadata={FUNCTION_METADATA}
+        data={data}
+      />
+      <PropertiesDisplay properties={parsedProperties} />
+    </>
   );
 }
