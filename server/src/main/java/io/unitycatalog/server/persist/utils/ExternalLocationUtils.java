@@ -15,6 +15,7 @@ import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.Constants;
@@ -695,21 +696,25 @@ public class ExternalLocationUtils {
 
   public static NormalizedURL getManagedLocationForTable(
       NormalizedURL parentStorageLocation, UUID tableId) {
-    return getManagedLocationForEntity(parentStorageLocation, "tables", tableId);
+    return getManagedLocationForEntity(
+        parentStorageLocation, ResourceType.TABLE.pathSegment(), tableId);
   }
 
   public static NormalizedURL getManagedLocationForVolume(
       NormalizedURL parentStorageLocation, UUID volumeId) {
-    return getManagedLocationForEntity(parentStorageLocation, "volumes", volumeId);
+    return getManagedLocationForEntity(
+        parentStorageLocation, ResourceType.VOLUME.pathSegment(), volumeId);
   }
 
   public static NormalizedURL getManagedLocationForModel(
       NormalizedURL parentStorageLocation, UUID modelId) {
-    return getManagedLocationForEntity(parentStorageLocation, "models", modelId);
+    return getManagedLocationForEntity(
+        parentStorageLocation, ResourceType.REGISTERED_MODEL.pathSegment(), modelId);
   }
 
   public static NormalizedURL getManagedLocationForModelVersion(
       NormalizedURL parentModelStorageLocation, UUID modelVersionId) {
-    return getManagedLocationForEntity(parentModelStorageLocation, "versions", modelVersionId);
+    return getManagedLocationForEntity(
+        parentModelStorageLocation, ResourceType.MODEL_VERSION.pathSegment(), modelVersionId);
   }
 }
