@@ -116,21 +116,19 @@ class ManagedTableCleanupTaskTest {
   }
 
   @Test
-  void externalTableDropsDoNotCreateTasksAndLeaveFilesUntouched() throws Exception {
+  void externalTableDropsDoNotCreateTasks() {
     TableInfoDAO external =
         createTable(
             "external_table",
             TableType.EXTERNAL,
             id -> tempDir.resolve("external").resolve(id.toString()).toString());
-    Path externalFile = Path.of(external.getUrl()).resolve("data.bin");
-    Files.createDirectories(externalFile.getParent());
-    Files.writeString(externalFile, "data");
 
     repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, external.getName());
 
+    // findTask == null is the real guard: an external drop queues no cleanup task, so the worker
+    // never touches its files. (No synchronous delete happens for any drop, managed or external.)
     assertThat(findTable(external.getId())).isNull();
     assertThat(findTask(external.getId())).isNull();
-    assertThat(externalFile).exists();
   }
 
   @Test

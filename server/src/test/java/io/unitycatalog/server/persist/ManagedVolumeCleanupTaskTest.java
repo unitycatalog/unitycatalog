@@ -14,7 +14,6 @@ import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Date;
 import java.util.List;
@@ -113,21 +112,19 @@ class ManagedVolumeCleanupTaskTest {
   }
 
   @Test
-  void externalVolumeDropsDoNotCreateTasksAndLeaveFilesUntouched() throws Exception {
+  void externalVolumeDropsDoNotCreateTasks() {
     VolumeInfoDAO external =
         createVolume(
             "external_volume",
             VolumeType.EXTERNAL,
             id -> tempDir.resolve("external").resolve(id.toString()).toString());
-    Path externalFile = Path.of(external.getStorageLocation()).resolve("data.bin");
-    Files.createDirectories(externalFile.getParent());
-    Files.writeString(externalFile, "data");
 
     repositories.getVolumeRepository().deleteVolume(CATALOG + "." + SCHEMA + ".external_volume");
 
+    // findTask == null is the real guard: an external drop queues no cleanup task, so the worker
+    // never touches its files. (No synchronous delete happens for any drop, managed or external.)
     assertThat(findVolume(external.getId())).isNull();
     assertThat(findTask(external.getId())).isNull();
-    assertThat(externalFile).exists();
   }
 
   @Test

@@ -108,11 +108,19 @@ class StorageCleanupWorkerE2ETest {
     seedManagedVolume("vol", volumeId, location);
     putObjects("root/volumes/" + volumeId, "data/part-0", "data/part-1", "_meta/index");
     s3.putObject(b -> b.bucket(bucket).key("root/volumes/other/keep"), RequestBody.fromString("x"));
+    // Shares the volume id as a raw key prefix but is NOT under "<id>/": guards against a
+    // regression that deletes on ".../volumes/<id>" without the trailing slash and so over-deletes
+    // an adjacent volume's storage.
+    s3.putObject(
+        b -> b.bucket(bucket).key("root/volumes/" + volumeId + "-sibling/keep"),
+        RequestBody.fromString("x"));
 
     repositories.getVolumeRepository().deleteVolume(CATALOG + "." + SCHEMA + ".vol");
 
     assertThat(s3BackedWorker().runOnce()).isTrue();
-    assertThat(remainingKeys()).containsExactly("root/volumes/other/keep");
+    assertThat(remainingKeys())
+        .containsExactlyInAnyOrder(
+            "root/volumes/other/keep", "root/volumes/" + volumeId + "-sibling/keep");
     assertThat(findTask(volumeId)).isNull();
   }
 
@@ -174,11 +182,19 @@ class StorageCleanupWorkerE2ETest {
     seedManagedTable("tbl", tableId, location);
     putObjects("root/tables/" + tableId, "_delta_log/00000000000000000000.json", "part-0.parquet");
     s3.putObject(b -> b.bucket(bucket).key("root/tables/other/keep"), RequestBody.fromString("x"));
+    // Shares the table id as a raw key prefix but is NOT under "<id>/": guards against a
+    // regression that deletes on ".../tables/<id>" without the trailing slash and so over-deletes
+    // an adjacent table's storage.
+    s3.putObject(
+        b -> b.bucket(bucket).key("root/tables/" + tableId + "-sibling/keep"),
+        RequestBody.fromString("x"));
 
     repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, "tbl");
 
     assertThat(s3BackedWorker().runOnce()).isTrue();
-    assertThat(remainingKeys()).containsExactly("root/tables/other/keep");
+    assertThat(remainingKeys())
+        .containsExactlyInAnyOrder(
+            "root/tables/other/keep", "root/tables/" + tableId + "-sibling/keep");
     assertThat(findTask(tableId)).isNull();
   }
 
