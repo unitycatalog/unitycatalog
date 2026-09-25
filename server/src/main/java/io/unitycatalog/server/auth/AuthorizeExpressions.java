@@ -30,9 +30,9 @@ public final class AuthorizeExpressions {
       """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #catalog, USE_CATALOG) &&
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
           #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
       """;
 
@@ -77,14 +77,16 @@ public final class AuthorizeExpressions {
    * DeltaCommitsService.postCommit} and the Delta {@code updateTable}). The Delta {@code POST
    * /tables/{name}} endpoint covers both metadata-only updates (properties, columns, comment,
    * protocol, domain metadata) and CCv2 commits, so the privilege bundle is the same as the UC REST
-   * commit path: USE_CATALOG on catalog, USE_SCHEMA on schema, and MODIFY on the table (OWNER
-   * satisfies each tier).
+   * commit path: USE_CATALOG on catalog, USE_SCHEMA on schema, and both SELECT and MODIFY on the
+   * table (OWNER satisfies each tier). SELECT is required alongside MODIFY because a writer must
+   * also be able to read the table it commits to.
    */
   public static final String UPDATE_TABLE =
       """
-      #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-      #authorizeAny(#principal, #table, OWNER, MODIFY)
+      #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+      (#authorize(#principal, #table, OWNER) ||
+          #authorizeAll(#principal, #table, SELECT, MODIFY))
       """;
 
   /**
@@ -95,9 +97,9 @@ public final class AuthorizeExpressions {
   public static final String DELETE_TABLE =
       """
       #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #catalog, USE_CATALOG) &&
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
           #authorize(#principal, #table, OWNER))
       """;
 
@@ -123,8 +125,8 @@ public final class AuthorizeExpressions {
    */
   public static final String VEND_TABLE_CREDENTIAL =
       """
-      #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+      #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
       (#operation == 'READ'
           ? #authorizeAny(#principal, #table, OWNER, SELECT)
           : (#authorize(#principal, #table, OWNER) ||

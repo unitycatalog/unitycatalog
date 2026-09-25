@@ -72,3 +72,11 @@ bin/uc volume read --full_name unity.default.my_volume
 ```
 
 ![UC Volume read external](../assets/images/uc_volume_read_external.png)
+
+## Deleting volumes
+
+Deleting an external volume removes its catalog entry but leaves its files unchanged.
+Deleting a managed volume removes its catalog entry and queues its files for background cleanup.
+The worker waits for `server.storage-cleanup.initial-delay` before deleting the files. Failed attempts
+are retried. Forced schema and catalog deletion use the same cleanup process for managed volumes.
+The delay does not provide an undelete operation.
