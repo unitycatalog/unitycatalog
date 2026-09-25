@@ -21,6 +21,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.BatchSize;
 
 // Hibernate annotations
 @Entity
@@ -75,6 +76,9 @@ public class TableInfoDAO extends IdentifiableDAO {
       cascade = CascadeType.ALL,
       orphanRemoval = true,
       fetch = FetchType.LAZY)
+  // listTables reads the columns of a whole page of tables; initialize them in batches instead of
+  // one query per table.
+  @BatchSize(size = 100)
   private List<ColumnInfoDAO> columns;
 
   @Lob
