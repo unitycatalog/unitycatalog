@@ -1067,10 +1067,13 @@ public class TableRepository {
 
   /**
    * One page of the tables in a schema that carry an Iceberg metadata pointer, and the token for
-   * the page after it. An empty {@code nextPageToken} means the listing is complete. The names are
-   * only the tables that carry one, so a page can be empty while more pages remain.
+   * the page after it. An empty {@code nextPageToken} means the listing is complete. The DAOs are
+   * only the ones that carry one, so a page can be empty while more pages remain. The raw DAOs are
+   * returned (rather than converted {@code TableInfo}s) so a caller can authorize the listing per
+   * table by id and read each name without materializing an API model; callers must read only eager
+   * fields ({@code id}, {@code name}), since the rows are detached once the page returns.
    */
-  public record IcebergTablePage(List<String> tableNames, Optional<String> nextPageToken) {}
+  public record IcebergTablePage(List<TableInfoDAO> tableDaos, Optional<String> nextPageToken) {}
 
   /**
    * Lists the tables in a schema that carry an Iceberg metadata pointer -- a Delta UniForm
@@ -1095,13 +1098,10 @@ public class TableRepository {
           List<TableInfoDAO> page =
               LISTING_HELPER.listEntity(session, Optional.empty(), pageToken, schemaId);
           String nextPageToken = LISTING_HELPER.getNextPageToken(page, Optional.empty());
-          List<String> tableNames =
-              page.stream()
-                  .filter(dao -> dao.getIcebergMetadataLocation() != null)
-                  .map(TableInfoDAO::getName)
-                  .toList();
+          List<TableInfoDAO> tableDaos =
+              page.stream().filter(dao -> dao.getIcebergMetadataLocation() != null).toList();
           return new IcebergTablePage(
-              tableNames, Optional.ofNullable(nextPageToken).filter(token -> !token.isEmpty()));
+              tableDaos, Optional.ofNullable(nextPageToken).filter(token -> !token.isEmpty()));
         },
         "Failed to list tables",
         /* readOnly= */ true);

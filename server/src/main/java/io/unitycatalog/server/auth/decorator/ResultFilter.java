@@ -14,6 +14,7 @@ import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.VolumeInfo;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.service.AuthorizedService;
 import java.util.HashMap;
 import java.util.List;
@@ -174,7 +175,12 @@ public class ResultFilter {
   private UUID resolveResourceId(SecurableType securableType, Object item) {
     String id =
         switch (securableType) {
-          case TABLE -> ((TableInfo) item).getTableId();
+          // Table listings may filter over either the API model or the raw DAO (the Iceberg REST
+          // listTables path passes DAOs straight through to avoid materializing a TableInfo).
+          case TABLE ->
+              item instanceof TableInfoDAO dao
+                  ? dao.getId().toString()
+                  : ((TableInfo) item).getTableId();
           case VOLUME -> ((VolumeInfo) item).getVolumeId();
           case FUNCTION -> ((FunctionInfo) item).getFunctionId();
           case REGISTERED_MODEL -> ((RegisteredModelInfo) item).getId();
