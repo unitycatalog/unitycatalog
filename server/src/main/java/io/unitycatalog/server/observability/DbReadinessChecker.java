@@ -3,6 +3,7 @@ package io.unitycatalog.server.observability;
 import com.linecorp.armeria.server.healthcheck.ListenableHealthChecker;
 import com.linecorp.armeria.server.healthcheck.SettableHealthChecker;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -20,9 +21,12 @@ public class DbReadinessChecker implements AutoCloseable {
 
   private static final Logger LOG = LoggerFactory.getLogger(DbReadinessChecker.class);
 
+  /** How long {@link #close()} waits for an in-flight probe to finish before returning. */
+  private static final long SHUTDOWN_AWAIT_SECONDS = 2;
+
   /** A single reachability check against the database. */
   @FunctionalInterface
-  public interface DbProbe {
+  interface DbProbe {
     boolean isReachable() throws Exception;
   }
 
@@ -30,20 +34,30 @@ public class DbReadinessChecker implements AutoCloseable {
   private final Duration interval;
   // Starts not-ready: /readyz returns 503 until the first probe confirms DB is reachable.
   private final SettableHealthChecker health = new SettableHealthChecker(false);
-  private ScheduledExecutorService executor;
+  private ScheduledExecutorService scheduler;
+  // Set while shutting down so the interrupt from close() is not logged as a probe failure.
+  private volatile boolean closing;
 
-  public DbReadinessChecker(DbProbe probe, Duration interval) {
-    this.probe = probe;
+  DbReadinessChecker(DbProbe probe, Duration interval) {
+    this.probe = Objects.requireNonNull(probe, "probe");
     this.interval = interval;
   }
 
-  /** Production factory: probes via {@code Connection.isValid(2s)} on a short-lived session. */
+  /**
+   * Production factory: probes via {@code Connection.isValid} on a short-lived session. {@code
+   * dbTimeout} bounds only the validity check, not connection acquisition: if the DB is
+   * unreachable, opening the session can block on the driver/pool's connect timeout — including the
+   * synchronous probe {@link #start()} runs on the startup thread. Configure the connection pool's
+   * connect timeout to bound that.
+   */
   public static DbReadinessChecker forSessionFactory(
-      SessionFactory sessionFactory, Duration interval) {
+      SessionFactory sessionFactory, Duration interval, Duration dbTimeout) {
+    // Connection.isValid takes whole seconds; treat any positive sub-second timeout as 1s.
+    int timeoutSeconds = (int) Math.max(1, dbTimeout.toSeconds());
     DbProbe probe =
         () -> {
           try (var session = sessionFactory.openSession()) {
-            return session.doReturningWork(conn -> conn.isValid(2));
+            return session.doReturningWork(conn -> conn.isValid(timeoutSeconds));
           }
         };
     return new DbReadinessChecker(probe, interval);
@@ -58,8 +72,12 @@ public class DbReadinessChecker implements AutoCloseable {
     boolean healthy;
     try {
       healthy = probe.isReachable();
-    } catch (Exception e) {
-      LOG.warn("Readiness DB probe failed; marking not-ready", e);
+    } catch (Throwable t) {
+      // Catch Throwable, not just Exception: an Error escaping a scheduleAtFixedRate task would
+      // silently cancel all future runs and freeze readiness. Fail closed on anything.
+      if (!closing) {
+        LOG.warn("Readiness DB probe failed; marking not-ready", t);
+      }
       healthy = false;
     }
     health.setHealthy(healthy);
@@ -69,26 +87,38 @@ public class DbReadinessChecker implements AutoCloseable {
    * Synchronous initial probe (on the calling/startup thread), then periodic background refresh.
    */
   public synchronized void start() {
-    if (executor != null) {
+    if (scheduler != null) {
       return;
     }
+    closing = false;
     refresh();
-    executor =
+    scheduler =
         Executors.newSingleThreadScheduledExecutor(
             r -> {
               Thread t = new Thread(r, "db-readiness-checker");
               t.setDaemon(true);
               return t;
             });
-    executor.scheduleAtFixedRate(
+    scheduler.scheduleAtFixedRate(
         this::refresh, interval.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS);
   }
 
   @Override
   public synchronized void close() {
-    if (executor != null) {
-      executor.shutdownNow();
-      executor = null;
+    closing = true;
+    if (scheduler == null) {
+      return;
+    }
+    scheduler.shutdownNow();
+    try {
+      // Wait briefly so an in-flight probe finishes before the caller closes the SessionFactory.
+      if (!scheduler.awaitTermination(SHUTDOWN_AWAIT_SECONDS, TimeUnit.SECONDS)) {
+        LOG.warn("Readiness probe did not stop within {}s of shutdown", SHUTDOWN_AWAIT_SECONDS);
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    } finally {
+      scheduler = null;
     }
   }
 }
