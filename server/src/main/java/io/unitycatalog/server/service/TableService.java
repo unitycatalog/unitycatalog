@@ -96,12 +96,13 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
     serverProperties.checkDeltaApiOnlyForManagedTable(
         createTable.getTableType(), "POST /delta/v1/catalogs/{catalog}/schemas/{schema}/tables");
     TableInfo tableInfo = tableRepository.createTable(createTable);
+    // Count the table as soon as it is persisted; a failure while building the response below must
+    // not undercount a table that was actually created.
+    tablesCreated.increment();
 
     SchemaInfo schemaInfo =
         schemaRepository.getSchema(tableInfo.getCatalogName() + "." + tableInfo.getSchemaName());
     initializeHierarchicalAuthorization(tableInfo.getTableId(), schemaInfo.getSchemaId());
-
-    tablesCreated.increment();
     return HttpResponse.ofJson(tableInfo);
   }
 

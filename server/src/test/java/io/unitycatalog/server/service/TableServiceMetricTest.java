@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -22,16 +23,22 @@ import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class TableServiceMetricTest {
 
-  @Test
-  public void createTableIncrementsCounter() {
+  private TableRepository tableRepository;
+  private SchemaRepository schemaRepository;
+  private SimpleMeterRegistry registry;
+  private TableService service;
+
+  @BeforeEach
+  public void setUp() {
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
     Repositories repositories = mock(Repositories.class);
-    TableRepository tableRepository = mock(TableRepository.class);
-    SchemaRepository schemaRepository = mock(SchemaRepository.class);
+    tableRepository = mock(TableRepository.class);
+    schemaRepository = mock(SchemaRepository.class);
     UserRepository userRepository = mock(UserRepository.class);
     KeyMapper keyMapper = mock(KeyMapper.class);
     ServerProperties serverProperties = mock(ServerProperties.class);
@@ -40,36 +47,72 @@ public class TableServiceMetricTest {
     when(repositories.getSchemaRepository()).thenReturn(schemaRepository);
     when(repositories.getUserRepository()).thenReturn(userRepository);
     when(repositories.getKeyMapper()).thenReturn(keyMapper);
+    when(userRepository.findPrincipalId()).thenReturn(UUID.randomUUID());
 
+    // The counter is registered in the constructor, so it reads 0 before any create.
+    registry = new SimpleMeterRegistry();
+    service = new TableService(authorizer, repositories, serverProperties, registry);
+  }
+
+  @Test
+  public void createTableIncrementsCounter() {
     String tableId = UUID.randomUUID().toString();
     String schemaId = UUID.randomUUID().toString();
     when(tableRepository.createTable(any()))
         .thenReturn(new TableInfo().catalogName("c").schemaName("s").tableId(tableId));
     when(schemaRepository.getSchema("c.s")).thenReturn(new SchemaInfo().schemaId(schemaId));
-    when(userRepository.findPrincipalId()).thenReturn(UUID.randomUUID());
 
-    SimpleMeterRegistry registry = new SimpleMeterRegistry();
-    TableService service = new TableService(authorizer, repositories, serverProperties, registry);
+    service.createTable(sampleCreateTable());
 
-    CreateTable createTable =
-        new CreateTable()
-            .name("t")
-            .catalogName("c")
-            .schemaName("s")
-            .columns(
-                List.of(
-                    new ColumnInfo()
-                        .name("col1")
-                        .typeName(ColumnTypeName.INT)
-                        .typeText("INTEGER")
-                        .position(0)
-                        .nullable(true)))
-            .tableType(TableType.EXTERNAL)
-            .dataSourceFormat(DataSourceFormat.DELTA)
-            .storageLocation("/tmp/t");
+    assertThat(counterValue()).isEqualTo(1.0);
+  }
 
-    service.createTable(createTable);
+  @Test
+  public void failedCreateDoesNotIncrementCounter() {
+    // createTable() calls the repository before touching the counter, so a create failure must
+    // leave the counter untouched — we only count tables that were actually created.
+    when(tableRepository.createTable(any())).thenThrow(new RuntimeException("create failed"));
 
-    assertThat(registry.get("uc.tables.created").counter().count()).isEqualTo(1.0);
+    assertThatThrownBy(() -> service.createTable(sampleCreateTable()))
+        .isInstanceOf(RuntimeException.class);
+
+    assertThat(counterValue()).isEqualTo(0.0);
+  }
+
+  @Test
+  public void createTableCountsEvenIfResponseBuildingFails() {
+    // The table is persisted by tableRepository.createTable(); a failure in a later step (here,
+    // resolving the schema for the response) must still count the table that was created.
+    String tableId = UUID.randomUUID().toString();
+    when(tableRepository.createTable(any()))
+        .thenReturn(new TableInfo().catalogName("c").schemaName("s").tableId(tableId));
+    when(schemaRepository.getSchema("c.s")).thenThrow(new RuntimeException("schema lookup failed"));
+
+    assertThatThrownBy(() -> service.createTable(sampleCreateTable()))
+        .isInstanceOf(RuntimeException.class);
+
+    assertThat(counterValue()).isEqualTo(1.0);
+  }
+
+  private double counterValue() {
+    return registry.get("uc.tables.created").counter().count();
+  }
+
+  private static CreateTable sampleCreateTable() {
+    return new CreateTable()
+        .name("t")
+        .catalogName("c")
+        .schemaName("s")
+        .columns(
+            List.of(
+                new ColumnInfo()
+                    .name("col1")
+                    .typeName(ColumnTypeName.INT)
+                    .typeText("INTEGER")
+                    .position(0)
+                    .nullable(true)))
+        .tableType(TableType.EXTERNAL)
+        .dataSourceFormat(DataSourceFormat.DELTA)
+        .storageLocation("/tmp/t");
   }
 }

@@ -56,7 +56,6 @@ import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.time.Clock;
 import java.util.concurrent.CompletionException;
 import org.apache.logging.log4j.core.config.Configurator;
@@ -82,6 +81,12 @@ public class UnityCatalogServer implements AutoCloseable {
   /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private StorageCleanupWorker cleanupWorker;
 
+  /**
+   * Process-wide metrics registry; set during {@link #initializeServer}. Closed on shutdown to
+   * release the JVM/GC metric listeners it binds (may be null if construction fails early).
+   */
+  private MetricsRegistries.PrometheusMetrics metrics;
+
   static {
     System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
     Configurator.initialize(null, "etc/conf/server.log4j2.properties");
@@ -106,8 +111,9 @@ public class UnityCatalogServer implements AutoCloseable {
       // Construction failed after the SessionFactory was built; close it so a failed boot does
       // not leak its connection pool. Errors matter as much as RuntimeExceptions here: a
       // NoClassDefFoundError out of initializeServer() would leak the pool just the same.
-      closeCleanupWorker(t);
-      closeAuthorizer(t);
+      closeQuietly(metrics, t, "the metrics registry");
+      closeQuietly(cleanupWorker, t, "the storage cleanup worker");
+      closeQuietly(authorizer instanceof AutoCloseable c ? c : null, t, "the authorizer");
       closeOwnedSessionFactory(t);
       throw t;
     }
@@ -128,18 +134,23 @@ public class UnityCatalogServer implements AutoCloseable {
     }
   }
 
-  /** Stops the authorizer if closeable; failures are suppressed onto {@code primaryFailure}. */
-  private void closeAuthorizer(Throwable primaryFailure) {
-    if (!(authorizer instanceof AutoCloseable closeable)) {
+  /**
+   * Closes a cleanup resource without letting its own failure abort the caller. The failure is
+   * attached to {@code primaryFailure} when there is one, otherwise logged. Catches {@link
+   * Throwable} so an {@link Error} cannot break a cleanup chain that still has resources (notably
+   * the SessionFactory) left to release.
+   */
+  private void closeQuietly(AutoCloseable resource, Throwable primaryFailure, String description) {
+    if (resource == null) {
       return;
     }
     try {
-      closeable.close();
-    } catch (Exception closeFailure) {
+      resource.close();
+    } catch (Throwable closeFailure) {
       if (primaryFailure != null) {
         primaryFailure.addSuppressed(closeFailure);
       } else {
-        LOGGER.warn("Failed to close the authorizer", closeFailure);
+        LOGGER.warn("Failed to close {}", description, closeFailure);
       }
     }
   }
@@ -162,8 +173,10 @@ public class UnityCatalogServer implements AutoCloseable {
             unityCatalogServerBuilder.serverProperties);
 
     // Metrics: one process-wide Prometheus registry. Armeria records its own request metrics into
-    // it (via meterRegistry + the MetricCollectingService decorator); /metrics scrapes it.
-    PrometheusMeterRegistry meterRegistry = MetricsRegistries.createPrometheus();
+    // it (via meterRegistry + the MetricCollectingService decorator); /metrics scrapes it. Held as
+    // a field so close() can release the JVM/GC binders on shutdown.
+    metrics = MetricsRegistries.createPrometheus();
+    PrometheusMeterRegistry meterRegistry = metrics.registry();
     armeriaServerBuilder.meterRegistry(meterRegistry);
     armeriaServerBuilder.service(
         "/metrics", PrometheusExpositionService.of(meterRegistry.getPrometheusRegistry()));
@@ -192,7 +205,8 @@ public class UnityCatalogServer implements AutoCloseable {
     initializeCleanup(unityCatalogServerBuilder.serverProperties, repositories);
 
     // Observability: unauthenticated liveness probe at root. HealthCheckService.of() has no
-    // checkers, so it is always healthy while the process is serving (never touches the DB).
+    // checkers, so it is healthy while the process is serving and never touches the DB. Like
+    // /readyz it flips to 503 once graceful shutdown begins (HealthCheckService drains on stop).
     armeriaServerBuilder.service("/livez", HealthCheckService.of());
 
     // Readiness: 503 until the DB is reachable. The check runs on a background scheduler
@@ -201,7 +215,9 @@ public class UnityCatalogServer implements AutoCloseable {
     // shutdown. HealthCheckService also flips these probes to 503 during graceful shutdown.
     DbReadinessChecker readinessChecker =
         DbReadinessChecker.forSessionFactory(
-            hibernateConfigurator.getSessionFactory(), Duration.ofSeconds(5));
+            hibernateConfigurator.getSessionFactory(),
+            unityCatalogServerBuilder.serverProperties.getReadinessProbeInterval(),
+            unityCatalogServerBuilder.serverProperties.getReadinessDbTimeout());
     armeriaServerBuilder.service(
         "/readyz", HealthCheckService.builder().checkers(readinessChecker.healthChecker()).build());
     armeriaServerBuilder.serverListener(
@@ -220,21 +236,6 @@ public class UnityCatalogServer implements AutoCloseable {
             repositories.getFileOperations(),
             Clock.systemUTC(),
             serverProperties);
-  }
-
-  private void closeCleanupWorker(Throwable primaryFailure) {
-    if (cleanupWorker == null) {
-      return;
-    }
-    try {
-      cleanupWorker.close();
-    } catch (Throwable closeFailure) {
-      if (primaryFailure != null) {
-        primaryFailure.addSuppressed(closeFailure);
-      } else {
-        LOGGER.warn("Failed to close the storage cleanup worker", closeFailure);
-      }
-    }
   }
 
   private UnityCatalogAuthorizer initializeAuthorizer(
@@ -417,8 +418,9 @@ public class UnityCatalogServer implements AutoCloseable {
     try {
       stop();
     } finally {
-      closeCleanupWorker(null);
-      closeAuthorizer(null);
+      closeQuietly(metrics, null, "the metrics registry");
+      closeQuietly(cleanupWorker, null, "the storage cleanup worker");
+      closeQuietly(authorizer instanceof AutoCloseable c ? c : null, null, "the authorizer");
       if (ownsHibernateConfigurator) {
         hibernateConfigurator.getSessionFactory().close();
       }

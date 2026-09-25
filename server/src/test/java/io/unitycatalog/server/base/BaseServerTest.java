@@ -7,6 +7,10 @@ import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -105,6 +109,14 @@ public abstract class BaseServerTest {
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);
     }
+  }
+
+  /** Issues a GET against the running test server and returns the string response. */
+  @SneakyThrows
+  protected static HttpResponse<String> httpGet(String path) {
+    HttpRequest request =
+        HttpRequest.newBuilder().uri(URI.create(serverConfig.getServerUrl() + path)).GET().build();
+    return HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
   }
 
   /** Finds an available port for the UC server. */

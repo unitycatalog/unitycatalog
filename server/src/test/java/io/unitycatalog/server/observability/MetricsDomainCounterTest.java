@@ -11,9 +11,6 @@ import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TestUtils;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
@@ -46,13 +43,7 @@ public class MetricsDomainCounterTest extends BaseTableCRUDTestEnv {
     createAndVerifyExternalTable();
 
     // Scrape the live /metrics endpoint and assert the uc_tables_created counter is present.
-    HttpClient client = HttpClient.newHttpClient();
-    HttpRequest request =
-        HttpRequest.newBuilder()
-            .uri(URI.create(serverConfig.getServerUrl() + "/metrics"))
-            .GET()
-            .build();
-    HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+    HttpResponse<String> response = httpGet("/metrics");
 
     assertThat(response.statusCode()).isEqualTo(200);
     assertThat(response.body()).contains("uc_tables_created");
@@ -62,12 +53,22 @@ public class MetricsDomainCounterTest extends BaseTableCRUDTestEnv {
         response
             .body()
             .lines()
-            .filter(line -> line.startsWith("uc_tables_created_total "))
+            // Match the sample line whether or not the counter gains label tags later:
+            //   uc_tables_created_total 1.0   OR   uc_tables_created_total{k="v"} 1.0
+            // (HELP/TYPE comment lines start with '#', so they are excluded.)
+            .filter(line -> line.startsWith("uc_tables_created_total"))
             .mapToDouble(line -> Double.parseDouble(line.substring(line.lastIndexOf(' ') + 1)))
             .findFirst()
             .orElse(0.0);
     assertThat(created)
         .as("uc_tables_created_total should be >= 1 after creating a table")
         .isGreaterThanOrEqualTo(1.0);
+
+    // The create-table call above is a real API request, so the MetricCollectingService decorator
+    // (installed by ArmeriaServerBuilder.meterRegistry) must have recorded per-request http_server_
+    // series. This guards against that decorator being dropped. (Health-check routes like /livez
+    // are
+    // not recorded by the decorator, so this assertion relies on the SDK's API traffic.)
+    assertThat(response.body()).contains("http_server_");
   }
 }
