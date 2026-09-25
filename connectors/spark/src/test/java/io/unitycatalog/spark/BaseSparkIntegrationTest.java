@@ -12,9 +12,12 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.service.credential.gcp.TestingCredentialGenerator;
+import io.unitycatalog.server.utils.LocalMappingFileOperations;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import io.unitycatalog.spark.utils.OptionsUtil;
@@ -32,12 +35,30 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   protected ArrayList<String> createdCatalogs = new ArrayList<>();
   protected static final String SPARK_CATALOG = "spark_catalog";
 
+  /** The server's Iceberg REST catalog path, served under the UC base path. */
+  private static final String ICEBERG_REST_PATH = "/api/2.1/unity-catalog/iceberg";
+
   /** S3 bucket with no credentials configured on server - for testing SSP fallback. */
   public static final String NO_CREDS_BUCKET = "test-bucket-2-no-creds";
 
   private SchemaOperations schemaOperations;
   // Each test would create this session. It will be closed automatically.
   protected SparkSession session;
+
+  // Maps the emulated cloud storage root to the test directory when Iceberg runs on it; registered
+  // in setUp() once the server (and its storage root property) is up.
+  private LocalMappingFileOperations mappingFileOperations;
+
+  /**
+   * True when this suite drives the given catalog as Iceberg's own REST {@code SparkCatalog}
+   * against the server's Iceberg REST catalog, rather than through the UC Spark connector (which
+   * has no Iceberg support). Per catalog, so one session can mix both (e.g. a Delta join against
+   * Iceberg); subclasses flip this, and {@link #createSparkSessionWithCatalogs} is the only
+   * consumer, so no subclass needs to re-implement session creation.
+   */
+  protected boolean isIcebergCatalog(String catalog) {
+    return false;
+  }
 
   private void createCommonResources() throws ApiException {
     // Common setup operations such as creating a catalog and schema
@@ -52,24 +73,45 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     return createSparkSessionWithCatalogs(true, true, catalogs);
   }
 
+  /** The base Spark builder shared by all integration tests (local master, small shuffle width). */
+  protected SparkSession.Builder newSparkSessionBuilder() {
+    return SparkSession.builder()
+        .appName("test")
+        .master("local[*]")
+        .config("spark.sql.shuffle.partitions", "4");
+  }
+
   protected SparkSession createSparkSessionWithCatalogs(
       boolean renewCred, boolean credScopedFsEnabled, String... catalogs) {
-    SparkSession.Builder builder =
-        SparkSession.builder()
-            .appName("test")
-            .master("local[*]")
-            .config("spark.sql.shuffle.partitions", "4")
-            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension");
+    // renewCred / credScopedFsEnabled are UC-connector options with no Iceberg REST analog.
+    // A catalog is wired either as an Iceberg REST catalog or through the UC connector
+    // (UCSingleCatalog), which serves Delta, Parquet, and the other non-Iceberg formats.
+    boolean anyIceberg = false;
+    boolean anyUcConnector = false;
     for (String catalog : catalogs) {
-      String catalogConf = "spark.sql.catalog." + catalog;
+      if (isIcebergCatalog(catalog)) {
+        anyIceberg = true;
+      } else {
+        anyUcConnector = true;
+      }
+    }
+    // Both extensions can coexist in one session, which is what lets a single query join a Delta
+    // table against an Iceberg table. The UC connector carries Delta support, so its path loads the
+    // Delta extension (harmless for the non-Delta formats it also serves, e.g. Parquet).
+    List<String> extensions = new ArrayList<>();
+    if (anyUcConnector) {
+      extensions.add("io.delta.sql.DeltaSparkSessionExtension");
+    }
+    if (anyIceberg) {
+      extensions.add("org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions");
+    }
+    SparkSession.Builder builder =
+        newSparkSessionBuilder().config("spark.sql.extensions", String.join(",", extensions));
+    for (String catalog : catalogs) {
       builder =
-          builder
-              .config(catalogConf, UCSingleCatalog.class.getName())
-              .config(catalogConf + "." + OptionsUtil.URI, serverConfig.getServerUrl())
-              .config(catalogConf + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken())
-              .config(catalogConf + "." + OptionsUtil.WAREHOUSE, catalog)
-              .config(catalogConf + "." + OptionsUtil.RENEW_CREDENTIAL_ENABLED, renewCred)
-              .config(catalogConf + "." + OptionsUtil.CRED_SCOPED_FS_ENABLED, credScopedFsEnabled);
+          isIcebergCatalog(catalog)
+              ? icebergCatalogConfig(builder, catalog)
+              : ucSingleCatalogConfig(builder, catalog, renewCred, credScopedFsEnabled);
       if (!List.of(SPARK_CATALOG, CATALOG_NAME).contains(catalog)) {
         createTestCatalog(catalog);
       }
@@ -78,15 +120,62 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     // (DeltaLog.checkRequiredConfigurations); otherwise a Delta table -- even in a named UC catalog
     // -- fails with DELTA_CONFIGURE_SPARK_SESSION_WITH_EXTENSION_AND_CATALOG. When the caller did
     // not configure spark_catalog above, point it at Delta's own catalog to satisfy that check.
-    if (!List.of(catalogs).contains(SPARK_CATALOG)) {
+    // This applies to any UC-connector session (the connector may serve Delta); Iceberg has no such
+    // requirement and these suites address tables only through the named UC catalog, so a
+    // pure-Iceberg session needs no spark_catalog override and leaves it as the built-in one.
+    if (anyUcConnector && !List.of(catalogs).contains(SPARK_CATALOG)) {
       builder.config(
-          "spark.sql.catalog." + SPARK_CATALOG, "org.apache.spark.sql.delta.catalog.DeltaCatalog");
+          catalogConfKey(SPARK_CATALOG), "org.apache.spark.sql.delta.catalog.DeltaCatalog");
     }
     // Use fake file system for cloud storage so that we can test credentials.
     builder.config("spark.hadoop.fs.s3.impl", S3CredentialTestFileSystem.class.getName());
     builder.config("spark.hadoop.fs.gs.impl", GCSCredentialTestFileSystem.class.getName());
     builder.config("spark.hadoop.fs.abfs.impl", AzureCredentialTestFileSystem.class.getName());
     return builder.getOrCreate();
+  }
+
+  /** The Spark SQL config key prefix for a catalog, e.g. {@code spark.sql.catalog.<name>}. */
+  private static String catalogConfKey(String catalog) {
+    return "spark.sql.catalog." + catalog;
+  }
+
+  /** Wires one catalog through the UC Spark connector ({@link UCSingleCatalog}), the Delta path. */
+  private SparkSession.Builder ucSingleCatalogConfig(
+      SparkSession.Builder builder,
+      String catalog,
+      boolean renewCred,
+      boolean credScopedFsEnabled) {
+    String catalogConf = catalogConfKey(catalog);
+    return builder
+        .config(catalogConf, UCSingleCatalog.class.getName())
+        .config(catalogConf + "." + OptionsUtil.URI, serverConfig.getServerUrl())
+        .config(catalogConf + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken())
+        .config(catalogConf + "." + OptionsUtil.WAREHOUSE, catalog)
+        .config(catalogConf + "." + OptionsUtil.RENEW_CREDENTIAL_ENABLED, renewCred)
+        .config(catalogConf + "." + OptionsUtil.CRED_SCOPED_FS_ENABLED, credScopedFsEnabled);
+  }
+
+  /**
+   * Wires one catalog as Iceberg's REST {@code SparkCatalog} against the server's Iceberg REST
+   * catalog, with the client FileIO following the storage scheme: on emulated S3 the table consumes
+   * the credentials UC vends through a mock S3 client ({@code MockS3ClientFactory}); otherwise data
+   * files read and write locally through {@code HadoopFileIO}.
+   */
+  private SparkSession.Builder icebergCatalogConfig(SparkSession.Builder builder, String catalog) {
+    String catalogConf = catalogConfKey(catalog);
+    builder =
+        builder
+            .config(catalogConf, "org.apache.iceberg.spark.SparkCatalog")
+            .config(catalogConf + ".type", "rest")
+            .config(catalogConf + ".uri", serverConfig.getServerUrl() + ICEBERG_REST_PATH)
+            .config(catalogConf + ".warehouse", catalog)
+            .config(catalogConf + ".token", serverConfig.getAuthToken());
+    if ("s3".equals(managedStorageCloudScheme())) {
+      return builder
+          .config(catalogConf + ".io-impl", "org.apache.iceberg.aws.s3.S3FileIO")
+          .config(catalogConf + ".s3.client-factory-impl", FakeS3.MOCK_S3_CLIENT_FACTORY);
+    }
+    return builder.config(catalogConf + ".io-impl", "org.apache.iceberg.hadoop.HadoopFileIO");
   }
 
   protected List<Row> sql(String statement, Object... args) {
@@ -101,10 +190,25 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     return runMajor > major || (runMajor == major && runMinor >= minor);
   }
 
+  /**
+   * True when Iceberg tables sit on emulated cloud storage (currently only s3). The Iceberg suites
+   * always drive {@code CATALOG_NAME} as their Iceberg catalog, so asking about it answers for the
+   * suite's server-side Iceberg IO.
+   */
+  private boolean icebergOnEmulatedCloud() {
+    return isIcebergCatalog(CATALOG_NAME) && !"file".equals(managedStorageCloudScheme());
+  }
+
   @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
+    if (icebergOnEmulatedCloud()) {
+      // Map the emulated storage root (s3://bucket/<test dir>) onto that test directory; the
+      // client-side mock maps the same object keys to the same absolute local paths.
+      mappingFileOperations.mapLocation(
+          NormalizedURL.from(tableStorageRoot), testDirectoryRoot.toAbsolutePath());
+    }
     // Some Delta Spark functionalities needs testing mode to be turned on so that we can test.
     // Specifically the file CreateDeltaTableCommand.scala in Delta checks for Utils.isTesting
     // before allowing catalog owned table creation.
@@ -115,6 +219,22 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     } catch (ApiException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  /**
+   * When Iceberg runs on emulated cloud storage, the server itself reads and writes Iceberg
+   * metadata for those tables; map that IO onto the test directory while still vending and
+   * validating the real credentials, so the server side shares the fake bucket with the client
+   * side.
+   */
+  @Override
+  protected FileOperations decorateFileOperations(FileOperations fileOperations) {
+    if (icebergOnEmulatedCloud()) {
+      mappingFileOperations =
+          new LocalMappingFileOperations(fileOperations, FakeS3.EXPECTED_VENDED_CREDENTIALS);
+      return mappingFileOperations;
+    }
+    return fileOperations;
   }
 
   @Override
@@ -154,6 +274,11 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     serverProperties.put("adls.clientId.1", "clientId1");
     serverProperties.put("adls.clientSecret.1", "clientSecret1");
     serverProperties.put("adls.testMode.1", "true");
+
+    if (icebergOnEmulatedCloud()) {
+      // The S3 FileIO config the server vends requires a configured region for the bucket.
+      serverProperties.put("s3.region.0", TestUtils.TEST_AWS_REGION);
+    }
   }
 
   @Override

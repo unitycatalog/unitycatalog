@@ -35,6 +35,19 @@ def deltaSparkTestDeps: Seq[ModuleID] =
   if (sys.props.getOrElse("skipDeltaSpark", "false").toBoolean) Seq.empty
   else Seq("io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test)
 
+// iceberg-spark-runtime is published for Spark 4.0 and 4.1 (Iceberg 1.11.0) but not Spark 4.2, so
+// it is added only for the versions that have a runtime. The Iceberg-on-Spark integration test
+// source lives under src/test/scala-shims/spark-4.0-4.1, which is compiled only for those
+// versions, so nothing references this dep on Spark 4.2.
+def icebergSparkTestDeps: Seq[ModuleID] =
+  if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 2)) Seq.empty
+  else
+    Seq(
+      "org.apache.iceberg" % s"iceberg-spark-runtime-${sparkMajorMinorVersion}_2.13" % icebergVersion % Test,
+      // iceberg-spark-runtime does not bundle the AWS SDK, so add it (test-only) for the fake-S3
+      // Iceberg tests that inject a mock S3 client into S3FileIO via s3.client-factory-impl.
+      "software.amazon.awssdk" % "bundle" % "2.29.52" % Test)
+
 // Apache Snapshots resolver is in build/sbt-config/repositories (global).
 // No per-module sparkResolvers needed.
 lazy val hadoopVersion = sys.props.getOrElse("hadoopVersion", "3.4.2")
@@ -658,6 +671,8 @@ lazy val spark = (project in file("connectors/spark"))
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
       "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED",
     ),
+    // Arrow-backed vectorized reads need java.nio opened for off-heap memory access.
+    Test / javaOptions += "--add-opens=java.base/java.nio=ALL-UNNAMED",
     javafmtCheckSettings(),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
     Compile / compile / javacOptions ++= javacRelease11,
@@ -706,7 +721,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-    ) ++ deltaSparkTestDeps,
+    ) ++ deltaSparkTestDeps ++ icebergSparkTestDeps,
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
