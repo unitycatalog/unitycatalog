@@ -1,0 +1,323 @@
+name: Build and Push Docker Images - unitycatalog
+
+on:
+  push:
+    tags:
+      - "v*"
+    branches:
+      - main
+    paths:
+      - build/**
+      - project/**
+      - examples/**
+      - server/**
+      - api/**
+      - clients/**
+      - bin/**
+      - etc/**
+      - version.sbt
+      - build.sbt
+      - Dockerfile
+      - .dockerignore
+      - .github/workflows/docker-build.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - build/**
+      - project/**
+      - examples/**
+      - server/**
+      - api/**
+      - clients/**
+      - bin/**
+      - etc/**
+      - version.sbt
+      - build.sbt
+      - Dockerfile
+      - .dockerignore
+      - .github/workflows/docker-build.yml
+  workflow_dispatch: {}
+
+env:
+  # ghcr.io is the keyless primary registry (authenticated with the per-run
+  # GITHUB_TOKEN -- no stored secret). Docker Hub is an optional downstream
+  # mirror, pushed only when a scoped DOCKERHUB_TOKEN secret is configured,
+  # because Docker Hub has no OIDC/trusted-publishing (docker/roadmap#314).
+  GHCR_IMAGE: ghcr.io/${{ github.repository }}
+  DOCKERHUB_IMAGE: unitycatalog/unitycatalog
+
+jobs:
+  docker-cli-test:
+    name: Docker CLI Sanity Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Build runtime image (single-arch, loaded locally)
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          target: runtime
+          load: true
+          tags: unitycatalog-test:local
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Test CLI Command
+        # The CLI is self-contained; run it directly with an overridden entrypoint
+        # rather than exec-ing into a long-running server container.
+        run: docker run --rm --entrypoint ./bin/uc unitycatalog-test:local --help
+
+      - name: Test server starts and serves
+        run: |
+          docker run -d --name uc-server -p 8080:8080 unitycatalog-test:local
+          deadline=$((SECONDS + 60))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            # Any HTTP status (even 401/404) means the server is listening/serving.
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080/api/2.1/unity-catalog/catalogs" || true)
+            if [ "$code" != "000" ] && [ -n "$code" ]; then
+              echo "Server is serving on 8080 (HTTP $code)"; exit 0
+            fi
+            if ! docker ps -q --filter name=uc-server | grep -q .; then
+              echo "::error::server container exited early"; docker logs uc-server; exit 1
+            fi
+            sleep 2
+          done
+          echo "::error::server did not become ready in time"; docker logs uc-server; exit 1
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker logs uc-server 2>&1 | tail -50 || true
+          docker stop uc-server || true
+          docker rm uc-server || true
+
+
+  # Build each (target, platform) on its NATIVE runner and push BY DIGEST (no
+  # tags). This avoids slow QEMU emulation of the arm64 sbt compile.
+  build:
+    name: Build ${{ matrix.target }} (${{ matrix.platform.arch }})
+    needs: docker-cli-test
+    runs-on: ${{ matrix.platform.runner }}
+
+    # Publish only from the canonical repo (never from forks), on pushes to
+    # main / tags, not on PRs.
+    if: ${{ contains(fromJSON('["push", "workflow_dispatch"]'), github.event_name) && github.repository == 'unitycatalog/unitycatalog' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main') }}
+
+    permissions:
+      contents: read
+      packages: write   # push to ghcr.io with GITHUB_TOKEN
+      id-token: write   # build provenance/SBOM attestations
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [runtime]
+        platform:
+          - arch: amd64
+            os: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            os: linux/arm64
+            runner: ubuntu-24.04-arm   # native arm64 hosted runner
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Generate OCI labels + manifest-level annotations for the per-arch image.
+      # (The index-level annotations are applied later in the merge job.)
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest
+        with:
+          images: ${{ env.GHCR_IMAGE }}
+          labels: |
+            org.opencontainers.image.title=Unity Catalog Server${{ matrix.target == 'distroless' && ' (distroless)' || '' }}
+            org.opencontainers.image.description=Open source catalog for data and AI assets
+            org.opencontainers.image.vendor=Unity Catalog
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.documentation=https://docs.unitycatalog.io
+
+      # Build + push by digest only (no tags here -- the merge job assembles the
+      # multi-arch manifest list and applies the tags). Per-arch cache scopes so
+      # the two arches do not clobber each other's gha cache.
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          platforms: ${{ matrix.platform.os }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          outputs: type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha,scope=${{ matrix.target }}-${{ matrix.platform.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}-${{ matrix.platform.arch }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: digests-${{ matrix.target }}-${{ matrix.platform.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Assemble the per-arch digests into one multi-arch manifest list per target,
+  # apply the tags, then sign the resulting index by digest (keyless).
+  merge:
+    name: Merge and sign (${{ matrix.target }})
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+      id-token: write   # cosign keyless signing
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: runtime
+            suffix: ""
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: digests-${{ matrix.target }}-*
+          merge-multiple: true
+          path: /tmp/digests
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      # Mirror to Docker Hub only for tagged releases AND only when a token is
+      # configured. Derive a NON-secret boolean here so later steps can gate on
+      # it (the `secrets` context is not allowed in step `if:`); the secret
+      # itself is never copied into the job env -- it is referenced directly
+      # only in the Docker Hub login below.
+      - name: Resolve Docker Hub mirror flag
+        id: mirror
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "$DOCKERHUB_TOKEN" ] && [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Docker Hub (release mirror)
+        if: ${{ steps.mirror.outputs.enabled == 'true' }}
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Tagging strategy:
+      #   tag push v* -> <version> (e.g. 1.2.3) + the raw git tag + `latest`
+      #                  + mirrored to Docker Hub
+      #   main push   -> `main`, `main-<sha>`, and `edge` (latest dev build);
+      #                  ghcr.io only, never `latest`, never Docker Hub
+      # DOCKER_METADATA_ANNOTATIONS_LEVELS=index emits index-level OCI annotations
+      # (manifest-level labels from a per-arch build do NOT propagate to the
+      # multi-arch index created by imagetools, so we annotate the index here).
+      - name: Generate Metadata and Tags
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: index
+        with:
+          images: |
+            ${{ env.GHCR_IMAGE }}
+            ${{ env.DOCKERHUB_IMAGE }},enable=${{ steps.mirror.outputs.enabled == 'true' }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=ref,event=tag
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=edge,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=main-,enable=${{ github.ref == 'refs/heads/main' }}
+          flavor: |
+            latest=auto
+            suffix=${{ matrix.suffix }},onlatest=true
+          labels: |
+            org.opencontainers.image.title=Unity Catalog Server${{ matrix.suffix == '-distroless' && ' (distroless)' || '' }}
+            org.opencontainers.image.description=Open source catalog for data and AI assets
+            org.opencontainers.image.vendor=Unity Catalog
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.documentation=https://docs.unitycatalog.io
+
+      # Create the manifest list referencing the per-arch digests, for each tag,
+      # against every configured registry. Index-level OCI annotations from
+      # metadata-action are applied here (they cannot be set on the index by the
+      # per-arch build step).
+      - name: Create and push manifest list
+        working-directory: /tmp/digests
+        env:
+          GHCR_IMAGE: ${{ env.GHCR_IMAGE }}
+        run: |
+          # Build arrays so no unquoted word-splitting is needed.
+          mapfile -t tags < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          tag_args=(); for t in "${tags[@]}"; do tag_args+=(-t "$t"); done
+          ann_args=()
+          while IFS= read -r a; do
+            [ -n "$a" ] && ann_args+=(--annotation "$a")
+          done <<< "$DOCKER_METADATA_OUTPUT_ANNOTATIONS"
+          srcs=(); for d in *; do srcs+=("${GHCR_IMAGE}@sha256:${d}"); done
+          docker buildx imagetools create "${tag_args[@]}" "${ann_args[@]}" "${srcs[@]}"
+
+      - name: Inspect and capture index digest
+        id: digest
+        run: |
+          ref=$(jq -r '.tags[0]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          docker buildx imagetools inspect "$ref"
+          d=$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          echo "index=$d" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      # Keyless signing via GitHub OIDC (Fulcio/Rekor). Sign each distinct
+      # repo@indexDigest once.
+      - name: Sign images (keyless)
+        env:
+          DIGEST: ${{ steps.digest.outputs.index }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          echo "$TAGS" | sed "s/:.*\$/@$DIGEST/" | sort -u | \
+            xargs --no-run-if-empty cosign sign --yes
