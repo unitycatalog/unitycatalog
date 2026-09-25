@@ -12,6 +12,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.Lob;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -28,6 +29,14 @@ import lombok.experimental.SuperBuilder;
     name = "uc_tables",
     indexes = {
       @Index(name = "idx_name", columnList = "name"),
+    },
+    // A table name is unique within its schema. Without this the create path's
+    // check-then-insert lets two concurrent creates both commit, and every later lookup of the
+    // name resolves two rows and fails.
+    uniqueConstraints = {
+      @UniqueConstraint(
+          name = TableInfoDAO.SCHEMA_ID_NAME_CONSTRAINT,
+          columnNames = {"schema_id", "name"})
     })
 // Lombok annotations
 @Getter
@@ -37,6 +46,8 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true)
 @SuperBuilder
 public class TableInfoDAO extends IdentifiableDAO {
+  public static final String SCHEMA_ID_NAME_CONSTRAINT = "uc_tables_schema_id_name_key";
+
   @Column(name = "schema_id")
   private UUID schemaId;
 
