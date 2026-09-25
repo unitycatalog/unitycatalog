@@ -188,13 +188,7 @@ public final class StorageCleanupWorker implements AutoCloseable {
   /** Validates the stored resource and path before storage credentials are requested. */
   private static NormalizedURL validateTask(Claim claim) {
     ResourceType resourceType = Objects.requireNonNull(claim.resourceType(), "resourceType");
-    String segment =
-        switch (resourceType) {
-          case TABLE, STAGING_TABLE -> "tables";
-          case VOLUME -> "volumes";
-          case REGISTERED_MODEL -> "models";
-          case MODEL_VERSION -> "versions";
-        };
+    String segment = resourceType.pathSegment();
     NormalizedURL location = NormalizedURL.from(claim.storageLocation());
     URI uri = location.toUri();
     if (claim.resourceId() == null

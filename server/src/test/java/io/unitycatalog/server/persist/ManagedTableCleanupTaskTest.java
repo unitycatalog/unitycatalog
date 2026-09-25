@@ -3,6 +3,7 @@ package io.unitycatalog.server.persist;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
@@ -233,14 +234,10 @@ class ManagedTableCleanupTaskTest {
   }
 
   private StorageCleanupTaskDAO findTask(UUID id) {
-    try (var session = sessionFactory.openSession()) {
-      return session.get(StorageCleanupTaskDAO.class, id);
-    }
+    return StorageCleanupTestSupport.findTask(sessionFactory, id);
   }
 
   private List<StorageCleanupTaskDAO> allTasks() {
-    try (var session = sessionFactory.openSession()) {
-      return session.createQuery("FROM StorageCleanupTaskDAO", StorageCleanupTaskDAO.class).list();
-    }
+    return StorageCleanupTestSupport.allTasks(sessionFactory);
   }
 }
