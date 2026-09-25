@@ -8,9 +8,9 @@ import io.unitycatalog.server.model.UpdateVolumeRequestContent;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.model.VolumeType;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
-import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
@@ -277,11 +277,14 @@ public class VolumeRepository {
       throw new BaseException(ErrorCode.NOT_FOUND, "Volume not found: " + volumeName);
     }
     if (VolumeType.MANAGED.getValue().equals(volumeInfoDAO.getVolumeType())) {
-      try {
-        FileOperations.deleteDirectory(NormalizedURL.from(volumeInfoDAO.getStorageLocation()));
-      } catch (Exception e) {
-        LOGGER.error("Error deleting volume directory", e);
-      }
+      repositories
+          .getStorageCleanupTaskRepository()
+          .create(
+              session,
+              ResourceType.VOLUME,
+              volumeInfoDAO.getId(),
+              volumeInfoDAO.getName(),
+              volumeInfoDAO.getStorageLocation());
     }
     session.remove(volumeInfoDAO);
     LOGGER.info("Deleted volume: {}", volumeInfoDAO.getName());
