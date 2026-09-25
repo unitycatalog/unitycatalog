@@ -35,11 +35,24 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true)
 public class StorageCleanupTaskDAO extends IdentifiableDAO {
   public enum ResourceType {
-    TABLE,
-    VOLUME,
-    REGISTERED_MODEL,
-    MODEL_VERSION,
-    STAGING_TABLE
+    TABLE("tables"),
+    VOLUME("volumes"),
+    REGISTERED_MODEL("models"),
+    MODEL_VERSION("versions"),
+    STAGING_TABLE("tables");
+
+    private final String pathSegment;
+
+    ResourceType(String pathSegment) {
+      this.pathSegment = pathSegment;
+    }
+
+    /**
+     * Trailing segment under which this type's managed storage lives: {@code .../<segment>/<id>}.
+     */
+    public String pathSegment() {
+      return pathSegment;
+    }
   }
 
   @Enumerated(EnumType.STRING)
