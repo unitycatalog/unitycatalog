@@ -2,19 +2,14 @@ package io.unitycatalog.server.base.table;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
-import io.unitycatalog.client.model.CreateCatalog;
-import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
-import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
-import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
-import io.unitycatalog.server.base.schema.SchemaOperations;
+import io.unitycatalog.server.base.schema.BaseSchemaCRUDTestEnv;
 import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Files;
 import java.util.List;
@@ -25,16 +20,12 @@ import org.junit.jupiter.api.BeforeEach;
 /**
  * Abstract base class that provides the test environment setup for table CRUD operations.
  *
- * <p>This class extends {@link BaseCRUDTest} and serves as a foundation for testing table-related
- * operations in Unity Catalog. It's useful for any CRUD test that needs to create test tables.
+ * <p>This class extends {@link BaseSchemaCRUDTestEnv} and serves as a foundation for testing
+ * table-related operations in Unity Catalog, for any CRUD test that needs to create test tables.
  */
-public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
+public abstract class BaseTableCRUDTestEnv extends BaseSchemaCRUDTestEnv {
 
-  protected SchemaOperations schemaOperations;
   protected TableOperations tableOperations;
-  protected String schemaId;
-
-  protected abstract SchemaOperations createSchemaOperations(ServerConfig serverConfig);
 
   protected abstract TableOperations createTableOperations(ServerConfig serverConfig);
 
@@ -65,23 +56,7 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
   @Override
   public void setUp() {
     super.setUp();
-    schemaOperations = createSchemaOperations(serverConfig);
     tableOperations = createTableOperations(serverConfig);
-    createCommonResources();
-  }
-
-  private void createCommonResources() {
-    CreateCatalog createCatalog =
-        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT);
-    try {
-      catalogOperations.createCatalog(createCatalog);
-      SchemaInfo schemaInfo =
-          schemaOperations.createSchema(
-              new CreateSchema().name(TestUtils.SCHEMA_NAME).catalogName(TestUtils.CATALOG_NAME));
-      schemaId = schemaInfo.getSchemaId();
-    } catch (ApiException e) {
-      throw new RuntimeException(e);
-    }
   }
 
   @SneakyThrows
