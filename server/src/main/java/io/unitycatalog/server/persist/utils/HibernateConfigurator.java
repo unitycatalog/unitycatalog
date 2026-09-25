@@ -30,10 +30,12 @@ import java.nio.file.Paths;
 import java.util.Properties;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
+import org.hibernate.boot.Metadata;
+import org.hibernate.boot.MetadataSources;
+import org.hibernate.boot.registry.StandardServiceRegistry;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
-import org.hibernate.cfg.Configuration;
 import org.hibernate.cfg.JdbcSettings;
-import org.hibernate.service.ServiceRegistry;
+import org.hibernate.engine.config.spi.ConfigurationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -131,32 +133,37 @@ public class HibernateConfigurator implements AutoCloseable {
           .removeIf(key -> key instanceof String name && name.startsWith(HIKARI_PREFIX));
       sessionFactoryProperties.put(JdbcSettings.JAKARTA_NON_JTA_DATASOURCE, dataSource);
 
-      Configuration configuration = new Configuration().setProperties(sessionFactoryProperties);
+      StandardServiceRegistry serviceRegistry =
+          new StandardServiceRegistryBuilder().applySettings(sessionFactoryProperties).build();
+      MetadataSources metadataSources = new MetadataSources(serviceRegistry);
 
       // Add annotated classes
-      configuration.addAnnotatedClass(CatalogInfoDAO.class);
-      configuration.addAnnotatedClass(SchemaInfoDAO.class);
-      configuration.addAnnotatedClass(TableInfoDAO.class);
-      configuration.addAnnotatedClass(StagingTableDAO.class);
-      configuration.addAnnotatedClass(ColumnInfoDAO.class);
-      configuration.addAnnotatedClass(PropertyDAO.class);
-      configuration.addAnnotatedClass(FunctionInfoDAO.class);
-      configuration.addAnnotatedClass(RegisteredModelInfoDAO.class);
-      configuration.addAnnotatedClass(ModelVersionInfoDAO.class);
-      configuration.addAnnotatedClass(FunctionParameterInfoDAO.class);
-      configuration.addAnnotatedClass(VolumeInfoDAO.class);
-      configuration.addAnnotatedClass(UserDAO.class);
-      configuration.addAnnotatedClass(MetastoreDAO.class);
-      configuration.addAnnotatedClass(CredentialDAO.class);
-      configuration.addAnnotatedClass(ExternalLocationDAO.class);
-      configuration.addAnnotatedClass(DeltaCommitDAO.class);
-      configuration.addAnnotatedClass(DependencyDAO.class);
-      configuration.addAnnotatedClass(StorageCleanupTaskDAO.class);
+      metadataSources.addAnnotatedClass(CatalogInfoDAO.class);
+      metadataSources.addAnnotatedClass(SchemaInfoDAO.class);
+      metadataSources.addAnnotatedClass(TableInfoDAO.class);
+      metadataSources.addAnnotatedClass(StagingTableDAO.class);
+      metadataSources.addAnnotatedClass(ColumnInfoDAO.class);
+      metadataSources.addAnnotatedClass(PropertyDAO.class);
+      metadataSources.addAnnotatedClass(FunctionInfoDAO.class);
+      metadataSources.addAnnotatedClass(RegisteredModelInfoDAO.class);
+      metadataSources.addAnnotatedClass(ModelVersionInfoDAO.class);
+      metadataSources.addAnnotatedClass(FunctionParameterInfoDAO.class);
+      metadataSources.addAnnotatedClass(VolumeInfoDAO.class);
+      metadataSources.addAnnotatedClass(UserDAO.class);
+      metadataSources.addAnnotatedClass(MetastoreDAO.class);
+      metadataSources.addAnnotatedClass(CredentialDAO.class);
+      metadataSources.addAnnotatedClass(ExternalLocationDAO.class);
+      metadataSources.addAnnotatedClass(DeltaCommitDAO.class);
+      metadataSources.addAnnotatedClass(DependencyDAO.class);
+      metadataSources.addAnnotatedClass(StorageCleanupTaskDAO.class);
 
-      ServiceRegistry serviceRegistry =
-          new StandardServiceRegistryBuilder().applySettings(configuration.getProperties()).build();
-
-      return configuration.buildSessionFactory(serviceRegistry);
+      Metadata metadata = metadataSources.buildMetadata();
+      // Building the session factory runs the schema update, which must see text columns.
+      LargeObjectColumnMigration.migrate(
+          dataSource,
+          metadata,
+          serviceRegistry.requireService(ConfigurationService.class).getSettings());
+      return metadata.buildSessionFactory();
     } catch (Exception e) {
       throw new RuntimeException("Exception during creation of SessionFactory", e);
     }

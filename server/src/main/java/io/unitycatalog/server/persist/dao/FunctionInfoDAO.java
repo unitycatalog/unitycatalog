@@ -5,7 +5,6 @@ import io.unitycatalog.server.model.FunctionInfo;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.Lob;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.util.List;
@@ -71,7 +70,6 @@ public class FunctionInfoDAO extends IdentifiableDAO {
   @Column(name = "routine_body")
   private FunctionInfo.RoutineBodyEnum routineBody;
 
-  @Lob
   @Column(name = "routine_definition", length = 16777215)
   private String routineDefinition;
 

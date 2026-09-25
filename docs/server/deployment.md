@@ -121,7 +121,42 @@ This guide outlines how to deploy the Unity Catalog server.
 ### Existing deployments and column type changes
 
 The server uses `hibernate.hbm2ddl.auto=update`. Hibernate can create missing tables and
-columns, but **it does not change the type or length of a column that already exists**.
+columns, but **it does not change the type or length of a column that already exists**. The
+exception is the PostgreSQL large object conversion below, which the server runs itself.
+
+#### PostgreSQL: large object columns converted to `text`
+
+Earlier versions stored these columns as PostgreSQL large objects (`oid`):
+`uc_tables.view_definition`, `uc_columns.type_text`, `uc_functions.routine_definition` and
+`uc_credentials.credential`. **On its first start against such a database, the server converts
+them to `text`** before the schema update, in a single transaction. Later starts find `text`
+columns and skip it. H2 and MySQL are not affected.
+
+Before upgrading:
+
+- **Back up the database.** Servers from before the conversion cannot read `text` columns, so
+  rolling back the server means restoring that backup.
+- **Stop the old servers.** They fail on the converted columns, and their open transactions hold
+  locks the conversion must wait for. Avoid a rolling upgrade.
+- **Plan for downtime.** The conversion waits at most 30 seconds (`lock_timeout`) for each
+  table lock; if a lock doesn't come in time, the start fails and the next start retries. The
+  timeout only bounds waiting, though. Once the conversion has a lock, it keeps the table under
+  an `ACCESS EXCLUSIVE` lock, blocking all reads and writes, until every column is converted.
+  That takes time in proportion to the data, mostly `uc_columns`. A `statement_timeout` shorter
+  than that aborts the conversion on every start.
+
+After the conversion, the large objects remain in `pg_largeobject`, unreferenced. Once you no
+longer need to roll back, remove them with
+[`vacuumlo`](https://www.postgresql.org/docs/current/vacuumlo.html). `vacuumlo` removes every
+large object that no `oid` or `lo` column references, so run it with `-n` first to see what it
+would remove, especially if other applications share the database:
+
+```sh
+vacuumlo -n -v -h <host> -U <user> <database>
+vacuumlo -v -h <host> -U <user> <database>
+```
+
+#### `uc_properties.property_value`
 
 `uc_properties.property_value` used to be created as `varchar(255)`. Table and view properties
 (user `TBLPROPERTIES`, Spark `view.sqlConfig.*`, and any other REST-sent property) can exceed
