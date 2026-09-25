@@ -76,9 +76,6 @@ public class UnityAccessEvaluator {
   /**
    * Evaluate authorization expression with resource IDs and parameter values.
    *
-   * <p>On deny, attempts one debounced policy refresh and re-evaluates the SpEL expression (context
-   * is reused). If refresh is disabled, debounced, or throws, the original deny is kept.
-   *
    * @param principal The principal UUID
    * @param expression The SpEL authorization expression
    * @param resourceIds Map of resource types to their UUIDs
@@ -89,6 +86,27 @@ public class UnityAccessEvaluator {
       String expression,
       Map<SecurableType, UUID> resourceIds,
       Map<String, Object> nonResourceValues) {
+    return evaluate(principal, expression, resourceIds, nonResourceValues, System.nanoTime());
+  }
+
+  /**
+   * Evaluate authorization expression with resource IDs and parameter values.
+   *
+   * <p>On deny, refreshes policy if needed and re-evaluates. If refresh is disabled or throws, the
+   * original deny is kept.
+   *
+   * @param principal The principal UUID
+   * @param expression The SpEL authorization expression
+   * @param resourceIds Map of resource types to their UUIDs
+   * @param nonResourceValues Map of parameter names to their values (from @AuthorizeKey)
+   * @param operationStartNanos {@link System#nanoTime()} from the start of this operation
+   */
+  public boolean evaluate(
+      UUID principal,
+      String expression,
+      Map<SecurableType, UUID> resourceIds,
+      Map<String, Object> nonResourceValues,
+      long operationStartNanos) {
 
     StandardEvaluationContext context = new StandardEvaluationContext(Privileges.class);
 
@@ -108,7 +126,7 @@ public class UnityAccessEvaluator {
     }
 
     try {
-      if (!authorizer.refreshAuthorizations()) {
+      if (!authorizer.refreshAuthorizations(operationStartNanos)) {
         return false;
       }
     } catch (RuntimeException e) {
