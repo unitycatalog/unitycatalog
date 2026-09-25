@@ -885,13 +885,15 @@ A retry is deduplicated only when these are unchanged from the original attempt.
 
 **Warning:** Never rebase to *learn* the outcome. Submitting a rebased commit (a new version / commit file / UUID) while the outcome is still unknown — or when the attempt actually landed — creates a **duplicate commit**: the rebased proposal re-commits the same logical change on top of a state that already includes it. Always resolve the outcome first (below), then decide whether to resend identically or to rebase.
 
-When the outcome is unknown (`CommitStateUnknownException`, a network failure, or a process restart mid-commit), the client resolves it in one of two ways. The simplest is to resend the identical RPC (safe, as above) and read its response: `200` means it landed; a `409` (`CommitVersionConflictException` / `UpdateRequirementConflictException`) means it did not, so rebase; another `5xx` / timeout leaves it unknown, so keep resending. Alternatively, the client can inspect table state directly:
+When the outcome is unknown (`CommitStateUnknownException`, a network failure, or a process restart mid-commit), the client either resends the identical RPC (safe, as above) or inspects table state directly:
 
 1. Reload the table via [`loadTable`](#load-a-table).
-2. If `latest-table-version` >= `v` (the proposed version), look up version `v`: in the `commits` array, or in `_delta_log` if already published. If its `file-name` matches the UUID filename the client generated, the commit was accepted; resume from publishing. If it differs, a concurrent writer won version `v`; rebuild the snapshot and retry at the new latest version + 1.
+2. If `latest-table-version` >= `v` (the proposed version), locate version `v` and check whether it is the client's own commit:
+    - While `v` is still tracked (present in the `commits` array), its `file-name` carries the UUID: a matching UUID means the client's own commit landed (resume from publishing); a different UUID means another writer won `v`, so rebase.
+    - Once `v` is published (`_delta_log/<v>.json`, whose UUID record may already be purged), name matching no longer works, so the client compares the published file's content against its own staged content: identical content means its commit landed; different content means another writer won `v`, so rebase.
 3. If `latest-table-version` is `v-1`, the proposal was not accepted; re-send the same `add-commit`.
 
-In this protocol version, conflict responses carry no commit information: the reload in step 1 is how the client learns the outcome of a contended commit.
+In this protocol version, conflict responses carry no commit information, so reloading the table is how the client learns the outcome of a contended commit.
 
 #### Responses
 
@@ -1140,9 +1142,9 @@ InvalidParameterValueException | 400 | Server side check failed. Examples: inval
 PermissionDeniedException | 403 | User lacks necessary permissions (`MODIFY` on the table; `USE CATALOG` / `USE SCHEMA` on the parents).<br>Contact the admin for access.
 NoSuchTableException | 404 | The specified table doesn't exist.<br>The client should check if the table ID is correct for this table.
 CommitVersionConflictException | 409 | Commit rejected due to a concurrent conflicting commit. The response carries only this error body, with no information about the winning commit; the client reloads the table and follows [Commit recovery](#commit-recovery) to rebuild the snapshot and retry at the new version.
-UpdateRequirementConflictException | 409 | An `assert-etag` or `assert-table-uuid` requirement was not met, or `uniform.iceberg.base-converted-delta-version` was supplied and does not match the current stored `converted-delta-version` (sequential-validation violation).<br>The client should reload the table and retry with the current etag / `converted-delta-version`.
+UpdateRequirementConflictException | 409 | An `assert-etag` or `assert-table-uuid` requirement was not met, or `uniform.iceberg.base-converted-delta-version` was supplied and does not match the current stored `converted-delta-version` (sequential-validation violation).<br>The client should reload the table and retry with the current etag / `converted-delta-version`. See [Commit recovery](#commit-recovery).
 ResourceExhaustedException | 429 | The maximum number of unbackfilled commits has been reached.<br>The client should backfill pending commits before retrying.
-CommitStateUnknownException | 500 | Commit outcome unknown (e.g., network failure after the server received the request).<br>The client should check the table state before retrying.
+CommitStateUnknownException | 500 | Commit outcome unknown (e.g., network failure after the server received the request).<br>The client should check the table state before retrying. See [Commit recovery](#commit-recovery).
 
 ### Report Metrics
 
@@ -1286,3 +1288,4 @@ For full API documentation index, see [Delta APIs README](../../api/delta-docs/R
 ---
 
 [[Back to Main README]](../../README.md)
+
