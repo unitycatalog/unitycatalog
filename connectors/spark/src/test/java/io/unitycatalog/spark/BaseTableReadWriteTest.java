@@ -243,6 +243,10 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     return tableFormat().equalsIgnoreCase("DELTA");
   }
 
+  protected final boolean testingIceberg() {
+    return tableFormat().equalsIgnoreCase("ICEBERG");
+  }
+
   protected abstract boolean isManagedTable();
 
   protected final boolean canUpdateColumnsToUC() {
@@ -434,12 +438,15 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
   @MethodSource("cloudParameters")
   public void testTableOperations(
       String scheme, boolean renewCredEnabled, boolean credScopedFsEnabled) {
-    session =
-        createSparkSessionWithCatalogs(
-            renewCredEnabled, credScopedFsEnabled, SPARK_CATALOG, CATALOG_NAME);
+    // The UC connector drives both spark_catalog and a named catalog; Iceberg wires only the named
+    // catalog (spark_catalog stays Spark's built-in session catalog), so it puts both tables there.
+    String[] catalogs =
+        testingIceberg() ? new String[] {CATALOG_NAME} : new String[] {SPARK_CATALOG, CATALOG_NAME};
+    String firstCatalog = testingIceberg() ? CATALOG_NAME : SPARK_CATALOG;
+    session = createSparkSessionWithCatalogs(renewCredEnabled, credScopedFsEnabled, catalogs);
 
     // t1 has (1, 'a')
-    String t1 = setupTable(scheme, SPARK_CATALOG, TEST_TABLE);
+    String t1 = setupTable(scheme, firstCatalog, TEST_TABLE);
     testTableReadWrite(t1);
 
     // t2 has (2, 'a')
@@ -464,18 +471,35 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     }
 
     // Test SHOW TABLES
-    List<Row> tables1 = sql("SHOW TABLES in %s.%s", SPARK_CATALOG, SCHEMA_NAME);
-    assertThat(tables1).hasSize(1);
-    assertThat(tables1.get(0).getString(0)).isEqualTo(SCHEMA_NAME);
-    assertThat(tables1.get(0).getString(1)).isEqualTo(TEST_TABLE);
-    List<Row> tables2 = sql("SHOW TABLES in %s.%s", CATALOG_NAME, SCHEMA_NAME);
-    assertThat(tables2).hasSize(1);
-    assertThat(tables2.get(0).getString(0)).isEqualTo(SCHEMA_NAME);
-    assertThat(tables2.get(0).getString(1)).isEqualTo(ANOTHER_TEST_TABLE);
+    if (testingIceberg()) {
+      // Both tables live in the single wired catalog.
+      List<String> tableNames =
+          sql("SHOW TABLES in %s.%s", CATALOG_NAME, SCHEMA_NAME).stream()
+              .map(row -> row.getString(1))
+              .collect(Collectors.toList());
+      assertThat(tableNames).containsExactlyInAnyOrder(TEST_TABLE, ANOTHER_TEST_TABLE);
+      // A nested (multi-level) namespace is rejected by the Iceberg REST catalog. Asserted by class
+      // name, not an imported type, so this shared base still compiles on Spark 4.2 (no Iceberg on
+      // its classpath).
+      assertThatThrownBy(() -> sql("SHOW TABLES in %s.a.b", CATALOG_NAME))
+          .satisfies(
+              t ->
+                  assertThat(t.getClass().getName())
+                      .isEqualTo("org.apache.iceberg.exceptions.RESTException"));
+    } else {
+      List<Row> tables1 = sql("SHOW TABLES in %s.%s", SPARK_CATALOG, SCHEMA_NAME);
+      assertThat(tables1).hasSize(1);
+      assertThat(tables1.get(0).getString(0)).isEqualTo(SCHEMA_NAME);
+      assertThat(tables1.get(0).getString(1)).isEqualTo(TEST_TABLE);
+      List<Row> tables2 = sql("SHOW TABLES in %s.%s", CATALOG_NAME, SCHEMA_NAME);
+      assertThat(tables2).hasSize(1);
+      assertThat(tables2.get(0).getString(0)).isEqualTo(SCHEMA_NAME);
+      assertThat(tables2.get(0).getString(1)).isEqualTo(ANOTHER_TEST_TABLE);
 
-    assertThatThrownBy(() -> sql("SHOW TABLES in a.b.c"))
-        .isInstanceOf(ApiException.class)
-        .hasMessageContaining("Nested namespaces are not supported");
+      assertThatThrownBy(() -> sql("SHOW TABLES in a.b.c"))
+          .isInstanceOf(ApiException.class)
+          .hasMessageContaining("Nested namespaces are not supported");
+    }
 
     // DROP TABLE
     for (String fullTableName : List.of(t1, t2)) {
@@ -483,35 +507,45 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       sql("DROP TABLE %s", fullTableName);
       assertThat(session.catalog().tableExists(fullTableName)).isFalse();
     }
-    // Delta < 4.3.0 forwards the 4-part identifier to UC, which rejects it server-side with
-    // ApiException("Nested namespaces are not supported"). Delta >= 4.3.0 ships
-    // UCDeltaCatalogClientImpl, which rejects the same input client-side with
-    // IllegalArgumentException("UC table identifier must be one of ...") before reaching UC.
-    boolean rejectedClientSide =
-        DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API);
-    Class<? extends Throwable> expectedType =
-        rejectedClientSide ? IllegalArgumentException.class : ApiException.class;
-    String expectedMessage =
-        rejectedClientSide
-            ? "UC table identifier must be one of"
-            : "Nested namespaces are not supported";
-    assertThatThrownBy(() -> sql("DROP TABLE a.b.c.d"))
-        .isInstanceOf(expectedType)
-        .hasMessageContaining(expectedMessage);
+    // Dropping a malformed multi-level table identifier is rejected.
+    if (testingIceberg()) {
+      assertThatThrownBy(() -> sql("DROP TABLE %s.a.b.c", CATALOG_NAME))
+          .satisfies(
+              t ->
+                  assertThat(t.getClass().getName())
+                      .isEqualTo("org.apache.iceberg.exceptions.RESTException"));
+    } else {
+      // Delta < 4.3.0 forwards the 4-part identifier to UC, which rejects it server-side with
+      // ApiException("Nested namespaces are not supported"). Delta >= 4.3.0 ships
+      // UCDeltaCatalogClientImpl, which rejects the same input client-side with
+      // IllegalArgumentException("UC table identifier must be one of ...") before reaching UC.
+      boolean rejectedClientSide =
+          DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API);
+      Class<? extends Throwable> expectedType =
+          rejectedClientSide ? IllegalArgumentException.class : ApiException.class;
+      String expectedMessage =
+          rejectedClientSide
+              ? "UC table identifier must be one of"
+              : "Nested namespaces are not supported";
+      assertThatThrownBy(() -> sql("DROP TABLE a.b.c.d"))
+          .isInstanceOf(expectedType)
+          .hasMessageContaining(expectedMessage);
+    }
   }
 
   // With page size 2 and 3 tables, pagination must occur (2 API calls) for all 3 to be returned.
   // Asserting all 3 names proves pagination worked end-to-end.
   @Test
   public void testListTablesPagination() {
-    session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+    String catalog = testingIceberg() ? CATALOG_NAME : SPARK_CATALOG;
+    session = createSparkSessionWithCatalogs(catalog);
     Integer originalPageSize = PagedListingHelper.DEFAULT_PAGE_SIZE;
     try {
       PagedListingHelper.DEFAULT_PAGE_SIZE = 2;
-      setupTable(SPARK_CATALOG, "pagination_table_1");
-      setupTable(SPARK_CATALOG, "pagination_table_2");
-      setupTable(SPARK_CATALOG, "pagination_table_3");
-      List<Row> tables = sql("SHOW TABLES in %s.%s", SPARK_CATALOG, SCHEMA_NAME);
+      setupTable(catalog, "pagination_table_1");
+      setupTable(catalog, "pagination_table_2");
+      setupTable(catalog, "pagination_table_3");
+      List<Row> tables = sql("SHOW TABLES in %s.%s", catalog, SCHEMA_NAME);
       assertThat(tables).hasSize(3);
       List<String> tableNames =
           tables.stream().map(row -> row.getString(1)).sorted().collect(Collectors.toList());
@@ -519,9 +553,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
           .containsExactly("pagination_table_1", "pagination_table_2", "pagination_table_3");
     } finally {
       PagedListingHelper.DEFAULT_PAGE_SIZE = originalPageSize;
-      sql("DROP TABLE IF EXISTS %s.%s.pagination_table_1", SPARK_CATALOG, SCHEMA_NAME);
-      sql("DROP TABLE IF EXISTS %s.%s.pagination_table_2", SPARK_CATALOG, SCHEMA_NAME);
-      sql("DROP TABLE IF EXISTS %s.%s.pagination_table_3", SPARK_CATALOG, SCHEMA_NAME);
+      sql("DROP TABLE IF EXISTS %s.%s.pagination_table_1", catalog, SCHEMA_NAME);
+      sql("DROP TABLE IF EXISTS %s.%s.pagination_table_2", catalog, SCHEMA_NAME);
+      sql("DROP TABLE IF EXISTS %s.%s.pagination_table_3", catalog, SCHEMA_NAME);
     }
   }
 
@@ -534,7 +568,10 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     String catalogName = "test-catalog-name";
     String schemaName = "test-schema-name";
     String tableName = "test-table-name";
-    session = createSparkSessionWithCatalogs(SPARK_CATALOG, catalogName);
+    session =
+        testingIceberg()
+            ? createSparkSessionWithCatalogs(catalogName)
+            : createSparkSessionWithCatalogs(SPARK_CATALOG, catalogName);
     sql("CREATE SCHEMA `%s`.`%s`", catalogName, schemaName);
     String fullTableName =
         setupTable(
