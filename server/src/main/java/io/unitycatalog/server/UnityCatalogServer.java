@@ -159,7 +159,8 @@ public class UnityCatalogServer implements AutoCloseable {
         new Repositories(
             hibernateConfigurator.getSessionFactory(),
             unityCatalogServerBuilder.serverProperties,
-            unityCatalogServerBuilder.cloudCredentialVendor);
+            unityCatalogServerBuilder.cloudCredentialVendor,
+            unityCatalogServerBuilder.fileOperations);
     // Init metastore
     repositories.getMetastoreRepository().initMetastoreIfNeeded();
     // Init authorizer
@@ -415,6 +416,7 @@ public class UnityCatalogServer implements AutoCloseable {
     private ServerProperties serverProperties;
     private HibernateConfigurator hibernateConfigurator;
     private CloudCredentialVendor cloudCredentialVendor;
+    private FileOperations fileOperations;
 
     private Builder() {}
 
@@ -443,6 +445,12 @@ public class UnityCatalogServer implements AutoCloseable {
     public UnityCatalogServer.Builder credentialOperations(
         CloudCredentialVendor cloudCredentialVendor) {
       this.cloudCredentialVendor = cloudCredentialVendor;
+      return this;
+    }
+
+    /** Uses a custom FileIO facade, primarily for emulated-cloud integration tests. */
+    public UnityCatalogServer.Builder fileOperations(FileOperations fileOperations) {
+      this.fileOperations = fileOperations;
       return this;
     }
 

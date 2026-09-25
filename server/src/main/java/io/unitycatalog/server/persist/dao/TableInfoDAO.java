@@ -101,6 +101,17 @@ public class TableInfoDAO extends IdentifiableDAO {
   @Column(name = "uniform_iceberg_converted_delta_timestamp")
   private Date uniformIcebergConvertedDeltaTimestamp;
 
+  /**
+   * For managed Delta tables, the highest version whose {@code _delta_log/<version>.json} has been
+   * published. Rows in {@code uc_delta_commits} at or below it are outside the live commit window
+   * and are retained only so a retried {@code add-commit} can be matched by file name. Null on
+   * tables written before this column existed; {@link
+   * io.unitycatalog.server.persist.DeltaCommitRepository} derives the value from the commit log on
+   * first use and persists it.
+   */
+  @Column(name = "delta_latest_backfilled_version")
+  private Long deltaLatestBackfilledVersion;
+
   public static TableInfoDAO from(TableInfo tableInfo, UUID schemaId) {
     return TableInfoDAO.builder()
         .id(UUID.fromString(tableInfo.getTableId()))

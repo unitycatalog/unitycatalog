@@ -423,8 +423,7 @@ public class TableRepository {
     // Commits (managed Delta tables only)
     if (TableType.MANAGED.toString().equals(dao.getType())
         && DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
-      populateCommitsForDelta(
-          response, repositories.getDeltaCommitRepository(), session, dao.getId());
+      populateCommitsForDelta(response, repositories.getDeltaCommitRepository(), session, dao);
       response.setAllowedMaintenanceOperations(
           List.of(
               DeltaMaintenanceOperation.DATA_REORGANIZATION,
@@ -536,9 +535,10 @@ public class TableRepository {
       DeltaLoadTableResponse response,
       DeltaCommitRepository commitRepo,
       Session session,
-      UUID tableId) {
+      TableInfoDAO dao) {
     DeltaCommitRepository.CommitQueryResult result =
-        commitRepo.getUnbackfilledCommits(session, tableId);
+        commitRepo.getUnbackfilledCommits(
+            session, dao.getId(), Optional.ofNullable(dao.getDeltaLatestBackfilledVersion()));
     response.setLatestTableVersion(result.latestTableVersion());
 
     List<DeltaCommit> commits =
@@ -825,6 +825,9 @@ public class TableRepository {
               throw new BaseException(
                   ErrorCode.INVALID_ARGUMENT,
                   "Managed table creation is only supported for Delta and Iceberg formats.");
+            }
+            if (createTable.getDataSourceFormat() == DataSourceFormat.DELTA) {
+              repositories.getFileOperations().validateReadAccessConfiguration(storageLocation);
             }
             // Find and commit the staging table with the same staging location. This single
             // transaction validates ownership and prevents a staging location from being reused.
