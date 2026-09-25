@@ -33,6 +33,7 @@ import org.hibernate.SessionFactory;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.cfg.JdbcSettings;
+import org.hibernate.cfg.MappingSettings;
 import org.hibernate.service.ServiceRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,6 +67,8 @@ public class HibernateConfigurator implements AutoCloseable {
     this.hibernateProperties = hibernateProperties;
     this.dataSource = createDataSource(hibernateProperties);
     try {
+      LargeObjectColumnMigration.migrate(
+          dataSource, hibernateProperties.getProperty(MappingSettings.DEFAULT_SCHEMA));
       this.sessionFactory = createSessionFactory(hibernateProperties, dataSource);
     } catch (Throwable t) {
       dataSource.close();
