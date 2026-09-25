@@ -5,7 +5,6 @@ import io.unitycatalog.server.model.ColumnTypeName;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
@@ -42,7 +41,6 @@ public class ColumnInfoDAO extends IdentifiableDAO {
   @Column(name = "ordinal_position", nullable = false)
   private short ordinalPosition;
 
-  @Lob
   @Column(name = "type_text", nullable = false, length = 16777215)
   private String typeText;
 
