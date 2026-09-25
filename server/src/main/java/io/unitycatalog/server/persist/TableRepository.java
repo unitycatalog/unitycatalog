@@ -1119,15 +1119,38 @@ public class TableRepository {
     List<TableInfoDAO> tableInfoDAOList =
         LISTING_HELPER.listEntity(session, maxResults, pageToken, schemaId);
     String nextPageToken = LISTING_HELPER.getNextPageToken(tableInfoDAOList, maxResults);
+    // Load properties and view dependencies for the whole page up front rather than per table, so
+    // a page costs a constant number of queries instead of one or two per table.
+    Map<UUID, List<PropertyDAO>> propertiesByTableId =
+        omitProperties
+            ? Map.of()
+            : PropertyRepository.findPropertiesByEntityIds(
+                session,
+                tableInfoDAOList.stream().map(TableInfoDAO::getId).toList(),
+                Constants.TABLE);
+    Map<UUID, List<DependencyDAO>> dependenciesByViewId =
+        repositories
+            .getDependencyRepository()
+            .getDependenciesByDependentIds(
+                session,
+                tableInfoDAOList.stream()
+                    .filter(dao -> RepositoryUtils.isViewLike(dao.getType()))
+                    .map(TableInfoDAO::getId)
+                    .toList(),
+                DependencyDAO.DependentType.TABLE);
     List<TableInfo> result = new ArrayList<>();
     for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
       TableInfo tableInfo = tableInfoDAO.toTableInfo(!omitColumns, catalogName, schemaName);
-      if (!omitProperties) {
-        RepositoryUtils.attachProperties(
-            tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
+      List<PropertyDAO> properties = propertiesByTableId.get(tableInfoDAO.getId());
+      if (properties != null) {
+        tableInfo.setProperties(PropertyDAO.toMap(properties));
       }
-      RepositoryUtils.attachDependencies(
-          tableInfo, tableInfoDAO, session, repositories.getDependencyRepository());
+      if (RepositoryUtils.isViewLike(tableInfoDAO.getType())) {
+        List<DependencyDAO> dependencies =
+            dependenciesByViewId.getOrDefault(tableInfoDAO.getId(), List.of());
+        tableInfo.setViewDependencies(
+            new DependencyList().dependencies(DependencyDAO.toDependencyList(dependencies)));
+      }
       result.add(tableInfo);
     }
     return new ListTablesResponse().tables(result).nextPageToken(nextPageToken);

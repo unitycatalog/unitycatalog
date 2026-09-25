@@ -2,8 +2,11 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.DependencyDAO.DependentType;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.hibernate.Session;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
@@ -39,6 +42,25 @@ public class DependencyRepository {
     query.setParameter("dependentId", dependentId);
     query.setParameter("dependentType", dependentType);
     return query.list();
+  }
+
+  /**
+   * Bulk variant of {@link #getDependencies} for listing endpoints: loads the dependencies of all
+   * {@code dependentIds} in one query and groups them by dependent ID. Dependents without
+   * dependencies have no entry in the returned map.
+   */
+  public Map<UUID, List<DependencyDAO>> getDependenciesByDependentIds(
+      Session session, Collection<UUID> dependentIds, DependentType dependentType) {
+    if (dependentIds.isEmpty()) {
+      return Map.of();
+    }
+    String hql =
+        "FROM DependencyDAO d WHERE d.dependentId IN (:dependentIds)"
+            + " AND d.dependentType = :dependentType";
+    Query<DependencyDAO> query = session.createQuery(hql, DependencyDAO.class);
+    query.setParameter("dependentIds", dependentIds);
+    query.setParameter("dependentType", dependentType);
+    return query.list().stream().collect(Collectors.groupingBy(DependencyDAO::getDependentId));
   }
 
   public void deleteDependencies(Session session, UUID dependentId, DependentType dependentType) {
