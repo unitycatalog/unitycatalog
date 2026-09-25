@@ -40,6 +40,7 @@ public class FileOperations {
 
   private final StorageCredentialVendor storageCredentialVendor;
   private final Map<NormalizedURL, String> s3BucketRegionMap;
+  private final Map<NormalizedURL, String> s3BucketEndpointMap;
 
   public FileOperations(
       StorageCredentialVendor storageCredentialVendor, ServerProperties serverProperties) {
@@ -48,6 +49,14 @@ public class FileOperations {
         serverProperties.getS3Configurations().entrySet().stream()
             .filter(entry -> entry.getValue().getRegion() != null)
             .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getRegion()));
+    this.s3BucketEndpointMap =
+        serverProperties.getS3Configurations().entrySet().stream()
+            .filter(
+                entry -> {
+                  String endpoint = entry.getValue().getEndpoint();
+                  return endpoint != null && !endpoint.isEmpty();
+                })
+            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getEndpoint()));
   }
 
   /** Delete entire directory recursively. Note that currently it does nothing for cloud FS */
@@ -247,6 +256,13 @@ public class FileOperations {
     config.put(S3FileIOProperties.SECRET_ACCESS_KEY, awsCredentials.getSecretAccessKey());
     config.put(S3FileIOProperties.SESSION_TOKEN, awsCredentials.getSessionToken());
     config.put(AwsClientProperties.CLIENT_REGION, s3Region);
+    String s3Endpoint = s3BucketEndpointMap.get(path.getStorageBase());
+    if (s3Endpoint != null) {
+      // Self-hosted S3-compatible backends typically cannot issue wildcard certs for
+      // bucket.host, so an endpoint override pairs with path-style access.
+      config.put(S3FileIOProperties.ENDPOINT, s3Endpoint);
+      config.put(S3FileIOProperties.PATH_STYLE_ACCESS, "true");
+    }
     if (expirationTime != null) {
       // Without this, an Iceberg client cannot tell when the session it was handed dies, so it
       // neither renews ahead of the expiry nor treats the credential as expiring at all.
