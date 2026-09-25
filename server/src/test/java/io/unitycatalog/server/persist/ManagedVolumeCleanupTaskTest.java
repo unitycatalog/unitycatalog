@@ -113,26 +113,6 @@ class ManagedVolumeCleanupTaskTest {
   }
 
   @Test
-  void localManagedVolumeDropQueuesCleanupWithoutDeletingFilesSynchronously() throws Exception {
-    VolumeInfoDAO local =
-        createVolume(
-            "local_volume",
-            VolumeType.MANAGED,
-            id -> tempDir.resolve("__unitystorage/volumes").resolve(id.toString()).toString());
-    Path localFile = Path.of(local.getStorageLocation()).resolve("data.bin");
-    Files.createDirectories(localFile.getParent());
-    Files.writeString(localFile, "data");
-
-    repositories.getVolumeRepository().deleteVolume(CATALOG + "." + SCHEMA + ".local_volume");
-
-    // The drop only queues a cleanup task; the background worker reclaims the files later, so the
-    // files must still be present immediately after the drop returns.
-    assertThat(findVolume(local.getId())).isNull();
-    assertThat(findTask(local.getId())).isNotNull();
-    assertThat(localFile).exists();
-  }
-
-  @Test
   void externalVolumeDropsDoNotCreateTasksAndLeaveFilesUntouched() throws Exception {
     VolumeInfoDAO external =
         createVolume(
@@ -148,6 +128,34 @@ class ManagedVolumeCleanupTaskTest {
     assertThat(findVolume(external.getId())).isNull();
     assertThat(findTask(external.getId())).isNull();
     assertThat(externalFile).exists();
+  }
+
+  @Test
+  void cascadingSchemaDropQueuesCleanupForManagedVolumesOnly() {
+    VolumeInfoDAO managed =
+        createVolume(
+            "managed_cascade",
+            VolumeType.MANAGED,
+            id -> tempDir.resolve("__unitystorage/volumes").resolve(id.toString()).toString());
+    VolumeInfoDAO external =
+        createVolume(
+            "external_cascade",
+            VolumeType.EXTERNAL,
+            id -> tempDir.resolve("external").resolve(id.toString()).toString());
+    Date beforeDrop = new Date();
+
+    // A force schema drop cascades each child through VolumeRepository.deleteVolume(session, ...),
+    // the same entry point a direct drop uses, so managed children still queue a cleanup task and
+    // external children still queue none.
+    repositories.getSchemaRepository().deleteSchema(CATALOG + "." + SCHEMA, /* force= */ true);
+
+    assertDroppedWithTask(managed, beforeDrop);
+    assertThat(findVolume(external.getId())).isNull();
+    assertThat(findTask(external.getId())).isNull();
+    // Exactly one task: the managed child queued one, the external child queued none. Guards
+    // against a future change queueing a second task with a different id (the resource_id primary
+    // key only blocks a duplicate id).
+    assertThat(allTasks()).hasSize(1);
   }
 
   @Test
@@ -231,6 +239,12 @@ class ManagedVolumeCleanupTaskTest {
   private StorageCleanupTaskDAO findTask(UUID id) {
     try (var session = sessionFactory.openSession()) {
       return session.get(StorageCleanupTaskDAO.class, id);
+    }
+  }
+
+  private List<StorageCleanupTaskDAO> allTasks() {
+    try (var session = sessionFactory.openSession()) {
+      return session.createQuery("FROM StorageCleanupTaskDAO", StorageCleanupTaskDAO.class).list();
     }
   }
 }

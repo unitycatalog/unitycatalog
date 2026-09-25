@@ -117,6 +117,56 @@ class StorageCleanupWorkerE2ETest {
   }
 
   @Test
+  void workerCompletesWhenManagedVolumeStorageIsAlreadyEmpty() {
+    s3.createBucket(b -> b.bucket(bucket));
+    UUID volumeId = UUID.randomUUID();
+    String location = "s3://" + bucket + "/root/volumes/" + volumeId;
+    seedManagedVolume("vol", volumeId, location);
+    // No objects under the volume prefix: the storage was already reclaimed (e.g. a retried or
+    // duplicate task), so cleanup must still finish cleanly rather than fail on an empty prefix.
+    s3.putObject(b -> b.bucket(bucket).key("root/volumes/other/keep"), RequestBody.fromString("x"));
+
+    repositories.getVolumeRepository().deleteVolume(CATALOG + "." + SCHEMA + ".vol");
+
+    assertThat(s3BackedWorker().runOnce()).isTrue();
+    assertThat(remainingKeys()).containsExactly("root/volumes/other/keep");
+    assertThat(findTask(volumeId)).isNull();
+  }
+
+  @Test
+  void workerDeletesDroppedManagedTableFromLocalStorage() throws Exception {
+    UUID tableId = UUID.randomUUID();
+    Path tableDir = tempDir.resolve("root/tables").resolve(tableId.toString());
+    Path marker = tableDir.resolve("data/marker.txt");
+    Files.createDirectories(marker.getParent());
+    Files.writeString(marker, "x");
+    seedManagedTable("tbl", tableId, tableDir.toString());
+
+    repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, "tbl");
+
+    assertThat(localWorker().runOnce()).isTrue();
+    assertThat(Files.exists(tableDir)).isFalse();
+    assertThat(findTask(tableId)).isNull();
+  }
+
+  @Test
+  void workerCompletesWhenManagedTableStorageIsAlreadyEmpty() {
+    s3.createBucket(b -> b.bucket(bucket));
+    UUID tableId = UUID.randomUUID();
+    String location = "s3://" + bucket + "/root/tables/" + tableId;
+    seedManagedTable("tbl", tableId, location);
+    // No objects under the table prefix: the storage was already reclaimed (e.g. a retried or
+    // duplicate task), so cleanup must still finish cleanly rather than fail on an empty prefix.
+    s3.putObject(b -> b.bucket(bucket).key("root/tables/other/keep"), RequestBody.fromString("x"));
+
+    repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, "tbl");
+
+    assertThat(s3BackedWorker().runOnce()).isTrue();
+    assertThat(remainingKeys()).containsExactly("root/tables/other/keep");
+    assertThat(findTask(tableId)).isNull();
+  }
+
+  @Test
   void workerDeletesDroppedManagedTableFromS3() {
     s3.createBucket(b -> b.bucket(bucket));
     UUID tableId = UUID.randomUUID();

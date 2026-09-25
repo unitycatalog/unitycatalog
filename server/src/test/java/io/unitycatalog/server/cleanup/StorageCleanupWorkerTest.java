@@ -20,6 +20,8 @@ import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -40,6 +42,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 @SuppressWarnings("unchecked")
@@ -246,19 +249,19 @@ class StorageCleanupWorkerTest {
     verifyFailure("Storage cleanup failed: IllegalArgumentException");
   }
 
-  @Test
-  void processesManagedVolumeCleanupTask() {
-    NormalizedURL volumeLocation = NormalizedURL.from("s3://bucket/volumes/" + RESOURCE_ID);
-    String volumePrefix = volumeLocation + "/";
-    setClaim(ResourceType.VOLUME, volumeLocation.toString());
-    when(fileOperations.getCleanupFileIO(eq(volumeLocation), any())).thenReturn(fileIO);
-    when(fileIO.listPrefix(volumePrefix)).thenReturn(List.of());
-
+  @ParameterizedTest
+  @MethodSource("storageFailures")
+  void retriesRegardlessOfStorageFailureType(RuntimeException failure) {
+    doThrow(failure).when(fileIO).deletePrefix(PREFIX);
     assertThat(worker.runOnce()).isTrue();
+    verifyFailure("Storage cleanup failed: " + failure.getClass().getSimpleName());
+  }
 
-    verify(fileIO).deletePrefix(volumePrefix);
-    verify(taskRepository).finish(RESOURCE_ID, LEASE_TOKEN);
-    verify(taskRepository, never()).reportFailure(any(), any(), any());
+  private static List<RuntimeException> storageFailures() {
+    return List.of(
+        new RuntimeException("boom"),
+        new IllegalStateException("boom"),
+        new UncheckedIOException(new IOException("boom")));
   }
 
   @ParameterizedTest
