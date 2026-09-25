@@ -1,5 +1,9 @@
 package io.unitycatalog.server.persist.utils;
 
+import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
+import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -7,7 +11,14 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import javax.sql.DataSource;
+import org.hibernate.boot.Metadata;
+import org.hibernate.boot.model.relational.SqlStringGenerationContext;
+import org.hibernate.boot.model.relational.internal.SqlStringGenerationContextImpl;
+import org.hibernate.engine.jdbc.env.spi.JdbcEnvironment;
+import org.hibernate.mapping.Column;
+import org.hibernate.mapping.PersistentClass;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,31 +45,35 @@ final class LargeObjectColumnMigration {
   /** Converting waits this long for the table lock, then fails the start and is retried. */
   static final String LOCK_TIMEOUT = "30s";
 
-  static final List<TableColumn> COLUMNS =
+  private static final List<Attribute> ATTRIBUTES =
       List.of(
-          new TableColumn("uc_tables", "view_definition"),
-          new TableColumn("uc_columns", "type_text"),
-          new TableColumn("uc_functions", "routine_definition"),
-          new TableColumn("uc_credentials", "credential"));
+          new Attribute(TableInfoDAO.class, "viewDefinition"),
+          new Attribute(ColumnInfoDAO.class, "typeText"),
+          new Attribute(FunctionInfoDAO.class, "routineDefinition"),
+          new Attribute(CredentialDAO.class, "credential"));
 
-  record TableColumn(String table, String column) {}
+  private record Attribute(Class<?> entity, String name) {}
+
+  /** A column as SQL names it: the table qualified, and both quoted where Hibernate quotes them. */
+  private record TableColumn(String table, String column) {}
 
   private LargeObjectColumnMigration() {}
 
   /**
-   * @param schema the schema Hibernate qualifies tables with ({@code hibernate.default_schema}), or
-   *     null to resolve them through the search path as Hibernate does
+   * @param settings the settings the schema update runs with, which decide the default schema and
+   *     identifier quoting
    */
-  static void migrate(DataSource dataSource, String schema) {
+  static void migrate(DataSource dataSource, Metadata metadata, Map<String, Object> settings) {
     try (Connection connection = dataSource.getConnection()) {
       if (!"PostgreSQL".equals(connection.getMetaData().getDatabaseProductName())) {
         return;
       }
+      List<TableColumn> columns = columns(metadata, settings);
       boolean autoCommit = connection.getAutoCommit();
       connection.setAutoCommit(false);
       try {
-        if (!largeObjectColumns(connection, schema).isEmpty()) {
-          convert(connection, schema);
+        if (!largeObjectColumns(connection, columns).isEmpty()) {
+          convert(connection, columns);
         }
         connection.commit();
       } catch (SQLException | RuntimeException e) {
@@ -72,19 +87,38 @@ final class LargeObjectColumnMigration {
     }
   }
 
-  private static void convert(Connection connection, String schema) throws SQLException {
+  /** Names the columns the way Hibernate's schema update will. */
+  private static List<TableColumn> columns(Metadata metadata, Map<String, Object> settings) {
+    JdbcEnvironment jdbcEnvironment = metadata.getDatabase().getJdbcEnvironment();
+    SqlStringGenerationContext context =
+        SqlStringGenerationContextImpl.fromConfigurationMapForMigration(
+            jdbcEnvironment, metadata.getDatabase(), settings);
+    List<TableColumn> columns = new ArrayList<>();
+    for (Attribute attribute : ATTRIBUTES) {
+      PersistentClass entity = metadata.getEntityBinding(attribute.entity().getName());
+      Column column = entity.getProperty(attribute.name()).getColumns().get(0);
+      columns.add(
+          new TableColumn(
+              context.format(entity.getTable().getQualifiedTableName()),
+              column.getQuotedName(jdbcEnvironment.getDialect())));
+    }
+    return columns;
+  }
+
+  private static void convert(Connection connection, List<TableColumn> columns)
+      throws SQLException {
     try (Statement statement = connection.createStatement()) {
       statement.execute("select pg_advisory_xact_lock(" + ADVISORY_LOCK_KEY + ")");
       // Set after the advisory lock, which may wait for another server's whole conversion.
       statement.execute("set local lock_timeout = '" + LOCK_TIMEOUT + "'");
       // Look again: another server may have converted them while this one waited.
-      for (TableColumn column : largeObjectColumns(connection, schema)) {
-        String table = qualified(schema, column.table());
-        LOGGER.info("Converting large object column {}.{} to text", table, column.column());
+      for (TableColumn column : largeObjectColumns(connection, columns)) {
+        LOGGER.info(
+            "Converting large object column {}.{} to text", column.table(), column.column());
         long start = System.nanoTime();
         statement.execute(
             "alter table "
-                + table
+                + column.table()
                 + " alter column "
                 + column.column()
                 + " type text using convert_from(lo_get("
@@ -92,22 +126,24 @@ final class LargeObjectColumnMigration {
                 + "), 'UTF8')");
         LOGGER.info(
             "Converted {}.{} to text in {} ms",
-            table,
+            column.table(),
             column.column(),
             (System.nanoTime() - start) / 1_000_000);
       }
     }
   }
 
-  static List<TableColumn> largeObjectColumns(Connection connection, String schema)
-      throws SQLException {
+  private static List<TableColumn> largeObjectColumns(
+      Connection connection, List<TableColumn> columns) throws SQLException {
     List<TableColumn> result = new ArrayList<>();
+    // to_regclass and parse_ident read a name as SQL does: quoted as is, otherwise lower-cased.
     try (PreparedStatement statement =
         connection.prepareStatement(
-            "select 1 from pg_attribute where attrelid = to_regclass(?) and attname = ?"
+            "select 1 from pg_attribute where attrelid = to_regclass(?)"
+                + " and attname = (parse_ident(?))[1]"
                 + " and atttypid = 'oid'::regtype and not attisdropped")) {
-      for (TableColumn column : COLUMNS) {
-        statement.setString(1, qualified(schema, column.table()));
+      for (TableColumn column : columns) {
+        statement.setString(1, column.table());
         statement.setString(2, column.column());
         try (ResultSet resultSet = statement.executeQuery()) {
           if (resultSet.next()) {
@@ -117,9 +153,5 @@ final class LargeObjectColumnMigration {
       }
     }
     return result;
-  }
-
-  private static String qualified(String schema, String table) {
-    return schema == null || schema.isBlank() ? table : schema + "." + table;
   }
 }

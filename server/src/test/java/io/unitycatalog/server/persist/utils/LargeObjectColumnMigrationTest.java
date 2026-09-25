@@ -9,7 +9,6 @@ import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
-import io.unitycatalog.server.persist.utils.LargeObjectColumnMigration.TableColumn;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -20,6 +19,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
+import org.hibernate.cfg.MappingSettings;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -43,8 +43,30 @@ class LargeObjectColumnMigrationTest {
   private static final String ROUTINE_DEFINITION = "RETURN concat(x, 'é')";
   private static final String ROLE_ARN = "arn:aws:iam::123456789012:role/unity";
 
+  /** Table and column names of what the earlier mapping stored as large objects. */
+  private static final List<List<String>> LARGE_OBJECT_COLUMNS =
+      List.of(
+          List.of("uc_tables", "view_definition"),
+          List.of("uc_columns", "type_text"),
+          List.of("uc_functions", "routine_definition"),
+          List.of("uc_credentials", "credential"));
+
   @Test
   void convertsLargeObjectColumnsBeforeTheSchemaUpdate() throws SQLException {
+    upgradeKeepsValues("public", new Properties());
+  }
+
+  @Test
+  void convertsColumnsInAQuotedDefaultSchema() throws SQLException {
+    // Hibernate quotes the default schema as well, so PostgreSQL keeps its case.
+    execute("create schema \"MixedCase\"");
+    Properties settings = new Properties();
+    settings.setProperty(MappingSettings.DEFAULT_SCHEMA, "MixedCase");
+    settings.setProperty(MappingSettings.GLOBALLY_QUOTED_IDENTIFIERS, "true");
+    upgradeKeepsValues("MixedCase", settings);
+  }
+
+  private static void upgradeKeepsValues(String schema, Properties settings) throws SQLException {
     UUID viewId = UUID.randomUUID();
     UUID tableId = UUID.randomUUID();
     UUID functionId = UUID.randomUUID();
@@ -56,7 +78,8 @@ class LargeObjectColumnMigrationTest {
                 .awsIamRole(new AwsIamRoleRequest().roleArn(ROLE_ARN)),
             "owner");
     UUID credentialId = credential.getId();
-    try (HibernateConfigurator configurator = new HibernateConfigurator(properties("create"))) {
+    try (HibernateConfigurator configurator =
+        new HibernateConfigurator(properties("create", settings))) {
       configurator
           .getSessionFactory()
           .inTransaction(
@@ -72,20 +95,18 @@ class LargeObjectColumnMigrationTest {
                 session.persist(credential);
               });
     }
-    storeAsLargeObjects();
-    assertThat(largeObjectColumns()).hasSize(LargeObjectColumnMigration.COLUMNS.size());
+    storeAsLargeObjects(schema);
+    assertDataTypes(schema, "oid");
 
-    try (HibernateConfigurator configurator = new HibernateConfigurator(properties("update"))) {
-      assertThat(largeObjectColumns()).isEmpty();
-      assertThat(dataType("uc_columns", "type_text")).isEqualTo("text");
-      assertThat(dataType("uc_tables", "view_definition")).isEqualTo("text");
-      assertThat(dataType("uc_functions", "routine_definition")).isEqualTo("text");
-      assertThat(dataType("uc_credentials", "credential")).isEqualTo("text");
+    try (HibernateConfigurator configurator =
+        new HibernateConfigurator(properties("update", settings))) {
+      assertDataTypes(schema, "text");
       assertRowsIntact(configurator, viewId, tableId, functionId, credentialId);
     }
 
     // Later starts find text columns and leave them as they are.
-    try (HibernateConfigurator configurator = new HibernateConfigurator(properties("update"))) {
+    try (HibernateConfigurator configurator =
+        new HibernateConfigurator(properties("update", settings))) {
       assertRowsIntact(configurator, viewId, tableId, functionId, credentialId);
     }
   }
@@ -141,37 +162,39 @@ class LargeObjectColumnMigrationTest {
   }
 
   /** Puts the columns back the way the {@code @Lob} mapping stored them: one large object each. */
-  private static void storeAsLargeObjects() throws SQLException {
-    try (Connection connection = connect();
-        Statement statement = connection.createStatement()) {
-      for (TableColumn column : LargeObjectColumnMigration.COLUMNS) {
-        statement.execute(
-            String.format(
-                "alter table %s alter column %2$s type oid"
-                    + " using lo_from_bytea(0, convert_to(%2$s, 'UTF8'))",
-                column.table(), column.column()));
-      }
+  private static void storeAsLargeObjects(String schema) throws SQLException {
+    for (List<String> column : LARGE_OBJECT_COLUMNS) {
+      execute(
+          String.format(
+              "alter table \"%s\".%s alter column %3$s type oid"
+                  + " using lo_from_bytea(0, convert_to(%3$s, 'UTF8'))",
+              schema, column.get(0), column.get(1)));
     }
   }
 
-  private static List<TableColumn> largeObjectColumns() throws SQLException {
-    try (Connection connection = connect()) {
-      return LargeObjectColumnMigration.largeObjectColumns(connection, null);
-    }
-  }
-
-  private static String dataType(String table, String column) throws SQLException {
+  private static void assertDataTypes(String schema, String dataType) throws SQLException {
     try (Connection connection = connect();
         PreparedStatement statement =
             connection.prepareStatement(
                 "select data_type from information_schema.columns"
-                    + " where table_name = ? and column_name = ?")) {
-      statement.setString(1, table);
-      statement.setString(2, column);
-      try (ResultSet resultSet = statement.executeQuery()) {
-        assertThat(resultSet.next()).isTrue();
-        return resultSet.getString(1);
+                    + " where table_schema = ? and table_name = ? and column_name = ?")) {
+      for (List<String> column : LARGE_OBJECT_COLUMNS) {
+        String name = column.get(0) + "." + column.get(1);
+        statement.setString(1, schema);
+        statement.setString(2, column.get(0));
+        statement.setString(3, column.get(1));
+        try (ResultSet resultSet = statement.executeQuery()) {
+          assertThat(resultSet.next()).as(name).isTrue();
+          assertThat(resultSet.getString(1)).as(name).isEqualTo(dataType);
+        }
       }
+    }
+  }
+
+  private static void execute(String sql) throws SQLException {
+    try (Connection connection = connect();
+        Statement statement = connection.createStatement()) {
+      statement.execute(sql);
     }
   }
 
@@ -180,8 +203,9 @@ class LargeObjectColumnMigrationTest {
         POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
   }
 
-  private static Properties properties(String hbm2ddl) {
+  private static Properties properties(String hbm2ddl, Properties settings) {
     Properties properties = new Properties();
+    properties.putAll(settings);
     properties.setProperty("hibernate.connection.driver_class", "org.postgresql.Driver");
     properties.setProperty("hibernate.connection.url", POSTGRES.getJdbcUrl());
     properties.setProperty("hibernate.connection.username", POSTGRES.getUsername());
