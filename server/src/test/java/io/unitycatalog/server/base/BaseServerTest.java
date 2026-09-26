@@ -1,5 +1,7 @@
 package io.unitycatalog.server.base;
 
+import com.linecorp.armeria.client.WebClient;
+import com.linecorp.armeria.common.AggregatedHttpResponse;
 import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
@@ -7,10 +9,6 @@ import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.IOException;
 import java.net.ServerSocket;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -27,10 +25,14 @@ public abstract class BaseServerTest {
   public static final ServerConfig serverConfig = new ServerConfig("http://localhost", "");
 
   /**
-   * Base URL of the server's dedicated observability port (serves {@code /livez}, {@code /readyz},
-   * {@code /metrics}). A second port on the same server as the API; set per test in {@link #setUp}.
+   * HTTP/2-cleartext (h2c) base URIs for the API port and the dedicated observability port (the
+   * latter serves {@code /livez}, {@code /readyz}, {@code /metrics}). Set per test in {@link
+   * #setUp}. The {@code h2c://} scheme drives Armeria's WebClient over HTTP/2 cleartext with prior
+   * knowledge -- reliable, unlike the JDK client's h2c upgrade.
    */
-  protected static String observabilityUrl;
+  private static String apiH2cUri;
+
+  private static String observabilityH2cUri;
 
   protected UnityCatalogServer unityCatalogServer;
   protected Properties serverProperties;
@@ -119,29 +121,30 @@ public abstract class BaseServerTest {
               .build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);
-      observabilityUrl = "http://localhost:" + observabilityPort;
+      apiH2cUri = "h2c://127.0.0.1:" + port;
+      observabilityH2cUri = "h2c://127.0.0.1:" + observabilityPort;
     }
   }
 
-  /** Issues a GET against the running test server (API port) and returns the string response. */
-  @SneakyThrows
-  protected static HttpResponse<String> httpGet(String path) {
-    return httpGet(serverConfig.getServerUrl(), path);
+  /** Issues a GET against the running test server (API port) over HTTP/2 cleartext. */
+  protected static AggregatedHttpResponse httpGet(String path) {
+    return h2cGet(apiH2cUri, path);
   }
 
   /**
    * Issues a GET against the running test server's observability port ({@code /livez}, {@code
-   * /readyz}, {@code /metrics}), which is a distinct port from the API listener.
+   * /readyz}, {@code /metrics}), which is a distinct port from the API listener, over HTTP/2
+   * cleartext.
    */
-  @SneakyThrows
-  protected static HttpResponse<String> httpGetObservability(String path) {
-    return httpGet(observabilityUrl, path);
+  protected static AggregatedHttpResponse httpGetObservability(String path) {
+    return h2cGet(observabilityH2cUri, path);
   }
 
-  @SneakyThrows
-  private static HttpResponse<String> httpGet(String baseUrl, String path) {
-    HttpRequest request = HttpRequest.newBuilder().uri(URI.create(baseUrl + path)).GET().build();
-    return HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+  private static AggregatedHttpResponse h2cGet(String baseUri, String path) {
+    // Armeria's WebClient over h2c:// speaks HTTP/2 cleartext with prior knowledge. Unlike the JDK
+    // java.net.http client's h2c upgrade path -- which intermittently fails reading large response
+    // bodies with "EOF reached while reading" under CI load -- Armeria's h2c client is reliable.
+    return WebClient.of(baseUri).get(path).aggregate().join();
   }
 
   /** Finds an available port for the UC server. */
