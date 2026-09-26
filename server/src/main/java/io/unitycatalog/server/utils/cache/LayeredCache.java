@@ -13,6 +13,9 @@ public class LayeredCache<K, V> implements Cache<K, V> {
 
   public LayeredCache(List<Cache<K, V>> layers) {
     this.layers = List.copyOf(layers);
+    if (this.layers.isEmpty()) {
+      throw new IllegalArgumentException("LayeredCache requires at least one layer");
+    }
   }
 
   @Override
@@ -36,6 +39,13 @@ public class LayeredCache<K, V> implements Cache<K, V> {
     }
   }
 
+  /**
+   * Fans out to all tiers. If a tier's invalidate fails (for example, because it is wrapped in a
+   * {@link FailSafeCache} that swallows the failure), a stale entry can survive in that tier and be
+   * promoted back up on the next read. Correctness in that case relies on a {@link
+   * ReadThroughCache} validator rejecting the stale value on read. This scenario is L2-only and
+   * cannot occur with the L1-only stack.
+   */
   @Override
   public void invalidate(K key) {
     for (Cache<K, V> layer : layers) {

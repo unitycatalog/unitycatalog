@@ -81,4 +81,123 @@ public class FailSafeCacheTest {
     cache.invalidate("k");
     assertTrue(cache.getIfPresent("k").isEmpty());
   }
+
+  // --- Interrupt-flag restoration ---
+
+  @Test
+  void interruptFlagRestoredOnGetIfPresent() {
+    Cache<String, String> cache =
+        new FailSafeCache<>(
+            new Cache<>() {
+              public Optional<String> getIfPresent(String key) {
+                sneaky(new InterruptedException("interrupted"));
+                return Optional.empty();
+              }
+
+              public void put(String key, String value) {}
+
+              public void invalidate(String key) {}
+            });
+    Thread.interrupted(); // clear flag before the call
+    Optional<String> result = cache.getIfPresent("k");
+    assertTrue(result.isEmpty());
+    assertTrue(Thread.currentThread().isInterrupted());
+    Thread.interrupted(); // leave thread state clean for other tests
+  }
+
+  @Test
+  void interruptFlagRestoredOnPut() {
+    Cache<String, String> cache =
+        new FailSafeCache<>(
+            new Cache<>() {
+              public Optional<String> getIfPresent(String key) {
+                return Optional.empty();
+              }
+
+              public void put(String key, String value) {
+                sneaky(new InterruptedException("interrupted"));
+              }
+
+              public void invalidate(String key) {}
+            });
+    Thread.interrupted();
+    assertDoesNotThrow(() -> cache.put("k", "v"));
+    assertTrue(Thread.currentThread().isInterrupted());
+    Thread.interrupted();
+  }
+
+  @Test
+  void interruptFlagRestoredOnInvalidate() {
+    Cache<String, String> cache =
+        new FailSafeCache<>(
+            new Cache<>() {
+              public Optional<String> getIfPresent(String key) {
+                return Optional.empty();
+              }
+
+              public void put(String key, String value) {}
+
+              public void invalidate(String key) {
+                sneaky(new InterruptedException("interrupted"));
+              }
+            });
+    Thread.interrupted();
+    assertDoesNotThrow(() -> cache.invalidate("k"));
+    assertTrue(Thread.currentThread().isInterrupted());
+    Thread.interrupted();
+  }
+
+  // --- Error propagation for put and invalidate ---
+
+  @Test
+  void errorPropagatesOnPut() {
+    Error err = new OutOfMemoryError("fatal");
+    Cache<String, String> cache =
+        new FailSafeCache<>(
+            new Cache<>() {
+              public Optional<String> getIfPresent(String key) {
+                return Optional.empty();
+              }
+
+              public void put(String key, String value) {
+                throw err;
+              }
+
+              public void invalidate(String key) {}
+            });
+    assertThrows(OutOfMemoryError.class, () -> cache.put("k", "v"));
+  }
+
+  @Test
+  void errorPropagatesOnInvalidate() {
+    Error err = new OutOfMemoryError("fatal");
+    Cache<String, String> cache =
+        new FailSafeCache<>(
+            new Cache<>() {
+              public Optional<String> getIfPresent(String key) {
+                return Optional.empty();
+              }
+
+              public void put(String key, String value) {}
+
+              public void invalidate(String key) {
+                throw err;
+              }
+            });
+    assertThrows(OutOfMemoryError.class, () -> cache.invalidate("k"));
+  }
+
+  // --- Null delegate guard ---
+
+  @Test
+  void nullDelegateThrows() {
+    assertThrows(NullPointerException.class, () -> new FailSafeCache<>(null));
+  }
+
+  // --- Sneaky-throw helper (throws checked exceptions without declaring them) ---
+
+  @SuppressWarnings("unchecked")
+  private static <E extends Throwable> void sneaky(Throwable e) throws E {
+    throw (E) e;
+  }
 }

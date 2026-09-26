@@ -1,6 +1,7 @@
 package io.unitycatalog.server.utils.cache;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -70,5 +71,28 @@ public class LayeredCacheTest {
     LayeredCache<String, String> cache =
         new LayeredCache<>(List.of(new MapCache<>(), new MapCache<>()));
     assertTrue(cache.getIfPresent("absent").isEmpty());
+  }
+
+  // --- 3-tier upward promotion ---
+
+  @Test
+  void threeTierUpwardPromotion() {
+    MapCache<String, String> l1 = new MapCache<>();
+    MapCache<String, String> l2 = new MapCache<>();
+    MapCache<String, String> l3 = new MapCache<>();
+    l3.put("k", "v"); // only slowest tier has the value
+    LayeredCache<String, String> cache = new LayeredCache<>(List.of(l1, l2, l3));
+
+    assertEquals(Optional.of("v"), cache.getIfPresent("k"));
+    assertEquals(Optional.of("v"), l1.getIfPresent("k"), "value must be promoted to L1");
+    assertEquals(Optional.of("v"), l2.getIfPresent("k"), "value must be promoted to L2");
+    assertEquals(Optional.of("v"), l3.getIfPresent("k"), "value must remain in L3");
+  }
+
+  // --- Empty layer list rejected ---
+
+  @Test
+  void emptyLayersRejected() {
+    assertThrows(IllegalArgumentException.class, () -> new LayeredCache<>(List.of()));
   }
 }

@@ -2,6 +2,7 @@ package io.unitycatalog.server.utils.cache;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Expiry;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.ToLongFunction;
@@ -17,6 +18,7 @@ public class CaffeineCache<K, V> implements Cache<K, V> {
   private final com.github.benmanes.caffeine.cache.Cache<K, V> delegate;
 
   public CaffeineCache(int maxSize, ToLongFunction<V> expiresAtEpochMs) {
+    Objects.requireNonNull(expiresAtEpochMs, "expiresAtEpochMs");
     this.delegate =
         Caffeine.newBuilder()
             .maximumSize(maxSize)
@@ -43,7 +45,12 @@ public class CaffeineCache<K, V> implements Cache<K, V> {
                     long remainingMs =
                         Math.max(
                             0, expiresAtEpochMs.applyAsLong(value) - System.currentTimeMillis());
-                    return TimeUnit.MILLISECONDS.toNanos(remainingMs);
+                    // Cap before the ms->ns conversion. TimeUnit.toNanos already SATURATES to
+                    // Long.MAX_VALUE on overflow (it does not wrap), so a far-future/static expiry
+                    // yields an effectively-never-expire entry; clamping here makes that guarantee
+                    // explicit rather than relying on that subtlety.
+                    long safeMs = Math.min(remainingMs, Long.MAX_VALUE / 1_000_000L);
+                    return TimeUnit.MILLISECONDS.toNanos(safeMs);
                   }
                 })
             .build();
