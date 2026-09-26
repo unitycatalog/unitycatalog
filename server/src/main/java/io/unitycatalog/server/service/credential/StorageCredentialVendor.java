@@ -5,6 +5,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.service.credential.cache.StorageCredentialCache;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Optional;
@@ -23,12 +24,12 @@ import java.util.Set;
  */
 public class StorageCredentialVendor {
 
-  private final CloudCredentialVendor cloudCredentialVendor;
+  private final StorageCredentialCache credentialCache;
   private final ExternalLocationUtils externalLocationUtils;
 
   public StorageCredentialVendor(
-      CloudCredentialVendor cloudCredentialVendor, ExternalLocationUtils externalLocationUtils) {
-    this.cloudCredentialVendor = cloudCredentialVendor;
+      StorageCredentialCache credentialCache, ExternalLocationUtils externalLocationUtils) {
+    this.credentialCache = credentialCache;
     this.externalLocationUtils = externalLocationUtils;
   }
 
@@ -59,6 +60,8 @@ public class StorageCredentialVendor {
     Optional<CredentialDAO> credentialDAO =
         externalLocationUtils.getExternalLocationCredentialDaoForPath(path);
     CredentialContext credentialContext = CredentialContext.create(path, privileges, credentialDAO);
-    return cloudCredentialVendor.vendCredential(credentialContext).url(path.toString());
+    // The cache sets the credential's url in its loader, so it is correct for cached and fresh
+    // vends alike; the DB binding above is always re-resolved and is never cached.
+    return credentialCache.get(credentialContext);
   }
 }
