@@ -82,10 +82,10 @@ public class FailSafeCacheTest {
     assertTrue(cache.getIfPresent("k").isEmpty());
   }
 
-  // --- Interrupt-flag restoration ---
+  // --- Interruption propagates (not masked as a miss/no-op) and restores the flag ---
 
   @Test
-  void interruptFlagRestoredOnGetIfPresent() {
+  void interruptPropagatesOnGetIfPresent() {
     Cache<String, String> cache =
         new FailSafeCache<>(
             new Cache<>() {
@@ -99,14 +99,13 @@ public class FailSafeCacheTest {
               public void invalidate(String key) {}
             });
     Thread.interrupted(); // clear flag before the call
-    Optional<String> result = cache.getIfPresent("k");
-    assertTrue(result.isEmpty());
-    assertTrue(Thread.currentThread().isInterrupted());
+    assertThrows(RuntimeException.class, () -> cache.getIfPresent("k")); // not swallowed as a miss
+    assertTrue(Thread.currentThread().isInterrupted()); // flag restored
     Thread.interrupted(); // leave thread state clean for other tests
   }
 
   @Test
-  void interruptFlagRestoredOnPut() {
+  void interruptPropagatesOnPut() {
     Cache<String, String> cache =
         new FailSafeCache<>(
             new Cache<>() {
@@ -121,13 +120,13 @@ public class FailSafeCacheTest {
               public void invalidate(String key) {}
             });
     Thread.interrupted();
-    assertDoesNotThrow(() -> cache.put("k", "v"));
+    assertThrows(RuntimeException.class, () -> cache.put("k", "v"));
     assertTrue(Thread.currentThread().isInterrupted());
     Thread.interrupted();
   }
 
   @Test
-  void interruptFlagRestoredOnInvalidate() {
+  void interruptPropagatesOnInvalidate() {
     Cache<String, String> cache =
         new FailSafeCache<>(
             new Cache<>() {
@@ -142,7 +141,7 @@ public class FailSafeCacheTest {
               }
             });
     Thread.interrupted();
-    assertDoesNotThrow(() -> cache.invalidate("k"));
+    assertThrows(RuntimeException.class, () -> cache.invalidate("k"));
     assertTrue(Thread.currentThread().isInterrupted());
     Thread.interrupted();
   }
