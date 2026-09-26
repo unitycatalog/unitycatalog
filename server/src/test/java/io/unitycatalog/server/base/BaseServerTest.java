@@ -25,6 +25,13 @@ import org.junit.jupiter.api.io.TempDir;
 public abstract class BaseServerTest {
 
   public static final ServerConfig serverConfig = new ServerConfig("http://localhost", "");
+
+  /**
+   * Base URL of the server's dedicated observability port (serves {@code /livez}, {@code /readyz},
+   * {@code /metrics}). A second port on the same server as the API; set per test in {@link #setUp}.
+   */
+  protected static String observabilityUrl;
+
   protected UnityCatalogServer unityCatalogServer;
   protected Properties serverProperties;
   protected HibernateConfigurator hibernateConfigurator;
@@ -88,11 +95,15 @@ public abstract class BaseServerTest {
     }
     if (serverConfig.getServerUrl().contains("localhost")) {
       System.out.println("Running tests on localhost..");
-      // start the server on a random port
+      // start the server on a random port, with the observability endpoints on a second random
+      // port (a distinct port on the same server, so parallel tests do not collide on it).
       int port = findAvailablePort();
+      int observabilityPort = findAvailablePort();
       Files.createDirectories(testDirectoryRoot);
 
       setUpProperties();
+      serverProperties.setProperty(
+          Property.OBSERVABILITY_PORT.getKey(), String.valueOf(observabilityPort));
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
       setUpCredentialOperations(initServerProperties);
       Properties hibernateProperties =
@@ -108,14 +119,28 @@ public abstract class BaseServerTest {
               .build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);
+      observabilityUrl = "http://localhost:" + observabilityPort;
     }
   }
 
-  /** Issues a GET against the running test server and returns the string response. */
+  /** Issues a GET against the running test server (API port) and returns the string response. */
   @SneakyThrows
   protected static HttpResponse<String> httpGet(String path) {
-    HttpRequest request =
-        HttpRequest.newBuilder().uri(URI.create(serverConfig.getServerUrl() + path)).GET().build();
+    return httpGet(serverConfig.getServerUrl(), path);
+  }
+
+  /**
+   * Issues a GET against the running test server's observability port ({@code /livez}, {@code
+   * /readyz}, {@code /metrics}), which is a distinct port from the API listener.
+   */
+  @SneakyThrows
+  protected static HttpResponse<String> httpGetObservability(String path) {
+    return httpGet(observabilityUrl, path);
+  }
+
+  @SneakyThrows
+  private static HttpResponse<String> httpGet(String baseUrl, String path) {
+    HttpRequest request = HttpRequest.newBuilder().uri(URI.create(baseUrl + path)).GET().build();
     return HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
   }
 

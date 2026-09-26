@@ -10,7 +10,7 @@ public class LivezEndpointTest extends BaseServerTest {
 
   @Test
   public void livezReturns200AndHealthy() {
-    HttpResponse<String> response = httpGet("/livez");
+    HttpResponse<String> response = httpGetObservability("/livez");
     assertThat(response.statusCode()).isEqualTo(200);
     assertThat(response.body()).contains("\"healthy\":true");
   }

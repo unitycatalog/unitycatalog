@@ -302,6 +302,31 @@ public class ServerPropertiesTest {
   }
 
   @Test
+  public void testObservabilityPort() {
+    // Default keeps the observability port clear of the API ports (8080/8081).
+    assertThat(new ServerProperties().getObservabilityPort()).isEqualTo(8090);
+
+    // Custom override is picked up.
+    Properties custom = new Properties();
+    custom.setProperty(Property.OBSERVABILITY_PORT.getKey(), "9464");
+    assertThat(new ServerProperties(custom).getObservabilityPort()).isEqualTo(9464);
+
+    // Invalid: non-positive and non-integer values are rejected.
+    testInvalidProperty(
+        Property.OBSERVABILITY_PORT,
+        "0",
+        "Invalid value '0'",
+        "server.observability.port",
+        "Expected a positive integer (> 0)");
+    testInvalidProperty(
+        Property.OBSERVABILITY_PORT,
+        "abc",
+        "Invalid value 'abc'",
+        "server.observability.port",
+        "Expected an integer");
+  }
+
+  @Test
   public void testEffectiveCookieTimeout() {
     ServerProperties serverProperties = new ServerProperties();
     assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT24H"));

@@ -19,6 +19,7 @@ import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.ServerListener;
 import com.linecorp.armeria.server.ServiceRequestContext;
+import com.linecorp.armeria.server.VirtualHostBuilder;
 import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
@@ -70,6 +71,24 @@ public class ArmeriaServerBuilder {
   static final String ICEBERG_RELATIVE_PATH = "iceberg";
 
   private final ServerBuilder armeriaServerBuilder;
+
+  /**
+   * Port-based virtual host bound to the API port. The whole API surface -- annotated services, the
+   * root banner, the docs, and the auth decorators -- is registered here, so it is served only on
+   * the API port. Armeria's default virtual host is served on every bound port; leaving it empty
+   * and scoping each surface to its own port-based virtual host is what keeps the API off the
+   * observability port and the observability endpoints off the API port.
+   */
+  private final VirtualHostBuilder apiVirtualHost;
+
+  /**
+   * Port-based virtual host bound to the dedicated observability port. {@code /livez}, {@code
+   * /readyz}, and {@code /metrics} are registered here (via {@link #observabilityService}), so they
+   * are served only on that port. It is a second port on the same {@link Server}, never a separate
+   * server, so both listeners share one event loop and fail together.
+   */
+  private final VirtualHostBuilder observabilityVirtualHost;
+
   private final String basePath;
   private final String controlPath;
 
@@ -91,21 +110,54 @@ public class ArmeriaServerBuilder {
   private final JacksonResponseConverterFunction deltaResponseConverter;
 
   ArmeriaServerBuilder(
-      int port, String basePath, String controlPath, ServerProperties serverProperties) {
+      int port,
+      int observabilityPort,
+      String basePath,
+      String controlPath,
+      ServerProperties serverProperties) {
+    // The API and observability endpoints are two ports on one server, isolated by being on
+    // separate port-based virtual hosts. If the two ports were equal, both virtual hosts would bind
+    // the same port and the surfaces would collapse onto one listener -- putting /metrics and the
+    // probes back on the serving interface. Fail fast rather than silently weaken the isolation.
+    if (observabilityPort == port) {
+      throw new IllegalArgumentException(
+          String.format(
+              "server.observability.port (%d) must differ from the API port (%d): they are two"
+                  + " ports on the same server, and sharing one port would collapse the API and the"
+                  + " observability endpoints onto a single listener.",
+              observabilityPort, port));
+    }
     this.armeriaServerBuilder =
         Server.builder()
+            // The API port binds the loopback interfaces only: clients reach it through the
+            // in-process URL transcoder, never directly.
             .localPort(port, SessionProtocol.HTTP)
+            // Second port on the SAME server (not a separate Server) for the observability
+            // endpoints. Both listeners share one JVM and event loop, so they fail together --
+            // there is no state where the obs port is healthy while the API port is not -- while
+            // keeping /metrics and the probes off the main API listener. Unlike the API port this
+            // binds all interfaces, because kubelet and Prometheus reach it at the pod IP (not
+            // loopback); restrict it with network policy.
+            .port(observabilityPort, SessionProtocol.HTTP)
             // Armeria names HTTP/1 headers in their lowercase HTTP/2 form by default. Released
             // Iceberg clients read our response headers out of a plain map keyed by the name as
             // received, so a header they look up by its traditional spelling -- "ETag" for a
             // conditional loadTable -- is invisible to them unless we write it that way.
-            .http1HeaderNaming(Http1HeaderNaming.traditional())
-            .serviceUnder("/docs", new DocService());
-    this.armeriaServerBuilder.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"));
+            .http1HeaderNaming(Http1HeaderNaming.traditional());
+    // The API surface lives on a port-based virtual host bound to the API port, and the
+    // observability endpoints on one bound to the observability port. The default virtual host is
+    // left empty; since it is otherwise served on every bound port, scoping each surface to its own
+    // port-based virtual host is what makes the API answer only on the API port and the probes and
+    // /metrics only on the observability port.
+    this.apiVirtualHost = armeriaServerBuilder.virtualHost(port);
+    this.apiVirtualHost.serviceUnder("/docs", new DocService());
+    this.apiVirtualHost.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"));
+    this.observabilityVirtualHost = armeriaServerBuilder.virtualHost(observabilityPort);
     this.basePath = basePath;
     this.controlPath = controlPath;
     // Renders the 404s and 405s Armeria answers before a service is reached as Iceberg error
-    // documents, for the Iceberg API's paths only.
+    // documents, for the Iceberg API's paths only. Server-level, so it applies to unrouted requests
+    // on any virtual host.
     this.armeriaServerBuilder.errorHandler(
         new UnroutedIcebergRequestHandler(basePath + ICEBERG_RELATIVE_PATH + "/"));
     this.authorizationEnabled = serverProperties.isAuthorizationEnabled();
@@ -171,38 +223,46 @@ public class ArmeriaServerBuilder {
       DecoratingHttpServiceFunction accessDecorator, DecoratingHttpServiceFunction authDecorator) {
     Objects.requireNonNull(accessDecorator, "accessDecorator");
     Objects.requireNonNull(authDecorator, "authDecorator");
+    // Attached to the API virtual host, where the API services they guard live.
     for (DecoratingHttpServiceFunction decorator : List.of(accessDecorator, authDecorator)) {
-      armeriaServerBuilder.routeDecorator().pathPrefix(basePath).build(decorator);
-      armeriaServerBuilder
+      apiVirtualHost.routeDecorator().pathPrefix(basePath).build(decorator);
+      apiVirtualHost
           .routeDecorator()
           .pathPrefix(controlPath)
           .exclude(controlPath + "auth/tokens")
           .build(decorator);
     }
 
-    // Also registered globally, where it is outermost and can catch what the route decorators above
-    // throw. This instance carries no dialect: it finds the per-service one for the matched route.
-    armeriaServerBuilder.decorator(GlobalExceptionHandlingDecorator::new);
+    // On the API virtual host so it wraps the route decorators above and renders what they throw
+    // (an auth failure as 401/403, not 500). It must be here rather than server-level: with a
+    // server-level GlobalExceptionHandlingDecorator the access-control tests observed auth failures
+    // rendering as 500 -- it did not wrap this port-based virtual host's route decorators. This
+    // instance carries no dialect: it finds the per-service one for the matched route.
+    apiVirtualHost.decorator(GlobalExceptionHandlingDecorator::new);
     return this;
   }
 
   /**
-   * Registers an unauthenticated service at an absolute path (e.g. health/metrics probes). Because
-   * the path is absolute, it is not under the API path prefixes and so bypasses the security
-   * decorators attached in {@link #withSecurityDecorators}.
+   * Registers an unauthenticated observability service (a health probe or the metrics scrape) on
+   * the dedicated observability port only. Because it is bound to the observability virtual host,
+   * it answers on that port and is 404 on the API port, keeping metrics and probes off the serving
+   * interface.
    */
-  ArmeriaServerBuilder service(String path, HttpService service) {
-    armeriaServerBuilder.service(path, service);
+  ArmeriaServerBuilder observabilityService(String path, HttpService service) {
+    observabilityVirtualHost.service(path, service);
     return this;
   }
 
   /**
-   * Sets the Micrometer registry Armeria records into and installs a global decorator that emits
-   * per-endpoint request count / latency / error metrics under the {@code http.server} prefix.
+   * Sets the Micrometer registry Armeria records into and installs a decorator on the API virtual
+   * host that emits per-endpoint request count / latency / error metrics under the {@code
+   * http.server} prefix. On the API virtual host so it meters API traffic (wrapping outside the
+   * auth decorators, as it did when the whole surface was on the default virtual host); the
+   * observability port's own scrapes are not counted as http.server traffic.
    */
   ArmeriaServerBuilder meterRegistry(MeterRegistry meterRegistry) {
     armeriaServerBuilder.meterRegistry(meterRegistry);
-    armeriaServerBuilder.decorator(
+    apiVirtualHost.decorator(
         MetricCollectingService.newDecorator(MeterIdPrefixFunction.ofDefault("http.server")));
     return this;
   }
@@ -277,7 +337,7 @@ public class ArmeriaServerBuilder {
     // covers exceptions thrown inside the handler, the per-service decorator covers those thrown by
     // decorators sitting outside it.
     ExceptionHandlerFunction handler = service.exceptionHandler();
-    armeriaServerBuilder
+    apiVirtualHost
         .annotatedService()
         .pathPrefix(protocol.basePath(basePath, controlPath) + relativePath)
         .requestConverters(requestConverter)

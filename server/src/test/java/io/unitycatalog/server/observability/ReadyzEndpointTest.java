@@ -12,7 +12,7 @@ public class ReadyzEndpointTest extends BaseServerTest {
   public void readyzReturns200WhenDbReachable() {
     // BaseServerTest starts the server against an H2 in-memory DB, so the synchronous startup
     // probe marks the checker ready before the server serves — no polling needed.
-    HttpResponse<String> response = httpGet("/readyz");
+    HttpResponse<String> response = httpGetObservability("/readyz");
     assertThat(response.statusCode()).isEqualTo(200);
     assertThat(response.body()).contains("\"healthy\":true");
   }
