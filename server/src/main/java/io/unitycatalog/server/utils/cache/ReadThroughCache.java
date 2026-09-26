@@ -23,6 +23,7 @@ public class ReadThroughCache<K, V> {
   }
 
   public V get(K key, Supplier<V> loader) {
+    Objects.requireNonNull(loader, "loader");
     Optional<V> hit = cache.getIfPresent(key);
     if (hit.isPresent() && valid.test(key, hit.get())) {
       return hit.get();

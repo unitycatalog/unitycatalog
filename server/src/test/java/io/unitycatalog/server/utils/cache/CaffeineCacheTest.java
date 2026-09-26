@@ -72,13 +72,14 @@ public class CaffeineCacheTest {
   @Test
   void expireAfterUpdateOnRePut() {
     // Values are epoch-ms; extractor reads the value directly.
-    CaffeineCache<String, Long> cache = new CaffeineCache<>(10, v -> v);
-    long farFutureMs = System.currentTimeMillis() + 3_600_000L;
-    cache.put("k", farFutureMs); // far-future expiry → should be present
+    Clock clock = mock(Clock.class);
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1000L)); // t0
+    CaffeineCache<String, Long> cache = new CaffeineCache<>(10, v -> v, clock);
+    cache.put("k", 3000L); // far-future expiry (TTL = 2000ms from t0=1000) → should be present
     assertTrue(cache.getIfPresent("k").isPresent());
 
-    long alreadyExpiredMs = System.currentTimeMillis() - 1L; // past expiry
-    cache.put("k", alreadyExpiredMs); // re-put with an expired value
+    cache.put("k", 1500L); // re-put with shorter TTL (500ms from t0=1000)
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1600L)); // +600ms from t0: past 500ms TTL
     cache.cleanUp();
     assertTrue(cache.getIfPresent("k").isEmpty());
   }
@@ -87,11 +88,11 @@ public class CaffeineCacheTest {
 
   @Test
   void perKeyExpiryIsIndependent() {
-    CaffeineCache<String, Long> cache = new CaffeineCache<>(10, v -> v);
-    long expired = System.currentTimeMillis() - 1L;
-    long fresh = System.currentTimeMillis() + 3_600_000L;
-    cache.put("a", expired);
-    cache.put("b", fresh);
+    Clock clock = mock(Clock.class);
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1000L)); // t0
+    CaffeineCache<String, Long> cache = new CaffeineCache<>(10, v -> v, clock);
+    cache.put("a", 500L); // already past t0=1000 → expired immediately
+    cache.put("b", 3_601_000L); // 3_600_000ms after t0=1000 → fresh
     cache.cleanUp();
     assertTrue(cache.getIfPresent("a").isEmpty(), "expired key must be absent");
     assertTrue(cache.getIfPresent("b").isPresent(), "fresh key must still be present");
@@ -129,5 +130,17 @@ public class CaffeineCacheTest {
   void nullClockThrows() {
     assertThrows(
         NullPointerException.class, () -> new CaffeineCache<String, Long>(10, v -> v, null));
+  }
+
+  // --- maxSize <= 0 rejected ---
+
+  @Test
+  void zeroMaxSizeThrows() {
+    assertThrows(IllegalArgumentException.class, () -> new CaffeineCache<>(0, v -> 0L));
+  }
+
+  @Test
+  void negativeMaxSizeThrows() {
+    assertThrows(IllegalArgumentException.class, () -> new CaffeineCache<>(-1, v -> 0L));
   }
 }

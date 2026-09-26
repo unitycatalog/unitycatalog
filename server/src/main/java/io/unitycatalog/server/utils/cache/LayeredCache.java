@@ -1,6 +1,7 @@
 package io.unitycatalog.server.utils.cache;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -12,6 +13,7 @@ public class LayeredCache<K, V> implements Cache<K, V> {
   private final List<Cache<K, V>> layers;
 
   public LayeredCache(List<Cache<K, V>> layers) {
+    Objects.requireNonNull(layers, "layers");
     this.layers = List.copyOf(layers);
     if (this.layers.isEmpty()) {
       throw new IllegalArgumentException("LayeredCache requires at least one layer");

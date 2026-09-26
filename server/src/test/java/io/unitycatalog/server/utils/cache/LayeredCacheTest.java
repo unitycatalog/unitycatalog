@@ -95,4 +95,11 @@ public class LayeredCacheTest {
   void emptyLayersRejected() {
     assertThrows(IllegalArgumentException.class, () -> new LayeredCache<>(List.of()));
   }
+
+  // --- Null layer list rejected ---
+
+  @Test
+  void nullLayersRejected() {
+    assertThrows(NullPointerException.class, () -> new LayeredCache<String, String>(null));
+  }
 }

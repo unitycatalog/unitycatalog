@@ -123,6 +123,36 @@ public class ReadThroughCacheTest {
     assertTrue(store.getIfPresent("k").isEmpty(), "store must remain empty after null loader");
   }
 
+  // --- stale value in store + loader throws: exception propagates, stale stays ---
+
+  @Test
+  void staleHitThenLoaderThrowsPropagatesAndStoreKeepsStale() {
+    MapCache<String, String> store = new MapCache<>();
+    store.put("k", "stale");
+    ReadThroughCache<String, String> cache =
+        new ReadThroughCache<>(store, (key, v) -> !v.equals("stale")); // rejects "stale"
+    assertThrows(
+        RuntimeException.class,
+        () ->
+            cache.get(
+                "k",
+                () -> {
+                  throw new RuntimeException("backend down");
+                }));
+    assertEquals(
+        Optional.of("stale"),
+        store.getIfPresent("k")); // stale still there; not removed, not overwritten
+  }
+
+  // --- Null loader guard ---
+
+  @Test
+  void nullLoaderThrows() {
+    assertThrows(
+        NullPointerException.class,
+        () -> new ReadThroughCache<>(new MapCache<>(), (k, v) -> true).get("k", null));
+  }
+
   // --- Null constructor arguments ---
 
   @Test
