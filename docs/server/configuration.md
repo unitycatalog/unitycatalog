@@ -66,6 +66,22 @@ The server config file is at the location `etc/conf/server.properties` (relative
     use the file `etc/db/h2db.mv.db` as the metadata store. Any changes made to the metadata will be persisted in this
     file.
 
+### Storage credential cache
+
+When the server vends temporary cloud storage credentials, it can reuse a recently vended credential
+for the same location, privileges, and role instead of calling the cloud provider again on every
+request. The database binding for a location is always re-read, so a rebind (for example pointing a
+location at a different role) takes effect immediately. The cache is controlled by these keys:
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `server.storage-credential-cache.enabled` | `true` | Whether to reuse vended credentials. When `false`, every request vends a fresh credential from the cloud provider. |
+| `server.storage-credential-cache.max-size` | `1000` | The maximum number of distinct credentials to keep. |
+| `server.storage-credential-cache.renewal-lead-time` | `PT1M` | How far before a credential's own expiry it is refreshed, so callers never receive a credential on the verge of expiring. |
+| `server.storage-credential-cache.max-age` | `PT5M` | The longest a vended credential is reused before it is refreshed, regardless of its own expiry. This is deliberately short: Unity Catalog cannot observe a cloud-side trust-policy change, so it bounds how long a credential keeps being served after such a change. |
+
+Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is five minutes).
+
 ## Logging
 
 The server logs are located at `etc/logs/server.log`. The log level and log rolling policy can be set in log4j2 config
