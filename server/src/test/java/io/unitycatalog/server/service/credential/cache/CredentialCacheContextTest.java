@@ -155,19 +155,19 @@ public class CredentialCacheContextTest {
 
   @Test
   void matches_exactMatch_returnsTrue() {
-    CredentialCacheContext c = ctx("arn:role/A", 0L, 1_000L);
+    CredentialCacheContext c = ctx("arn:role/A", null, 1_000L);
     assertTrue(c.matches(key(LOC, UriScheme.S3, Set.of(SELECT), "arn:role/A")));
   }
 
   @Test
   void matches_differentLocation_returnsFalse() {
-    CredentialCacheContext c = ctx("arn:role/A", 0L, 1_000L);
+    CredentialCacheContext c = ctx("arn:role/A", null, 1_000L);
     assertFalse(c.matches(key(OTHER_LOC, UriScheme.S3, Set.of(SELECT), "arn:role/A")));
   }
 
   @Test
   void matches_differentScheme_returnsFalse() {
-    CredentialCacheContext c = ctx("arn:role/A", 0L, 1_000L);
+    CredentialCacheContext c = ctx("arn:role/A", null, 1_000L);
     NormalizedURL gcsLoc = NormalizedURL.from("gs://bucket/tableA");
     CredentialCacheKey gcsKey =
         new CredentialCacheKey(gcsLoc, Set.of(SELECT), UriScheme.GS, "arn:role/A");
@@ -176,14 +176,14 @@ public class CredentialCacheContextTest {
 
   @Test
   void matches_differentPrivileges_returnsFalse() {
-    CredentialCacheContext c = ctx("arn:role/A", 0L, 1_000L);
+    CredentialCacheContext c = ctx("arn:role/A", null, 1_000L);
     // SELECT+UPDATE instead of just SELECT
     assertFalse(c.matches(key(LOC, UriScheme.S3, Set.of(SELECT, UPDATE), "arn:role/A")));
   }
 
   @Test
   void matches_differentRoleArn_returnsFalse() {
-    CredentialCacheContext c = ctx("arn:role/A", 0L, 1_000L);
+    CredentialCacheContext c = ctx("arn:role/A", null, 1_000L);
     assertFalse(c.matches(key(LOC, UriScheme.S3, Set.of(SELECT), "arn:role/B")));
   }
 
@@ -196,7 +196,7 @@ public class CredentialCacheContextTest {
             UriScheme.S3,
             Set.of(SELECT),
             "arn:role/A",
-            0L,
+            null,
             1_000L);
     assertFalse(c.matches(key(LOC, UriScheme.S3, Set.of(SELECT), "arn:role/A")));
   }
@@ -204,13 +204,13 @@ public class CredentialCacheContextTest {
   @Test
   void matches_nullRoleArnBothSides_returnsTrue() {
     // Per-bucket vend: no role ARN on either side
-    CredentialCacheContext c = ctx(null, 0L, 1_000L);
+    CredentialCacheContext c = ctx(null, null, 1_000L);
     assertTrue(c.matches(key(LOC, UriScheme.S3, Set.of(SELECT), null)));
   }
 
   @Test
   void matches_nullRoleArnVsNonNull_returnsFalse() {
-    CredentialCacheContext c = ctx(null, 0L, 1_000L);
+    CredentialCacheContext c = ctx(null, null, 1_000L);
     assertFalse(c.matches(key(LOC, UriScheme.S3, Set.of(SELECT), "arn:role/A")));
   }
 
@@ -223,14 +223,14 @@ public class CredentialCacheContextTest {
             UriScheme.S3,
             Set.of(SELECT),
             "arn:role/A",
-            0L,
+            null,
             1_000L);
     assertFalse(c.matches(key("arn:role/A", Set.of(SELECT))));
   }
 
   @Test
   void matches_nonNullRoleArnVsNullKey_returnsFalse() { // Gap 6
-    assertFalse(ctx("arn:role/A", 0L, 1_000L).matches(key(null, Set.of(SELECT))));
+    assertFalse(ctx("arn:role/A", null, 1_000L).matches(key(null, Set.of(SELECT))));
   }
 
   // ─── constructor invariants ────────────────────────────────────────────────
@@ -248,6 +248,52 @@ public class CredentialCacheContextTest {
                 "r",
                 100L,
                 0L));
+  }
+
+  @Test
+  void credentialExpiresZero_throws() { // Guard 6: non-null T1 must be positive
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new CredentialCacheContext(
+                CredentialCacheContext.CURRENT_SCHEMA_VERSION,
+                LOC,
+                UriScheme.S3,
+                Set.of(SELECT),
+                "r",
+                0L,
+                1_000L));
+  }
+
+  @Test
+  void credentialExpiresNegative_throws() { // Guard 6: non-null T1 must be positive
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new CredentialCacheContext(
+                CredentialCacheContext.CURRENT_SCHEMA_VERSION,
+                LOC,
+                UriScheme.S3,
+                Set.of(SELECT),
+                "r",
+                -1L,
+                1_000L));
+  }
+
+  @Test
+  void ctx_inconsistentScheme_throws() { // Guard 7: scheme must match location
+    NormalizedURL s3Loc = NormalizedURL.from("s3://bucket/path");
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new CredentialCacheContext(
+                CredentialCacheContext.CURRENT_SCHEMA_VERSION,
+                s3Loc,
+                UriScheme.GS,
+                Set.of(SELECT),
+                "r",
+                null,
+                1_000L));
   }
 
   @Test
