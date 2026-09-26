@@ -23,6 +23,16 @@ public record CredentialCacheContext(
 
   public static final int CURRENT_SCHEMA_VERSION = 1;
 
+  public CredentialCacheContext {
+    Objects.requireNonNull(location, "location");
+    Objects.requireNonNull(scheme, "scheme");
+    privileges = Set.copyOf(privileges); // defensive immutable snapshot; null set throws NPE here
+    if (cacheExpiresAtEpochMs <= 0) {
+      throw new IllegalArgumentException("cacheExpiresAtEpochMs must be positive");
+    }
+    // roleArn stays nullable.
+  }
+
   /**
    * Full compare of every key field and the current schema. Fail-closed: any mismatch (including a
    * stale schema version) returns false.
@@ -55,10 +65,15 @@ public record CredentialCacheContext(
    * service reuse cap), which is a hard cut-off.
    *
    * @param nowMs current epoch milliseconds
-   * @param leadMs minimum remaining lifetime to require from T1; use 0 for no lead
+   * @param leadMs minimum remaining lifetime to require from T1; use 0 for no lead; must be
+   *     non-negative
    * @return true iff {@code (T1 == null || now < T1 - lead) && now < T2}
+   * @throws IllegalArgumentException if {@code leadMs} is negative
    */
   public boolean fresh(long nowMs, long leadMs) {
+    if (leadMs < 0) {
+      throw new IllegalArgumentException("leadMs must be non-negative");
+    }
     boolean t1Ok =
         credentialExpiresAtEpochMs == null || nowMs < credentialExpiresAtEpochMs - leadMs;
     return t1Ok && nowMs < cacheExpiresAtEpochMs;
