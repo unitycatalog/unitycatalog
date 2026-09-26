@@ -25,16 +25,20 @@ public class CaffeineCache<K, V> implements Cache<K, V> {
   public CaffeineCache(int maxSize, ToLongFunction<V> expiresAtEpochMs, Clock clock) {
     Objects.requireNonNull(expiresAtEpochMs, "expiresAtEpochMs");
     Objects.requireNonNull(clock, "clock");
+    // Capture the wall-clock epoch at construction. The ticker only needs to measure ELAPSED
+    // time (like the default nanoTime ticker), so we subtract this base to keep its magnitude
+    // small and avoid relying on any Caffeine-internal overflow clamping for epoch-magnitude
+    // values. remainingNanos still uses absolute clock.millis() because it computes
+    // (expiry_epoch - now); this base is for the ticker only.
+    final long baseMillis = clock.millis();
     this.delegate =
         Caffeine.newBuilder()
             .maximumSize(maxSize)
-            // Drive Caffeine's expiry clock from the injected Clock (not the default nanoTime
-            // ticker). Our per-entry TTL is computed from an ABSOLUTE wall-clock epoch-ms
-            // (the credential's expirationTime), so measuring elapsed time against the SAME
-            // wall clock keeps create-duration and eviction consistent; a mocked Clock makes
-            // expiry deterministic in tests. The authoritative freshness check is the read
-            // validator, so any wall-clock adjustment is backstopped there.
-            .ticker(() -> TimeUnit.MILLISECONDS.toNanos(clock.millis()))
+            // Drive Caffeine's expiry clock from the injected Clock so that a mocked Clock
+            // makes expiry deterministic in tests. The ticker returns elapsed milliseconds
+            // (converted to nanos) from the base captured above, matching the scale of the
+            // default nanoTime-based ticker and avoiding epoch-magnitude inputs to Caffeine.
+            .ticker(() -> TimeUnit.MILLISECONDS.toNanos(clock.millis() - baseMillis))
             .expireAfter(
                 new Expiry<K, V>() {
                   @Override
