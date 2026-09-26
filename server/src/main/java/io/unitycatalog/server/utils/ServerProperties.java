@@ -235,6 +235,14 @@ public class ServerProperties {
         "server.storage-cleanup.initial-delay", "P7D", POSITIVE_DURATION_VALIDATOR),
     STORAGE_CLEANUP_RETRY_BACKOFF(
         "server.storage-cleanup.retry-backoff", "PT1H", POSITIVE_DURATION_VALIDATOR),
+    STORAGE_CREDENTIAL_CACHE_ENABLED(
+        "server.storage-credential-cache.enabled", "true", BOOLEAN_VALIDATOR),
+    STORAGE_CREDENTIAL_CACHE_MAX_SIZE(
+        "server.storage-credential-cache.max-size", "1000", POSITIVE_INTEGER_VALIDATOR),
+    STORAGE_CREDENTIAL_CACHE_RENEWAL_LEAD_TIME(
+        "server.storage-credential-cache.renewal-lead-time", "PT1M", POSITIVE_DURATION_VALIDATOR),
+    STORAGE_CREDENTIAL_CACHE_MAX_AGE(
+        "server.storage-credential-cache.max-age", "PT5M", POSITIVE_DURATION_VALIDATOR),
     AUTHORIZATION_URL("server.authorization-url", URL_VALIDATOR),
     TOKEN_URL("server.token-url", URL_VALIDATOR),
     CLIENT_ID("server.client-id"),
@@ -550,6 +558,22 @@ public class ServerProperties {
 
   public Duration getStorageCleanupRetryBackoff() {
     return Duration.parse(get(Property.STORAGE_CLEANUP_RETRY_BACKOFF));
+  }
+
+  public boolean isStorageCredentialCacheEnabled() {
+    return Boolean.parseBoolean(get(Property.STORAGE_CREDENTIAL_CACHE_ENABLED));
+  }
+
+  public int getStorageCredentialCacheMaxSize() {
+    return Integer.parseInt(get(Property.STORAGE_CREDENTIAL_CACHE_MAX_SIZE));
+  }
+
+  public Duration getStorageCredentialCacheRenewalLeadTime() {
+    return Duration.parse(get(Property.STORAGE_CREDENTIAL_CACHE_RENEWAL_LEAD_TIME));
+  }
+
+  public Duration getStorageCredentialCacheMaxAge() {
+    return Duration.parse(get(Property.STORAGE_CREDENTIAL_CACHE_MAX_AGE));
   }
 
   public boolean isIncludeStackTraceInError() {
