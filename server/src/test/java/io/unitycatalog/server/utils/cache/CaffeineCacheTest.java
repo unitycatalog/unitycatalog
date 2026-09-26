@@ -4,7 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import java.time.Clock;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -95,23 +98,20 @@ public class CaffeineCacheTest {
   // --- expireAfterRead does not extend the entry's life ---
 
   @Test
-  void expireAfterReadDoesNotExtendLife() throws InterruptedException {
-    CaffeineCache<String, Long> cache = new CaffeineCache<>(10, v -> v);
-    // 300 ms TTL from now
-    long expiry = System.currentTimeMillis() + 300L;
-    cache.put("k", expiry);
+  void expireAfterReadDoesNotExtendLife() {
+    Clock clock = mock(Clock.class);
+    when(clock.millis()).thenReturn(1000L); // t0
+    CaffeineCache<String, Long> cache = new CaffeineCache<>(10, v -> v, clock);
+    cache.put("k", 1300L); // TTL = 300ms (expiry epoch-ms 1300)
 
-    // Read several times within the first ~150 ms; entry should still be live
-    long readDeadline = System.currentTimeMillis() + 150L;
-    while (System.currentTimeMillis() < readDeadline) {
-      cache.getIfPresent("k");
-      Thread.sleep(20);
-    }
+    when(clock.millis()).thenReturn(1100L); // t0+100: still fresh
+    assertTrue(cache.getIfPresent("k").isPresent()); // a read here must NOT extend life
+    when(clock.millis()).thenReturn(1250L); // t0+250: still fresh
+    assertTrue(cache.getIfPresent("k").isPresent());
 
-    // Sleep past the original 300 ms TTL (total elapsed > 350 ms from put)
-    Thread.sleep(200);
+    when(clock.millis()).thenReturn(1400L); // t0+400: past expiry 1300
     cache.cleanUp();
-    assertTrue(cache.getIfPresent("k").isEmpty(), "entry must have expired despite reads");
+    assertTrue(cache.getIfPresent("k").isEmpty()); // expired despite the earlier reads
   }
 
   // --- Null expiry function guard ---
@@ -119,5 +119,13 @@ public class CaffeineCacheTest {
   @Test
   void nullExpiryFunctionThrows() {
     assertThrows(NullPointerException.class, () -> new CaffeineCache<>(10, null));
+  }
+
+  // --- Null clock guard ---
+
+  @Test
+  void nullClockThrows() {
+    assertThrows(
+        NullPointerException.class, () -> new CaffeineCache<String, Long>(10, v -> v, null));
   }
 }
