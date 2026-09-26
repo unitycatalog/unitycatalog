@@ -10,7 +10,7 @@ public class MetricsEndpointTest extends BaseServerTest {
 
   @Test
   public void metricsReturns200WithJvmSeries() {
-    HttpResponse<String> response = httpGet("/metrics");
+    HttpResponse<String> response = httpGetObservability("/metrics");
     assertThat(response.statusCode()).isEqualTo(200);
     assertThat(response.body()).contains("jvm_memory_used_bytes");
   }

@@ -42,8 +42,9 @@ public class MetricsDomainCounterTest extends BaseTableCRUDTestEnv {
     // Create a table via the SDK (catalog and schema are created in setUp by BaseTableCRUDTestEnv).
     createAndVerifyExternalTable();
 
-    // Scrape the live /metrics endpoint and assert the uc_tables_created counter is present.
-    HttpResponse<String> response = httpGet("/metrics");
+    // Scrape the live /metrics endpoint (on the observability port) and assert the
+    // uc_tables_created counter is present.
+    HttpResponse<String> response = httpGetObservability("/metrics");
 
     assertThat(response.statusCode()).isEqualTo(200);
     assertThat(response.body()).contains("uc_tables_created");

@@ -247,6 +247,9 @@ public class ServerProperties {
     READINESS_PROBE_INTERVAL(
         "server.readiness.probe-interval", "PT5S", POSITIVE_DURATION_VALIDATOR),
     READINESS_DB_TIMEOUT("server.readiness.db-timeout", "PT2S", POSITIVE_DURATION_VALIDATOR),
+    // Default 8090 keeps the observability port clear of the API ports (8080 client/transcoder,
+    // 8081 internal).
+    OBSERVABILITY_PORT("server.observability.port", "8090", POSITIVE_INTEGER_VALIDATOR),
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
     // Native Iceberg REST writes are experimental and opt-in until the API is stable.
     ICEBERG_TABLE_ENABLED("server.iceberg-table.enabled", "false", BOOLEAN_VALIDATOR),
@@ -567,6 +570,15 @@ public class ServerProperties {
    */
   public Duration getReadinessDbTimeout() {
     return Duration.parse(get(Property.READINESS_DB_TIMEOUT));
+  }
+
+  /**
+   * Port for the dedicated observability listener that serves {@code /livez}, {@code /readyz}, and
+   * {@code /metrics}. Kept off the main API port so metrics are not exposed on the serving
+   * interface; bound as a second port on the same Armeria server, never a separate server.
+   */
+  public int getObservabilityPort() {
+    return Integer.parseInt(get(Property.OBSERVABILITY_PORT));
   }
 
   public boolean isIncludeStackTraceInError() {

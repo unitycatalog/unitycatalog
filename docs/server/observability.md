@@ -1,15 +1,23 @@
 # Observability
 
 Unity Catalog exposes three unauthenticated HTTP endpoints for health checking and metrics
-collection. They are served on the same port as the catalog API (default **8080**) and are
-always enabled — there is no configuration flag to disable them.
+collection: `/livez`, `/readyz`, and `/metrics`. They are served on a **dedicated observability
+port** (default **8090**), separate from the catalog API port (default **8080**), and are always
+enabled — there is no configuration flag to disable them.
+
+The observability port is a second port on the *same* server as the API — not a separate server —
+so both listeners share one process and fail together. Serving these endpoints on their own port
+keeps them (in particular `/metrics`, which exposes operational counters) off the main API
+listener: they answer on the observability port and are `404` on the API port. Set the port with
+`server.observability.port` (default `8090`).
 
 !!! warning "Network exposure"
     These endpoints are unauthenticated by design so that orchestrators and Prometheus
-    scrapers can reach them without credentials. Restrict access with network policy
-    (firewall rules, Kubernetes `NetworkPolicy`, a service mesh, etc.) and do not expose
-    them to untrusted networks. `/metrics` in particular exposes operational counts such
-    as tables created.
+    scrapers can reach them without credentials. Restrict access to the observability port with
+    network policy (firewall rules, Kubernetes `NetworkPolicy`, a service mesh, etc.) and do not
+    expose it to untrusted networks. `/metrics` in particular exposes operational counts such as
+    tables created. Under a default-deny `NetworkPolicy`, remember to allow the observability port
+    from the node/host, or kubelet probes will fail regardless of which port they target.
 
 ## Health endpoints
 
@@ -25,7 +33,7 @@ Use this endpoint to tell an orchestrator whether the process is alive and shoul
 restarted if it stops responding.
 
 ```sh
-curl http://localhost:8080/livez
+curl http://localhost:8090/livez
 # {"healthy":true}
 ```
 
@@ -49,10 +57,13 @@ Key implementation details:
   timeout instead.
 
 Use this endpoint to control routing: add it as the readiness probe and as the health check
-for load balancer target groups.
+for load balancer target groups. If your load balancer health-checks a port it also routes
+traffic to, point that health check at `/readyz` on the observability port (load balancers allow a
+health-check port distinct from the traffic port) — it is drain-aware, whereas a static root
+response is not and would keep the target in rotation during a rolling deploy.
 
 ```sh
-curl -i http://localhost:8080/readyz
+curl -i http://localhost:8090/readyz
 # HTTP/1.1 200 OK  (database reachable)
 # {"healthy":true}
 
@@ -92,7 +103,7 @@ Collector, etc.).
     those libraries are upgraded; pin dashboards and alerts with that in mind.
 
 ```sh
-curl http://localhost:8080/metrics
+curl http://localhost:8090/metrics
 # HELP jvm_memory_used_bytes ...
 # TYPE jvm_memory_used_bytes gauge
 # jvm_memory_used_bytes{area="heap",...} 1.23456789E8
@@ -104,7 +115,7 @@ curl http://localhost:8080/metrics
 ### Prometheus scrape configuration
 
 Add a job to your `prometheus.yml` (or equivalent scrape configuration) to collect metrics
-from the Unity Catalog server:
+from the Unity Catalog server's observability port:
 
 ```yaml
 scrape_configs:
@@ -112,14 +123,15 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets:
-          - uc-server-host:8080
+          - uc-server-host:8090
 ```
 
-Replace `uc-server-host:8080` with the hostname and port of your Unity Catalog server.
+Replace `uc-server-host:8090` with the hostname and observability port of your Unity Catalog
+server.
 
 ### Kubernetes probes
 
-Add liveness and readiness probes to the Unity Catalog container spec:
+Expose the observability port and point both probes at it:
 
 ```yaml
 containers:
@@ -127,16 +139,18 @@ containers:
     ports:
       - name: http
         containerPort: 8080
+      - name: observability
+        containerPort: 8090
     livenessProbe:
       httpGet:
         path: /livez
-        port: http
+        port: observability
       initialDelaySeconds: 10
       periodSeconds: 15
     readinessProbe:
       httpGet:
         path: /readyz
-        port: http
+        port: observability
       initialDelaySeconds: 5
       periodSeconds: 10
       failureThreshold: 3

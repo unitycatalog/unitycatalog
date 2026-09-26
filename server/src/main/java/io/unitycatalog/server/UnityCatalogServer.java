@@ -169,17 +169,19 @@ public class UnityCatalogServer implements AutoCloseable {
     ArmeriaServerBuilder armeriaServerBuilder =
         new ArmeriaServerBuilder(
             unityCatalogServerBuilder.port,
+            unityCatalogServerBuilder.serverProperties.getObservabilityPort(),
             BASE_PATH,
             CONTROL_PATH,
             unityCatalogServerBuilder.serverProperties);
 
     // Metrics: one process-wide Prometheus registry. Armeria records its own request metrics into
     // it (via meterRegistry + the MetricCollectingService decorator); /metrics scrapes it. Held as
-    // a field so close() can release the JVM/GC binders on shutdown.
+    // a field so close() can release the JVM/GC binders on shutdown. Served on the dedicated
+    // observability port (not the API listener), since it exposes request/table counters.
     metrics = MetricsRegistries.createPrometheus();
     PrometheusMeterRegistry meterRegistry = metrics.registry();
     armeriaServerBuilder.meterRegistry(meterRegistry);
-    armeriaServerBuilder.service(
+    armeriaServerBuilder.observabilityService(
         "/metrics", PrometheusExpositionService.of(meterRegistry.getPrometheusRegistry()));
 
     // Init all repositories
@@ -205,10 +207,11 @@ public class UnityCatalogServer implements AutoCloseable {
         armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
     initializeCleanup(unityCatalogServerBuilder.serverProperties, repositories);
 
-    // Observability: unauthenticated liveness probe at root. HealthCheckService.of() has no
-    // checkers, so it is healthy while the process is serving and never touches the DB. Like
-    // /readyz it flips to 503 once graceful shutdown begins (HealthCheckService drains on stop).
-    armeriaServerBuilder.service("/livez", HealthCheckService.of());
+    // Observability: unauthenticated liveness probe on the observability port. HealthCheckService
+    // .of() has no checkers, so it is healthy while the process is serving and never touches the
+    // DB. Like /readyz it flips to 503 once graceful shutdown begins (HealthCheckService drains on
+    // stop). Kubelet-style probes target the observability port directly.
+    armeriaServerBuilder.observabilityService("/livez", HealthCheckService.of());
 
     // Readiness: 503 until the DB is reachable. The check runs on a background scheduler
     // (never on the request path); start()/close() are tied to the Armeria server lifecycle so
@@ -219,7 +222,7 @@ public class UnityCatalogServer implements AutoCloseable {
             hibernateConfigurator.getSessionFactory(),
             unityCatalogServerBuilder.serverProperties.getReadinessProbeInterval(),
             unityCatalogServerBuilder.serverProperties.getReadinessDbTimeout());
-    armeriaServerBuilder.service(
+    armeriaServerBuilder.observabilityService(
         "/readyz", HealthCheckService.builder().checkers(readinessChecker.healthChecker()).build());
     armeriaServerBuilder.serverListener(
         ServerListener.builder()
