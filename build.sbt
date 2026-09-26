@@ -384,6 +384,7 @@ lazy val server = (project in file("server"))
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
 
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
+      "com.github.ben-manes.caffeine" % "caffeine" % "3.1.8",
       "com.h2database" %  "h2" % "2.2.224",
 
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
