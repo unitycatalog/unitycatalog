@@ -20,6 +20,8 @@ import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -40,6 +42,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 @SuppressWarnings("unchecked")
@@ -244,6 +247,21 @@ class StorageCleanupWorkerTest {
     assertThat(worker.runOnce()).isTrue();
     verifyNoInteractions(fileOperations);
     verifyFailure("Storage cleanup failed: IllegalArgumentException");
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageFailures")
+  void retriesRegardlessOfStorageFailureType(RuntimeException failure) {
+    doThrow(failure).when(fileIO).deletePrefix(PREFIX);
+    assertThat(worker.runOnce()).isTrue();
+    verifyFailure("Storage cleanup failed: " + failure.getClass().getSimpleName());
+  }
+
+  private static List<RuntimeException> storageFailures() {
+    return List.of(
+        new RuntimeException("boom"),
+        new IllegalStateException("boom"),
+        new UncheckedIOException(new IOException("boom")));
   }
 
   @ParameterizedTest
