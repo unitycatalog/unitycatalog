@@ -97,10 +97,13 @@ public abstract class BaseServerTest {
     }
     if (serverConfig.getServerUrl().contains("localhost")) {
       System.out.println("Running tests on localhost..");
-      // start the server on a random port, with the observability endpoints on a second random
-      // port (a distinct port on the same server, so parallel tests do not collide on it).
-      int port = findAvailablePort();
-      int observabilityPort = findAvailablePort();
+      // Start the server on a random port, with the observability endpoints on a second random
+      // port. Both are taken at once so the two ports are guaranteed distinct: two sequential
+      // ServerSocket(0) calls can hand back the same port (the first is closed before the second
+      // opens), which the API/observability-port validation would then reject.
+      int[] ports = findTwoAvailablePorts();
+      int port = ports[0];
+      int observabilityPort = ports[1];
       Files.createDirectories(testDirectoryRoot);
 
       setUpProperties();
@@ -147,10 +150,15 @@ public abstract class BaseServerTest {
     return WebClient.of(baseUri).get(path).aggregate().join();
   }
 
-  /** Finds an available port for the UC server. */
-  private int findAvailablePort() throws IOException {
-    try (ServerSocket socket = new ServerSocket(0)) {
-      return socket.getLocalPort();
+  /**
+   * Returns two distinct free ports (for the API and observability listeners). Both sockets are
+   * held open at once so the OS cannot return the same port twice, which a pair of sequential
+   * {@code ServerSocket(0)} calls can, since each closes before the next opens.
+   */
+  private static int[] findTwoAvailablePorts() throws IOException {
+    try (ServerSocket first = new ServerSocket(0);
+        ServerSocket second = new ServerSocket(0)) {
+      return new int[] {first.getLocalPort(), second.getLocalPort()};
     }
   }
 
