@@ -54,7 +54,8 @@ public class CaffeineCacheTest {
 
   @Test
   void maximumSizeIsEnforced() {
-    CaffeineCache<Integer, Integer> cache = new CaffeineCache<>(2, v -> Long.MAX_VALUE);
+    CaffeineCache<Integer, Integer> cache =
+        new CaffeineCache<>(2, v -> System.currentTimeMillis() + 3_600_000L);
     cache.put(1, 1);
     cache.put(2, 2);
     cache.put(3, 3); // exceeds max size
