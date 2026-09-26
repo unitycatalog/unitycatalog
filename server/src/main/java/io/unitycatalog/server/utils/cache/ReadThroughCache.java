@@ -1,5 +1,6 @@
 package io.unitycatalog.server.utils.cache;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiPredicate;
 import java.util.function.Supplier;
@@ -17,8 +18,8 @@ public class ReadThroughCache<K, V> {
   private final BiPredicate<K, V> valid;
 
   public ReadThroughCache(Cache<K, V> cache, BiPredicate<K, V> valid) {
-    this.cache = cache;
-    this.valid = valid;
+    this.cache = Objects.requireNonNull(cache, "cache");
+    this.valid = Objects.requireNonNull(valid, "valid");
   }
 
   public V get(K key, Supplier<V> loader) {
@@ -26,7 +27,7 @@ public class ReadThroughCache<K, V> {
     if (hit.isPresent() && valid.test(key, hit.get())) {
       return hit.get();
     }
-    V loaded = loader.get();
+    V loaded = Objects.requireNonNull(loader.get(), "loader must return a non-null value");
     cache.put(key, loaded);
     return loaded;
   }

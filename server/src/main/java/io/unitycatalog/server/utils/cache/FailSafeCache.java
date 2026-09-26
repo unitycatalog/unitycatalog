@@ -1,5 +1,6 @@
 package io.unitycatalog.server.utils.cache;
 
+import java.util.Objects;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,7 +17,7 @@ public class FailSafeCache<K, V> implements Cache<K, V> {
   private final Cache<K, V> delegate;
 
   public FailSafeCache(Cache<K, V> delegate) {
-    this.delegate = delegate;
+    this.delegate = Objects.requireNonNull(delegate, "delegate");
   }
 
   @Override
@@ -25,7 +26,8 @@ public class FailSafeCache<K, V> implements Cache<K, V> {
       return delegate.getIfPresent(key);
     } catch (Exception e) {
       restoreInterruptIfNeeded(e);
-      LOGGER.warn("Cache get failed; treating as miss", e);
+      LOGGER.warn(
+          "Cache get failed on [{}]; treating as miss", delegate.getClass().getSimpleName(), e);
       return Optional.empty();
     }
   }
@@ -36,7 +38,7 @@ public class FailSafeCache<K, V> implements Cache<K, V> {
       delegate.put(key, value);
     } catch (Exception e) {
       restoreInterruptIfNeeded(e);
-      LOGGER.warn("Cache put failed; ignoring", e);
+      LOGGER.warn("Cache put failed on [{}]; ignoring", delegate.getClass().getSimpleName(), e);
     }
   }
 
@@ -46,7 +48,8 @@ public class FailSafeCache<K, V> implements Cache<K, V> {
       delegate.invalidate(key);
     } catch (Exception e) {
       restoreInterruptIfNeeded(e);
-      LOGGER.warn("Cache invalidate failed; ignoring", e);
+      LOGGER.warn(
+          "Cache invalidate failed on [{}]; ignoring", delegate.getClass().getSimpleName(), e);
     }
   }
 

@@ -1,6 +1,8 @@
 package io.unitycatalog.server.utils.cache;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
@@ -90,5 +92,42 @@ public class ReadThroughCacheTest {
     } finally {
       pool.shutdownNow();
     }
+  }
+
+  // --- Loader throws: propagates, store not poisoned ---
+
+  @Test
+  void loaderThrowsPropagatesAndStoreNotPoisoned() {
+    MapCache<String, String> store = new MapCache<>();
+    ReadThroughCache<String, String> cache = new ReadThroughCache<>(store, (k, v) -> true);
+
+    assertThrows(
+        RuntimeException.class,
+        () ->
+            cache.get(
+                "k",
+                () -> {
+                  throw new RuntimeException("backend down");
+                }));
+    assertTrue(store.getIfPresent("k").isEmpty(), "store must not be poisoned after loader throws");
+  }
+
+  // --- Loader returns null: NPE, nothing cached ---
+
+  @Test
+  void loaderReturnsNullThrowsNpeAndNothingCached() {
+    MapCache<String, String> store = new MapCache<>();
+    ReadThroughCache<String, String> cache = new ReadThroughCache<>(store, (k, v) -> true);
+
+    assertThrows(NullPointerException.class, () -> cache.get("k", () -> null));
+    assertTrue(store.getIfPresent("k").isEmpty(), "store must remain empty after null loader");
+  }
+
+  // --- Null constructor arguments ---
+
+  @Test
+  void nullCtorArgsThrow() {
+    assertThrows(NullPointerException.class, () -> new ReadThroughCache<>(null, (k, v) -> true));
+    assertThrows(NullPointerException.class, () -> new ReadThroughCache<>(new MapCache<>(), null));
   }
 }
