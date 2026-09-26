@@ -6,6 +6,7 @@ import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.service.credential.cache.StorageCredentialCache;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.function.UnaryOperator;
 import lombok.Getter;
@@ -69,8 +70,10 @@ public class Repositories {
         cloudCredentialVendor != null
             ? cloudCredentialVendor
             : new CloudCredentialVendor(serverProperties);
+    StorageCredentialCache credentialCache =
+        new StorageCredentialCache(resolvedCloudCredentialVendor, serverProperties);
     this.storageCredentialVendor =
-        new StorageCredentialVendor(resolvedCloudCredentialVendor, externalLocationUtils);
+        new StorageCredentialVendor(credentialCache, externalLocationUtils);
     this.fileOperations =
         fileOperationsDecorator.apply(
             new FileOperationsImpl(storageCredentialVendor, serverProperties));
