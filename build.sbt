@@ -371,6 +371,7 @@ lazy val server = (project in file("server"))
     ) ++ javacRelease17,
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
+      "io.micrometer" % "micrometer-registry-prometheus" % "1.12.4",
       "org.apache.commons" % "commons-lang3" % "3.19.0",
 
       // Netty dependencies

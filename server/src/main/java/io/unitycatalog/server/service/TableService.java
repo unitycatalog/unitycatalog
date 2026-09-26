@@ -12,6 +12,8 @@ import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -36,15 +38,21 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
 
   private final TableRepository tableRepository;
   private final SchemaRepository schemaRepository;
+  private final Counter tablesCreated;
 
   @SneakyThrows
   public TableService(
       UnityCatalogAuthorizer authorizer,
       Repositories repositories,
-      ServerProperties serverProperties) {
+      ServerProperties serverProperties,
+      MeterRegistry meterRegistry) {
     super(authorizer, repositories, serverProperties);
     this.tableRepository = repositories.getTableRepository();
     this.schemaRepository = repositories.getSchemaRepository();
+    this.tablesCreated =
+        Counter.builder("uc.tables.created")
+            .description("Number of tables created via the create-table API")
+            .register(meterRegistry);
   }
 
   /**
@@ -88,11 +96,13 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
     serverProperties.checkDeltaApiOnlyForManagedTable(
         createTable.getTableType(), "POST /delta/v1/catalogs/{catalog}/schemas/{schema}/tables");
     TableInfo tableInfo = tableRepository.createTable(createTable);
+    // Count the table as soon as it is persisted; a failure while building the response below must
+    // not undercount a table that was actually created.
+    tablesCreated.increment();
 
     SchemaInfo schemaInfo =
         schemaRepository.getSchema(tableInfo.getCatalogName() + "." + tableInfo.getSchemaName());
     initializeHierarchicalAuthorization(tableInfo.getTableId(), schemaInfo.getSchemaId());
-
     return HttpResponse.ofJson(tableInfo);
   }
 

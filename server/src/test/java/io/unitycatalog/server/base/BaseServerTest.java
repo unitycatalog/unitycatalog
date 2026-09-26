@@ -1,5 +1,7 @@
 package io.unitycatalog.server.base;
 
+import com.linecorp.armeria.client.WebClient;
+import com.linecorp.armeria.common.AggregatedHttpResponse;
 import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
@@ -21,6 +23,17 @@ import org.junit.jupiter.api.io.TempDir;
 public abstract class BaseServerTest {
 
   public static final ServerConfig serverConfig = new ServerConfig("http://localhost", "");
+
+  /**
+   * HTTP/2-cleartext (h2c) base URIs for the API port and the dedicated observability port (the
+   * latter serves {@code /livez}, {@code /readyz}, {@code /metrics}). Set per test in {@link
+   * #setUp}. The {@code h2c://} scheme drives Armeria's WebClient over HTTP/2 cleartext with prior
+   * knowledge -- reliable, unlike the JDK client's h2c upgrade.
+   */
+  private static String apiH2cUri;
+
+  private static String observabilityH2cUri;
+
   protected UnityCatalogServer unityCatalogServer;
   protected Properties serverProperties;
   protected HibernateConfigurator hibernateConfigurator;
@@ -84,11 +97,18 @@ public abstract class BaseServerTest {
     }
     if (serverConfig.getServerUrl().contains("localhost")) {
       System.out.println("Running tests on localhost..");
-      // start the server on a random port
-      int port = findAvailablePort();
+      // Start the server on a random port, with the observability endpoints on a second random
+      // port. Both are taken at once so the two ports are guaranteed distinct: two sequential
+      // ServerSocket(0) calls can hand back the same port (the first is closed before the second
+      // opens), which the API/observability-port validation would then reject.
+      int[] ports = findTwoAvailablePorts();
+      int port = ports[0];
+      int observabilityPort = ports[1];
       Files.createDirectories(testDirectoryRoot);
 
       setUpProperties();
+      serverProperties.setProperty(
+          Property.OBSERVABILITY_PORT.getKey(), String.valueOf(observabilityPort));
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
       setUpCredentialOperations(initServerProperties);
       Properties hibernateProperties =
@@ -104,13 +124,41 @@ public abstract class BaseServerTest {
               .build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);
+      apiH2cUri = "h2c://127.0.0.1:" + port;
+      observabilityH2cUri = "h2c://127.0.0.1:" + observabilityPort;
     }
   }
 
-  /** Finds an available port for the UC server. */
-  private int findAvailablePort() throws IOException {
-    try (ServerSocket socket = new ServerSocket(0)) {
-      return socket.getLocalPort();
+  /** Issues a GET against the running test server (API port) over HTTP/2 cleartext. */
+  protected static AggregatedHttpResponse httpGet(String path) {
+    return h2cGet(apiH2cUri, path);
+  }
+
+  /**
+   * Issues a GET against the running test server's observability port ({@code /livez}, {@code
+   * /readyz}, {@code /metrics}), which is a distinct port from the API listener, over HTTP/2
+   * cleartext.
+   */
+  protected static AggregatedHttpResponse httpGetObservability(String path) {
+    return h2cGet(observabilityH2cUri, path);
+  }
+
+  private static AggregatedHttpResponse h2cGet(String baseUri, String path) {
+    // Armeria's WebClient over h2c:// speaks HTTP/2 cleartext with prior knowledge. Unlike the JDK
+    // java.net.http client's h2c upgrade path -- which intermittently fails reading large response
+    // bodies with "EOF reached while reading" under CI load -- Armeria's h2c client is reliable.
+    return WebClient.of(baseUri).get(path).aggregate().join();
+  }
+
+  /**
+   * Returns two distinct free ports (for the API and observability listeners). Both sockets are
+   * held open at once so the OS cannot return the same port twice, which a pair of sequential
+   * {@code ServerSocket(0)} calls can, since each closes before the next opens.
+   */
+  private static int[] findTwoAvailablePorts() throws IOException {
+    try (ServerSocket first = new ServerSocket(0);
+        ServerSocket second = new ServerSocket(0)) {
+      return new int[] {first.getLocalPort(), second.getLocalPort()};
     }
   }
 

@@ -244,6 +244,12 @@ public class ServerProperties {
     AUDIENCES("server.audiences"),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
     ACCESS_TOKEN_TIMEOUT("server.access-token-timeout", "PT24H", DURATION_VALIDATOR),
+    READINESS_PROBE_INTERVAL(
+        "server.readiness.probe-interval", "PT5S", POSITIVE_DURATION_VALIDATOR),
+    READINESS_DB_TIMEOUT("server.readiness.db-timeout", "PT2S", POSITIVE_DURATION_VALIDATOR),
+    // Default 8090 keeps the observability port clear of the API ports (8080 client/transcoder,
+    // 8081 internal).
+    OBSERVABILITY_PORT("server.observability.port", "8090", POSITIVE_INTEGER_VALIDATOR),
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
     // Native Iceberg REST writes are experimental and opt-in until the API is stable.
     ICEBERG_TABLE_ENABLED("server.iceberg-table.enabled", "false", BOOLEAN_VALIDATOR),
@@ -550,6 +556,29 @@ public class ServerProperties {
 
   public Duration getStorageCleanupRetryBackoff() {
     return Duration.parse(get(Property.STORAGE_CLEANUP_RETRY_BACKOFF));
+  }
+
+  /** How often the {@code /readyz} background probe re-checks database reachability. */
+  public Duration getReadinessProbeInterval() {
+    return Duration.parse(get(Property.READINESS_PROBE_INTERVAL));
+  }
+
+  /**
+   * Timeout for the {@code /readyz} database reachability check ({@code Connection.isValid}). This
+   * bounds only the validity check, not connection acquisition (see the connection pool's connect
+   * timeout for that).
+   */
+  public Duration getReadinessDbTimeout() {
+    return Duration.parse(get(Property.READINESS_DB_TIMEOUT));
+  }
+
+  /**
+   * Port for the dedicated observability listener that serves {@code /livez}, {@code /readyz}, and
+   * {@code /metrics}. Kept off the main API port so metrics are not exposed on the serving
+   * interface; bound as a second port on the same Armeria server, never a separate server.
+   */
+  public int getObservabilityPort() {
+    return Integer.parseInt(get(Property.OBSERVABILITY_PORT));
   }
 
   public boolean isIncludeStackTraceInError() {

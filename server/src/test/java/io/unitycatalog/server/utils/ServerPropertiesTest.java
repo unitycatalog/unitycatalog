@@ -274,6 +274,59 @@ public class ServerPropertiesTest {
   }
 
   @Test
+  public void testReadinessConfiguration() {
+    // Defaults
+    ServerProperties defaults = new ServerProperties();
+    assertThat(defaults.getReadinessProbeInterval()).isEqualTo(Duration.ofSeconds(5));
+    assertThat(defaults.getReadinessDbTimeout()).isEqualTo(Duration.ofSeconds(2));
+
+    // Custom overrides are picked up
+    Properties custom = new Properties();
+    custom.setProperty(Property.READINESS_PROBE_INTERVAL.getKey(), "PT10S");
+    custom.setProperty(Property.READINESS_DB_TIMEOUT.getKey(), "PT3S");
+    ServerProperties overridden = new ServerProperties(custom);
+    assertThat(overridden.getReadinessProbeInterval()).isEqualTo(Duration.ofSeconds(10));
+    assertThat(overridden.getReadinessDbTimeout()).isEqualTo(Duration.ofSeconds(3));
+
+    // Invalid: non-positive and malformed durations are rejected
+    testInvalidProperty(
+        Property.READINESS_PROBE_INTERVAL,
+        "PT0S",
+        "server.readiness.probe-interval",
+        "Expected at least one millisecond");
+    testInvalidProperty(
+        Property.READINESS_DB_TIMEOUT,
+        "2 seconds",
+        "Invalid value '2 seconds'",
+        "server.readiness.db-timeout");
+  }
+
+  @Test
+  public void testObservabilityPort() {
+    // Default keeps the observability port clear of the API ports (8080/8081).
+    assertThat(new ServerProperties().getObservabilityPort()).isEqualTo(8090);
+
+    // Custom override is picked up.
+    Properties custom = new Properties();
+    custom.setProperty(Property.OBSERVABILITY_PORT.getKey(), "9464");
+    assertThat(new ServerProperties(custom).getObservabilityPort()).isEqualTo(9464);
+
+    // Invalid: non-positive and non-integer values are rejected.
+    testInvalidProperty(
+        Property.OBSERVABILITY_PORT,
+        "0",
+        "Invalid value '0'",
+        "server.observability.port",
+        "Expected a positive integer (> 0)");
+    testInvalidProperty(
+        Property.OBSERVABILITY_PORT,
+        "abc",
+        "Invalid value 'abc'",
+        "server.observability.port",
+        "Expected an integer");
+  }
+
+  @Test
   public void testEffectiveCookieTimeout() {
     ServerProperties serverProperties = new ServerProperties();
     assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT24H"));
