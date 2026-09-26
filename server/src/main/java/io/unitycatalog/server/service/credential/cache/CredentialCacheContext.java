@@ -30,6 +30,15 @@ public record CredentialCacheContext(
     if (cacheExpiresAtEpochMs <= 0) {
       throw new IllegalArgumentException("cacheExpiresAtEpochMs must be positive");
     }
+    if (credentialExpiresAtEpochMs != null && credentialExpiresAtEpochMs <= 0) {
+      throw new IllegalArgumentException(
+          "credentialExpiresAtEpochMs must be positive when non-null");
+    }
+    UriScheme derived = UriScheme.fromURI(location.toUri());
+    if (derived != scheme) {
+      throw new IllegalArgumentException(
+          "scheme " + scheme + " does not match location " + location);
+    }
     // roleArn stays nullable.
   }
 
