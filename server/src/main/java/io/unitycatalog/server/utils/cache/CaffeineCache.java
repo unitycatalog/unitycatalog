@@ -23,6 +23,9 @@ public class CaffeineCache<K, V> implements Cache<K, V> {
   }
 
   public CaffeineCache(int maxSize, ToLongFunction<V> expiresAtEpochMs, Clock clock) {
+    if (maxSize <= 0) {
+      throw new IllegalArgumentException("maxSize must be positive, got " + maxSize);
+    }
     Objects.requireNonNull(expiresAtEpochMs, "expiresAtEpochMs");
     Objects.requireNonNull(clock, "clock");
     // Capture the wall-clock instant at construction. The ticker measures elapsed time since
