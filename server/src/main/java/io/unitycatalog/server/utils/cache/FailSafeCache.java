@@ -8,8 +8,10 @@ import org.slf4j.LoggerFactory;
 /**
  * Wraps a cache tier so its failures are never terminal: a get failure becomes a miss and a
  * put/invalidate failure a logged no-op. Catches {@link Exception} (covers checked exceptions a
- * delegate may raise via {@code @SneakyThrows} and, later, remote-tier I/O), restores the interrupt
- * flag on {@link InterruptedException}, and deliberately lets {@link Error} propagate.
+ * delegate may raise via {@code @SneakyThrows} and, later, remote-tier I/O) and deliberately lets
+ * {@link Error} propagate. An {@link InterruptedException} is not treated as a cache failure: the
+ * interrupt flag is restored and the interruption is propagated, rather than being masked as a
+ * miss/no-op that would let the caller continue with the interrupt flag set.
  */
 public class FailSafeCache<K, V> implements Cache<K, V> {
   private static final Logger LOGGER = LoggerFactory.getLogger(FailSafeCache.class);
@@ -25,7 +27,7 @@ public class FailSafeCache<K, V> implements Cache<K, V> {
     try {
       return delegate.getIfPresent(key);
     } catch (Exception e) {
-      restoreInterruptIfNeeded(e);
+      rethrowIfInterrupted(e);
       LOGGER.warn(
           "Cache get failed on [{}]; treating as miss", delegate.getClass().getSimpleName(), e);
       return Optional.empty();
@@ -37,7 +39,7 @@ public class FailSafeCache<K, V> implements Cache<K, V> {
     try {
       delegate.put(key, value);
     } catch (Exception e) {
-      restoreInterruptIfNeeded(e);
+      rethrowIfInterrupted(e);
       LOGGER.warn("Cache put failed on [{}]; ignoring", delegate.getClass().getSimpleName(), e);
     }
   }
@@ -47,15 +49,20 @@ public class FailSafeCache<K, V> implements Cache<K, V> {
     try {
       delegate.invalidate(key);
     } catch (Exception e) {
-      restoreInterruptIfNeeded(e);
+      rethrowIfInterrupted(e);
       LOGGER.warn(
           "Cache invalidate failed on [{}]; ignoring", delegate.getClass().getSimpleName(), e);
     }
   }
 
-  private static void restoreInterruptIfNeeded(Exception e) {
+  /**
+   * An interruption is not a cache failure. Restore the interrupt flag and propagate it so the
+   * caller stops, instead of masking it as a miss/no-op and continuing while interrupted.
+   */
+  private static void rethrowIfInterrupted(Exception e) {
     if (e instanceof InterruptedException) {
       Thread.currentThread().interrupt();
+      throw new RuntimeException("Interrupted during cache operation", e);
     }
   }
 }
