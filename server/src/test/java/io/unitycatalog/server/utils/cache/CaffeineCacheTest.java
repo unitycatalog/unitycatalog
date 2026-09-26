@@ -1,0 +1,146 @@
+package io.unitycatalog.server.utils.cache;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.util.Optional;
+import org.junit.jupiter.api.Test;
+
+public class CaffeineCacheTest {
+
+  // Never-expire clock: value's expiry is far in the future.
+  private static long farFuture(String v) {
+    return System.currentTimeMillis() + 3_600_000L;
+  }
+
+  @Test
+  void putThenGetReturnsSameReference() {
+    CaffeineCache<String, String> cache = new CaffeineCache<>(10, CaffeineCacheTest::farFuture);
+    String value = "v";
+    cache.put("k", value);
+    Optional<String> got = cache.getIfPresent("k");
+    assertTrue(got.isPresent());
+    assertSame(value, got.get()); // identity storage, no copy
+  }
+
+  @Test
+  void missReturnsEmpty() {
+    CaffeineCache<String, String> cache = new CaffeineCache<>(10, CaffeineCacheTest::farFuture);
+    assertTrue(cache.getIfPresent("absent").isEmpty());
+  }
+
+  @Test
+  void invalidateRemoves() {
+    CaffeineCache<String, String> cache = new CaffeineCache<>(10, CaffeineCacheTest::farFuture);
+    cache.put("k", "v");
+    cache.invalidate("k");
+    assertTrue(cache.getIfPresent("k").isEmpty());
+  }
+
+  @Test
+  void alreadyExpiredEntryIsNotReturned() {
+    // expiry in the past → Caffeine drops it immediately.
+    CaffeineCache<String, String> cache =
+        new CaffeineCache<>(10, v -> System.currentTimeMillis() - 1);
+    cache.put("k", "v");
+    assertTrue(cache.getIfPresent("k").isEmpty());
+  }
+
+  @Test
+  void maximumSizeIsEnforced() {
+    CaffeineCache<Integer, Integer> cache =
+        new CaffeineCache<>(2, v -> System.currentTimeMillis() + 3_600_000L);
+    cache.put(1, 1);
+    cache.put(2, 2);
+    cache.put(3, 3); // exceeds max size
+    cache.cleanUp(); // force pending eviction (deterministic for the test)
+    long present = 0;
+    for (int i = 1; i <= 3; i++) {
+      if (cache.getIfPresent(i).isPresent()) present++;
+    }
+    assertEquals(2, present);
+  }
+
+  // --- expireAfterUpdate: re-putting a key resets the TTL from the new value's expiry ---
+
+  @Test
+  void expireAfterUpdateOnRePut() {
+    // Values are epoch-ms; extractor reads the value directly.
+    Clock clock = mock(Clock.class);
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1000L)); // t0
+    CaffeineCache<String, Long> cache = new CaffeineCache<>(10, v -> v, clock);
+    cache.put("k", 3000L); // far-future expiry (TTL = 2000ms from t0=1000) → should be present
+    assertTrue(cache.getIfPresent("k").isPresent());
+
+    cache.put("k", 1500L); // re-put with shorter TTL (500ms from t0=1000)
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1600L)); // +600ms from t0: past 500ms TTL
+    cache.cleanUp();
+    assertTrue(cache.getIfPresent("k").isEmpty());
+  }
+
+  // --- Per-key expiry independence ---
+
+  @Test
+  void perKeyExpiryIsIndependent() {
+    Clock clock = mock(Clock.class);
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1000L)); // t0
+    CaffeineCache<String, Long> cache = new CaffeineCache<>(10, v -> v, clock);
+    cache.put("a", 500L); // already past t0=1000 → expired immediately
+    cache.put("b", 3_601_000L); // 3_600_000ms after t0=1000 → fresh
+    cache.cleanUp();
+    assertTrue(cache.getIfPresent("a").isEmpty(), "expired key must be absent");
+    assertTrue(cache.getIfPresent("b").isPresent(), "fresh key must still be present");
+  }
+
+  // --- expireAfterRead does not extend the entry's life ---
+
+  @Test
+  void expireAfterReadDoesNotExtendLife() {
+    Clock clock = mock(Clock.class);
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1000L)); // t0 (also captured as base)
+    CaffeineCache<String, Long> cache = new CaffeineCache<>(10, v -> v, clock);
+    cache.put("k", 1300L); // TTL = 300ms
+
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1100L)); // +100ms: fresh
+    assertTrue(cache.getIfPresent("k").isPresent()); // a read must NOT extend life
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1250L)); // +250ms: fresh
+    assertTrue(cache.getIfPresent("k").isPresent());
+
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1400L)); // +400ms: past 300ms TTL
+    cache.cleanUp();
+    assertTrue(cache.getIfPresent("k").isEmpty());
+  }
+
+  // --- Null expiry function guard ---
+
+  @Test
+  void nullExpiryFunctionThrows() {
+    assertThrows(NullPointerException.class, () -> new CaffeineCache<>(10, null));
+  }
+
+  // --- Null clock guard ---
+
+  @Test
+  void nullClockThrows() {
+    assertThrows(
+        NullPointerException.class, () -> new CaffeineCache<String, Long>(10, v -> v, null));
+  }
+
+  // --- maxSize <= 0 rejected ---
+
+  @Test
+  void zeroMaxSizeThrows() {
+    assertThrows(IllegalArgumentException.class, () -> new CaffeineCache<>(0, v -> 0L));
+  }
+
+  @Test
+  void negativeMaxSizeThrows() {
+    assertThrows(IllegalArgumentException.class, () -> new CaffeineCache<>(-1, v -> 0L));
+  }
+}
