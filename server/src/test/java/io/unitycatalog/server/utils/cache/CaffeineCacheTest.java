@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -100,18 +101,18 @@ public class CaffeineCacheTest {
   @Test
   void expireAfterReadDoesNotExtendLife() {
     Clock clock = mock(Clock.class);
-    when(clock.millis()).thenReturn(1000L); // t0
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1000L)); // t0 (also captured as base)
     CaffeineCache<String, Long> cache = new CaffeineCache<>(10, v -> v, clock);
-    cache.put("k", 1300L); // TTL = 300ms (expiry epoch-ms 1300)
+    cache.put("k", 1300L); // TTL = 300ms
 
-    when(clock.millis()).thenReturn(1100L); // t0+100: still fresh
-    assertTrue(cache.getIfPresent("k").isPresent()); // a read here must NOT extend life
-    when(clock.millis()).thenReturn(1250L); // t0+250: still fresh
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1100L)); // +100ms: fresh
+    assertTrue(cache.getIfPresent("k").isPresent()); // a read must NOT extend life
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1250L)); // +250ms: fresh
     assertTrue(cache.getIfPresent("k").isPresent());
 
-    when(clock.millis()).thenReturn(1400L); // t0+400: past expiry 1300
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1400L)); // +400ms: past 300ms TTL
     cache.cleanUp();
-    assertTrue(cache.getIfPresent("k").isEmpty()); // expired despite the earlier reads
+    assertTrue(cache.getIfPresent("k").isEmpty());
   }
 
   // --- Null expiry function guard ---
