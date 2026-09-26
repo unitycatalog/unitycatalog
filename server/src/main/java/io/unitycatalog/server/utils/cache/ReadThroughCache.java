@@ -27,7 +27,10 @@ public class ReadThroughCache<K, V> {
     if (hit.isPresent() && valid.test(key, hit.get())) {
       return hit.get();
     }
-    V loaded = Objects.requireNonNull(loader.get(), "loader must return a non-null value");
+    V loaded = loader.get();
+    if (loaded == null) {
+      throw new IllegalStateException("loader must return a non-null value");
+    }
     cache.put(key, loaded);
     return loaded;
   }

@@ -112,14 +112,14 @@ public class ReadThroughCacheTest {
     assertTrue(store.getIfPresent("k").isEmpty(), "store must not be poisoned after loader throws");
   }
 
-  // --- Loader returns null: NPE, nothing cached ---
+  // --- Loader returns null: IllegalStateException, nothing cached ---
 
   @Test
-  void loaderReturnsNullThrowsNpeAndNothingCached() {
+  void loaderReturnsNullThrowsIllegalStateAndNothingCached() {
     MapCache<String, String> store = new MapCache<>();
     ReadThroughCache<String, String> cache = new ReadThroughCache<>(store, (k, v) -> true);
 
-    assertThrows(NullPointerException.class, () -> cache.get("k", () -> null));
+    assertThrows(IllegalStateException.class, () -> cache.get("k", () -> null));
     assertTrue(store.getIfPresent("k").isEmpty(), "store must remain empty after null loader");
   }
 

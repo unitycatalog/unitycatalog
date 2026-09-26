@@ -2,6 +2,7 @@ package io.unitycatalog.server.utils.cache;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Expiry;
+import java.time.Clock;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -18,10 +19,22 @@ public class CaffeineCache<K, V> implements Cache<K, V> {
   private final com.github.benmanes.caffeine.cache.Cache<K, V> delegate;
 
   public CaffeineCache(int maxSize, ToLongFunction<V> expiresAtEpochMs) {
+    this(maxSize, expiresAtEpochMs, Clock.systemUTC());
+  }
+
+  public CaffeineCache(int maxSize, ToLongFunction<V> expiresAtEpochMs, Clock clock) {
     Objects.requireNonNull(expiresAtEpochMs, "expiresAtEpochMs");
+    Objects.requireNonNull(clock, "clock");
     this.delegate =
         Caffeine.newBuilder()
             .maximumSize(maxSize)
+            // Drive Caffeine's expiry clock from the injected Clock (not the default nanoTime
+            // ticker). Our per-entry TTL is computed from an ABSOLUTE wall-clock epoch-ms
+            // (the credential's expirationTime), so measuring elapsed time against the SAME
+            // wall clock keeps create-duration and eviction consistent; a mocked Clock makes
+            // expiry deterministic in tests. The authoritative freshness check is the read
+            // validator, so any wall-clock adjustment is backstopped there.
+            .ticker(() -> TimeUnit.MILLISECONDS.toNanos(clock.millis()))
             .expireAfter(
                 new Expiry<K, V>() {
                   @Override
@@ -43,8 +56,7 @@ public class CaffeineCache<K, V> implements Cache<K, V> {
 
                   private long remainingNanos(V value) {
                     long remainingMs =
-                        Math.max(
-                            0, expiresAtEpochMs.applyAsLong(value) - System.currentTimeMillis());
+                        Math.max(0, expiresAtEpochMs.applyAsLong(value) - clock.millis());
                     // Cap before the ms->ns conversion. TimeUnit.toNanos already SATURATES to
                     // Long.MAX_VALUE on overflow (it does not wrap), so a far-future/static expiry
                     // yields an effectively-never-expire entry; clamping here makes that guarantee
