@@ -5,6 +5,7 @@ import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.service.credential.cache.StorageCredentialCache;
 import io.unitycatalog.server.utils.ServerProperties;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
@@ -57,8 +58,10 @@ public class Repositories {
         cloudCredentialVendor != null
             ? cloudCredentialVendor
             : new CloudCredentialVendor(serverProperties);
+    StorageCredentialCache credentialCache =
+        new StorageCredentialCache(resolvedCloudCredentialVendor, serverProperties);
     this.storageCredentialVendor =
-        new StorageCredentialVendor(resolvedCloudCredentialVendor, externalLocationUtils);
+        new StorageCredentialVendor(credentialCache, externalLocationUtils);
     this.fileOperations = new FileOperations(storageCredentialVendor, serverProperties);
 
     this.catalogRepository = new CatalogRepository(this, sessionFactory);
