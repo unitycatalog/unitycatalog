@@ -150,6 +150,54 @@ public class StorageCredentialCacheTest {
   }
 
   @Test
+  void gcsPerBucketBindingIsCached() {
+    // GCS has no DB credential (static per-bucket config) → null roleArn. The key is (location,
+    // GS, privileges); it must still cache and set the url correctly.
+    NormalizedURL gcs = NormalizedURL.from("gs://bucket/tableG");
+    CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
+    when(vendor.vendCredential(any())).thenReturn(creds(T0 + 3_600_000L));
+    StorageCredentialCache cache = new StorageCredentialCache(vendor, props(), clockAt(T0));
+
+    TemporaryCredentials first =
+        cache.get(CredentialContext.create(gcs, READ_ONLY, Optional.empty()));
+    cache.get(CredentialContext.create(gcs, READ_ONLY, Optional.empty()));
+
+    assertEquals(gcs.toString(), first.getUrl());
+    verify(vendor, times(1)).vendCredential(any()); // null-roleArn key still caches
+  }
+
+  @Test
+  void azurePerBucketBindingIsCached() {
+    // ABFS per-bucket config → null roleArn; scheme is derived as ABFS from the location.
+    NormalizedURL abfs = NormalizedURL.from("abfs://container@account.dfs.core.windows.net/tableA");
+    CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
+    when(vendor.vendCredential(any())).thenReturn(creds(T0 + 3_600_000L));
+    StorageCredentialCache cache = new StorageCredentialCache(vendor, props(), clockAt(T0));
+
+    TemporaryCredentials first =
+        cache.get(CredentialContext.create(abfs, READ_ONLY, Optional.empty()));
+    cache.get(CredentialContext.create(abfs, READ_ONLY, Optional.empty()));
+
+    assertEquals(abfs.toString(), first.getUrl());
+    verify(vendor, times(1)).vendCredential(any());
+  }
+
+  @Test
+  void differentLocationsForSamePerBucketSchemeReVend() {
+    // Two GCS locations (both null-roleArn) are distinct keys → two vends, no cross-serving.
+    CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
+    when(vendor.vendCredential(any())).thenReturn(creds(T0 + 3_600_000L));
+    StorageCredentialCache cache = new StorageCredentialCache(vendor, props(), clockAt(T0));
+
+    NormalizedURL a = NormalizedURL.from("gs://bucket/a");
+    NormalizedURL b = NormalizedURL.from("gs://bucket/b");
+    cache.get(CredentialContext.create(a, READ_ONLY, Optional.empty()));
+    cache.get(CredentialContext.create(b, READ_ONLY, Optional.empty()));
+
+    verify(vendor, times(2)).vendCredential(any());
+  }
+
+  @Test
   void returnedCredentialHasUrlSet() {
     CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
     when(vendor.vendCredential(any())).thenReturn(creds(T0 + 3_600_000L));
@@ -157,5 +205,26 @@ public class StorageCredentialCacheTest {
 
     TemporaryCredentials out = cache.get(ctx("arn:role/A"));
     assertEquals(LOC.toString(), out.getUrl());
+  }
+
+  @Test
+  void staticCredentialWithoutExpiryIsCachedUntilMaxAge() {
+    // A static credential has no own expiry (T1 == null), so freshness is bounded solely by the
+    // cache max-age (T2 = vendedAt + max-age): served from cache until T2, then re-vended.
+    CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
+    when(vendor.vendCredential(any())).thenReturn(creds(null)); // no expirationTime
+    Clock clock = clockAt(T0);
+    StorageCredentialCache cache =
+        new StorageCredentialCache(
+            vendor, props("server.storage-credential-cache.max-age", "PT5M"), clock);
+
+    cache.get(ctx("arn:role/A")); // vend 1; T2 = T0 + 5m
+    tick(clock, T0 + 299_000L); // 1s before T2 → served from cache
+    cache.get(ctx("arn:role/A"));
+    verify(vendor, times(1)).vendCredential(any());
+
+    tick(clock, T0 + 301_000L); // 1s past T2 → re-vend
+    cache.get(ctx("arn:role/A"));
+    verify(vendor, times(2)).vendCredential(any());
   }
 }

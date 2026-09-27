@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.IntPredicate;
@@ -574,6 +575,19 @@ public class ServerProperties {
 
   public Duration getStorageCredentialCacheMaxAge() {
     return Duration.parse(get(Property.STORAGE_CREDENTIAL_CACHE_MAX_AGE));
+  }
+
+  /**
+   * Test-only hook: the fully-qualified class name of a {@code Supplier<java.time.Clock>} whose
+   * clock the storage credential cache uses instead of {@link java.time.Clock#systemUTC()}. It lets
+   * an integration test drive cache freshness on the same manual timeline as the connector and the
+   * vend generator. Absent in production (returns empty), so the cache runs on the system clock.
+   *
+   * <p>Deliberately not a first-class {@link Property}: it is an internal test seam, not a released
+   * validated config surface, mirroring how {@code s3.credentialGenerator.N} is read internally.
+   */
+  public Optional<String> getStorageCredentialCacheTestClockProvider() {
+    return Optional.ofNullable(getProperty("server.storage-credential-cache.test-clock-provider"));
   }
 
   public boolean isIncludeStackTraceInError() {
