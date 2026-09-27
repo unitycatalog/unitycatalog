@@ -3,6 +3,8 @@ package io.unitycatalog.server.service.credential.cache;
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_ONLY;
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_WRITE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
@@ -333,6 +335,19 @@ public class StorageCredentialCacheTest {
     public void invalidate(CredentialCacheKey k) {}
   }
 
+  /** Implements Cache but has neither a context ctor nor a no-arg ctor -> reflection fails. */
+  public static class NoUsableCtorStore implements Cache<CredentialCacheKey, CachedCredential> {
+    public NoUsableCtorStore(String unrelated) {}
+
+    public java.util.Optional<CachedCredential> getIfPresent(CredentialCacheKey k) {
+      return java.util.Optional.empty();
+    }
+
+    public void put(CredentialCacheKey k, CachedCredential v) {}
+
+    public void invalidate(CredentialCacheKey k) {}
+  }
+
   private static String backend(Class<?> c) {
     return c.getName();
   }
@@ -347,6 +362,7 @@ public class StorageCredentialCacheTest {
   void customBackendReceivesTrafficAndContext() {
     CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
     when(vendor.vendCredential(any())).thenReturn(creds(T0 + 3_600_000L));
+    java.time.Clock clock = clockAt(T0);
     StorageCredentialCache cache =
         new StorageCredentialCache(
             vendor,
@@ -354,7 +370,7 @@ public class StorageCredentialCacheTest {
                 "server.storage-credential-cache.backend", backend(RecordingStore.class),
                 "server.storage-credential-cache.backend.endpoint", "redis://h:6379",
                 "server.storage-credential-cache.max-size", "1000"),
-            clockAt(T0));
+            clock);
 
     cache.get(ctx("arn:role/A")); // miss -> vend + put
     cache.get(ctx("arn:role/A")); // hit -> served from the custom store, no re-vend
@@ -365,6 +381,8 @@ public class StorageCredentialCacheTest {
     assertEquals(1000, RecordingStore.lastContext.maxSize());
     assertEquals("redis://h:6379", RecordingStore.lastContext.backendProperties().get("endpoint"));
     assertEquals(1, RecordingStore.lastContext.backendProperties().size());
+    // The injected clock instance must reach the store unchanged.
+    assertSame(clock, RecordingStore.lastContext.clock());
   }
 
   @Test
@@ -424,6 +442,18 @@ public class StorageCredentialCacheTest {
   }
 
   @Test
+  void backendWithNoUsableConstructorFailsClosed() {
+    CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            new StorageCredentialCache(
+                vendor,
+                props("server.storage-credential-cache.backend", backend(NoUsableCtorStore.class)),
+                clockAt(T0)));
+  }
+
+  @Test
   void disabledCacheIgnoresBackend() {
     CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
     when(vendor.vendCredential(any())).thenReturn(creds(T0 + 3_600_000L));
@@ -440,6 +470,6 @@ public class StorageCredentialCacheTest {
     cache.get(ctx("arn:role/A"));
 
     verify(vendor, times(2)).vendCredential(any()); // disabled -> vends every call
-    assertEquals(null, RecordingStore.lastContext); // backend never constructed
+    assertNull(RecordingStore.lastContext); // backend never constructed
   }
 }

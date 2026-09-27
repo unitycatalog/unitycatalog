@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service.credential.cache;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Clock;
@@ -14,8 +15,10 @@ class CredentialCacheStoreContextTest {
   void exposesFieldsAndCopiesTheMapDefensively() {
     Map<String, String> src = new HashMap<>();
     src.put("endpoint", "redis://h:6379");
-    CredentialCacheStoreContext ctx = new CredentialCacheStoreContext(Clock.systemUTC(), 1000, src);
+    Clock clock = Clock.systemUTC();
+    CredentialCacheStoreContext ctx = new CredentialCacheStoreContext(clock, 1000, src);
 
+    assertSame(clock, ctx.clock());
     assertEquals(1000, ctx.maxSize());
     assertEquals("redis://h:6379", ctx.backendProperties().get("endpoint"));
 

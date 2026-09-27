@@ -585,7 +585,8 @@ public class ServerProperties {
    * io.unitycatalog.server.service.credential.cache.StorageCredentialCache}.
    */
   public Optional<String> getStorageCredentialCacheBackend() {
-    return Optional.ofNullable(get(Property.STORAGE_CREDENTIAL_CACHE_BACKEND));
+    return Optional.ofNullable(get(Property.STORAGE_CREDENTIAL_CACHE_BACKEND))
+        .filter(fqcn -> !fqcn.isEmpty());
   }
 
   /**
