@@ -89,6 +89,8 @@ The cache is controlled by these keys:
 | `server.storage-credential-cache.max-size` | `1000` | The maximum number of distinct credentials to keep. |
 | `server.storage-credential-cache.renewal-lead-time` | `PT1M` | Minimum remaining lifetime required to reuse a cached credential. When a cached credential is within this window of its expiry, the next request fetches a new credential from the cloud provider. |
 | `server.storage-credential-cache.max-age` | `PT5M` | The longest a vended credential is reused before it is refreshed, regardless of its own expiry. This is deliberately short: Unity Catalog cannot observe a cloud-side trust-policy change, so it bounds how long a credential keeps being served after such a change. |
+| `server.storage-credential-cache.backend` | *(unset)* | Fully-qualified class name of a custom cache store (`Cache<CredentialCacheKey, CachedCredential>`). Unset uses the built-in in-process cache. The class needs either a `CredentialCacheStoreContext` constructor or a no-arg one. Freshness is always re-validated by the server, so an external store is never trusted for correctness. |
+| `server.storage-credential-cache.backend.<key>` | *(none)* | Config passed to the custom backend, exposed to it as a map with this prefix stripped. Only these keys are visible to the backend — no other server config. |
 
 Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is five minutes).
 
