@@ -244,6 +244,7 @@ public class ServerProperties {
         "server.storage-credential-cache.renewal-lead-time", "PT1M", POSITIVE_DURATION_VALIDATOR),
     STORAGE_CREDENTIAL_CACHE_MAX_AGE(
         "server.storage-credential-cache.max-age", "PT5M", POSITIVE_DURATION_VALIDATOR),
+    STORAGE_CREDENTIAL_CACHE_BACKEND("server.storage-credential-cache.backend"),
     AUTHORIZATION_URL("server.authorization-url", URL_VALIDATOR),
     TOKEN_URL("server.token-url", URL_VALIDATOR),
     CLIENT_ID("server.client-id"),
@@ -575,6 +576,37 @@ public class ServerProperties {
 
   public Duration getStorageCredentialCacheMaxAge() {
     return Duration.parse(get(Property.STORAGE_CREDENTIAL_CACHE_MAX_AGE));
+  }
+
+  /**
+   * The fully-qualified class name of a custom {@code Cache<CredentialCacheKey, CachedCredential>}
+   * storage-credential-cache backend, or empty to use the built-in in-process cache. The class is
+   * loaded reflectively by {@link
+   * io.unitycatalog.server.service.credential.cache.StorageCredentialCache}.
+   */
+  public Optional<String> getStorageCredentialCacheBackend() {
+    return Optional.ofNullable(get(Property.STORAGE_CREDENTIAL_CACHE_BACKEND));
+  }
+
+  /**
+   * The custom backend's own config: the {@code server.storage-credential-cache.backend.*} subtree
+   * with that prefix stripped, as an unmodifiable map. Scoped on purpose — a backend plugin sees
+   * only its own keys, never other server config. Empty when nothing is configured.
+   */
+  public Map<String, String> getStorageCredentialCacheBackendProperties() {
+    String prefix = Property.STORAGE_CREDENTIAL_CACHE_BACKEND.key + ".";
+    Map<String, String> result = new HashMap<>();
+    collectPrefixed(properties.stringPropertyNames(), prefix, result);
+    collectPrefixed(System.getProperties().stringPropertyNames(), prefix, result);
+    return Map.copyOf(result);
+  }
+
+  private void collectPrefixed(Set<String> keys, String prefix, Map<String, String> out) {
+    for (String key : keys) {
+      if (key.startsWith(prefix)) {
+        out.put(key.substring(prefix.length()), getProperty(key));
+      }
+    }
   }
 
   /**
