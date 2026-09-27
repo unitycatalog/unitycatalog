@@ -63,13 +63,44 @@ public class StorageCredentialCache {
                     && cached.context().fresh(clock.instant().toEpochMilli(), leadMs));
   }
 
-  /** Builds the cache store tier. Overridden selection (custom backend) arrives in a later step. */
+  /** Builds the cache store tier: a reflectively-loaded custom backend, or the default Caffeine. */
   private Cache<CredentialCacheKey, CachedCredential> buildStore(
       ServerProperties serverProperties, Clock clock) {
-    return new CaffeineCache<>(
-        serverProperties.getStorageCredentialCacheMaxSize(),
-        cached -> cached.context().effectiveExpiryEpochMs(),
-        clock);
+    CredentialCacheStoreContext context =
+        new CredentialCacheStoreContext(
+            clock,
+            serverProperties.getStorageCredentialCacheMaxSize(),
+            serverProperties.getStorageCredentialCacheBackendProperties());
+    return serverProperties
+        .getStorageCredentialCacheBackend()
+        .map(fqcn -> loadBackend(fqcn, context))
+        .orElseGet(
+            () ->
+                new CaffeineCache<>(
+                    context.maxSize(),
+                    cached -> cached.context().effectiveExpiryEpochMs(),
+                    context.clock()));
+  }
+
+  /**
+   * Loads a custom {@code Cache} backend by class name, preferring a {@link
+   * CredentialCacheStoreContext} constructor and falling back to a no-arg one. Mirrors {@code
+   * GcpCredentialVendor.createGenerator}; a load failure fails server startup with the fqcn named.
+   */
+  @SuppressWarnings("unchecked")
+  private static Cache<CredentialCacheKey, CachedCredential> loadBackend(
+      String fqcn, CredentialCacheStoreContext context) {
+    try {
+      Class<? extends Cache> type = Class.forName(fqcn).asSubclass(Cache.class);
+      try {
+        return type.getDeclaredConstructor(CredentialCacheStoreContext.class).newInstance(context);
+      } catch (NoSuchMethodException noContextCtor) {
+        return type.getDeclaredConstructor().newInstance();
+      }
+    } catch (ReflectiveOperationException | ClassCastException e) {
+      throw new IllegalStateException(
+          "Failed to load storage-credential-cache backend: " + fqcn, e);
+    }
   }
 
   /** Returns credentials for the resolved context, vending on miss/stale and caching the result. */

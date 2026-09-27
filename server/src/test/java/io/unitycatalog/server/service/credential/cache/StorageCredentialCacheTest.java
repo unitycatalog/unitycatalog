@@ -3,6 +3,8 @@ package io.unitycatalog.server.service.credential.cache;
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_ONLY;
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_WRITE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -17,6 +19,7 @@ import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.cache.Cache;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
@@ -259,5 +262,184 @@ public class StorageCredentialCacheTest {
     tick(clock, T0 + 301_000L); // 1s past T2 → re-vend
     cache.get(ctx("arn:role/A"));
     verify(vendor, times(2)).vendCredential(any());
+  }
+
+  // ---- test-double backends (loaded reflectively by fqcn, like s3.credentialGenerator) ----
+
+  /** Records the injected context and counts traffic; typed-context constructor path. */
+  public static class RecordingStore implements Cache<CredentialCacheKey, CachedCredential> {
+    static volatile CredentialCacheStoreContext lastContext;
+    static final java.util.concurrent.atomic.AtomicInteger getCount =
+        new java.util.concurrent.atomic.AtomicInteger();
+    static final java.util.concurrent.atomic.AtomicInteger putCount =
+        new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.Map<CredentialCacheKey, CachedCredential> map =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
+    public RecordingStore(CredentialCacheStoreContext ctx) {
+      lastContext = ctx;
+    }
+
+    static void reset() {
+      lastContext = null;
+      getCount.set(0);
+      putCount.set(0);
+    }
+
+    public java.util.Optional<CachedCredential> getIfPresent(CredentialCacheKey k) {
+      getCount.incrementAndGet();
+      return java.util.Optional.ofNullable(map.get(k));
+    }
+
+    public void put(CredentialCacheKey k, CachedCredential v) {
+      putCount.incrementAndGet();
+      map.put(k, v);
+    }
+
+    public void invalidate(CredentialCacheKey k) {
+      map.remove(k);
+    }
+  }
+
+  /** No-arg constructor only — exercises the reflective fallback. */
+  public static class NoArgStore implements Cache<CredentialCacheKey, CachedCredential> {
+    static volatile boolean constructed;
+
+    public NoArgStore() {
+      constructed = true;
+    }
+
+    public java.util.Optional<CachedCredential> getIfPresent(CredentialCacheKey k) {
+      return java.util.Optional.empty();
+    }
+
+    public void put(CredentialCacheKey k, CachedCredential v) {}
+
+    public void invalidate(CredentialCacheKey k) {}
+  }
+
+  /** Always throws — exercises the facade's FailSafe guarantee. */
+  public static class ThrowingStore implements Cache<CredentialCacheKey, CachedCredential> {
+    public ThrowingStore(CredentialCacheStoreContext ctx) {}
+
+    public java.util.Optional<CachedCredential> getIfPresent(CredentialCacheKey k) {
+      throw new RuntimeException("backend down");
+    }
+
+    public void put(CredentialCacheKey k, CachedCredential v) {
+      throw new RuntimeException("backend down");
+    }
+
+    public void invalidate(CredentialCacheKey k) {}
+  }
+
+  private static String backend(Class<?> c) {
+    return c.getName();
+  }
+
+  @org.junit.jupiter.api.BeforeEach
+  void resetBackends() {
+    RecordingStore.reset();
+    NoArgStore.constructed = false;
+  }
+
+  @Test
+  void customBackendReceivesTrafficAndContext() {
+    CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
+    when(vendor.vendCredential(any())).thenReturn(creds(T0 + 3_600_000L));
+    StorageCredentialCache cache =
+        new StorageCredentialCache(
+            vendor,
+            props(
+                "server.storage-credential-cache.backend", backend(RecordingStore.class),
+                "server.storage-credential-cache.backend.endpoint", "redis://h:6379",
+                "server.storage-credential-cache.max-size", "1000"),
+            clockAt(T0));
+
+    cache.get(ctx("arn:role/A")); // miss -> vend + put
+    cache.get(ctx("arn:role/A")); // hit -> served from the custom store, no re-vend
+
+    verify(vendor, times(1)).vendCredential(any());
+    assertEquals(1, RecordingStore.putCount.get());
+    // Context carries the configured max-size and only the backend.* subtree.
+    assertEquals(1000, RecordingStore.lastContext.maxSize());
+    assertEquals("redis://h:6379", RecordingStore.lastContext.backendProperties().get("endpoint"));
+    assertEquals(1, RecordingStore.lastContext.backendProperties().size());
+  }
+
+  @Test
+  void customBackendNoArgConstructorFallback() {
+    CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
+    when(vendor.vendCredential(any())).thenReturn(creds(T0 + 3_600_000L));
+    StorageCredentialCache cache =
+        new StorageCredentialCache(
+            vendor,
+            props("server.storage-credential-cache.backend", backend(NoArgStore.class)),
+            clockAt(T0));
+
+    cache.get(
+        ctx("arn:role/A")); // NoArgStore never hits -> vends every time, but must construct+run
+    assertTrue(NoArgStore.constructed);
+  }
+
+  @Test
+  void throwingBackendDegradesToLiveVend() {
+    CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
+    when(vendor.vendCredential(any())).thenReturn(creds(T0 + 3_600_000L));
+    StorageCredentialCache cache =
+        new StorageCredentialCache(
+            vendor,
+            props("server.storage-credential-cache.backend", backend(ThrowingStore.class)),
+            clockAt(T0));
+
+    // FailSafe turns the store's exception into a miss -> the request still succeeds via a vend.
+    assertEquals(LOC.toString(), cache.get(ctx("arn:role/A")).getUrl());
+    verify(vendor, times(1)).vendCredential(any());
+  }
+
+  @Test
+  void unknownBackendClassFailsClosedNamingTheFqcn() {
+    CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
+    IllegalStateException ex =
+        assertThrows(
+            IllegalStateException.class,
+            () ->
+                new StorageCredentialCache(
+                    vendor,
+                    props("server.storage-credential-cache.backend", "com.acme.DoesNotExist"),
+                    clockAt(T0)));
+    assertTrue(ex.getMessage().contains("com.acme.DoesNotExist"));
+  }
+
+  @Test
+  void nonCacheBackendClassFailsClosed() {
+    CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            new StorageCredentialCache(
+                vendor,
+                props("server.storage-credential-cache.backend", String.class.getName()),
+                clockAt(T0)));
+  }
+
+  @Test
+  void disabledCacheIgnoresBackend() {
+    CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
+    when(vendor.vendCredential(any())).thenReturn(creds(T0 + 3_600_000L));
+    StorageCredentialCache cache =
+        new StorageCredentialCache(
+            vendor,
+            props(
+                "server.storage-credential-cache.enabled",
+                "false",
+                "server.storage-credential-cache.backend",
+                backend(RecordingStore.class)));
+
+    cache.get(ctx("arn:role/A"));
+    cache.get(ctx("arn:role/A"));
+
+    verify(vendor, times(2)).vendCredential(any()); // disabled -> vends every call
+    assertEquals(null, RecordingStore.lastContext); // backend never constructed
   }
 }
