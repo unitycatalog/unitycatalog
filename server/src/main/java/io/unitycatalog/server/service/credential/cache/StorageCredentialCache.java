@@ -7,12 +7,11 @@ import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.cache.Cache;
 import io.unitycatalog.server.utils.cache.CaffeineCache;
 import io.unitycatalog.server.utils.cache.FailSafeCache;
-import io.unitycatalog.server.utils.cache.LayeredCache;
 import io.unitycatalog.server.utils.cache.ReadThroughCache;
 import java.time.Clock;
-import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -56,19 +55,21 @@ public class StorageCredentialCache {
     long leadMs = serverProperties.getStorageCredentialCacheRenewalLeadTime().toMillis();
     this.maxAgeMs = serverProperties.getStorageCredentialCacheMaxAge().toMillis();
 
-    CaffeineCache<CredentialCacheKey, CachedCredential> l1 =
-        new CaffeineCache<>(
-            serverProperties.getStorageCredentialCacheMaxSize(),
-            cached -> cached.context().effectiveExpiryEpochMs(),
-            clock);
-    LayeredCache<CredentialCacheKey, CachedCredential> layered =
-        new LayeredCache<>(List.of(new FailSafeCache<>(l1)));
     this.readThrough =
         new ReadThroughCache<>(
-            layered,
+            new FailSafeCache<>(buildStore(serverProperties, clock)),
             (key, cached) ->
                 cached.context().matches(key)
                     && cached.context().fresh(clock.instant().toEpochMilli(), leadMs));
+  }
+
+  /** Builds the cache store tier. Overridden selection (custom backend) arrives in a later step. */
+  private Cache<CredentialCacheKey, CachedCredential> buildStore(
+      ServerProperties serverProperties, Clock clock) {
+    return new CaffeineCache<>(
+        serverProperties.getStorageCredentialCacheMaxSize(),
+        cached -> cached.context().effectiveExpiryEpochMs(),
+        clock);
   }
 
   /** Returns credentials for the resolved context, vending on miss/stale and caching the result. */
