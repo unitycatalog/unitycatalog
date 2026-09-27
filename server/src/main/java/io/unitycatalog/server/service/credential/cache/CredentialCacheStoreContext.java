@@ -17,6 +17,20 @@ public record CredentialCacheStoreContext(
   public CredentialCacheStoreContext {
     Objects.requireNonNull(clock, "clock");
     Objects.requireNonNull(backendProperties, "backendProperties");
+    if (maxSize <= 0) {
+      throw new IllegalArgumentException("maxSize must be positive: " + maxSize);
+    }
     backendProperties = Map.copyOf(backendProperties);
+  }
+
+  @Override
+  public String toString() {
+    return "CredentialCacheStoreContext[clock="
+        + clock
+        + ", maxSize="
+        + maxSize
+        + ", backendProperties=("
+        + backendProperties.size()
+        + " entries)]";
   }
 }

@@ -320,6 +320,42 @@ public class StorageCredentialCacheTest {
     public void invalidate(CredentialCacheKey k) {}
   }
 
+  /** Context-constructor always throws — exercises the fail-closed path on construction. */
+  public static class ThrowingCtorStore implements Cache<CredentialCacheKey, CachedCredential> {
+    public ThrowingCtorStore(CredentialCacheStoreContext ctx) {
+      throw new RuntimeException("bad endpoint");
+    }
+
+    public java.util.Optional<CachedCredential> getIfPresent(CredentialCacheKey k) {
+      return java.util.Optional.empty();
+    }
+
+    public void put(CredentialCacheKey k, CachedCredential v) {}
+
+    public void invalidate(CredentialCacheKey k) {}
+  }
+
+  /** Has both constructors; the context-constructor should be preferred. */
+  public static class BothCtorsStore implements Cache<CredentialCacheKey, CachedCredential> {
+    static volatile boolean usedContextCtor;
+
+    public BothCtorsStore() {
+      usedContextCtor = false;
+    }
+
+    public BothCtorsStore(CredentialCacheStoreContext ctx) {
+      usedContextCtor = true;
+    }
+
+    public java.util.Optional<CachedCredential> getIfPresent(CredentialCacheKey k) {
+      return java.util.Optional.empty();
+    }
+
+    public void put(CredentialCacheKey k, CachedCredential v) {}
+
+    public void invalidate(CredentialCacheKey k) {}
+  }
+
   /** Always throws — exercises the facade's FailSafe guarantee. */
   public static class ThrowingStore implements Cache<CredentialCacheKey, CachedCredential> {
     public ThrowingStore(CredentialCacheStoreContext ctx) {}
@@ -356,6 +392,7 @@ public class StorageCredentialCacheTest {
   void resetBackends() {
     RecordingStore.reset();
     NoArgStore.constructed = false;
+    BothCtorsStore.usedContextCtor = false;
   }
 
   @Test
@@ -471,5 +508,57 @@ public class StorageCredentialCacheTest {
 
     verify(vendor, times(2)).vendCredential(any()); // disabled -> vends every call
     assertNull(RecordingStore.lastContext); // backend never constructed
+  }
+
+  @Test
+  void backendConstructorThatThrowsFailsClosed() {
+    CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
+    IllegalStateException ex =
+        assertThrows(
+            IllegalStateException.class,
+            () ->
+                new StorageCredentialCache(
+                    vendor,
+                    props(
+                        "server.storage-credential-cache.backend",
+                        backend(ThrowingCtorStore.class)),
+                    clockAt(T0)));
+    assertTrue(ex.getMessage().contains(ThrowingCtorStore.class.getName()));
+  }
+
+  @Test
+  void bothCtorsContextCtorPreferred() {
+    CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
+    when(vendor.vendCredential(any())).thenReturn(creds(T0 + 3_600_000L));
+    new StorageCredentialCache(
+        vendor,
+        props("server.storage-credential-cache.backend", backend(BothCtorsStore.class)),
+        clockAt(T0));
+    assertTrue(BothCtorsStore.usedContextCtor);
+  }
+
+  @Test
+  void staleEntryFromCustomStoreIsRevalidated() {
+    // Credential expires at T0+120s; with renewal-lead=1m it is fresh at T0 but stale at T0+121s.
+    // The RecordingStore never expires entries on its own, so the stale value comes back from the
+    // store — the facade must re-validate it and re-vend rather than trusting the store's answer.
+    CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
+    when(vendor.vendCredential(any())).thenReturn(creds(T0 + 120_000L));
+    Clock clock = clockAt(T0);
+    StorageCredentialCache cache =
+        new StorageCredentialCache(
+            vendor,
+            props(
+                "server.storage-credential-cache.backend", backend(RecordingStore.class),
+                "server.storage-credential-cache.renewal-lead-time", "PT1M",
+                "server.storage-credential-cache.max-age", "PT5M"),
+            clock);
+
+    cache.get(ctx("arn:role/A")); // vend 1; stored in RecordingStore
+    tick(clock, T0 + 121_000L); // past expiry (T0+120s) + past renewal window (T0+60s)
+    cache.get(ctx("arn:role/A")); // RecordingStore returns stale entry -> re-vend
+
+    verify(vendor, times(2)).vendCredential(any());
+    assertTrue(RecordingStore.getCount.get() > 0); // store WAS consulted; stale value came from it
   }
 }

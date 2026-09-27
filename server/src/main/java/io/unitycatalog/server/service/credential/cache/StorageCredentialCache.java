@@ -14,6 +14,8 @@ import io.unitycatalog.server.utils.cache.ReadThroughCache;
 import java.time.Clock;
 import java.util.Objects;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Caches vended cloud storage credentials, keyed by the resolved binding {@code (location,
@@ -24,9 +26,11 @@ import java.util.Optional;
  * misses/no-ops; interruptions and {@link Error}s propagate.
  *
  * <p>A {@link Clock} is injected so freshness is deterministic under test; production uses {@link
- * Clock#systemUTC()}. The same clock drives both the freshness validator and the L1 expiry ticker.
+ * Clock#systemUTC()}. The same clock drives both the freshness validator and the default cache's
+ * expiry.
  */
 public class StorageCredentialCache {
+  private static final Logger LOGGER = LoggerFactory.getLogger(StorageCredentialCache.class);
   private final CloudCredentialVendor cloudCredentialVendor;
   private final boolean enabled;
   private final long maxAgeMs;
@@ -85,7 +89,8 @@ public class StorageCredentialCache {
   /**
    * Loads a custom {@code Cache} backend by class name, preferring a {@link
    * CredentialCacheStoreContext} constructor and falling back to a no-arg one. Mirrors {@code
-   * GcpCredentialVendor.createGenerator}; a load failure fails server startup with the fqcn named.
+   * GcpCredentialVendor.createGenerator}; a load failure fails construction (server startup) with
+   * the fqcn named.
    */
   @SuppressWarnings("unchecked")
   private static Cache<CredentialCacheKey, CachedCredential> loadBackend(
@@ -95,6 +100,14 @@ public class StorageCredentialCache {
       try {
         return type.getDeclaredConstructor(CredentialCacheStoreContext.class).newInstance(context);
       } catch (NoSuchMethodException noContextCtor) {
+        if (!context.backendProperties().isEmpty()) {
+          LOGGER.warn(
+              "Storage-credential-cache backend {} has no CredentialCacheStoreContext constructor; "
+                  + "ignoring {} configured backend property key(s): {}",
+              fqcn,
+              context.backendProperties().size(),
+              context.backendProperties().keySet());
+        }
         return type.getDeclaredConstructor().newInstance();
       }
     } catch (ReflectiveOperationException | ClassCastException e) {

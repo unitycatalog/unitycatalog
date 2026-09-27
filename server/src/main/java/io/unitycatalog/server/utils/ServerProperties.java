@@ -586,7 +586,7 @@ public class ServerProperties {
    */
   public Optional<String> getStorageCredentialCacheBackend() {
     return Optional.ofNullable(get(Property.STORAGE_CREDENTIAL_CACHE_BACKEND))
-        .filter(fqcn -> !fqcn.isEmpty());
+        .filter(fqcn -> !fqcn.isBlank());
   }
 
   /**

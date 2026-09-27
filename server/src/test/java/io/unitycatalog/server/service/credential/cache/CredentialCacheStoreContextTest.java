@@ -37,4 +37,14 @@ class CredentialCacheStoreContextTest {
         NullPointerException.class,
         () -> new CredentialCacheStoreContext(Clock.systemUTC(), 1, null));
   }
+
+  @Test
+  void rejectsNonPositiveMaxSize() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new CredentialCacheStoreContext(Clock.systemUTC(), 0, Map.of()));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new CredentialCacheStoreContext(Clock.systemUTC(), -1, Map.of()));
+  }
 }

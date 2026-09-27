@@ -58,4 +58,11 @@ class ServerPropertiesBackendTest {
         Optional.empty(),
         props("server.storage-credential-cache.backend", "").getStorageCredentialCacheBackend());
   }
+
+  @Test
+  void whitespaceBackendIsTreatedAsUnset() {
+    assertEquals(
+        Optional.empty(),
+        props("server.storage-credential-cache.backend", "   ").getStorageCredentialCacheBackend());
+  }
 }
