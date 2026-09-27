@@ -146,6 +146,9 @@ public class StorageCredentialCache {
 
   private static CredentialCacheKey keyOf(CredentialContext context, NormalizedURL location) {
     // Per-bucket/config vends have no DAO, so both binding fields remain null.
+    // When a non-AWS DB-backed credential type is added to CredentialDAO.CredentialType,
+    // extend this to fold that type's distinguishing identity into the key, or different
+    // bindings could collide.
     Optional<AwsIamRoleResponse> awsIamRole =
         context.getCredentialDAO().map(CredentialDAO::getAwsIamRoleResponse);
     return new CredentialCacheKey(

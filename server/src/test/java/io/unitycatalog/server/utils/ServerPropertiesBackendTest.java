@@ -36,7 +36,8 @@ class ServerPropertiesBackendTest {
             "server.storage-credential-cache.backend.endpoint", "redis://h:6379",
             "server.storage-credential-cache.backend.namespace", "prod",
             "server.storage-credential-cache.enabled", "true",
-            "server.storage-credential-cache.max-size", "1000");
+            "server.storage-credential-cache.max-size", "1000",
+            "s3.secretKey.0", "supersecret"); // a real secret from server config must not leak
     Map<String, String> m = p.getStorageCredentialCacheBackendProperties();
 
     assertEquals("redis://h:6379", m.get("endpoint")); // prefix stripped
@@ -45,6 +46,8 @@ class ServerPropertiesBackendTest {
     assertFalse(m.containsKey("enabled")); // sibling cache keys excluded
     assertFalse(m.containsKey("max-size"));
     assertFalse(m.containsKey("backend")); // the fqcn key itself is not config
+    assertFalse(m.containsKey("secretKey.0")); // other server secrets must not leak to the backend
+    assertFalse(m.containsValue("supersecret")); // the secret value itself must not appear
   }
 
   @Test

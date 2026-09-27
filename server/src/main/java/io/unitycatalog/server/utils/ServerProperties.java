@@ -597,6 +597,8 @@ public class ServerProperties {
   public Map<String, String> getStorageCredentialCacheBackendProperties() {
     String prefix = Property.STORAGE_CREDENTIAL_CACHE_BACKEND.key + ".";
     Map<String, String> result = new HashMap<>();
+    // Discovery scans the properties file and system properties, not env vars: env is read by exact
+    // key (see getProperty), never enumerated, and enumerating it could surface unrelated keys.
     collectPrefixed(properties.stringPropertyNames(), prefix, result);
     collectPrefixed(System.getProperties().stringPropertyNames(), prefix, result);
     return Map.copyOf(result);

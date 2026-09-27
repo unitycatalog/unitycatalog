@@ -92,6 +92,8 @@ The cache is controlled by these keys:
 | `server.storage-credential-cache.backend` | *(unset)* | Fully-qualified class name of a custom cache store (`Cache<CredentialCacheKey, CachedCredential>`). Unset uses the built-in in-process cache. The class needs either a `CredentialCacheStoreContext` constructor or a no-arg one. Freshness is always re-validated by the server, so an external store is never trusted for correctness. |
 | `server.storage-credential-cache.backend.<key>` | *(none)* | Config passed to the custom backend, exposed to it as a map with this prefix stripped. Only these keys are visible to the backend — no other server config. |
 
+> Note: if the configured backend is type-incompatible or persistently unavailable, the server logs a warning and falls back to vending fresh credentials on every request — the cache is bypassed, never failed, and credential freshness is always re-validated. A misconfigured backend therefore costs performance, not correctness.
+
 Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is five minutes).
 
 ## Logging

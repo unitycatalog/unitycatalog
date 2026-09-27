@@ -432,9 +432,12 @@ public class StorageCredentialCacheTest {
             props("server.storage-credential-cache.backend", backend(NoArgStore.class)),
             clockAt(T0));
 
-    cache.get(
-        ctx("arn:role/A")); // NoArgStore never hits -> vends every time, but must construct+run
+    // NoArgStore always misses (empty getIfPresent), so the vendor must be called and the result
+    // must be a well-formed credential with the location URL set.
+    TemporaryCredentials result = cache.get(ctx("arn:role/A")); // always misses -> triggers a vend
     assertTrue(NoArgStore.constructed);
+    assertEquals(LOC.toString(), result.getUrl());
+    verify(vendor, times(1)).vendCredential(any());
   }
 
   @Test
