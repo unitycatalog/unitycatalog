@@ -119,8 +119,11 @@ public class VolumeRepository {
           String catalogName = namespace[0];
           String schemaName = namespace[1];
           String volumeName = namespace[2];
-          return getVolumeDAO(session, catalogName, schemaName, volumeName)
-              .toVolumeInfo(catalogName, schemaName);
+          VolumeInfoDAO volumeInfoDAO = getVolumeDAO(session, catalogName, schemaName, volumeName);
+          if (volumeInfoDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "Volume not found: " + fullName);
+          }
+          return volumeInfoDAO.toVolumeInfo(catalogName, schemaName);
         },
         "Failed to get volume",
         /* readOnly= */ true);
