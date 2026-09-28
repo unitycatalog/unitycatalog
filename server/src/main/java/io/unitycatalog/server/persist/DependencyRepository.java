@@ -35,13 +35,8 @@ public class DependencyRepository {
 
   public List<DependencyDAO> getDependencies(
       Session session, UUID dependentId, DependentType dependentType) {
-    String hql =
-        "FROM DependencyDAO d WHERE d.dependentId = :dependentId"
-            + " AND d.dependentType = :dependentType";
-    Query<DependencyDAO> query = session.createQuery(hql, DependencyDAO.class);
-    query.setParameter("dependentId", dependentId);
-    query.setParameter("dependentType", dependentType);
-    return query.list();
+    return getDependenciesByDependentIds(session, List.of(dependentId), dependentType)
+        .getOrDefault(dependentId, List.of());
   }
 
   /**
