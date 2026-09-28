@@ -221,6 +221,16 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     TableMetadata stagedExternal =
         stageCreate(r1, SCHEMA, "uc_external_ok", tmpLocation("uc_external_ok"));
     r1.updateTable(CAT, SCHEMA, "uc_external_ok", commitCreate(stagedExternal));
+    // Deny (external staged create): the commit-time #external_location / #no_overlap guard is the
+    // real check here (a create commit needs no staging row and its set-location need not match
+    // one).
+    // principal-1 owns CAT + SCHEMA but lacks CREATE_EXTERNAL_TABLE on the registered location.
+    assertDenied(
+        () -> p1.updateTable(CAT, SCHEMA, "uc_ext_deny_reg", createCommitAt(registeredPathA)));
+    // A set-location overlapping an existing table (a data securable) fails #no_overlap, even for
+    // regular-1 which does hold CREATE_EXTERNAL_TABLE on that location.
+    assertDenied(
+        () -> r1.updateTable(CAT, SCHEMA, "uc_ext_deny_overlap", createCommitAt(registeredPathB)));
     // Confused-deputy guard: regular-1 passes the create policy (schema CREATE_TABLE) but may not
     // finalize a managed staged create owned by principal-1 -- the staging-ownership pre-check
     // rejects it before any metadata is written. principal-1 can still finalize its own afterwards.
@@ -239,6 +249,11 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     grantPermissions(
         REGULAR_1, SecurableType.TABLE, CAT + "." + SCHEMA + ".tbl_mod", Privileges.SELECT);
     r1.updateTable(CAT, SCHEMA, "tbl_mod", setProperty()); // SELECT + MODIFY
+    // Bypass regression: a regular commit is authorized against the URL table, never a table the
+    // caller names via set-location. regular-1 has no privilege on tbl_none; a set-location under
+    // its own ct_reg_ok must not let KeyMapper overwrite #table with the owned table and pass.
+    assertDenied(
+        () -> r1.updateTable(CAT, SCHEMA, "tbl_none", commitSettingLocation(registeredPathB)));
 
     // ===== dropTable (DELETE_TABLE) =====
     // As with reads, each owner drops a table it does NOT own; metastore-owner alone cannot delete.
@@ -262,6 +277,9 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     // regular-1 owns what it creates (drop right) and holds CREATE_TABLE (create right) -> allowed.
     createTable(r1, SCHEMA, "tbl_rn_r1", tmpLocation("tbl_rn_r1"));
     r1.renameTable(CAT, SCHEMA, "tbl_rn_r1", SCHEMA, "tbl_rn_r1b");
+    // A rename with no source table fails fast as a 400 during authorization (the source-schema
+    // extractor rejects it), not a 404 from resolving a null schema.
+    assertIcebergApiException(() -> p1.renameTableRaw(CAT, "{}"), 400);
 
     // ===== updateNamespaceProperties (UPDATE_SCHEMA): catalog OWNER, or USE_CATALOG + schema
     // OWNER; metastore owner alone is not sufficient =====
@@ -350,6 +368,22 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
             new MetadataUpdate.SetDefaultSortOrder(-1),
             new MetadataUpdate.SetLocation(staged.location()),
             new MetadataUpdate.SetProperties(Map.of("staged", "true"))));
+  }
+
+  /** A regular (non-create) commit that sets a property and a location. */
+  private static UpdateTableRequest commitSettingLocation(String location) {
+    return new UpdateTableRequest(
+        List.of(),
+        List.of(
+            new MetadataUpdate.SetProperties(Map.of("k", "v")),
+            new MetadataUpdate.SetLocation(location)));
+  }
+
+  /** A staged-create commit (assert-create) targeting {@code location}; for the deny cases. */
+  private static UpdateTableRequest createCommitAt(String location) {
+    return new UpdateTableRequest(
+        List.of(new UpdateRequirement.AssertTableDoesNotExist()),
+        List.of(new MetadataUpdate.SetLocation(location)));
   }
 
   /** A regular (non-create) commit that only sets a property. */

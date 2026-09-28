@@ -154,6 +154,11 @@ public class IcebergRestClient {
     checkSuccess(post("/v1/catalogs/" + catalog + "/tables/rename", toJson(request)));
   }
 
+  /** Posts a raw rename body, for exercising malformed-request handling. */
+  public void renameTableRaw(String catalog, String jsonBody) throws ApiException {
+    checkSuccess(post("/v1/catalogs/" + catalog + "/tables/rename", jsonBody));
+  }
+
   public LoadViewResponse loadView(String catalog, String namespace, String view)
       throws ApiException {
     return parse(get(viewPath(catalog, namespace, view)), LoadViewResponse.class);
