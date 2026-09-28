@@ -244,6 +244,9 @@ public class ServerProperties {
     AUDIENCES("server.audiences"),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
     ACCESS_TOKEN_TIMEOUT("server.access-token-timeout", "PT24H", DURATION_VALIDATOR),
+    // Bound for Armeria graceful stop and the blocking-executor drain. Keep it under the
+    // orchestrator grace period so a wedged request is logged instead of holding shutdown.
+    SHUTDOWN_TIMEOUT("server.shutdown-timeout", "PT5S", POSITIVE_DURATION_VALIDATOR),
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
     // Native Iceberg REST writes are experimental and opt-in until the API is stable.
     ICEBERG_TABLE_ENABLED("server.iceberg-table.enabled", "false", BOOLEAN_VALIDATOR),
@@ -550,6 +553,11 @@ public class ServerProperties {
 
   public Duration getStorageCleanupRetryBackoff() {
     return Duration.parse(get(Property.STORAGE_CLEANUP_RETRY_BACKOFF));
+  }
+
+  /** How long stop and close wait for in-flight HTTP and blocking work. Default 5 seconds. */
+  public Duration getShutdownTimeout() {
+    return Duration.parse(get(Property.SHUTDOWN_TIMEOUT));
   }
 
   public boolean isIncludeStackTraceInError() {

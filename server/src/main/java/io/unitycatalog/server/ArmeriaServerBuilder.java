@@ -104,8 +104,9 @@ public class ArmeriaServerBuilder {
             .http1HeaderNaming(Http1HeaderNaming.traditional())
             // One HTTP/2 connection is pinned to one event loop. JDBC runs on this pool instead.
             // UnityCatalogServer owns it so stop/start can reuse it; only close shuts it down.
-            // Keep stop() request-safe even though it no longer shuts down the executor.
-            .gracefulShutdownTimeoutMillis(1, Long.MAX_VALUE)
+            // A 1ms quiet period lets an idle server stop immediately. The timeout is
+            // server.shutdown-timeout, so a request that never finishes cannot block stop().
+            .gracefulShutdownTimeoutMillis(1, serverProperties.getShutdownTimeout().toMillis())
             .blockingTaskExecutor(blockingTaskExecutor, false)
             .serviceUnder("/docs", new DocService());
     this.armeriaServerBuilder.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"));
