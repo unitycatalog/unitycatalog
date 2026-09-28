@@ -145,6 +145,15 @@ public final class StorageCleanupWorker implements AutoCloseable {
       cleanup(claim, deadline);
       taskRepository.finish(claim.resourceId(), claim.leaseToken());
     } catch (Exception exception) {
+      // Surface the failure to operators: the DB only keeps a sanitized class-name string, so
+      // without this a stuck cleanup is invisible. Location/id are the resource's own managed
+      // path, not secrets; the throwable gives the stack trace for debugging.
+      LOGGER.warn(
+          "Storage cleanup failed for {} {} at {}; will retry after backoff",
+          claim.resourceType(),
+          claim.resourceId(),
+          claim.storageLocation(),
+          exception);
       taskRepository.reportFailure(
           claim.resourceId(),
           claim.leaseToken(),

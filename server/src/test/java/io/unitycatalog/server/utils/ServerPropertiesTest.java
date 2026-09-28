@@ -215,6 +215,9 @@ public class ServerPropertiesTest {
     testValidProperty(Property.COOKIE_TIMEOUT, "P1DT12H30M");
     testValidProperty(Property.ACCESS_TOKEN_TIMEOUT, "PT24H");
     testValidProperty(Property.ACCESS_TOKEN_TIMEOUT, "PT1H");
+    testValidProperty(Property.POLICY_REFRESH_MIN_PROBE_INTERVAL, "PT0S");
+    testValidProperty(Property.POLICY_REFRESH_MIN_PROBE_INTERVAL, "PT0.1S");
+    testValidProperty(Property.POLICY_REFRESH_MIN_PROBE_INTERVAL, "PT1S");
 
     // Invalid values
     testInvalidProperty(
@@ -226,6 +229,23 @@ public class ServerPropertiesTest {
         "24 hours",
         "Invalid value '24 hours'",
         "server.access-token-timeout");
+    testInvalidProperty(
+        Property.COOKIE_TIMEOUT, "PT-1S", "must be zero or positive", "server.cookie-timeout");
+    testInvalidProperty(
+        Property.ACCESS_TOKEN_TIMEOUT,
+        "PT-1S",
+        "must be zero or positive",
+        "server.access-token-timeout");
+    testInvalidProperty(
+        Property.POLICY_REFRESH_INTERVAL,
+        "PT-1S",
+        "must be zero or positive",
+        "server.authorization.policy-refresh-interval");
+    testInvalidProperty(
+        Property.POLICY_REFRESH_MIN_PROBE_INTERVAL,
+        "PT-1S",
+        "must be zero or positive",
+        "server.authorization.policy-refresh-min-probe-interval");
   }
 
   @Test

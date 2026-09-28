@@ -4,18 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.exception.BaseException;
-import io.unitycatalog.server.model.DataSourceFormat;
-import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.model.VolumeType;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
-import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Date;
 import java.util.List;
@@ -28,7 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-class ManagedTableCleanupTaskTest {
+class ManagedVolumeCleanupTaskTest {
   private static final String CATALOG = "catalog";
   private static final String SCHEMA = "schema";
 
@@ -76,82 +74,80 @@ class ManagedTableCleanupTaskTest {
   }
 
   @Test
-  void localAndCloudManagedDropsCreateTasksThroughBothRepositoryEntryPoints() throws Exception {
-    TableInfoDAO local =
-        createTable(
-            "local_table",
-            TableType.MANAGED,
-            id -> tempDir.resolve("__unitystorage/tables").resolve(id.toString()).toString());
-    Path localData = Path.of(local.getUrl()).resolve("part-00000");
-    Files.createDirectories(localData.getParent());
-    Files.writeString(localData, "data");
+  void managedVolumeDropsCreateCleanupTasksForAllSchemes() {
+    VolumeInfoDAO local =
+        createVolume(
+            "local_volume",
+            VolumeType.MANAGED,
+            id -> tempDir.resolve("__unitystorage/volumes").resolve(id.toString()).toString());
     Date beforeDrop = new Date();
-    repositories.getTableRepository().deleteTable(CATALOG + "." + SCHEMA + ".local_table");
+    repositories.getVolumeRepository().deleteVolume(CATALOG + "." + SCHEMA + ".local_volume");
     assertDroppedWithTask(local, beforeDrop);
-    assertThat(localData).exists();
 
-    TableInfoDAO s3 =
-        createTable(
-            "s3_table", TableType.MANAGED, id -> "s3://bucket/root/unused/../tables/" + id + "///");
+    VolumeInfoDAO s3 =
+        createVolume(
+            "s3_volume", VolumeType.MANAGED, id -> "s3://bucket/root/volumes/" + id + "///");
     beforeDrop = new Date();
-    repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, "s3_table");
+    repositories.getVolumeRepository().deleteVolume(CATALOG + "." + SCHEMA + ".s3_volume");
     assertDroppedWithTask(s3, beforeDrop);
 
-    TableInfoDAO gcs =
-        createTable("gcs_table", TableType.MANAGED, id -> "gs://bucket/root/tables/" + id);
+    VolumeInfoDAO gcs =
+        createVolume("gcs_volume", VolumeType.MANAGED, id -> "gs://bucket/root/volumes/" + id);
     beforeDrop = new Date();
-    repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, "gcs_table");
+    repositories.getVolumeRepository().deleteVolume(CATALOG + "." + SCHEMA + ".gcs_volume");
     assertDroppedWithTask(gcs, beforeDrop);
 
     for (String scheme : List.of("abfs", "abfss")) {
-      TableInfoDAO adls =
-          createTable(
-              scheme + "_table",
-              TableType.MANAGED,
-              id -> scheme + "://container@account.dfs.core.windows.net/root/tables/" + id);
+      VolumeInfoDAO adls =
+          createVolume(
+              scheme + "_volume",
+              VolumeType.MANAGED,
+              id -> scheme + "://container@account.dfs.core.windows.net/root/volumes/" + id);
       beforeDrop = new Date();
-      repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, adls.getName());
+      repositories
+          .getVolumeRepository()
+          .deleteVolume(CATALOG + "." + SCHEMA + "." + adls.getName());
       assertDroppedWithTask(adls, beforeDrop);
     }
   }
 
   @Test
-  void externalTableDropsDoNotCreateTasks() {
-    TableInfoDAO external =
-        createTable(
-            "external_table",
-            TableType.EXTERNAL,
+  void externalVolumeDropsDoNotCreateTasks() {
+    VolumeInfoDAO external =
+        createVolume(
+            "external_volume",
+            VolumeType.EXTERNAL,
             id -> tempDir.resolve("external").resolve(id.toString()).toString());
 
-    repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, external.getName());
+    repositories.getVolumeRepository().deleteVolume(CATALOG + "." + SCHEMA + ".external_volume");
 
     // findTask == null is the real guard: an external drop queues no cleanup task, so the worker
     // never touches its files. (No synchronous delete happens for any drop, managed or external.)
-    assertThat(findTable(external.getId())).isNull();
+    assertThat(findVolume(external.getId())).isNull();
     assertThat(findTask(external.getId())).isNull();
   }
 
   @Test
-  void cascadingSchemaDropQueuesCleanupForManagedTablesOnly() {
-    TableInfoDAO managed =
-        createTable(
+  void cascadingSchemaDropQueuesCleanupForManagedVolumesOnly() {
+    VolumeInfoDAO managed =
+        createVolume(
             "managed_cascade",
-            TableType.MANAGED,
-            id -> tempDir.resolve("__unitystorage/tables").resolve(id.toString()).toString());
-    TableInfoDAO external =
-        createTable(
+            VolumeType.MANAGED,
+            id -> tempDir.resolve("__unitystorage/volumes").resolve(id.toString()).toString());
+    VolumeInfoDAO external =
+        createVolume(
             "external_cascade",
-            TableType.EXTERNAL,
+            VolumeType.EXTERNAL,
             id -> tempDir.resolve("external").resolve(id.toString()).toString());
     Date beforeDrop = new Date();
 
-    // A force schema drop cascades each child through TableRepository.deleteTable(session, ...),
+    // A force schema drop cascades each child through VolumeRepository.deleteVolume(session, ...),
     // the same entry point a direct drop uses, so managed children still queue a cleanup task and
     // external children still queue none.
     repositories.getSchemaRepository().deleteSchema(CATALOG + "." + SCHEMA, /* force= */ true);
 
     assertDroppedWithTask(managed, beforeDrop);
-    assertThat(findTable(external.getId())).isNull();
+    assertThat(findVolume(external.getId())).isNull();
     assertThat(findTask(external.getId())).isNull();
     // Exactly one task: the managed child queued one, the external child queued none. Guards
     // against a future change queueing a second task with a different id (the resource_id primary
@@ -160,10 +156,10 @@ class ManagedTableCleanupTaskTest {
   }
 
   @Test
-  void taskInsertFailureRollsBackTableDeletion() {
-    TableInfoDAO table =
-        createTable("rollback_table", TableType.MANAGED, id -> "s3://bucket/root/tables/" + id);
-    String existingTaskLocation = "s3://bucket/existing/tables/" + table.getId();
+  void taskInsertFailureRollsBackVolumeDeletion() {
+    VolumeInfoDAO volume =
+        createVolume("rollback_volume", VolumeType.MANAGED, id -> "s3://bucket/root/volumes/" + id);
+    String existingTaskLocation = "s3://bucket/existing/volumes/" + volume.getId();
     TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -171,9 +167,9 @@ class ManagedTableCleanupTaskTest {
               .getStorageCleanupTaskRepository()
               .create(
                   session,
-                  ResourceType.TABLE,
-                  table.getId(),
-                  table.getName(),
+                  ResourceType.VOLUME,
+                  volume.getId(),
+                  volume.getName(),
                   existingTaskLocation);
           return null;
         },
@@ -181,54 +177,59 @@ class ManagedTableCleanupTaskTest {
         /* readOnly= */ false);
 
     assertThatThrownBy(
-            () -> repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, table.getName()))
+            () ->
+                repositories
+                    .getVolumeRepository()
+                    .deleteVolume(CATALOG + "." + SCHEMA + ".rollback_volume"))
         .isInstanceOf(BaseException.class);
 
-    // The rollback is what these assertions prove: the table delete and the duplicate task insert
-    // share one transaction, so the insert failure must undo both writes. The table row is still
-    // present, and the pre-existing task keeps its original location.
-    assertThat(findTable(table.getId())).isNotNull();
-    assertThat(findTask(table.getId()).getStorageLocation()).isEqualTo(existingTaskLocation);
+    // The rollback is what these assertions prove: the volume delete and the duplicate task insert
+    // share one transaction, so the insert failure must undo both writes. The volume row is still
+    // present, and the pre-existing task keeps its original location (the failed insert, which
+    // would
+    // have used the volume's own location, left no trace).
+    assertThat(findVolume(volume.getId())).isNotNull();
+    assertThat(findTask(volume.getId()).getStorageLocation()).isEqualTo(existingTaskLocation);
   }
 
-  private TableInfoDAO createTable(
-      String name, TableType tableType, Function<UUID, String> location) {
-    UUID tableId = UUID.randomUUID();
-    TableInfoDAO table =
-        TableInfoDAO.builder()
-            .id(tableId)
+  private VolumeInfoDAO createVolume(
+      String name, VolumeType volumeType, Function<UUID, String> location) {
+    UUID volumeId = UUID.randomUUID();
+    VolumeInfoDAO volume =
+        VolumeInfoDAO.builder()
+            .id(volumeId)
             .schemaId(schemaId)
             .name(name)
-            .type(tableType.getValue())
-            .dataSourceFormat(DataSourceFormat.DELTA.getValue())
-            .url(location.apply(tableId))
+            .volumeType(volumeType.getValue())
+            .storageLocation(location.apply(volumeId))
             .createdAt(new Date())
             .build();
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          session.persist(table);
-          return table;
+          session.persist(volume);
+          return volume;
         },
-        "Failed to create test table",
+        "Failed to create test volume",
         /* readOnly= */ false);
   }
 
-  private void assertDroppedWithTask(TableInfoDAO table, Date beforeDrop) {
-    StorageCleanupTaskDAO task = findTask(table.getId());
-    assertThat(findTable(table.getId())).isNull();
+  private void assertDroppedWithTask(VolumeInfoDAO volume, Date beforeDrop) {
+    StorageCleanupTaskDAO task = findTask(volume.getId());
+    assertThat(findVolume(volume.getId())).isNull();
     assertThat(task).isNotNull();
-    assertThat(task.getId()).isEqualTo(table.getId());
-    assertThat(task.getName()).isEqualTo(table.getName());
-    assertThat(task.getResourceType()).isEqualTo(ResourceType.TABLE);
-    assertThat(task.getStorageLocation()).isEqualTo(NormalizedURL.normalize(table.getUrl()));
+    assertThat(task.getId()).isEqualTo(volume.getId());
+    assertThat(task.getName()).isEqualTo(volume.getName());
+    assertThat(task.getResourceType()).isEqualTo(ResourceType.VOLUME);
+    assertThat(task.getStorageLocation())
+        .isEqualTo(NormalizedURL.normalize(volume.getStorageLocation()));
     assertThat(task.getDeletedAt().getTime())
         .isBetween(beforeDrop.getTime(), System.currentTimeMillis());
   }
 
-  private TableInfoDAO findTable(UUID id) {
+  private VolumeInfoDAO findVolume(UUID id) {
     try (var session = sessionFactory.openSession()) {
-      return session.get(TableInfoDAO.class, id);
+      return session.get(VolumeInfoDAO.class, id);
     }
   }
 

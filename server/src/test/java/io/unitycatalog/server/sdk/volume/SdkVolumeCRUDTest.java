@@ -35,6 +35,24 @@ public class SdkVolumeCRUDTest extends BaseVolumeCRUDTest {
   }
 
   @Test
+  public void testGetAndDeleteVolumeThatDoesNotExist() throws ApiException {
+    createCommonResources();
+    String missingVolume = TestUtils.SCHEMA_FULL_NAME + ".no_such_volume";
+
+    // Both paths read the volume through VolumeRepository.getVolume, which looked up the DAO and
+    // used it without checking that the lookup found anything, so a missing volume surfaced as a
+    // 500 that named an internal class rather than as a not-found.
+    TestUtils.assertApiException(
+        () -> volumeOperations.getVolume(missingVolume),
+        ErrorCode.NOT_FOUND,
+        "Volume not found: " + missingVolume);
+    TestUtils.assertApiException(
+        () -> volumeOperations.deleteVolume(missingVolume),
+        ErrorCode.NOT_FOUND,
+        "Volume not found: " + missingVolume);
+  }
+
+  @Test
   public void testCreateExternalVolumeRejectsCloudStorageRoot() throws ApiException {
     createCommonResources();
     CreateVolumeRequestContent request =
