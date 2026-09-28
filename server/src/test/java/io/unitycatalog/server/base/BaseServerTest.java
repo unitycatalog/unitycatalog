@@ -1,6 +1,7 @@
 package io.unitycatalog.server.base;
 
 import io.unitycatalog.server.UnityCatalogServer;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -63,6 +64,11 @@ public abstract class BaseServerTest {
 
   protected void setUpCredentialOperations(ServerProperties serverProperties) {}
 
+  /** Returns an optional test FileIO facade; {@code null} uses the production implementation. */
+  protected FileOperations createFileOperations(ServerProperties serverProperties) {
+    return null;
+  }
+
   /**
    * Subclasses can override this to customize the hibernate properties before the session factory
    * is created, e.g. to point the server at an external database such as PostgreSQL via
@@ -101,6 +107,7 @@ public abstract class BaseServerTest {
               .serverProperties(initServerProperties)
               .hibernateConfigurator(hibernateConfigurator)
               .credentialOperations(cloudCredentialVendor)
+              .fileOperations(createFileOperations(initServerProperties))
               .build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);
