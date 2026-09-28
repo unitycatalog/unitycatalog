@@ -1067,9 +1067,12 @@ public class TableRepository {
 
   /**
    * One page of the tables in a schema that carry an Iceberg metadata pointer, and the token for
-   * the page after it. An empty {@code nextPageToken} means the listing is complete.
+   * the page after it. An empty {@code nextPageToken} means the listing is complete. The raw DAOs
+   * are returned (rather than converted {@code TableInfo}s) so a caller can authorize the listing
+   * per table by id and read each name without materializing an API model; callers must read only
+   * eager fields ({@code id}, {@code name}), since the rows are detached once the page returns.
    */
-  public record IcebergTablePage(List<String> tableNames, Optional<String> nextPageToken) {}
+  public record IcebergTablePage(List<TableInfoDAO> tableDaos, Optional<String> nextPageToken) {}
 
   /**
    * Lists the tables in a schema that carry an Iceberg metadata pointer -- a Delta UniForm
@@ -1105,8 +1108,7 @@ public class TableRepository {
                   schemaId,
                   Optional.of(root -> root.get("icebergMetadataLocation").isNotNull()));
           return new IcebergTablePage(
-              rows.stream().map(TableInfoDAO::getName).toList(),
-              Optional.ofNullable(LISTING_HELPER.getNextPageToken(rows, maxResults)));
+              rows, Optional.ofNullable(LISTING_HELPER.getNextPageToken(rows, maxResults)));
         },
         "Failed to list tables",
         /* readOnly= */ true);

@@ -78,7 +78,7 @@ Key points: HTTP verb annotations (`@Post`, `@Get`, `@Patch`, `@Delete`) with `@
 | Path | What it is |
 | --- | --- |
 | `api/` | The OpenAPI spec and source of truth for the API: `all.yaml` (main), `control.yaml`, `delta.yaml`. `Apis/`, `Models/` are generated docs. |
-| `spec/protocols/` | Protocol specs, e.g. `ManagedTablesSpec.md`. |
+| `spec/protocols/` | Protocol specs, e.g. `ManagedDeltaTablesSpec.md`. |
 | `server/` | The catalog server (Java, base package `io.unitycatalog.server`). The core of the project. |
 | `server-shaded/` | The server and client combined into a single shaded (fat) JAR, with some dependencies relocated; runnable, entry point `UnityCatalogServer`. |
 | `clients/java/`, `clients/python/` | Generated client SDKs (Java and Python). |
@@ -230,7 +230,7 @@ Code ownership is in `.github/CODEOWNERS`; the owners of the areas you touch are
 - **The OpenAPI spec is the contract.** Change behavior by changing the spec first, then regenerating. Prefer additive, backward-compatible changes; the cost of this API style is that once something is added it is hard to remove, so add deliberately.
 - **Released names are sacred.** Do not change a released property name, config key, API field, endpoint, or CLI behavior. If a break is truly necessary, call it out explicitly and provide a migration path.
 - **Interoperability.** The project stays compatible with the Apache Hive metastore API and the Apache Iceberg REST catalog API. Changes near those surfaces must keep the interop intact.
-- **Managed-table semantics** are described in `spec/protocols/ManagedTablesSpec.md`. When changing table behavior, reconcile the code and the spec deliberately. (Schema/migration safety across a restart and across backends is covered under "Persistence and transactions.")
+- **Managed-Delta-table semantics** are described in `spec/protocols/ManagedDeltaTablesSpec.md`. When changing Delta table behavior, reconcile the code and the spec deliberately. (Schema/migration safety across a restart and across backends is covered under "Persistence and transactions.")
 
 ## Common reasons a pull request gets blocked
 

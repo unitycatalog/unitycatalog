@@ -8,9 +8,9 @@ import io.unitycatalog.server.model.UpdateVolumeRequestContent;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.model.VolumeType;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
-import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
@@ -119,8 +119,11 @@ public class VolumeRepository {
           String catalogName = namespace[0];
           String schemaName = namespace[1];
           String volumeName = namespace[2];
-          return getVolumeDAO(session, catalogName, schemaName, volumeName)
-              .toVolumeInfo(catalogName, schemaName);
+          VolumeInfoDAO volumeInfoDAO = getVolumeDAO(session, catalogName, schemaName, volumeName);
+          if (volumeInfoDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "Volume not found: " + fullName);
+          }
+          return volumeInfoDAO.toVolumeInfo(catalogName, schemaName);
         },
         "Failed to get volume",
         /* readOnly= */ true);
@@ -277,13 +280,27 @@ public class VolumeRepository {
       throw new BaseException(ErrorCode.NOT_FOUND, "Volume not found: " + volumeName);
     }
     if (VolumeType.MANAGED.getValue().equals(volumeInfoDAO.getVolumeType())) {
-      try {
-        FileOperations.deleteDirectory(NormalizedURL.from(volumeInfoDAO.getStorageLocation()));
-      } catch (Exception e) {
-        LOGGER.error("Error deleting volume directory", e);
-      }
+      queueManagedVolumeCleanup(session, volumeInfoDAO);
     }
     session.remove(volumeInfoDAO);
     LOGGER.info("Deleted volume: {}", volumeInfoDAO.getName());
+  }
+
+  /**
+   * Queues a storage cleanup task so the background worker reclaims a dropped managed volume's
+   * files. The task is created in the caller's transaction, so the row removal and task creation
+   * commit or roll back together. This applies to every storage scheme, including local, matching
+   * how managed-table drops are handled; filesystem deletion is never done synchronously in the
+   * drop transaction.
+   */
+  private void queueManagedVolumeCleanup(Session session, VolumeInfoDAO volumeInfoDAO) {
+    repositories
+        .getStorageCleanupTaskRepository()
+        .create(
+            session,
+            ResourceType.VOLUME,
+            volumeInfoDAO.getId(),
+            volumeInfoDAO.getName(),
+            volumeInfoDAO.getStorageLocation());
   }
 }
