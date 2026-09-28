@@ -71,16 +71,6 @@ public interface FileOperations {
     return getFileIO(path, CredentialContext.READ_ONLY);
   }
 
-  /**
-   * Validates configuration required for the server itself to read {@code path}.
-   *
-   * <p>Credential vending can serve S3 credentials without a region, but server-side S3 FileIO
-   * cannot construct a client without one. Managed Delta backfill verification reads published
-   * commit files from the server, so reject that permanent configuration error before attempting
-   * storage I/O.
-   */
-  void validateReadAccessConfiguration(NormalizedURL path);
-
   /** Returns a FileIO configured for the requested storage privileges. */
   FileIO getFileIO(NormalizedURL path, Set<CredentialContext.Privilege> privileges);
 
