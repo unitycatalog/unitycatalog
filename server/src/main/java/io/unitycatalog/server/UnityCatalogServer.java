@@ -453,7 +453,7 @@ public class UnityCatalogServer implements AutoCloseable {
      * Decorates the {@link FileOperations} the server builds, e.g. to wrap file IO in tests. Treats
      * {@code null} as {@link UnaryOperator#identity()}.
      */
-    public UnityCatalogServer.Builder fileOperations(
+    public UnityCatalogServer.Builder fileOperationsDecorator(
         UnaryOperator<FileOperations> fileOperationsDecorator) {
       this.fileOperationsDecorator =
           fileOperationsDecorator != null ? fileOperationsDecorator : UnaryOperator.identity();
