@@ -53,10 +53,15 @@ trait UCSingleCatalogViewSupport extends RelationCatalog { self: UCSingleCatalog
   /**
    * Keep normal table loading on the delegate path. If the UC table-only path finds a view, reuse
    * the view metadata carried by its `NoSuchTableException` instead of issuing another UC lookup.
+   *
+   * Goes through `UCSingleCatalog.loadTable` rather than `delegate` so non-Delta path identifiers
+   * (for example `parquet`.`s3://bucket/path`) are still reported as `NoSuchTableException`.
+   * Spark's `RelationResolution.tryResolvePersistent` only falls back to SQL-on-file resolution
+   * for that exception, so reaching the delegate here surfaces UC's "Invalid table name" instead.
    */
   override def loadRelation(ident: Identifier): Relation = {
     try {
-      delegate.loadTable(ident)
+      loadTable(ident)
     } catch {
       case viewFound: ViewFoundDuringTableLoadException =>
         val t = viewFound.tableInfo

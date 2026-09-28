@@ -9,8 +9,11 @@ import static io.unitycatalog.server.utils.TestUtils.TEST_AWS_MASTER_ROLE_ARN;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.api.CredentialsApi;
@@ -39,7 +42,12 @@ import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.client.model.VolumeInfo;
 import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialGenerator;
@@ -48,6 +56,7 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
@@ -212,27 +221,30 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
     TemporaryCredentialsApi unauthorizedTempCredsApi =
         createTempCredApiForNewUser(UNAUTHORIZED_EMAIL, List.of());
 
-    // For URLs under the external location, follow external location permission.
+    // For URLs under the external location, follow external location permission. The metastore
+    // admin has no path-credential bypass: without READ_FILES/WRITE_FILES (or ownership) it is
+    // denied like any unprivileged user.
 
     List<String> matchingUrls =
         List.of(TEST_EXTERNAL_LOCATION_URL, TEST_EXTERNAL_LOCATION_URL + "/subdir/nested");
     testPathCredentials(
         matchingUrls,
         List.of(
-            new TestCase(adminTempCredsApi, TestCase.ALL_OPERATIONS),
+            new TestCase(adminTempCredsApi, Set.of()),
             new TestCase(locationOwnerTempCredsApi, TestCase.ALL_OPERATIONS),
             new TestCase(readWriteTempCredsApi, TestCase.READ_WRITE),
             new TestCase(readOnlyTempCredsApi, TestCase.READONLY),
             new TestCase(createTableTempCredsApi, TestCase.CREATE_EXTERNAL_TABLE),
             new TestCase(unauthorizedTempCredsApi, Set.of())));
 
-    // For URLs outside the external location, only metastore owner can get credential
+    // For URLs outside every external location and data securable, nothing resolves to authorize
+    // against, so no one -- including the metastore admin -- can get a credential.
 
     List<String> nonMatchingUrls = List.of("s3://test-bucket0/different/path");
     testPathCredentials(
         nonMatchingUrls,
         List.of(
-            new TestCase(adminTempCredsApi, TestCase.ALL_OPERATIONS),
+            new TestCase(adminTempCredsApi, Set.of()),
             new TestCase(locationOwnerTempCredsApi, Set.of()),
             new TestCase(unauthorizedTempCredsApi, Set.of())));
 
@@ -275,7 +287,9 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
             TEST_EXTERNAL_LOCATION_URL + "/tables/test_table",
             TEST_EXTERNAL_LOCATION_URL + "/tables/test_table/subdir"),
         List.of(
-            new TestCase(adminTempCredsApi, TestCase.READ_WRITE),
+            // Admin is not the table owner and has no SELECT/MODIFY, so it is denied like anyone
+            // else once the path resolves to the table.
+            new TestCase(adminTempCredsApi, Set.of()),
             new TestCase(locationOwnerTempCredsApi, Set.of()),
             new TestCase(readWriteTempCredsApi, TestCase.READ_WRITE),
             new TestCase(readOnlyTempCredsApi, TestCase.READONLY),
@@ -319,7 +333,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
             TEST_EXTERNAL_LOCATION_URL + "/volumes/test_volume",
             TEST_EXTERNAL_LOCATION_URL + "/volumes/test_volume/subdir"),
         List.of(
-            new TestCase(adminTempCredsApi, TestCase.READ_WRITE),
+            new TestCase(adminTempCredsApi, Set.of()),
             new TestCase(locationOwnerTempCredsApi, Set.of()),
             new TestCase(readWriteTempCredsApi, Set.of()),
             new TestCase(readOnlyTempCredsApi, TestCase.READONLY),
@@ -329,10 +343,65 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
     // TODO: Test permission when a managed storage, or a model version exists under the path,
     //  once they are supported.
 
-    // Finally, even admin can not access the parent path anymore due to data securables exist
-    // under it.
+    // Finally, the parent path now has data securables (a table and a volume) beneath it, so it
+    // resolves to more than one securable and is rejected outright -- even for the external
+    // location's own owner.
     testPathCredentials(
-        List.of(TEST_EXTERNAL_LOCATION_URL), List.of(new TestCase(adminTempCredsApi, Set.of())));
+        List.of(TEST_EXTERNAL_LOCATION_URL),
+        List.of(new TestCase(locationOwnerTempCredsApi, Set.of())));
+  }
+
+  @Test
+  public void testPendingCleanupBlocksPathAuthorization() {
+    String cleanupPath = TEST_EXTERNAL_LOCATION_URL + "/deleted";
+    UUID resourceId = UUID.randomUUID();
+    TransactionManager.executeWithTransaction(
+        hibernateConfigurator.getSessionFactory(),
+        session -> {
+          new StorageCleanupTaskRepository(hibernateConfigurator.getSessionFactory())
+              .create(session, ResourceType.TABLE, resourceId, "orders", cleanupPath);
+          return null;
+        },
+        "Failed to create test cleanup task",
+        /* readOnly= */ false);
+    clearInvocations(mockCloudCredentialVendor);
+
+    for (String path : List.of(TEST_EXTERNAL_LOCATION_URL, cleanupPath, cleanupPath + "/data")) {
+      for (TemporaryCredentialsApi api : List.of(adminTempCredsApi, locationOwnerTempCredsApi)) {
+        for (PathOperation operation : List.of(PATH_READ, PATH_READ_WRITE, PATH_CREATE_TABLE)) {
+          TestUtils.assertApiException(
+              () ->
+                  api.generateTemporaryPathCredentials(
+                      new GenerateTemporaryPathCredential().url(path).operation(operation)),
+              ErrorCode.PERMISSION_DENIED,
+              "Input path overlaps pending storage cleanup");
+        }
+      }
+    }
+    verify(mockCloudCredentialVendor, never()).vendCredential(any());
+    TestUtils.assertApiException(
+        () -> createExternalTable(cleanupPath + "/table"),
+        ErrorCode.PERMISSION_DENIED,
+        "Input path overlaps pending storage cleanup");
+    TestUtils.assertApiException(
+        () -> createExternalVolume(TEST_EXTERNAL_LOCATION_URL),
+        ErrorCode.PERMISSION_DENIED,
+        "Input path overlaps pending storage cleanup");
+
+    testPathCredentialsSuccess(
+        locationOwnerTempCredsApi, TEST_EXTERNAL_LOCATION_URL + "/active", PATH_READ_WRITE);
+
+    TransactionManager.executeWithTransaction(
+        hibernateConfigurator.getSessionFactory(),
+        session -> {
+          session.remove(session.get(StorageCleanupTaskDAO.class, resourceId));
+          return null;
+        },
+        "Failed to remove test cleanup task",
+        /* readOnly= */ false);
+    testPathCredentialsSuccess(locationOwnerTempCredsApi, cleanupPath, PATH_READ_WRITE);
+    createExternalTable(cleanupPath + "/table");
+    createExternalVolume(cleanupPath + "/volume");
   }
 
   private void testPathCredentials(List<String> urls, List<TestCase> testCases) {

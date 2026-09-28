@@ -118,6 +118,25 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
     tableOperations.deleteTable(VIEW_FULL_NAME);
   }
 
+  /**
+   * Hibernate maps an unannotated String as varchar(255). View properties (user TBLPROPERTIES,
+   * Spark view.sqlConfig.*) can exceed that; create/get must round-trip a longer value.
+   */
+  @Test
+  public void testCreateViewAcceptsPropertyValueLongerThanDefaultVarchar() throws Exception {
+    createSourceTable();
+    String longValue = "x".repeat(300);
+    TableInfo created =
+        tableOperations.createTable(validViewRequest().properties(Map.of("user.note", longValue)));
+    try {
+      assertThat(created.getProperties()).containsEntry("user.note", longValue);
+      assertThat(tableOperations.getTable(VIEW_FULL_NAME).getProperties())
+          .containsEntry("user.note", longValue);
+    } finally {
+      tableOperations.deleteTable(VIEW_FULL_NAME);
+    }
+  }
+
   private static Stream<Arguments> negativeCreateCases() {
     return Stream.of(
         Arguments.of(

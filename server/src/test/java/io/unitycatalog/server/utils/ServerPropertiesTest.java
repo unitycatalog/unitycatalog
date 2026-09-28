@@ -215,6 +215,9 @@ public class ServerPropertiesTest {
     testValidProperty(Property.COOKIE_TIMEOUT, "P1DT12H30M");
     testValidProperty(Property.ACCESS_TOKEN_TIMEOUT, "PT24H");
     testValidProperty(Property.ACCESS_TOKEN_TIMEOUT, "PT1H");
+    testValidProperty(Property.POLICY_REFRESH_MIN_PROBE_INTERVAL, "PT0S");
+    testValidProperty(Property.POLICY_REFRESH_MIN_PROBE_INTERVAL, "PT0.1S");
+    testValidProperty(Property.POLICY_REFRESH_MIN_PROBE_INTERVAL, "PT1S");
 
     // Invalid values
     testInvalidProperty(
@@ -226,6 +229,48 @@ public class ServerPropertiesTest {
         "24 hours",
         "Invalid value '24 hours'",
         "server.access-token-timeout");
+    testInvalidProperty(
+        Property.COOKIE_TIMEOUT, "PT-1S", "must be zero or positive", "server.cookie-timeout");
+    testInvalidProperty(
+        Property.ACCESS_TOKEN_TIMEOUT,
+        "PT-1S",
+        "must be zero or positive",
+        "server.access-token-timeout");
+    testInvalidProperty(
+        Property.POLICY_REFRESH_INTERVAL,
+        "PT-1S",
+        "must be zero or positive",
+        "server.authorization.policy-refresh-interval");
+    testInvalidProperty(
+        Property.POLICY_REFRESH_MIN_PROBE_INTERVAL,
+        "PT-1S",
+        "must be zero or positive",
+        "server.authorization.policy-refresh-min-probe-interval");
+  }
+
+  @Test
+  public void testStorageCleanupConfiguration() {
+    ServerProperties defaults = new ServerProperties();
+    assertThat(defaults.getStorageCleanupPollInterval()).isEqualTo(Duration.ofMinutes(1));
+    assertThat(defaults.getStorageCleanupAttemptTimeout()).isEqualTo(Duration.ofMinutes(30));
+    assertThat(defaults.getStorageCleanupLeaseDuration()).isEqualTo(Duration.ofHours(2));
+    assertThat(defaults.getStorageCleanupInitialDelay()).isEqualTo(Duration.ofDays(7));
+    assertThat(defaults.getStorageCleanupRetryBackoff()).isEqualTo(Duration.ofHours(1));
+
+    testInvalidProperty(
+        Property.STORAGE_CLEANUP_POLL_INTERVAL,
+        "PT0.000000001S",
+        "server.storage-cleanup.poll-interval",
+        "Expected at least one millisecond");
+    Properties leaseTooShort = new Properties();
+    leaseTooShort.setProperty(Property.STORAGE_CLEANUP_ATTEMPT_TIMEOUT.getKey(), "PT20S");
+    leaseTooShort.setProperty(Property.STORAGE_CLEANUP_LEASE_DURATION.getKey(), "PT20S");
+    assertThatThrownBy(() -> new ServerProperties(leaseTooShort))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("lease-duration must exceed the attempt timeout");
+    leaseTooShort.setProperty(Property.STORAGE_CLEANUP_LEASE_DURATION.getKey(), "PT21S");
+    assertThat(new ServerProperties(leaseTooShort).getStorageCleanupLeaseDuration())
+        .isEqualTo(Duration.ofSeconds(21));
   }
 
   @Test
