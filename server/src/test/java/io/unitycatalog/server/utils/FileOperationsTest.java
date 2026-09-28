@@ -231,7 +231,35 @@ public class FileOperationsTest {
         .containsEntry(S3FileIOProperties.SESSION_TOKEN_EXPIRES_AT_MS, "12345")
         // This overload builds config for the server's own FileIO, which has no catalog URI to
         // resolve a refresh endpoint against.
-        .doesNotContainKey(AwsClientProperties.REFRESH_CREDENTIALS_ENDPOINT);
+        .doesNotContainKey(AwsClientProperties.REFRESH_CREDENTIALS_ENDPOINT)
+        .doesNotContainKey(S3FileIOProperties.ENDPOINT)
+        .doesNotContainKey(S3FileIOProperties.PATH_STYLE_ACCESS);
+  }
+
+  @Test
+  public void testGetFileIOConfigS3HonorsEndpoint() {
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://my-bucket");
+    props.setProperty("s3.region.0", "us-west-2");
+    props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
+    props.setProperty("s3.endpoint.0", "http://localhost:8333");
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("AKIA")
+                        .secretAccessKey("secret")
+                        .sessionToken("token")));
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
+
+    assertThat(config)
+        .containsEntry(S3FileIOProperties.ENDPOINT, "http://localhost:8333")
+        .containsEntry(S3FileIOProperties.PATH_STYLE_ACCESS, "true");
   }
 
   @Test
