@@ -5,6 +5,7 @@ import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.util.Date;
 import java.util.Objects;
@@ -70,7 +71,10 @@ public class StorageCleanupTaskRepository {
         sessionFactory,
         session -> {
           Date now = currentDatabaseTime(session);
-          Date cutoff = Date.from(now.toInstant().minus(initialDelay));
+          // Keep sub-millisecond precision: deletedAt is stored from CURRENT_TIMESTAMP, so a Date
+          // (millisecond) cutoff would sit below a task deleted earlier in the same millisecond and
+          // skip it. Timestamp.from preserves the nanoseconds that Date.from would truncate.
+          Date cutoff = Timestamp.from(now.toInstant().minus(initialDelay));
           Optional<StorageCleanupTaskDAO> readyTask =
               session
                   .createQuery(
@@ -166,7 +170,9 @@ public class StorageCleanupTaskRepository {
         /* readOnly= */ false);
   }
 
-  private static Date currentDatabaseTime(Session session) {
+  // Package-private and non-static so a test can stub the database clock (via a Mockito spy) to
+  // pin sub-millisecond precision deterministically.
+  Date currentDatabaseTime(Session session) {
     return session.createQuery("SELECT CURRENT_TIMESTAMP", Date.class).getSingleResult();
   }
 }
