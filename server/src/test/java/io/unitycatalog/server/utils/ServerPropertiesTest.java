@@ -303,6 +303,16 @@ public class ServerPropertiesTest {
   }
 
   @Test
+  public void testShutdownTimeout() {
+    assertThat(new ServerProperties().getShutdownTimeout()).isEqualTo(Duration.ofSeconds(5));
+    testInvalidProperty(
+        Property.SHUTDOWN_TIMEOUT,
+        "PT0S",
+        "server.shutdown-timeout",
+        "Expected at least one millisecond");
+  }
+
+  @Test
   public void testEffectiveCookieTimeout() {
     ServerProperties serverProperties = new ServerProperties();
     assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT24H"));

@@ -58,6 +58,7 @@ import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
@@ -75,6 +76,7 @@ public class UnityCatalogServer implements AutoCloseable {
   private final SecurityContext securityContext;
   private final HibernateConfigurator hibernateConfigurator;
   private final BlockingTaskExecutor blockingTaskExecutor;
+  private final Duration shutdownTimeout;
 
   /** True when this server built the configurator itself and must therefore close it. */
   private final boolean ownsHibernateConfigurator;
@@ -99,6 +101,7 @@ public class UnityCatalogServer implements AutoCloseable {
 
   private UnityCatalogServer(UnityCatalogServer.Builder unityCatalogServerBuilder) {
     setDefaults(unityCatalogServerBuilder);
+    this.shutdownTimeout = unityCatalogServerBuilder.serverProperties.getShutdownTimeout();
     Path configurationFolder = Path.of("etc", "conf");
     SecurityConfiguration securityConfiguration = new SecurityConfiguration(configurationFolder);
 
@@ -133,22 +136,25 @@ public class UnityCatalogServer implements AutoCloseable {
   }
 
   /**
-   * Shuts down and drains the server-owned blocking executor without masking an earlier failure.
+   * Shuts down the server-owned blocking executor and waits up to {@code server.shutdown-timeout}.
+   * A task still running after that is left in place and shutdown continues, so a wedged JDBC call
+   * cannot hold the process until the orchestrator kills it.
    */
-  private static void closeBlockingTaskExecutor(
-      BlockingTaskExecutor executor, Throwable primaryFailure) {
+  private void closeBlockingTaskExecutor(BlockingTaskExecutor executor, Throwable primaryFailure) {
     if (executor == null) {
       return;
     }
     boolean interrupted = false;
     try {
       executor.shutdown();
-      while (!executor.isTerminated()) {
-        try {
-          executor.awaitTermination(1, TimeUnit.HOURS);
-        } catch (InterruptedException ignored) {
-          interrupted = true;
+      try {
+        if (!executor.awaitTermination(shutdownTimeout.toMillis(), TimeUnit.MILLISECONDS)) {
+          LOGGER.warn(
+              "Blocking task executor did not stop within {}; continuing shutdown",
+              shutdownTimeout);
         }
+      } catch (InterruptedException ignored) {
+        interrupted = true;
       }
     } catch (Throwable closeFailure) {
       if (primaryFailure != null) {
