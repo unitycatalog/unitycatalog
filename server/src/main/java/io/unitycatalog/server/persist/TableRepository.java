@@ -317,8 +317,8 @@ public class TableRepository {
       return repositories
           .getDeltaCommitRepository()
           .withPublishedCommitVerification(
-              verified ->
-                  updateTableForDeltaInTransaction(catalog, schema, table, request, verified));
+              filesChecked ->
+                  updateTableForDeltaInTransaction(catalog, schema, table, request, filesChecked));
     } catch (DeltaCommitRepository.CommitAlreadyAcceptedException e) {
       // Idempotent replay: the transaction rolled back to a no-op. Return the current table state
       // (a fresh read, since the rolled-back transaction produced no response).
@@ -337,7 +337,7 @@ public class TableRepository {
       String schema,
       String table,
       DeltaUpdateTableRequest request,
-      Optional<DeltaCommitRepository.VerifiedPublishedRange> verified) {
+      boolean filesChecked) {
     DeltaUpdateTableMapper.CollectedRequest collected =
         DeltaUpdateTableMapper.collectRequest(request);
     String callerId = IdentityUtils.findPrincipalEmailAddress();
@@ -368,7 +368,7 @@ public class TableRepository {
                               d.commit(),
                               d.uniformFields(),
                               d.latestBackfilledVersion(),
-                              verified));
+                              filesChecked));
           // Non-replay only (a replay already threw out): enforce assert-etag against pre-apply
           // state, rolling back the applied changes on mismatch.
           DeltaUpdateTableMapper.checkEtagRequirement(preApplyEtag, collected);
