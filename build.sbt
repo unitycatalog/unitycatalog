@@ -46,14 +46,16 @@ lazy val openApiToolsJacksonBindNullableVersion = "0.2.11"
 lazy val log4jVersion = "2.26.1"
 val orgApacheHttpVersion = "4.5.14"
 
-// Connector Jackson follows Spark's line: 4.0 ships 2.18.x, 4.1+ ships 2.21.x.
+// Latest patch on the Jackson line used to compile and test the connector.
+// Spark 4.0 stays on 2.18 (2.18.11). Spark 4.1+ uses 2.21.7, ahead of the jars
+// Spark 4.1.0 (2.20.0) and Spark 4.2.0 (2.21.2) ship. Clusters still run Spark's jars.
 // jackson-core >= 2.18 is required by Spark 4.2's jackson-dataformat-yaml
 // (YAMLParser._updateToken).
 lazy val sparkJacksonVersion =
-  if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 1)) "2.21.6" else "2.18.2"
-// jackson-annotations dropped the patch segment in 2.20; 2.21.6 does not exist.
+  if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 1)) "2.21.7" else "2.18.11"
+// jackson-annotations dropped the patch segment in 2.20; 2.21.7 is not published.
 lazy val sparkJacksonAnnotationsVersion =
-  if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 1)) "2.21" else "2.18.2"
+  if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 1)) "2.21" else "2.18.11"
 
 lazy val commonSettings = Seq(
   organization := orgName,
