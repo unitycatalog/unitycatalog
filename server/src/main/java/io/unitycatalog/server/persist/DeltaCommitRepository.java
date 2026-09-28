@@ -840,7 +840,6 @@ public class DeltaCommitRepository {
     // Record a miss inside the FileIO block and throw INVALID_ARGUMENT after it, so credential
     // vending, HEAD, and close failures (which also throw BaseException) are not passed through
     // as a client 400. v == toVersion is an explicit stop so v++ cannot overflow at MAX_VALUE.
-    fileOperations.validateReadAccessConfiguration(tableLocation);
     String missingPath = null;
     try (FileIO fileIO = fileOperations.getFileIO(tableLocation)) {
       for (long v = fromVersion; ; v++) {
