@@ -317,7 +317,13 @@ public class TableRepository {
   public DeltaLoadTableResponse updateTableForDelta(
       String catalog, String schema, String table, DeltaUpdateTableRequest request) {
     try {
-      return updateTableForDeltaInTransaction(catalog, schema, table, request);
+      // The backfill HEAD runs between transactions: the first attempt rolls back once it knows
+      // the version range, and the retry purges after the files have been checked.
+      return repositories
+          .getDeltaCommitRepository()
+          .withPublishedCommitVerification(
+              verified ->
+                  updateTableForDeltaInTransaction(catalog, schema, table, request, verified));
     } catch (DeltaCommitRepository.CommitAlreadyAcceptedException e) {
       // Idempotent replay: the transaction rolled back to a no-op. Return the current table state
       // (a fresh read, since the rolled-back transaction produced no response).
@@ -332,7 +338,11 @@ public class TableRepository {
   }
 
   private DeltaLoadTableResponse updateTableForDeltaInTransaction(
-      String catalog, String schema, String table, DeltaUpdateTableRequest request) {
+      String catalog,
+      String schema,
+      String table,
+      DeltaUpdateTableRequest request,
+      Optional<DeltaCommitRepository.VerifiedPublishedRange> verified) {
     DeltaUpdateTableMapper.CollectedRequest collected =
         DeltaUpdateTableMapper.collectRequest(request);
     String callerId = IdentityUtils.findPrincipalEmailAddress();
@@ -367,7 +377,8 @@ public class TableRepository {
                               dao,
                               d.commit(),
                               d.uniformFields(),
-                              d.latestBackfilledVersion()));
+                              d.latestBackfilledVersion(),
+                              verified));
           // Non-replay only (a replay already threw out): enforce assert-etag against pre-apply
           // state, rolling back the applied changes on mismatch.
           DeltaUpdateTableMapper.checkEtagRequirement(preApplyEtag, collected);
