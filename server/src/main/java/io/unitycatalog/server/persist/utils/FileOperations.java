@@ -76,16 +76,6 @@ public interface FileOperations {
   }
 
   /**
-   * Validates configuration required for the server itself to read {@code path}.
-   *
-   * <p>Credential vending can serve S3 credentials without a region, but server-side S3 FileIO
-   * cannot construct a client without one. Managed Delta backfill verification reads published
-   * commit files from the server, so reject that permanent configuration error before attempting
-   * storage I/O.
-   */
-  void validateReadAccessConfiguration(NormalizedURL path);
-
-  /**
    * Returns a FileIO configured for the requested storage privileges.
    *
    * @param rootPath the root location of the data entity, as for {@link #getFileIO(NormalizedURL)}
