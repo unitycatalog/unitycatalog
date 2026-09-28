@@ -475,7 +475,7 @@ paths:
         '409':
           $ref: '#/components/responses/AlreadyExistsResponse'
 
-  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities:
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identitySequences:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -517,17 +517,13 @@ paths:
         '409':
           $ref: '#/components/responses/AlreadyExistsResponse'
         '429':
-          description: Creating the requested sequences would exceed the maximum number of identity sequences per table.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeltaErrorResponse'
+          $ref: '#/components/responses/ResourceExhaustedResponse'
         '500':
           $ref: '#/components/responses/ServerErrorResponse'
         '501':
           $ref: '#/components/responses/NotImplementedResponse'
 
-  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities/drop:
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identitySequences/drop:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -570,7 +566,7 @@ paths:
         '501':
           $ref: '#/components/responses/NotImplementedResponse'
 
-  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities/reserve:
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identitySequences/reserve:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -606,14 +602,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DeltaReserveIdentityRangesResponse'
         '400':
-          description: |
-            Bad request or Invalid Argument. Example, the request is empty, a count is not positive, a
-            supplied step does not match the sequence's step, a sequence id is duplicated within the
-            request, or reserving the requested values would overflow a 64-bit integer.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeltaErrorResponse'
+          $ref: '#/components/responses/BadRequestErrorResponse'
         '401':
           $ref: '#/components/responses/UnauthorizedResponse'
         '403':
@@ -621,11 +610,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundResponse'
         '409':
-          description: Conflict. A concurrent reservation is in progress on one of the sequences; retry the request.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeltaErrorResponse'
+          $ref: '#/components/responses/ConflictRetryableResponse'
         '500':
           $ref: '#/components/responses/ServerErrorResponse'
         '501':
@@ -1928,6 +1913,20 @@ components:
 
     AlreadyExistsResponse:
       description: Conflict. A resource with the same name already exists.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DeltaErrorResponse'
+
+    ConflictRetryableResponse:
+      description: Conflict. A concurrent operation is in progress on one of the sequences; retry the request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DeltaErrorResponse'
+
+    ResourceExhaustedResponse:
+      description: Resource exhausted. Creating the requested sequences would exceed the maximum number of identity sequences per table.
       content:
         application/json:
           schema:
