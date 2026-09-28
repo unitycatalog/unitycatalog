@@ -40,6 +40,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import org.apache.iceberg.io.FileIO;
@@ -108,6 +109,30 @@ public class DeltaCommitRepository {
     private final String stagedFileName;
   }
 
+  /**
+   * Thrown when a backfill needs its published commit files checked before any row is purged. Rolls
+   * the current transaction back, releasing the table lock, so the entry point can HEAD the range
+   * outside a transaction and then retry the write. Not a client-facing error.
+   */
+  @AllArgsConstructor
+  static class BackfillVerificationRequiredException extends TransactionRollbackException {
+    private final NormalizedURL tableLocation;
+    private final long fromVersion;
+    private final long toVersion;
+  }
+
+  /**
+   * A published-commit range already HEADed successfully. A later transaction may purge only a
+   * subset of this range; a wider range has to be checked again.
+   */
+  record VerifiedPublishedRange(NormalizedURL tableLocation, long fromVersion, long toVersion) {
+    boolean covers(NormalizedURL location, long from, long to) {
+      return tableLocation.toString().equals(location.toString())
+          && from >= fromVersion
+          && to <= toVersion;
+    }
+  }
+
   private static final Logger LOGGER = LoggerFactory.getLogger(DeltaCommitRepository.class);
 
   /**
@@ -131,6 +156,12 @@ public class DeltaCommitRepository {
 
   /** Chunk size for the streamed commit-file content comparison in {@link #hasSameFileContent}. */
   private static final int CONTENT_COMPARE_BUFFER_BYTES = 8192;
+
+  /**
+   * How many times a commit may re-read the backfill range after a HEAD. The range can move if
+   * another writer commits between the read and the purge; past this the client retries.
+   */
+  private static final int MAX_BACKFILL_VERIFY_ATTEMPTS = 3;
 
   private final SessionFactory sessionFactory;
   private final ServerProperties serverProperties;
@@ -291,7 +322,11 @@ public class DeltaCommitRepository {
    */
   public void postCommit(DeltaCommit commit) {
     try {
-      postCommitInTransaction(commit);
+      withPublishedCommitVerification(
+          verified -> {
+            postCommitInTransaction(commit, verified);
+            return null;
+          });
     } catch (CommitAlreadyAcceptedException e) {
       // Idempotent replay: the transaction rolled back to a no-op. Report success.
     } catch (CommitContentCheckRequiredException e) {
@@ -301,7 +336,35 @@ public class DeltaCommitRepository {
     }
   }
 
-  private void postCommitInTransaction(DeltaCommit commit) {
+  /**
+   * Runs {@code attempt}. When it needs published commit files checked, its transaction has already
+   * rolled back; this HEADs the range with no table lock held, then retries the attempt with that
+   * range marked verified. The retry purges only when the range it re-reads is still covered.
+   */
+  <T> T withPublishedCommitVerification(Function<Optional<VerifiedPublishedRange>, T> attempt) {
+    Optional<VerifiedPublishedRange> verified = Optional.empty();
+    for (int i = 0; i < MAX_BACKFILL_VERIFY_ATTEMPTS; i++) {
+      try {
+        return attempt.apply(verified);
+      } catch (BackfillVerificationRequiredException e) {
+        if (i == MAX_BACKFILL_VERIFY_ATTEMPTS - 1) {
+          throw new BaseException(
+              ErrorCode.COMMIT_STATE_UNKNOWN,
+              "Could not verify the published commit files before backfill; retry the request.",
+              e);
+        }
+        requirePublishedCommitFiles(fileOperations, e.tableLocation, e.fromVersion, e.toVersion);
+        verified =
+            Optional.of(new VerifiedPublishedRange(e.tableLocation, e.fromVersion, e.toVersion));
+      }
+    }
+    throw new BaseException(
+        ErrorCode.COMMIT_STATE_UNKNOWN,
+        "Could not verify the published commit files before backfill; retry the request.");
+  }
+
+  private void postCommitInTransaction(
+      DeltaCommit commit, Optional<VerifiedPublishedRange> verified) {
     serverProperties.checkManagedTableEnabled();
     validateCommit(commit);
     // Extract + shape-validate uniform fields outside the transaction. The subpath check (which
@@ -324,7 +387,7 @@ public class DeltaCommitRepository {
           RepositoryUtils.lockTableForCommit(
               session, tableInfoDAO, tableId, Optional.empty(), ErrorCode.COMMIT_STATE_UNKNOWN);
           validateTableForCommit(session, commit, tableInfoDAO, uniformFields);
-          postCommitCore(session, tableId, tableInfoDAO, commit, uniformFields);
+          postCommitCore(session, tableId, tableInfoDAO, commit, uniformFields, verified);
           return null;
         },
         "Error committing to table: " + commit.getTableId(),
@@ -346,7 +409,8 @@ public class DeltaCommitRepository {
       UUID tableId,
       TableInfoDAO tableInfoDAO,
       DeltaCommit commit,
-      Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields) {
+      Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
+      Optional<VerifiedPublishedRange> verified) {
     List<DeltaCommitDAO> firstAndLastCommits = getFirstAndLastCommits(session, tableId);
     if (firstAndLastCommits.isEmpty()) {
       if (commit.getCommitInfo() == null) {
@@ -369,20 +433,20 @@ public class DeltaCommitRepository {
             session,
             tableId,
             tableInfoDAO,
-            fileOperations,
             commit.getLatestBackfilledVersion(),
             firstCommitDAO,
-            lastCommitDAO.getCommitVersion());
+            lastCommitDAO.getCommitVersion(),
+            verified);
       } else {
         handleNormalCommit(
             session,
             tableId,
             tableInfoDAO,
-            fileOperations,
             commit,
             uniformFields,
             firstCommitDAO,
-            lastCommitDAO);
+            lastCommitDAO,
+            verified);
       }
     }
   }
@@ -428,20 +492,21 @@ public class DeltaCommitRepository {
    * @param session the Hibernate session for database operations
    * @param tableId the unique identifier of the table
    * @param tableInfoDAO the table information data access object
-   * @param fileOperations used to verify the published commit files before purging
    * @param latestBackfilledVersion the version up to which backfilling has already been performed
    * @param firstCommitDAO the first commit currently in the database
    * @param lastCommitVersion the version number of the last commit currently in the database
+   * @param verified published-commit range already HEADed, if this is the retry after that check
    * @throws BaseException if the backfilled version is greater than the last commit version
+   * @throws BackfillVerificationRequiredException if the published files still need a HEAD
    */
   private static void handleBackfillOnlyCommit(
       Session session,
       UUID tableId,
       TableInfoDAO tableInfoDAO,
-      FileOperations fileOperations,
       long latestBackfilledVersion,
       DeltaCommitDAO firstCommitDAO,
-      long lastCommitVersion) {
+      long lastCommitVersion,
+      Optional<VerifiedPublishedRange> verified) {
     if (latestBackfilledVersion > lastCommitVersion) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
@@ -449,11 +514,10 @@ public class DeltaCommitRepository {
               "Should not backfill version %d while the last version committed is %d",
               latestBackfilledVersion, lastCommitVersion));
     }
+    ensurePublishedRangeVerified(tableInfoDAO, firstCommitDAO, latestBackfilledVersion, verified);
     backfillCommits(
         session,
         tableId,
-        tableInfoDAO,
-        fileOperations,
         latestBackfilledVersion,
         firstCommitDAO,
         lastCommitVersion,
@@ -499,7 +563,8 @@ public class DeltaCommitRepository {
       TableInfoDAO dao,
       Optional<DeltaCommitInfo> commitInfoOpt,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
-      Optional<Long> latestBackfilledVersion) {
+      Optional<Long> latestBackfilledVersion,
+      Optional<VerifiedPublishedRange> verified) {
     ValidationUtils.checkArgument(
         commitInfoOpt.isPresent() || latestBackfilledVersion.isPresent(),
         "At least one of add-commit or set-latest-backfilled-version is required.");
@@ -521,7 +586,8 @@ public class DeltaCommitRepository {
         new DeltaCommit()
             .commitInfo(commitInfoOpt.orElse(null))
             .latestBackfilledVersion(latestBackfilledVersion.orElse(null)),
-        uniformFields);
+        uniformFields,
+        verified);
   }
 
   /**
@@ -552,23 +618,24 @@ public class DeltaCommitRepository {
    * @param session the Hibernate session for database operations
    * @param tableId the unique identifier of the table
    * @param tableInfoDAO the table information data access object
-   * @param fileOperations used to verify the published commit files before purging
    * @param commit the commit request containing version info, optional backfill, and metadata
    * @param firstCommitDAO the first commit already in the database
    * @param lastCommitDAO the last commit already in the database
+   * @param verified published-commit range already HEADed, if this is the retry after that check
    * @throws CommitAlreadyAcceptedException if this is an idempotent replay of an accepted commit
    * @throws CommitContentCheckRequiredException if a purged version needs a content check
+   * @throws BackfillVerificationRequiredException if the published files still need a HEAD
    * @throws BaseException if the commit version is invalid, already exists, or violates constraints
    */
   private static void handleNormalCommit(
       Session session,
       UUID tableId,
       TableInfoDAO tableInfoDAO,
-      FileOperations fileOperations,
       DeltaCommit commit,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
       DeltaCommitDAO firstCommitDAO,
-      DeltaCommitDAO lastCommitDAO) {
+      DeltaCommitDAO lastCommitDAO,
+      Optional<VerifiedPublishedRange> verified) {
     DeltaCommitInfo commitInfo = Objects.requireNonNull(commit.getCommitInfo());
     long lastCommitVersion = lastCommitDAO.getCommitVersion();
     long newCommitVersion = commitInfo.getVersion();
@@ -602,6 +669,11 @@ public class DeltaCommitRepository {
     }
     checkCommitLimit(
         tableId, newCommitVersion, latestBackfilledVersion, firstCommitDAO, lastCommitDAO);
+    // HEAD before any persist, so a missing or unreadable file rolls nothing back and does not
+    // hold the table lock. The retry of this method performs the save and the purge.
+    latestBackfilledVersion.ifPresent(
+        latestBackfilled ->
+            ensurePublishedRangeVerified(tableInfoDAO, firstCommitDAO, latestBackfilled, verified));
     saveCommit(session, tableId, commitInfo);
     updateTableFromCommit(session, tableId, tableInfoDAO, commit, uniformFields);
     latestBackfilledVersion.ifPresent(
@@ -609,8 +681,6 @@ public class DeltaCommitRepository {
             backfillCommits(
                 session,
                 tableId,
-                tableInfoDAO,
-                fileOperations,
                 latestBackfilled,
                 firstCommitDAO,
                 lastCommitVersion,
@@ -706,12 +776,8 @@ public class DeltaCommitRepository {
    * most recent commit is always preserved as it serves as an indicator of the current table
    * version.
    *
-   * <p>Before any purge or mark, every newly backfilled published {@code _delta_log/<version>.json}
-   * must exist. If the first retained row is the marker for an already backfilled version,
-   * verification starts at the following version. Purging DB rows while an intermediate published
-   * file is missing leaves coordinated-commit clients that retry a prior version stuck on {@code
-   * COMMIT_STATE_UNKNOWN} (HTTP 500). Rejecting the backfill instead keeps the rows so recovery
-   * remains possible.
+   * <p>The published-file check happens before this method, outside the transaction. Callers must
+   * invoke {@link #ensurePublishedRangeVerified} first so a missing file never reaches the purge.
    *
    * <p>For backfill-only requests (when newCommitVersion is empty), if the backfilled version
    * equals the last commit version, that commit is marked as backfilled rather than deleted.
@@ -721,8 +787,6 @@ public class DeltaCommitRepository {
    *
    * @param session the Hibernate session for database operations
    * @param tableId the unique identifier of the table
-   * @param tableInfoDAO the table information data access object
-   * @param fileOperations used to HEAD the published commit files before purging
    * @param latestBackfilledVersion the version up to which backfilling should be performed
    * @param firstCommitDAO the first commit currently in the database with the lowest version number
    * @param lastCommitVersion the version number of the last commit currently in the database with
@@ -733,8 +797,6 @@ public class DeltaCommitRepository {
   private static void backfillCommits(
       Session session,
       UUID tableId,
-      TableInfoDAO tableInfoDAO,
-      FileOperations fileOperations,
       long latestBackfilledVersion,
       DeltaCommitDAO firstCommitDAO,
       long lastCommitVersion,
@@ -747,20 +809,6 @@ public class DeltaCommitRepository {
     if (latestBackfilledVersion < firstCommitVersion) {
       // Backfilling a version that is already backfilled is fine. But no-op.
       return;
-    }
-
-    // Refuse to purge (or mark) until every newly backfilled version has a readable published
-    // commit file. The first retained row may be the marker for a version already backfilled; its
-    // published JSON may have since been legitimately removed and must not be re-checked.
-    if (!firstCommitDAO.isBackfilledLatestCommit()
-        || latestBackfilledVersion > firstCommitVersion) {
-      long firstUnbackfilledVersion =
-          firstCommitDAO.isBackfilledLatestCommit() ? firstCommitVersion + 1L : firstCommitVersion;
-      requirePublishedCommitFiles(
-          fileOperations,
-          NormalizedURL.from(tableInfoDAO.getUrl()),
-          firstUnbackfilledVersion,
-          latestBackfilledVersion);
     }
 
     long highestCommitVersion = newCommitVersion.orElse(lastCommitVersion);
@@ -818,17 +866,55 @@ public class DeltaCommitRepository {
   }
 
   /**
+   * Throws {@link BackfillVerificationRequiredException} unless every newly backfilled version in
+   * {@code [first retained, latestBackfilledVersion]} is already covered by {@code verified}. No-op
+   * when there is nothing new to check: the requested version is already behind the first retained
+   * row, or that row is the marker for a version that was backfilled earlier (its published JSON
+   * may have been removed and must not be re-checked).
+   *
+   * <p>Called before any commit row is written, while the table lock is held. The thrown exception
+   * rolls that transaction back so the HEAD in {@link #requirePublishedCommitFiles} runs with no
+   * lock and no open transaction.
+   */
+  private static void ensurePublishedRangeVerified(
+      TableInfoDAO tableInfoDAO,
+      DeltaCommitDAO firstCommitDAO,
+      long latestBackfilledVersion,
+      Optional<VerifiedPublishedRange> verified) {
+    long firstCommitVersion = firstCommitDAO.getCommitVersion();
+    if (latestBackfilledVersion < firstCommitVersion) {
+      return;
+    }
+    if (firstCommitDAO.isBackfilledLatestCommit()
+        && latestBackfilledVersion <= firstCommitVersion) {
+      return;
+    }
+    long fromVersion =
+        firstCommitDAO.isBackfilledLatestCommit() ? firstCommitVersion + 1L : firstCommitVersion;
+    if (fromVersion > latestBackfilledVersion) {
+      return;
+    }
+    NormalizedURL tableLocation = NormalizedURL.from(tableInfoDAO.getUrl());
+    if (verified
+        .filter(v -> v.covers(tableLocation, fromVersion, latestBackfilledVersion))
+        .isPresent()) {
+      return;
+    }
+    throw new BackfillVerificationRequiredException(
+        tableLocation, fromVersion, latestBackfilledVersion);
+  }
+
+  /**
    * HEADs each published {@code _delta_log/<version>.json} in [{@code fromVersion}, {@code
    * toVersion}]. No-op when {@code fromVersion > toVersion}.
    *
-   * <p>A definitively absent file means the client reported a backfill that did not complete:
-   * {@code INVALID_ARGUMENT} (400), since retrying cannot help until the file is published. FileIO
-   * acquisition, HEAD, and close failures (including {@link BaseException}s from credential
-   * vending) leave existence undetermined and must not be charged to the caller as a bad request:
-   * {@code COMMIT_STATE_UNKNOWN} (500, retriable), matching {@link
-   * #verifyContentReplayOrThrowConflict}. This matters most on a combined add-commit + backfill
-   * request, where both share one transaction and a flaky HEAD would otherwise roll the new commit
-   * back as a client error.
+   * <p>Called outside the commit transaction, after {@link BackfillVerificationRequiredException}
+   * has released the table lock. A definitively absent file means the client reported a backfill
+   * that did not complete: {@code INVALID_ARGUMENT} (400), since retrying cannot help until the
+   * file is published. FileIO acquisition, HEAD, and close failures (including {@link
+   * BaseException}s from credential vending) leave existence undetermined and must not be charged
+   * to the caller as a bad request: {@code COMMIT_STATE_UNKNOWN} (500, retriable), matching {@link
+   * #verifyContentReplayOrThrowConflict}. The commit and the purge run only after this returns.
    */
   static void requirePublishedCommitFiles(
       FileOperations fileOperations,
