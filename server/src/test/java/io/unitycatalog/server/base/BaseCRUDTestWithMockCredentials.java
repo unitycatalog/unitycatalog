@@ -124,11 +124,6 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
     // Per-bucket region completes the S3 config; getFileIOConfig (the Iceberg FileIO path) requires
     // it, while the Delta/temporary-credential paths vend credentials without it.
     serverProperties.put("s3.region.0", TestUtils.TEST_AWS_REGION);
-    // Credentials without a region: enough to vend to Spark, not enough for server-side FileIO.
-    serverProperties.put("s3.bucketPath.1", "s3://test-bucket-no-region");
-    serverProperties.put("s3.accessKey.1", "accessKey1");
-    serverProperties.put("s3.secretKey.1", "secretKey1");
-    serverProperties.put("s3.sessionToken.1", "sessionToken1");
 
     // AWS S3 master role config
     serverProperties.put(
