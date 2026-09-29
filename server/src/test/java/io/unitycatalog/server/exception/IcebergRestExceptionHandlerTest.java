@@ -31,4 +31,16 @@ public class IcebergRestExceptionHandlerTest {
     assertThat(internal.status()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
     assertThat(internal.contentUtf8()).contains("ServiceFailureException");
   }
+
+  /**
+   * A commit-path conflict (e.g. Iceberg lock contention, or a stale metadata-location requirement)
+   * must reach an Iceberg client as {@code CommitFailedException} (HTTP 409), the retryable commit
+   * exception the client rebuilds and retries on.
+   */
+  @Test
+  public void commitConflictMapsToIcebergCommitFailed() {
+    AggregatedHttpResponse conflict = render(ErrorCode.UPDATE_REQUIREMENT_CONFLICT);
+    assertThat(conflict.status()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(conflict.contentUtf8()).contains("CommitFailedException");
+  }
 }

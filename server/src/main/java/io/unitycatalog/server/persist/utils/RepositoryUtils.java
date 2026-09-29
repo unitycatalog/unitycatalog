@@ -29,32 +29,48 @@ public class RepositoryUtils {
   private static final Map<String, Class<?>> PROPERTY_TYPE_MAP = new HashMap<>();
 
   /**
-   * Acquires the table row lock shared by Delta and Iceberg commit paths. Lock waits and deadlock
-   * victims are reported as {@code COMMIT_STATE_UNKNOWN} (a retryable, unknown-outcome error)
-   * instead of leaking ORM exceptions.
+   * Acquires the table row lock shared by the Delta and Iceberg commit paths, so concurrent commits
+   * on the same table serialize. A lock-wait timeout or deadlock victim is reported as {@code
+   * lockContentionError} (rolling back only this transaction) rather than leaking the ORM
+   * exception; the two commit paths pass different codes because the safe client reaction differs:
    *
-   * <p>The failure is deliberately not surfaced as a conflict. Failing to acquire the lock rolls
-   * back only this transaction; it does not reveal whether the logical commit landed. The lock
-   * holder is another commit still in progress on this table, and it may be this same commit's own
-   * earlier attempt (a slow client retry carrying the same UUID) that goes on to succeed. Reporting
-   * a conflict would let the client conclude the commit did not land and rebase, committing the
-   * same change twice. The client must instead resend the identical request, which deduplication
-   * resolves to the true outcome.
+   * <ul>
+   *   <li><b>Delta</b> passes {@code COMMIT_STATE_UNKNOWN} (500). Failing to acquire the lock does
+   *       not reveal whether the logical commit landed: the lock holder may be this same commit's
+   *       own earlier attempt (a slow client retry carrying the same UUID) that goes on to succeed.
+   *       A conflict would let the client conclude it did not land and rebase, committing the same
+   *       change twice. Delta commits are deduplicated by that UUID (or by content), so the client
+   *       instead resends the identical request and the server resolves it to the true outcome.
+   *   <li><b>Iceberg</b> passes {@code UPDATE_REQUIREMENT_CONFLICT} (409). An Iceberg commit is a
+   *       compare-and-swap on the expected metadata location, so a retry after an earlier attempt
+   *       landed fails that check and the client rebuilds; it cannot double-commit. A 409 is
+   *       therefore safe and lets the Iceberg client retry transparently, whereas a 500 would
+   *       surface to the user. Iceberg has no server-side deduplication that a resend could
+   *       exploit.
+   * </ul>
+   *
+   * @param session the Hibernate session running the commit transaction
+   * @param dao the table row to lock; refreshed under {@code PESSIMISTIC_WRITE}
+   * @param tableId the table id, used as a fallback in the error message
+   * @param tableFullNameForLogging the table's full name for the error message, if known
+   * @param lockContentionError the error code to raise when the lock cannot be acquired
    */
   public static void lockTableForCommit(
-      Session session, TableInfoDAO dao, UUID tableId, Optional<String> tableFullNameForLogging) {
+      Session session,
+      TableInfoDAO dao,
+      UUID tableId,
+      Optional<String> tableFullNameForLogging,
+      ErrorCode lockContentionError) {
     try {
       session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
     } catch (RuntimeException e) {
       if (!(e instanceof org.hibernate.PessimisticLockException)
           && !(e instanceof org.hibernate.exception.LockAcquisitionException)
-          && !(e instanceof org.hibernate.exception.LockTimeoutException)
-          && !(e instanceof jakarta.persistence.PessimisticLockException)
-          && !(e instanceof jakarta.persistence.LockTimeoutException)) {
+          && !(e instanceof org.hibernate.exception.LockTimeoutException)) {
         throw e;
       }
       throw new BaseException(
-          ErrorCode.COMMIT_STATE_UNKNOWN,
+          lockContentionError,
           "Concurrent commit in progress on table "
               + tableFullNameForLogging.orElseGet(tableId::toString)
               + "; retry the request.");

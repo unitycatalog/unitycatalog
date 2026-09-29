@@ -22,41 +22,60 @@ public class RepositoryUtilsTest {
   private static final UUID TABLE_ID = UUID.randomUUID();
 
   /**
-   * A failed pessimistic lock acquisition means a concurrent commit is in progress and this
-   * request's outcome is unknown (the in-flight attempt may still land). It must surface as the
-   * retryable {@code COMMIT_STATE_UNKNOWN}, never as a conflict that would invite a rebase. The
-   * lock failure can arrive as Hibernate's own {@code PessimisticLockException} or its native
-   * {@code LockAcquisitionException} / {@code LockTimeoutException} (dialect-translated JDBC
-   * errors), or as the Jakarta {@code PessimisticLockException} / {@code LockTimeoutException}; all
-   * are covered.
+   * A failed pessimistic lock acquisition means a concurrent commit is in progress; the caller
+   * decides how that surfaces (Delta as the retryable {@code COMMIT_STATE_UNKNOWN}, Iceberg as an
+   * {@code UPDATE_REQUIREMENT_CONFLICT}), never as a leaked ORM exception. UC bootstraps Hibernate
+   * natively, so the failure arrives as a {@code HibernateException} subtype: {@code
+   * org.hibernate.PessimisticLockException}, or the JDBC-translated {@code
+   * LockAcquisitionException} (deadlock) / {@code LockTimeoutException}. It is never a {@code
+   * jakarta.persistence} exception (those only surface under a JPA bootstrap), so those are not
+   * covered here.
    */
   static RuntimeException[] lockAcquisitionFailures() {
     return new RuntimeException[] {
       new org.hibernate.PessimisticLockException("locked", new SQLException("locked"), "sql"),
       new org.hibernate.exception.LockAcquisitionException("locked", new SQLException("locked")),
       new org.hibernate.exception.LockTimeoutException("timed out", new SQLException("timed out")),
-      new jakarta.persistence.PessimisticLockException("locked"),
-      new jakarta.persistence.LockTimeoutException("timed out"),
     };
   }
 
   @ParameterizedTest
   @MethodSource("lockAcquisitionFailures")
-  public void lockFailureMapsToCommitStateUnknown(RuntimeException lockFailure) {
+  public void lockFailureRaisesTheCallerSuppliedError(RuntimeException lockFailure) {
     Session session = mock();
     TableInfoDAO dao = mock();
     doThrow(lockFailure).when(session).refresh(any(Object.class), any(LockMode.class));
 
+    // Delta callers ask for COMMIT_STATE_UNKNOWN...
     assertThatThrownBy(
             () ->
                 RepositoryUtils.lockTableForCommit(
-                    session, dao, TABLE_ID, Optional.of("cat.sch.tbl")))
+                    session,
+                    dao,
+                    TABLE_ID,
+                    Optional.of("cat.sch.tbl"),
+                    ErrorCode.COMMIT_STATE_UNKNOWN))
         .isInstanceOf(BaseException.class)
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN);
+
+    // ...the Iceberg caller asks for a conflict, and gets exactly that.
+    assertThatThrownBy(
+            () ->
+                RepositoryUtils.lockTableForCommit(
+                    session,
+                    dao,
+                    TABLE_ID,
+                    Optional.of("cat.sch.tbl"),
+                    ErrorCode.UPDATE_REQUIREMENT_CONFLICT))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.UPDATE_REQUIREMENT_CONFLICT);
   }
 
-  /** Any non-lock failure must propagate unchanged rather than be masked as an unknown outcome. */
+  /**
+   * Any non-lock failure must propagate unchanged rather than be masked as a lock-contention error.
+   */
   @Test
   public void nonLockFailurePropagatesUnchanged() {
     Session session = mock();
@@ -65,7 +84,9 @@ public class RepositoryUtilsTest {
     doThrow(unexpected).when(session).refresh(any(Object.class), any(LockMode.class));
 
     assertThatThrownBy(
-            () -> RepositoryUtils.lockTableForCommit(session, dao, TABLE_ID, Optional.empty()))
+            () ->
+                RepositoryUtils.lockTableForCommit(
+                    session, dao, TABLE_ID, Optional.empty(), ErrorCode.COMMIT_STATE_UNKNOWN))
         .isSameAs(unexpected);
   }
 }
