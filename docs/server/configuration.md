@@ -77,7 +77,7 @@ location at a different role) takes effect immediately. The cache is controlled 
 | --- | --- | --- |
 | `server.storage-credential-cache.enabled` | `true` | Whether to reuse vended credentials. When `false`, every request vends a fresh credential from the cloud provider. |
 | `server.storage-credential-cache.max-size` | `1000` | The maximum number of distinct credentials to keep. |
-| `server.storage-credential-cache.renewal-lead-time` | `PT1M` | How far before a credential's own expiry it is refreshed, so callers never receive a credential on the verge of expiring. |
+| `server.storage-credential-cache.renewal-lead-time` | `PT1M` | Minimum remaining lifetime required to reuse a cached credential. When a cached credential is within this window of its expiry, the next request fetches a new credential from the cloud provider. |
 | `server.storage-credential-cache.max-age` | `PT5M` | The longest a vended credential is reused before it is refreshed, regardless of its own expiry. This is deliberately short: Unity Catalog cannot observe a cloud-side trust-policy change, so it bounds how long a credential keeps being served after such a change. |
 
 Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is five minutes).
