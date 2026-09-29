@@ -1,6 +1,8 @@
 package io.unitycatalog.server.auth.annotation;
 
+import io.unitycatalog.server.auth.decorator.AuthorizeValueExtractor;
 import java.lang.annotation.ElementType;
+import java.lang.annotation.Repeatable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
@@ -61,6 +63,7 @@ import java.lang.annotation.Target;
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.PARAMETER)
+@Repeatable(AuthorizeKeys.class)
 public @interface AuthorizeKey {
   /**
    * The key path to extract from the request. When the annotated parameter also carries
@@ -68,6 +71,17 @@ public @interface AuthorizeKey {
    * URL parameter name and the SpEL variable name; if set, it must equal the {@code @Param} value.
    * When there is no {@code @Param}, this names a request body field; nested fields via dot
    * notation (e.g., "config.operation") are supported for the body source.
+   *
+   * <p>When {@link #extractor} is set, this instead only names the SpEL variable (the value comes
+   * from the extractor, not a field lookup), and is required.
    */
   String key() default "";
+
+  /**
+   * A custom extractor that computes the value from the bound request body, used when a field
+   * lookup by {@link #key} cannot express it. When set (non-default), {@link #key} names the SpEL
+   * variable and no {@code @Param} may be present. Defaults to the sentinel {@link
+   * AuthorizeValueExtractor} itself, meaning "no extractor: use {@link #key}".
+   */
+  Class<? extends AuthorizeValueExtractor> extractor() default AuthorizeValueExtractor.class;
 }
