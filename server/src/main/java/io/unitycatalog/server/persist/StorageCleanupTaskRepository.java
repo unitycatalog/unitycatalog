@@ -70,11 +70,11 @@ public class StorageCleanupTaskRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          Date now = currentDatabaseTime(session);
+          Timestamp now = currentDatabaseTime(session);
           // Keep sub-millisecond precision: deletedAt is stored from CURRENT_TIMESTAMP, so a Date
           // (millisecond) cutoff would sit below a task deleted earlier in the same millisecond and
-          // skip it. Timestamp.from preserves the nanoseconds that Date.from would truncate.
-          Date cutoff = Timestamp.from(now.toInstant().minus(initialDelay));
+          // skip it. Timestamp.from preserves the database's microseconds that Date.from truncates.
+          Timestamp cutoff = Timestamp.from(now.toInstant().minus(initialDelay));
           Optional<StorageCleanupTaskDAO> readyTask =
               session
                   .createQuery(
@@ -127,7 +127,7 @@ public class StorageCleanupTaskRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          Date now = currentDatabaseTime(session);
+          Timestamp now = currentDatabaseTime(session);
           Date nextAttempt = Date.from(now.toInstant().plus(report.retryBackoff()));
           var query =
               session
@@ -155,7 +155,7 @@ public class StorageCleanupTaskRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          Date now = currentDatabaseTime(session);
+          Timestamp now = currentDatabaseTime(session);
           return session
                   .createMutationQuery(
                       "DELETE FROM StorageCleanupTaskDAO WHERE id = :id "
@@ -172,7 +172,7 @@ public class StorageCleanupTaskRepository {
 
   // Package-private and non-static so a test can stub the database clock (via a Mockito spy) to
   // pin sub-millisecond precision deterministically.
-  Date currentDatabaseTime(Session session) {
-    return session.createQuery("SELECT CURRENT_TIMESTAMP", Date.class).getSingleResult();
+  Timestamp currentDatabaseTime(Session session) {
+    return session.createQuery("SELECT CURRENT_TIMESTAMP", Timestamp.class).getSingleResult();
   }
 }
