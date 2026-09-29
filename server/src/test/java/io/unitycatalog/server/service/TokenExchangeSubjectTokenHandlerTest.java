@@ -98,6 +98,18 @@ class TokenExchangeSubjectTokenHandlerTest {
   }
 
   @Test
+  void caseVariantResolvingToBootstrapAdminIsRejected() {
+    // Simulates a case-insensitive database collation: the "ADMIN" lookup key resolves to the
+    // stored admin user (email "admin"). The guard compares the resolved email, so it is rejected.
+    DecodedJWT jwt = decode(identityToken("ADMIN", CLIENT_ID));
+    when(userRepository.getUserByEmail("ADMIN")).thenReturn(enabledUser("admin"));
+
+    assertThatThrownBy(() -> handler.resolvePrincipalEmail(TokenType.ID_TOKEN, jwt))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasMessageContaining("User not allowed");
+  }
+
+  @Test
   void oauthClientResolvingToBootstrapAdminIsRejected() {
     DecodedJWT jwt = decode(tokenWithAzpAndAud(CLIENT_ID, "https://dev.dev.example.com"));
     when(userRepository.getUserByExternalId(CLIENT_ID)).thenReturn(enabledUser("admin"));
