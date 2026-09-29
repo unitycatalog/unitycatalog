@@ -100,6 +100,8 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
       case UNAUTHENTICATED -> NotAuthorizedException.class;
       case PERMISSION_DENIED -> ForbiddenException.class;
       case UNIMPLEMENTED -> UnsupportedOperationException.class;
+      // COMMIT_STATE_UNKNOWN is intentionally mapped to ServiceFailureException as it's the Delta's
+      // semantic, not the Iceberg CommitStateUnknownException.
       case INTERNAL, DATA_LOSS, COMMIT_STATE_UNKNOWN -> ServiceFailureException.class;
       case RESOURCE_EXHAUSTED -> RESTException.class;
     };
