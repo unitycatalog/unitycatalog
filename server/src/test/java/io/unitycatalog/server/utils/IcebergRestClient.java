@@ -149,10 +149,6 @@ public class IcebergRestClient {
     checkSuccess(delete(tablePath(catalog, namespace, table)));
   }
 
-  public void renameTable(String catalog, RenameTableRequest request) throws ApiException {
-    checkSuccess(post("/v1/catalogs/" + catalog + "/tables/rename", toJson(request)));
-  }
-
   public void renameTable(
       String catalog,
       String sourceNamespace,
@@ -160,13 +156,13 @@ public class IcebergRestClient {
       String destinationNamespace,
       String destinationTable)
       throws ApiException {
-    renameTable(
-        catalog,
+    RenameTableRequest request =
         RenameTableRequest.builder()
             .withSource(TableIdentifier.of(Namespace.of(sourceNamespace), sourceTable))
             .withDestination(
                 TableIdentifier.of(Namespace.of(destinationNamespace), destinationTable))
-            .build());
+            .build();
+    checkSuccess(post("/v1/catalogs/" + catalog + "/tables/rename", toJson(request)));
   }
 
   /** Posts a raw rename body, for exercising malformed-request handling. */

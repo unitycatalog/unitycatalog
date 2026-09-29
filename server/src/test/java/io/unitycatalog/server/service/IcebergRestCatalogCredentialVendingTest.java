@@ -1,6 +1,8 @@
 package io.unitycatalog.server.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
@@ -10,6 +12,7 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.LocalMappingFileOperations;
@@ -22,7 +25,9 @@ import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
+import org.apache.iceberg.azure.AzureProperties;
 import org.apache.iceberg.gcp.GCPProperties;
+import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.SupportsPrefixOperations;
 import org.apache.iceberg.rest.credentials.Credential;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
@@ -30,6 +35,7 @@ import org.apache.iceberg.rest.responses.LoadCredentialsResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -104,12 +110,19 @@ public class IcebergRestCatalogCredentialVendingTest extends BaseCRUDTestWithMoc
   /**
    * The cloud schemes to vend for, each with the config key and expected value UC returns for it:
    * s3 vends static credentials through the real {@code AwsCredentialVendor} (access key pinned to
-   * {@code S3_ACCESS_KEY}); gs vends an OAuth token through the mock GCS vendor.
+   * {@code S3_ACCESS_KEY}); gs vends an OAuth token through the mock GCS vendor; abfs vends a
+   * user-delegation SAS token through the mock Azure vendor (pinned to {@code test-sas-token},
+   * keyed by storage account like {@link
+   * BaseCRUDTestWithMockCredentials#assertTemporaryCredentials}).
    */
   private static Stream<Arguments> cloudCredentialCases() {
     return Stream.of(
         Arguments.of("s3", S3FileIOProperties.ACCESS_KEY_ID, S3_ACCESS_KEY),
-        Arguments.of("gs", GCPProperties.GCS_OAUTH2_TOKEN, GCS_OAUTH_TOKEN));
+        Arguments.of("gs", GCPProperties.GCS_OAUTH2_TOKEN, GCS_OAUTH_TOKEN),
+        Arguments.of(
+            "abfs",
+            AzureProperties.ADLS_SAS_TOKEN_PREFIX + CONFIGURED_BUCKET + ".dfs.core.windows.net",
+            "test-sas-token"));
   }
 
   /**
@@ -123,7 +136,14 @@ public class IcebergRestCatalogCredentialVendingTest extends BaseCRUDTestWithMoc
   @MethodSource("cloudCredentialCases")
   public void testCredentialVending(String scheme, String credentialKey, String credentialValue)
       throws Exception {
-    String bucketPrefix = scheme + "://" + CONFIGURED_BUCKET;
+    // ADLS locations carry a container@account.dfs.core.windows.net authority; s3/gs are
+    // bucket-only. The account segment must be CONFIGURED_BUCKET so the mock Azure vendor matches.
+    String bucketPrefix =
+        switch (scheme) {
+          case "abfs", "abfss" ->
+              scheme + "://test-container@" + CONFIGURED_BUCKET + ".dfs.core.windows.net";
+          default -> scheme + "://" + CONFIGURED_BUCKET;
+        };
     String subdir = scheme + "catalog";
     String root = bucketPrefix + testDirectoryRoot.toAbsolutePath() + "/" + subdir;
     createCloudCatalog(CLOUD_CATALOG, root, testDirectoryRoot.toAbsolutePath().resolve(subdir));
@@ -173,5 +193,30 @@ public class IcebergRestCatalogCredentialVendingTest extends BaseCRUDTestWithMoc
       cleanup.deletePrefix(prefix);
       assertThat(cleanup.listPrefix(prefix).iterator().hasNext()).isFalse();
     }
+  }
+
+  /**
+   * A FileIO vended for SELECT alone refuses writes, the way read-only cloud credentials would,
+   * while SELECT + UPDATE vends a writable one for the same location. This guards the harness's
+   * read-only modeling, so a write reaching storage in another test proves UC vended write access
+   * rather than the fake silently allowing it.
+   */
+  @Test
+  public void readOnlyVendedFileIoRejectsWrites() {
+    String root = "s3://" + CONFIGURED_BUCKET + testDirectoryRoot.toAbsolutePath() + "/readonly";
+    createCloudCatalog(CLOUD_CATALOG, root, testDirectoryRoot.toAbsolutePath().resolve("readonly"));
+    NormalizedURL location = NormalizedURL.from(root);
+    String file = root + "/data.parquet";
+
+    FileIO readOnly = mappingFileOperations.getFileIO(location, CredentialContext.READ_ONLY);
+    assertThatThrownBy(() -> readOnly.newOutputFile(file))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("read-only");
+    assertThatThrownBy(() -> readOnly.deleteFile(file))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("read-only");
+
+    FileIO readWrite = mappingFileOperations.getFileIO(location, CredentialContext.READ_WRITE);
+    assertThatCode(() -> readWrite.newOutputFile(file)).doesNotThrowAnyException();
   }
 }

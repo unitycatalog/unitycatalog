@@ -16,6 +16,7 @@ import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.rest.Endpoint;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.ConfigResponse;
 import org.apache.iceberg.types.Types;
@@ -77,6 +78,22 @@ public class IcebergRestCatalogDisabledTest extends BaseCRUDTestWithMockCredenti
         400,
         "currently disabled");
 
+    // dropNamespace
+    TestUtils.assertIcebergApiException(
+        () -> icebergClient.dropNamespace(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME),
+        400,
+        "currently disabled");
+
+    // updateNamespaceProperties
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.updateNamespaceProperties(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                UpdateNamespacePropertiesRequest.builder().update("a", "b").build()),
+        400,
+        "currently disabled");
+
     // createTable
     TestUtils.assertIcebergApiException(
         () ->
@@ -107,6 +124,18 @@ public class IcebergRestCatalogDisabledTest extends BaseCRUDTestWithMockCredenti
         () ->
             icebergClient.dropTable(
                 TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME),
+        400,
+        "currently disabled");
+
+    // renameTable
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.renameTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                TestUtils.TABLE_NAME,
+                TestUtils.SCHEMA_NAME,
+                "renamed"),
         400,
         "currently disabled");
   }

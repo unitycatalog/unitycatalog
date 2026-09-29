@@ -14,7 +14,7 @@ import org.apache.iceberg.io.SupportsPrefixOperations;
  * prefix from a local directory (via {@link LocalMappingFileIO}) while delegating local paths and
  * all credential vending to the wrapped real instance. Register the mapping with {@link
  * #mapLocation} after the server starts; a cloud access outside the prefix fails. Wire it via
- * {@code UnityCatalogServer.Builder#fileOperations} / {@code
+ * {@code UnityCatalogServer.Builder#fileOperationsDecorator} / {@code
  * BaseServerTest#decorateFileOperations}.
  */
 public class LocalMappingFileOperations implements FileOperations {

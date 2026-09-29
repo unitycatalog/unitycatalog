@@ -83,7 +83,6 @@ import org.apache.iceberg.metrics.ScanMetrics;
 import org.apache.iceberg.metrics.ScanMetricsResult;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
-import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequestParser;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
@@ -489,7 +488,10 @@ public class IcebergRestCatalogTest extends BaseServerTest {
           () ->
               icebergClient.renameTable(
                   TestUtils.CATALOG_NAME,
-                  renameTableRequest(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, "renamed")),
+                  TestUtils.SCHEMA_NAME,
+                  TestUtils.TABLE_NAME,
+                  TestUtils.SCHEMA_NAME,
+                  "renamed"),
           400,
           BadRequestException.class);
     }
@@ -686,7 +688,10 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     {
       icebergClient.renameTable(
           TestUtils.CATALOG_NAME,
-          renameTableRequest(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, "renamed"));
+          TestUtils.SCHEMA_NAME,
+          TestUtils.TABLE_NAME,
+          TestUtils.SCHEMA_NAME,
+          "renamed");
 
       // The table answers under its new name and no longer under the old one.
       assertThat(
@@ -705,14 +710,20 @@ public class IcebergRestCatalogTest extends BaseServerTest {
           () ->
               icebergClient.renameTable(
                   TestUtils.CATALOG_NAME,
-                  renameTableRequest(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, "other")),
+                  TestUtils.SCHEMA_NAME,
+                  TestUtils.TABLE_NAME,
+                  TestUtils.SCHEMA_NAME,
+                  "other"),
           404);
       createTable("taken");
       TestUtils.assertIcebergApiException(
           () ->
               icebergClient.renameTable(
                   TestUtils.CATALOG_NAME,
-                  renameTableRequest(TestUtils.SCHEMA_NAME, "renamed", "taken")),
+                  TestUtils.SCHEMA_NAME,
+                  "renamed",
+                  TestUtils.SCHEMA_NAME,
+                  "taken"),
           409);
 
       // Unity Catalog cannot move a table between namespaces, and says so rather than half-doing
@@ -720,21 +731,20 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       TestUtils.assertIcebergApiException(
           () ->
               icebergClient.renameTable(
-                  TestUtils.CATALOG_NAME,
-                  renameTableRequest(TestUtils.SCHEMA_NAME, "renamed", "moved", "other_ns")),
+                  TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "renamed", "other_ns", "moved"),
           501);
 
-      // A request without a source or a destination is a bad request, not a server error. The typed
-      // request can't express an empty rename, so this one stays a raw probe.
-      assertThat(
-              postJson("/v1/catalogs/" + TestUtils.CATALOG_NAME + "/tables/rename", "{}")
-                  .status()
-                  .code())
-          .isEqualTo(400);
+      // A request without a source or a destination is a bad request, not a server error. The 5-arg
+      // rename can't express an empty body, so send the raw JSON through the client's raw path.
+      TestUtils.assertIcebergApiException(
+          () -> icebergClient.renameTableRaw(TestUtils.CATALOG_NAME, "{}"), 400);
 
       icebergClient.renameTable(
           TestUtils.CATALOG_NAME,
-          renameTableRequest(TestUtils.SCHEMA_NAME, "renamed", TestUtils.TABLE_NAME));
+          TestUtils.SCHEMA_NAME,
+          "renamed",
+          TestUtils.SCHEMA_NAME,
+          TestUtils.TABLE_NAME);
     }
 
     // Drop the table
@@ -1093,8 +1103,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
     // A body that isn't a metrics report is rejected rather than silently accepted. Iceberg's own
     // parser raises IllegalArgumentException for it, whose name means nothing to a client. The
-    // typed
-    // client can't send a non-report body, so this stays a raw probe.
+    // typed client can't send a non-report body, so this stays a raw probe.
     String metricsPath =
         TEST_BASE_PREFIX
             + "/namespaces/"
@@ -1257,18 +1266,6 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     ErrorResponse error = ErrorResponseParser.fromJson(e.getResponseBody());
     assertThat(error.type()).isEqualTo(expectedType.getSimpleName());
     assertThat(error.code()).isEqualTo(expectedCode);
-  }
-
-  private static RenameTableRequest renameTableRequest(String namespace, String from, String to) {
-    return renameTableRequest(namespace, from, to, namespace);
-  }
-
-  private static RenameTableRequest renameTableRequest(
-      String namespace, String from, String to, String destinationNamespace) {
-    return RenameTableRequest.builder()
-        .withSource(TableIdentifier.of(Namespace.of(namespace), from))
-        .withDestination(TableIdentifier.of(Namespace.of(destinationNamespace), to))
-        .build();
   }
 
   @Test
