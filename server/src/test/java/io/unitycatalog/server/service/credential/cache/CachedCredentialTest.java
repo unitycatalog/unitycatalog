@@ -15,11 +15,17 @@ import io.unitycatalog.server.utils.UriScheme;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 public class CachedCredentialTest {
 
   private static CredentialCacheContext context(String url) {
+    return context(url, null);
+  }
+
+  private static CredentialCacheContext context(String url, Long expirationTime) {
     NormalizedURL location = NormalizedURL.from(url);
     return new CredentialCacheContext(
         CredentialCacheContext.CURRENT_SCHEMA_VERSION,
@@ -27,7 +33,7 @@ public class CachedCredentialTest {
         UriScheme.fromURI(location.toUri()),
         Set.of(SELECT),
         null,
-        null,
+        expirationTime,
         2_000L);
   }
 
@@ -36,7 +42,7 @@ public class CachedCredentialTest {
   void scalarFieldsAreIsolatedFromMutation(boolean mutateSource) {
     TemporaryCredentials source =
         new TemporaryCredentials().url("s3://bucket/table").expirationTime(1_000L);
-    CachedCredential cached = new CachedCredential(context(source.getUrl()), source);
+    CachedCredential cached = new CachedCredential(context(source.getUrl(), 1_000L), source);
 
     TemporaryCredentials mutable = mutateSource ? source : cached.credential();
     mutable.setUrl("s3://other/table");
@@ -126,9 +132,43 @@ public class CachedCredentialTest {
   @Test
   void absentFieldsRemainAbsent() {
     CachedCredential cached =
-        new CachedCredential(context("s3://bucket/table"), new TemporaryCredentials());
+        new CachedCredential(
+            context("s3://bucket/table"), new TemporaryCredentials().url("s3://bucket/table"));
 
-    assertEquals(new TemporaryCredentials(), cached.credential());
+    assertEquals(new TemporaryCredentials().url("s3://bucket/table"), cached.credential());
+  }
+
+  @ParameterizedTest
+  @NullSource
+  @ValueSource(strings = {"s3://other/table", "gs://bucket/table"})
+  void differentOrMissingUrlIsRejected(String url) {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new CachedCredential(
+                context("s3://bucket/table"), new TemporaryCredentials().url(url)));
+  }
+
+  @Test
+  void equivalentNormalizedUrlIsAccepted() {
+    CachedCredential cached =
+        new CachedCredential(
+            context("s3://bucket/table"), new TemporaryCredentials().url("s3://bucket/table/"));
+
+    assertEquals("s3://bucket/table/", cached.credential().getUrl());
+  }
+
+  @ParameterizedTest
+  @CsvSource(
+      value = {"1000, 2000", "2000, 1000", "1000, null", "null, 1000"},
+      nullValues = "null")
+  void differentExpirationsAreRejected(Long contextExpiry, Long payloadExpiry) {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new CachedCredential(
+                context("s3://bucket/table", contextExpiry),
+                new TemporaryCredentials().url("s3://bucket/table").expirationTime(payloadExpiry)));
   }
 
   @Test
