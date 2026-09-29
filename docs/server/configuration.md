@@ -70,8 +70,16 @@ The server config file is at the location `etc/conf/server.properties` (relative
 
 When the server vends temporary cloud storage credentials, it can reuse a recently vended credential
 for the same location, privileges, and role instead of calling the cloud provider again on every
-request. The database binding for a location is always re-read, so a rebind (for example pointing a
-location at a different role) takes effect immediately. The cache is controlled by these keys:
+request. The database binding for a location is always re-read, so pointing a location at a different
+role changes the cache lookup on the next request.
+
+For AWS storage credentials, the external ID is sent on `AssumeRole` calls but is not part of the
+cache key. Updating only the external ID does not invalidate an existing cached session for the same
+role, location, and privileges. That session can still be reused until it reaches the renewal window
+or cache maximum age, unless evicted earlier. The next `AssumeRole` call uses the updated external ID.
+Stopping cache reuse does not revoke credentials already issued.
+
+The cache is controlled by these keys:
 
 | Property | Default | Description |
 | --- | --- | --- |
