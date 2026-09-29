@@ -1,5 +1,6 @@
 package io.unitycatalog.server.service.credential.cache;
 
+import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
@@ -13,10 +14,11 @@ import io.unitycatalog.server.utils.cache.ReadThroughCache;
 import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Caches vended cloud storage credentials, keyed by the resolved binding {@code (location,
- * privileges, scheme, roleArn)}. Sits inside {@link
+ * privileges, scheme, roleArn, externalId)}. Sits inside {@link
  * io.unitycatalog.server.service.credential.StorageCredentialVendor} after the (never-cached) DB
  * binding resolution: on a hit it skips the cloud vend; on miss/stale/rebind it re-vends. The value
  * is validated on every hit ({@code matches && fresh}); any cache-layer failure is non-terminal.
@@ -90,21 +92,21 @@ public class StorageCredentialCache {
             key.scheme(),
             key.privileges(),
             key.roleArn(),
+            key.externalId(),
             credential.getExpirationTime(), // T1 (nullable = static credential)
             now + maxAgeMs); // T2
     return new CachedCredential(ctx, credential);
   }
 
   private static CredentialCacheKey keyOf(CredentialContext context, NormalizedURL location) {
-    // Only AWS_IAM_ROLE credential DAOs carry a role today; per-bucket/config vends have no DAO →
-    // null role, which is a valid (per-bucket) key.
-    String roleArn =
-        context
-            .getCredentialDAO()
-            .map(CredentialDAO::getAwsIamRoleResponse)
-            .map(response -> response.getRoleArn())
-            .orElse(null);
+    // Per-bucket/config vends have no DAO, so both binding fields remain null.
+    Optional<AwsIamRoleResponse> awsIamRole =
+        context.getCredentialDAO().map(CredentialDAO::getAwsIamRoleResponse);
     return new CredentialCacheKey(
-        location, context.getPrivileges(), context.getStorageScheme(), roleArn);
+        location,
+        context.getPrivileges(),
+        context.getStorageScheme(),
+        awsIamRole.map(AwsIamRoleResponse::getRoleArn).orElse(null),
+        awsIamRole.map(AwsIamRoleResponse::getExternalId).orElse(null));
   }
 }

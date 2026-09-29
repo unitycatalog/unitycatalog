@@ -23,6 +23,9 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class StorageCredentialCacheTest {
 
@@ -68,8 +71,14 @@ public class StorageCredentialCacheTest {
   /** A context for LOC with the given role ARN and privilege set. */
   private static CredentialContext ctx(
       String roleArn, Set<CredentialContext.Privilege> privileges) {
+    return ctx(roleArn, null, privileges);
+  }
+
+  private static CredentialContext ctx(
+      String roleArn, String externalId, Set<CredentialContext.Privilege> privileges) {
     CredentialDAO dao = mock(CredentialDAO.class);
-    when(dao.getAwsIamRoleResponse()).thenReturn(new AwsIamRoleResponse().roleArn(roleArn));
+    when(dao.getAwsIamRoleResponse())
+        .thenReturn(new AwsIamRoleResponse().roleArn(roleArn).externalId(externalId));
     return CredentialContext.create(LOC, privileges, Optional.of(dao));
   }
 
@@ -95,6 +104,30 @@ public class StorageCredentialCacheTest {
     cache.get(ctx("arn:role/B")); // rebind to a different role → different key → miss
 
     verify(vendor, times(2)).vendCredential(any());
+  }
+
+  @ParameterizedTest
+  @NullSource
+  @ValueSource(strings = "external-B")
+  void differentExternalIdForSameRoleReVends(String updatedExternalId) {
+    CredentialContext original = ctx("arn:role/A", "external-A", READ_ONLY);
+    CredentialContext updated = ctx("arn:role/A", updatedExternalId, READ_ONLY);
+    TemporaryCredentials first = creds(T0 + 3_600_000L);
+    first.getAwsTempCredentials().setAccessKeyId("AK_A");
+    TemporaryCredentials second = creds(T0 + 3_600_000L);
+    second.getAwsTempCredentials().setAccessKeyId("AK_B");
+    CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
+    when(vendor.vendCredential(original)).thenReturn(first);
+    when(vendor.vendCredential(updated)).thenReturn(second);
+    StorageCredentialCache cache = new StorageCredentialCache(vendor, props(), clockAt(T0));
+
+    assertEquals("AK_A", cache.get(original).getAwsTempCredentials().getAccessKeyId());
+    assertEquals("AK_A", cache.get(original).getAwsTempCredentials().getAccessKeyId());
+    assertEquals("AK_B", cache.get(updated).getAwsTempCredentials().getAccessKeyId());
+    assertEquals("AK_B", cache.get(updated).getAwsTempCredentials().getAccessKeyId());
+    assertEquals("AK_A", cache.get(original).getAwsTempCredentials().getAccessKeyId());
+    verify(vendor, times(1)).vendCredential(original);
+    verify(vendor, times(1)).vendCredential(updated);
   }
 
   @Test

@@ -69,15 +69,17 @@ The server config file is at the location `etc/conf/server.properties` (relative
 ### Storage credential cache
 
 When the server vends temporary cloud storage credentials, it can reuse a recently vended credential
-for the same location, privileges, and role instead of calling the cloud provider again on every
-request. The database binding for a location is always re-read, so pointing a location at a different
-role changes the cache lookup on the next request.
+for the same location, privileges, and credential binding instead of calling the cloud provider again
+on every request. The database binding for a location is always re-read, so changing its role or
+external ID changes the cache lookup on the next request.
 
-For AWS storage credentials, the external ID is sent on `AssumeRole` calls but is not part of the
-cache key. Updating only the external ID does not invalidate an existing cached session for the same
-role, location, and privileges. That session can still be reused until it reaches the renewal window
-or cache maximum age, unless evicted earlier. The next `AssumeRole` call uses the updated external ID.
-Stopping cache reuse does not revoke credentials already issued.
+For AWS storage credentials, UC includes the stored external ID in both the cache key and the
+`AssumeRole` request. Updating the IAM role on a UC storage credential generates a new external ID,
+even when the role ARN is unchanged. The next request uses the new binding and cannot reuse
+credentials cached under the previous external ID. Ensure the AWS role's trust policy allows the
+newly returned external ID before requesting new credentials. Changing the cache identity does not
+revoke credentials already issued. See [AWS credential setup](aws.md) for configuring the external
+ID in the role's trust policy.
 
 The cache is controlled by these keys:
 
