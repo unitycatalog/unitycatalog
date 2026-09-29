@@ -2,12 +2,14 @@ package io.unitycatalog.spark.auth.storage;
 
 import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.mockito.Mockito.mockStatic;
 
 import io.delta.tables.DeltaTable;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
+import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
@@ -43,6 +45,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.MockedStatic;
 import org.sparkproject.guava.collect.ImmutableList;
 import org.sparkproject.guava.collect.Iterators;
 
@@ -325,11 +328,11 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
 
   /**
    * Within a credential's validity the server serves the <em>cached</em> credential to a repeat
-   * request; once it expires the server re-vends. Observed via the server-side vend counter: a hit
-   * leaves it unchanged, a re-vend advances it. Runs only when the cache is on (the cache-ON
-   * subclasses); it is a no-op on the un-cached baselines. The hit is reachable because {@code
-   * connectorLead (10s) > serverLead (1s)}, so the connector re-asks while the cache is still
-   * fresh.
+   * request; once it expires the server re-vends. Each access must fetch from UC, while only a miss
+   * or stale entry advances the server-side vend counter. Runs only when the cache is on (the
+   * cache-ON subclasses); it is a no-op on the un-cached baselines. The hit is reachable because
+   * {@code connectorLead (10s) > serverLead (1s)}, so the connector re-asks while the cache is
+   * still fresh.
    */
   @Test
   public void testServesCachedCredentialWithinValidity() throws Exception {
@@ -361,28 +364,37 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
                               ? ((CredScopedFileSystem) rawFs).getRawFileSystem()
                               : rawFs);
 
-                  // Align to a 30s window boundary so the offsets below are deterministic no matter
-                  // where credential planning left the manual clock within its window.
-                  long now = testClock().now().toEpochMilli();
-                  long toWindowStart = DEFAULT_INTERVAL_MILLIS - (now % DEFAULT_INTERVAL_MILLIS);
-                  testClock().sleep(Duration.ofMillis(toWindowStart));
-                  resetVendCount();
+                  AtomicInteger ucFetchCount = new AtomicInteger();
+                  withCountingCredentialFetcher(
+                      fs,
+                      ucFetchCount,
+                      () -> {
+                        // Align to a 30s boundary after the planning credential has expired.
+                        long now = testClock().now().toEpochMilli();
+                        long toWindowStart =
+                            DEFAULT_INTERVAL_MILLIS - (now % DEFAULT_INTERVAL_MILLIS);
+                        testClock().sleep(Duration.ofMillis(toWindowStart));
+                        resetVendCount();
 
-                  // Window start: planning credential has expired, cache holds nothing fresh -> one
-                  // server vend.
-                  fs.getFileStatus(locPath);
-                  assertThat(vendCount()).isEqualTo(1);
+                        // Window start: one UC fetch and one server vend.
+                        fs.getFileStatus(locPath);
+                        assertThat(ucFetchCount.get())
+                            .as("UC fetches at window start")
+                            .isEqualTo(1);
+                        assertThat(vendCount()).isEqualTo(1);
 
-                  // +21s: inside the 30s validity and the server's fresh window (expiry - 1s), but
-                  // inside the connector's 10s lead -> connector re-asks, server serves cached.
-                  testClock().sleep(Duration.ofMillis(21_000));
-                  fs.getFileStatus(locPath);
-                  assertThat(vendCount()).isEqualTo(1); // hit: no re-vend
+                        // +21s: connector renews, but the server still considers its cache fresh.
+                        testClock().sleep(Duration.ofMillis(21_000));
+                        fs.getFileStatus(locPath);
+                        assertThat(ucFetchCount.get()).as("UC fetches at +21s").isEqualTo(2);
+                        assertThat(vendCount()).isEqualTo(1);
 
-                  // +10s (past expiry): cached credential is stale -> server re-vends.
-                  testClock().sleep(Duration.ofMillis(10_000));
-                  fs.getFileStatus(locPath);
-                  assertThat(vendCount()).isEqualTo(2);
+                        // +31s: the expired credential requires another fetch and a new vend.
+                        testClock().sleep(Duration.ofMillis(10_000));
+                        fs.getFileStatus(locPath);
+                        assertThat(ucFetchCount.get()).as("UC fetches at +31s").isEqualTo(3);
+                        assertThat(vendCount()).isEqualTo(2);
+                      });
 
                   return RowFactory.create(1);
                 })
@@ -390,6 +402,30 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
 
     assertThat(rows.stream().map(r -> r.getInt(0)).collect(Collectors.toList()))
         .isEqualTo(ImmutableList.of(1));
+  }
+
+  private static void withCountingCredentialFetcher(
+      CredRenewFileSystem<?> fs, AtomicInteger ucFetchCount, Callable action) throws Exception {
+    Configuration conf = fs.getConf();
+    GenericCredentialFetcher realFetcher = GenericCredentialFetcher.create(conf);
+    GenericCredentialFetcher countingFetcher =
+        () -> {
+          var credentials = realFetcher.createCredentials();
+          ucFetchCount.incrementAndGet();
+          return credentials;
+        };
+
+    // Static interception is thread-local; the caller runs this on the Spark worker.
+    try (MockedStatic<GenericCredentialFetcher> fetchers =
+        mockStatic(GenericCredentialFetcher.class)) {
+      fetchers.when(() -> GenericCredentialFetcher.create(conf)).thenReturn(countingFetcher);
+      // A reused filesystem may already hold a provider with an uncounted fetcher.
+      fs.lazyProvider = null;
+      action.call();
+    } finally {
+      // Do not retain the counting fetcher in the filesystem after this section.
+      fs.lazyProvider = null;
+    }
   }
 
   protected List<Row> sql(String statement, Object... args) {
