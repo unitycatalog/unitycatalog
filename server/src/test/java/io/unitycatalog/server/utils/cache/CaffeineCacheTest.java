@@ -84,6 +84,25 @@ public class CaffeineCacheTest {
     assertTrue(cache.getIfPresent("k").isEmpty());
   }
 
+  @Test
+  void expireAfterUpdateExtendsTtlFromNewValue() {
+    Clock clock = mock(Clock.class);
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1000L));
+    CaffeineCache<String, Long> cache = new CaffeineCache<>(10, v -> v, clock);
+    cache.put("k", 2000L);
+
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1500L));
+    cache.put("k", 3000L);
+
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(2100L)); // past the original expiry
+    assertEquals(Optional.of(3000L), cache.getIfPresent("k"));
+
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(2999L));
+    assertEquals(Optional.of(3000L), cache.getIfPresent("k"));
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(3000L)); // new expiry boundary
+    assertTrue(cache.getIfPresent("k").isEmpty());
+  }
+
   // --- Per-key expiry independence ---
 
   @Test
