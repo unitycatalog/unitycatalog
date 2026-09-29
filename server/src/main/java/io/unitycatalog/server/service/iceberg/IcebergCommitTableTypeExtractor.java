@@ -21,7 +21,8 @@ public class IcebergCommitTableTypeExtractor implements AuthorizeValueExtractor 
 
   @Override
   public Object extract(Object body) {
-    String location = IcebergCommitLocationExtractor.lastSetLocation((UpdateTableRequest) body);
+    String location =
+        IcebergCommitLocationExtractor.requireAtMostOneSetLocation((UpdateTableRequest) body);
     if (location == null || location.isEmpty()) {
       return null;
     }

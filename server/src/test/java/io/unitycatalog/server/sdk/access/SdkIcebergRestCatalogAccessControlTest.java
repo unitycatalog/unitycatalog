@@ -254,6 +254,15 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     // its own ct_reg_ok must not let KeyMapper overwrite #table with the owned table and pass.
     assertDenied(
         () -> r1.updateTable(CAT, SCHEMA, "tbl_none", commitSettingLocation(registeredPathB)));
+    // At most one set-location per commit: a staged create carrying two set-location updates is
+    // rejected with 400 during authorization, so the authorized location is the one applied.
+    UpdateTableRequest twoLocations =
+        new UpdateTableRequest(
+            List.of(new UpdateRequirement.AssertTableDoesNotExist()),
+            List.of(
+                new MetadataUpdate.SetLocation(tmpLocation("uc_two_loc_a")),
+                new MetadataUpdate.SetLocation(tmpLocation("uc_two_loc_b"))));
+    assertIcebergApiException(() -> p1.updateTable(CAT, SCHEMA, "uc_two_loc", twoLocations), 400);
 
     // ===== dropTable (DELETE_TABLE) =====
     // As with reads, each owner drops a table it does NOT own; metastore-owner alone cannot delete.

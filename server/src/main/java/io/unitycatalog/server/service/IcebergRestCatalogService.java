@@ -602,6 +602,10 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
           @AuthorizeKey(key = "staged_create", extractor = IcebergStagedCreateExtractor.class)
           UpdateTableRequest request) {
     serverProperties.checkIcebergTableEnabled();
+    // Enforced during authorization by IcebergCommitLocationExtractor; re-checked here as a
+    // backstop for when authorization is disabled, so a commit never sets the location more than
+    // once.
+    IcebergCommitLocationExtractor.requireAtMostOneSetLocation(request);
     if (IcebergStagedCreateExtractor.isStagedCreate(request)) {
       return commitStagedCreate(catalog, namespace, table, request);
     }
