@@ -15,6 +15,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 public class CredentialCacheContextTest {
 
@@ -23,12 +25,12 @@ public class CredentialCacheContextTest {
 
   private static CredentialCacheKey key(
       NormalizedURL loc, UriScheme scheme, Set<CredentialContext.Privilege> privs, String roleArn) {
-    return new CredentialCacheKey(loc, privs, scheme, roleArn);
+    return new CredentialCacheKey(loc, privs, scheme, roleArn, null);
   }
 
   /** Two-arg key helper using LOC and S3 scheme. */
   private static CredentialCacheKey key(String roleArn, Set<CredentialContext.Privilege> privs) {
-    return new CredentialCacheKey(LOC, privs, UriScheme.S3, roleArn);
+    return new CredentialCacheKey(LOC, privs, UriScheme.S3, roleArn, null);
   }
 
   private static CredentialCacheContext ctx(String roleArn, Long t1, long t2) {
@@ -38,6 +40,7 @@ public class CredentialCacheContextTest {
         UriScheme.S3,
         Set.of(SELECT),
         roleArn,
+        null,
         t1,
         t2);
   }
@@ -173,7 +176,7 @@ public class CredentialCacheContextTest {
     CredentialCacheContext c = ctx("arn:role/A", null, 1_000L);
     NormalizedURL gcsLoc = NormalizedURL.from("gs://bucket/tableA");
     CredentialCacheKey gcsKey =
-        new CredentialCacheKey(gcsLoc, Set.of(SELECT), UriScheme.GS, "arn:role/A");
+        new CredentialCacheKey(gcsLoc, Set.of(SELECT), UriScheme.GS, "arn:role/A", null);
     assertFalse(c.matches(gcsKey));
   }
 
@@ -190,6 +193,56 @@ public class CredentialCacheContextTest {
     assertFalse(c.matches(key(LOC, UriScheme.S3, Set.of(SELECT), "arn:role/B")));
   }
 
+  @ParameterizedTest
+  @CsvSource(
+      value = {
+        "external-A, external-A, true",
+        "external-A, external-B, false",
+        "external-A, <null>, false",
+        "<null>, external-A, false",
+        "<null>, <null>, true"
+      },
+      nullValues = "<null>")
+  void matches_checksExternalId(
+      String cachedExternalId, String requestedExternalId, boolean matches) {
+    CredentialCacheContext context =
+        new CredentialCacheContext(
+            CredentialCacheContext.CURRENT_SCHEMA_VERSION,
+            LOC,
+            UriScheme.S3,
+            Set.of(SELECT),
+            "arn:role/A",
+            cachedExternalId,
+            null,
+            1_000L);
+    CredentialCacheKey requested =
+        new CredentialCacheKey(
+            LOC, Set.of(SELECT), UriScheme.S3, "arn:role/A", requestedExternalId);
+
+    assertEquals(matches, context.matches(requested));
+  }
+
+  @Test
+  void keysWithDifferentExternalIdsKeepSeparateEntries() {
+    Map<CredentialCacheKey, String> entries = new HashMap<>();
+    for (String externalId : new String[] {"external-A", "external-B", null}) {
+      entries.put(
+          new CredentialCacheKey(LOC, Set.of(SELECT), UriScheme.S3, "arn:role/A", externalId),
+          externalId == null ? "no-external-id" : externalId);
+    }
+
+    assertEquals(3, entries.size());
+    assertEquals(
+        "external-A",
+        entries.get(
+            new CredentialCacheKey(LOC, Set.of(SELECT), UriScheme.S3, "arn:role/A", "external-A")));
+    assertEquals(
+        "external-B",
+        entries.get(
+            new CredentialCacheKey(LOC, Set.of(SELECT), UriScheme.S3, "arn:role/A", "external-B")));
+    assertEquals("no-external-id", entries.get(key("arn:role/A", Set.of(SELECT))));
+  }
+
   @Test
   void matches_staleSchemaVersion_returnsFalse() {
     CredentialCacheContext c =
@@ -199,6 +252,7 @@ public class CredentialCacheContextTest {
             UriScheme.S3,
             Set.of(SELECT),
             "arn:role/A",
+            null,
             null,
             1_000L);
     assertFalse(c.matches(key(LOC, UriScheme.S3, Set.of(SELECT), "arn:role/A")));
@@ -226,6 +280,7 @@ public class CredentialCacheContextTest {
             UriScheme.S3,
             Set.of(SELECT),
             "arn:role/A",
+            null,
             null,
             1_000L);
     assertFalse(c.matches(key("arn:role/A", Set.of(SELECT))));
@@ -263,6 +318,7 @@ public class CredentialCacheContextTest {
             privileges,
             "r",
             null,
+            null,
             1_000L);
 
     privileges.add(UPDATE);
@@ -284,6 +340,7 @@ public class CredentialCacheContextTest {
                 UriScheme.S3,
                 Set.of(SELECT),
                 "r",
+                null,
                 100L,
                 0L));
   }
@@ -299,6 +356,7 @@ public class CredentialCacheContextTest {
                 UriScheme.S3,
                 Set.of(SELECT),
                 "r",
+                null,
                 0L,
                 1_000L));
   }
@@ -314,6 +372,7 @@ public class CredentialCacheContextTest {
                 UriScheme.S3,
                 Set.of(SELECT),
                 "r",
+                null,
                 -1L,
                 1_000L));
   }
@@ -331,6 +390,7 @@ public class CredentialCacheContextTest {
                 Set.of(SELECT),
                 "r",
                 null,
+                null,
                 1_000L));
   }
 
@@ -338,7 +398,7 @@ public class CredentialCacheContextTest {
   void key_nullLocation_throws() {
     assertThrows(
         NullPointerException.class,
-        () -> new CredentialCacheKey(null, Set.of(SELECT), UriScheme.S3, "r"));
+        () -> new CredentialCacheKey(null, Set.of(SELECT), UriScheme.S3, "r", null));
   }
 
   @Test
@@ -346,6 +406,6 @@ public class CredentialCacheContextTest {
     NormalizedURL gcsLoc = NormalizedURL.from("gs://bucket/path");
     assertThrows(
         IllegalArgumentException.class,
-        () -> new CredentialCacheKey(gcsLoc, Set.of(SELECT), UriScheme.S3, "r"));
+        () -> new CredentialCacheKey(gcsLoc, Set.of(SELECT), UriScheme.S3, "r", null));
   }
 }

@@ -18,6 +18,7 @@ public record CredentialCacheContext(
     UriScheme scheme,
     Set<CredentialContext.Privilege> privileges,
     String roleArn,
+    String externalId,
     Long credentialExpiresAtEpochMs,
     long cacheExpiresAtEpochMs) {
 
@@ -39,7 +40,7 @@ public record CredentialCacheContext(
       throw new IllegalArgumentException(
           "scheme " + scheme + " does not match location " + location);
     }
-    // roleArn stays nullable.
+    // roleArn and externalId stay nullable.
   }
 
   /**
@@ -51,7 +52,8 @@ public record CredentialCacheContext(
         && location.equals(key.location())
         && scheme == key.scheme()
         && privileges.equals(key.privileges())
-        && Objects.equals(roleArn, key.roleArn());
+        && Objects.equals(roleArn, key.roleArn())
+        && Objects.equals(externalId, key.externalId());
   }
 
   /**

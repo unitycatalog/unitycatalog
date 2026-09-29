@@ -33,6 +33,7 @@ public class CachedCredentialTest {
         UriScheme.fromURI(location.toUri()),
         Set.of(SELECT),
         null,
+        null,
         expirationTime,
         2_000L);
   }
