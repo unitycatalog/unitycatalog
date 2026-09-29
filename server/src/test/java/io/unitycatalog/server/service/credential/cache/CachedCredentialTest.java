@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service.credential.cache;
 
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -101,6 +102,25 @@ public class CachedCredentialTest {
     mutable.getGcpOauthToken().setOauthToken("changed-oauth");
 
     assertEquals("oauth", cached.credential().getGcpOauthToken().getOauthToken());
+  }
+
+  @Test
+  void toStringOmitsCredentialSecrets() {
+    TemporaryCredentials source =
+        new TemporaryCredentials()
+            .url("s3://bucket/table")
+            .awsTempCredentials(
+                new AwsCredentials()
+                    .accessKeyId("test-access")
+                    .secretAccessKey("test-secret")
+                    .sessionToken("test-session"))
+            .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("test-sas"))
+            .gcpOauthToken(new GcpOauthToken().oauthToken("test-oauth"));
+    CachedCredential cached = new CachedCredential(context(source.getUrl()), source);
+
+    assertThat(cached.toString())
+        .contains("s3://bucket/table")
+        .doesNotContain("test-access", "test-secret", "test-session", "test-sas", "test-oauth");
   }
 
   @Test

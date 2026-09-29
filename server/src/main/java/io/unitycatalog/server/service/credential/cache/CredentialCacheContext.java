@@ -55,8 +55,9 @@ public record CredentialCacheContext(
   }
 
   /**
-   * The earliest wall-clock instant at which the cached result becomes unusable. When T1 is null
-   * (static credential with no expiry), the cache cap T2 is the sole bound.
+   * The hard expiry bound used for cache eviction. The freshness check may reject a credential
+   * earlier because of renewal lead time. When T1 is null (static credential with no expiry), the
+   * cache cap T2 is the sole bound.
    *
    * @return {@code min(T1, T2)} when T1 is non-null, otherwise {@code T2}
    */

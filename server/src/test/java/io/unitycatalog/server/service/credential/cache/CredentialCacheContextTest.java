@@ -10,6 +10,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.UriScheme;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -234,6 +237,41 @@ public class CredentialCacheContextTest {
   }
 
   // ─── constructor invariants ────────────────────────────────────────────────
+
+  @Test
+  void keyPrivilegesAreAnImmutableSnapshot() {
+    Set<CredentialContext.Privilege> privileges = new HashSet<>(Set.of(SELECT));
+    CredentialCacheKey cacheKey = key("r", privileges);
+    Map<CredentialCacheKey, String> entries = new HashMap<>();
+    entries.put(cacheKey, "cached");
+
+    privileges.add(UPDATE);
+
+    assertEquals(Set.of(SELECT), cacheKey.privileges());
+    assertEquals("cached", entries.get(key("r", Set.of(SELECT))));
+    assertThrows(UnsupportedOperationException.class, () -> cacheKey.privileges().add(UPDATE));
+  }
+
+  @Test
+  void contextPrivilegesAreAnImmutableSnapshot() {
+    Set<CredentialContext.Privilege> privileges = new HashSet<>(Set.of(SELECT));
+    CredentialCacheContext context =
+        new CredentialCacheContext(
+            CredentialCacheContext.CURRENT_SCHEMA_VERSION,
+            LOC,
+            UriScheme.S3,
+            privileges,
+            "r",
+            null,
+            1_000L);
+
+    privileges.add(UPDATE);
+
+    assertEquals(Set.of(SELECT), context.privileges());
+    assertTrue(context.matches(key("r", Set.of(SELECT))));
+    assertFalse(context.matches(key("r", Set.of(SELECT, UPDATE))));
+    assertThrows(UnsupportedOperationException.class, () -> context.privileges().add(UPDATE));
+  }
 
   @Test
   void cacheExpiresNonPositive_throws() { // new T2 > 0 invariant

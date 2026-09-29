@@ -22,6 +22,12 @@ public record CachedCredential(CredentialCacheContext context, TemporaryCredenti
     return copy(credential);
   }
 
+  /** Describes the cache context while redacting the credential payload. */
+  @Override
+  public String toString() {
+    return "CachedCredential[context=" + context + ", credential=<redacted>]";
+  }
+
   private static TemporaryCredentials copy(TemporaryCredentials source) {
     TemporaryCredentials target =
         new TemporaryCredentials().expirationTime(source.getExpirationTime()).url(source.getUrl());
