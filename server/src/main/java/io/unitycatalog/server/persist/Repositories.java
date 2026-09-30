@@ -43,7 +43,7 @@ public class Repositories {
   private final KeyMapper keyMapper;
 
   public Repositories(SessionFactory sessionFactory, ServerProperties serverProperties) {
-    this(sessionFactory, serverProperties, null, UnaryOperator.identity());
+    this(sessionFactory, serverProperties, null);
   }
 
   public Repositories(

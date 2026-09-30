@@ -1,12 +1,12 @@
 package io.unitycatalog.server.observability;
 
+import static io.unitycatalog.server.utils.TestUtils.sendRawGet;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.linecorp.armeria.client.WebClient;
-import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.healthcheck.HealthCheckService;
+import io.unitycatalog.server.base.ServerConfig;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.time.Duration;
@@ -28,8 +28,8 @@ public class HealthCheckEndpointsIntegrationTest {
   private final AtomicBoolean dbReachable = new AtomicBoolean(false);
   private DbReadinessChecker checker;
   private Server server;
-  private WebClient observabilityClient;
-  private WebClient apiClient;
+  private ServerConfig observabilityServerConfig;
+  private ServerConfig apiServerConfig;
 
   @BeforeEach
   public void setUp() throws IOException {
@@ -56,8 +56,8 @@ public class HealthCheckEndpointsIntegrationTest {
             .and()
             .build();
     server.start().join();
-    observabilityClient = WebClient.of("http://127.0.0.1:" + observabilityPort);
-    apiClient = WebClient.of("http://127.0.0.1:" + apiPort);
+    observabilityServerConfig = new ServerConfig("http://127.0.0.1:" + observabilityPort, "");
+    apiServerConfig = new ServerConfig("http://127.0.0.1:" + apiPort, "");
   }
 
   @AfterEach
@@ -83,66 +83,67 @@ public class HealthCheckEndpointsIntegrationTest {
   }
 
   @Test
-  public void readinessCheckerDrivesReadyzStatus() {
+  public void readinessCheckerDrivesReadyzStatus() throws Exception {
     // Fail closed: not ready before the first successful probe.
-    assertHealth(observabilityClient, "/readyz", 503, false);
+    assertHealth(observabilityServerConfig, "/readyz", 503, false);
 
     dbReachable.set(true);
     checker.refresh();
-    assertHealth(observabilityClient, "/readyz", 200, true);
+    assertHealth(observabilityServerConfig, "/readyz", 200, true);
 
     // Flips back to 503 when the DB becomes unreachable again.
     dbReachable.set(false);
     checker.refresh();
-    assertHealth(observabilityClient, "/readyz", 503, false);
+    assertHealth(observabilityServerConfig, "/readyz", 503, false);
   }
 
   @Test
-  public void livezStaysHealthyWhileReadyzIsNotReady() {
+  public void livezStaysHealthyWhileReadyzIsNotReady() throws Exception {
     // DB never reachable (checker stays fail-closed): /readyz is 503, but /livez must remain 200 --
     // liveness never consults the database.
-    assertHealth(observabilityClient, "/readyz", 503, false);
-    assertHealth(observabilityClient, "/livez", 200, true);
+    assertHealth(observabilityServerConfig, "/readyz", 503, false);
+    assertHealth(observabilityServerConfig, "/livez", 200, true);
   }
 
   @Test
-  public void probesAreNotExposedOnTheApiPort() {
+  public void probesAreNotExposedOnTheApiPort() throws Exception {
     // The port-based virtual host registers the probes on the observability port only, so they are
     // 404 on the API port -- an API-ingress misconfiguration cannot reach them.
-    assertThat(apiClient.get("/livez").aggregate().join().status().code()).isEqualTo(404);
-    assertThat(apiClient.get("/readyz").aggregate().join().status().code()).isEqualTo(404);
+    assertThat(statusCode(apiServerConfig, "/livez")).isEqualTo(404);
+    assertThat(statusCode(apiServerConfig, "/readyz")).isEqualTo(404);
   }
 
   @Test
-  public void probesDrainTo503OnGracefulShutdown() {
+  public void probesDrainTo503OnGracefulShutdown() throws Exception {
     // Healthy before shutdown, so the flip below is the drain effect and not the fail-closed state.
     dbReachable.set(true);
     checker.refresh();
-    assertHealth(observabilityClient, "/readyz", 200, true);
-    assertHealth(observabilityClient, "/livez", 200, true);
+    assertHealth(observabilityServerConfig, "/readyz", 200, true);
+    assertHealth(observabilityServerConfig, "/livez", 200, true);
 
     // Graceful shutdown flips HealthCheckService to 503 for the drain window. Observing that on the
     // port-based observability vhost is what proves the server-wide shutdown hook still fires there
     // after the move off the default virtual host.
     CompletableFuture<Void> stopping = server.stop();
     try {
-      pollUntilStatus(observabilityClient, "/livez", 503, Duration.ofSeconds(2));
-      assertThat(statusCode(observabilityClient, "/livez")).isEqualTo(503);
-      assertThat(statusCode(observabilityClient, "/readyz")).isEqualTo(503);
+      pollUntilStatus(observabilityServerConfig, "/livez", 503, Duration.ofSeconds(2));
+      assertThat(statusCode(observabilityServerConfig, "/livez")).isEqualTo(503);
+      assertThat(statusCode(observabilityServerConfig, "/readyz")).isEqualTo(503);
     } finally {
       stopping.join();
     }
   }
 
   private void assertHealth(
-      WebClient client, String path, int expectedStatus, boolean expectedHealthy) {
-    AggregatedHttpResponse response = client.get(path).aggregate().join();
-    assertThat(response.status().code()).isEqualTo(expectedStatus);
-    assertThat(response.contentUtf8()).contains("\"healthy\":" + expectedHealthy);
+      ServerConfig config, String path, int expectedStatus, boolean expectedHealthy)
+      throws Exception {
+    java.net.http.HttpResponse<String> response = sendRawGet(config, path);
+    assertThat(response.statusCode()).isEqualTo(expectedStatus);
+    assertThat(response.body()).contains("\"healthy\":" + expectedHealthy);
   }
 
-  private static int statusCode(WebClient client, String path) {
-    return client.get(path).aggregate().join().status().code();
+  private static int statusCode(ServerConfig config, String path) throws Exception {
+    return sendRawGet(config, path).statusCode();
   }
 
   /**
@@ -150,14 +151,14 @@ public class HealthCheckEndpointsIntegrationTest {
    * port open, and connection errors mid-shutdown are treated as "not yet" rather than failing.
    */
   private static void pollUntilStatus(
-      WebClient client, String path, int expected, Duration timeout) {
+      ServerConfig config, String path, int expected, Duration timeout) throws Exception {
     long deadline = System.nanoTime() + timeout.toNanos();
     while (System.nanoTime() < deadline) {
       try {
-        if (statusCode(client, path) == expected) {
+        if (statusCode(config, path) == expected) {
           return;
         }
-      } catch (RuntimeException stillShuttingDown) {
+      } catch (IOException stillShuttingDown) {
         // The server may be mid-shutdown; keep trying within the window.
       }
       try {
