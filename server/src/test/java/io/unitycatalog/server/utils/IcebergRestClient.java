@@ -8,8 +8,10 @@ import java.net.http.HttpResponse;
 import java.util.Optional;
 import lombok.SneakyThrows;
 import org.apache.iceberg.catalog.Namespace;
+import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequestParser;
 import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
@@ -74,8 +76,12 @@ public class IcebergRestClient {
 
   public CreateNamespaceResponse createNamespace(String catalog, String namespace)
       throws ApiException {
-    CreateNamespaceRequest request =
-        CreateNamespaceRequest.builder().withNamespace(Namespace.of(namespace)).build();
+    return createNamespace(
+        catalog, CreateNamespaceRequest.builder().withNamespace(Namespace.of(namespace)).build());
+  }
+
+  public CreateNamespaceResponse createNamespace(String catalog, CreateNamespaceRequest request)
+      throws ApiException {
     return parse(post(namespacesPath(catalog), toJson(request)), CreateNamespaceResponse.class);
   }
 
@@ -106,6 +112,13 @@ public class IcebergRestClient {
     return parse(get(tablePath(catalog, namespace, table)), LoadTableResponse.class);
   }
 
+  public LoadTableResponse loadTable(
+      String catalog, String namespace, String table, String snapshots) throws ApiException {
+    return parse(
+        get(tablePath(catalog, namespace, table) + "?snapshots=" + snapshots),
+        LoadTableResponse.class);
+  }
+
   public boolean tableExists(String catalog, String namespace, String table) throws ApiException {
     HttpResponse<String> response = head(tablePath(catalog, namespace, table));
     int code = response.statusCode();
@@ -134,6 +147,27 @@ public class IcebergRestClient {
 
   public void dropTable(String catalog, String namespace, String table) throws ApiException {
     checkSuccess(delete(tablePath(catalog, namespace, table)));
+  }
+
+  public void renameTable(
+      String catalog,
+      String sourceNamespace,
+      String sourceTable,
+      String destinationNamespace,
+      String destinationTable)
+      throws ApiException {
+    RenameTableRequest request =
+        RenameTableRequest.builder()
+            .withSource(TableIdentifier.of(Namespace.of(sourceNamespace), sourceTable))
+            .withDestination(
+                TableIdentifier.of(Namespace.of(destinationNamespace), destinationTable))
+            .build();
+    checkSuccess(post("/v1/catalogs/" + catalog + "/tables/rename", toJson(request)));
+  }
+
+  /** Posts a raw rename body, for exercising malformed-request handling. */
+  public void renameTableRaw(String catalog, String jsonBody) throws ApiException {
+    checkSuccess(post("/v1/catalogs/" + catalog + "/tables/rename", jsonBody));
   }
 
   public LoadViewResponse loadView(String catalog, String namespace, String view)

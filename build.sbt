@@ -44,6 +44,8 @@ lazy val icebergVersion = "1.11.0"
 lazy val jacksonVersion = "2.18.10"
 lazy val openApiToolsJacksonBindNullableVersion = "0.2.11"
 lazy val log4jVersion = "2.26.1"
+lazy val awsSdkV1Version = "1.12.797"
+lazy val awsSdkV2Version = "2.54.18"
 lazy val armeriaVersion = "1.41.1"
 lazy val nettyVersion = "4.2.18.Final"
 lazy val nettyTcnativeVersion = "2.0.84.Final"
@@ -410,9 +412,9 @@ lazy val server = (project in file("server"))
       "com.google.auth" % "google-auth-library-oauth2-http" % "1.52.0",
 
       //For s3 access
-      "com.amazonaws" % "aws-java-sdk-s3" % "1.12.728",
-      "software.amazon.awssdk" % "sso" % "2.27.12",
-      "software.amazon.awssdk" % "ssooidc" % "2.27.12",
+      "com.amazonaws" % "aws-java-sdk-s3" % awsSdkV1Version,
+      "software.amazon.awssdk" % "sso" % awsSdkV2Version,
+      "software.amazon.awssdk" % "ssooidc" % awsSdkV2Version,
 
       "org.apache.httpcomponents" % "httpcore" % "4.4.16",
       "org.apache.httpcomponents" % "httpclient" % "4.5.14",
@@ -422,10 +424,10 @@ lazy val server = (project in file("server"))
       "org.apache.iceberg" % "iceberg-aws" % icebergVersion,
       "org.apache.iceberg" % "iceberg-azure" % icebergVersion,
       "org.apache.iceberg" % "iceberg-gcp" % icebergVersion,
-      "software.amazon.awssdk" % "s3" % "2.24.0",
-      "software.amazon.awssdk" % "sts" % "2.24.0",
+      "software.amazon.awssdk" % "s3" % awsSdkV2Version,
+      "software.amazon.awssdk" % "sts" % awsSdkV2Version,
       // iceberg-aws transitively requires this dependency for table encryption support
-      "software.amazon.awssdk" % "kms" % "2.24.0",
+      "software.amazon.awssdk" % "kms" % awsSdkV2Version,
       "io.vertx" % "vertx-core" % vertxVersion,
       "io.vertx" % "vertx-web" % vertxVersion,
       "io.vertx" % "vertx-web-client" % vertxVersion,
@@ -465,8 +467,15 @@ lazy val server = (project in file("server"))
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
     ),
-    // Iceberg 1.11.0 brings its own Jackson version that conflicts with the project's pinned jackson version
+    // Iceberg 1.11.0 brings its own Jackson version that conflicts with the project's pinned jackson version.
+    // Force AWS SDK v2 onto a single release as well (Iceberg and Hadoop otherwise mix 2.24 / 2.27).
     dependencyOverrides ++= Seq(
+      "software.amazon.awssdk" % "sso" % awsSdkV2Version,
+      "software.amazon.awssdk" % "ssooidc" % awsSdkV2Version,
+      "software.amazon.awssdk" % "s3" % awsSdkV2Version,
+      "software.amazon.awssdk" % "sts" % awsSdkV2Version,
+      "software.amazon.awssdk" % "kms" % awsSdkV2Version,
+      "software.amazon.awssdk" % "auth" % awsSdkV2Version,
       "io.netty" % "netty-all" % nettyVersion,
       "io.netty" % "netty-tcnative-classes" % nettyTcnativeVersion,
       "io.netty" % "netty-tcnative-boringssl-static" % nettyTcnativeVersion,
@@ -611,7 +620,7 @@ lazy val cli = (project in file("examples") / "cli")
       "de.vandermeer" % "asciitable" % "0.3.2",
       // for s3 access
       "org.fusesource.jansi" % "jansi" % "2.4.1",
-      "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
+      "com.amazonaws" % "aws-java-sdk-core" % awsSdkV1Version,
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion,
       "com.google.guava" % "guava" % "31.0.1-jre",
@@ -703,7 +712,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.antlr" % "antlr4" % "4.13.1",
       "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Provided,
-      "software.amazon.awssdk" % "auth" % "2.25.37" % Provided,
+      "software.amazon.awssdk" % "auth" % awsSdkV2Version % Provided,
     ),
     libraryDependencies ++= Seq(
       // Test dependencies
@@ -769,7 +778,7 @@ lazy val hadoop = (project in file("connectors/hadoop"))
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion % Provided,
       "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Provided,
-      "software.amazon.awssdk" % "auth" % "2.25.37" % Provided,
+      "software.amazon.awssdk" % "auth" % awsSdkV2Version % Provided,
     ),
     libraryDependencies ++= Seq(
       // Test dependencies
