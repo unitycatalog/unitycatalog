@@ -9,6 +9,7 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.IcebergRestClient;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Map;
@@ -24,9 +25,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Iceberg REST catalog behavior when native Iceberg table writes are disabled (the production
- * default: {@code server.iceberg-table.enabled=false}). This class deliberately does not enable the
- * flag, unlike {@link IcebergRestCatalogTest}. The write endpoints all call {@code
+ * Iceberg REST catalog behavior when native Iceberg table writes are disabled. Iceberg tables are
+ * enabled by default, so this class turns the flag off explicitly (see {@link #setUpProperties()}),
+ * unlike {@link IcebergRestCatalogTest}. The write endpoints all call {@code
  * checkIcebergTableEnabled()} before touching any resource, so they are rejected regardless of
  * whether the target catalog/schema/table exists.
  */
@@ -42,6 +43,13 @@ public class IcebergRestCatalogDisabledTest extends BaseCRUDTestWithMockCredenti
   @Override
   protected SchemaOperations createSchemaOperations(ServerConfig serverConfig) {
     return new SdkSchemaOperations(TestUtils.createApiClient(serverConfig));
+  }
+
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    // Iceberg tables are enabled by default; disable them here to exercise the rejection path.
+    serverProperties.setProperty(Property.ICEBERG_TABLE_ENABLED.getKey(), "false");
   }
 
   @BeforeEach

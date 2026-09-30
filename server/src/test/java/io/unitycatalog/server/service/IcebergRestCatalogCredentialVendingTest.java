@@ -17,7 +17,6 @@ import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.LocalMappingFileOperations;
 import io.unitycatalog.server.utils.NormalizedURL;
-import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -65,13 +64,6 @@ public class IcebergRestCatalogCredentialVendingTest extends BaseCRUDTestWithMoc
   @Override
   protected SchemaOperations createSchemaOperations(ServerConfig serverConfig) {
     return new SdkSchemaOperations(TestUtils.createApiClient(serverConfig));
-  }
-
-  @Override
-  protected void setUpProperties() {
-    super.setUpProperties();
-    // Native Iceberg REST writes are opt-in in production; this integration test exercises them.
-    serverProperties.setProperty(Property.ICEBERG_TABLE_ENABLED.getKey(), "true");
   }
 
   @Override

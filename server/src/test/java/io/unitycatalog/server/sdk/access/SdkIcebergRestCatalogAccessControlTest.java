@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.IcebergRestClient;
-import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -48,13 +47,6 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
   private static final String SCHEMA_P2 = "sch_p2"; // created via createNamespace, owned by p2
   private static final String SCHEMA_R2 = "sch_r2"; // created via createNamespace, owned by r2
   private static final String CREATOR_ONLY = "creator-only@localhost";
-
-  @Override
-  protected void setUpProperties() {
-    super.setUpProperties();
-    // Native Iceberg REST writes are opt-in in production; enable so the write endpoints work.
-    serverProperties.setProperty(Property.ICEBERG_TABLE_ENABLED.getKey(), "true");
-  }
 
   @Test
   @SneakyThrows
