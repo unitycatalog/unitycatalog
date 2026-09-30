@@ -87,22 +87,22 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
   }
 
   private void ucRestCountsOnlySuccessfullyPersistedCreates() throws Exception {
-    double before = tablesCreated();
+    double before = tablesPersisted();
     createAndVerifyExternalTable();
-    assertThat(tablesCreated()).isEqualTo(before + 1.0);
+    assertThat(tablesPersisted()).isEqualTo(before + 1.0);
 
     assertThatThrownBy(this::createAndVerifyExternalTable).hasMessageContaining("already exists");
-    assertThat(tablesCreated()).isEqualTo(before + 1.0);
+    assertThat(tablesPersisted()).isEqualTo(before + 1.0);
   }
 
   private void deltaRestCountsOnlySuccessfullyPersistedCreates() throws Exception {
-    double before = tablesCreated();
+    double before = tablesPersisted();
     createDeltaExternal("delta_metric_table");
-    assertThat(tablesCreated()).isEqualTo(before + 1.0);
+    assertThat(tablesPersisted()).isEqualTo(before + 1.0);
 
     assertThatThrownBy(() -> createDeltaExternal("delta_metric_table"))
         .hasMessageContaining("already exists");
-    assertThat(tablesCreated()).isEqualTo(before + 1.0);
+    assertThat(tablesPersisted()).isEqualTo(before + 1.0);
   }
 
   private void icebergRestCountsOnlySuccessfullyPersistedCreates() throws Exception {
@@ -122,16 +122,16 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
             .build();
     String body = IcebergObjectMapper.mapper().writeValueAsString(request);
 
-    double before = tablesCreated();
+    double before = tablesPersisted();
     HttpResponse<String> created =
         TestUtils.sendRaw(serverConfig, "POST", tablesPath, Optional.of(body));
     assertThat(created.statusCode()).as(created.body()).isEqualTo(200);
-    assertThat(tablesCreated()).isEqualTo(before + 1.0);
+    assertThat(tablesPersisted()).isEqualTo(before + 1.0);
 
     HttpResponse<String> duplicate =
         TestUtils.sendRaw(serverConfig, "POST", tablesPath, Optional.of(body));
     assertThat(duplicate.statusCode()).as(duplicate.body()).isEqualTo(409);
-    assertThat(tablesCreated()).isEqualTo(before + 1.0);
+    assertThat(tablesPersisted()).isEqualTo(before + 1.0);
   }
 
   private void viewLikeRestCountsOnlySuccessfullyPersistedCreates(TableType tableType)
@@ -161,26 +161,26 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
                     : "version: \"0.1\"\nsource: " + sourceFullName)
             .viewDependencies(dependencies);
 
-    double before = tablesCreated();
+    double before = tablesPersisted();
     tableOperations.createTable(request);
-    assertThat(tablesCreated()).isEqualTo(before + 1.0);
+    assertThat(tablesPersisted()).isEqualTo(before + 1.0);
 
     assertThatThrownBy(() -> tableOperations.createTable(request))
         .hasMessageContaining("already exists");
-    assertThat(tablesCreated()).isEqualTo(before + 1.0);
+    assertThat(tablesPersisted()).isEqualTo(before + 1.0);
   }
 
-  private double tablesCreated() throws Exception {
+  private double tablesPersisted() throws Exception {
     HttpResponse<String> response = sendRawGet(observabilityServerConfig, "/metrics");
 
     assertThat(response.statusCode()).isEqualTo(200);
     assertThat(response.body())
-        .contains("jvm_memory_used_bytes", "uc_tables_created", "http_server_");
+        .contains("jvm_memory_used_bytes", "uc_tables_persisted", "http_server_");
 
     return response
         .body()
         .lines()
-        .filter(line -> line.startsWith("uc_tables_created_total"))
+        .filter(line -> line.startsWith("uc_tables_persisted_total"))
         .mapToDouble(line -> Double.parseDouble(line.substring(line.lastIndexOf(' ') + 1)))
         .findFirst()
         .orElse(0.0);

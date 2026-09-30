@@ -784,7 +784,7 @@ public class TableRepository {
       Optional<NormalizedURL> nativeIcebergMetadataLocation,
       CreateResultMapper<T> mapper) {
     T result = persistTable(createTable, uniformFields, nativeIcebergMetadataLocation, mapper);
-    tableMetrics.recordCreated();
+    tableMetrics.recordTablePersisted();
     return result;
   }
 

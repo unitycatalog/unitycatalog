@@ -107,7 +107,7 @@ Collector, etc.).
 | `http_server_response_duration_seconds` | Time to send the response, exported as timer series with the same tags |
 | `http_server_total_duration_seconds` | End-to-end request and response time, exported as timer series with the same tags |
 | `http_server_active_requests` | In-flight requests |
-| `uc_tables_created_total` | Successfully persisted table securables created through UC, Delta, or Iceberg REST, including views and metric views |
+| `uc_tables_persisted_total` | Tables successfully persisted after create transactions commit through UC, Delta, or Iceberg REST, including views and metric views |
 
 !!! note "Per-route metrics are lazily populated"
     HTTP request metrics for a given route (`service`/`method` combination) appear in the

@@ -3,21 +3,21 @@ package io.unitycatalog.server.observability;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 
-/** Metrics for persisted table securables, including views and metric views. */
+/** Metrics for persisted tables, including views and metric views. */
 public final class TableMetrics {
-  private final Counter tablesCreated;
+  private final Counter tablesPersistedCounter;
 
   TableMetrics(MeterRegistry registry) {
-    tablesCreated =
-        Counter.builder("uc.tables.created")
+    tablesPersistedCounter =
+        Counter.builder("uc.tables.persisted")
             .description(
-                "Number of table securables successfully persisted through a create-table API,"
+                "Number of tables successfully persisted after create transactions commit,"
                     + " including views and metric views")
             .register(registry);
   }
 
-  /** Records a create after its database transaction has committed successfully. */
-  public void recordCreated() {
-    tablesCreated.increment();
+  /** Records a table after its database transaction has committed successfully. */
+  public void recordTablePersisted() {
+    tablesPersistedCounter.increment();
   }
 }
