@@ -498,6 +498,13 @@ public class ServerProperties {
     return getProperty(property.key);
   }
 
+  /** Returns whether a property was explicitly supplied rather than inherited from its default. */
+  public boolean isConfigured(Property property) {
+    return System.getProperty(property.key) != null
+        || System.getenv().containsKey(property.key)
+        || properties.containsKey(property.key);
+  }
+
   /** Get a property value by key name. */
   private String getProperty(String key) {
     if (System.getProperty(key) != null) {

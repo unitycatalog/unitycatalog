@@ -63,14 +63,19 @@ public class TableRepository {
   private final SessionFactory sessionFactory;
   private final Repositories repositories;
   private final ServerProperties serverProperties;
+  private final Runnable tableCreated;
   private static final PagedListingHelper<TableInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(TableInfoDAO.class);
 
   public TableRepository(
-      Repositories repositories, SessionFactory sessionFactory, ServerProperties serverProperties) {
+      Repositories repositories,
+      SessionFactory sessionFactory,
+      ServerProperties serverProperties,
+      Runnable tableCreated) {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
     this.serverProperties = serverProperties;
+    this.tableCreated = Objects.requireNonNull(tableCreated, "tableCreated");
   }
 
   /**
@@ -778,6 +783,16 @@ public class TableRepository {
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
       Optional<NormalizedURL> nativeIcebergMetadataLocation,
       CreateResultMapper<T> mapper) {
+    T result = persistTable(createTable, uniformFields, nativeIcebergMetadataLocation, mapper);
+    tableCreated.run();
+    return result;
+  }
+
+  private <T> T persistTable(
+      CreateTable createTable,
+      Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
+      Optional<NormalizedURL> nativeIcebergMetadataLocation,
+      CreateResultMapper<T> mapper) {
     ValidationUtils.validateSqlObjectName(createTable.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     DataSourceFormat format = createTable.getDataSourceFormat();
@@ -839,16 +854,19 @@ public class TableRepository {
                   "Managed table creation is only supported for Delta and Iceberg formats.");
             }
             // Find and commit the staging table with the same staging location. This single
-            // transaction validates ownership and prevents a staging location from being reused.
+            // transaction validates ownership and prevents a staging location from being
+            // reused.
             StagingTableDAO stagingTableDAO =
                 repositories
                     .getStagingTableRepository()
                     .commitStagingTable(session, callerId, storageLocation);
             tableUUID = stagingTableDAO.getId();
             if (createTable.getDataSourceFormat() == DataSourceFormat.DELTA) {
-              // MANAGED tables (created via either UC REST or Delta REST) must carry UC_TABLE_ID
+              // MANAGED tables (created via either UC REST or Delta REST) must carry
+              // UC_TABLE_ID
               // in their properties, matching the staging UUID. UC has the staging UUID as the
-              // source of truth; a request with a missing or mismatched UC_TABLE_ID gets rejected
+              // source of truth; a request with a missing or mismatched UC_TABLE_ID gets
+              // rejected
               // here instead of producing an internally-inconsistent UC table that subsequent
               // commits would fail on.
               UcManagedDeltaContract.validateTableIdProperty(
@@ -904,7 +922,8 @@ public class TableRepository {
           // create properties
           PropertyDAO.from(tableInfo.getProperties(), tableInfoDAO.getId(), Constants.TABLE)
               .forEach(session::persist);
-          // UniForm Iceberg fields (when supplied by the Delta create path) are written while the
+          // UniForm Iceberg fields (when supplied by the Delta create path) are written while
+          // the
           // entity is still transient so they're folded into the single INSERT below.
           DeltaUniformUtils.applyToDao(tableInfoDAO, uniformFields);
           nativeIcebergMetadataLocation.ifPresent(
@@ -912,7 +931,8 @@ public class TableRepository {
           session.persist(tableInfoDAO);
           if (RepositoryUtils.isViewLike(tableType.getValue())) {
             DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
-            // view_dependencies is optional (see validateViewLike); treat an absent list as empty.
+            // view_dependencies is optional (see validateViewLike); treat an absent list as
+            // empty.
             List<DependencyDAO> depDAOs =
                 Optional.ofNullable(createTable.getViewDependencies())
                     .map(DependencyList::getDependencies)

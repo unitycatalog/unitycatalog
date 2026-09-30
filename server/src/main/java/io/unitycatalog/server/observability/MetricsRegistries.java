@@ -7,16 +7,16 @@ import io.micrometer.core.instrument.binder.system.ProcessorMetrics;
 import io.micrometer.prometheus.PrometheusConfig;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 
-/** Builds the process-wide Prometheus meter registry with standard JVM/system instrumentation. */
+/** Builds a Prometheus meter registry with standard JVM/system instrumentation. */
 public final class MetricsRegistries {
 
   private MetricsRegistries() {}
 
   /**
-   * The process-wide Prometheus registry together with the one binder that holds a JVM resource:
-   * the GC-notification listeners {@link JvmGcMetrics} registers on the GC MXBeans. {@link
-   * #close()} releases that binder and the registry; call it on server shutdown. (The other bound
-   * metrics — memory, threads, processor — register only gauges and need no close.)
+   * A Prometheus registry together with the one binder that holds a JVM resource: the
+   * GC-notification listeners {@link JvmGcMetrics} registers on the GC MXBeans. Each server
+   * instance owns and closes its registry and binder. (The other bound metrics — memory, threads,
+   * processor — register only gauges and need no close.)
    */
   public static final class PrometheusMetrics implements AutoCloseable {
     private final PrometheusMeterRegistry registry;

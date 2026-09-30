@@ -6,7 +6,7 @@ import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerListener;
 import com.linecorp.armeria.server.healthcheck.HealthCheckService;
 import com.linecorp.armeria.server.metric.PrometheusExpositionService;
-import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
@@ -52,12 +52,12 @@ import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
 import java.nio.file.Path;
 import java.time.Clock;
-import java.time.Duration;
 import java.util.concurrent.CompletionException;
 import java.util.function.UnaryOperator;
 import org.apache.logging.log4j.core.config.Configurator;
@@ -84,8 +84,9 @@ public class UnityCatalogServer implements AutoCloseable {
   private StorageCleanupWorker cleanupWorker;
 
   /**
-   * Process-wide metrics registry; set during {@link #initializeServer}. Closed on shutdown to
-   * release the JVM/GC metric listeners it binds (may be null if construction fails early).
+   * Metrics registry owned by this server instance; set during {@link #initializeServer}. Closed on
+   * shutdown to release the JVM/GC metric listeners it binds (may be null if construction fails
+   * early).
    */
   private MetricsRegistries.PrometheusMetrics metrics;
 
@@ -176,12 +177,19 @@ public class UnityCatalogServer implements AutoCloseable {
             CONTROL_PATH,
             unityCatalogServerBuilder.serverProperties);
 
-    // Metrics: one process-wide Prometheus registry. Armeria records its own request metrics into
-    // it (via meterRegistry + the MetricCollectingService decorator); /metrics scrapes it. Held as
-    // a field so close() can release the JVM/GC binders on shutdown. Served on the dedicated
-    // observability port (not the API listener), since it exposes request/table counters.
+    // Metrics: one Prometheus registry owned by this server instance. Armeria records its own
+    // request metrics into it (via meterRegistry + the MetricCollectingService decorator);
+    // /metrics scrapes it. Held as a field so close() can release the JVM/GC binders on shutdown.
+    // Served on the dedicated observability port (not the API listener), since it exposes
+    // request/table counters.
     metrics = MetricsRegistries.createPrometheus();
     PrometheusMeterRegistry meterRegistry = metrics.registry();
+    Counter tablesCreated =
+        Counter.builder("uc.tables.created")
+            .description(
+                "Number of table securables successfully persisted through a create-table API,"
+                    + " including views and metric views")
+            .register(meterRegistry);
     armeriaServerBuilder.meterRegistry(meterRegistry);
     armeriaServerBuilder.observabilityService(
         "/metrics", PrometheusExpositionService.of(meterRegistry.getPrometheusRegistry()));
@@ -192,7 +200,8 @@ public class UnityCatalogServer implements AutoCloseable {
             hibernateConfigurator.getSessionFactory(),
             unityCatalogServerBuilder.serverProperties,
             unityCatalogServerBuilder.cloudCredentialVendor,
-            unityCatalogServerBuilder.fileOperationsDecorator);
+            unityCatalogServerBuilder.fileOperationsDecorator,
+            tablesCreated::increment);
     // Init metastore
     repositories.getMetastoreRepository().initMetastoreIfNeeded();
     // Init authorizer
@@ -203,8 +212,7 @@ public class UnityCatalogServer implements AutoCloseable {
     BaseExceptionHandler.setIncludeStackTrace(
         unityCatalogServerBuilder.serverProperties.isIncludeStackTraceInError());
     // Init services
-    addApiServices(
-        armeriaServerBuilder, unityCatalogServerBuilder, authorizer, repositories, meterRegistry);
+    addApiServices(armeriaServerBuilder, unityCatalogServerBuilder, authorizer, repositories);
     // Init security decorators
     addSecurityDecorators(
         armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
@@ -274,8 +282,7 @@ public class UnityCatalogServer implements AutoCloseable {
       ArmeriaServerBuilder armeriaServerBuilder,
       UnityCatalogServer.Builder unityCatalogServerBuilder,
       UnityCatalogAuthorizer authorizer,
-      Repositories repositories,
-      MeterRegistry meterRegistry) {
+      Repositories repositories) {
     LOGGER.info("Adding Unity Catalog API services...");
     ServerProperties serverProperties = unityCatalogServerBuilder.serverProperties;
     // The credential/file-IO chain is built and owned by Repositories (so repositories can read
@@ -296,8 +303,7 @@ public class UnityCatalogServer implements AutoCloseable {
         .annotate("catalogs", new CatalogService(authorizer, repositories, serverProperties))
         .annotate("schemas", schemaService)
         .annotate("volumes", new VolumeService(authorizer, repositories, serverProperties))
-        .annotate(
-            "tables", new TableService(authorizer, repositories, serverProperties, meterRegistry))
+        .annotate("tables", new TableService(authorizer, repositories, serverProperties))
         .annotate(
             "staging-tables", new StagingTableService(authorizer, repositories, serverProperties))
         .annotate("functions", new FunctionService(authorizer, repositories, serverProperties))
@@ -376,26 +382,45 @@ public class UnityCatalogServer implements AutoCloseable {
   public static void main(String[] args) {
     OptionParser options = new OptionParser();
     options.parse(args);
+    int clientPort = options.getPort();
+    ServerProperties serverProperties = new ServerProperties(SERVER_PROPERTIES_FILE);
+    int observabilityPort = resolveObservabilityPort(clientPort, serverProperties);
+    serverProperties.set(Property.OBSERVABILITY_PORT, String.valueOf(observabilityPort));
     // Start Unity Catalog server
     UnityCatalogServer unityCatalogServer =
-        UnityCatalogServer.builder().port(options.getPort() + 1).build();
+        UnityCatalogServer.builder()
+            .port(clientPort + 1)
+            .serverProperties(serverProperties)
+            .build();
     unityCatalogServer.printArt();
     unityCatalogServer.start();
     // Start URL transcoder. Clients use its port, not Armeria's, so wait for it to be listening
     // before this process reports itself started, and fail rather than serve only the internal
     // port if it cannot bind.
     Vertx vertx = Vertx.vertx();
-    Verticle transcodeVerticle =
-        new URLTranscoderVerticle(options.getPort(), options.getPort() + 1);
+    Verticle transcodeVerticle = new URLTranscoderVerticle(clientPort, clientPort + 1);
     try {
       vertx.deployVerticle(transcodeVerticle).toCompletionStage().toCompletableFuture().join();
     } catch (CompletionException e) {
-      LOGGER.error(
-          "Failed to start the URL transcoder on port {}", options.getPort(), e.getCause());
+      LOGGER.error("Failed to start the URL transcoder on port {}", clientPort, e.getCause());
       vertx.close();
       unityCatalogServer.close();
       throw e;
     }
+  }
+
+  static int resolveObservabilityPort(int clientPort, ServerProperties serverProperties) {
+    int observabilityPort =
+        serverProperties.isConfigured(Property.OBSERVABILITY_PORT)
+            ? serverProperties.getObservabilityPort()
+            : clientPort + 2;
+    if (observabilityPort == clientPort) {
+      throw new IllegalArgumentException(
+          String.format(
+              "server.observability.port (%d) must differ from the client-facing port (%d)",
+              observabilityPort, clientPort));
+    }
+    return observabilityPort;
   }
 
   public void start() {

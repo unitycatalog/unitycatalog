@@ -2,14 +2,15 @@
 
 Unity Catalog exposes three unauthenticated HTTP endpoints for health checking and metrics
 collection: `/livez`, `/readyz`, and `/metrics`. They are served on a **dedicated observability
-port** (default **8090**), separate from the catalog API port (default **8080**), and are always
-enabled — there is no configuration flag to disable them.
+port** (by default, the client port plus 2), separate from the catalog API port, and are always
+enabled — there is no configuration flag to disable them. With the default client port of `8080`,
+the internal API port is `8081` and the observability port is `8082`.
 
 The observability port is a second port on the *same* server as the API — not a separate server —
 so both listeners share one process and fail together. Serving these endpoints on their own port
 keeps them (in particular `/metrics`, which exposes operational counters) off the main API
-listener: they answer on the observability port and are `404` on the API port. Set the port with
-`server.observability.port` (default `8090`).
+listener: they answer on the observability port and are `404` on the API port. Set
+`server.observability.port` to override the derived client-port-plus-2 value.
 
 !!! warning "Network exposure"
     These endpoints are unauthenticated by design so that orchestrators and Prometheus
@@ -33,7 +34,7 @@ Use this endpoint to tell an orchestrator whether the process is alive and shoul
 restarted if it stops responding.
 
 ```sh
-curl http://localhost:8090/livez
+curl http://localhost:8082/livez
 # {"healthy":true}
 ```
 
@@ -44,8 +45,9 @@ otherwise.
 
 Key implementation details:
 
-- The database check runs on a background thread; it is **not** executed on the request path
-  (the endpoint returns the cached result of the last check).
+- Startup performs one synchronous database check before the server begins serving. Subsequent
+  checks run on a background thread; checks are **not** executed on the request path (the endpoint
+  returns the cached result of the last check).
 - The endpoint **fails closed**: it reports not-ready until the first successful database
   check completes after startup.
 - During graceful shutdown the endpoint flips to `503` so that load balancers and
@@ -63,7 +65,7 @@ health-check port distinct from the traffic port) — it is drain-aware, whereas
 response is not and would keep the target in rotation during a rolling deploy.
 
 ```sh
-curl -i http://localhost:8090/readyz
+curl -i http://localhost:8082/readyz
 # HTTP/1.1 200 OK  (database reachable)
 # {"healthy":true}
 
@@ -84,13 +86,15 @@ Collector, etc.).
 
 | Family | Description |
 |---|---|
-| `jvm_memory_used_bytes`, `jvm_gc_*`, `jvm_threads_*` | JVM heap, GC pause, and thread counts |
+| `jvm_memory_used_bytes`, `jvm_gc_*`, `jvm_threads_*` | JVM heap and non-heap memory, GC pause, and thread counts |
 | `process_cpu_usage`, `system_cpu_usage` | Process and host CPU utilisation |
 | `armeria_server_*`, `armeria_executor_*` | Armeria server and executor internals |
 | `http_server_requests_total` | Total HTTP requests, tagged by `service`, `method`, `http_status` |
-| `http_server_request_duration_seconds` | Request latency histogram, same tags |
+| `http_server_request_duration_seconds` | Time to receive the request, exported as timer series with the same tags |
+| `http_server_response_duration_seconds` | Time to send the response, exported as timer series with the same tags |
+| `http_server_total_duration_seconds` | End-to-end request and response time, exported as timer series with the same tags |
 | `http_server_active_requests` | In-flight requests |
-| `uc_tables_created_total` | Unity Catalog domain metric: tables created |
+| `uc_tables_created_total` | Successfully persisted table securables created through UC, Delta, or Iceberg REST, including views and metric views |
 
 !!! note "Per-route metrics are lazily populated"
     HTTP request metrics for a given route (`service`/`method` combination) appear in the
@@ -103,7 +107,7 @@ Collector, etc.).
     those libraries are upgraded; pin dashboards and alerts with that in mind.
 
 ```sh
-curl http://localhost:8090/metrics
+curl http://localhost:8082/metrics
 # HELP jvm_memory_used_bytes ...
 # TYPE jvm_memory_used_bytes gauge
 # jvm_memory_used_bytes{area="heap",...} 1.23456789E8
@@ -123,10 +127,10 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets:
-          - uc-server-host:8090
+          - uc-server-host:8082
 ```
 
-Replace `uc-server-host:8090` with the hostname and observability port of your Unity Catalog
+Replace `uc-server-host:8082` with the hostname and observability port of your Unity Catalog
 server.
 
 ### Kubernetes probes
@@ -140,7 +144,7 @@ containers:
       - name: http
         containerPort: 8080
       - name: observability
-        containerPort: 8090
+        containerPort: 8082
     livenessProbe:
       httpGet:
         path: /livez

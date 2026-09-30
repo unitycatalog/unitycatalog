@@ -85,7 +85,7 @@ public class ArmeriaServerBuilder {
    * Port-based virtual host bound to the dedicated observability port. {@code /livez}, {@code
    * /readyz}, and {@code /metrics} are registered here (via {@link #observabilityService}), so they
    * are served only on that port. It is a second port on the same {@link Server}, never a separate
-   * server, so both listeners share one event loop and fail together.
+   * server, so both listeners share one lifecycle and start and stop together.
    */
   private final VirtualHostBuilder observabilityVirtualHost;
 
@@ -129,15 +129,14 @@ public class ArmeriaServerBuilder {
     }
     this.armeriaServerBuilder =
         Server.builder()
-            // The API port binds the loopback interfaces only: clients reach it through the
-            // in-process URL transcoder, never directly.
+            // The launcher URL transcoder fronts this loopback-only API port. Local callers and
+            // tests can still address it directly.
             .localPort(port, SessionProtocol.HTTP)
             // Second port on the SAME server (not a separate Server) for the observability
-            // endpoints. Both listeners share one JVM and event loop, so they fail together --
-            // there is no state where the obs port is healthy while the API port is not -- while
-            // keeping /metrics and the probes off the main API listener. Unlike the API port this
-            // binds all interfaces, because kubelet and Prometheus reach it at the pod IP (not
-            // loopback); restrict it with network policy.
+            // endpoints. Both listeners share one JVM and Server lifecycle, so they start and stop
+            // together while keeping /metrics and the probes off the main API listener. Unlike the
+            // API port this binds all interfaces, because kubelet and Prometheus reach it at the
+            // pod IP (not loopback); restrict it with network policy.
             .port(observabilityPort, SessionProtocol.HTTP)
             // Armeria names HTTP/1 headers in their lowercase HTTP/2 form by default. Released
             // Iceberg clients read our response headers out of a plain map keyed by the name as

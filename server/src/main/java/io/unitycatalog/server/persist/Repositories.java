@@ -40,14 +40,28 @@ public class Repositories {
   private final KeyMapper keyMapper;
 
   public Repositories(SessionFactory sessionFactory, ServerProperties serverProperties) {
-    this(sessionFactory, serverProperties, null);
+    this(sessionFactory, serverProperties, null, UnaryOperator.identity(), () -> {});
   }
 
   public Repositories(
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
       CloudCredentialVendor cloudCredentialVendor) {
-    this(sessionFactory, serverProperties, cloudCredentialVendor, UnaryOperator.identity());
+    this(
+        sessionFactory,
+        serverProperties,
+        cloudCredentialVendor,
+        UnaryOperator.identity(),
+        () -> {});
+  }
+
+  public Repositories(
+      SessionFactory sessionFactory,
+      ServerProperties serverProperties,
+      CloudCredentialVendor cloudCredentialVendor,
+      UnaryOperator<FileOperations> fileOperationsDecorator) {
+    this(
+        sessionFactory, serverProperties, cloudCredentialVendor, fileOperationsDecorator, () -> {});
   }
 
   /**
@@ -57,12 +71,14 @@ public class Repositories {
    *     late-binding.
    * @param fileOperationsDecorator wraps the default {@link FileOperations} before use ({@link
    *     UnaryOperator#identity()} leaves it unchanged); lets tests map cloud IO to local storage.
+   * @param tableCreated invoked after a table-create transaction commits successfully
    */
   public Repositories(
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
       CloudCredentialVendor cloudCredentialVendor,
-      UnaryOperator<FileOperations> fileOperationsDecorator) {
+      UnaryOperator<FileOperations> fileOperationsDecorator,
+      Runnable tableCreated) {
     this.sessionFactory = sessionFactory;
     this.externalLocationUtils = new ExternalLocationUtils(sessionFactory);
     CloudCredentialVendor resolvedCloudCredentialVendor =
@@ -77,7 +93,8 @@ public class Repositories {
 
     this.catalogRepository = new CatalogRepository(this, sessionFactory);
     this.schemaRepository = new SchemaRepository(this, sessionFactory);
-    this.tableRepository = new TableRepository(this, sessionFactory, serverProperties);
+    this.tableRepository =
+        new TableRepository(this, sessionFactory, serverProperties, tableCreated);
     this.stagingTableRepository =
         new StagingTableRepository(this, sessionFactory, serverProperties);
     this.volumeRepository = new VolumeRepository(this, sessionFactory);

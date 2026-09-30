@@ -571,7 +571,7 @@ lazy val controlModels = (project in file("server") / "target" / "controlmodels"
   )
 
 lazy val cli = (project in file("examples") / "cli")
-  .dependsOn(server % "test->test")
+  .dependsOn(server % "test->test;test->compile")
   .dependsOn(serverModels)
   .dependsOn(client % "compile->compile;test->test")
   .dependsOn(controlApi % "compile->compile")

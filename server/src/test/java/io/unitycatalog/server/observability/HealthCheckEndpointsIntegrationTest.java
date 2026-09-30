@@ -17,12 +17,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Exercises the health endpoints against the exact Armeria topology {@code UnityCatalogServer}
- * uses: a single {@link Server} with two ports -- the API port and a dedicated observability port
- * -- where {@code /livez} and {@code /readyz} are bound to a port-based virtual host on the
- * observability port. Confirms the /readyz 503/200 mapping, that /livez is independent of
- * readiness, that both ports live on one server, and that the probes are not exposed on the API
- * port.
+ * Exercises the same two-port health topology {@code UnityCatalogServer} uses: a single {@link
+ * Server} with an API port and a dedicated observability port, where {@code /livez} and {@code
+ * /readyz} are bound to a port-based virtual host on the observability port. Confirms the /readyz
+ * 503/200 mapping, that /livez is independent of readiness, that both ports live on one server, and
+ * that the probes are not exposed on the API port.
  */
 public class HealthCheckEndpointsIntegrationTest {
 
@@ -34,8 +33,9 @@ public class HealthCheckEndpointsIntegrationTest {
 
   @BeforeEach
   public void setUp() throws IOException {
-    int apiPort = findFreePort();
-    int observabilityPort = findFreePort();
+    int[] ports = findTwoFreePorts();
+    int apiPort = ports[0];
+    int observabilityPort = ports[1];
     checker = new DbReadinessChecker(dbReachable::get, Duration.ofSeconds(5));
     server =
         Server.builder()
@@ -73,7 +73,7 @@ public class HealthCheckEndpointsIntegrationTest {
   @Test
   public void bindsBothPortsOnASingleServer() {
     // One server, two ports (API + observability) -- never a second Server instance -- so both
-    // listeners share one event loop and fail together (no obs-healthy-while-API-down split).
+    // listeners share one lifecycle and start and stop together.
     long distinctPorts =
         server.activePorts().values().stream()
             .map(port -> port.localAddress().getPort())
@@ -169,9 +169,10 @@ public class HealthCheckEndpointsIntegrationTest {
     }
   }
 
-  private static int findFreePort() throws IOException {
-    try (ServerSocket socket = new ServerSocket(0)) {
-      return socket.getLocalPort();
+  private static int[] findTwoFreePorts() throws IOException {
+    try (ServerSocket first = new ServerSocket(0);
+        ServerSocket second = new ServerSocket(0)) {
+      return new int[] {first.getLocalPort(), second.getLocalPort()};
     }
   }
 }
