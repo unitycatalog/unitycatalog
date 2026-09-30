@@ -19,12 +19,14 @@ import com.azure.storage.file.datalake.DataLakeDirectoryClient;
 import com.azure.storage.file.datalake.DataLakeFileSystemClient;
 import com.azure.storage.file.datalake.models.PathItem;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
+import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.persist.utils.InterruptiblePrefixOperations;
 import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
 import io.unitycatalog.server.service.credential.CredentialContext;
@@ -37,6 +39,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import lombok.SneakyThrows;
@@ -59,9 +62,16 @@ import org.apache.iceberg.io.ResolvingFileIO;
 import org.apache.iceberg.io.SupportsPrefixOperations;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedConstruction;
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.http.SdkHttpResponse;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
+import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
+import software.amazon.awssdk.services.s3.model.HeadBucketResponse;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 public class FileOperationsTest {
 
@@ -192,7 +202,7 @@ public class FileOperationsTest {
   public void testGetFileIOConfigLocalPathSkipsVending() {
     // Local paths must short-circuit to an empty config WITHOUT vending credentials.
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     Map<String, String> config =
         fileOps.getFileIOConfig(NormalizedURL.from("file:///tmp/some/table"));
@@ -218,7 +228,7 @@ public class FileOperationsTest {
                         .secretAccessKey("secret")
                         .sessionToken("token"))
                 .expirationTime(12345L));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(props));
 
     Map<String, String> config =
         fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
@@ -249,7 +259,7 @@ public class FileOperationsTest {
                         .accessKeyId("AKIA")
                         .secretAccessKey("secret")
                         .sessionToken("token")));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(props));
 
     Map<String, String> config =
         fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
@@ -311,7 +321,7 @@ public class FileOperationsTest {
         (credential, expected) -> {
           StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
           when(vendor.vendCredential(any(), any())).thenReturn(credential);
-          FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+          FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(props));
 
           assertThat(
                   fileOps.getFileIOConfig(
@@ -330,7 +340,7 @@ public class FileOperationsTest {
             new TemporaryCredentials()
                 .gcpOauthToken(new GcpOauthToken().oauthToken("gcs-token"))
                 .expirationTime(12345L));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     Map<String, String> config =
         fileOps.getFileIOConfig(NormalizedURL.from("gs://my-bucket/table"));
@@ -346,7 +356,7 @@ public class FileOperationsTest {
     when(vendor.vendCredential(any(), any()))
         .thenReturn(
             new TemporaryCredentials().gcpOauthToken(new GcpOauthToken().oauthToken("gcs-token")));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     Map<String, String> config =
         fileOps.getFileIOConfig(NormalizedURL.from("gs://my-bucket/table"));
@@ -362,7 +372,7 @@ public class FileOperationsTest {
         .thenReturn(
             new TemporaryCredentials()
                 .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("sas-token")));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     Map<String, String> config =
         fileOps.getFileIOConfig(
@@ -381,39 +391,11 @@ public class FileOperationsTest {
     // silently returning a credential-less config.
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
     when(vendor.vendCredential(any(), any())).thenReturn(new TemporaryCredentials());
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     assertThatThrownBy(() -> fileOps.getFileIOConfig(NormalizedURL.from("gs://my-bucket/table")))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("No recognized storage credential");
-  }
-
-  @ParameterizedTest
-  @ValueSource(booleans = {false, true})
-  public void testGetFileIOConfigS3WithoutConfiguredRegionThrows(boolean hasDefaultRegion) {
-    // No region configured for the bucket: guard with a clear error instead of an opaque NPE.
-    Properties props = new Properties();
-    if (hasDefaultRegion) {
-      props.setProperty("aws.region", "us-west-2");
-    }
-    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    when(vendor.vendCredential(any(), any()))
-        .thenReturn(
-            new TemporaryCredentials()
-                .awsTempCredentials(
-                    new AwsCredentials()
-                        .accessKeyId("AKIA")
-                        .secretAccessKey("secret")
-                        .sessionToken("token")));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
-    NormalizedURL path = NormalizedURL.from("s3://my-bucket/table");
-
-    assertThatThrownBy(() -> fileOps.getFileIOConfig(path))
-        .isInstanceOf(BaseException.class)
-        .hasMessageContaining("No S3 region configured");
-    assertThatThrownBy(() -> fileOps.getCleanupFileIO(path, CooperativeDeadline.NO_DEADLINE))
-        .isInstanceOf(BaseException.class)
-        .hasMessageContaining("No S3 region configured");
   }
 
   @Test
@@ -421,7 +403,7 @@ public class FileOperationsTest {
     // Local paths must not be vended and must resolve to SimpleLocalFileIO (no ResolvingFileIO,
     // which would require hadoop-client-runtime for the file:// scheme).
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from("file:///tmp/some/table"))) {
       assertThat(fileIO).isInstanceOf(SimpleLocalFileIO.class);
@@ -437,7 +419,7 @@ public class FileOperationsTest {
     Files.writeString(file, "hello world");
 
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from(file.toUri().toString()))) {
       InputFile input = fileIO.newInputFile(file.toUri().toString());
@@ -450,7 +432,7 @@ public class FileOperationsTest {
   public void testGetFileIOForLocalPathWritesThroughReturnedFileIO() {
     Path file = rootBase.resolve("metadata-" + UUID.randomUUID() + ".json");
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from(file.toUri().toString()))) {
       OutputFile output = fileIO.newOutputFile(file.toUri().toString());
@@ -477,7 +459,7 @@ public class FileOperationsTest {
                         .accessKeyId("AKIA")
                         .secretAccessKey("secret")
                         .sessionToken("token")));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(props));
 
     try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from("s3://my-bucket/table"))) {
       assertThat(fileIO).isInstanceOf(ResolvingFileIO.class);
@@ -500,7 +482,7 @@ public class FileOperationsTest {
                         .accessKeyId("AKIA")
                         .secretAccessKey("secret")
                         .sessionToken("token")));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(props));
     NormalizedURL path = NormalizedURL.from("s3://my-bucket/tables/" + UUID.randomUUID());
 
     String prefix = path + "/";
@@ -551,7 +533,7 @@ public class FileOperationsTest {
             new TemporaryCredentials()
                 .gcpOauthToken(new GcpOauthToken().oauthToken("second-token"))
                 .expirationTime(expiration));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
     NormalizedURL path = NormalizedURL.from("gs://bucket/tables/" + UUID.randomUUID());
     String prefix = path + "/";
 
@@ -590,7 +572,7 @@ public class FileOperationsTest {
   @Test
   public void testGetCleanupFileIOForLocalPathDoesNotVendCredentials() {
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     try (SupportsPrefixOperations operations =
         fileOps.getCleanupFileIO(
@@ -610,7 +592,7 @@ public class FileOperationsTest {
                 .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("first-token")),
             new TemporaryCredentials()
                 .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("second-token")));
-    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
     DataLakeFileSystemClient client = mock(DataLakeFileSystemClient.class);
     DataLakeDirectoryClient directory = mock(DataLakeDirectoryClient.class);
     PagedIterable<PathItem> listing = mock(PagedIterable.class);
@@ -643,5 +625,200 @@ public class FileOperationsTest {
       }
     }
     verify(directory, times(2)).deleteIfExists();
+  }
+
+  /**
+   * A vendor that returns static AWS credentials with no region (region comes from config only).
+   */
+  private static StorageCredentialVendor awsCredentialVendor() {
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("AKIA")
+                        .secretAccessKey("secret")
+                        .sessionToken("token")));
+    return vendor;
+  }
+
+  /** FileOperations with no configured region, whose region-discovery client is {@code mockS3}. */
+  private static FileOperations fileOpsWithDiscoveryClient(S3Client mockS3) {
+    S3ClientBuilder builder = mock(S3ClientBuilder.class);
+    when(builder.credentialsProvider(any())).thenReturn(builder);
+    when(builder.region(any())).thenReturn(builder);
+    when(builder.build()).thenReturn(mockS3);
+    return new FileOperationsImpl(
+        awsCredentialVendor(), new ServerProperties(new Properties()), () -> builder);
+  }
+
+  private static S3Exception s3ExceptionWithBucketRegion(int statusCode, String region) {
+    SdkHttpResponse.Builder http = SdkHttpResponse.builder();
+    if (region != null) {
+      http.putHeader("x-amz-bucket-region", region);
+    }
+    return (S3Exception)
+        S3Exception.builder()
+            .statusCode(statusCode)
+            .awsErrorDetails(AwsErrorDetails.builder().sdkHttpResponse(http.build()).build())
+            .build();
+  }
+
+  @Test
+  public void testGetFileIOConfigS3DiscoversRegionWhenNotConfigured() {
+    S3Client s3 = mock(S3Client.class);
+    when(s3.headBucket(any(HeadBucketRequest.class)))
+        .thenReturn(HeadBucketResponse.builder().bucketRegion("eu-central-1").build());
+    FileOperations fileOps = fileOpsWithDiscoveryClient(s3);
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
+
+    assertThat(config).containsEntry(AwsClientProperties.CLIENT_REGION, "eu-central-1");
+    ArgumentCaptor<HeadBucketRequest> request = ArgumentCaptor.forClass(HeadBucketRequest.class);
+    verify(s3).headBucket(request.capture());
+    assertThat(request.getValue().bucket()).isEqualTo("my-bucket");
+  }
+
+  @Test
+  public void testGetFileIOConfigS3CachesDiscoveredRegion() {
+    S3Client s3 = mock(S3Client.class);
+    when(s3.headBucket(any(HeadBucketRequest.class)))
+        .thenReturn(HeadBucketResponse.builder().bucketRegion("eu-central-1").build());
+    FileOperations fileOps = fileOpsWithDiscoveryClient(s3);
+    NormalizedURL path = NormalizedURL.from("s3://my-bucket/table");
+
+    Map<String, String> first = fileOps.getFileIOConfig(path);
+    Map<String, String> second = fileOps.getFileIOConfig(path);
+
+    verify(s3, times(1)).headBucket(any(HeadBucketRequest.class));
+    // Both calls return the discovered region; the second is served from the cache.
+    assertThat(first).containsEntry(AwsClientProperties.CLIENT_REGION, "eu-central-1");
+    assertThat(second).containsEntry(AwsClientProperties.CLIENT_REGION, "eu-central-1");
+  }
+
+  @Test
+  public void testGetFileIOConfigS3ConfiguredRegionSkipsDiscovery() {
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://my-bucket");
+    props.setProperty("s3.region.0", "us-west-2");
+    props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
+    @SuppressWarnings("unchecked")
+    Supplier<S3ClientBuilder> supplier = mock(Supplier.class);
+    FileOperations fileOps =
+        new FileOperationsImpl(awsCredentialVendor(), new ServerProperties(props), supplier);
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
+
+    assertThat(config).containsEntry(AwsClientProperties.CLIENT_REGION, "us-west-2");
+    verify(supplier, never()).get();
+  }
+
+  @Test
+  public void testGetFileIOConfigS3ResolvesRegionFromExceptionHeader() {
+    // A cross-region (301) or access-denied (403) HeadBucket still carries x-amz-bucket-region.
+    S3Client s3 = mock(S3Client.class);
+    when(s3.headBucket(any(HeadBucketRequest.class)))
+        .thenThrow(s3ExceptionWithBucketRegion(301, "ap-south-1"));
+    FileOperations fileOps = fileOpsWithDiscoveryClient(s3);
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://cross-region-bucket/table"));
+
+    assertThat(config).containsEntry(AwsClientProperties.CLIENT_REGION, "ap-south-1");
+  }
+
+  @Test
+  public void testGetFileIOConfigS3UndeterminableRegionThrowsFailedPrecondition() {
+    // A definitive 4xx with no region header: the region cannot be determined, so fail permanently.
+    S3Client s3 = mock(S3Client.class);
+    when(s3.headBucket(any(HeadBucketRequest.class)))
+        .thenThrow(s3ExceptionWithBucketRegion(404, null));
+    FileOperations fileOps = fileOpsWithDiscoveryClient(s3);
+
+    assertThatThrownBy(
+            () -> fileOps.getFileIOConfig(NormalizedURL.from("s3://missing-bucket/table")))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.FAILED_PRECONDITION))
+        .hasMessageContaining("missing-bucket");
+  }
+
+  @Test
+  public void testGetFileIOConfigS3TransientDiscoveryFailureIsRetriableAndNotCached() {
+    // A network/SDK failure leaves the region undetermined: retriable (not a permanent 400), and
+    // the failure is not cached, so a later call re-attempts discovery.
+    S3Client s3 = mock(S3Client.class);
+    when(s3.headBucket(any(HeadBucketRequest.class)))
+        .thenThrow(SdkClientException.create("connection reset"))
+        .thenReturn(HeadBucketResponse.builder().bucketRegion("us-east-2").build());
+    FileOperations fileOps = fileOpsWithDiscoveryClient(s3);
+    NormalizedURL path = NormalizedURL.from("s3://flaky-bucket/table");
+
+    assertThatThrownBy(() -> fileOps.getFileIOConfig(path))
+        .isInstanceOfSatisfying(
+            BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INTERNAL));
+
+    assertThat(fileOps.getFileIOConfig(path))
+        .containsEntry(AwsClientProperties.CLIENT_REGION, "us-east-2");
+    verify(s3, times(2)).headBucket(any(HeadBucketRequest.class));
+  }
+
+  @Test
+  public void testGetFileIOConfigS3ServiceErrorWithoutRegionIsRetriable() {
+    // A 5xx (or throttling) HeadBucket with no region header is transient, not a permanent 400.
+    S3Client s3 = mock(S3Client.class);
+    when(s3.headBucket(any(HeadBucketRequest.class)))
+        .thenThrow(s3ExceptionWithBucketRegion(503, null));
+    FileOperations fileOps = fileOpsWithDiscoveryClient(s3);
+
+    assertThatThrownBy(() -> fileOps.getFileIOConfig(NormalizedURL.from("s3://throttled/table")))
+        .isInstanceOfSatisfying(
+            BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INTERNAL));
+  }
+
+  @Test
+  public void testGetFileIOConfigS3SuccessWithoutRegionThrowsFailedPrecondition() {
+    // A 200 HeadBucket that carries no region cannot be resolved; fail rather than cache null.
+    S3Client s3 = mock(S3Client.class);
+    when(s3.headBucket(any(HeadBucketRequest.class)))
+        .thenReturn(HeadBucketResponse.builder().build());
+    FileOperations fileOps = fileOpsWithDiscoveryClient(s3);
+
+    assertThatThrownBy(() -> fileOps.getFileIOConfig(NormalizedURL.from("s3://no-region/table")))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.FAILED_PRECONDITION));
+  }
+
+  @Test
+  public void testGetFileIOConfigS3ThrottlingWithoutRegionIsRetriable() {
+    // A throttling HeadBucket with a sub-500 status is transient via isThrottlingException(),
+    // independent of the status-code check (which the 503 case already covers).
+    S3Client s3 = mock(S3Client.class);
+    S3Exception throttled = mock(S3Exception.class);
+    when(throttled.statusCode()).thenReturn(400);
+    when(throttled.isThrottlingException()).thenReturn(true);
+    when(s3.headBucket(any(HeadBucketRequest.class))).thenThrow(throttled);
+    FileOperations fileOps = fileOpsWithDiscoveryClient(s3);
+
+    assertThatThrownBy(() -> fileOps.getFileIOConfig(NormalizedURL.from("s3://throttled/table")))
+        .isInstanceOfSatisfying(
+            BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INTERNAL));
+  }
+
+  @Test
+  public void testGetFileIOConfigS3RequestTimeoutIsRetriable() {
+    // A 408 Request Timeout with no region header is transient, not a permanent misconfiguration.
+    S3Client s3 = mock(S3Client.class);
+    when(s3.headBucket(any(HeadBucketRequest.class)))
+        .thenThrow(s3ExceptionWithBucketRegion(408, null));
+    FileOperations fileOps = fileOpsWithDiscoveryClient(s3);
+
+    assertThatThrownBy(() -> fileOps.getFileIOConfig(NormalizedURL.from("s3://timeout-408/table")))
+        .isInstanceOfSatisfying(
+            BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INTERNAL));
   }
 }

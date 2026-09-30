@@ -19,6 +19,9 @@
 # Clients.
 /clients/ @tdas @openinx @yili-db
 
+# Examples, CLI.
+/examples/ @tdas @openinx @yili-db
+
 # Integration tests.
 /integration-tests/ @tdas @openinx @yili-db
 

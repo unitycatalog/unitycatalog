@@ -337,7 +337,12 @@ public class TableRepository {
         session -> {
           TableInfoDAO dao = findTableOrThrow(session, catalog, schema, table);
           requireDeltaTable(dao, catalog, schema, table);
-          RepositoryUtils.lockTableForCommit(session, dao, dao.getId(), Optional.of(tableFullName));
+          RepositoryUtils.lockTableForCommit(
+              session,
+              dao,
+              dao.getId(),
+              Optional.of(tableFullName),
+              ErrorCode.COMMIT_STATE_UNKNOWN);
           // assert-table-uuid is stable identity, so check it up front. assert-etag is deferred to
           // after the apply, captured here against pre-apply state: a commit advances the etag, and
           // an idempotent replay must bypass the etag entirely (it throws mid-apply and rolls back
@@ -645,7 +650,14 @@ public class TableRepository {
                     + " REST catalog: "
                     + fullName);
           }
-          RepositoryUtils.lockTableForCommit(session, dao, dao.getId(), Optional.of(fullName));
+          // Iceberg gets a retryable conflict (409), not the Delta callers' unknown-outcome 500;
+          // see RepositoryUtils.lockTableForCommit for why the metadata-location CAS makes it safe.
+          RepositoryUtils.lockTableForCommit(
+              session,
+              dao,
+              dao.getId(),
+              Optional.of(fullName),
+              ErrorCode.UPDATE_REQUIREMENT_CONFLICT);
           if (!Objects.equals(dao.getIcebergMetadataLocation(), expectedMetadataLocation)) {
             throw new BaseException(
                 ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
