@@ -36,7 +36,6 @@ public class SdkVolumeCRUDTest extends BaseVolumeCRUDTest {
 
   @Test
   public void testGetAndDeleteVolumeThatDoesNotExist() throws ApiException {
-    createCommonResources();
     String missingVolume = TestUtils.SCHEMA_FULL_NAME + ".no_such_volume";
 
     // Both paths read the volume through VolumeRepository.getVolume, which looked up the DAO and
@@ -54,7 +53,6 @@ public class SdkVolumeCRUDTest extends BaseVolumeCRUDTest {
 
   @Test
   public void testCreateExternalVolumeRejectsCloudStorageRoot() throws ApiException {
-    createCommonResources();
     CreateVolumeRequestContent request =
         new CreateVolumeRequestContent()
             .name("root_location_volume")

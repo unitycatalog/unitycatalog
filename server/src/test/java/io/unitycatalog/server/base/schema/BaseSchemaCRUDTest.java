@@ -9,25 +9,11 @@ import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.UpdateCatalog;
 import io.unitycatalog.client.model.UpdateSchema;
-import io.unitycatalog.server.base.BaseCRUDTest;
-import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.Optional;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
-
-  protected SchemaOperations schemaOperations;
-
-  protected abstract SchemaOperations createSchemaOperations(ServerConfig config);
-
-  @BeforeEach
-  @Override
-  public void setUp() {
-    super.setUp();
-    schemaOperations = createSchemaOperations(serverConfig);
-  }
+public abstract class BaseSchemaCRUDTest extends BaseSchemaCRUDTestEnv {
 
   @Test
   public void testSchemaCRUDL() throws ApiException {

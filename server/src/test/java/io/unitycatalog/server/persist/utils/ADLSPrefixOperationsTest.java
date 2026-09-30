@@ -24,9 +24,9 @@ import com.azure.storage.file.datalake.models.DataLakeStorageException;
 import com.azure.storage.file.datalake.models.ListPathsOptions;
 import com.azure.storage.file.datalake.models.PathItem;
 import io.unitycatalog.server.cleanup.StorageCleanupWorker;
+import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -344,7 +344,7 @@ class ADLSPrefixOperationsTest {
         .thenAnswer(ignored -> paths.remove(DIRECTORY + "/data") != null);
     StorageCleanupTaskRepository repository = mock(StorageCleanupTaskRepository.class);
     UUID token = UUID.randomUUID();
-    Claim claim = new Claim(ResourceType.TABLE, RESOURCE_ID, CONTAINER + DIRECTORY, token);
+    Claim claim = new Claim(ManagedResourceType.TABLE, RESOURCE_ID, CONTAINER + DIRECTORY, token);
     when(repository.claim(any(), any()))
         .thenReturn(Optional.of(claim), Optional.of(claim), Optional.empty());
     CountDownLatch reported = new CountDownLatch(1);
