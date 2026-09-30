@@ -11,6 +11,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 public class CaffeineCacheTest {
 
@@ -43,13 +45,20 @@ public class CaffeineCacheTest {
     assertTrue(cache.getIfPresent("k").isEmpty());
   }
 
-  @Test
-  void alreadyExpiredEntryIsNotReturned() {
-    // expiry in the past → Caffeine drops it immediately.
-    CaffeineCache<String, String> cache =
-        new CaffeineCache<>(10, v -> System.currentTimeMillis() - 1);
-    cache.put("k", "v");
-    assertTrue(cache.getIfPresent("k").isEmpty());
+  @ParameterizedTest
+  @CsvSource({"999, false", "1000, false", "1001, true"})
+  void createAndUpdateRespectExpiryBoundary(long expiresAt, boolean present) {
+    Clock clock = mock(Clock.class);
+    when(clock.instant()).thenReturn(Instant.ofEpochMilli(1000L));
+    CaffeineCache<String, Long> cache = new CaffeineCache<>(10, v -> v, clock);
+
+    cache.put("created", expiresAt);
+    cache.put("updated", 2000L);
+    cache.put("updated", expiresAt);
+
+    Optional<Long> expected = present ? Optional.of(expiresAt) : Optional.empty();
+    assertEquals(expected, cache.getIfPresent("created"));
+    assertEquals(expected, cache.getIfPresent("updated"));
   }
 
   @Test

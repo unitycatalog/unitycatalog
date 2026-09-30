@@ -14,6 +14,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiPredicate;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class ReadThroughCacheTest {
 
@@ -75,6 +78,34 @@ public class ReadThroughCacheTest {
 
     assertEquals("loaded", result);
     assertEquals(Optional.of("loaded"), store.getIfPresent("k"));
+    assertEquals("loaded", cache.get("k", () -> "unexpected reload"));
+  }
+
+  @ParameterizedTest
+  @NullSource
+  @ValueSource(strings = "stale")
+  void rejectedLoadedValueIsReturnedWithoutCaching(String existingValue) {
+    MapCache<String, String> store = new MapCache<>();
+    if (existingValue != null) {
+      store.put("k", existingValue);
+    }
+    ReadThroughCache<String, String> cache =
+        new ReadThroughCache<>(store, (key, value) -> value.equals("fresh"));
+    AtomicInteger loads = new AtomicInteger();
+
+    String result =
+        cache.get(
+            "k",
+            () -> {
+              assertEquals(1, loads.incrementAndGet(), "must not retry a rejected loaded value");
+              return "not reusable";
+            });
+
+    assertEquals("not reusable", result);
+    assertEquals(1, loads.get());
+    assertEquals(Optional.ofNullable(existingValue), store.getIfPresent("k"));
+    assertEquals("fresh", cache.get("k", () -> "fresh"));
+    assertEquals(Optional.of("fresh"), store.getIfPresent("k"));
   }
 
   // --- Loader throws: propagates, store not poisoned ---

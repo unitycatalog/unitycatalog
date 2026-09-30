@@ -7,10 +7,10 @@ import java.util.function.Supplier;
 
 /**
  * Read-through loading over a {@link Cache}. Returns a cached value only when it is present and the
- * validator accepts it; otherwise it loads synchronously on the caller's thread, stores, and
- * returns the loaded value (no re-read, so a freshly loaded value near its expiry is still returned
- * rather than triggering a reload loop). The loader is supplied per call because a credential vend
- * needs its full context, not just the key.
+ * validator accepts it; otherwise it loads synchronously on the caller's thread and returns the
+ * loaded value. A loaded value is stored only if the validator accepts it; rejection skips the
+ * cache write without retrying the loader. The loader is supplied per call because a credential
+ * vend needs its full context, not just the key.
  *
  * <p>Concurrent misses load independently. Each caller receives its own loaded value, and the last
  * write determines the stored value. Every subsequent hit still goes through validation.
@@ -38,7 +38,9 @@ public class ReadThroughCache<K, V> {
     if (loaded == null) {
       throw new IllegalStateException("loader must return a non-null value");
     }
-    cache.put(key, loaded);
+    if (valid.test(key, loaded)) {
+      cache.put(key, loaded);
+    }
     return loaded;
   }
 }
