@@ -21,7 +21,8 @@ import java.util.Optional;
  * privileges, scheme, roleArn, externalId)}. Sits inside {@link
  * io.unitycatalog.server.service.credential.StorageCredentialVendor} after the (never-cached) DB
  * binding resolution: on a hit it skips the cloud vend; on miss/stale/rebind it re-vends. The value
- * is validated on every hit ({@code matches && fresh}); any cache-layer failure is non-terminal.
+ * is validated on every hit ({@code matches && fresh}). Ordinary backend exceptions degrade to
+ * misses/no-ops; interruptions and {@link Error}s propagate.
  *
  * <p>A {@link Clock} is injected so freshness is deterministic under test; production uses {@link
  * Clock#systemUTC()}. The same clock drives both the freshness validator and the L1 expiry ticker.

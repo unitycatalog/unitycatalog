@@ -439,9 +439,8 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
    * Catalog server and serves credential generation requests from client REST API calls.
    */
   public abstract static class TimeBasedCredGenerator<T> {
-    // Counts server-side vends (one per generate() call). Static because the server instantiates a
-    // fresh generator per vend; a server-cache hit skips the vend, so this counter does not
-    // advance.
+    // Counts generate() calls across test generator instances; server-cache hits do not increment
+    // it.
     static final AtomicInteger GENERATE_COUNT = new AtomicInteger();
 
     public T generate(CredentialContext ignored) {
