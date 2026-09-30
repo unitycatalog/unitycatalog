@@ -42,11 +42,8 @@ port is already in use, startup fails; the server does not select another port.
 
 ### `GET /livez` — liveness
 
-Returns `200 OK` with body `{"healthy":true}` while the process is serving and not yet shutting
-down. This check does **not** touch the database; it answers immediately from the request-handling
-thread. Once graceful shutdown begins, both `/livez` and `/readyz` return `503` while in-flight
-requests drain, so size the liveness probe's `failureThreshold`/`periodSeconds` such that a normal
-drain does not trip a restart.
+Returns `200 OK` with body `{"healthy":true}` while the process is serving. This check does **not**
+touch the database; it answers immediately from the request-handling thread.
 
 Use this endpoint to tell an orchestrator whether the process is alive and should be
 restarted if it stops responding.
@@ -68,19 +65,17 @@ Key implementation details:
   returns the cached result of the last check).
 - The endpoint **fails closed**: it reports not-ready until the first successful database
   check completes after startup.
-- During graceful shutdown the endpoint flips to `503` so that load balancers and
-  orchestrators drain traffic before the process exits.
 - The probe interval and the database check timeout are configurable:
   `server.readiness.probe-interval` (default `PT5S`) and `server.readiness.db-timeout`
   (default `PT2S`). The timeout bounds only the validity check, **not** connection
   acquisition — bound a down or unreachable database with the connection pool's connect
   timeout instead.
 
-Use this endpoint to control routing: add it as the readiness probe and as the health check
-for load balancer target groups. If your load balancer health-checks a port it also routes
-traffic to, point that health check at `/readyz` on the observability port (load balancers allow a
-health-check port distinct from the traffic port) — it is drain-aware, whereas a static root
-response is not and would keep the target in rotation during a rolling deploy.
+Use this endpoint to control routing: add it as the readiness probe and as the health check for
+load balancer target groups. If your load balancer health-checks a port it also routes traffic to,
+point that health check at `/readyz` on the observability port (load balancers allow a health-check
+port distinct from the traffic port) so routing reflects database readiness rather than a static
+root response.
 
 ```sh
 curl -i http://localhost:8090/readyz
