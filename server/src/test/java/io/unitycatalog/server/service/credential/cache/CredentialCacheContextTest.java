@@ -85,8 +85,8 @@ public class CredentialCacheContextTest {
   }
 
   @Test
-  void fresh_oneSecondInsideLead_returnsFalse() {
-    // lead=60s, T1 = now+1s → 1s inside lead window → must re-vend
+  void fresh_oneSecondBeforeExpiry_returnsFalse() {
+    // Expiry is one second away, inside the 60-second renewal window: must re-vend.
     long now = 1_000_000L;
     long lead = 60_000L;
     assertFalse(ctx("r", now + 1_000L, now + 600_000L).fresh(now, lead));
