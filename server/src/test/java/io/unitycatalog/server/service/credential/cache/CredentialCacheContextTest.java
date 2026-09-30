@@ -93,20 +93,6 @@ public class CredentialCacheContextTest {
   }
 
   @Test
-  void fresh_leadZero_justBeforeT1_returnsTrue() {
-    long now = 1_000_000L;
-    // lead=0: now < T1 → fresh (no subtraction)
-    assertTrue(ctx("r", now + 1L, now + 600_000L).fresh(now, 0L));
-  }
-
-  @Test
-  void fresh_leadZero_atT1_returnsFalse() {
-    long now = 1_000_000L;
-    // lead=0: now == T1 → not fresh (condition is strictly-less-than)
-    assertFalse(ctx("r", now, now + 600_000L).fresh(now, 0L));
-  }
-
-  @Test
   void fresh_t2ExpiredWhileT1StillValid_returnsFalse() {
     long now = 1_000_000L;
     long lead = 60_000L;
@@ -131,17 +117,20 @@ public class CredentialCacheContextTest {
     assertFalse(ctx("r", null, now - 1).fresh(now, lead));
   }
 
-  @Test
-  void fresh_exactLeadBoundary_returnsFalse() { // Gap 2
-    long now = 1_000_000L, lead = 60_000L;
-    // T1-lead == now -> strict < -> false
-    assertFalse(ctx("r", now + lead, now + 600_000L).fresh(now, lead));
-  }
-
-  @Test
-  void fresh_oneMsBeyondLeadBoundary_returnsTrue() { // Gap 2
-    long now = 1_000_000L, lead = 60_000L;
-    assertTrue(ctx("r", now + lead + 1, now + 600_000L).fresh(now, lead));
+  @ParameterizedTest
+  @CsvSource({
+    "-1, 60000, false",
+    "0, 60000, false",
+    "59999, 60000, false",
+    "60000, 60000, false",
+    "60001, 60000, true",
+    "-1, 0, false",
+    "0, 0, false",
+    "1, 0, true"
+  })
+  void fresh_checksT1RenewalBoundary(long remainingTtlMs, long leadMs, boolean fresh) {
+    long now = 1_000_000L;
+    assertEquals(fresh, ctx("r", now + remainingTtlMs, now + 600_000L).fresh(now, leadMs));
   }
 
   @Test
