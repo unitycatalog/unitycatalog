@@ -274,6 +274,18 @@ public class ServerPropertiesTest {
   }
 
   @Test
+  public void testObservabilityConfiguration() {
+    ServerProperties properties = new ServerProperties(new Properties());
+    assertThat(properties.isObservabilityEnabled()).isFalse();
+    properties.set(Property.OBSERVABILITY_ENABLED, "true");
+    assertThat(properties.isObservabilityEnabled()).isTrue();
+    properties.set(Property.OBSERVABILITY_ENABLED, "false");
+    assertThat(properties.isObservabilityEnabled()).isFalse();
+    testInvalidProperty(
+        Property.OBSERVABILITY_ENABLED, "invalid", "server.observability.enabled", "Invalid value");
+  }
+
+  @Test
   public void testReadinessConfiguration() {
     // Defaults
     ServerProperties defaults = new ServerProperties();
@@ -299,31 +311,6 @@ public class ServerPropertiesTest {
         "2 seconds",
         "Invalid value '2 seconds'",
         "server.readiness.db-timeout");
-  }
-
-  @Test
-  public void testObservabilityPort() {
-    // Default keeps the observability port clear of the API ports (8080/8081).
-    assertThat(new ServerProperties().getObservabilityPort()).isEqualTo(8090);
-
-    // Custom override is picked up.
-    Properties custom = new Properties();
-    custom.setProperty(Property.OBSERVABILITY_PORT.getKey(), "9464");
-    assertThat(new ServerProperties(custom).getObservabilityPort()).isEqualTo(9464);
-
-    // Invalid: non-positive and non-integer values are rejected.
-    testInvalidProperty(
-        Property.OBSERVABILITY_PORT,
-        "0",
-        "Invalid value '0'",
-        "server.observability.port",
-        "Expected a positive integer (> 0)");
-    testInvalidProperty(
-        Property.OBSERVABILITY_PORT,
-        "abc",
-        "Invalid value 'abc'",
-        "server.observability.port",
-        "Expected an integer");
   }
 
   @Test

@@ -52,7 +52,6 @@ import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.ServerProperties;
-import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
@@ -172,24 +171,18 @@ public class UnityCatalogServer implements AutoCloseable {
     ArmeriaServerBuilder armeriaServerBuilder =
         new ArmeriaServerBuilder(
             unityCatalogServerBuilder.port,
-            unityCatalogServerBuilder.serverProperties.getObservabilityPort(),
             BASE_PATH,
             CONTROL_PATH,
             unityCatalogServerBuilder.serverProperties);
 
-    // Metrics: one Prometheus registry owned by this server instance. Armeria records its own
-    // request metrics into it (via meterRegistry + the MetricCollectingService decorator);
-    // /metrics scrapes it. Held as a field so close() can release the JVM/GC binders on shutdown.
-    // Served on the dedicated observability port (not the API listener), since it exposes
-    // request/table counters.
-    metrics = MetricsRegistries.createPrometheus();
-    PrometheusMeterRegistry meterRegistry = metrics.registry();
-    UnityCatalogMetrics domainMetrics = new UnityCatalogMetrics(meterRegistry);
-    armeriaServerBuilder.meterRegistry(meterRegistry);
-    armeriaServerBuilder.observabilityService(
-        "/metrics", PrometheusExpositionService.of(meterRegistry.getPrometheusRegistry()));
-
-    // Init all repositories
+    UnityCatalogMetrics domainMetrics = null;
+    if (unityCatalogServerBuilder.serverProperties.isObservabilityEnabled()) {
+      domainMetrics =
+          initializeObservability(
+              armeriaServerBuilder,
+              unityCatalogServerBuilder.observabilityPort,
+              unityCatalogServerBuilder.serverProperties);
+    }
     Repositories repositories =
         new Repositories(
             hibernateConfigurator.getSessionFactory(),
@@ -213,6 +206,21 @@ public class UnityCatalogServer implements AutoCloseable {
         armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
     initializeCleanup(unityCatalogServerBuilder.serverProperties, repositories);
 
+    return armeriaServerBuilder.build();
+  }
+
+  private UnityCatalogMetrics initializeObservability(
+      ArmeriaServerBuilder armeriaServerBuilder,
+      int observabilityPort,
+      ServerProperties serverProperties) {
+    armeriaServerBuilder.observabilityPort(observabilityPort);
+    // This server owns the registry and releases its JVM/GC binders on close().
+    metrics = MetricsRegistries.createPrometheus();
+    PrometheusMeterRegistry meterRegistry = metrics.registry();
+    armeriaServerBuilder.meterRegistry(meterRegistry);
+    armeriaServerBuilder.observabilityService(
+        "/metrics", PrometheusExpositionService.of(meterRegistry.getPrometheusRegistry()));
+
     // Observability: unauthenticated liveness probe on the observability port. HealthCheckService
     // .of() has no checkers, so it is healthy while the process is serving and never touches the
     // DB. Like /readyz it flips to 503 once graceful shutdown begins (HealthCheckService drains on
@@ -226,8 +234,8 @@ public class UnityCatalogServer implements AutoCloseable {
     DbReadinessChecker readinessChecker =
         DbReadinessChecker.forSessionFactory(
             hibernateConfigurator.getSessionFactory(),
-            unityCatalogServerBuilder.serverProperties.getReadinessProbeInterval(),
-            unityCatalogServerBuilder.serverProperties.getReadinessDbTimeout());
+            serverProperties.getReadinessProbeInterval(),
+            serverProperties.getReadinessDbTimeout());
     armeriaServerBuilder.observabilityService(
         "/readyz", HealthCheckService.builder().checkers(readinessChecker.healthChecker()).build());
     armeriaServerBuilder.serverListener(
@@ -235,8 +243,7 @@ public class UnityCatalogServer implements AutoCloseable {
             .whenStarting(server -> readinessChecker.start())
             .whenStopped(server -> readinessChecker.close())
             .build());
-
-    return armeriaServerBuilder.build();
+    return new UnityCatalogMetrics(meterRegistry);
   }
 
   private void initializeCleanup(ServerProperties serverProperties, Repositories repositories) {
@@ -379,12 +386,15 @@ public class UnityCatalogServer implements AutoCloseable {
     options.parse(args);
     int clientPort = options.getPort();
     ServerProperties serverProperties = new ServerProperties(SERVER_PROPERTIES_FILE);
-    int observabilityPort = resolveObservabilityPort(clientPort, serverProperties);
-    serverProperties.set(Property.OBSERVABILITY_PORT, String.valueOf(observabilityPort));
+    int observabilityPort =
+        serverProperties.isObservabilityEnabled()
+            ? resolveObservabilityPort(clientPort, options.getObservabilityPort())
+            : 0;
     // Start Unity Catalog server
     UnityCatalogServer unityCatalogServer =
         UnityCatalogServer.builder()
             .port(clientPort + 1)
+            .observabilityPort(observabilityPort)
             .serverProperties(serverProperties)
             .build();
     unityCatalogServer.printArt();
@@ -404,16 +414,12 @@ public class UnityCatalogServer implements AutoCloseable {
     }
   }
 
-  static int resolveObservabilityPort(int clientPort, ServerProperties serverProperties) {
+  static int resolveObservabilityPort(int clientPort, int configuredPort) {
     int observabilityPort =
-        serverProperties.isConfigured(Property.OBSERVABILITY_PORT)
-            ? serverProperties.getObservabilityPort()
-            : clientPort + 2;
+        ArmeriaServerBuilder.resolveObservabilityPort(clientPort + 1, configuredPort);
     if (observabilityPort == clientPort) {
       throw new IllegalArgumentException(
-          String.format(
-              "server.observability.port (%d) must differ from the client-facing port (%d)",
-              observabilityPort, clientPort));
+          "Observability port is already used by the client-facing listener: " + clientPort);
     }
     return observabilityPort;
   }
@@ -477,6 +483,7 @@ public class UnityCatalogServer implements AutoCloseable {
 
   public static class Builder {
     private int port;
+    private int observabilityPort;
     private ServerProperties serverProperties;
     private HibernateConfigurator hibernateConfigurator;
     private CloudCredentialVendor cloudCredentialVendor;
@@ -486,6 +493,12 @@ public class UnityCatalogServer implements AutoCloseable {
 
     public UnityCatalogServer.Builder port(int port) {
       this.port = port;
+      return this;
+    }
+
+    /** Sets the observability port; 0 selects the port immediately after the internal API port. */
+    public UnityCatalogServer.Builder observabilityPort(int observabilityPort) {
+      this.observabilityPort = observabilityPort;
       return this;
     }
 

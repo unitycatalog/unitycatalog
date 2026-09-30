@@ -59,12 +59,7 @@ public class Repositories {
       ServerProperties serverProperties,
       CloudCredentialVendor cloudCredentialVendor,
       UnaryOperator<FileOperations> fileOperationsDecorator) {
-    this(
-        sessionFactory,
-        serverProperties,
-        cloudCredentialVendor,
-        fileOperationsDecorator,
-        new UnityCatalogMetrics(new CompositeMeterRegistry()));
+    this(sessionFactory, serverProperties, cloudCredentialVendor, fileOperationsDecorator, null);
   }
 
   /**
@@ -74,7 +69,7 @@ public class Repositories {
    *     late-binding.
    * @param fileOperationsDecorator wraps the default {@link FileOperations} before use ({@link
    *     UnaryOperator#identity()} leaves it unchanged); lets tests map cloud IO to local storage.
-   * @param metrics the domain metrics used by these repositories
+   * @param metrics the domain metrics, or {@code null} for no-op metrics
    */
   public Repositories(
       SessionFactory sessionFactory,
@@ -82,7 +77,9 @@ public class Repositories {
       CloudCredentialVendor cloudCredentialVendor,
       UnaryOperator<FileOperations> fileOperationsDecorator,
       UnityCatalogMetrics metrics) {
-    Objects.requireNonNull(metrics, "metrics");
+    UnityCatalogMetrics resolvedMetrics =
+        Objects.requireNonNullElseGet(
+            metrics, () -> new UnityCatalogMetrics(new CompositeMeterRegistry()));
     this.sessionFactory = sessionFactory;
     this.externalLocationUtils = new ExternalLocationUtils(sessionFactory);
     CloudCredentialVendor resolvedCloudCredentialVendor =
@@ -98,7 +95,7 @@ public class Repositories {
     this.catalogRepository = new CatalogRepository(this, sessionFactory);
     this.schemaRepository = new SchemaRepository(this, sessionFactory);
     this.tableRepository =
-        new TableRepository(this, sessionFactory, serverProperties, metrics.tables());
+        new TableRepository(this, sessionFactory, serverProperties, resolvedMetrics.getTables());
     this.stagingTableRepository =
         new StagingTableRepository(this, sessionFactory, serverProperties);
     this.volumeRepository = new VolumeRepository(this, sessionFactory);

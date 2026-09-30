@@ -96,8 +96,6 @@ public abstract class BaseServerTest {
       Files.createDirectories(testDirectoryRoot);
 
       setUpProperties();
-      serverProperties.setProperty(
-          Property.OBSERVABILITY_PORT.getKey(), String.valueOf(observabilityPort));
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
       setUpCredentialOperations(initServerProperties);
       Properties hibernateProperties =
@@ -107,6 +105,7 @@ public abstract class BaseServerTest {
       unityCatalogServer =
           UnityCatalogServer.builder()
               .port(port)
+              .observabilityPort(observabilityPort)
               .serverProperties(initServerProperties)
               .hibernateConfigurator(hibernateConfigurator)
               .credentialOperations(cloudCredentialVendor)

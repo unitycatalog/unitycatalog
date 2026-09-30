@@ -1,16 +1,34 @@
 # Observability
 
-Unity Catalog exposes three unauthenticated HTTP endpoints for health checking and metrics
-collection: `/livez`, `/readyz`, and `/metrics`. They are served on a **dedicated observability
-port** (by default, the client port plus 2), separate from the catalog API port, and are always
-enabled — there is no configuration flag to disable them. With the default client port of `8080`,
-the internal API port is `8081` and the observability port is `8082`.
+Unity Catalog can expose three unauthenticated HTTP endpoints for health checking and metrics
+collection: `/livez`, `/readyz`, and `/metrics`. Observability is **disabled by default**: no extra
+listener, Prometheus registry, or background readiness probe is started. To enable it, first
+restrict network access as described below, then set this in `etc/conf/server.properties`:
+
+```properties
+server.observability.enabled=true
+```
+
+Restart the server for this setting to take effect.
+
+When enabled, the endpoints are served on a **dedicated observability port** (by default `8090`),
+separate from the catalog API port. With the default client port of `8080`, the internal API port
+is `8081` and the observability port is `8090`.
 
 The observability port is a second port on the *same* server as the API — not a separate server —
 so both listeners share one process and fail together. Serving these endpoints on their own port
 keeps them (in particular `/metrics`, which exposes operational counters) off the main API
-listener: they answer on the observability port and are `404` on the API port. Set
-`server.observability.port` to override the derived client-port-plus-2 value.
+listener: they answer on the observability port and are `404` on the API port. Use `--obs-port` to
+override the default:
+
+```sh
+bin/start-uc-server --port 8080 --obs-port 9464
+```
+
+Omitting `--obs-port` uses `8090`; setting it to `0` selects the automatic value (`--port + 2`).
+This option only selects the port; it does not enable observability.
+The resolved port must be between `1` and `65535` and differ from both API ports. If any required
+port is already in use, startup fails; the server does not select another port.
 
 !!! warning "Network exposure"
     These endpoints are unauthenticated by design so that orchestrators and Prometheus
@@ -34,7 +52,7 @@ Use this endpoint to tell an orchestrator whether the process is alive and shoul
 restarted if it stops responding.
 
 ```sh
-curl http://localhost:8082/livez
+curl http://localhost:8090/livez
 # {"healthy":true}
 ```
 
@@ -65,7 +83,7 @@ health-check port distinct from the traffic port) — it is drain-aware, whereas
 response is not and would keep the target in rotation during a rolling deploy.
 
 ```sh
-curl -i http://localhost:8082/readyz
+curl -i http://localhost:8090/readyz
 # HTTP/1.1 200 OK  (database reachable)
 # {"healthy":true}
 
@@ -107,7 +125,7 @@ Collector, etc.).
     those libraries are upgraded; pin dashboards and alerts with that in mind.
 
 ```sh
-curl http://localhost:8082/metrics
+curl http://localhost:8090/metrics
 # HELP jvm_memory_used_bytes ...
 # TYPE jvm_memory_used_bytes gauge
 # jvm_memory_used_bytes{area="heap",...} 1.23456789E8
@@ -127,10 +145,10 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets:
-          - uc-server-host:8082
+          - uc-server-host:8090
 ```
 
-Replace `uc-server-host:8082` with the hostname and observability port of your Unity Catalog
+Replace `uc-server-host:8090` with the hostname and observability port of your Unity Catalog
 server.
 
 ### Kubernetes probes
@@ -144,7 +162,7 @@ containers:
       - name: http
         containerPort: 8080
       - name: observability
-        containerPort: 8082
+        containerPort: 8090
     livenessProbe:
       httpGet:
         path: /livez

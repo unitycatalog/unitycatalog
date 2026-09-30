@@ -71,6 +71,7 @@ public class ArmeriaServerBuilder {
   static final String ICEBERG_RELATIVE_PATH = "iceberg";
 
   private final ServerBuilder armeriaServerBuilder;
+  private final int port;
 
   /**
    * Port-based virtual host bound to the API port. The whole API surface -- annotated services, the
@@ -85,9 +86,10 @@ public class ArmeriaServerBuilder {
    * Port-based virtual host bound to the dedicated observability port. {@code /livez}, {@code
    * /readyz}, and {@code /metrics} are registered here (via {@link #observabilityService}), so they
    * are served only on that port. It is a second port on the same {@link Server}, never a separate
-   * server, so both listeners share one lifecycle and start and stop together.
+   * server, so both listeners share one lifecycle and start and stop together. Null when
+   * observability is disabled.
    */
-  private final VirtualHostBuilder observabilityVirtualHost;
+  private VirtualHostBuilder observabilityVirtualHost;
 
   private final String basePath;
   private final String controlPath;
@@ -110,34 +112,13 @@ public class ArmeriaServerBuilder {
   private final JacksonResponseConverterFunction deltaResponseConverter;
 
   ArmeriaServerBuilder(
-      int port,
-      int observabilityPort,
-      String basePath,
-      String controlPath,
-      ServerProperties serverProperties) {
-    // The API and observability endpoints are two ports on one server, isolated by being on
-    // separate port-based virtual hosts. If the two ports were equal, both virtual hosts would bind
-    // the same port and the surfaces would collapse onto one listener -- putting /metrics and the
-    // probes back on the serving interface. Fail fast rather than silently weaken the isolation.
-    if (observabilityPort == port) {
-      throw new IllegalArgumentException(
-          String.format(
-              "server.observability.port (%d) must differ from the API port (%d): they are two"
-                  + " ports on the same server, and sharing one port would collapse the API and the"
-                  + " observability endpoints onto a single listener.",
-              observabilityPort, port));
-    }
+      int port, String basePath, String controlPath, ServerProperties serverProperties) {
+    this.port = port;
     this.armeriaServerBuilder =
         Server.builder()
             // The launcher URL transcoder fronts this loopback-only API port. Local callers and
             // tests can still address it directly.
             .localPort(port, SessionProtocol.HTTP)
-            // Second port on the SAME server (not a separate Server) for the observability
-            // endpoints. Both listeners share one JVM and Server lifecycle, so they start and stop
-            // together while keeping /metrics and the probes off the main API listener. Unlike the
-            // API port this binds all interfaces, because kubelet and Prometheus reach it at the
-            // pod IP (not loopback); restrict it with network policy.
-            .port(observabilityPort, SessionProtocol.HTTP)
             // Armeria names HTTP/1 headers in their lowercase HTTP/2 form by default. Released
             // Iceberg clients read our response headers out of a plain map keyed by the name as
             // received, so a header they look up by its traditional spelling -- "ETag" for a
@@ -151,7 +132,6 @@ public class ArmeriaServerBuilder {
     this.apiVirtualHost = armeriaServerBuilder.virtualHost(port);
     this.apiVirtualHost.serviceUnder("/docs", new DocService());
     this.apiVirtualHost.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"));
-    this.observabilityVirtualHost = armeriaServerBuilder.virtualHost(observabilityPort);
     this.basePath = basePath;
     this.controlPath = controlPath;
     // Renders the 404s and 405s Armeria answers before a service is reached as Iceberg error
@@ -241,11 +221,37 @@ public class ArmeriaServerBuilder {
     return this;
   }
 
+  /** Adds the dedicated observability listener, isolated from the API virtual host. */
+  ArmeriaServerBuilder observabilityPort(int configuredPort) {
+    int observabilityPort = resolveObservabilityPort(port, configuredPort);
+    // Bind all interfaces so kubelet and Prometheus can reach the pod IP. The operator must
+    // restrict access with network policy before opting in.
+    observabilityVirtualHost =
+        armeriaServerBuilder
+            .port(observabilityPort, SessionProtocol.HTTP)
+            .virtualHost(observabilityPort);
+    return this;
+  }
+
+  static int resolveObservabilityPort(int apiPort, int configuredPort) {
+    int observabilityPort = configuredPort == 0 ? apiPort + 1 : configuredPort;
+    if (observabilityPort < 1 || observabilityPort > 65535) {
+      throw new IllegalArgumentException(
+          "Observability port must be between 1 and 65535: " + observabilityPort);
+    }
+    if (observabilityPort == apiPort) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Observability port (%d) is already used by an API listener", observabilityPort));
+    }
+    return observabilityPort;
+  }
+
   /**
    * Registers an unauthenticated observability service (a health probe or the metrics scrape) on
    * the dedicated observability port only. Because it is bound to the observability virtual host,
    * it answers on that port and is 404 on the API port, keeping metrics and probes off the serving
-   * interface.
+   * interface. Requires observability to be enabled.
    */
   ArmeriaServerBuilder observabilityService(String path, HttpService service) {
     observabilityVirtualHost.service(path, service);

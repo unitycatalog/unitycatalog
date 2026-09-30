@@ -36,6 +36,7 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
+    serverProperties.setProperty(Property.OBSERVABILITY_ENABLED.getKey(), "true");
     serverProperties.setProperty(Property.ICEBERG_TABLE_ENABLED.getKey(), "true");
   }
 
