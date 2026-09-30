@@ -85,7 +85,7 @@ public class SdkDeltaCredentialsTest extends BaseCRUDTestWithMockCredentials {
       DeltaStorageCredential sc = resp.getStorageCredentials().get(0);
       assertThat(sc.getOperation()).isEqualTo(DeltaCredentialOperation.READ);
       assertThat(sc.getPrefix()).startsWith("s3://");
-      assertThat(sc.getConfig().getS3AccessKeyId()).isEqualTo("accessKey0");
+      assertThat(sc.getConfig().getS3AccessKeyId()).isEqualTo(S3_ACCESS_KEY);
       assertThat(sc.getConfig().getS3SecretAccessKey()).isNotBlank();
     }
 

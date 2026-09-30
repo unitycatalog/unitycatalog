@@ -236,9 +236,7 @@ class StorageCleanupWorkerE2ETest {
   }
 
   private StorageCleanupTaskDAO findTask(UUID resourceId) {
-    try (var session = sessionFactory.openSession()) {
-      return session.get(StorageCleanupTaskDAO.class, resourceId);
-    }
+    return StorageCleanupTestSupport.findTask(sessionFactory, resourceId);
   }
 
   private UUID seedNamespace() {

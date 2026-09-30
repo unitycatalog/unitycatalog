@@ -11,7 +11,6 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.CleanupFailureReport;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import java.sql.Timestamp;
@@ -69,7 +68,7 @@ public class StorageCleanupTaskRepositoryTest {
         session ->
             repository.create(
                 session,
-                ResourceType.TABLE,
+                ManagedResourceType.TABLE,
                 resourceId,
                 "orders",
                 "s3://bucket/a/unused/../b/c///"),
@@ -94,7 +93,11 @@ public class StorageCleanupTaskRepositoryTest {
                     sessionFactory,
                     session -> {
                       repository.create(
-                          session, ResourceType.TABLE, resourceId, "orders", "s3://bucket/path");
+                          session,
+                          ManagedResourceType.TABLE,
+                          resourceId,
+                          "orders",
+                          "s3://bucket/path");
                       throw new IllegalStateException("rollback");
                     },
                     "Expected rollback",
@@ -117,7 +120,7 @@ public class StorageCleanupTaskRepositoryTest {
     Claim first = repository.claim(LEASE_DURATION, INITIAL_DELAY).orElseThrow();
     Date afterClaim = databaseNow();
     assertThat(first.resourceId()).isEqualTo(earliest.getId());
-    assertThat(first.resourceType()).isEqualTo(ResourceType.TABLE);
+    assertThat(first.resourceType()).isEqualTo(ManagedResourceType.TABLE);
     assertThat(first.storageLocation()).isEqualTo("s3://bucket/earliest");
     assertThat(get(earliest.getId()).getLeaseToken()).isEqualTo(first.leaseToken());
     assertThat(get(earliest.getId()).getLeaseExpiresAt().getTime())
@@ -182,7 +185,8 @@ public class StorageCleanupTaskRepositoryTest {
     TransactionManager.executeWithTransaction(
         sessionFactory,
         session ->
-            spied.create(session, ResourceType.TABLE, resourceId, "orders", "s3://bucket/precise"),
+            spied.create(
+                session, ManagedResourceType.TABLE, resourceId, "orders", "s3://bucket/precise"),
         "Failed to create test storage cleanup task",
         /* readOnly= */ false);
 
@@ -274,7 +278,8 @@ public class StorageCleanupTaskRepositoryTest {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session ->
-            repository.create(session, ResourceType.TABLE, UUID.randomUUID(), "orders", location),
+            repository.create(
+                session, ManagedResourceType.TABLE, UUID.randomUUID(), "orders", location),
         "Failed to create test storage cleanup task",
         /* readOnly= */ false);
   }
@@ -284,7 +289,8 @@ public class StorageCleanupTaskRepositoryTest {
         sessionFactory,
         session -> {
           StorageCleanupTaskDAO task =
-              repository.create(session, ResourceType.TABLE, UUID.randomUUID(), "orders", location);
+              repository.create(
+                  session, ManagedResourceType.TABLE, UUID.randomUUID(), "orders", location);
           task.setDeletedAt(deletedAt);
           return task;
         },

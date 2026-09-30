@@ -3,12 +3,12 @@ package io.unitycatalog.server.persist;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.VolumeType;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.TransactionManager;
@@ -167,7 +167,7 @@ class ManagedVolumeCleanupTaskTest {
               .getStorageCleanupTaskRepository()
               .create(
                   session,
-                  ResourceType.VOLUME,
+                  ManagedResourceType.VOLUME,
                   volume.getId(),
                   volume.getName(),
                   existingTaskLocation);
@@ -220,7 +220,7 @@ class ManagedVolumeCleanupTaskTest {
     assertThat(task).isNotNull();
     assertThat(task.getId()).isEqualTo(volume.getId());
     assertThat(task.getName()).isEqualTo(volume.getName());
-    assertThat(task.getResourceType()).isEqualTo(ResourceType.VOLUME);
+    assertThat(task.getResourceType()).isEqualTo(ManagedResourceType.VOLUME);
     assertThat(task.getStorageLocation())
         .isEqualTo(NormalizedURL.normalize(volume.getStorageLocation()));
     assertThat(task.getDeletedAt().getTime())
@@ -234,14 +234,10 @@ class ManagedVolumeCleanupTaskTest {
   }
 
   private StorageCleanupTaskDAO findTask(UUID id) {
-    try (var session = sessionFactory.openSession()) {
-      return session.get(StorageCleanupTaskDAO.class, id);
-    }
+    return StorageCleanupTestSupport.findTask(sessionFactory, id);
   }
 
   private List<StorageCleanupTaskDAO> allTasks() {
-    try (var session = sessionFactory.openSession()) {
-      return session.createQuery("FROM StorageCleanupTaskDAO", StorageCleanupTaskDAO.class).list();
-    }
+    return StorageCleanupTestSupport.allTasks(sessionFactory);
   }
 }

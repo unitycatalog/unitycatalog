@@ -12,10 +12,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.CleanupFailureReport;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -69,7 +69,7 @@ class StorageCleanupWorkerTest {
 
   @BeforeEach
   void setUp() {
-    setClaim(ResourceType.TABLE, LOCATION.toString());
+    setClaim(ManagedResourceType.TABLE, LOCATION.toString());
     when(clock.instant()).thenReturn(NOW);
     when(fileOperations.getCleanupFileIO(eq(LOCATION), any())).thenReturn(fileIO);
     when(fileIO.listPrefix(PREFIX)).thenReturn(List.of());
@@ -243,7 +243,7 @@ class StorageCleanupWorkerTest {
 
   @Test
   void validatesTaskBeforeCreatingFileIO() {
-    setClaim(ResourceType.TABLE, "s3://bucket/volumes/" + RESOURCE_ID);
+    setClaim(ManagedResourceType.TABLE, "s3://bucket/volumes/" + RESOURCE_ID);
     assertThat(worker.runOnce()).isTrue();
     verifyNoInteractions(fileOperations);
     verifyFailure("Storage cleanup failed: IllegalArgumentException");
@@ -267,7 +267,7 @@ class StorageCleanupWorkerTest {
   @ParameterizedTest
   @ValueSource(strings = {"?query", "#fragment"})
   void rejectsQueryAndFragmentLocations(String suffix) {
-    setClaim(ResourceType.TABLE, LOCATION + suffix);
+    setClaim(ManagedResourceType.TABLE, LOCATION + suffix);
     assertThat(worker.runOnce()).isTrue();
     verifyNoInteractions(fileOperations);
     verifyFailure("Storage cleanup failed: IllegalArgumentException");
@@ -465,7 +465,7 @@ class StorageCleanupWorkerTest {
     return new StorageCleanupWorker(taskRepository, fileOperations, clock, serverProperties);
   }
 
-  private void setClaim(ResourceType type, String location) {
+  private void setClaim(ManagedResourceType type, String location) {
     when(taskRepository.claim(LEASE_DURATION, INITIAL_DELAY))
         .thenReturn(Optional.of(new Claim(type, RESOURCE_ID, location, LEASE_TOKEN)));
   }
