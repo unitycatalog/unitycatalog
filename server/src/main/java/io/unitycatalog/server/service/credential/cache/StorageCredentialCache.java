@@ -87,16 +87,16 @@ public class StorageCredentialCache {
   }
 
   /**
-   * Loads a custom {@code Cache} backend by class name, preferring a {@link
+   * Loads a custom {@link CredentialCacheBackend} by class name, preferring a {@link
    * CredentialCacheStoreContext} constructor and falling back to a no-arg one. Mirrors {@code
    * GcpCredentialVendor.createGenerator}; a load failure fails construction (server startup) with
    * the fqcn named.
    */
-  @SuppressWarnings("unchecked")
   private static Cache<CredentialCacheKey, CachedCredential> loadBackend(
       String fqcn, CredentialCacheStoreContext context) {
     try {
-      Class<? extends Cache> type = Class.forName(fqcn).asSubclass(Cache.class);
+      Class<? extends CredentialCacheBackend> type =
+          Class.forName(fqcn).asSubclass(CredentialCacheBackend.class);
       try {
         return type.getDeclaredConstructor(CredentialCacheStoreContext.class).newInstance(context);
       } catch (NoSuchMethodException noContextCtor) {

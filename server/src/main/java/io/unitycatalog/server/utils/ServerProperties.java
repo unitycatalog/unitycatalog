@@ -579,9 +579,9 @@ public class ServerProperties {
   }
 
   /**
-   * The fully-qualified class name of a custom {@code Cache<CredentialCacheKey, CachedCredential>}
-   * storage-credential-cache backend, or empty to use the built-in in-process cache. The class is
-   * loaded reflectively by {@link
+   * The fully-qualified class name of a custom {@link
+   * io.unitycatalog.server.service.credential.cache.CredentialCacheBackend}, or empty to use the
+   * built-in in-process cache. The class is loaded reflectively by {@link
    * io.unitycatalog.server.service.credential.cache.StorageCredentialCache}.
    */
   public Optional<String> getStorageCredentialCacheBackend() {

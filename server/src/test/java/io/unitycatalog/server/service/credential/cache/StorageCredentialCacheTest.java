@@ -269,7 +269,7 @@ public class StorageCredentialCacheTest {
   // ---- test-double backends (loaded reflectively by fqcn, like s3.credentialGenerator) ----
 
   /** Records the injected context and counts traffic; typed-context constructor path. */
-  public static class RecordingStore implements Cache<CredentialCacheKey, CachedCredential> {
+  public static class RecordingStore implements CredentialCacheBackend {
     static volatile CredentialCacheStoreContext lastContext;
     static final java.util.concurrent.atomic.AtomicInteger getCount =
         new java.util.concurrent.atomic.AtomicInteger();
@@ -304,7 +304,7 @@ public class StorageCredentialCacheTest {
   }
 
   /** No-arg constructor only — exercises the reflective fallback. */
-  public static class NoArgStore implements Cache<CredentialCacheKey, CachedCredential> {
+  public static class NoArgStore implements CredentialCacheBackend {
     static volatile boolean constructed;
 
     public NoArgStore() {
@@ -321,7 +321,7 @@ public class StorageCredentialCacheTest {
   }
 
   /** Context-constructor always throws — exercises the fail-closed path on construction. */
-  public static class ThrowingCtorStore implements Cache<CredentialCacheKey, CachedCredential> {
+  public static class ThrowingCtorStore implements CredentialCacheBackend {
     public ThrowingCtorStore(CredentialCacheStoreContext ctx) {
       throw new RuntimeException("bad endpoint");
     }
@@ -336,7 +336,7 @@ public class StorageCredentialCacheTest {
   }
 
   /** Has both constructors; the context-constructor should be preferred. */
-  public static class BothCtorsStore implements Cache<CredentialCacheKey, CachedCredential> {
+  public static class BothCtorsStore implements CredentialCacheBackend {
     static volatile boolean usedContextCtor;
 
     public BothCtorsStore() {
@@ -357,7 +357,7 @@ public class StorageCredentialCacheTest {
   }
 
   /** Always throws — exercises the facade's FailSafe guarantee. */
-  public static class ThrowingStore implements Cache<CredentialCacheKey, CachedCredential> {
+  public static class ThrowingStore implements CredentialCacheBackend {
     public ThrowingStore(CredentialCacheStoreContext ctx) {}
 
     public java.util.Optional<CachedCredential> getIfPresent(CredentialCacheKey k) {
@@ -371,8 +371,8 @@ public class StorageCredentialCacheTest {
     public void invalidate(CredentialCacheKey k) {}
   }
 
-  /** Implements Cache but has neither a context ctor nor a no-arg ctor -> reflection fails. */
-  public static class NoUsableCtorStore implements Cache<CredentialCacheKey, CachedCredential> {
+  /** Implements the backend contract but has no usable constructor -> reflection fails. */
+  public static class NoUsableCtorStore implements CredentialCacheBackend {
     public NoUsableCtorStore(String unrelated) {}
 
     public java.util.Optional<CachedCredential> getIfPresent(CredentialCacheKey k) {
@@ -382,6 +382,37 @@ public class StorageCredentialCacheTest {
     public void put(CredentialCacheKey k, CachedCredential v) {}
 
     public void invalidate(CredentialCacheKey k) {}
+  }
+
+  /** A valid generic cache, but not a credential-cache backend. */
+  public static class WrongValueStore implements Cache<CredentialCacheKey, String> {
+    public Optional<String> getIfPresent(CredentialCacheKey key) {
+      return Optional.of("not a credential");
+    }
+
+    public void put(CredentialCacheKey key, String value) {}
+
+    public void invalidate(CredentialCacheKey key) {}
+  }
+
+  /** Deliberately ignores keys so the facade must reject credentials for another binding. */
+  public static class MiskeyedStore implements CredentialCacheBackend {
+    private volatile CachedCredential value;
+
+    @Override
+    public Optional<CachedCredential> getIfPresent(CredentialCacheKey key) {
+      return Optional.ofNullable(value);
+    }
+
+    @Override
+    public void put(CredentialCacheKey key, CachedCredential value) {
+      this.value = value;
+    }
+
+    @Override
+    public void invalidate(CredentialCacheKey key) {
+      value = null;
+    }
   }
 
   private static String backend(Class<?> c) {
@@ -469,15 +500,16 @@ public class StorageCredentialCacheTest {
     assertTrue(ex.getMessage().contains("com.acme.DoesNotExist"));
   }
 
-  @Test
-  void nonCacheBackendClassFailsClosed() {
+  @ParameterizedTest
+  @ValueSource(classes = {String.class, WrongValueStore.class})
+  void incompatibleBackendClassFailsClosed(Class<?> backendClass) {
     CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
     assertThrows(
         IllegalStateException.class,
         () ->
             new StorageCredentialCache(
                 vendor,
-                props("server.storage-credential-cache.backend", String.class.getName()),
+                props("server.storage-credential-cache.backend", backend(backendClass)),
                 clockAt(T0)));
   }
 
@@ -538,6 +570,32 @@ public class StorageCredentialCacheTest {
         props("server.storage-credential-cache.backend", backend(BothCtorsStore.class)),
         clockAt(T0));
     assertTrue(BothCtorsStore.usedContextCtor);
+  }
+
+  @Test
+  void freshEntryForAnotherBindingFromCustomStoreIsRejected() {
+    CredentialContext original = ctx("arn:role/A", "external-A", READ_ONLY);
+    CredentialContext updated = ctx("arn:role/A", "external-B", READ_ONLY);
+    TemporaryCredentials first = creds(T0 + 3_600_000L);
+    first.getAwsTempCredentials().setAccessKeyId("AK_A");
+    TemporaryCredentials second = creds(T0 + 3_600_000L);
+    second.getAwsTempCredentials().setAccessKeyId("AK_B");
+    CloudCredentialVendor vendor = mock(CloudCredentialVendor.class);
+    when(vendor.vendCredential(original)).thenReturn(first);
+    when(vendor.vendCredential(updated)).thenReturn(second);
+    StorageCredentialCache cache =
+        new StorageCredentialCache(
+            vendor,
+            props("server.storage-credential-cache.backend", backend(MiskeyedStore.class)),
+            clockAt(T0));
+
+    assertEquals("AK_A", cache.get(original).getAwsTempCredentials().getAccessKeyId());
+    assertEquals("AK_A", cache.get(original).getAwsTempCredentials().getAccessKeyId());
+    // Time has not advanced: only the binding mismatch can reject this fresh cached value.
+    assertEquals("AK_B", cache.get(updated).getAwsTempCredentials().getAccessKeyId());
+    assertEquals("AK_B", cache.get(updated).getAwsTempCredentials().getAccessKeyId());
+    verify(vendor, times(1)).vendCredential(original);
+    verify(vendor, times(1)).vendCredential(updated);
   }
 
   @Test
