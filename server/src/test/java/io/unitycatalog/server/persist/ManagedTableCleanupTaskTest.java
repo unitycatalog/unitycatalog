@@ -10,7 +10,6 @@ import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.TransactionManager;
@@ -172,7 +171,7 @@ class ManagedTableCleanupTaskTest {
               .getStorageCleanupTaskRepository()
               .create(
                   session,
-                  ResourceType.TABLE,
+                  ManagedResourceType.TABLE,
                   table.getId(),
                   table.getName(),
                   existingTaskLocation);
@@ -221,7 +220,7 @@ class ManagedTableCleanupTaskTest {
     assertThat(task).isNotNull();
     assertThat(task.getId()).isEqualTo(table.getId());
     assertThat(task.getName()).isEqualTo(table.getName());
-    assertThat(task.getResourceType()).isEqualTo(ResourceType.TABLE);
+    assertThat(task.getResourceType()).isEqualTo(ManagedResourceType.TABLE);
     assertThat(task.getStorageLocation()).isEqualTo(NormalizedURL.normalize(table.getUrl()));
     assertThat(task.getDeletedAt().getTime())
         .isBetween(beforeDrop.getTime(), System.currentTimeMillis());

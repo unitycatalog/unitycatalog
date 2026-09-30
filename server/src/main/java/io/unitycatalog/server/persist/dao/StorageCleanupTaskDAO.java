@@ -1,5 +1,6 @@
 package io.unitycatalog.server.persist.dao;
 
+import io.unitycatalog.server.persist.ManagedResourceType;
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -34,28 +35,9 @@ import lombok.experimental.SuperBuilder;
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class StorageCleanupTaskDAO extends IdentifiableDAO {
-  public enum ResourceType {
-    TABLE("tables"),
-    VOLUME("volumes"),
-    REGISTERED_MODEL("models"),
-    MODEL_VERSION("versions"),
-    STAGING_TABLE("tables");
-
-    private final String pathSegment;
-
-    ResourceType(String pathSegment) {
-      this.pathSegment = pathSegment;
-    }
-
-    /** Returns the path segment immediately before the resource id: {@code .../<segment>/<id>}. */
-    public String pathSegment() {
-      return pathSegment;
-    }
-  }
-
   @Enumerated(EnumType.STRING)
   @Column(name = "resource_type", nullable = false)
-  private ResourceType resourceType;
+  private ManagedResourceType resourceType;
 
   @Column(name = "storage_location", length = 4096, nullable = false)
   private String storageLocation;

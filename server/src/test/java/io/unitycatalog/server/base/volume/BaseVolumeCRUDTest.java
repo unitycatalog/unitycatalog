@@ -20,8 +20,10 @@ import io.unitycatalog.client.model.UpdateSchema;
 import io.unitycatalog.client.model.UpdateVolumeRequestContent;
 import io.unitycatalog.client.model.VolumeInfo;
 import io.unitycatalog.client.model.VolumeType;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.TestUtils;
 import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,6 +32,23 @@ import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.Test;
 
 public abstract class BaseVolumeCRUDTest extends BaseVolumeCRUDTestEnv {
+  @Test
+  public void testCreateVolumeWithoutParentSchema() {
+    String missingSchema = "missing_schema";
+    CreateVolumeRequestContent request =
+        new CreateVolumeRequestContent()
+            .name(VOLUME_NAME)
+            .catalogName(CATALOG_NAME)
+            .schemaName(missingSchema)
+            .volumeType(VolumeType.EXTERNAL)
+            .storageLocation("/tmp/volume1");
+
+    TestUtils.assertApiException(
+        () -> volumeOperations.createVolume(request),
+        ErrorCode.SCHEMA_NOT_FOUND,
+        "Schema not found: " + CATALOG_NAME + "." + missingSchema);
+  }
+
   protected void assertVolume(
       VolumeInfo volumeInfo,
       CreateVolumeRequestContent createVolumeRequest,

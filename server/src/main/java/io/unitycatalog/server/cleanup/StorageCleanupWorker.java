@@ -1,9 +1,9 @@
 package io.unitycatalog.server.cleanup;
 
+import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.CleanupFailureReport;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -187,7 +187,7 @@ public final class StorageCleanupWorker implements AutoCloseable {
 
   /** Validates the stored resource and path before storage credentials are requested. */
   private static NormalizedURL validateTask(Claim claim) {
-    ResourceType resourceType = Objects.requireNonNull(claim.resourceType(), "resourceType");
+    ManagedResourceType resourceType = Objects.requireNonNull(claim.resourceType(), "resourceType");
     String segment = resourceType.pathSegment();
     NormalizedURL location = NormalizedURL.from(claim.storageLocation());
     URI uri = location.toUri();

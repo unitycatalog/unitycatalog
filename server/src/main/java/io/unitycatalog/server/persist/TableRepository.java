@@ -25,7 +25,6 @@ import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
@@ -1183,7 +1182,7 @@ public class TableRepository {
           .getStorageCleanupTaskRepository()
           .create(
               session,
-              ResourceType.TABLE,
+              ManagedResourceType.TABLE,
               tableInfoDAO.getId(),
               tableInfoDAO.getName(),
               tableInfoDAO.getUrl());

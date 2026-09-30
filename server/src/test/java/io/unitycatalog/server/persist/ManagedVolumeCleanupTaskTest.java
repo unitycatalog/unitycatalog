@@ -9,7 +9,6 @@ import io.unitycatalog.server.model.VolumeType;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.TransactionManager;
@@ -168,7 +167,7 @@ class ManagedVolumeCleanupTaskTest {
               .getStorageCleanupTaskRepository()
               .create(
                   session,
-                  ResourceType.VOLUME,
+                  ManagedResourceType.VOLUME,
                   volume.getId(),
                   volume.getName(),
                   existingTaskLocation);
@@ -221,7 +220,7 @@ class ManagedVolumeCleanupTaskTest {
     assertThat(task).isNotNull();
     assertThat(task.getId()).isEqualTo(volume.getId());
     assertThat(task.getName()).isEqualTo(volume.getName());
-    assertThat(task.getResourceType()).isEqualTo(ResourceType.VOLUME);
+    assertThat(task.getResourceType()).isEqualTo(ManagedResourceType.VOLUME);
     assertThat(task.getStorageLocation())
         .isEqualTo(NormalizedURL.normalize(volume.getStorageLocation()));
     assertThat(task.getDeletedAt().getTime())

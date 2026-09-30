@@ -1,8 +1,5 @@
 package io.unitycatalog.server.sdk.tables;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.ServerConfig;
@@ -11,6 +8,7 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.BaseTableCRUDTestEnv;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
@@ -58,8 +56,10 @@ public class SdkManagedTableCleanupTest extends BaseTableCRUDTestEnv {
 
     tableOperations.deleteTable(TestUtils.TABLE_FULL_NAME);
 
-    assertThatThrownBy(() -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME))
-        .isInstanceOf(ApiException.class);
+    TestUtils.assertApiException(
+        () -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME),
+        ErrorCode.TABLE_NOT_FOUND,
+        "Table not found: " + TestUtils.TABLE_FULL_NAME);
     StorageCleanupTestSupport.awaitCleanup(
         hibernateConfigurator.getSessionFactory(),
         UUID.fromString(table.getTableId()),

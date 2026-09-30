@@ -8,7 +8,6 @@ import io.unitycatalog.server.model.UpdateVolumeRequestContent;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.model.VolumeType;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
@@ -298,7 +297,7 @@ public class VolumeRepository {
         .getStorageCleanupTaskRepository()
         .create(
             session,
-            ResourceType.VOLUME,
+            ManagedResourceType.VOLUME,
             volumeInfoDAO.getId(),
             volumeInfoDAO.getName(),
             volumeInfoDAO.getStorageLocation());
