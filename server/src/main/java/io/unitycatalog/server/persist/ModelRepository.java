@@ -15,7 +15,6 @@ import io.unitycatalog.server.model.UpdateRegisteredModel;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
@@ -504,7 +503,7 @@ public class ModelRepository {
         .getStorageCleanupTaskRepository()
         .create(
             session,
-            ResourceType.REGISTERED_MODEL,
+            ManagedResourceType.REGISTERED_MODEL,
             registeredModelInfoDAO.getId(),
             registeredModelInfoDAO.getName(),
             registeredModelInfoDAO.getUrl());
@@ -795,7 +794,7 @@ public class ModelRepository {
         .getStorageCleanupTaskRepository()
         .create(
             session,
-            ResourceType.MODEL_VERSION,
+            ManagedResourceType.MODEL_VERSION,
             modelVersionInfoDAO.getId(),
             modelVersionInfoDAO.getVersion().toString(),
             modelVersionInfoDAO.getUrl());

@@ -16,8 +16,7 @@ import io.unitycatalog.client.model.FinalizeModelVersion;
 import io.unitycatalog.client.model.ModelVersionInfo;
 import io.unitycatalog.client.model.RegisteredModelInfo;
 import io.unitycatalog.server.base.BaseServerTest;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
-import io.unitycatalog.server.utils.ServerProperties.Property;
+import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.URI;
 import java.nio.file.Files;
@@ -27,11 +26,12 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class SdkManagedModelCleanupTest extends BaseServerTest {
+  private static final Duration CLEANUP_DEADLINE = Duration.ofSeconds(10);
+
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
-    serverProperties.setProperty(Property.STORAGE_CLEANUP_POLL_INTERVAL.getKey(), "PT0.01S");
-    serverProperties.setProperty(Property.STORAGE_CLEANUP_INITIAL_DELAY.getKey(), "PT0.001S");
+    StorageCleanupTestSupport.configureFastCleanup(serverProperties);
   }
 
   @Test
@@ -69,7 +69,11 @@ class SdkManagedModelCleanupTest extends BaseServerTest {
     versions.deleteModelVersion(model.getFullName(), first.getVersion());
     assertThatThrownBy(() -> versions.getModelVersion(model.getFullName(), first.getVersion()))
         .isInstanceOf(ApiException.class);
-    awaitCleanup(first.getId(), firstDirectory);
+    StorageCleanupTestSupport.awaitCleanup(
+        hibernateConfigurator.getSessionFactory(),
+        UUID.fromString(first.getId()),
+        CLEANUP_DEADLINE,
+        firstDirectory);
     assertThat(Files.readString(secondMarker)).isEqualTo("model artifacts");
     assertThat(versions.getModelVersion(model.getFullName(), second.getVersion()).getId())
         .isEqualTo(second.getId());
@@ -86,7 +90,11 @@ class SdkManagedModelCleanupTest extends BaseServerTest {
     Path replacementMarker =
         writeMarker(Path.of(URI.create(replacementVersion.getStorageLocation())));
 
-    awaitCleanup(model.getId(), Path.of(URI.create(model.getStorageLocation())));
+    StorageCleanupTestSupport.awaitCleanup(
+        hibernateConfigurator.getSessionFactory(),
+        UUID.fromString(model.getId()),
+        CLEANUP_DEADLINE,
+        Path.of(URI.create(model.getStorageLocation())));
     assertThat(secondMarker).doesNotExist();
     assertThat(thirdMarker).doesNotExist();
     assertThat(Files.readString(replacementMarker)).isEqualTo("model artifacts");
@@ -101,20 +109,5 @@ class SdkManagedModelCleanupTest extends BaseServerTest {
   private Path writeMarker(Path directory) throws Exception {
     Files.createDirectories(directory.resolve("nested"));
     return Files.writeString(directory.resolve("nested/model.bin"), "model artifacts");
-  }
-
-  private void awaitCleanup(String id, Path directory) throws InterruptedException {
-    long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-    while (System.nanoTime() < deadline && (Files.exists(directory) || hasTask(id))) {
-      Thread.sleep(10);
-    }
-    assertThat(directory).doesNotExist();
-    assertThat(hasTask(id)).isFalse();
-  }
-
-  private boolean hasTask(String id) {
-    try (var session = hibernateConfigurator.getSessionFactory().openSession()) {
-      return session.get(StorageCleanupTaskDAO.class, UUID.fromString(id)) != null;
-    }
   }
 }

@@ -7,6 +7,7 @@ import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.util.SafeCloseable;
 import com.linecorp.armeria.server.ServiceRequestContext;
+import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateCatalog;
@@ -18,7 +19,6 @@ import io.unitycatalog.server.model.RegisteredModelInfo;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -94,23 +94,26 @@ class ManagedModelCleanupTaskTest {
     assertTask(
         first.getId(),
         first.getVersion().toString(),
-        ResourceType.MODEL_VERSION,
+        ManagedResourceType.MODEL_VERSION,
         first.getStorageLocation());
-    assertThat(find(StorageCleanupTaskDAO.class, model.getId())).isNull();
+    assertThat(findTask(model.getId())).isNull();
 
     repositories.getModelRepository().deleteRegisteredModel(model.getFullName(), true);
 
     assertThat(find(RegisteredModelInfoDAO.class, model.getId())).isNull();
     assertThat(find(ModelVersionInfoDAO.class, second.getId())).isNull();
     assertTask(
-        model.getId(), model.getName(), ResourceType.REGISTERED_MODEL, model.getStorageLocation());
+        model.getId(),
+        model.getName(),
+        ManagedResourceType.REGISTERED_MODEL,
+        model.getStorageLocation());
     // Keep the earlier version task: it has its own retention time and may already be leased.
     assertTask(
         first.getId(),
         first.getVersion().toString(),
-        ResourceType.MODEL_VERSION,
+        ManagedResourceType.MODEL_VERSION,
         first.getStorageLocation());
-    assertThat(find(StorageCleanupTaskDAO.class, second.getId())).isNull();
+    assertThat(findTask(second.getId())).isNull();
     assertThat(second.getStorageLocation()).startsWith(model.getStorageLocation() + "/versions/");
     assertThat(
             repositories
@@ -130,7 +133,10 @@ class ManagedModelCleanupTaskTest {
 
     assertThat(find(RegisteredModelInfoDAO.class, model.getId())).isNull();
     assertTask(
-        model.getId(), model.getName(), ResourceType.REGISTERED_MODEL, model.getStorageLocation());
+        model.getId(),
+        model.getName(),
+        ManagedResourceType.REGISTERED_MODEL,
+        model.getStorageLocation());
   }
 
   @Test
@@ -147,8 +153,8 @@ class ManagedModelCleanupTaskTest {
 
     assertThat(find(RegisteredModelInfoDAO.class, model.getId())).isNotNull();
     assertThat(find(ModelVersionInfoDAO.class, version.getId())).isNotNull();
-    assertThat(find(StorageCleanupTaskDAO.class, model.getId())).isNull();
-    assertThat(find(StorageCleanupTaskDAO.class, version.getId())).isNull();
+    assertThat(findTask(model.getId())).isNull();
+    assertThat(findTask(version.getId())).isNull();
   }
 
   @ParameterizedTest
@@ -168,9 +174,12 @@ class ManagedModelCleanupTaskTest {
     assertThat(find(ModelVersionInfoDAO.class, first.getId())).isNull();
     assertThat(find(ModelVersionInfoDAO.class, second.getId())).isNull();
     assertTask(
-        model.getId(), model.getName(), ResourceType.REGISTERED_MODEL, model.getStorageLocation());
-    assertThat(find(StorageCleanupTaskDAO.class, first.getId())).isNull();
-    assertThat(find(StorageCleanupTaskDAO.class, second.getId())).isNull();
+        model.getId(),
+        model.getName(),
+        ManagedResourceType.REGISTERED_MODEL,
+        model.getStorageLocation());
+    assertThat(findTask(first.getId())).isNull();
+    assertThat(findTask(second.getId())).isNull();
   }
 
   @ParameterizedTest
@@ -183,8 +192,8 @@ class ManagedModelCleanupTaskTest {
             Path.of(URI.create(version.getStorageLocation())).resolve("model.bin"), "model data");
     String id = deleteWholeModel ? model.getId() : version.getId();
     String location = deleteWholeModel ? model.getStorageLocation() : version.getStorageLocation();
-    ResourceType type =
-        deleteWholeModel ? ResourceType.REGISTERED_MODEL : ResourceType.MODEL_VERSION;
+    ManagedResourceType type =
+        deleteWholeModel ? ManagedResourceType.REGISTERED_MODEL : ManagedResourceType.MODEL_VERSION;
     TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -210,7 +219,7 @@ class ManagedModelCleanupTaskTest {
 
     assertThat(find(RegisteredModelInfoDAO.class, model.getId())).isNotNull();
     assertThat(find(ModelVersionInfoDAO.class, version.getId())).isNotNull();
-    assertThat(find(StorageCleanupTaskDAO.class, id).getName()).isEqualTo("existing task");
+    assertThat(findTask(id).getName()).isEqualTo("existing task");
     assertThat(Files.readString(marker)).isEqualTo("model data");
   }
 
@@ -235,14 +244,18 @@ class ManagedModelCleanupTaskTest {
                 .source(tempDir.resolve("source").toUri().toString()));
   }
 
-  private void assertTask(String id, String name, ResourceType type, String location) {
-    StorageCleanupTaskDAO task = find(StorageCleanupTaskDAO.class, id);
+  private void assertTask(String id, String name, ManagedResourceType type, String location) {
+    StorageCleanupTaskDAO task = findTask(id);
     assertThat(task).isNotNull();
     assertThat(task.getId().toString()).isEqualTo(id);
     assertThat(task.getName()).isEqualTo(name);
     assertThat(task.getResourceType()).isEqualTo(type);
     assertThat(task.getStorageLocation()).isEqualTo(location);
     assertThat(task.getDeletedAt()).isNotNull();
+  }
+
+  private StorageCleanupTaskDAO findTask(String id) {
+    return StorageCleanupTestSupport.findTask(sessionFactory, UUID.fromString(id));
   }
 
   private <T> T find(Class<T> type, String id) {
