@@ -1,12 +1,15 @@
 package io.unitycatalog.server.persist;
 
+import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import io.unitycatalog.server.auth.decorator.KeyMapper;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.util.Objects;
 import java.util.function.UnaryOperator;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
@@ -40,28 +43,28 @@ public class Repositories {
   private final KeyMapper keyMapper;
 
   public Repositories(SessionFactory sessionFactory, ServerProperties serverProperties) {
-    this(sessionFactory, serverProperties, null, UnaryOperator.identity(), () -> {});
+    this(sessionFactory, serverProperties, null, UnaryOperator.identity());
   }
 
   public Repositories(
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
       CloudCredentialVendor cloudCredentialVendor) {
-    this(
-        sessionFactory,
-        serverProperties,
-        cloudCredentialVendor,
-        UnaryOperator.identity(),
-        () -> {});
+    this(sessionFactory, serverProperties, cloudCredentialVendor, UnaryOperator.identity());
   }
 
+  /** Creates repositories with no-op metrics backed by an empty composite registry. */
   public Repositories(
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
       CloudCredentialVendor cloudCredentialVendor,
       UnaryOperator<FileOperations> fileOperationsDecorator) {
     this(
-        sessionFactory, serverProperties, cloudCredentialVendor, fileOperationsDecorator, () -> {});
+        sessionFactory,
+        serverProperties,
+        cloudCredentialVendor,
+        fileOperationsDecorator,
+        new UnityCatalogMetrics(new CompositeMeterRegistry()));
   }
 
   /**
@@ -71,14 +74,15 @@ public class Repositories {
    *     late-binding.
    * @param fileOperationsDecorator wraps the default {@link FileOperations} before use ({@link
    *     UnaryOperator#identity()} leaves it unchanged); lets tests map cloud IO to local storage.
-   * @param tableCreated invoked after a table-create transaction commits successfully
+   * @param metrics the domain metrics used by these repositories
    */
   public Repositories(
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
       CloudCredentialVendor cloudCredentialVendor,
       UnaryOperator<FileOperations> fileOperationsDecorator,
-      Runnable tableCreated) {
+      UnityCatalogMetrics metrics) {
+    Objects.requireNonNull(metrics, "metrics");
     this.sessionFactory = sessionFactory;
     this.externalLocationUtils = new ExternalLocationUtils(sessionFactory);
     CloudCredentialVendor resolvedCloudCredentialVendor =
@@ -94,7 +98,7 @@ public class Repositories {
     this.catalogRepository = new CatalogRepository(this, sessionFactory);
     this.schemaRepository = new SchemaRepository(this, sessionFactory);
     this.tableRepository =
-        new TableRepository(this, sessionFactory, serverProperties, tableCreated);
+        new TableRepository(this, sessionFactory, serverProperties, metrics.tables());
     this.stagingTableRepository =
         new StagingTableRepository(this, sessionFactory, serverProperties);
     this.volumeRepository = new VolumeRepository(this, sessionFactory);

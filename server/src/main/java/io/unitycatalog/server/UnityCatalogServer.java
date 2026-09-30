@@ -6,7 +6,6 @@ import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerListener;
 import com.linecorp.armeria.server.healthcheck.HealthCheckService;
 import com.linecorp.armeria.server.metric.PrometheusExpositionService;
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
@@ -19,6 +18,7 @@ import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.observability.DbReadinessChecker;
 import io.unitycatalog.server.observability.MetricsRegistries;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
@@ -184,12 +184,7 @@ public class UnityCatalogServer implements AutoCloseable {
     // request/table counters.
     metrics = MetricsRegistries.createPrometheus();
     PrometheusMeterRegistry meterRegistry = metrics.registry();
-    Counter tablesCreated =
-        Counter.builder("uc.tables.created")
-            .description(
-                "Number of table securables successfully persisted through a create-table API,"
-                    + " including views and metric views")
-            .register(meterRegistry);
+    UnityCatalogMetrics domainMetrics = new UnityCatalogMetrics(meterRegistry);
     armeriaServerBuilder.meterRegistry(meterRegistry);
     armeriaServerBuilder.observabilityService(
         "/metrics", PrometheusExpositionService.of(meterRegistry.getPrometheusRegistry()));
@@ -201,7 +196,7 @@ public class UnityCatalogServer implements AutoCloseable {
             unityCatalogServerBuilder.serverProperties,
             unityCatalogServerBuilder.cloudCredentialVendor,
             unityCatalogServerBuilder.fileOperationsDecorator,
-            tablesCreated::increment);
+            domainMetrics);
     // Init metastore
     repositories.getMetastoreRepository().initMetastoreIfNeeded();
     // Init authorizer

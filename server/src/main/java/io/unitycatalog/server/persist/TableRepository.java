@@ -20,6 +20,7 @@ import io.unitycatalog.server.model.DependencyList;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.observability.TableMetrics;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
@@ -63,7 +64,7 @@ public class TableRepository {
   private final SessionFactory sessionFactory;
   private final Repositories repositories;
   private final ServerProperties serverProperties;
-  private final Runnable tableCreated;
+  private final TableMetrics tableMetrics;
   private static final PagedListingHelper<TableInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(TableInfoDAO.class);
 
@@ -71,11 +72,11 @@ public class TableRepository {
       Repositories repositories,
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
-      Runnable tableCreated) {
+      TableMetrics tableMetrics) {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
     this.serverProperties = serverProperties;
-    this.tableCreated = Objects.requireNonNull(tableCreated, "tableCreated");
+    this.tableMetrics = Objects.requireNonNull(tableMetrics, "tableMetrics");
   }
 
   /**
@@ -784,7 +785,7 @@ public class TableRepository {
       Optional<NormalizedURL> nativeIcebergMetadataLocation,
       CreateResultMapper<T> mapper) {
     T result = persistTable(createTable, uniformFields, nativeIcebergMetadataLocation, mapper);
-    tableCreated.run();
+    tableMetrics.recordCreated();
     return result;
   }
 

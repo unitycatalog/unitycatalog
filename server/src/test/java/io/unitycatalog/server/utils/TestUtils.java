@@ -445,7 +445,10 @@ public class TestUtils {
     if (config.getAuthToken() != null && !config.getAuthToken().isEmpty()) {
       reqBuilder.header("Authorization", "Bearer " + config.getAuthToken());
     }
-    return HttpClient.newHttpClient()
+    // Avoid the JDK client's h2c upgrade path, which can truncate large metrics responses.
+    return HttpClient.newBuilder()
+        .version(HttpClient.Version.HTTP_1_1)
+        .build()
         .send(reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
   }
 
@@ -467,6 +470,11 @@ public class TestUtils {
   }
 
   /** Convenience wrapper over {@link #sendRaw} for GET probes. */
+  public static HttpResponse<String> sendRawGet(ServerConfig config, String path) throws Exception {
+    return sendRawGet(config, path, Optional.empty());
+  }
+
+  /** Convenience wrapper over {@link #sendRaw} for GET probes with an optional body. */
   public static HttpResponse<String> sendRawGet(
       ServerConfig config, String path, Optional<String> jsonBody) throws Exception {
     return sendRaw(config, "GET", path, jsonBody);

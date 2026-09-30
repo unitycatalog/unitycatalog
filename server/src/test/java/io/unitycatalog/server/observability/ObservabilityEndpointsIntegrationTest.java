@@ -1,13 +1,9 @@
 package io.unitycatalog.server.observability;
 
+import static io.unitycatalog.server.utils.TestUtils.sendRawGet;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.linecorp.armeria.client.WebClient;
-import com.linecorp.armeria.common.AggregatedHttpResponse;
-import com.linecorp.armeria.common.HttpMethod;
-import com.linecorp.armeria.common.MediaType;
-import com.linecorp.armeria.common.RequestHeaders;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.Dependency;
 import io.unitycatalog.client.model.DependencyList;
@@ -24,22 +20,18 @@ import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
-import lombok.SneakyThrows;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 
-/**
- * End-to-end integration tests for the {@code uc_tables_created} counter exported on the live
- * {@code /metrics} scrape endpoint.
- */
-public class MetricsDomainCounterTest extends DeltaBaseTableCRUDTestEnv {
+/** Exercises health, port isolation, and persisted-create metrics against one UC server. */
+public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTestEnv {
 
   @Override
   protected void setUpProperties() {
@@ -63,8 +55,37 @@ public class MetricsDomainCounterTest extends DeltaBaseTableCRUDTestEnv {
   }
 
   @Test
-  @SneakyThrows
-  public void ucRestCountsOnlySuccessfullyPersistedCreates() {
+  public void observabilityEndpointsAndPersistedCreates() throws Exception {
+    assertHealthAndPortIsolation();
+    ucRestCountsOnlySuccessfullyPersistedCreates();
+    deltaRestCountsOnlySuccessfullyPersistedCreates();
+    icebergRestCountsOnlySuccessfullyPersistedCreates();
+    for (TableType tableType : List.of(TableType.VIEW, TableType.METRIC_VIEW)) {
+      viewLikeRestCountsOnlySuccessfullyPersistedCreates(tableType);
+    }
+  }
+
+  private void assertHealthAndPortIsolation() throws Exception {
+    // The synchronous startup probe has already checked the H2 database.
+    for (String path : List.of("/livez", "/readyz")) {
+      HttpResponse<String> response = sendRawGet(observabilityServerConfig, path);
+      assertThat(response.statusCode()).as(path).isEqualTo(200);
+      assertThat(response.body()).contains("\"healthy\":true");
+    }
+
+    for (String path : List.of("/livez", "/readyz", "/metrics")) {
+      assertThat(sendRawGet(serverConfig, path).statusCode()).as(path).isEqualTo(404);
+    }
+
+    HttpResponse<String> apiRoot = sendRawGet(serverConfig, "/");
+    assertThat(apiRoot.statusCode()).isEqualTo(200);
+    assertThat(apiRoot.body()).contains("Hello, Unity Catalog!");
+    for (String path : List.of("/", "/docs", "/api/2.1/unity-catalog/catalogs")) {
+      assertThat(sendRawGet(observabilityServerConfig, path).statusCode()).as(path).isEqualTo(404);
+    }
+  }
+
+  private void ucRestCountsOnlySuccessfullyPersistedCreates() throws Exception {
     double before = tablesCreated();
     createAndVerifyExternalTable();
     assertThat(tablesCreated()).isEqualTo(before + 1.0);
@@ -73,8 +94,7 @@ public class MetricsDomainCounterTest extends DeltaBaseTableCRUDTestEnv {
     assertThat(tablesCreated()).isEqualTo(before + 1.0);
   }
 
-  @Test
-  public void deltaRestCountsOnlySuccessfullyPersistedCreates() {
+  private void deltaRestCountsOnlySuccessfullyPersistedCreates() throws Exception {
     double before = tablesCreated();
     createDeltaExternal("delta_metric_table");
     assertThat(tablesCreated()).isEqualTo(before + 1.0);
@@ -84,13 +104,9 @@ public class MetricsDomainCounterTest extends DeltaBaseTableCRUDTestEnv {
     assertThat(tablesCreated()).isEqualTo(before + 1.0);
   }
 
-  @Test
-  @SneakyThrows
-  public void icebergRestCountsOnlySuccessfullyPersistedCreates() {
-    WebClient icebergClient =
-        WebClient.builder(serverConfig.getServerUrl() + "/api/2.1/unity-catalog/iceberg").build();
+  private void icebergRestCountsOnlySuccessfullyPersistedCreates() throws Exception {
     String tablesPath =
-        "/v1/catalogs/"
+        "/api/2.1/unity-catalog/iceberg/v1/catalogs/"
             + TestUtils.CATALOG_NAME
             + "/namespaces/"
             + TestUtils.SCHEMA_NAME
@@ -106,22 +122,20 @@ public class MetricsDomainCounterTest extends DeltaBaseTableCRUDTestEnv {
     String body = IcebergObjectMapper.mapper().writeValueAsString(request);
 
     double before = tablesCreated();
-    AggregatedHttpResponse created = postJson(icebergClient, tablesPath, body);
-    assertThat(created.status().code()).as(created.contentUtf8()).isEqualTo(200);
+    HttpResponse<String> created =
+        TestUtils.sendRaw(serverConfig, "POST", tablesPath, Optional.of(body));
+    assertThat(created.statusCode()).as(created.body()).isEqualTo(200);
     assertThat(tablesCreated()).isEqualTo(before + 1.0);
 
-    AggregatedHttpResponse duplicate = postJson(icebergClient, tablesPath, body);
-    assertThat(duplicate.status().code()).as(duplicate.contentUtf8()).isEqualTo(409);
+    HttpResponse<String> duplicate =
+        TestUtils.sendRaw(serverConfig, "POST", tablesPath, Optional.of(body));
+    assertThat(duplicate.statusCode()).as(duplicate.body()).isEqualTo(409);
     assertThat(tablesCreated()).isEqualTo(before + 1.0);
   }
 
-  @ParameterizedTest(name = "UC REST counts successfully persisted {0} creates")
-  @EnumSource(
-      value = TableType.class,
-      names = {"VIEW", "METRIC_VIEW"})
-  @SneakyThrows
-  public void viewLikeRestCountsOnlySuccessfullyPersistedCreates(TableType tableType) {
-    String sourceName = "metric_source_table";
+  private void viewLikeRestCountsOnlySuccessfullyPersistedCreates(TableType tableType)
+      throws Exception {
+    String sourceName = tableType.name().toLowerCase(Locale.ROOT) + "_metric_source_table";
     createTestingTable(
         sourceName,
         TableType.EXTERNAL,
@@ -135,7 +149,7 @@ public class MetricsDomainCounterTest extends DeltaBaseTableCRUDTestEnv {
                     new Dependency().table(new TableDependency().tableFullName(sourceFullName))));
     CreateTable request =
         new CreateTable()
-            .name(tableType.name().toLowerCase() + "_metric_table")
+            .name(tableType.name().toLowerCase(Locale.ROOT) + "_metric_table")
             .catalogName(TestUtils.CATALOG_NAME)
             .schemaName(TestUtils.SCHEMA_NAME)
             .columns(COLUMNS)
@@ -155,23 +169,15 @@ public class MetricsDomainCounterTest extends DeltaBaseTableCRUDTestEnv {
     assertThat(tablesCreated()).isEqualTo(before + 1.0);
   }
 
-  private static AggregatedHttpResponse postJson(WebClient client, String path, String body) {
-    return client
-        .execute(
-            RequestHeaders.builder(HttpMethod.POST, path).contentType(MediaType.JSON).build(), body)
-        .aggregate()
-        .join();
-  }
+  private double tablesCreated() throws Exception {
+    HttpResponse<String> response = sendRawGet(observabilityServerConfig, "/metrics");
 
-  private static double tablesCreated() {
-    AggregatedHttpResponse response = httpGetObservability("/metrics");
-
-    assertThat(response.status().code()).isEqualTo(200);
-    assertThat(response.contentUtf8()).contains("uc_tables_created");
-    assertThat(response.contentUtf8()).contains("http_server_");
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.body())
+        .contains("jvm_memory_used_bytes", "uc_tables_created", "http_server_");
 
     return response
-        .contentUtf8()
+        .body()
         .lines()
         .filter(line -> line.startsWith("uc_tables_created_total"))
         .mapToDouble(line -> Double.parseDouble(line.substring(line.lastIndexOf(' ') + 1)))
