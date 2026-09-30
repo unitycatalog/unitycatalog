@@ -47,9 +47,7 @@ public class StorageCleanupTaskDAO extends IdentifiableDAO {
       this.pathSegment = pathSegment;
     }
 
-    /**
-     * Trailing segment under which this type's managed storage lives: {@code .../<segment>/<id>}.
-     */
+    /** Returns the path segment immediately before the resource id: {@code .../<segment>/<id>}. */
     public String pathSegment() {
       return pathSegment;
     }

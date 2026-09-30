@@ -9,7 +9,7 @@ import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.ServerConfig;
-import io.unitycatalog.server.base.schema.BaseSchemaCRUDTestEnv;
+import io.unitycatalog.server.base.schema.BaseSchemaScopedTestEnv;
 import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Files;
 import java.util.List;
@@ -18,12 +18,10 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 
 /**
- * Abstract base class that provides the test environment setup for table CRUD operations.
- *
- * <p>This class extends {@link BaseSchemaCRUDTestEnv} and serves as a foundation for testing
- * table-related operations in Unity Catalog, for any CRUD test that needs to create test tables.
+ * Provides an auto-created catalog and schema plus initialized table operations for table, view,
+ * and related test suites.
  */
-public abstract class BaseTableCRUDTestEnv extends BaseSchemaCRUDTestEnv {
+public abstract class BaseTableCRUDTestEnv extends BaseSchemaScopedTestEnv {
 
   protected TableOperations tableOperations;
 

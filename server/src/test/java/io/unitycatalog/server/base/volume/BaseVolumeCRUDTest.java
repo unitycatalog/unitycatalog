@@ -15,17 +15,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.model.CreateCatalog;
-import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateVolumeRequestContent;
-import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.UpdateSchema;
 import io.unitycatalog.client.model.UpdateVolumeRequestContent;
 import io.unitycatalog.client.model.VolumeInfo;
 import io.unitycatalog.client.model.VolumeType;
-import io.unitycatalog.server.base.BaseCRUDTest;
-import io.unitycatalog.server.base.ServerConfig;
-import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.Date;
@@ -33,36 +27,9 @@ import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
-  protected SchemaOperations schemaOperations;
-  protected VolumeOperations volumeOperations;
-
-  protected abstract SchemaOperations createSchemaOperations(ServerConfig serverConfig);
-
-  protected abstract VolumeOperations createVolumeOperations(ServerConfig serverConfig);
-
-  @BeforeEach
-  @Override
-  public void setUp() {
-    super.setUp();
-    schemaOperations = createSchemaOperations(serverConfig);
-    volumeOperations = createVolumeOperations(serverConfig);
-  }
-
-  private SchemaInfo schemaInfo;
-
-  protected void createCommonResources() throws ApiException {
-    // Common setup operations such as creating a catalog and schema
-    CreateCatalog createCatalog = new CreateCatalog().name(CATALOG_NAME).comment(COMMENT);
-    catalogOperations.createCatalog(createCatalog);
-    schemaInfo =
-        schemaOperations.createSchema(
-            new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
-  }
-
+public abstract class BaseVolumeCRUDTest extends BaseVolumeCRUDTestEnv {
   protected void assertVolume(
       VolumeInfo volumeInfo,
       CreateVolumeRequestContent createVolumeRequest,
@@ -88,10 +55,6 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
             .schemaName(SCHEMA_NAME)
             .volumeType(VolumeType.EXTERNAL)
             .storageLocation("/tmp/volume1");
-    assertThatThrownBy(() -> volumeOperations.createVolume(createVolumeRequest))
-        .isInstanceOf(Exception.class);
-
-    createCommonResources();
     VolumeInfo volumeInfo = volumeOperations.createVolume(createVolumeRequest);
     assertVolume(volumeInfo, createVolumeRequest, VOLUME_FULL_NAME);
 
@@ -176,7 +139,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
               .createdAt(new Date())
               .updatedAt(new Date())
               .id(UUID.randomUUID())
-              .schemaId(UUID.fromString(schemaInfo.getSchemaId()))
+              .schemaId(UUID.fromString(schemaId))
               .build();
       session.persist(managedVolume);
       session.getTransaction().commit();

@@ -14,11 +14,13 @@ import io.unitycatalog.server.base.volume.VolumeOperations;
 import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -56,6 +58,11 @@ public class SdkManagedVolumeCleanupTest extends BaseVolumeCRUDTestEnv {
   @Override
   protected VolumeOperations createVolumeOperations(ServerConfig config) {
     return new SdkVolumeOperations(TestUtils.createApiClient(config));
+  }
+
+  @Override
+  protected Optional<String> catalogStorageRoot() {
+    return Optional.of(NormalizedURL.normalize(testDirectoryRoot.toString()));
   }
 
   @Test

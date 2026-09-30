@@ -23,7 +23,7 @@ public final class StorageCleanupTestSupport {
     }
   }
 
-  /** Returns every queued cleanup task; used to assert exactly-one-task cardinality. */
+  /** Returns all persisted cleanup tasks, including leased and retry-delayed tasks. */
   public static List<StorageCleanupTaskDAO> allTasks(SessionFactory sessionFactory) {
     try (var session = sessionFactory.openSession()) {
       return session.createQuery("FROM StorageCleanupTaskDAO", StorageCleanupTaskDAO.class).list();
@@ -31,8 +31,7 @@ public final class StorageCleanupTestSupport {
   }
 
   /**
-   * Polls until every path is gone and the task is cleared, then asserts the same once the timeout
-   * elapses so a stuck cleanup fails with a clear message.
+   * Waits until all paths are absent and the cleanup task is removed, asserting both on timeout.
    */
   public static void awaitCleanup(
       SessionFactory sessionFactory, UUID resourceId, Duration timeout, Path... paths)
@@ -50,7 +49,7 @@ public final class StorageCleanupTestSupport {
     assertThat(findTask(sessionFactory, resourceId)).isNull();
   }
 
-  /** Shrinks the poll interval and initial delay so a live worker reclaims storage quickly. */
+  /** Sets a 10 ms poll interval and 1 ms task-eligibility delay for live-worker tests. */
   public static void configureFastCleanup(Properties serverProperties) {
     serverProperties.setProperty(Property.STORAGE_CLEANUP_POLL_INTERVAL.getKey(), "PT0.01S");
     serverProperties.setProperty(Property.STORAGE_CLEANUP_INITIAL_DELAY.getKey(), "PT0.001S");
@@ -58,7 +57,7 @@ public final class StorageCleanupTestSupport {
 
   private static boolean allGone(Path... paths) {
     for (Path path : paths) {
-      if (Files.exists(path)) {
+      if (!Files.notExists(path)) {
         return false;
       }
     }
