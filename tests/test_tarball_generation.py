@@ -92,7 +92,7 @@ else:
 
 # 4. Verify server is running
 try:
-    response = requests.head("http://localhost:8081", timeout=5)
+    response = requests.head("http://localhost:8080", timeout=5)
     if response.status_code == 200:
         print("Server is running.")
     else:

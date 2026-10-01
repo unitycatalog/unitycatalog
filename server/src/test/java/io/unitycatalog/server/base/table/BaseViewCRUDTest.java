@@ -103,6 +103,14 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
     assertThat(tables)
         .as("View should appear in listTables")
         .anyMatch(t -> VIEW_NAME.equals(t.getName()) && TableType.VIEW.equals(t.getTableType()));
+    // listTables loads properties and view dependencies for the whole page at once; each entry
+    // must still carry exactly its own, as getTable returns them.
+    assertThat(tables)
+        .as("listTables should return the view with its own properties and dependencies")
+        .contains(fetched);
+    assertThat(tables)
+        .as("listTables should return the source table with its own properties")
+        .contains(tableOperations.getTable(SOURCE_TABLE_FULL_NAME));
 
     tableOperations.deleteTable(VIEW_FULL_NAME);
     assertApiException(
@@ -116,6 +124,25 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
     assertThat(createdWithoutDeps.getTableType()).isEqualTo(TableType.VIEW);
     assertThat(tableOperations.getTable(VIEW_FULL_NAME).getName()).isEqualTo(VIEW_NAME);
     tableOperations.deleteTable(VIEW_FULL_NAME);
+  }
+
+  /**
+   * Hibernate maps an unannotated String as varchar(255). View properties (user TBLPROPERTIES,
+   * Spark view.sqlConfig.*) can exceed that; create/get must round-trip a longer value.
+   */
+  @Test
+  public void testCreateViewAcceptsPropertyValueLongerThanDefaultVarchar() throws Exception {
+    createSourceTable();
+    String longValue = "x".repeat(300);
+    TableInfo created =
+        tableOperations.createTable(validViewRequest().properties(Map.of("user.note", longValue)));
+    try {
+      assertThat(created.getProperties()).containsEntry("user.note", longValue);
+      assertThat(tableOperations.getTable(VIEW_FULL_NAME).getProperties())
+          .containsEntry("user.note", longValue);
+    } finally {
+      tableOperations.deleteTable(VIEW_FULL_NAME);
+    }
   }
 
   private static Stream<Arguments> negativeCreateCases() {

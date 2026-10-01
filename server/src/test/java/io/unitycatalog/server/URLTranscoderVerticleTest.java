@@ -1,6 +1,7 @@
 package io.unitycatalog.server;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -8,8 +9,9 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.ext.web.client.HttpResponse;
 import io.vertx.ext.web.client.WebClient;
 import java.io.IOException;
+import java.net.BindException;
 import java.net.ServerSocket;
-import java.net.Socket;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -23,20 +25,20 @@ public class URLTranscoderVerticleTest {
   private static Vertx vertx;
   private static WebClient client;
   private static int transcodePort;
+  private static int servicePort;
 
   @BeforeAll
   public static void setUp() throws Exception {
     vertx = Vertx.vertx();
     client = WebClient.create(vertx);
-    int servicePort = findAvailablePort();
+    servicePort = findAvailablePort();
     transcodePort = findAvailablePort();
-    startService(servicePort);
+    startService();
     vertx
         .deployVerticle(new URLTranscoderVerticle(transcodePort, servicePort))
         .toCompletionStage()
         .toCompletableFuture()
         .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-    awaitPort(transcodePort);
   }
 
   @AfterAll
@@ -95,7 +97,23 @@ public class URLTranscoderVerticleTest {
         .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
   }
 
-  private static void startService(int servicePort) throws Exception {
+  @Test
+  public void testDeploymentFailsWhenTheTranscodePortIsTaken() throws Exception {
+    try (ServerSocket occupied = new ServerSocket(0)) {
+      CompletableFuture<String> deployment =
+          vertx
+              .deployVerticle(new URLTranscoderVerticle(occupied.getLocalPort(), servicePort))
+              .toCompletionStage()
+              .toCompletableFuture();
+
+      // A transcoder that cannot bind leaves clients with no port to talk to, so its deployment
+      // has to fail rather than report success and log the reason.
+      assertThatThrownBy(() -> deployment.get(TIMEOUT_SECONDS, TimeUnit.SECONDS))
+          .hasRootCauseInstanceOf(BindException.class);
+    }
+  }
+
+  private static void startService() throws Exception {
     vertx
         .createHttpServer()
         .requestHandler(
@@ -118,18 +136,6 @@ public class URLTranscoderVerticleTest {
         .toCompletionStage()
         .toCompletableFuture()
         .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-  }
-
-  /** The verticle binds its port asynchronously, so wait for it before sending any request. */
-  private static void awaitPort(int port) throws Exception {
-    for (int attempt = 0; attempt < 100; attempt++) {
-      try (Socket ignored = new Socket(HOST, port)) {
-        return;
-      } catch (IOException e) {
-        Thread.sleep(50);
-      }
-    }
-    throw new IllegalStateException("URL transcoder did not start on port " + port);
   }
 
   private static int findAvailablePort() throws IOException {

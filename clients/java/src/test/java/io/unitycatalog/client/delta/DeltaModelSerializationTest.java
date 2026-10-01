@@ -16,6 +16,7 @@ import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
 import io.unitycatalog.client.delta.model.DeltaDecimalType;
 import io.unitycatalog.client.delta.model.DeltaDomainMetadataUpdates;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
+import io.unitycatalog.client.delta.model.DeltaMaintenanceOperation;
 import io.unitycatalog.client.delta.model.DeltaMapType;
 import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
@@ -568,6 +569,12 @@ public class DeltaModelSerializationTest {
     String json = readFixture("/delta-model-test/load-table-response.json");
     DeltaLoadTableResponse resp = MAPPER.readValue(json, DeltaLoadTableResponse.class);
 
+    assertThat(resp.getAllowedMaintenanceOperations())
+        .containsExactly(
+            DeltaMaintenanceOperation.DATA_REORGANIZATION,
+            DeltaMaintenanceOperation.DATA_CLEANUP,
+            DeltaMaintenanceOperation.METADATA_CLEANUP);
+
     // Verify DeltaDataType serde works in DeltaTableMetadata.columns
     DeltaStructField priceField = resp.getMetadata().getColumns().getFields().get(1);
     assertThat(priceField.getType()).isInstanceOf(DeltaDecimalType.class);
@@ -585,6 +592,14 @@ public class DeltaModelSerializationTest {
             MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(expected),
             MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(actual))
         .isEqualTo(expected);
+  }
+
+  @Test
+  public void testUnknownMaintenanceOperation() throws Exception {
+    DeltaMaintenanceOperation operation =
+        MAPPER.readValue("\"FUTURE_OPERATION\"", DeltaMaintenanceOperation.class);
+
+    assertThat(operation).isEqualTo(DeltaMaintenanceOperation.UNKNOWN_DEFAULT_OPEN_API);
   }
 
   private static String readFixture(String resourcePath) throws Exception {

@@ -1,23 +1,32 @@
 package io.unitycatalog.server;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.linecorp.armeria.common.AggregatedHttpRequest;
+import com.linecorp.armeria.common.Http1HeaderNaming;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.SessionProtocol;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerBuilder;
+import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.annotation.RequestConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
 import io.unitycatalog.server.auth.decorator.AuthorizationGateConverter;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandlingDecorator;
 import io.unitycatalog.server.exception.ServiceExceptionHandlingDecorator;
+import io.unitycatalog.server.exception.UnroutedIcebergRequestHandler;
 import io.unitycatalog.server.service.AuthService;
 import io.unitycatalog.server.service.IcebergRestCatalogService;
 import io.unitycatalog.server.service.RegisteredService;
@@ -27,6 +36,7 @@ import io.unitycatalog.server.service.delta.DeltaApiMappers;
 import io.unitycatalog.server.service.delta.DeltaApiService;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.lang.reflect.ParameterizedType;
 import java.util.List;
 import java.util.Objects;
 
@@ -47,6 +57,12 @@ import java.util.Objects;
  * properties or security context.
  */
 public class ArmeriaServerBuilder {
+
+  /**
+   * Relative path the Iceberg REST API is mounted at. Shared with the error handler that renders
+   * unrouted Iceberg requests, so the mount point and that handler's prefix cannot drift apart.
+   */
+  static final String ICEBERG_RELATIVE_PATH = "iceberg";
 
   private final ServerBuilder armeriaServerBuilder;
   private final String basePath;
@@ -74,10 +90,19 @@ public class ArmeriaServerBuilder {
     this.armeriaServerBuilder =
         Server.builder()
             .localPort(port, SessionProtocol.HTTP)
+            // Armeria names HTTP/1 headers in their lowercase HTTP/2 form by default. Released
+            // Iceberg clients read our response headers out of a plain map keyed by the name as
+            // received, so a header they look up by its traditional spelling -- "ETag" for a
+            // conditional loadTable -- is invisible to them unless we write it that way.
+            .http1HeaderNaming(Http1HeaderNaming.traditional())
             .serviceUnder("/docs", new DocService());
     this.armeriaServerBuilder.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"));
     this.basePath = basePath;
     this.controlPath = controlPath;
+    // Renders the 404s and 405s Armeria answers before a service is reached as Iceberg error
+    // documents, for the Iceberg API's paths only.
+    this.armeriaServerBuilder.errorHandler(
+        new UnroutedIcebergRequestHandler(basePath + ICEBERG_RELATIVE_PATH + "/"));
     this.authorizationEnabled = serverProperties.isAuthorizationEnabled();
     this.ucMapper =
         JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
@@ -201,7 +226,11 @@ public class ArmeriaServerBuilder {
     RequestConverterFunction requestConverter =
         switch (protocol) {
           case AUTH, UC, SCIM -> bodyConverter(ucMapper);
-          case ICEBERG -> bodyConverter(icebergMapper);
+          // The Jackson converter leaks its own error text (exception class, mapped types, source
+          // position) on any surface. Only on the Iceberg surface is an unreadable body rewritten
+          // into a clean message, since its REST spec fixes the error contract clients parse; the
+          // other dialects still surface the raw converter message.
+          case ICEBERG -> new MalformedBodyRejectingConverter(bodyConverter(icebergMapper));
           case DELTA -> bodyConverter(deltaMapper);
         };
     // Auth and UC services have no response converter; they return HttpResponse.ofJson directly.
@@ -234,5 +263,60 @@ public class ArmeriaServerBuilder {
   private RequestConverterFunction bodyConverter(ObjectMapper mapper) {
     JacksonRequestConverterFunction jackson = new JacksonRequestConverterFunction(mapper);
     return authorizationEnabled ? new AuthorizationGateConverter(jackson, mapper) : jackson;
+  }
+
+  /**
+   * Reports a body the Jackson converter cannot read as an Iceberg bad request. Jackson's own
+   * failure names the exception, the Java types the body was being mapped onto, and the reader's
+   * location in it, none of which belongs in an error a client is shown; and the converter rethrows
+   * it as an {@link IllegalArgumentException}, a name an Iceberg client does not know.
+   *
+   * <p>Recognizing the failure here rather than in the exception handler keeps it to request
+   * bodies: the same Jackson failures are raised when the server reads JSON of its own, such as a
+   * table's metadata file, and those have nothing to do with the body the caller sent.
+   */
+  private static final class MalformedBodyRejectingConverter implements RequestConverterFunction {
+
+    private final RequestConverterFunction delegate;
+
+    private MalformedBodyRejectingConverter(RequestConverterFunction delegate) {
+      this.delegate = Objects.requireNonNull(delegate);
+    }
+
+    @Override
+    public Object convertRequest(
+        ServiceRequestContext ctx,
+        AggregatedHttpRequest request,
+        Class<?> expectedResultType,
+        ParameterizedType expectedParameterizedResultType)
+        throws Exception {
+      try {
+        return delegate.convertRequest(
+            ctx, request, expectedResultType, expectedParameterizedResultType);
+      } catch (IllegalArgumentException | JsonProcessingException failure) {
+        // Armeria's Jackson converter rethrows an unreadable body as IllegalArgumentException with
+        // the Jackson failure as its cause; a converter that throws that failure directly is caught
+        // by the JsonProcessingException arm. Everything else, including the FallthroughException
+        // Armeria uses to say a converter does not handle this parameter, is never caught and
+        // propagates untouched.
+        Throwable reason =
+            failure instanceof JsonProcessingException ? failure : failure.getCause();
+        if (reason instanceof JsonParseException) {
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT, "Malformed request body: not valid JSON");
+        }
+        if (reason instanceof MismatchedInputException) {
+          // A body that is not there raises the same failure as one shaped wrong ("No content to
+          // map due to end-of-input"), and telling that caller the structure is wrong sends them
+          // to their schema when what they sent was nothing.
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              request.content().isEmpty()
+                  ? "Malformed request body: no content"
+                  : "Malformed request body: not the structure this endpoint accepts");
+        }
+        throw failure;
+      }
+    }
   }
 }

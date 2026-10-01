@@ -78,7 +78,9 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     return createPathCredSession(false, false, true, ucCatalogs);
   }
 
-  /** Same layout as {@link #createPathCredSession} but omits {@code vendPathCredentials.enabled}. */
+  /**
+   * Same layout as {@link #createPathCredSession} but omits {@code vendPathCredentials.enabled}.
+   */
   private SparkSession createPathCredSessionLeavingVendFlagUnset(String... ucCatalogs) {
     SparkSession.Builder builder =
         SparkSession.builder()

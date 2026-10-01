@@ -231,6 +231,11 @@ public class ExternalLocationRepository {
           }
           // Check if the external location is in use by any data objects (tables, volumes, models)
           if (!force) {
+            if (ExternalLocationUtils.hasPendingCleanupOverlap(
+                session, NormalizedURL.from(existingLocation.getUrl()))) {
+              throw new BaseException(
+                  ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup.");
+            }
             ExternalLocationUtils.getAllEntityDAOsWithURLOverlap(
                     session,
                     NormalizedURL.from(existingLocation.getUrl()),

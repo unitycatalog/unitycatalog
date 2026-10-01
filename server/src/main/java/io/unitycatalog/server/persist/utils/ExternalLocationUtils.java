@@ -7,6 +7,7 @@ import com.google.common.annotations.VisibleForTesting;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
@@ -14,6 +15,7 @@ import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
+import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.Constants;
@@ -85,6 +87,10 @@ public class ExternalLocationUtils {
   static final DaoClassInfo UNCOMMITTED_STAGING_TABLE_DAO_INFO =
       new DaoClassInfo(StagingTableDAO.class, "stagingLocation", "stageCommitted=false");
 
+  // Cleanup tasks reserve paths but are not securables and cannot own path credentials.
+  private static final DaoClassInfo STORAGE_CLEANUP_TASK_DAO_INFO =
+      new DaoClassInfo(StorageCleanupTaskDAO.class, "storageLocation");
+
   /**
    * List of securable types that represent data objects (tables, volumes, registered models). Used
    * to check which entities are using an external location's URL path.
@@ -104,6 +110,7 @@ public class ExternalLocationUtils {
    * For a input URL, find out the actual owner securables of the URL.
    *
    * <ul>
+   *   <li>If the URL overlaps a pending cleanup task, deny access.
    *   <li>If the URL is a parent path of one or more securable, we can not figure out the actual
    *       owner but have to deny the access
    *   <li>If the URL is under or the same path of any data securable, we'll figure out the UUID of
@@ -125,8 +132,15 @@ public class ExternalLocationUtils {
         /* readOnly= */ true);
   }
 
-  private Map<SecurableType, UUID> getMapResourceIdsForPath(Session session, NormalizedURL url) {
-    // 1. Fail if it's parent of any of the data securable or external location
+  @VisibleForTesting
+  Map<SecurableType, UUID> getMapResourceIdsForPath(Session session, NormalizedURL url) {
+    // 1. Fail if the path overlaps a pending cleanup task.
+    if (hasPendingCleanupOverlap(session, url)) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup.");
+    }
+
+    // 2. Fail if it's parent of any of the data securable or external location
     if (!getAllEntityDAOsWithURLOverlap(
             session,
             url,
@@ -140,14 +154,14 @@ public class ExternalLocationUtils {
           ErrorCode.PERMISSION_DENIED, "Input path '" + url + "' overlaps with other entities.");
     }
 
-    // 2. If it's under only one data securable, use that securable as resource id
+    // 3. If it's under only one data securable, use that securable as resource id
     Optional<Map<SecurableType, UUID>> result =
         getResourceIdOfOwnerEntity(session, url, DATA_SECURABLE_TYPES);
     if (result.isPresent()) {
       return result.get();
     }
 
-    // 3. If it's under only one external location, use that external location as resource id
+    // 4. If it's under only one external location, use that external location as resource id
     return getResourceIdOfOwnerEntity(session, url, List.of(SecurableType.EXTERNAL_LOCATION))
         .orElse(Map.of());
   }
@@ -412,7 +426,8 @@ public class ExternalLocationUtils {
     if (includeSubdir) {
       // Construct a LIKE pattern to match all child URLs. Escape special LIKE characters.
       String escapedUrl = escapeLikePattern(url.toString());
-      likePattern = escapedUrl + "/%";
+      // A filesystem root already ends in '/', but a child must add at least one character.
+      likePattern = escapedUrl + (escapedUrl.endsWith("/") ? "_%" : "/%");
       hasLikeCondition = true;
     }
 
@@ -582,6 +597,26 @@ public class ExternalLocationUtils {
   }
 
   /**
+   * Checks whether a pending cleanup task is above, equal to, or below the given path.
+   *
+   * @param session the caller's Hibernate session
+   * @param url the normalized path to check
+   * @return whether the path overlaps pending cleanup
+   */
+  public static boolean hasPendingCleanupOverlap(Session session, NormalizedURL url) {
+    return !generateEntitiesDAOsWithURLOverlapQuery(
+            session,
+            url,
+            STORAGE_CLEANUP_TASK_DAO_INFO,
+            /* limit= */ 1,
+            /* includeParent= */ true,
+            /* includeSelf= */ true,
+            /* includeSubdir= */ true)
+        .getResultList()
+        .isEmpty();
+  }
+
+  /**
    * Gets the managed storage location for creating child entities (tables, volumes, models) within
    * a catalog/schema.
    *
@@ -661,21 +696,27 @@ public class ExternalLocationUtils {
 
   public static NormalizedURL getManagedLocationForTable(
       NormalizedURL parentStorageLocation, UUID tableId) {
-    return getManagedLocationForEntity(parentStorageLocation, "tables", tableId);
+    return getManagedLocationForEntity(
+        parentStorageLocation, ManagedResourceType.TABLE.pathSegment(), tableId);
   }
 
   public static NormalizedURL getManagedLocationForVolume(
       NormalizedURL parentStorageLocation, UUID volumeId) {
-    return getManagedLocationForEntity(parentStorageLocation, "volumes", volumeId);
+    return getManagedLocationForEntity(
+        parentStorageLocation, ManagedResourceType.VOLUME.pathSegment(), volumeId);
   }
 
   public static NormalizedURL getManagedLocationForModel(
       NormalizedURL parentStorageLocation, UUID modelId) {
-    return getManagedLocationForEntity(parentStorageLocation, "models", modelId);
+    return getManagedLocationForEntity(
+        parentStorageLocation, ManagedResourceType.REGISTERED_MODEL.pathSegment(), modelId);
   }
 
   public static NormalizedURL getManagedLocationForModelVersion(
       NormalizedURL parentModelStorageLocation, UUID modelVersionId) {
-    return getManagedLocationForEntity(parentModelStorageLocation, "versions", modelVersionId);
+    return getManagedLocationForEntity(
+        parentModelStorageLocation,
+        ManagedResourceType.MODEL_VERSION.pathSegment(),
+        modelVersionId);
   }
 }

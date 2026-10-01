@@ -4,6 +4,7 @@ import static java.sql.Connection.TRANSACTION_REPEATABLE_READ;
 
 import io.unitycatalog.server.delta.model.DeltaCommit;
 import io.unitycatalog.server.delta.model.DeltaLoadTableResponse;
+import io.unitycatalog.server.delta.model.DeltaMaintenanceOperation;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableMetadata;
 import io.unitycatalog.server.delta.model.DeltaTableType;
@@ -26,7 +27,6 @@ import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
-import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
@@ -336,7 +336,12 @@ public class TableRepository {
         session -> {
           TableInfoDAO dao = findTableOrThrow(session, catalog, schema, table);
           requireDeltaTable(dao, catalog, schema, table);
-          RepositoryUtils.lockTableForCommit(session, dao, dao.getId(), Optional.of(tableFullName));
+          RepositoryUtils.lockTableForCommit(
+              session,
+              dao,
+              dao.getId(),
+              Optional.of(tableFullName),
+              ErrorCode.COMMIT_STATE_UNKNOWN);
           // assert-table-uuid is stable identity, so check it up front. assert-etag is deferred to
           // after the apply, captured here against pre-apply state: a commit advances the etag, and
           // an idempotent replay must bypass the etag entirely (it throws mid-apply and rolls back
@@ -424,6 +429,11 @@ public class TableRepository {
         && DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
       populateCommitsForDelta(
           response, repositories.getDeltaCommitRepository(), session, dao.getId());
+      response.setAllowedMaintenanceOperations(
+          List.of(
+              DeltaMaintenanceOperation.DATA_REORGANIZATION,
+              DeltaMaintenanceOperation.DATA_CLEANUP,
+              DeltaMaintenanceOperation.METADATA_CLEANUP));
     }
 
     populateUniformMetadata(response, dao);
@@ -551,7 +561,7 @@ public class TableRepository {
   }
 
   private static void populateUniformMetadata(DeltaLoadTableResponse response, TableInfoDAO dao) {
-    String uniformLocation = dao.getUniformIcebergMetadataLocation();
+    String uniformLocation = dao.getIcebergMetadataLocation();
     if (uniformLocation == null) {
       return;
     }
@@ -568,12 +578,6 @@ public class TableRepository {
 
   private static DeltaTableType toDeltaTableType(String value) {
     return DeltaTableType.fromValue(value);
-  }
-
-  public String getTableUniformMetadataLocation(
-      Session session, String catalogName, String schemaName, String tableName) {
-    TableInfoDAO dao = findTableOrThrow(session, catalogName, schemaName, tableName);
-    return dao.getUniformIcebergMetadataLocation();
   }
 
   public IcebergTableState getIcebergTableState(
@@ -605,7 +609,7 @@ public class TableRepository {
                     + fullName);
           }
           return new IcebergTableState(
-              dao.getId(), dataSourceFormat, dao.getUniformIcebergMetadataLocation(), dao.getUrl());
+              dao.getId(), dataSourceFormat, dao.getIcebergMetadataLocation(), dao.getUrl());
         },
         "Failed to load Iceberg table state for " + fullName,
         /* readOnly= */ true);
@@ -645,8 +649,15 @@ public class TableRepository {
                     + " REST catalog: "
                     + fullName);
           }
-          RepositoryUtils.lockTableForCommit(session, dao, dao.getId(), Optional.of(fullName));
-          if (!Objects.equals(dao.getUniformIcebergMetadataLocation(), expectedMetadataLocation)) {
+          // Iceberg gets a retryable conflict (409), not the Delta callers' unknown-outcome 500;
+          // see RepositoryUtils.lockTableForCommit for why the metadata-location CAS makes it safe.
+          RepositoryUtils.lockTableForCommit(
+              session,
+              dao,
+              dao.getId(),
+              Optional.of(fullName),
+              ErrorCode.UPDATE_REQUIREMENT_CONFLICT);
+          if (!Objects.equals(dao.getIcebergMetadataLocation(), expectedMetadataLocation)) {
             throw new BaseException(
                 ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
                 "Metadata location for "
@@ -654,7 +665,7 @@ public class TableRepository {
                     + " changed concurrently: expected "
                     + expectedMetadataLocation
                     + " but found "
-                    + dao.getUniformIcebergMetadataLocation());
+                    + dao.getIcebergMetadataLocation());
           }
           List<ColumnInfoDAO> newColumns = ColumnInfoDAO.fromList(columns);
           newColumns.forEach(
@@ -675,7 +686,7 @@ public class TableRepository {
           properties.putAll(tableProperties);
           properties.flush(session, dao.getId());
 
-          dao.setUniformIcebergMetadataLocation(newMetadataLocation.toString());
+          dao.setIcebergMetadataLocation(newMetadataLocation.toString());
           dao.setUpdatedAt(new Date());
           dao.setUpdatedBy(callerId);
           session.merge(dao);
@@ -896,7 +907,7 @@ public class TableRepository {
           // entity is still transient so they're folded into the single INSERT below.
           DeltaUniformUtils.applyToDao(tableInfoDAO, uniformFields);
           nativeIcebergMetadataLocation.ifPresent(
-              location -> tableInfoDAO.setUniformIcebergMetadataLocation(location.toString()));
+              location -> tableInfoDAO.setIcebergMetadataLocation(location.toString()));
           session.persist(tableInfoDAO);
           if (RepositoryUtils.isViewLike(tableType.getValue())) {
             DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
@@ -1065,6 +1076,55 @@ public class TableRepository {
         /* readOnly= */ true);
   }
 
+  /**
+   * One page of the tables in a schema that carry an Iceberg metadata pointer, and the token for
+   * the page after it. An empty {@code nextPageToken} means the listing is complete. The raw DAOs
+   * are returned (rather than converted {@code TableInfo}s) so a caller can authorize the listing
+   * per table by id and read each name without materializing an API model; callers must read only
+   * eager fields ({@code id}, {@code name}), since the rows are detached once the page returns.
+   */
+  public record IcebergTablePage(List<TableInfoDAO> tableDaos, Optional<String> nextPageToken) {}
+
+  /**
+   * Lists the tables in a schema that carry an Iceberg metadata pointer -- a Delta UniForm
+   * projection or a native Iceberg table.
+   *
+   * <p>Whether a table carries one is decided in the query, so a page of rows is a page of names
+   * and the token resumes after a name the caller was given. It is also read from the very row the
+   * page was read from, so a table created or dropped after this page was read cannot affect it:
+   * callers that resolved each listed name a second time to answer the same question would instead
+   * fail the whole listing when a table was dropped in between.
+   *
+   * @param pageToken the token from the previous page, or empty to start at the first table
+   * @param maxResults how many names to answer with at most; empty answers with one page of them,
+   *     which is what a caller following the token to the end of the schema wants
+   */
+  public IcebergTablePage listIcebergTables(
+      String catalogName,
+      String schemaName,
+      Optional<String> pageToken,
+      Optional<Integer> maxResults) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UUID schemaId =
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
+          List<TableInfoDAO> rows =
+              LISTING_HELPER.listEntity(
+                  session,
+                  maxResults,
+                  pageToken,
+                  schemaId,
+                  Optional.of(root -> root.get("icebergMetadataLocation").isNotNull()));
+          return new IcebergTablePage(
+              rows, Optional.ofNullable(LISTING_HELPER.getNextPageToken(rows, maxResults)));
+        },
+        "Failed to list tables",
+        /* readOnly= */ true);
+  }
+
   public ListTablesResponse listTables(
       Session session,
       UUID schemaId,
@@ -1077,15 +1137,38 @@ public class TableRepository {
     List<TableInfoDAO> tableInfoDAOList =
         LISTING_HELPER.listEntity(session, maxResults, pageToken, schemaId);
     String nextPageToken = LISTING_HELPER.getNextPageToken(tableInfoDAOList, maxResults);
+    // Load properties and view dependencies for the whole page up front rather than per table, so
+    // a page costs a constant number of queries instead of one or two per table.
+    Map<UUID, List<PropertyDAO>> propertiesByTableId =
+        omitProperties
+            ? Map.of()
+            : PropertyRepository.findPropertiesByEntityIds(
+                session,
+                tableInfoDAOList.stream().map(TableInfoDAO::getId).toList(),
+                Constants.TABLE);
+    Map<UUID, List<DependencyDAO>> dependenciesByViewId =
+        repositories
+            .getDependencyRepository()
+            .getDependenciesByDependentIds(
+                session,
+                tableInfoDAOList.stream()
+                    .filter(dao -> RepositoryUtils.isViewLike(dao.getType()))
+                    .map(TableInfoDAO::getId)
+                    .toList(),
+                DependencyDAO.DependentType.TABLE);
     List<TableInfo> result = new ArrayList<>();
     for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
       TableInfo tableInfo = tableInfoDAO.toTableInfo(!omitColumns, catalogName, schemaName);
-      if (!omitProperties) {
-        RepositoryUtils.attachProperties(
-            tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
+      List<PropertyDAO> properties = propertiesByTableId.get(tableInfoDAO.getId());
+      if (properties != null) {
+        tableInfo.setProperties(PropertyDAO.toMap(properties));
       }
-      RepositoryUtils.attachDependencies(
-          tableInfo, tableInfoDAO, session, repositories.getDependencyRepository());
+      if (RepositoryUtils.isViewLike(tableInfoDAO.getType())) {
+        List<DependencyDAO> dependencies =
+            dependenciesByViewId.getOrDefault(tableInfoDAO.getId(), List.of());
+        tableInfo.setViewDependencies(
+            new DependencyList().dependencies(DependencyDAO.toDependencyList(dependencies)));
+      }
       result.add(tableInfo);
     }
     return new ListTablesResponse().tables(result).nextPageToken(nextPageToken);
@@ -1125,11 +1208,14 @@ public class TableRepository {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
     }
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
-      try {
-        FileOperations.deleteDirectory(NormalizedURL.from(tableInfoDAO.getUrl()));
-      } catch (Throwable e) {
-        LOGGER.error("Error deleting table directory: {}", tableInfoDAO.getUrl(), e);
-      }
+      repositories
+          .getStorageCleanupTaskRepository()
+          .create(
+              session,
+              ManagedResourceType.TABLE,
+              tableInfoDAO.getId(),
+              tableInfoDAO.getName(),
+              tableInfoDAO.getUrl());
       repositories
           .getDeltaCommitRepository()
           .permanentlyDeleteTableCommits(session, tableInfoDAO.getId());

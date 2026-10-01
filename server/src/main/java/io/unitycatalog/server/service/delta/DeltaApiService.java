@@ -107,11 +107,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
 
   @Get("/delta/v1/config")
   @ProducesJson
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.GET_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public DeltaCatalogConfig getConfig(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
@@ -125,7 +121,12 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
     catalogRepository.getCatalog(catalog);
 
     // For now, we only have 1.0 as the first protocol version. Input protocolVersions is ignored.
-    return new DeltaCatalogConfig().endpoints(ENDPOINTS).protocolVersion("1.0");
+    // Replace {catalog} placeholder in endpoint templates with the actual catalog name.
+    // The static ENDPOINTS list uses {catalog} as a template placeholder;
+    // clients expect the resolved catalog name in the config response.
+    List<String> resolvedEndpoints =
+        ENDPOINTS.stream().map(e -> e.replace("{catalog}", catalog)).toList();
+    return new DeltaCatalogConfig().endpoints(resolvedEndpoints).protocolVersion("1.0");
   }
 
   // ==================== Load Table API ====================

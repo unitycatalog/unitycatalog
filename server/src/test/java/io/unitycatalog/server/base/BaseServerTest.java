@@ -1,6 +1,7 @@
 package io.unitycatalog.server.base;
 
 import io.unitycatalog.server.UnityCatalogServer;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -64,6 +65,14 @@ public abstract class BaseServerTest {
   protected void setUpCredentialOperations(ServerProperties serverProperties) {}
 
   /**
+   * Subclasses can override this to decorate the server's {@link FileOperations}, e.g. to map cloud
+   * storage to local files for Iceberg tests. Returns the instance unchanged by default.
+   */
+  protected FileOperations decorateFileOperations(FileOperations fileOperations) {
+    return fileOperations;
+  }
+
+  /**
    * Subclasses can override this to customize the hibernate properties before the session factory
    * is created, e.g. to point the server at an external database such as PostgreSQL via
    * Testcontainers. Defaults to the H2 in-memory test configuration.
@@ -101,6 +110,7 @@ public abstract class BaseServerTest {
               .serverProperties(initServerProperties)
               .hibernateConfigurator(hibernateConfigurator)
               .credentialOperations(cloudCredentialVendor)
+              .fileOperationsDecorator(this::decorateFileOperations)
               .build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);
@@ -139,11 +149,11 @@ public abstract class BaseServerTest {
       // close() rather than stop() so a server that built its own SessionFactory releases it;
       // this harness injects one, so the server leaves it open and we close it below.
       unityCatalogServer.close();
-      // Release the factory this harness built and injected in setUp(). setUp() builds a fresh
-      // one per test, so leaked factories would otherwise accumulate for the whole JVM run. In
-      // test env hbm2ddl is create-drop, so closing also drops the schema — keep this after the
+      // Release the factory and pool this harness built and injected in setUp(). setUp() builds
+      // a fresh one per test, so leaked factories would otherwise accumulate for the whole JVM run.
+      // In test env hbm2ddl is create-drop, so closing also drops the schema — keep this after the
       // cleanup queries above.
-      sessionFactory.close();
+      hibernateConfigurator.close();
       // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
       unityCatalogServer = null;
     }

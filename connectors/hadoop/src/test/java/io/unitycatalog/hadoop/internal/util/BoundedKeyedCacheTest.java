@@ -1,18 +1,24 @@
 package io.unitycatalog.hadoop.internal.util;
 
+import static io.unitycatalog.hadoop.internal.util.BoundedKeyedCache.alwaysFresh;
+import static io.unitycatalog.hadoop.internal.util.BoundedKeyedCache.noOpListener;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 
 class BoundedKeyedCacheTest {
@@ -78,8 +84,16 @@ class BoundedKeyedCacheTest {
   }
 
   @Test
+  void nullEvictionListenerIsRejected() {
+    assertThatThrownBy(() -> new BoundedKeyedCache<String, String>(1, null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("evictionListener");
+  }
+
+  @Test
   void loaderReturningNullThrows() {
-    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2);
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, noOpListener(), alwaysFresh());
 
     assertThatThrownBy(() -> cache.getOrLoad("k", () -> null))
         .isInstanceOf(NullPointerException.class)
@@ -88,19 +102,19 @@ class BoundedKeyedCacheTest {
   }
 
   @Test
-  void constructorWithoutEvictionListenerUsesNoOpListener() {
-    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(1);
-
+  void constructorWithoutFreshnessPolicyKeepsEveryCachedValue() throws Exception {
+    // The two-argument constructor is the one CredScopedFileSystem uses: with no policy a cached
+    // value stays usable until it is evicted, so an entry is never reloaded underneath a caller.
+    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2, noOpListener());
     cache.put("a", "value-a");
-    cache.put("b", "value-b");
 
-    assertThat(cache.getIfPresent("a")).isNull();
-    assertThat(cache.getIfPresent("b")).isEqualTo("value-b");
+    assertThat(cache.getOrLoad("a", () -> fail("loader must not be invoked"))).isEqualTo("value-a");
   }
 
   @Test
   void getOrLoadPropagatesCheckedException() {
-    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2);
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, noOpListener(), alwaysFresh());
     IOException boom = new IOException("loader boom");
 
     assertThatThrownBy(
@@ -115,7 +129,8 @@ class BoundedKeyedCacheTest {
 
   @Test
   void keyLockReleasedAfterLoaderThrows() throws Exception {
-    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2);
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, noOpListener(), alwaysFresh());
 
     assertThatThrownBy(
             () ->
@@ -140,7 +155,8 @@ class BoundedKeyedCacheTest {
 
   @Test
   void getOrLoadLoadsSameKeyOnlyOnce() throws Exception {
-    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2);
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, noOpListener(), alwaysFresh());
     CountDownLatch firstLoadStarted = new CountDownLatch(1);
     CountDownLatch releaseFirstLoad = new CountDownLatch(1);
     AtomicInteger loadCount = new AtomicInteger();
@@ -175,7 +191,8 @@ class BoundedKeyedCacheTest {
   @Test
   void manyThreadsOnSameKeyInvokeLoaderExactlyOnce() throws Exception {
     int threads = 64;
-    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2);
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, noOpListener(), alwaysFresh());
     AtomicInteger loadCount = new AtomicInteger();
     CyclicBarrier startBarrier = new CyclicBarrier(threads);
     String singleton = "value";
@@ -207,7 +224,8 @@ class BoundedKeyedCacheTest {
 
   @Test
   void getOrLoadDifferentKeysProgressIndependently() throws Exception {
-    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(4);
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(4, noOpListener(), alwaysFresh());
     CountDownLatch slowLoaderStarted = new CountDownLatch(1);
     CountDownLatch releaseSlowLoader = new CountDownLatch(1);
 
@@ -235,5 +253,232 @@ class BoundedKeyedCacheTest {
       releaseSlowLoader.countDown();
       executor.shutdownNow();
     }
+  }
+
+  @Test
+  void getOrLoadReloadsWhenFreshnessPolicyRejectsCachedValue() throws Exception {
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, noOpListener(), value -> !value.equals("stale"));
+    AtomicInteger loadCount = new AtomicInteger();
+    cache.put("k", "stale");
+
+    String reloaded =
+        cache.getOrLoad(
+            "k",
+            () -> {
+              loadCount.incrementAndGet();
+              return "fresh";
+            });
+
+    assertThat(reloaded).isEqualTo("fresh");
+    assertThat(cache.getIfPresent("k")).isEqualTo("fresh");
+    assertThat(loadCount).hasValue(1);
+  }
+
+  @Test
+  void getOrLoadSkipsLoaderWhenFreshnessPolicyAcceptsCachedValue() throws Exception {
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, noOpListener(), value -> true);
+    cache.put("k", "valid");
+
+    String value = cache.getOrLoad("k", () -> "other");
+
+    assertThat(value).isEqualTo("valid");
+    assertThat(cache.getIfPresent("k")).isEqualTo("valid");
+  }
+
+  @Test
+  void staleValueReloadedOnlyOnceAcrossThreads() throws Exception {
+    Predicate<String> isFresh = value -> value.equals("fresh");
+    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2, noOpListener(), isFresh);
+    cache.put("key", "stale");
+    CountDownLatch reloadStarted = new CountDownLatch(1);
+    CountDownLatch releaseReload = new CountDownLatch(1);
+    AtomicInteger loadCount = new AtomicInteger();
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      Future<String> first =
+          executor.submit(
+              () ->
+                  cache.getOrLoad(
+                      "key",
+                      () -> {
+                        loadCount.incrementAndGet();
+                        reloadStarted.countDown();
+                        assertThat(releaseReload.await(5, TimeUnit.SECONDS)).isTrue();
+                        return "fresh";
+                      }));
+      assertThat(reloadStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+      Future<String> second =
+          executor.submit(
+              () ->
+                  cache.getOrLoad(
+                      "key",
+                      () -> {
+                        loadCount.incrementAndGet();
+                        return "fresh";
+                      }));
+
+      releaseReload.countDown();
+      assertThat(first.get(5, TimeUnit.SECONDS)).isEqualTo("fresh");
+      assertThat(second.get(5, TimeUnit.SECONDS)).isEqualTo("fresh");
+      assertThat(loadCount).hasValue(1);
+    } finally {
+      releaseReload.countDown();
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void freshCachedValueIsReturnedWhileTheSameKeyIsLoading() throws Exception {
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, noOpListener(), value -> value.equals("fresh"));
+    cache.put("key", "stale");
+    CountDownLatch loadStarted = new CountDownLatch(1);
+    CountDownLatch releaseLoad = new CountDownLatch(1);
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      // Holds "key"'s per-key lock for the duration of the load.
+      Future<String> loading =
+          executor.submit(
+              () ->
+                  cache.getOrLoad(
+                      "key",
+                      () -> {
+                        loadStarted.countDown();
+                        assertThat(releaseLoad.await(5, TimeUnit.SECONDS)).isTrue();
+                        return "fresh";
+                      }));
+      assertThat(loadStarted.await(5, TimeUnit.SECONDS)).isTrue();
+      cache.put("key", "fresh");
+
+      // A cached value the policy accepts must not wait on the in-flight load's key lock.
+      Future<String> reader =
+          executor.submit(() -> cache.getOrLoad("key", () -> fail("loader must not be invoked")));
+      assertThat(reader.get(2, TimeUnit.SECONDS)).isEqualTo("fresh");
+
+      releaseLoad.countDown();
+      assertThat(loading.get(5, TimeUnit.SECONDS)).isEqualTo("fresh");
+    } finally {
+      releaseLoad.countDown();
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void loaderFailureDoesNotWedgeWaitersOnTheSameKey() throws Exception {
+    int threads = 8;
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, noOpListener(), alwaysFresh());
+    AtomicInteger loadAttempts = new AtomicInteger();
+    CyclicBarrier startBarrier = new CyclicBarrier(threads);
+
+    ExecutorService executor = Executors.newFixedThreadPool(threads);
+    try {
+      List<Future<String>> futures = new ArrayList<>();
+      for (int i = 0; i < threads; i++) {
+        futures.add(
+            executor.submit(
+                () -> {
+                  startBarrier.await(5, TimeUnit.SECONDS);
+                  return cache.getOrLoad(
+                      "k",
+                      () -> {
+                        // Only the loader that wins the key lock first fails, standing in for a
+                        // renewal RPC that errors out while the rest of the scope waits on it.
+                        if (loadAttempts.incrementAndGet() == 1) {
+                          throw new IllegalStateException("renewal boom");
+                        }
+                        return "recovered";
+                      });
+                }));
+      }
+
+      int failures = 0;
+      for (Future<String> future : futures) {
+        try {
+          assertThat(future.get(10, TimeUnit.SECONDS)).isEqualTo("recovered");
+        } catch (ExecutionException e) {
+          failures++;
+          assertThat(e.getCause()).hasMessageContaining("renewal boom");
+        }
+      }
+
+      // The failure reaches only the caller that triggered it. Every other caller recovers on a
+      // single retry instead of inheriting the failure or blocking on a lock the thrower leaked.
+      assertThat(failures).isEqualTo(1);
+      assertThat(loadAttempts).hasValue(2);
+      assertThat(cache.getIfPresent("k")).isEqualTo("recovered");
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void everyCallerLoadsOnceWhenThePolicyRejectsEveryLoadedValue() throws Exception {
+    int threads = 8;
+    // A policy that rejects even what the loader just produced, as happens when a credential is
+    // vended with less remaining lifetime than the renewal lead time. Callers must each settle
+    // for their own load rather than retrying until the policy is satisfied.
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, noOpListener(), value -> false);
+    AtomicInteger loadCount = new AtomicInteger();
+    CyclicBarrier startBarrier = new CyclicBarrier(threads);
+
+    ExecutorService executor = Executors.newFixedThreadPool(threads);
+    try {
+      List<Future<String>> futures = new ArrayList<>();
+      for (int i = 0; i < threads; i++) {
+        futures.add(
+            executor.submit(
+                () -> {
+                  startBarrier.await(5, TimeUnit.SECONDS);
+                  return cache.getOrLoad("k", () -> "value-" + loadCount.incrementAndGet());
+                }));
+      }
+      for (Future<String> future : futures) {
+        assertThat(future.get(10, TimeUnit.SECONDS)).startsWith("value-");
+      }
+      assertThat(loadCount).hasValue(threads);
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void concurrentLoadsHonourMaxSizeAndDisposeEachEvictedValueOnce() throws Exception {
+    int keys = 32;
+    int maxSize = 4;
+    List<String> evicted = Collections.synchronizedList(new ArrayList<>());
+    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(maxSize, evicted::add);
+    CyclicBarrier startBarrier = new CyclicBarrier(keys);
+
+    ExecutorService executor = Executors.newFixedThreadPool(keys);
+    try {
+      List<Future<String>> futures = new ArrayList<>();
+      for (int i = 0; i < keys; i++) {
+        String key = "key-" + i;
+        futures.add(
+            executor.submit(
+                () -> {
+                  startBarrier.await(5, TimeUnit.SECONDS);
+                  return cache.getOrLoad(key, () -> "value-for-" + key);
+                }));
+      }
+      for (int i = 0; i < keys; i++) {
+        assertThat(futures.get(i).get(10, TimeUnit.SECONDS)).isEqualTo("value-for-key-" + i);
+      }
+    } finally {
+      executor.shutdownNow();
+    }
+
+    // The bound holds under concurrent loads, and every dropped value reached the listener
+    // exactly once: disposing one twice would close a filesystem another caller still holds.
+    assertThat(cache.size()).isEqualTo(maxSize);
+    assertThat(evicted).hasSize(keys - maxSize).doesNotHaveDuplicates();
+    assertThat(evicted).doesNotContainAnyElementsOf(cache.values());
   }
 }

@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 import org.hibernate.Session;
 import org.hibernate.query.Query;
 
@@ -69,9 +70,14 @@ public class PagedListingHelper<T extends IdentifiableDAO> {
    * @param session The Hibernate session
    * @param parentEntityId The parent entity id
    * @param pageToken The page token
+   * @param filter An extra restriction on the entities to fetch, applied in the query
    * @return The query to fetch the next page of entities
    */
-  public Query<T> buildListQuery(Session session, UUID parentEntityId, String pageToken) {
+  public Query<T> buildListQuery(
+      Session session,
+      UUID parentEntityId,
+      String pageToken,
+      Optional<Function<Root<T>, Predicate>> filter) {
     CriteriaBuilder cb = session.getCriteriaBuilder();
     CriteriaQuery<T> cr = cb.createQuery(entityClass);
     Root<T> root = cr.from(entityClass);
@@ -81,6 +87,7 @@ public class PagedListingHelper<T extends IdentifiableDAO> {
     parentEntityIdColumn.ifPresent(s -> predicates.add(cb.equal(root.get(s), parentEntityId)));
     predicates.add(
         cb.or(cb.greaterThan(root.get("name"), pageToken), cb.isNull(cb.literal(pageToken))));
+    filter.ifPresent(f -> predicates.add(f.apply(root)));
 
     Predicate combinedPredicate = cb.and(predicates.toArray(new Predicate[0]));
     cr.select(root).where(combinedPredicate).orderBy(cb.asc(root.get("name")));
@@ -104,12 +111,31 @@ public class PagedListingHelper<T extends IdentifiableDAO> {
       Optional<Integer> maxResultsOpt,
       Optional<String> nextPageTokenOpt,
       UUID parentEntityId) {
+    return listEntity(session, maxResultsOpt, nextPageTokenOpt, parentEntityId, Optional.empty());
+  }
+
+  /**
+   * As {@link #listEntity(Session, Optional, Optional, UUID)}, listing only the entities {@code
+   * filter} accepts.
+   *
+   * <p>Restricting the entities here rather than over the returned list keeps one page of rows and
+   * one page of results the same thing: {@code maxResults} stays a real limit, and the token {@link
+   * #getNextPageToken} derives resumes after a row the caller was given.
+   *
+   * @param filter An extra restriction on the entities to list, applied in the query
+   */
+  public List<T> listEntity(
+      Session session,
+      Optional<Integer> maxResultsOpt,
+      Optional<String> nextPageTokenOpt,
+      UUID parentEntityId,
+      Optional<Function<Root<T>, Predicate>> filter) {
     if (maxResultsOpt.isPresent() && maxResultsOpt.get() < 0) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "maxResults must be greater than or equal to 0");
     }
     Integer pageSize = getPageSize(maxResultsOpt);
-    Query<T> query = buildListQuery(session, parentEntityId, nextPageTokenOpt.orElse(null));
+    Query<T> query = buildListQuery(session, parentEntityId, nextPageTokenOpt.orElse(null), filter);
     query.setMaxResults(pageSize);
     return query.getResultList();
   }

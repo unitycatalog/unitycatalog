@@ -3,9 +3,11 @@ package io.unitycatalog.server.persist;
 import io.unitycatalog.server.auth.decorator.KeyMapper;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
+import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.util.function.UnaryOperator;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
 
@@ -33,6 +35,7 @@ public class Repositories {
   private final ExternalLocationRepository externalLocationRepository;
   private final DeltaCommitRepository deltaCommitRepository;
   private final DependencyRepository dependencyRepository;
+  private final StorageCleanupTaskRepository storageCleanupTaskRepository;
 
   private final KeyMapper keyMapper;
 
@@ -40,16 +43,26 @@ public class Repositories {
     this(sessionFactory, serverProperties, null);
   }
 
+  public Repositories(
+      SessionFactory sessionFactory,
+      ServerProperties serverProperties,
+      CloudCredentialVendor cloudCredentialVendor) {
+    this(sessionFactory, serverProperties, cloudCredentialVendor, UnaryOperator.identity());
+  }
+
   /**
    * @param cloudCredentialVendor an injected cloud credential vendor (e.g. a test mock), or {@code
    *     null} to build the default from {@code serverProperties}. Owning the credential/file-IO
    *     chain here lets repositories read table storage (e.g. Delta commit files) without
    *     late-binding.
+   * @param fileOperationsDecorator wraps the default {@link FileOperations} before use ({@link
+   *     UnaryOperator#identity()} leaves it unchanged); lets tests map cloud IO to local storage.
    */
   public Repositories(
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
-      CloudCredentialVendor cloudCredentialVendor) {
+      CloudCredentialVendor cloudCredentialVendor,
+      UnaryOperator<FileOperations> fileOperationsDecorator) {
     this.sessionFactory = sessionFactory;
     this.externalLocationUtils = new ExternalLocationUtils(sessionFactory);
     CloudCredentialVendor resolvedCloudCredentialVendor =
@@ -58,7 +71,9 @@ public class Repositories {
             : new CloudCredentialVendor(serverProperties);
     this.storageCredentialVendor =
         new StorageCredentialVendor(resolvedCloudCredentialVendor, externalLocationUtils);
-    this.fileOperations = new FileOperations(storageCredentialVendor, serverProperties);
+    this.fileOperations =
+        fileOperationsDecorator.apply(
+            new FileOperationsImpl(storageCredentialVendor, serverProperties));
 
     this.catalogRepository = new CatalogRepository(this, sessionFactory);
     this.schemaRepository = new SchemaRepository(this, sessionFactory);
@@ -75,6 +90,7 @@ public class Repositories {
     this.deltaCommitRepository =
         new DeltaCommitRepository(sessionFactory, serverProperties, fileOperations);
     this.dependencyRepository = new DependencyRepository();
+    this.storageCleanupTaskRepository = new StorageCleanupTaskRepository(sessionFactory);
 
     // KeyMapper uses all the repositories above.
     this.keyMapper = new KeyMapper(this);

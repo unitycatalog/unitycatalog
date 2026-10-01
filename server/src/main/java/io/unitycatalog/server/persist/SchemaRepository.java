@@ -30,8 +30,12 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -214,6 +218,57 @@ public class SchemaRepository {
         },
         "Failed to get schema",
         /* readOnly= */ true);
+  }
+
+  /** Which of the requested property changes a schema was actually given. */
+  public record PropertyChanges(Set<String> updated, Set<String> removed, Set<String> missing) {}
+
+  /**
+   * Applies a patch to a schema's properties: {@code updates} are set, {@code removals} are
+   * dropped, and everything else is left alone. Unlike {@link #updateSchema}, which replaces the
+   * whole map and reads an empty one as "nothing to do", this can remove a schema's last property.
+   *
+   * <p>The read and the write happen in one transaction, so two callers patching different keys
+   * cannot lose each other's change.
+   *
+   * @return the keys that were set, the keys that were removed, and the keys asked to be removed
+   *     that the schema did not have
+   */
+  public PropertyChanges applyPropertyChanges(
+      String fullName, Map<String, String> updates, Set<String> removals) {
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          SchemaInfoDAO schemaInfoDAO = getSchemaDaoOrThrow(session, fullName);
+          Map<String, String> properties = new HashMap<>();
+          PropertyRepository.findProperties(session, schemaInfoDAO.getId(), Constants.SCHEMA)
+              .forEach(property -> properties.put(property.getKey(), property.getValue()));
+
+          Set<String> removed = new LinkedHashSet<>();
+          Set<String> missing = new LinkedHashSet<>();
+          removals.forEach(
+              key -> {
+                if (properties.remove(key) != null) {
+                  removed.add(key);
+                } else {
+                  missing.add(key);
+                }
+              });
+          properties.putAll(updates);
+
+          PropertyRepository.findProperties(session, schemaInfoDAO.getId(), Constants.SCHEMA)
+              .forEach(session::remove);
+          session.flush();
+          PropertyDAO.from(properties, schemaInfoDAO.getId(), Constants.SCHEMA)
+              .forEach(session::persist);
+          schemaInfoDAO.setUpdatedAt(new Date());
+          schemaInfoDAO.setUpdatedBy(callerId);
+          session.merge(schemaInfoDAO);
+          return new PropertyChanges(new LinkedHashSet<>(updates.keySet()), removed, missing);
+        },
+        "Failed to update schema properties",
+        /* readOnly= */ false);
   }
 
   public SchemaInfo updateSchema(String fullName, UpdateSchema updateSchema) {
