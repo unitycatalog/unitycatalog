@@ -29,6 +29,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.StructType;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
@@ -478,14 +479,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
               .map(row -> row.getString(1))
               .collect(Collectors.toList());
       assertThat(tableNames).containsExactlyInAnyOrder(TEST_TABLE, ANOTHER_TEST_TABLE);
-      // A nested (multi-level) namespace is rejected by the Iceberg REST catalog. Asserted by class
-      // name, not an imported type, so this shared base still compiles on Spark 4.2 (no Iceberg on
-      // its classpath).
-      assertThatThrownBy(() -> sql("SHOW TABLES in %s.a.b", CATALOG_NAME))
-          .satisfies(
-              t ->
-                  assertThat(t.getClass().getName())
-                      .isEqualTo("org.apache.iceberg.exceptions.RESTException"));
+      // A multi-level namespace does not exist as a UC schema, so listing under it is rejected.
+      assertIcebergSchemaNotFound(() -> sql("SHOW TABLES in %s.a.b", CATALOG_NAME));
     } else {
       List<Row> tables1 = sql("SHOW TABLES in %s.%s", SPARK_CATALOG, SCHEMA_NAME);
       assertThat(tables1).hasSize(1);
@@ -509,11 +504,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     }
     // Dropping a malformed multi-level table identifier is rejected.
     if (testingIceberg()) {
-      assertThatThrownBy(() -> sql("DROP TABLE %s.a.b.c", CATALOG_NAME))
-          .satisfies(
-              t ->
-                  assertThat(t.getClass().getName())
-                      .isEqualTo("org.apache.iceberg.exceptions.RESTException"));
+      // The namespace a.b does not exist as a UC schema, so the drop is rejected before the table.
+      assertIcebergSchemaNotFound(() -> sql("DROP TABLE %s.a.b.c", CATALOG_NAME));
     } else {
       // Delta < 4.3.0 forwards the 4-part identifier to UC, which rejects it server-side with
       // ApiException("Nested namespaces are not supported"). Delta >= 4.3.0 ships
@@ -594,15 +586,15 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
 
   /**
    * Specification for one column in testTableWithSupportedDataTypes: its SQL DDL type, the SQL
-   * literal used in the INSERT, the expected toString() from the result row (null = byte-array ref
-   * check via startsWith("[B@")), and the expected UC catalog metadata fields.
+   * literal used in the INSERT, the expected toString() from the result row (null for BINARY, whose
+   * raw bytes are compared directly), and the expected UC catalog metadata fields.
    */
   @Getter
   private static final class ColSpec {
     private final String name;
     private final String sqlType;
     private final String insertValue;
-    private final String rowValue; // null = byte-array object ref, checked with startsWith
+    private final String rowValue; // null for BINARY, whose bytes are compared directly
     private final ColumnTypeName typeName;
     private final String typeText;
     private final boolean nullable;
@@ -882,10 +874,10 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
 
     List<Row> queryResult = sql("SELECT %s FROM %s", colNames, fullTableName);
     assertThat(queryResult).hasSize(1);
+    Row resultRow = queryResult.get(0);
     List<String> row =
-        IntStream.range(0, queryResult.get(0).length())
-            .mapToObj(
-                i -> queryResult.get(0).isNullAt(i) ? null : queryResult.get(0).get(i).toString())
+        IntStream.range(0, resultRow.length())
+            .mapToObj(i -> resultRow.isNullAt(i) ? null : resultRow.get(i).toString())
             .collect(Collectors.toList());
 
     TableInfo tableInfo = tableOperations.getTable(fullTableName);
@@ -910,8 +902,11 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     for (int i = 0; i < cols.size(); i++) {
       ColSpec spec = cols.get(i);
       if (spec.getTypeName() == ColumnTypeName.BINARY) {
-        // BINARY: row value is a Java byte array — toString() produces a ref like "[B@..."
-        assertThat(row.get(i)).as("row value for %s", spec.getName()).startsWith("[B@");
+        // BINARY comes back as a Java byte[]; read it from the raw row (the stringified `row` above
+        // only keeps its "[B@" object ref) and check the inserted X'CAFEBABE' round-trips exactly.
+        assertThat((byte[]) resultRow.get(i))
+            .as("row value for %s", spec.getName())
+            .containsExactly(0xCA, 0xFE, 0xBA, 0xBE);
       } else {
         assertThat(row.get(i)).as("row value for %s", spec.getName()).isEqualTo(spec.getRowValue());
       }
@@ -980,5 +975,21 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     Pair<Integer, String> newValue = Pair.of(asSelect.getLeft() + 1, asSelect.getRight() + "1");
     sql("INSERT INTO %s SELECT %d, '%s'", tableFullName, newValue.getLeft(), newValue.getRight());
     validateRows(sql("SELECT * FROM %s ORDER BY i", tableFullName), asSelect, newValue);
+  }
+
+  /**
+   * Asserts {@code op} is rejected specifically because its multi-level namespace does not exist as
+   * a UC schema. The Iceberg REST client maps UC's rejection to {@code NoSuchNamespaceException};
+   * checked by class name (not an imported type, so this shared base still compiles on Spark 4.2,
+   * which has no Iceberg on its classpath) and by message, so an unrelated non-2xx (a 500 or auth
+   * failure, which also surfaces as a {@code RESTException}) does not make the assertion pass.
+   */
+  private static void assertIcebergSchemaNotFound(ThrowingCallable op) {
+    assertThatThrownBy(op)
+        .hasMessageContaining("Schema not found")
+        .satisfies(
+            t ->
+                assertThat(t.getClass().getName())
+                    .isEqualTo("org.apache.iceberg.exceptions.NoSuchNamespaceException"));
   }
 }

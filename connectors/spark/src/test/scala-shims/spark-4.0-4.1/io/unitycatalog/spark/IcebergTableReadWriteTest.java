@@ -129,8 +129,8 @@ public abstract class IcebergTableReadWriteTest extends BaseTableReadWriteTest {
             new ColSpec("c_double", "DOUBLE", "1.5", "1.5", ColumnTypeName.DOUBLE),
             new ColSpec("c_decimal", "DECIMAL(10,2)", "123.45", "123.45", ColumnTypeName.DECIMAL),
             new ColSpec("c_string", "STRING", "'test'", "test", ColumnTypeName.STRING),
-            // BINARY round-trips as a Java byte[]; its toString() is an object ref, so rowValue is
-            // unused and the value check below matches the "[B@" prefix instead.
+            // BINARY round-trips as a Java byte[], not a String, so rowValue is unused; the check
+            // below compares the raw bytes against the inserted X'CAFEBABE' instead.
             new ColSpec("c_binary", "BINARY", "X'CAFEBABE'", null, ColumnTypeName.BINARY),
             new ColSpec("c_boolean", "BOOLEAN", "true", "true", ColumnTypeName.BOOLEAN),
             new ColSpec("c_date", "DATE", "DATE'2025-01-01'", "2025-01-01", ColumnTypeName.DATE),
@@ -182,7 +182,11 @@ public abstract class IcebergTableReadWriteTest extends BaseTableReadWriteTest {
     for (int i = 0; i < cols.size(); i++) {
       ColSpec spec = cols.get(i);
       if (spec.typeName == ColumnTypeName.BINARY) {
-        assertThat(row.get(i).toString()).as("row value for %s", spec.name).startsWith("[B@");
+        // Verify the inserted X'CAFEBABE' survived the round-trip byte-for-byte; toString() on a
+        // byte[] is only an object ref and would assert nothing about the value.
+        assertThat((byte[]) row.get(i))
+            .as("row value for %s", spec.name)
+            .containsExactly(0xCA, 0xFE, 0xBA, 0xBE);
       } else {
         assertThat(row.get(i).toString())
             .as("row value for %s", spec.name)
