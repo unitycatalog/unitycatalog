@@ -208,6 +208,9 @@ public class ServerProperties {
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
     // Native Iceberg REST writes are experimental and opt-in until the API is stable.
     ICEBERG_TABLE_ENABLED("server.iceberg-table.enabled", "false", BOOLEAN_VALIDATOR),
+    // Concurrent-identity-column sequences are experimental and opt-in until the API is stable and
+    // an end-to-end Delta client consumes them.
+    IDENTITY_SEQUENCES_ENABLED("server.identity-sequences.enabled", "false", BOOLEAN_VALIDATOR),
     MANAGED_TABLE_USE_DELTA_API_ONLY(
         "server.managed-table.use-delta-api-only", "false", BOOLEAN_VALIDATOR),
     UNIFORM_ICEBERG_V2_ALLOW_MISSING_DV(
@@ -530,6 +533,23 @@ public class ServerProperties {
 
   public boolean isIcebergTableEnabled() {
     return isTrueOrEnable(get(Property.ICEBERG_TABLE_ENABLED));
+  }
+
+  /**
+   * Check if the experimental concurrent-identity-column sequence service is enabled. This method
+   * throws BaseException with ErrorCode.UNIMPLEMENTED if it's disabled. Default off.
+   */
+  public void checkIdentitySequencesEnabled() {
+    if (!isIdentitySequencesEnabled()) {
+      throw new BaseException(
+          ErrorCode.UNIMPLEMENTED,
+          "Identity sequences are currently disabled. To enable them, set "
+              + "'server.identity-sequences.enabled=true' in server.properties");
+    }
+  }
+
+  public boolean isIdentitySequencesEnabled() {
+    return isTrueOrEnable(get(Property.IDENTITY_SEQUENCES_ENABLED));
   }
 
   /**

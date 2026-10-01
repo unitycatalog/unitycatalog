@@ -133,6 +133,20 @@ public class ServerPropertiesTest {
   }
 
   @Test
+  public void testIdentitySequencesEnabledCheck() {
+    ServerProperties serverProperties = new ServerProperties();
+    // Default off: the guard rejects and names the flag to flip.
+    assertThat(serverProperties.isIdentitySequencesEnabled()).isFalse();
+    assertThatThrownBy(serverProperties::checkIdentitySequencesEnabled)
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("server.identity-sequences.enabled=true");
+
+    serverProperties.set(Property.IDENTITY_SEQUENCES_ENABLED, "true");
+    assertThat(serverProperties.isIdentitySequencesEnabled()).isTrue();
+    serverProperties.checkIdentitySequencesEnabled();
+  }
+
+  @Test
   public void testEnumValidator() {
     // Valid values - SERVER_ENV
     testValidProperty(Property.SERVER_ENV, "dev");

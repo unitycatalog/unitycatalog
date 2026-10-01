@@ -48,6 +48,10 @@ tags:
     description: |
       Temporary credential vending for accessing table data in cloud storage.
       Credentials are scoped by operation level (READ or READ_WRITE).
+  - name: DeltaIdentitySequences
+    description: |
+      Catalog-hosted monotonic identity sequences that back concurrent identity columns.
+      Create, reserve ranges from, and drop the sequences scoped to a Delta table named in the path.
 
 paths:
   /delta/v1/config:
@@ -470,6 +474,156 @@ paths:
           $ref: '#/components/responses/NotFoundResponse'
         '409':
           $ref: '#/components/responses/AlreadyExistsResponse'
+
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities:
+    parameters:
+      - $ref: '#/components/parameters/catalog'
+      - $ref: '#/components/parameters/schema'
+      - $ref: '#/components/parameters/table'
+    post:
+      tags:
+        - DeltaIdentitySequences
+      operationId: createIdentitySequences
+      summary: |
+        Create (or idempotently get) one or more monotonic identity sequences under a table.
+        WARNING: This API is experimental and may change in future versions.
+      description: |
+        Create catalog-hosted monotonic sequences that back concurrent identity columns. Each
+        sequence issues values following start + k * step for monotonically increasing k. Values are
+        never reused and gaps from unused reserved ranges are permitted.
+        This is a batch create-or-get: re-supplying a sequence id that already exists under the same
+        table is a no-op when the supplied (start, step) match the stored definition, and a conflict
+        otherwise. step must be non-zero. The batch is applied atomically: if any entry is rejected,
+        no sequence in the request is created. Sequence ids must be unique within the request, and the
+        request must contain at least one sequence.
+        WARNING: This API is experimental and may change in future versions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeltaCreateIdentitySequences'
+      responses:
+        '200':
+          description: The sequences were created (or already existed with a matching definition).
+        '400':
+          $ref: '#/components/responses/BadRequestErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+        '409':
+          $ref: '#/components/responses/AlreadyExistsResponse'
+        '429':
+          description: Creating the requested sequences would exceed the maximum number of identity sequences per table.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeltaErrorResponse'
+        '500':
+          $ref: '#/components/responses/ServerErrorResponse'
+        '501':
+          $ref: '#/components/responses/NotImplementedResponse'
+    delete:
+      tags:
+        - DeltaIdentitySequences
+      operationId: dropIdentitySequences
+      summary: |
+        Drop one or more identity sequences.
+        WARNING: This API is experimental and may change in future versions.
+      description: |
+        Idempotently remove sequences under a table. Dropping a sequence that does not exist (or that
+        belongs to a different table) is a no-op that reports existed=false for that id. Duplicate ids
+        in the request are de-duplicated, and one result is returned per unique requested id.
+        WARNING: This API is experimental and may change in future versions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeltaDropIdentitySequences'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeltaDropIdentitySequencesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+        '500':
+          $ref: '#/components/responses/ServerErrorResponse'
+        '501':
+          $ref: '#/components/responses/NotImplementedResponse'
+
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identities/reserve:
+    parameters:
+      - $ref: '#/components/parameters/catalog'
+      - $ref: '#/components/parameters/schema'
+      - $ref: '#/components/parameters/table'
+    post:
+      tags:
+        - DeltaIdentitySequences
+      operationId: reserveIdentityRanges
+      summary: |
+        Reserve a contiguous range of identity values from one or more sequences.
+        WARNING: This API is experimental and may change in future versions.
+      description: |
+        Atomically reserve count values from each requested sequence and advance its counter. Each
+        returned range is inclusive and never overlaps any previously issued range for that sequence.
+        Consumers must emit range_start + i * step and must not assume range_start <= range_end, since
+        a negative step can produce a descending range.
+        The whole batch is atomic: if any reservation would fail (unknown sequence, step mismatch, or
+        64-bit overflow), no sequence in the request is advanced. Sequence ids must be unique within
+        the request, the request must contain at least one reservation, and the returned ranges are
+        positional with the requested reservations.
+        WARNING: This API is experimental and may change in future versions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeltaReserveIdentityRanges'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeltaReserveIdentityRangesResponse'
+        '400':
+          description: |
+            Bad request or Invalid Argument. Example, the request is empty, a count is not positive, a
+            supplied step does not match the sequence's step, a sequence id is duplicated within the
+            request, or reserving the requested values would overflow a 64-bit integer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeltaErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+        '409':
+          description: Conflict. A concurrent reservation is in progress on one of the sequences; retry the request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeltaErrorResponse'
+        '500':
+          $ref: '#/components/responses/ServerErrorResponse'
+        '501':
+          $ref: '#/components/responses/NotImplementedResponse'
 
   /delta/v1/temporary-path-credentials:
     get:
@@ -1581,6 +1735,156 @@ components:
           $ref: '#/components/schemas/DeltaErrorModel'
       additionalProperties: false
 
+    DeltaIdentitySequenceSpec:
+      type: object
+      description: A single sequence to create within a DeltaCreateIdentitySequences batch.
+      properties:
+        sequence_id:
+          type: string
+          description: The client-minted unique id (a UUID) that names the sequence. It is written into the Delta column metadata as the counter pointer. Must be non-empty and at most 64 characters.
+        start:
+          type: integer
+          format: int64
+          description: The first value the sequence issues.
+        step:
+          type: integer
+          format: int64
+          description: The increment between successive values. Must be non-zero. A negative step produces a descending sequence.
+      required:
+        - sequence_id
+        - start
+        - step
+
+    DeltaCreateIdentitySequences:
+      type: object
+      description: |
+        Request to create (or idempotently get) one or more monotonic identity sequences under the
+        table named in the path. The batch is applied atomically: if any entry is rejected, no
+        sequence is created.
+      properties:
+        sequences:
+          type: array
+          description: The sequences to create. Must contain at least one entry, and sequence ids must be unique within the request.
+          items:
+            $ref: '#/components/schemas/DeltaIdentitySequenceSpec'
+      required:
+        - sequences
+
+    DeltaIdentityReservation:
+      type: object
+      description: A single reservation within a DeltaReserveIdentityRanges batch.
+      properties:
+        sequence_id:
+          type: string
+          description: The id of the sequence to reserve from.
+        count:
+          type: integer
+          format: int64
+          description: The number of values to reserve. Must be positive.
+        step:
+          type: integer
+          format: int64
+          description: |
+            Optional advisory step. If set, it must match the sequence's stored step. Else a
+            mismatch is rejected so a stale caller cannot silently reserve values under the wrong
+            stride.
+      required:
+        - sequence_id
+        - count
+
+    DeltaReserveIdentityRanges:
+      type: object
+      description: |
+        Request to reserve a contiguous range of values from one or more sequences under the table
+        named in the path. All reservations are applied atomically: if any would fail, no sequence is
+        advanced.
+      properties:
+        reservations:
+          type: array
+          description: The ranges to reserve. Must contain at least one entry, and sequence ids must be unique within the request.
+          items:
+            $ref: '#/components/schemas/DeltaIdentityReservation'
+      required:
+        - reservations
+
+    DeltaIdentityIdRange:
+      type: object
+      description: |
+        A reserved, non-overlapping, inclusive range of identity values. Consumers must emit
+        range_start + i * step for i in [0, count) and must not assume range_start <= range_end,
+        because a negative step produces a descending range.
+      properties:
+        sequence_id:
+          type: string
+          description: The id of the sequence the range was reserved from.
+        range_start:
+          type: integer
+          format: int64
+          description: The first value in the reserved range (inclusive).
+        range_end:
+          type: integer
+          format: int64
+          description: The last value in the reserved range (inclusive).
+        step:
+          type: integer
+          format: int64
+          description: The sequence's stored step. Follows this sign when emitting values.
+      required:
+        - sequence_id
+        - range_start
+        - range_end
+        - step
+
+    DeltaReserveIdentityRangesResponse:
+      type: object
+      description: The reserved ranges, positional with the requested reservations.
+      properties:
+        ranges:
+          type: array
+          description: One reserved range per requested reservation, in request order.
+          items:
+            $ref: '#/components/schemas/DeltaIdentityIdRange'
+      required:
+        - ranges
+
+    DeltaDropIdentitySequences:
+      type: object
+      description: Request to drop one or more identity sequences under the table named in the path.
+      properties:
+        sequence_ids:
+          type: array
+          description: The ids of the sequences to drop. Must contain at least one entry, and duplicate ids are de-duplicated.
+          items:
+            type: string
+      required:
+        - sequence_ids
+
+    DeltaDropIdentitySequenceResult:
+      type: object
+      description: The result of dropping a single sequence.
+      properties:
+        sequence_id:
+          type: string
+          description: The id of the sequence this result is for.
+        existed:
+          type: boolean
+          description: True if the sequence existed under the table and was removed. False if it was already absent (an idempotent no-op).
+      required:
+        - sequence_id
+        - existed
+
+    DeltaDropIdentitySequencesResponse:
+      type: object
+      description: Result of a drop request, one entry per unique requested sequence id.
+      properties:
+        results:
+          type: array
+          description: One result per unique requested sequence id.
+          items:
+            $ref: '#/components/schemas/DeltaDropIdentitySequenceResult'
+      required:
+        - results
+
   # Reusable Responses
   # Error type is identified by the DeltaErrorType enum in the response body.
   responses:
@@ -1632,6 +1936,13 @@ components:
 
     ServiceUnavailableResponse:
       description: Service unavailable. The client may retry after a delay.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DeltaErrorResponse'
+
+    NotImplementedResponse:
+      description: Not implemented. The requested functionality is not enabled on this server.
       content:
         application/json:
           schema:
