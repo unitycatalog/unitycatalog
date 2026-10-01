@@ -93,13 +93,13 @@ public class IdentitySequenceRepository {
 
     Set<String> seen = new HashSet<>();
     for (DeltaIdentitySequenceSpec spec : specs) {
-      validateSequenceId(spec.getSequenceId());
+      validateSequenceId(spec.getIdentitySequenceId());
       ValidationUtils.checkArgument(spec.getStart() != null, "start must be set");
       Long step = spec.getStep();
       ValidationUtils.checkArgument(step != null && step != 0L, "step must be a non-zero integer");
       ValidationUtils.checkArgument(
-          seen.add(spec.getSequenceId()),
-          "Duplicate sequence_id in request: " + spec.getSequenceId());
+          seen.add(spec.getIdentitySequenceId()),
+          "Duplicate identity_sequence_id in request: " + spec.getIdentitySequenceId());
     }
 
     runWithRetry(
@@ -125,7 +125,7 @@ public class IdentitySequenceRepository {
           List<IdentitySequenceDAO> toPersist = new ArrayList<>();
 
           for (DeltaIdentitySequenceSpec spec : specs) {
-            IdentitySequenceDAO existing = find(session, tableId, spec.getSequenceId());
+            IdentitySequenceDAO existing = find(session, tableId, spec.getIdentitySequenceId());
             if (existing != null) {
               boolean matches =
                   existing.getStartValue().equals(spec.getStart())
@@ -134,7 +134,7 @@ public class IdentitySequenceRepository {
                 throw new BaseException(
                     ErrorCode.ALREADY_EXISTS,
                     "Identity sequence already exists with a different definition: "
-                        + spec.getSequenceId());
+                        + spec.getIdentitySequenceId());
               }
               // A matching re-create is a no-op that keeps the current counter.
             } else {
@@ -142,7 +142,7 @@ public class IdentitySequenceRepository {
               IdentitySequenceDAO dao =
                   IdentitySequenceDAO.builder()
                       .tableId(tableId)
-                      .sequenceId(spec.getSequenceId())
+                      .sequenceId(spec.getIdentitySequenceId())
                       .startValue(spec.getStart())
                       .step(spec.getStep())
                       .allocationFrontier(null)
@@ -201,13 +201,13 @@ public class IdentitySequenceRepository {
     Set<String> seen = new HashSet<>();
     for (DeltaIdentityReservation reservation : reservations) {
       ValidationUtils.checkArgument(
-          isNotEmpty(reservation.getSequenceId()), "sequence_id must be set");
+          isNotEmpty(reservation.getIdentitySequenceId()), "identity_sequence_id must be set");
       Long count = reservation.getCount();
       ValidationUtils.checkArgument(
           count != null && count > 0L, "count must be a positive integer");
       ValidationUtils.checkArgument(
-          seen.add(reservation.getSequenceId()),
-          "Duplicate sequence_id in request: " + reservation.getSequenceId());
+          seen.add(reservation.getIdentitySequenceId()),
+          "Duplicate identity_sequence_id in request: " + reservation.getIdentitySequenceId());
     }
 
     // Retries on lock contention. If `RESERVE_MAX_RETRIES` attempts fail, the conflict results
@@ -228,7 +228,7 @@ public class IdentitySequenceRepository {
           Map<String, IdentitySequenceDAO> locked = new HashMap<>();
           List<String> lockOrder =
               reservations.stream()
-                  .map(DeltaIdentityReservation::getSequenceId)
+                  .map(DeltaIdentityReservation::getIdentitySequenceId)
                   .sorted()
                   .collect(Collectors.toList());
           for (String sequenceId : lockOrder) {
@@ -246,15 +246,15 @@ public class IdentitySequenceRepository {
           // with the request.
           List<DeltaIdentityIdRange> ranges = new ArrayList<>(reservations.size());
           for (DeltaIdentityReservation reservation : reservations) {
-            IdentitySequenceDAO dao = locked.get(reservation.getSequenceId());
+            IdentitySequenceDAO dao = locked.get(reservation.getIdentitySequenceId());
             long step = dao.getStep();
-            if (reservation.getStep() != null && reservation.getStep() != step) {
+            if (reservation.getExpectedStep() != null && reservation.getExpectedStep() != step) {
               throw new BaseException(
                   ErrorCode.INVALID_ARGUMENT,
                   "Requested step "
-                      + reservation.getStep()
+                      + reservation.getExpectedStep()
                       + " does not match the step of sequence "
-                      + reservation.getSequenceId()
+                      + reservation.getIdentitySequenceId()
                       + " ("
                       + step
                       + ")");
@@ -274,12 +274,12 @@ public class IdentitySequenceRepository {
                   "Reserving "
                       + count
                       + " values from sequence "
-                      + reservation.getSequenceId()
+                      + reservation.getIdentitySequenceId()
                       + " would overflow the range of a 64-bit integer.");
             }
             ranges.add(
                 new DeltaIdentityIdRange()
-                    .sequenceId(dao.getSequenceId())
+                    .identitySequenceId(dao.getSequenceId())
                     .rangeStart(rangeStart)
                     .rangeEnd(rangeEnd)
                     .step(step));
@@ -288,7 +288,7 @@ public class IdentitySequenceRepository {
           // All ranges are valid, so advance the frontiers now.
           Date now = new Date();
           for (DeltaIdentityIdRange range : ranges) {
-            IdentitySequenceDAO dao = locked.get(range.getSequenceId());
+            IdentitySequenceDAO dao = locked.get(range.getIdentitySequenceId());
             dao.setAllocationFrontier(range.getRangeEnd());
             dao.setUpdatedAt(now);
           }
@@ -308,12 +308,12 @@ public class IdentitySequenceRepository {
   public DeltaDropIdentitySequencesResponse dropSequences(
       String tableId, DeltaDropIdentitySequences request) {
     ValidationUtils.checkArgument(isNotEmpty(tableId), "table_id must be set");
-    List<String> sequenceIds = request.getSequenceIds();
+    List<String> sequenceIds = request.getIdentitySequenceIds();
     ValidationUtils.checkArgument(
         sequenceIds != null && !sequenceIds.isEmpty(),
-        "sequence_ids must contain at least one entry");
+        "identity_sequence_ids must contain at least one entry");
     for (String sequenceId : sequenceIds) {
-      ValidationUtils.checkArgument(isNotEmpty(sequenceId), "sequence_id must be set");
+      ValidationUtils.checkArgument(isNotEmpty(sequenceId), "identity_sequence_id must be set");
     }
     // De-duplicate while preserving first-seen order.
     List<String> uniqueIds = new ArrayList<>(new LinkedHashSet<>(sequenceIds));
@@ -329,7 +329,9 @@ public class IdentitySequenceRepository {
               session.remove(dao);
             }
             results.add(
-                new DeltaDropIdentitySequenceResult().sequenceId(sequenceId).existed(existed));
+                new DeltaDropIdentitySequenceResult()
+                    .identitySequenceId(sequenceId)
+                    .existed(existed));
           }
           long changed = results.stream().filter(r -> Boolean.TRUE.equals(r.getExisted())).count();
           LOGGER.info("Dropped {} identity sequence(s) for table {}", changed, tableId);

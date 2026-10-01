@@ -61,7 +61,7 @@ public class IdentitySequenceRepositoryTest {
   }
 
   private static DeltaIdentitySequenceSpec spec(String sequenceId, long start, long step) {
-    return new DeltaIdentitySequenceSpec().sequenceId(sequenceId).start(start).step(step);
+    return new DeltaIdentitySequenceSpec().identitySequenceId(sequenceId).start(start).step(step);
   }
 
   private void create(String tableId, String sequenceId, long start, long step) {
@@ -76,7 +76,7 @@ public class IdentitySequenceRepositoryTest {
             tableId,
             new DeltaReserveIdentityRanges()
                 .addReservationsItem(
-                    new DeltaIdentityReservation().sequenceId(sequenceId).count(count)))
+                    new DeltaIdentityReservation().identitySequenceId(sequenceId).count(count)))
         .getRanges()
         .get(0);
   }
@@ -84,7 +84,7 @@ public class IdentitySequenceRepositoryTest {
   private DeltaDropIdentitySequencesResponse drop(String tableId, String... sequenceIds) {
     DeltaDropIdentitySequences request = new DeltaDropIdentitySequences();
     for (String id : sequenceIds) {
-      request.addSequenceIdsItem(id);
+      request.addIdentitySequenceIdsItem(id);
     }
     return repository.dropSequences(tableId, request);
   }
@@ -96,7 +96,7 @@ public class IdentitySequenceRepositoryTest {
     create(tableId, seq, /* start = */ 100L, /* step = */ 1L);
 
     DeltaIdentityIdRange first = reserve(tableId, seq, 5);
-    assertThat(first.getSequenceId()).isEqualTo(seq);
+    assertThat(first.getIdentitySequenceId()).isEqualTo(seq);
     assertThat(first.getRangeStart()).isEqualTo(100L);
     assertThat(first.getRangeEnd()).isEqualTo(104L);
     assertThat(first.getStep()).isEqualTo(1L);
@@ -200,7 +200,10 @@ public class IdentitySequenceRepositoryTest {
                     tableId,
                     new DeltaReserveIdentityRanges()
                         .addReservationsItem(
-                            new DeltaIdentityReservation().sequenceId(seq).count(1L).step(3L))))
+                            new DeltaIdentityReservation()
+                                .identitySequenceId(seq)
+                                .count(1L)
+                                .expectedStep(3L))))
         .isInstanceOf(BaseException.class)
         .satisfies(e -> assertErrorCode(e, ErrorCode.INVALID_ARGUMENT));
   }
@@ -372,8 +375,8 @@ public class IdentitySequenceRepositoryTest {
     ReserveIdentityRangesResponseHolder holder = reserveBatch(tableId, first, 2L, second, 3L);
 
     assertThat(holder.ranges).hasSize(2);
-    assertThat(holder.ranges.get(0).getSequenceId()).isEqualTo(first);
-    assertThat(holder.ranges.get(1).getSequenceId()).isEqualTo(second);
+    assertThat(holder.ranges.get(0).getIdentitySequenceId()).isEqualTo(first);
+    assertThat(holder.ranges.get(1).getIdentitySequenceId()).isEqualTo(second);
   }
 
   @Test
@@ -387,9 +390,9 @@ public class IdentitySequenceRepositoryTest {
                     tableId,
                     new DeltaReserveIdentityRanges()
                         .addReservationsItem(
-                            new DeltaIdentityReservation().sequenceId(seq).count(1L))
+                            new DeltaIdentityReservation().identitySequenceId(seq).count(1L))
                         .addReservationsItem(
-                            new DeltaIdentityReservation().sequenceId(seq).count(1L))))
+                            new DeltaIdentityReservation().identitySequenceId(seq).count(1L))))
         .isInstanceOf(BaseException.class)
         .satisfies(e -> assertErrorCode(e, ErrorCode.INVALID_ARGUMENT));
     // The sequence was not advanced by the rejected batch.
@@ -410,9 +413,11 @@ public class IdentitySequenceRepositoryTest {
                     tableId,
                     new DeltaReserveIdentityRanges()
                         .addReservationsItem(
-                            new DeltaIdentityReservation().sequenceId(good).count(5L))
+                            new DeltaIdentityReservation().identitySequenceId(good).count(5L))
                         .addReservationsItem(
-                            new DeltaIdentityReservation().sequenceId(overflowing).count(3L))))
+                            new DeltaIdentityReservation()
+                                .identitySequenceId(overflowing)
+                                .count(3L))))
         .isInstanceOf(BaseException.class)
         .satisfies(e -> assertErrorCode(e, ErrorCode.OUT_OF_RANGE));
 
@@ -433,9 +438,11 @@ public class IdentitySequenceRepositoryTest {
                     tableId,
                     new DeltaReserveIdentityRanges()
                         .addReservationsItem(
-                            new DeltaIdentityReservation().sequenceId(good).count(5L))
+                            new DeltaIdentityReservation().identitySequenceId(good).count(5L))
                         .addReservationsItem(
-                            new DeltaIdentityReservation().sequenceId(uniqueId()).count(1L))))
+                            new DeltaIdentityReservation()
+                                .identitySequenceId(uniqueId())
+                                .count(1L))))
         .isInstanceOf(BaseException.class)
         .satisfies(e -> assertErrorCode(e, ErrorCode.NOT_FOUND));
 
@@ -481,11 +488,11 @@ public class IdentitySequenceRepositoryTest {
     assertThat(results).hasSize(2);
 
     DeltaDropIdentitySequenceResult presentResult = results.get(0);
-    assertThat(presentResult.getSequenceId()).isEqualTo(present);
+    assertThat(presentResult.getIdentitySequenceId()).isEqualTo(present);
     assertThat(presentResult.getExisted()).isTrue();
 
     DeltaDropIdentitySequenceResult absentResult = results.get(1);
-    assertThat(absentResult.getSequenceId()).isEqualTo(absent);
+    assertThat(absentResult.getIdentitySequenceId()).isEqualTo(absent);
     assertThat(absentResult.getExisted()).isFalse();
   }
 
@@ -606,9 +613,9 @@ public class IdentitySequenceRepositoryTest {
                 tableId,
                 new DeltaReserveIdentityRanges()
                     .addReservationsItem(
-                        new DeltaIdentityReservation().sequenceId(seq1).count(count1))
+                        new DeltaIdentityReservation().identitySequenceId(seq1).count(count1))
                     .addReservationsItem(
-                        new DeltaIdentityReservation().sequenceId(seq2).count(count2)))
+                        new DeltaIdentityReservation().identitySequenceId(seq2).count(count2)))
             .getRanges());
   }
 
