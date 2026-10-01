@@ -55,8 +55,9 @@ lazy val sparkJacksonVersion =
   if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 2)) "2.21.7"
   else if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 1)) "2.20.2"
   else "2.18.11"
-// jackson-annotations dropped the patch segment in 2.20, so it is published as 2.20 and 2.21
-// only (for example, 2.21.7 does not exist).
+// jackson-annotations is published as major.minor only from 2.20 onward (2.20, 2.21; for
+// example, 2.21.7 does not exist). 2.18.x still has patch releases, so Spark 4.0 matches
+// sparkJacksonVersion.
 lazy val sparkJacksonAnnotationsVersion =
   if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 2)) "2.21"
   else if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 1)) "2.20"
