@@ -429,12 +429,12 @@ public class TableRepository {
         && DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
       populateCommitsForDelta(
           response, repositories.getDeltaCommitRepository(), session, dao.getId());
-      response.setAllowedMaintenanceOperations(
-          List.of(
-              DeltaMaintenanceOperation.DATA_REORGANIZATION,
-              DeltaMaintenanceOperation.DATA_CLEANUP,
-              DeltaMaintenanceOperation.METADATA_CLEANUP));
     }
+    response.setAllowedMaintenanceOperations(
+        List.of(
+            DeltaMaintenanceOperation.DATA_REORGANIZATION,
+            DeltaMaintenanceOperation.DATA_CLEANUP,
+            DeltaMaintenanceOperation.METADATA_CLEANUP));
 
     populateUniformMetadata(response, dao);
 
