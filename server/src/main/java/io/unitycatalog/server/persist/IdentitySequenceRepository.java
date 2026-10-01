@@ -112,9 +112,9 @@ public class IdentitySequenceRepository {
 
   /**
    * A single create attempt inside one transaction. Retried once by {@link #createSequences} if a
-   * concurrent writer wins the insert race for the same {@code (table_id, sequence_id)}. During the
-   * retry the now-committed row is resolved by the create-or-accept path (an idempotent match, or
-   * {@code ALREADY_EXISTS} on a mismatched definition).
+   * concurrent writer wins the insert race for the same {@code (table_id, identity_sequence_id)}.
+   * During the retry the now-committed row is resolved by the create-or-accept path (an idempotent
+   * match, or {@code ALREADY_EXISTS} on a mismatched definition).
    */
   private void createSequencesOnce(String tableId, DeltaCreateIdentitySequences request) {
     List<DeltaIdentitySequenceSpec> specs = request.getSequences();
@@ -142,7 +142,7 @@ public class IdentitySequenceRepository {
               IdentitySequenceDAO dao =
                   IdentitySequenceDAO.builder()
                       .tableId(tableId)
-                      .sequenceId(spec.getIdentitySequenceId())
+                      .identitySequenceId(spec.getIdentitySequenceId())
                       .startValue(spec.getStart())
                       .step(spec.getStep())
                       .allocationFrontier(null)
@@ -168,7 +168,8 @@ public class IdentitySequenceRepository {
           try {
             toPersist.forEach(session::persist);
             if (!toPersist.isEmpty()) {
-              // Flush the inserts now so a concurrent create of the same (table_id, sequence_id)
+              // Flush the inserts now so a concurrent create of the same (table_id,
+              // identity_sequence_id)
               // surfaces here as a constraint violation.
               session.flush();
             }
@@ -279,7 +280,7 @@ public class IdentitySequenceRepository {
             }
             ranges.add(
                 new DeltaIdentityIdRange()
-                    .identitySequenceId(dao.getSequenceId())
+                    .identitySequenceId(dao.getIdentitySequenceId())
                     .rangeStart(rangeStart)
                     .rangeEnd(rangeEnd)
                     .step(step));
@@ -365,7 +366,7 @@ public class IdentitySequenceRepository {
     try {
       session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
     } catch (PessimisticLockException e) {
-      throw new ReservationConflictException(dao.getSequenceId());
+      throw new ReservationConflictException(dao.getIdentitySequenceId());
     }
   }
 
@@ -413,10 +414,10 @@ public class IdentitySequenceRepository {
   }
 
   private static void validateSequenceId(String sequenceId) {
-    ValidationUtils.checkArgument(isNotEmpty(sequenceId), "sequence_id must be set");
+    ValidationUtils.checkArgument(isNotEmpty(sequenceId), "identity_sequence_id must be set");
     ValidationUtils.checkArgument(
         sequenceId.length() <= MAX_SEQUENCE_ID_LENGTH,
-        "sequence_id must be at most " + MAX_SEQUENCE_ID_LENGTH + " characters");
+        "identity_sequence_id must be at most " + MAX_SEQUENCE_ID_LENGTH + " characters");
   }
 
   private static boolean isNotEmpty(String s) {

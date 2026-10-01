@@ -37,8 +37,8 @@ public class IdentitySequenceDAO {
   private String tableId;
 
   @Id
-  @Column(name = "sequence_id")
-  private String sequenceId;
+  @Column(name = "identity_sequence_id")
+  private String identitySequenceId;
 
   // "start" is a reserved word in several SQL dialects, so the column is named start_value.
   @Column(name = "start_value", nullable = false)
@@ -58,12 +58,12 @@ public class IdentitySequenceDAO {
   @Column(name = "updated_at")
   private Date updatedAt;
 
-  /** The composite primary key of a sequence is {@code (table_id, sequence_id)}. */
+  /** The composite primary key of a sequence is {@code (table_id, identity_sequence_id)}. */
   @Data
   @NoArgsConstructor
   @AllArgsConstructor
   public static class PrimaryKey implements Serializable {
     private String tableId;
-    private String sequenceId;
+    private String identitySequenceId;
   }
 }
