@@ -1,11 +1,14 @@
 package io.unitycatalog.server.observability;
 
+import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.binder.jvm.JvmGcMetrics;
 import io.micrometer.core.instrument.binder.jvm.JvmMemoryMetrics;
 import io.micrometer.core.instrument.binder.jvm.JvmThreadMetrics;
 import io.micrometer.core.instrument.binder.system.ProcessorMetrics;
-import io.micrometer.prometheus.PrometheusConfig;
-import io.micrometer.prometheus.PrometheusMeterRegistry;
+import io.micrometer.core.instrument.config.MeterFilter;
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
+import java.util.function.Predicate;
 
 /** Builds a Prometheus meter registry with standard JVM/system instrumentation. */
 public final class MetricsRegistries {
@@ -50,6 +53,13 @@ public final class MetricsRegistries {
 
   public static PrometheusMetrics createPrometheus() {
     PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+    Predicate<Meter.Id> httpRequestCounter = id -> id.getName().equals("http.server.requests");
+    registry
+        .config()
+        .meterFilter(
+            MeterFilter.deny(
+                id -> id.getName().startsWith("http.server.") && !httpRequestCounter.test(id)))
+        .meterFilter(MeterFilter.forMeters(httpRequestCounter, MeterFilter.ignoreTags("result")));
     new JvmMemoryMetrics().bindTo(registry);
     JvmGcMetrics jvmGcMetrics = new JvmGcMetrics();
     jvmGcMetrics.bindTo(registry);

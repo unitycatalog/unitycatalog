@@ -258,10 +258,10 @@ public class ArmeriaServerBuilder {
 
   /**
    * Sets the Micrometer registry Armeria records into and installs a decorator on the API virtual
-   * host that emits per-endpoint request count / latency / error metrics under the {@code
-   * http.server} prefix. On the API virtual host so it meters API traffic (wrapping outside the
-   * auth decorators, as it did when the whole surface was on the default virtual host); the
-   * observability port's own scrapes are not counted as http.server traffic.
+   * host that records per-endpoint HTTP metrics under the {@code http.server} prefix. The registry
+   * filters this family to request counts. On the API virtual host so it meters API traffic
+   * (wrapping outside the auth decorators, as it did when the whole surface was on the default
+   * virtual host); the observability port's own scrapes are not counted as http.server traffic.
    */
   ArmeriaServerBuilder meterRegistry(MeterRegistry meterRegistry) {
     armeriaServerBuilder.meterRegistry(meterRegistry);

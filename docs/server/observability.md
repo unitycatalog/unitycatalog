@@ -100,11 +100,11 @@ Collector, etc.).
 | `process_cpu_usage`, `system_cpu_usage` | Process and host CPU utilisation |
 | `armeria_server_*`, `armeria_executor_*` | Armeria server and executor internals |
 | `http_server_requests_total` | Total HTTP requests, tagged by `service`, `method`, `http_status` |
-| `http_server_request_duration_seconds` | Time to receive the request, exported as timer series with the same tags |
-| `http_server_response_duration_seconds` | Time to send the response, exported as timer series with the same tags |
-| `http_server_total_duration_seconds` | End-to-end request and response time, exported as timer series with the same tags |
-| `http_server_active_requests` | In-flight requests |
-| `uc_securable_table_created_total` | Table securables created after their database transactions commit through UC, Delta, or Iceberg REST, including tables, views, and metric views |
+| `uc_securable_table_creations_total` | Table securables created after their database transactions commit through UC, Delta, or Iceberg REST, including tables, views, and metric views |
+
+Within the `http_server_*` family, only `http_server_requests_total` is exposed, without a `result`
+tag. HTTP latency, request/response size, timeout, and in-flight metrics are not exposed. JVM,
+CPU, Armeria-internal, and UC metrics remain enabled.
 
 !!! note "Per-route metrics are lazily populated"
     HTTP request metrics for a given route (`service`/`method` combination) appear in the

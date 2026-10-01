@@ -48,7 +48,7 @@ lazy val awsSdkV1Version = "1.12.797"
 lazy val awsSdkV2Version = "2.54.18"
 lazy val armeriaVersion = "1.41.1"
 // Keep in lockstep with Armeria's Micrometer line.
-lazy val micrometerVersion = "1.12.4"
+lazy val micrometerVersion = "1.17.0"
 lazy val nettyVersion = "4.2.18.Final"
 lazy val nettyTcnativeVersion = "2.0.84.Final"
 lazy val vertxVersion = "4.5.34"
@@ -379,6 +379,7 @@ lazy val server = (project in file("server"))
     ) ++ javacRelease17,
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % armeriaVersion,
+      "com.linecorp.armeria" % "armeria-prometheus1" % armeriaVersion,
       "io.micrometer" % "micrometer-registry-prometheus" % micrometerVersion,
       "org.apache.commons" % "commons-lang3" % "3.19.0",
 

@@ -175,12 +175,26 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
 
     assertThat(response.statusCode()).isEqualTo(200);
     assertThat(response.body())
-        .contains("jvm_memory_used_bytes", "uc_securable_table_created", "http_server_");
+        .contains(
+            "jvm_memory_used_bytes",
+            "process_cpu_usage",
+            "system_cpu_usage",
+            "armeria_server_",
+            "uc_securable_table_creations_total",
+            "http_server_requests_total");
+    assertThat(response.body().lines().filter(line -> line.startsWith("http_server_")).toList())
+        .isNotEmpty()
+        .allSatisfy(
+            line ->
+                assertThat(line)
+                    .startsWith("http_server_requests_total{")
+                    .contains("service=", "method=", "http_status=")
+                    .doesNotContain("result="));
 
     return response
         .body()
         .lines()
-        .filter(line -> line.startsWith("uc_securable_table_created_total"))
+        .filter(line -> line.startsWith("uc_securable_table_creations_total"))
         .mapToDouble(line -> Double.parseDouble(line.substring(line.lastIndexOf(' ') + 1)))
         .findFirst()
         .orElse(0.0);
