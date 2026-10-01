@@ -475,7 +475,7 @@ paths:
         '409':
           $ref: '#/components/responses/AlreadyExistsResponse'
 
-  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identitySequences:
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identity-sequences:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -523,7 +523,7 @@ paths:
         '501':
           $ref: '#/components/responses/NotImplementedResponse'
 
-  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identitySequences/drop:
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identity-sequences/drop:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -566,7 +566,7 @@ paths:
         '501':
           $ref: '#/components/responses/NotImplementedResponse'
 
-  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identitySequences/reserve:
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identity-sequences/reserve:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -1730,8 +1730,9 @@ components:
       type: object
       description: A single sequence to create within a DeltaCreateIdentitySequences batch.
       properties:
-        sequence_id:
+        identity_sequence_id:
           type: string
+          maxLength: 64
           description: The client-minted unique id (a UUID) that names the sequence. It is written into the Delta column metadata as the counter pointer. Must be non-empty and at most 64 characters.
         start:
           type: integer
@@ -1742,7 +1743,7 @@ components:
           format: int64
           description: The increment between successive values. Must be non-zero. A negative step produces a descending sequence.
       required:
-        - sequence_id
+        - identity_sequence_id
         - start
         - step
 
@@ -1755,7 +1756,8 @@ components:
       properties:
         sequences:
           type: array
-          description: The sequences to create. Must contain at least one entry, and sequence ids must be unique within the request.
+          maxItems: 64
+          description: The sequences to create. Must contain at least one entry and at most 64, and sequence ids must be unique within the request.
           items:
             $ref: '#/components/schemas/DeltaIdentitySequenceSpec'
       required:
@@ -1765,14 +1767,15 @@ components:
       type: object
       description: A single reservation within a DeltaReserveIdentityRanges batch.
       properties:
-        sequence_id:
+        identity_sequence_id:
           type: string
+          maxLength: 64
           description: The id of the sequence to reserve from.
         count:
           type: integer
           format: int64
           description: The number of values to reserve. Must be positive.
-        step:
+        expected_step:
           type: integer
           format: int64
           description: |
@@ -1780,7 +1783,7 @@ components:
             mismatch is rejected so a stale caller cannot silently reserve values under the wrong
             stride.
       required:
-        - sequence_id
+        - identity_sequence_id
         - count
 
     DeltaReserveIdentityRanges:
@@ -1792,7 +1795,8 @@ components:
       properties:
         reservations:
           type: array
-          description: The ranges to reserve. Must contain at least one entry, and sequence ids must be unique within the request.
+          maxItems: 64
+          description: The ranges to reserve. Must contain at least one entry and at most 64, and sequence ids must be unique within the request.
           items:
             $ref: '#/components/schemas/DeltaIdentityReservation'
       required:
@@ -1805,7 +1809,7 @@ components:
         range_start + i * step for i in [0, count) and must not assume range_start <= range_end,
         because a negative step produces a descending range.
       properties:
-        sequence_id:
+        identity_sequence_id:
           type: string
           description: The id of the sequence the range was reserved from.
         range_start:
@@ -1821,7 +1825,7 @@ components:
           format: int64
           description: The sequence's stored step. Follows this sign when emitting values.
       required:
-        - sequence_id
+        - identity_sequence_id
         - range_start
         - range_end
         - step
@@ -1842,26 +1846,28 @@ components:
       type: object
       description: Request to drop one or more identity sequences under the table named in the path.
       properties:
-        sequence_ids:
+        identity_sequence_ids:
           type: array
-          description: The ids of the sequences to drop. Must contain at least one entry, and duplicate ids are de-duplicated.
+          maxItems: 64
+          description: The ids of the sequences to drop. Must contain at least one entry and at most 64, and duplicate ids are de-duplicated.
           items:
             type: string
+            maxLength: 64
       required:
-        - sequence_ids
+        - identity_sequence_ids
 
     DeltaDropIdentitySequenceResult:
       type: object
       description: The result of dropping a single sequence.
       properties:
-        sequence_id:
+        identity_sequence_id:
           type: string
           description: The id of the sequence this result is for.
         existed:
           type: boolean
           description: True if the sequence existed under the table and was removed. False if it was already absent (an idempotent no-op).
       required:
-        - sequence_id
+        - identity_sequence_id
         - existed
 
     DeltaDropIdentitySequencesResponse:

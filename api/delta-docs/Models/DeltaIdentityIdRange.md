@@ -3,7 +3,7 @@
 
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
-| **sequence\_id** | **String** | The id of the sequence the range was reserved from. | [default to null] |
+| **identity\_sequence\_id** | **String** | The id of the sequence the range was reserved from. | [default to null] |
 | **range\_start** | **Long** | The first value in the reserved range (inclusive). | [default to null] |
 | **range\_end** | **Long** | The last value in the reserved range (inclusive). | [default to null] |
 | **step** | **Long** | The sequence&#39;s stored step. Follows this sign when emitting values. | [default to null] |

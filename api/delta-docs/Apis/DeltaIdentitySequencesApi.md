@@ -4,9 +4,9 @@ All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**createIdentitySequences**](DeltaIdentitySequencesApi.md#createIdentitySequences) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identitySequences | Create (or idempotently get) one or more monotonic identity sequences under a table. WARNING: This API is experimental and may change in future versions.  |
-| [**dropIdentitySequences**](DeltaIdentitySequencesApi.md#dropIdentitySequences) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identitySequences/drop | Drop one or more identity sequences. WARNING: This API is experimental and may change in future versions.  |
-| [**reserveIdentityRanges**](DeltaIdentitySequencesApi.md#reserveIdentityRanges) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identitySequences/reserve | Reserve a contiguous range of identity values from one or more sequences. WARNING: This API is experimental and may change in future versions.  |
+| [**createIdentitySequences**](DeltaIdentitySequencesApi.md#createIdentitySequences) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identity-sequences | Create (or idempotently get) one or more monotonic identity sequences under a table. WARNING: This API is experimental and may change in future versions.  |
+| [**dropIdentitySequences**](DeltaIdentitySequencesApi.md#dropIdentitySequences) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identity-sequences/drop | Drop one or more identity sequences. WARNING: This API is experimental and may change in future versions.  |
+| [**reserveIdentityRanges**](DeltaIdentitySequencesApi.md#reserveIdentityRanges) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identity-sequences/reserve | Reserve a contiguous range of identity values from one or more sequences. WARNING: This API is experimental and may change in future versions.  |
 
 
 <a name="createIdentitySequences"></a>
