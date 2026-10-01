@@ -14,20 +14,18 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 public class UnityCatalogServerTest extends BaseServerTest {
 
-  @Test
-  public void derivesObservabilityPortFromClientPortWhenAutomatic() {
-    assertThat(UnityCatalogServer.resolveObservabilityPort(9000, 0)).isEqualTo(9002);
-  }
-
-  @Test
-  public void explicitObservabilityPortOverridesDerivedPort() {
-    assertThat(UnityCatalogServer.resolveObservabilityPort(9000, 9464)).isEqualTo(9464);
+  @ParameterizedTest
+  @ValueSource(ints = {0, -1, 65536, Integer.MAX_VALUE})
+  public void rejectsOutOfRangeObservabilityPort(int observabilityPort) {
+    assertThatThrownBy(() -> UnityCatalogServer.validateObservabilityPort(9000, observabilityPort))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("between 1 and 65535");
   }
 
   @ParameterizedTest
   @ValueSource(ints = {9000, 9001})
   public void rejectsObservabilityPortEqualToEitherApiPort(int observabilityPort) {
-    assertThatThrownBy(() -> UnityCatalogServer.resolveObservabilityPort(9000, observabilityPort))
+    assertThatThrownBy(() -> UnityCatalogServer.validateObservabilityPort(9000, observabilityPort))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Observability port");
   }

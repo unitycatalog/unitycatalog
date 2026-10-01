@@ -15,7 +15,7 @@ import org.apache.commons.cli.ParseException;
 @Getter
 public class OptionParser {
   private int port = 8080;
-  private int observabilityPort = 8090;
+  private Integer observabilityPort;
 
   private final Options options = new Options();
 
@@ -31,9 +31,7 @@ public class OptionParser {
         Option.builder()
             .longOpt("obs-port")
             .hasArg()
-            .desc(
-                "Port for health and metrics when server.observability.enabled=true."
-                    + " Default is 8090 (0 means --port + 2).")
+            .desc("Enable health and metrics on this port (1-65535). Disabled when omitted.")
             .type(Integer.class)
             .build());
     options.addOption(

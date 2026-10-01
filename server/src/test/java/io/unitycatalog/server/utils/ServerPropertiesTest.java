@@ -274,18 +274,6 @@ public class ServerPropertiesTest {
   }
 
   @Test
-  public void testObservabilityConfiguration() {
-    ServerProperties properties = new ServerProperties(new Properties());
-    assertThat(properties.isObservabilityEnabled()).isFalse();
-    properties.set(Property.OBSERVABILITY_ENABLED, "true");
-    assertThat(properties.isObservabilityEnabled()).isTrue();
-    properties.set(Property.OBSERVABILITY_ENABLED, "false");
-    assertThat(properties.isObservabilityEnabled()).isFalse();
-    testInvalidProperty(
-        Property.OBSERVABILITY_ENABLED, "invalid", "server.observability.enabled", "Invalid value");
-  }
-
-  @Test
   public void testReadinessConfiguration() {
     // Defaults
     ServerProperties defaults = new ServerProperties();

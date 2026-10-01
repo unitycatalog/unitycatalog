@@ -176,7 +176,7 @@ public class UnityCatalogServer implements AutoCloseable {
             unityCatalogServerBuilder.serverProperties);
 
     UnityCatalogMetrics domainMetrics = null;
-    if (unityCatalogServerBuilder.serverProperties.isObservabilityEnabled()) {
+    if (unityCatalogServerBuilder.observabilityPort != null) {
       domainMetrics =
           initializeObservability(
               armeriaServerBuilder,
@@ -386,17 +386,14 @@ public class UnityCatalogServer implements AutoCloseable {
     options.parse(args);
     int clientPort = options.getPort();
     ServerProperties serverProperties = new ServerProperties(SERVER_PROPERTIES_FILE);
-    int observabilityPort =
-        serverProperties.isObservabilityEnabled()
-            ? resolveObservabilityPort(clientPort, options.getObservabilityPort())
-            : 0;
+    UnityCatalogServer.Builder serverBuilder =
+        UnityCatalogServer.builder().port(clientPort + 1).serverProperties(serverProperties);
+    if (options.getObservabilityPort() != null) {
+      validateObservabilityPort(clientPort, options.getObservabilityPort());
+      serverBuilder.observabilityPort(options.getObservabilityPort());
+    }
     // Start Unity Catalog server
-    UnityCatalogServer unityCatalogServer =
-        UnityCatalogServer.builder()
-            .port(clientPort + 1)
-            .observabilityPort(observabilityPort)
-            .serverProperties(serverProperties)
-            .build();
+    UnityCatalogServer unityCatalogServer = serverBuilder.build();
     unityCatalogServer.printArt();
     unityCatalogServer.start();
     // Start URL transcoder. Clients use its port, not Armeria's, so wait for it to be listening
@@ -414,14 +411,12 @@ public class UnityCatalogServer implements AutoCloseable {
     }
   }
 
-  static int resolveObservabilityPort(int clientPort, int configuredPort) {
-    int observabilityPort =
-        ArmeriaServerBuilder.resolveObservabilityPort(clientPort + 1, configuredPort);
+  static void validateObservabilityPort(int clientPort, int observabilityPort) {
+    ArmeriaServerBuilder.validateObservabilityPort(clientPort + 1, observabilityPort);
     if (observabilityPort == clientPort) {
       throw new IllegalArgumentException(
           "Observability port is already used by the client-facing listener: " + clientPort);
     }
-    return observabilityPort;
   }
 
   public void start() {
@@ -483,7 +478,7 @@ public class UnityCatalogServer implements AutoCloseable {
 
   public static class Builder {
     private int port;
-    private int observabilityPort;
+    private Integer observabilityPort;
     private ServerProperties serverProperties;
     private HibernateConfigurator hibernateConfigurator;
     private CloudCredentialVendor cloudCredentialVendor;
@@ -496,7 +491,10 @@ public class UnityCatalogServer implements AutoCloseable {
       return this;
     }
 
-    /** Sets the observability port; 0 selects the port immediately after the internal API port. */
+    /**
+     * Enables observability on the supplied port (1-65535). Observability is disabled if this
+     * method is not called.
+     */
     public UnityCatalogServer.Builder observabilityPort(int observabilityPort) {
       this.observabilityPort = observabilityPort;
       return this;

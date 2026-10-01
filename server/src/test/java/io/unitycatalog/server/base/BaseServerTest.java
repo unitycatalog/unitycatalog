@@ -24,6 +24,7 @@ public abstract class BaseServerTest {
   public static final ServerConfig serverConfig = new ServerConfig("http://localhost", "");
 
   protected ServerConfig observabilityServerConfig;
+  protected boolean observabilityEnabled;
   protected UnityCatalogServer unityCatalogServer;
   protected Properties serverProperties;
   protected HibernateConfigurator hibernateConfigurator;
@@ -95,8 +96,8 @@ public abstract class BaseServerTest {
     }
     if (serverConfig.getServerUrl().contains("localhost")) {
       System.out.println("Running tests on localhost..");
-      // Start the server on a random port, with the observability endpoints on a second random
-      // port. Both are taken at once so the two ports are guaranteed distinct: two sequential
+      // Start the server on a random port, reserving a second random port for optional
+      // observability. Both are taken at once so the two ports are guaranteed distinct: sequential
       // ServerSocket(0) calls can hand back the same port (the first is closed before the second
       // opens), which the API/observability-port validation would then reject.
       int[] ports = findTwoAvailablePorts();
@@ -111,15 +112,17 @@ public abstract class BaseServerTest {
           HibernateConfigurator.setupHibernateProperties(initServerProperties);
       setUpHibernateProperties(hibernateProperties);
       hibernateConfigurator = new HibernateConfigurator(hibernateProperties);
-      unityCatalogServer =
+      UnityCatalogServer.Builder serverBuilder =
           UnityCatalogServer.builder()
               .port(port)
-              .observabilityPort(observabilityPort)
               .serverProperties(initServerProperties)
               .hibernateConfigurator(hibernateConfigurator)
               .credentialOperations(cloudCredentialVendor)
-              .fileOperationsDecorator(this::decorateFileOperations)
-              .build();
+              .fileOperationsDecorator(this::decorateFileOperations);
+      if (observabilityEnabled) {
+        serverBuilder.observabilityPort(observabilityPort);
+      }
+      unityCatalogServer = serverBuilder.build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);
       observabilityServerConfig = new ServerConfig("http://localhost:" + observabilityPort, "");

@@ -92,6 +92,7 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
     SchemaInfo schemaInfo =
         schemaRepository.getSchema(tableInfo.getCatalogName() + "." + tableInfo.getSchemaName());
     initializeHierarchicalAuthorization(tableInfo.getTableId(), schemaInfo.getSchemaId());
+
     return HttpResponse.ofJson(tableInfo);
   }
 

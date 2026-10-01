@@ -3,32 +3,29 @@
 Unity Catalog can expose three unauthenticated HTTP endpoints for health checking and metrics
 collection: `/livez`, `/readyz`, and `/metrics`. Observability is **disabled by default**: no extra
 listener, Prometheus registry, or background readiness probe is started. To enable it, first
-restrict network access as described below, then set this in `etc/conf/server.properties`:
+restrict network access as described below, then start the server with `--obs-port <port>`:
 
-```properties
-server.observability.enabled=true
+```sh
+bin/start-uc-server --obs-port 8090
 ```
 
-Restart the server for this setting to take effect.
-
-When enabled, the endpoints are served on a **dedicated observability port** (by default `8090`),
-separate from the catalog API port. With the default client port of `8080`, the internal API port
-is `8081` and the observability port is `8090`.
+The flag requires a port value. Omitting it keeps observability disabled; there is no separate
+enable property. The endpoints are served on the **dedicated observability port** you supply,
+separate from the catalog API port. In the example above, the client port defaults to `8080`,
+the internal API port is `8081`, and the observability port is `8090`.
 
 The observability port is a second port on the *same* server as the API — not a separate server —
 so both listeners share one process and fail together. Serving these endpoints on their own port
 keeps them (in particular `/metrics`, which exposes operational counters) off the main API
-listener: they answer on the observability port and are `404` on the API port. Use `--obs-port` to
-override the default:
+listener: they answer on the observability port and are `404` on the API port. To use another port:
 
 ```sh
 bin/start-uc-server --port 8080 --obs-port 9464
 ```
 
-Omitting `--obs-port` uses `8090`; setting it to `0` selects the automatic value (`--port + 2`).
-This option only selects the port; it does not enable observability.
-The resolved port must be between `1` and `65535` and differ from both API ports. If any required
-port is already in use, startup fails; the server does not select another port.
+The supplied port must be between `1` and `65535` and differ from both API ports. `0` is not
+supported; choose an explicit port. If any required port is already in use, startup fails;
+the server does not select another port.
 
 !!! warning "Network exposure"
     These endpoints are unauthenticated by design so that orchestrators and Prometheus
@@ -148,7 +145,8 @@ server.
 
 ### Kubernetes probes
 
-Expose the observability port and point both probes at it:
+Start the container's server with `--obs-port 8090`, expose that port, and point both probes
+at it. Declaring `containerPort` alone does not enable observability:
 
 ```yaml
 containers:

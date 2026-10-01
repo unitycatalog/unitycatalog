@@ -42,11 +42,11 @@ class OptionParserTest {
     OptionParser optionParser = new OptionParser();
     optionParser.parse(new String[] {"-p", "8081"});
     assertThat(optionParser.getPort()).isEqualTo(8081);
-    assertThat(optionParser.getObservabilityPort()).isEqualTo(8090);
+    assertThat(optionParser.getObservabilityPort()).isNull();
   }
 
   @ParameterizedTest
-  @ValueSource(ints = {0, 9464})
+  @ValueSource(ints = {1, 8090, 9464, 65535})
   void testParseObservabilityPort(int observabilityPort) {
     NoExitOptionsParser optionParser = new NoExitOptionsParser();
     optionParser.parse(
@@ -66,6 +66,14 @@ class OptionParserTest {
   }
 
   @Test
+  void testObservabilityPortRequiresValue() {
+    NoExitOptionsParser optionParser = new NoExitOptionsParser();
+    optionParser.parse(new String[] {"--obs-port"});
+    assertThat(optionParser.getExitCode()).isEqualTo(-1);
+    assertThat(out.toString()).contains("Missing argument for option: obs-port");
+  }
+
+  @Test
   void testParseCLIOptionsWithVersion() {
     NoExitOptionsParser optionParser = new NoExitOptionsParser();
     optionParser.parse(new String[] {"-v"});
@@ -81,8 +89,8 @@ class OptionParserTest {
     assertThat(help).contains("-h,--help Print help message.");
     assertThat(help)
         .contains(
-            "--obs-port <arg> Port for health and metrics when"
-                + " server.observability.enabled=true. Default is 8090 (0 means --port + 2).");
+            "--obs-port <arg> Enable health and metrics on this port"
+                + " (1-65535). Disabled when omitted.");
   }
 
   @Test

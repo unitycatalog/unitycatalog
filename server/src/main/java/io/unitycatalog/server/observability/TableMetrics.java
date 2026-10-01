@@ -5,6 +5,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 
 /** Metrics for persisted tables, including views and metric views. */
 public final class TableMetrics {
+  // TODO: Turn this into a generic metric set class for any UC securable.
   private final Counter tableCreatedCounter;
 
   TableMetrics(MeterRegistry registry) {

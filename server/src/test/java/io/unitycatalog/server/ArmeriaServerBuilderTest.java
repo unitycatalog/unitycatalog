@@ -8,7 +8,6 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 public class ArmeriaServerBuilderTest {
@@ -72,37 +71,39 @@ public class ArmeriaServerBuilderTest {
   }
 
   @ParameterizedTest
-  @CsvSource({"8081, 8082", "9001, 9002", "65534, 65535"})
-  public void derivesObservabilityPortFromApiPortWhenAutomatic(int apiPort, int expectedPort) {
-    assertThat(ArmeriaServerBuilder.resolveObservabilityPort(apiPort, 0)).isEqualTo(expectedPort);
-  }
-
-  @ParameterizedTest
   @ValueSource(ints = {1, 9464, 65535})
-  public void explicitObservabilityPortOverridesDerivedPort(int configuredPort) {
-    assertThat(ArmeriaServerBuilder.resolveObservabilityPort(9001, configuredPort))
-        .isEqualTo(configuredPort);
+  public void bindsExplicitObservabilityPort(int observabilityPort) {
+    try (Server server =
+        new ArmeriaServerBuilder(9001, "/api/", "/control/", new ServerProperties(new Properties()))
+            .observabilityPort(observabilityPort)
+            .build()) {
+      assertThat(server.config().ports())
+          .extracting(port -> port.localAddress().getPort())
+          .contains(9001, observabilityPort);
+    }
   }
 
   @ParameterizedTest
-  @CsvSource({"65535, 0", "9001, -1", "9001, 65536", "9001, 2147483647"})
-  public void rejectsOutOfRangeObservabilityPort(int apiPort, int configuredPort) {
-    assertThatThrownBy(() -> ArmeriaServerBuilder.resolveObservabilityPort(apiPort, configuredPort))
+  @ValueSource(ints = {0, -1, 65536, Integer.MAX_VALUE})
+  public void rejectsOutOfRangeObservabilityPort(int configuredPort) {
+    assertThatThrownBy(
+            () ->
+                new ArmeriaServerBuilder(
+                        9001, "/api/", "/control/", new ServerProperties(new Properties()))
+                    .observabilityPort(configuredPort))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("between 1 and 65535");
   }
 
-  @ParameterizedTest
-  @CsvSource({"0, 9002", "9000, 9000"})
-  public void standaloneServerDoesNotReserveAnAbsentClientPort(
-      int configuredPort, int expectedPort) {
+  @Test
+  public void standaloneServerDoesNotReserveAnAbsentClientPort() {
     try (Server server =
         new ArmeriaServerBuilder(9001, "/api/", "/control/", new ServerProperties(new Properties()))
-            .observabilityPort(configuredPort)
+            .observabilityPort(9000)
             .build()) {
       assertThat(server.config().ports())
           .extracting(port -> port.localAddress().getPort())
-          .contains(9001, expectedPort);
+          .contains(9001, 9000);
     }
   }
 }

@@ -222,8 +222,8 @@ public class ArmeriaServerBuilder {
   }
 
   /** Adds the dedicated observability listener, isolated from the API virtual host. */
-  ArmeriaServerBuilder observabilityPort(int configuredPort) {
-    int observabilityPort = resolveObservabilityPort(port, configuredPort);
+  ArmeriaServerBuilder observabilityPort(int observabilityPort) {
+    validateObservabilityPort(port, observabilityPort);
     // Bind all interfaces so kubelet and Prometheus can reach the pod IP. The operator must
     // restrict access with network policy before opting in.
     observabilityVirtualHost =
@@ -233,8 +233,7 @@ public class ArmeriaServerBuilder {
     return this;
   }
 
-  static int resolveObservabilityPort(int apiPort, int configuredPort) {
-    int observabilityPort = configuredPort == 0 ? apiPort + 1 : configuredPort;
+  static void validateObservabilityPort(int apiPort, int observabilityPort) {
     if (observabilityPort < 1 || observabilityPort > 65535) {
       throw new IllegalArgumentException(
           "Observability port must be between 1 and 65535: " + observabilityPort);
@@ -244,7 +243,6 @@ public class ArmeriaServerBuilder {
           String.format(
               "Observability port (%d) is already used by an API listener", observabilityPort));
     }
-    return observabilityPort;
   }
 
   /**

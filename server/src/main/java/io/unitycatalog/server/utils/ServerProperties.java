@@ -244,7 +244,6 @@ public class ServerProperties {
     AUDIENCES("server.audiences"),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
     ACCESS_TOKEN_TIMEOUT("server.access-token-timeout", "PT24H", DURATION_VALIDATOR),
-    OBSERVABILITY_ENABLED("server.observability.enabled", "false", BOOLEAN_VALIDATOR),
     READINESS_PROBE_INTERVAL(
         "server.readiness.probe-interval", "PT5S", POSITIVE_DURATION_VALIDATOR),
     READINESS_DB_TIMEOUT("server.readiness.db-timeout", "PT2S", POSITIVE_DURATION_VALIDATOR),
@@ -554,11 +553,6 @@ public class ServerProperties {
 
   public Duration getStorageCleanupRetryBackoff() {
     return Duration.parse(get(Property.STORAGE_CLEANUP_RETRY_BACKOFF));
-  }
-
-  /** Whether to expose health and metrics endpoints on a dedicated listener. */
-  public boolean isObservabilityEnabled() {
-    return isTrueOrEnable(get(Property.OBSERVABILITY_ENABLED));
   }
 
   /** How often the {@code /readyz} background probe re-checks database reachability. */
