@@ -292,7 +292,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
    * (via {@link AuthorizeExpressions#UPDATE_TABLE}). The table is named in the path; its id is
    * resolved here and passed to the repository, which keys sequences by table id.
    */
-  @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identitySequences")
+  @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identity-sequences")
   @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
   public HttpResponse createIdentitySequences(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
@@ -305,7 +305,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
   }
 
   /** Reserve identity value ranges from sequences under a table. Requires {@code MODIFY}. */
-  @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identitySequences/reserve")
+  @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identity-sequences/reserve")
   @ProducesJson
   @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
   public DeltaReserveIdentityRangesResponse reserveIdentityRanges(
@@ -319,7 +319,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
   }
 
   /** Drop identity sequences under a table. Requires {@code MODIFY}. */
-  @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identitySequences/drop")
+  @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/identity-sequences/drop")
   @ProducesJson
   @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
   public DeltaDropIdentitySequencesResponse dropIdentitySequences(

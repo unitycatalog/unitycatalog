@@ -81,7 +81,10 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
         TABLE,
         new DeltaCreateIdentitySequences()
             .addSequencesItem(
-                new DeltaIdentitySequenceSpec().sequenceId(sequenceId).start(start).step(step)));
+                new DeltaIdentitySequenceSpec()
+                    .identitySequenceId(sequenceId)
+                    .start(start)
+                    .step(step)));
   }
 
   private DeltaIdentityIdRange reserve(String sequenceId, long count) throws ApiException {
@@ -92,7 +95,7 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
             TABLE,
             new DeltaReserveIdentityRanges()
                 .addReservationsItem(
-                    new DeltaIdentityReservation().sequenceId(sequenceId).count(count)))
+                    new DeltaIdentityReservation().identitySequenceId(sequenceId).count(count)))
         .getRanges()
         .get(0);
   }
@@ -100,7 +103,10 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
   private DeltaDropIdentitySequenceResult drop(String sequenceId) throws ApiException {
     return identitySequencesApi
         .dropIdentitySequences(
-            CATALOG, SCHEMA, TABLE, new DeltaDropIdentitySequences().addSequenceIdsItem(sequenceId))
+            CATALOG,
+            SCHEMA,
+            TABLE,
+            new DeltaDropIdentitySequences().addIdentitySequenceIdsItem(sequenceId))
         .getResults()
         .get(0);
   }
@@ -113,7 +119,7 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
 
     // First reserve issues start. The second reserve continues with no overlap.
     DeltaIdentityIdRange first = reserve(seq, 3); // 100, 102, 104
-    assertThat(first.getSequenceId()).isEqualTo(seq);
+    assertThat(first.getIdentitySequenceId()).isEqualTo(seq);
     assertThat(first.getRangeStart()).isEqualTo(100L);
     assertThat(first.getRangeEnd()).isEqualTo(104L);
     assertThat(first.getStep()).isEqualTo(2L);
@@ -124,7 +130,7 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
 
     // Drop is idempotent: first drop removes it. The second drop reports that it was already gone.
     DeltaDropIdentitySequenceResult dropped = drop(seq);
-    assertThat(dropped.getSequenceId()).isEqualTo(seq);
+    assertThat(dropped.getIdentitySequenceId()).isEqualTo(seq);
     assertThat(dropped.getExisted()).isTrue();
 
     assertThat(drop(seq).getExisted()).isFalse();
@@ -190,8 +196,10 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
         SCHEMA,
         TABLE,
         new DeltaCreateIdentitySequences()
-            .addSequencesItem(new DeltaIdentitySequenceSpec().sequenceId(a).start(100L).step(1L))
-            .addSequencesItem(new DeltaIdentitySequenceSpec().sequenceId(b).start(0L).step(10L)));
+            .addSequencesItem(
+                new DeltaIdentitySequenceSpec().identitySequenceId(a).start(100L).step(1L))
+            .addSequencesItem(
+                new DeltaIdentitySequenceSpec().identitySequenceId(b).start(0L).step(10L)));
 
     List<DeltaIdentityIdRange> ranges =
         identitySequencesApi
@@ -200,14 +208,16 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
                 SCHEMA,
                 TABLE,
                 new DeltaReserveIdentityRanges()
-                    .addReservationsItem(new DeltaIdentityReservation().sequenceId(a).count(2L))
-                    .addReservationsItem(new DeltaIdentityReservation().sequenceId(b).count(3L)))
+                    .addReservationsItem(
+                        new DeltaIdentityReservation().identitySequenceId(a).count(2L))
+                    .addReservationsItem(
+                        new DeltaIdentityReservation().identitySequenceId(b).count(3L)))
             .getRanges();
     assertThat(ranges).hasSize(2);
-    assertThat(ranges.get(0).getSequenceId()).isEqualTo(a);
+    assertThat(ranges.get(0).getIdentitySequenceId()).isEqualTo(a);
     assertThat(ranges.get(0).getRangeStart()).isEqualTo(100L);
     assertThat(ranges.get(0).getRangeEnd()).isEqualTo(101L);
-    assertThat(ranges.get(1).getSequenceId()).isEqualTo(b);
+    assertThat(ranges.get(1).getIdentitySequenceId()).isEqualTo(b);
     assertThat(ranges.get(1).getRangeStart()).isEqualTo(0L);
     assertThat(ranges.get(1).getRangeEnd()).isEqualTo(20L);
   }
@@ -227,9 +237,10 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
                 SCHEMA,
                 TABLE,
                 new DeltaReserveIdentityRanges()
-                    .addReservationsItem(new DeltaIdentityReservation().sequenceId(good).count(5L))
                     .addReservationsItem(
-                        new DeltaIdentityReservation().sequenceId(overflowing).count(3L))),
+                        new DeltaIdentityReservation().identitySequenceId(good).count(5L))
+                    .addReservationsItem(
+                        new DeltaIdentityReservation().identitySequenceId(overflowing).count(3L))),
         DeltaErrorType.BAD_REQUEST_EXCEPTION,
         "overflow");
 

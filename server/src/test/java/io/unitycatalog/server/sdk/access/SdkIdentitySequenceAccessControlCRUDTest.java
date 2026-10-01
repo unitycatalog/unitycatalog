@@ -110,7 +110,7 @@ public class SdkIdentitySequenceAccessControlCRUDTest extends SdkAccessControlBa
   private DeltaCreateIdentitySequences createBody(String sequenceId) {
     return new DeltaCreateIdentitySequences()
         .addSequencesItem(
-            new DeltaIdentitySequenceSpec().sequenceId(sequenceId).start(1L).step(1L));
+            new DeltaIdentitySequenceSpec().identitySequenceId(sequenceId).start(1L).step(1L));
   }
 
   @Test
@@ -160,7 +160,8 @@ public class SdkIdentitySequenceAccessControlCRUDTest extends SdkAccessControlBa
                 SCHEMA,
                 TABLE,
                 new DeltaReserveIdentityRanges()
-                    .addReservationsItem(new DeltaIdentityReservation().sequenceId(seq).count(3L)))
+                    .addReservationsItem(
+                        new DeltaIdentityReservation().identitySequenceId(seq).count(3L)))
             .getRanges()
             .get(0);
     assertThat(range.getRangeStart()).isEqualTo(1L);
@@ -175,11 +176,14 @@ public class SdkIdentitySequenceAccessControlCRUDTest extends SdkAccessControlBa
                 TABLE,
                 new DeltaReserveIdentityRanges()
                     .addReservationsItem(
-                        new DeltaIdentityReservation().sequenceId(seq).count(1L))));
+                        new DeltaIdentityReservation().identitySequenceId(seq).count(1L))));
     assertDeltaPermissionDenied(
         () ->
             readUserApi.dropIdentitySequences(
-                CATALOG, SCHEMA, TABLE, new DeltaDropIdentitySequences().addSequenceIdsItem(seq)));
+                CATALOG,
+                SCHEMA,
+                TABLE,
+                new DeltaDropIdentitySequences().addIdentitySequenceIdsItem(seq)));
 
     // Unauthenticated caller is rejected with 401.
     assertDeltaApiException(
@@ -196,7 +200,7 @@ public class SdkIdentitySequenceAccessControlCRUDTest extends SdkAccessControlBa
                     CATALOG,
                     SCHEMA,
                     TABLE,
-                    new DeltaDropIdentitySequences().addSequenceIdsItem(seq))
+                    new DeltaDropIdentitySequences().addIdentitySequenceIdsItem(seq))
                 .getResults()
                 .get(0)
                 .getExisted())
