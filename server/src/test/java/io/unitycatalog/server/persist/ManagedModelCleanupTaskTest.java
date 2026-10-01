@@ -29,6 +29,7 @@ import java.time.Duration;
 import java.util.Properties;
 import java.util.UUID;
 import org.hibernate.SessionFactory;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,7 +51,8 @@ class ManagedModelCleanupTaskTest {
     ServerProperties serverProperties = new ServerProperties(properties);
     Properties hibernateProperties =
         HibernateConfigurator.setupHibernateProperties(serverProperties);
-    hibernateProperties.setProperty("hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID());
+    hibernateProperties.setProperty(
+        "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
     sessionFactory = new HibernateConfigurator(hibernateProperties).getSessionFactory();
     repositories = new Repositories(sessionFactory, serverProperties);
     repositories.getCatalogRepository().addCatalog(new CreateCatalog().name("catalog"));
@@ -114,7 +116,12 @@ class ManagedModelCleanupTaskTest {
         ManagedResourceType.MODEL_VERSION,
         first.getStorageLocation());
     assertThat(findTask(second.getId())).isNull();
-    assertThat(second.getStorageLocation()).startsWith(model.getStorageLocation() + "/versions/");
+    assertThat(second.getStorageLocation())
+        .startsWith(
+            model.getStorageLocation()
+                + "/"
+                + ManagedResourceType.MODEL_VERSION.pathSegment()
+                + "/");
     assertThat(
             repositories
                 .getStorageCleanupTaskRepository()
@@ -215,7 +222,8 @@ class ManagedModelCleanupTaskTest {
                     .deleteModelVersion(model.getFullName(), version.getVersion());
               }
             })
-        .isInstanceOf(RuntimeException.class);
+        .isInstanceOf(ConstraintViolationException.class)
+        .hasMessageContaining("uc_storage_cleanup_tasks");
 
     assertThat(find(RegisteredModelInfoDAO.class, model.getId())).isNotNull();
     assertThat(find(ModelVersionInfoDAO.class, version.getId())).isNotNull();
