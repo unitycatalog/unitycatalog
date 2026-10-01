@@ -479,11 +479,6 @@ public class UnityCatalogServer implements AutoCloseable {
     }
   }
 
-  /** The server-owned pool that handlers and auth run their JDBC on. Exposed for shutdown tests. */
-  BlockingTaskExecutor blockingTaskExecutor() {
-    return blockingTaskExecutor;
-  }
-
   public void start() {
     LOGGER.info("Starting Unity Catalog server...");
     server.start().join();
