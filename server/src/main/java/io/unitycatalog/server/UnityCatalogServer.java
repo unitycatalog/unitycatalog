@@ -129,18 +129,19 @@ public class UnityCatalogServer implements AutoCloseable {
       closeQuietly(metrics, t, "the metrics registry");
       closeQuietly(cleanupWorker, t, "the storage cleanup worker");
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, t, "the authorizer");
-      closeBlockingTaskExecutor(createdBlockingTaskExecutor, t);
+      closeBlockingTaskExecutor(createdBlockingTaskExecutor, shutdownTimeout, t);
       closeOwnedSessionFactory(t);
       throw t;
     }
   }
 
   /**
-   * Shuts down the server-owned blocking executor and waits up to {@code server.shutdown-timeout}.
-   * A task still running after that is left in place and shutdown continues, so a wedged JDBC call
-   * cannot hold the process until the orchestrator kills it.
+   * Shuts down the server-owned blocking executor and waits up to {@code timeout}. A task still
+   * running after that is left in place and shutdown continues, so a wedged JDBC call cannot hold
+   * the process until the orchestrator kills it.
    */
-  private void closeBlockingTaskExecutor(BlockingTaskExecutor executor, Throwable primaryFailure) {
+  private static void closeBlockingTaskExecutor(
+      BlockingTaskExecutor executor, Duration timeout, Throwable primaryFailure) {
     if (executor == null) {
       return;
     }
@@ -148,10 +149,9 @@ public class UnityCatalogServer implements AutoCloseable {
     try {
       executor.shutdown();
       try {
-        if (!executor.awaitTermination(shutdownTimeout.toMillis(), TimeUnit.MILLISECONDS)) {
+        if (!executor.awaitTermination(timeout.toNanos(), TimeUnit.NANOSECONDS)) {
           LOGGER.warn(
-              "Blocking task executor did not stop within {}; continuing shutdown",
-              shutdownTimeout);
+              "Blocking task executor did not stop within {}; continuing shutdown", timeout);
         }
       } catch (InterruptedException ignored) {
         interrupted = true;
@@ -479,6 +479,11 @@ public class UnityCatalogServer implements AutoCloseable {
     }
   }
 
+  /** The server-owned pool that handlers and auth run their JDBC on. Exposed for shutdown tests. */
+  BlockingTaskExecutor blockingTaskExecutor() {
+    return blockingTaskExecutor;
+  }
+
   public void start() {
     LOGGER.info("Starting Unity Catalog server...");
     server.start().join();
@@ -500,9 +505,13 @@ public class UnityCatalogServer implements AutoCloseable {
    * caller owns its lifecycle. Unlike {@link #stop()}, a server that owns its configurator must not
    * be restarted after this call: the factory and pool are closed, so all persistence operations
    * would fail. Safe to call more than once and safe to call before {@link #start()}.
+   *
+   * <p>{@code server.shutdown-timeout} is one budget for the whole call: the executor drain only
+   * gets what the graceful HTTP stop left over, so a wedged request cannot double the wait.
    */
   @Override
   public void close() {
+    long deadlineNanos = System.nanoTime() + shutdownTimeout.toNanos();
     try {
       stop();
     } finally {
@@ -510,7 +519,8 @@ public class UnityCatalogServer implements AutoCloseable {
       closeQuietly(cleanupWorker, null, "the storage cleanup worker");
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, null, "the authorizer");
       try {
-        closeBlockingTaskExecutor(blockingTaskExecutor, null);
+        Duration remaining = Duration.ofNanos(Math.max(0, deadlineNanos - System.nanoTime()));
+        closeBlockingTaskExecutor(blockingTaskExecutor, remaining, null);
       } finally {
         if (ownsHibernateConfigurator) {
           hibernateConfigurator.close();
