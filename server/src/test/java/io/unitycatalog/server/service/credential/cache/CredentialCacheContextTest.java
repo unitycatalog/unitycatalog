@@ -1,0 +1,400 @@
+package io.unitycatalog.server.service.credential.cache;
+
+import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
+import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.UPDATE;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.UriScheme;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+
+public class CredentialCacheContextTest {
+
+  private static final NormalizedURL LOC = NormalizedURL.from("s3://bucket/tableA");
+  private static final NormalizedURL OTHER_LOC = NormalizedURL.from("s3://bucket/tableB");
+
+  private static CredentialCacheKey key(
+      NormalizedURL loc, UriScheme scheme, Set<CredentialContext.Privilege> privs, String roleArn) {
+    return new CredentialCacheKey(loc, privs, scheme, roleArn, null);
+  }
+
+  /** Two-arg key helper using LOC and S3 scheme. */
+  private static CredentialCacheKey key(String roleArn, Set<CredentialContext.Privilege> privs) {
+    return new CredentialCacheKey(LOC, privs, UriScheme.S3, roleArn, null);
+  }
+
+  private static CredentialCacheContext ctx(String roleArn, Long t1, long t2) {
+    return new CredentialCacheContext(
+        CredentialCacheContext.CURRENT_SCHEMA_VERSION,
+        LOC,
+        UriScheme.S3,
+        Set.of(SELECT),
+        roleArn,
+        null,
+        t1,
+        t2);
+  }
+
+  // ─── effectiveExpiryEpochMs() ─────────────────────────────────────────────
+
+  @Test
+  void effectiveExpiry_t1LessThanT2_returnsT1() {
+    assertEquals(100L, ctx("r", 100L, 200L).effectiveExpiryEpochMs());
+  }
+
+  @Test
+  void effectiveExpiry_t1GreaterThanT2_returnsT2() {
+    assertEquals(150L, ctx("r", 300L, 150L).effectiveExpiryEpochMs());
+  }
+
+  @Test
+  void effectiveExpiry_t1EqualT2_returnsThatValue() {
+    assertEquals(500L, ctx("r", 500L, 500L).effectiveExpiryEpochMs());
+  }
+
+  @Test
+  void effectiveExpiry_staticCredential_returnsT2() {
+    assertEquals(500L, ctx("r", null, 500L).effectiveExpiryEpochMs());
+  }
+
+  // ─── fresh(now, lead) ─────────────────────────────────────────────────────
+
+  @Test
+  void fresh_bothT1FarAndT2Far_returnsTrue() {
+    long now = 1_000_000L;
+    long lead = 60_000L;
+    assertTrue(ctx("r", now + 600_000L, now + 600_000L).fresh(now, lead));
+  }
+
+  @Test
+  void fresh_withinLeadOfT1_returnsFalse() {
+    long now = 1_000_000L;
+    long lead = 60_000L;
+    // T1 only 30s away — inside the 60s lead window
+    assertFalse(ctx("r", now + 30_000L, now + 600_000L).fresh(now, lead));
+  }
+
+  @Test
+  void fresh_oneSecondBeforeExpiry_returnsFalse() {
+    // Expiry is one second away, inside the 60-second renewal window: must re-vend.
+    long now = 1_000_000L;
+    long lead = 60_000L;
+    assertFalse(ctx("r", now + 1_000L, now + 600_000L).fresh(now, lead));
+  }
+
+  @Test
+  void fresh_t2ExpiredWhileT1StillValid_returnsFalse() {
+    long now = 1_000_000L;
+    long lead = 60_000L;
+    // T1 is far in the future but cache cap T2 has already passed
+    assertFalse(ctx("r", now + 600_000L, now - 1).fresh(now, lead));
+  }
+
+  @Test
+  void fresh_staticCredential_beforeT2_returnsTrue() {
+    long now = 1_000_000L;
+    long lead = 60_000L;
+    // No T1 (static credential), T2 still valid
+    assertTrue(ctx("r", null, now + 10_000L).fresh(now, lead));
+  }
+
+  @Test
+  void fresh_staticCredential_atOrAfterT2_returnsFalse() {
+    long now = 1_000_000L;
+    long lead = 60_000L;
+    // No T1, T2 has expired (at boundary and past it)
+    assertFalse(ctx("r", null, now).fresh(now, lead));
+    assertFalse(ctx("r", null, now - 1).fresh(now, lead));
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "-1, 60000, false",
+    "0, 60000, false",
+    "59999, 60000, false",
+    "60000, 60000, false",
+    "60001, 60000, true",
+    "-1, 0, false",
+    "0, 0, false",
+    "1, 0, true"
+  })
+  void fresh_checksT1RenewalBoundary(long remainingTtlMs, long leadMs, boolean fresh) {
+    long now = 1_000_000L;
+    assertEquals(fresh, ctx("r", now + remainingTtlMs, now + 600_000L).fresh(now, leadMs));
+  }
+
+  @Test
+  void fresh_nonStaticAtT2Boundary_returnsFalse() { // Gap 4
+    long now = 1_000_000L;
+    // now < T2(==now) -> false; T2=now is positive (1_000_000L > 0)
+    assertFalse(ctx("r", now + 600_000L, now).fresh(now, 60_000L));
+  }
+
+  @Test
+  void fresh_negativeLead_throws() { // Gap 3
+    assertThrows(
+        IllegalArgumentException.class, () -> ctx("r", 1_000_000L, 2_000_000L).fresh(1_000L, -1L));
+  }
+
+  // ─── matches(key) ─────────────────────────────────────────────────────────
+
+  @Test
+  void matches_exactMatch_returnsTrue() {
+    CredentialCacheContext c = ctx("arn:role/A", null, 1_000L);
+    assertTrue(c.matches(key(LOC, UriScheme.S3, Set.of(SELECT), "arn:role/A")));
+  }
+
+  @Test
+  void matches_differentLocation_returnsFalse() {
+    CredentialCacheContext c = ctx("arn:role/A", null, 1_000L);
+    assertFalse(c.matches(key(OTHER_LOC, UriScheme.S3, Set.of(SELECT), "arn:role/A")));
+  }
+
+  @Test
+  void matches_differentScheme_returnsFalse() {
+    CredentialCacheContext c = ctx("arn:role/A", null, 1_000L);
+    NormalizedURL gcsLoc = NormalizedURL.from("gs://bucket/tableA");
+    CredentialCacheKey gcsKey =
+        new CredentialCacheKey(gcsLoc, Set.of(SELECT), UriScheme.GS, "arn:role/A", null);
+    assertFalse(c.matches(gcsKey));
+  }
+
+  @Test
+  void matches_differentPrivileges_returnsFalse() {
+    CredentialCacheContext c = ctx("arn:role/A", null, 1_000L);
+    // SELECT+UPDATE instead of just SELECT
+    assertFalse(c.matches(key(LOC, UriScheme.S3, Set.of(SELECT, UPDATE), "arn:role/A")));
+  }
+
+  @Test
+  void matches_differentRoleArn_returnsFalse() {
+    CredentialCacheContext c = ctx("arn:role/A", null, 1_000L);
+    assertFalse(c.matches(key(LOC, UriScheme.S3, Set.of(SELECT), "arn:role/B")));
+  }
+
+  @ParameterizedTest
+  @CsvSource(
+      value = {
+        "external-A, external-A, true",
+        "external-A, external-B, false",
+        "external-A, <null>, false",
+        "<null>, external-A, false",
+        "<null>, <null>, true"
+      },
+      nullValues = "<null>")
+  void matches_checksExternalId(
+      String cachedExternalId, String requestedExternalId, boolean matches) {
+    CredentialCacheContext context =
+        new CredentialCacheContext(
+            CredentialCacheContext.CURRENT_SCHEMA_VERSION,
+            LOC,
+            UriScheme.S3,
+            Set.of(SELECT),
+            "arn:role/A",
+            cachedExternalId,
+            null,
+            1_000L);
+    CredentialCacheKey requested =
+        new CredentialCacheKey(
+            LOC, Set.of(SELECT), UriScheme.S3, "arn:role/A", requestedExternalId);
+
+    assertEquals(matches, context.matches(requested));
+  }
+
+  @Test
+  void keysWithDifferentExternalIdsKeepSeparateEntries() {
+    Map<CredentialCacheKey, String> entries = new HashMap<>();
+    for (String externalId : new String[] {"external-A", "external-B", null}) {
+      entries.put(
+          new CredentialCacheKey(LOC, Set.of(SELECT), UriScheme.S3, "arn:role/A", externalId),
+          externalId == null ? "no-external-id" : externalId);
+    }
+
+    assertEquals(3, entries.size());
+    assertEquals(
+        "external-A",
+        entries.get(
+            new CredentialCacheKey(LOC, Set.of(SELECT), UriScheme.S3, "arn:role/A", "external-A")));
+    assertEquals(
+        "external-B",
+        entries.get(
+            new CredentialCacheKey(LOC, Set.of(SELECT), UriScheme.S3, "arn:role/A", "external-B")));
+    assertEquals("no-external-id", entries.get(key("arn:role/A", Set.of(SELECT))));
+  }
+
+  @Test
+  void matches_staleSchemaVersion_returnsFalse() {
+    CredentialCacheContext c =
+        new CredentialCacheContext(
+            CredentialCacheContext.CURRENT_SCHEMA_VERSION + 1,
+            LOC,
+            UriScheme.S3,
+            Set.of(SELECT),
+            "arn:role/A",
+            null,
+            null,
+            1_000L);
+    assertFalse(c.matches(key(LOC, UriScheme.S3, Set.of(SELECT), "arn:role/A")));
+  }
+
+  @Test
+  void matches_nullRoleArnBothSides_returnsTrue() {
+    // Per-bucket vend: no role ARN on either side
+    CredentialCacheContext c = ctx(null, null, 1_000L);
+    assertTrue(c.matches(key(LOC, UriScheme.S3, Set.of(SELECT), null)));
+  }
+
+  @Test
+  void matches_nullRoleArnVsNonNull_returnsFalse() {
+    CredentialCacheContext c = ctx(null, null, 1_000L);
+    assertFalse(c.matches(key(LOC, UriScheme.S3, Set.of(SELECT), "arn:role/A")));
+  }
+
+  @Test
+  void matches_schemaVersionBelowCurrent_returnsFalse() { // Gap 5
+    CredentialCacheContext c =
+        new CredentialCacheContext(
+            CredentialCacheContext.CURRENT_SCHEMA_VERSION - 1,
+            LOC,
+            UriScheme.S3,
+            Set.of(SELECT),
+            "arn:role/A",
+            null,
+            null,
+            1_000L);
+    assertFalse(c.matches(key("arn:role/A", Set.of(SELECT))));
+  }
+
+  @Test
+  void matches_nonNullRoleArnVsNullKey_returnsFalse() { // Gap 6
+    assertFalse(ctx("arn:role/A", null, 1_000L).matches(key(null, Set.of(SELECT))));
+  }
+
+  // ─── constructor invariants ────────────────────────────────────────────────
+
+  @Test
+  void keyPrivilegesAreAnImmutableSnapshot() {
+    Set<CredentialContext.Privilege> privileges = new HashSet<>(Set.of(SELECT));
+    CredentialCacheKey cacheKey = key("r", privileges);
+    Map<CredentialCacheKey, String> entries = new HashMap<>();
+    entries.put(cacheKey, "cached");
+
+    privileges.add(UPDATE);
+
+    assertEquals(Set.of(SELECT), cacheKey.privileges());
+    assertEquals("cached", entries.get(key("r", Set.of(SELECT))));
+    assertThrows(UnsupportedOperationException.class, () -> cacheKey.privileges().add(UPDATE));
+  }
+
+  @Test
+  void contextPrivilegesAreAnImmutableSnapshot() {
+    Set<CredentialContext.Privilege> privileges = new HashSet<>(Set.of(SELECT));
+    CredentialCacheContext context =
+        new CredentialCacheContext(
+            CredentialCacheContext.CURRENT_SCHEMA_VERSION,
+            LOC,
+            UriScheme.S3,
+            privileges,
+            "r",
+            null,
+            null,
+            1_000L);
+
+    privileges.add(UPDATE);
+
+    assertEquals(Set.of(SELECT), context.privileges());
+    assertTrue(context.matches(key("r", Set.of(SELECT))));
+    assertFalse(context.matches(key("r", Set.of(SELECT, UPDATE))));
+    assertThrows(UnsupportedOperationException.class, () -> context.privileges().add(UPDATE));
+  }
+
+  @Test
+  void cacheExpiresNonPositive_throws() { // new T2 > 0 invariant
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new CredentialCacheContext(
+                CredentialCacheContext.CURRENT_SCHEMA_VERSION,
+                LOC,
+                UriScheme.S3,
+                Set.of(SELECT),
+                "r",
+                null,
+                100L,
+                0L));
+  }
+
+  @Test
+  void credentialExpiresZero_throws() { // Guard 6: non-null T1 must be positive
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new CredentialCacheContext(
+                CredentialCacheContext.CURRENT_SCHEMA_VERSION,
+                LOC,
+                UriScheme.S3,
+                Set.of(SELECT),
+                "r",
+                null,
+                0L,
+                1_000L));
+  }
+
+  @Test
+  void credentialExpiresNegative_throws() { // Guard 6: non-null T1 must be positive
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new CredentialCacheContext(
+                CredentialCacheContext.CURRENT_SCHEMA_VERSION,
+                LOC,
+                UriScheme.S3,
+                Set.of(SELECT),
+                "r",
+                null,
+                -1L,
+                1_000L));
+  }
+
+  @Test
+  void ctx_inconsistentScheme_throws() { // Guard 7: scheme must match location
+    NormalizedURL s3Loc = NormalizedURL.from("s3://bucket/path");
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new CredentialCacheContext(
+                CredentialCacheContext.CURRENT_SCHEMA_VERSION,
+                s3Loc,
+                UriScheme.GS,
+                Set.of(SELECT),
+                "r",
+                null,
+                null,
+                1_000L));
+  }
+
+  @Test
+  void key_nullLocation_throws() {
+    assertThrows(
+        NullPointerException.class,
+        () -> new CredentialCacheKey(null, Set.of(SELECT), UriScheme.S3, "r", null));
+  }
+
+  @Test
+  void key_inconsistentScheme_throws() {
+    NormalizedURL gcsLoc = NormalizedURL.from("gs://bucket/path");
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new CredentialCacheKey(gcsLoc, Set.of(SELECT), UriScheme.S3, "r", null));
+  }
+}
