@@ -27,9 +27,8 @@ import org.junit.jupiter.api.Test;
  * shared {@code createSparkSessionWithCatalogs} derives both session extensions from the catalog
  * mix, and storage is a local {@code file://} warehouse.
  *
- * <p>Compiled only for Spark 4.0 / 4.1: Iceberg 1.11.0 publishes no Spark 4.2 runtime, so this
- * source lives under {@code src/test/scala-shims/spark-4.0-4.1} (see {@link
- * IcebergTableReadWriteTest}).
+ * <p>Lives under {@code src/test/scala-shims/spark-4.0-4.1} so it is compiled only for the Spark
+ * versions that have an Iceberg Spark runtime ({@code supportIceberg} in the cross-Spark build).
  */
 public class DeltaIcebergCrossFormatJoinTest extends BaseSparkIntegrationTest {
 

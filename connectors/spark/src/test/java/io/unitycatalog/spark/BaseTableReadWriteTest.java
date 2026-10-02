@@ -10,7 +10,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
@@ -439,15 +441,15 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
   @MethodSource("cloudParameters")
   public void testTableOperations(
       String scheme, boolean renewCredEnabled, boolean credScopedFsEnabled) {
-    // The UC connector drives both spark_catalog and a named catalog; Iceberg wires only the named
-    // catalog (spark_catalog stays Spark's built-in session catalog), so it puts both tables there.
-    String[] catalogs =
-        testingIceberg() ? new String[] {CATALOG_NAME} : new String[] {SPARK_CATALOG, CATALOG_NAME};
-    String firstCatalog = testingIceberg() ? CATALOG_NAME : SPARK_CATALOG;
-    session = createSparkSessionWithCatalogs(renewCredEnabled, credScopedFsEnabled, catalogs);
+    // t1 goes in the first session catalog: spark_catalog for the UC connector, or the named
+    // catalog when that is the only one wired (Iceberg), so both tables then share it.
+    List<String> catalogs = sessionCatalogNames();
+    session =
+        createSparkSessionWithCatalogs(
+            renewCredEnabled, credScopedFsEnabled, catalogs.toArray(new String[0]));
 
     // t1 has (1, 'a')
-    String t1 = setupTable(scheme, firstCatalog, TEST_TABLE);
+    String t1 = setupTable(scheme, catalogs.get(0), TEST_TABLE);
     testTableReadWrite(t1);
 
     // t2 has (2, 'a')
@@ -530,7 +532,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
   // Asserting all 3 names proves pagination worked end-to-end.
   @Test
   public void testListTablesPagination() {
-    String catalog = testingIceberg() ? CATALOG_NAME : SPARK_CATALOG;
+    String catalog = sessionCatalogNames().get(0);
     session = createSparkSessionWithCatalogs(catalog);
     Integer originalPageSize = PagedListingHelper.DEFAULT_PAGE_SIZE;
     try {
@@ -631,10 +633,6 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       this.nullable = nullable;
       this.typeJson = structFieldTypeJson(name, dataTypeJson, nullable, metadataJson);
     }
-  }
-
-  protected static String structFieldTypeJson(String name, String dataTypeJson) {
-    return structFieldTypeJson(name, dataTypeJson, true, "{}");
   }
 
   private static String structFieldTypeJson(
@@ -851,10 +849,23 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
               .filter(col -> !col.getName().equals("col_variant"))
               .collect(Collectors.toList());
     }
+    if (testingIceberg()) {
+      // Iceberg has no distinct TINYINT / SMALLINT (widened to int) or CHAR / VARCHAR (stored as
+      // string), and VARIANT needs format v3, so these would not round-trip as declared.
+      List<String> unsupported =
+          List.of("col_tinyint", "col_smallint", "col_char", "col_varchar", "col_variant");
+      cols =
+          cols.stream()
+              .filter(col -> !unsupported.contains(col.getName()))
+              .collect(Collectors.toList());
+    }
 
-    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    session = createSparkSessionWithCatalogs(sessionCatalogNames().toArray(new String[0]));
     String tableName = TEST_TABLE + "_complex_type";
-    List<String> partitionColumns = List.of("col_string", "col_bigint");
+    // UC records no partitionIndex for Iceberg (its partition spec is not per-column), so Iceberg
+    // tables are created unpartitioned.
+    List<String> partitionColumns =
+        testingIceberg() ? List.of() : List.of("col_string", "col_bigint");
     String fullTableName =
         setupTable(
             new TableSetupOptions()
@@ -882,6 +893,12 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
             .collect(Collectors.toList());
 
     TableInfo tableInfo = tableOperations.getTable(fullTableName);
+    // A client-supplied LOCATION registers the table EXTERNAL, otherwise MANAGED; the format is the
+    // suite's tableFormat(). Confirms each managed/external subclass produces what it claims.
+    assertThat(tableInfo.getTableType())
+        .isEqualTo(isManagedTable() ? TableType.MANAGED : TableType.EXTERNAL);
+    assertThat(tableInfo.getDataSourceFormat())
+        .isEqualTo(DataSourceFormat.valueOf(tableFormat().toUpperCase()));
     List<ColumnInfo> columns = tableInfo.getColumns();
     assertThat(columns).hasSize(cols.size());
 
@@ -992,11 +1009,10 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   /**
-   * Asserts a BINARY column round-tripped the inserted {@code X'CAFEBABE'} byte-for-byte. Shared
-   * with the {@code testTableWithSupportedDataTypes} override so the expected bytes live in one
-   * place; {@code rowValue} is the raw row cell, which is a Java {@code byte[]} for BINARY.
+   * Asserts a BINARY column round-tripped the inserted {@code X'CAFEBABE'} byte-for-byte; {@code
+   * rowValue} is the raw row cell, which is a Java {@code byte[]} for BINARY.
    */
-  protected static void assertCafebabeBinary(Object rowValue, String columnName) {
+  private static void assertCafebabeBinary(Object rowValue, String columnName) {
     assertThat((byte[]) rowValue)
         .as("row value for %s", columnName)
         .containsExactly(0xCA, 0xFE, 0xBA, 0xBE);
