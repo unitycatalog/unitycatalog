@@ -455,8 +455,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     sql("INSERT INTO %s SELECT 2, 'a'", t2);
     validateRows(sql("SELECT * FROM %s", t2), Pair.of(2, "a"));
 
-    if (testingDelta()) {
-      // UPDATE, MERGE INTO and DELETE are only supported in Delta tables.
+    if (testingDelta() || testingIceberg()) {
+      // UPDATE, MERGE INTO and DELETE need a format with row-level support (Delta or Iceberg); the
+      // external-Parquet path does not support them.
 
       // Test UPDATE. The table t2 will have (2, 'b')
       sql("UPDATE %s SET s = 'b' WHERE i = 2", t2);

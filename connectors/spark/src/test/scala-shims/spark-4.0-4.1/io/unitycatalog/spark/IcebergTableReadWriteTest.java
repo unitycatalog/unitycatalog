@@ -6,7 +6,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -191,6 +193,11 @@ public abstract class IcebergTableReadWriteTest extends BaseTableReadWriteTest {
     }
 
     TableInfo tableInfo = tableOperations.getTable(fullTableName);
+    // A client-supplied LOCATION registers the table EXTERNAL, otherwise MANAGED; the format is
+    // always ICEBERG. Confirms the managed/external subclasses produce what they claim.
+    assertThat(tableInfo.getTableType())
+        .isEqualTo(isManagedTable() ? TableType.MANAGED : TableType.EXTERNAL);
+    assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.ICEBERG);
     List<ColumnInfo> columns = tableInfo.getColumns();
     assertThat(columns).hasSize(cols.size());
     for (int i = 0; i < cols.size(); i++) {
