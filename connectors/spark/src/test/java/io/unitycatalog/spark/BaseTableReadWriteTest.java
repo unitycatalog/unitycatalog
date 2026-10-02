@@ -633,7 +633,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     }
   }
 
-  private static String structFieldTypeJson(String name, String dataTypeJson) {
+  protected static String structFieldTypeJson(String name, String dataTypeJson) {
     return structFieldTypeJson(name, dataTypeJson, true, "{}");
   }
 

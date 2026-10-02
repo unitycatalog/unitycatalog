@@ -96,18 +96,26 @@ public abstract class IcebergTableReadWriteTest extends BaseTableReadWriteTest {
     private final String insertValue;
     private final String rowValue;
     private final ColumnTypeName typeName;
+    // How UC persists the type: typeText is the SQL type string, dataTypeJson the inner Spark
+    // DataType JSON (wrapped into the struct-field JSON for the typeJson assertion).
+    private final String typeText;
+    private final String dataTypeJson;
 
     private ColSpec(
         String name,
         String sqlType,
         String insertValue,
         String rowValue,
-        ColumnTypeName typeName) {
+        ColumnTypeName typeName,
+        String typeText,
+        String dataTypeJson) {
       this.name = name;
       this.sqlType = sqlType;
       this.insertValue = insertValue;
       this.rowValue = rowValue;
       this.typeName = typeName;
+      this.typeText = typeText;
+      this.dataTypeJson = dataTypeJson;
     }
   }
 
@@ -123,41 +131,99 @@ public abstract class IcebergTableReadWriteTest extends BaseTableReadWriteTest {
   @Override
   @Test
   public void testTableWithSupportedDataTypes() throws ApiException {
+    String arrJson = "{\"type\":\"array\",\"elementType\":\"integer\",\"containsNull\":true}";
+    String mapJson =
+        "{\"type\":\"map\",\"keyType\":\"string\",\"valueType\":\"integer\","
+            + "\"valueContainsNull\":true}";
+    String structJson =
+        "{\"type\":\"struct\",\"fields\":["
+            + "{\"name\":\"a\",\"type\":\"integer\",\"nullable\":true,\"metadata\":{}},"
+            + "{\"name\":\"b\",\"type\":\"string\",\"nullable\":true,\"metadata\":{}}]}";
     List<ColSpec> cols =
         List.of(
-            new ColSpec("c_int", "INT", "1000", "1000", ColumnTypeName.INT),
-            new ColSpec("c_long", "BIGINT", "100000", "100000", ColumnTypeName.LONG),
-            new ColSpec("c_float", "FLOAT", "2.5", "2.5", ColumnTypeName.FLOAT),
-            new ColSpec("c_double", "DOUBLE", "1.5", "1.5", ColumnTypeName.DOUBLE),
-            new ColSpec("c_decimal", "DECIMAL(10,2)", "123.45", "123.45", ColumnTypeName.DECIMAL),
-            new ColSpec("c_string", "STRING", "'test'", "test", ColumnTypeName.STRING),
+            new ColSpec("c_int", "INT", "1000", "1000", ColumnTypeName.INT, "int", "\"integer\""),
+            new ColSpec(
+                "c_long", "BIGINT", "100000", "100000", ColumnTypeName.LONG, "bigint", "\"long\""),
+            new ColSpec(
+                "c_float", "FLOAT", "2.5", "2.5", ColumnTypeName.FLOAT, "float", "\"float\""),
+            new ColSpec(
+                "c_double", "DOUBLE", "1.5", "1.5", ColumnTypeName.DOUBLE, "double", "\"double\""),
+            new ColSpec(
+                "c_decimal",
+                "DECIMAL(10,2)",
+                "123.45",
+                "123.45",
+                ColumnTypeName.DECIMAL,
+                "decimal(10,2)",
+                "\"decimal(10,2)\""),
+            new ColSpec(
+                "c_string", "STRING", "'test'", "test", ColumnTypeName.STRING, "string", "\"string\""),
             // BINARY round-trips as a Java byte[], not a String, so rowValue is unused; the check
             // below compares the raw bytes against the inserted X'CAFEBABE' instead.
-            new ColSpec("c_binary", "BINARY", "X'CAFEBABE'", null, ColumnTypeName.BINARY),
-            new ColSpec("c_boolean", "BOOLEAN", "true", "true", ColumnTypeName.BOOLEAN),
-            new ColSpec("c_date", "DATE", "DATE'2025-01-01'", "2025-01-01", ColumnTypeName.DATE),
+            new ColSpec(
+                "c_binary",
+                "BINARY",
+                "X'CAFEBABE'",
+                null,
+                ColumnTypeName.BINARY,
+                "binary",
+                "\"binary\""),
+            new ColSpec(
+                "c_boolean",
+                "BOOLEAN",
+                "true",
+                "true",
+                ColumnTypeName.BOOLEAN,
+                "boolean",
+                "\"boolean\""),
+            new ColSpec(
+                "c_date",
+                "DATE",
+                "DATE'2025-01-01'",
+                "2025-01-01",
+                ColumnTypeName.DATE,
+                "date",
+                "\"date\""),
             new ColSpec(
                 "c_timestamp",
                 "TIMESTAMP",
                 "TIMESTAMP'2025-01-01 12:00:00'",
                 "2025-01-01 12:00:00.0",
-                ColumnTypeName.TIMESTAMP),
+                ColumnTypeName.TIMESTAMP,
+                "timestamp",
+                "\"timestamp\""),
             new ColSpec(
                 "c_timestamp_ntz",
                 "TIMESTAMP_NTZ",
                 "TIMESTAMP_NTZ'2025-01-01 12:00:00'",
                 "2025-01-01T12:00",
-                ColumnTypeName.TIMESTAMP_NTZ),
+                ColumnTypeName.TIMESTAMP_NTZ,
+                "timestamp_ntz",
+                "\"timestamp_ntz\""),
             new ColSpec(
-                "c_arr", "ARRAY<INT>", "array(1, 2, 3)", "ArraySeq(1, 2, 3)", ColumnTypeName.ARRAY),
+                "c_arr",
+                "ARRAY<INT>",
+                "array(1, 2, 3)",
+                "ArraySeq(1, 2, 3)",
+                ColumnTypeName.ARRAY,
+                "array<int>",
+                arrJson),
             new ColSpec(
-                "c_map", "MAP<STRING, INT>", "map('k', 10)", "Map(k -> 10)", ColumnTypeName.MAP),
+                "c_map",
+                "MAP<STRING, INT>",
+                "map('k', 10)",
+                "Map(k -> 10)",
+                ColumnTypeName.MAP,
+                "map<string,int>",
+                mapJson),
             new ColSpec(
                 "c_struct",
                 "STRUCT<a: INT, b: STRING>",
                 "struct(42, 'x')",
                 "[42,x]",
-                ColumnTypeName.STRUCT));
+                ColumnTypeName.STRUCT,
+                "struct<a:int,b:string>",
+                structJson));
 
     session = createSparkSessionWithCatalogs(CATALOG_NAME);
     String tableName = TEST_TABLE + "_types";
@@ -201,10 +267,14 @@ public abstract class IcebergTableReadWriteTest extends BaseTableReadWriteTest {
     List<ColumnInfo> columns = tableInfo.getColumns();
     assertThat(columns).hasSize(cols.size());
     for (int i = 0; i < cols.size(); i++) {
-      assertThat(columns.get(i).getName()).as("name[%d]", i).isEqualTo(cols.get(i).name);
-      assertThat(columns.get(i).getTypeName())
-          .as("typeName for %s", cols.get(i).name)
-          .isEqualTo(cols.get(i).typeName);
+      ColumnInfo col = columns.get(i);
+      ColSpec spec = cols.get(i);
+      assertThat(col.getName()).as("name[%d]", i).isEqualTo(spec.name);
+      assertThat(col.getTypeName()).as("typeName for %s", spec.name).isEqualTo(spec.typeName);
+      assertThat(col.getTypeText()).as("typeText for %s", spec.name).isEqualTo(spec.typeText);
+      assertThat(col.getTypeJson())
+          .as("typeJson for %s", spec.name)
+          .isEqualTo(structFieldTypeJson(spec.name, spec.dataTypeJson));
     }
   }
 }
