@@ -1,0 +1,216 @@
+package io.unitycatalog.server.utils.cache;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiPredicate;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
+
+public class ReadThroughCacheTest {
+
+  static final class MapCache<K, V> implements Cache<K, V> {
+    final Map<K, V> map = new ConcurrentHashMap<>();
+
+    public Optional<V> getIfPresent(K key) {
+      return Optional.ofNullable(map.get(key));
+    }
+
+    public void put(K key, V value) {
+      map.put(key, value);
+    }
+
+    public void invalidate(K key) {
+      map.remove(key);
+    }
+  }
+
+  @Test
+  void freshHitSkipsLoader() {
+    MapCache<String, String> store = new MapCache<>();
+    store.put("k", "cached");
+    BiPredicate<String, String> alwaysValid = (k, v) -> true;
+    ReadThroughCache<String, String> cache = new ReadThroughCache<>(store, alwaysValid);
+
+    AtomicInteger loads = new AtomicInteger();
+    String result =
+        cache.get(
+            "k",
+            () -> {
+              loads.incrementAndGet();
+              return "loaded";
+            });
+
+    assertEquals("cached", result);
+    assertEquals(0, loads.get());
+  }
+
+  @Test
+  void invalidCachedValueTriggersLoadAndOverwrite() {
+    MapCache<String, String> store = new MapCache<>();
+    store.put("k", "stale");
+    BiPredicate<String, String> rejectStale = (k, v) -> !v.equals("stale");
+    ReadThroughCache<String, String> cache = new ReadThroughCache<>(store, rejectStale);
+
+    String result = cache.get("k", () -> "fresh");
+
+    assertEquals("fresh", result);
+    assertEquals(Optional.of("fresh"), store.getIfPresent("k")); // overwritten
+  }
+
+  @Test
+  void missLoadsStoresAndReturns() {
+    MapCache<String, String> store = new MapCache<>();
+    ReadThroughCache<String, String> cache = new ReadThroughCache<>(store, (k, v) -> true);
+
+    String result = cache.get("k", () -> "loaded");
+
+    assertEquals("loaded", result);
+    assertEquals(Optional.of("loaded"), store.getIfPresent("k"));
+    assertEquals("loaded", cache.get("k", () -> "unexpected reload"));
+  }
+
+  @ParameterizedTest
+  @NullSource
+  @ValueSource(strings = "stale")
+  void rejectedLoadedValueIsReturnedWithoutCaching(String existingValue) {
+    MapCache<String, String> store = new MapCache<>();
+    if (existingValue != null) {
+      store.put("k", existingValue);
+    }
+    ReadThroughCache<String, String> cache =
+        new ReadThroughCache<>(store, (key, value) -> value.equals("fresh"));
+    AtomicInteger loads = new AtomicInteger();
+
+    String result =
+        cache.get(
+            "k",
+            () -> {
+              assertEquals(1, loads.incrementAndGet(), "must not retry a rejected loaded value");
+              return "not reusable";
+            });
+
+    assertEquals("not reusable", result);
+    assertEquals(1, loads.get());
+    assertEquals(Optional.ofNullable(existingValue), store.getIfPresent("k"));
+    assertEquals("fresh", cache.get("k", () -> "fresh"));
+    assertEquals(Optional.of("fresh"), store.getIfPresent("k"));
+  }
+
+  // --- Loader throws: propagates, store not poisoned ---
+
+  @Test
+  void loaderThrowsPropagatesAndStoreNotPoisoned() {
+    MapCache<String, String> store = new MapCache<>();
+    ReadThroughCache<String, String> cache = new ReadThroughCache<>(store, (k, v) -> true);
+
+    assertThrows(
+        RuntimeException.class,
+        () ->
+            cache.get(
+                "k",
+                () -> {
+                  throw new RuntimeException("backend down");
+                }));
+    assertTrue(store.getIfPresent("k").isEmpty(), "store must not be poisoned after loader throws");
+  }
+
+  // --- Loader returns null: IllegalStateException, nothing cached ---
+
+  @Test
+  void loaderReturnsNullThrowsIllegalStateAndNothingCached() {
+    MapCache<String, String> store = new MapCache<>();
+    ReadThroughCache<String, String> cache = new ReadThroughCache<>(store, (k, v) -> true);
+
+    assertThrows(IllegalStateException.class, () -> cache.get("k", () -> null));
+    assertTrue(store.getIfPresent("k").isEmpty(), "store must remain empty after null loader");
+  }
+
+  // --- stale value in store + loader throws: exception propagates, stale stays ---
+
+  @Test
+  void staleHitThenLoaderThrowsPropagatesAndStoreKeepsStale() {
+    MapCache<String, String> store = new MapCache<>();
+    store.put("k", "stale");
+    ReadThroughCache<String, String> cache =
+        new ReadThroughCache<>(store, (key, v) -> !v.equals("stale")); // rejects "stale"
+    assertThrows(
+        RuntimeException.class,
+        () ->
+            cache.get(
+                "k",
+                () -> {
+                  throw new RuntimeException("backend down");
+                }));
+    assertEquals(
+        Optional.of("stale"),
+        store.getIfPresent("k")); // stale still there; not removed, not overwritten
+  }
+
+  // --- Null loader guard ---
+
+  @Test
+  void nullLoaderThrows() {
+    assertThrows(
+        NullPointerException.class,
+        () -> new ReadThroughCache<>(new MapCache<>(), (k, v) -> true).get("k", null));
+  }
+
+  // --- Null constructor arguments ---
+
+  @Test
+  void nullCtorArgsThrow() {
+    assertThrows(NullPointerException.class, () -> new ReadThroughCache<>(null, (k, v) -> true));
+    assertThrows(NullPointerException.class, () -> new ReadThroughCache<>(new MapCache<>(), null));
+  }
+
+  @Test
+  void concurrentMissesLoadIndependently() throws Exception {
+    MapCache<String, String> store = new MapCache<>();
+    ReadThroughCache<String, String> cache = new ReadThroughCache<>(store, (k, v) -> true);
+    CountDownLatch firstLoading = new CountDownLatch(1);
+    CountDownLatch releaseFirst = new CountDownLatch(1);
+    var pool = Executors.newFixedThreadPool(2);
+    try {
+      Future<String> first =
+          pool.submit(
+              () ->
+                  cache.get(
+                      "k",
+                      () -> {
+                        firstLoading.countDown();
+                        try {
+                          releaseFirst.await();
+                        } catch (InterruptedException e) {
+                          Thread.currentThread().interrupt();
+                          throw new IllegalStateException(e);
+                        }
+                        return "first";
+                      }));
+      assertTrue(firstLoading.await(5, TimeUnit.SECONDS));
+
+      Future<String> second = pool.submit(() -> cache.get("k", () -> "second"));
+      assertEquals("second", second.get(5, TimeUnit.SECONDS));
+      assertEquals(Optional.of("second"), store.getIfPresent("k"));
+
+      releaseFirst.countDown();
+      assertEquals("first", first.get(5, TimeUnit.SECONDS));
+      assertEquals(Optional.of("first"), store.getIfPresent("k"));
+    } finally {
+      releaseFirst.countDown();
+      pool.shutdownNow();
+      assertTrue(pool.awaitTermination(5, TimeUnit.SECONDS));
+    }
+  }
+}
