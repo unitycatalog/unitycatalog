@@ -31,6 +31,7 @@
 
 # Docs
 /docs/ @tdas @openinx @yili-db
+/mkdocs.yml @tdas @openinx @yili-db
 
 # UI
 /ui-new/ @yili-db @newfront @roeap @tdas
