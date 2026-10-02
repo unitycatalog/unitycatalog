@@ -1,6 +1,6 @@
 spec_version: 1
 name: maintainer-codex-reviewer
-description: 'Codex maintainer-level Rust + Delta protocol review.'
+description: 'Codex maintainer-level deep review of Java/Scala changes.'
 skills: none
 executor:
   type: omnigent

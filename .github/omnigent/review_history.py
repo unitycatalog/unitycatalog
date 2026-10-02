@@ -6,7 +6,7 @@ import re
 from collections.abc import Collection
 from typing import Any
 
-from review_publish import BOT_MARKER, INLINE_FEEDBACK_FOOTER, strip_review_body
+from review_publish import BOT_MARKER, strip_review_body
 
 MAX_HISTORY_CHARS = 12_000
 MAX_ENTRY_CHARS = 6_000
@@ -103,7 +103,6 @@ def is_duplicate_review(
 
 def canonical_finding_body(body: str) -> str:
     """Normalize an inline finding body for exact cross-run comparison."""
-    body = body.strip().removesuffix(INLINE_FEEDBACK_FOOTER)
     return _normalize(_FINDING_PREFIX.sub("", body.strip()))
 
 

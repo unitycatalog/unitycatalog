@@ -6,11 +6,6 @@ import re
 
 
 BOT_MARKER = "<!-- ai-review-bot -->"
-INLINE_FEEDBACK_FOOTER = (
-    "\n\n---\n"
-    "<sub>Feedback: react 👍 if helpful, 👎 if unhelpful or incorrect, "
-    "or 👀 if out of scope.</sub>"
-)
 REVIEW_HEADER = "## AI Review <sub>(draft - human review required)</sub>"
 _REVIEW_FOOTER = re.compile(
     r"\n+---\n+<sub>Automated review - \[workflow run\]\([^\n]+\)</sub>\s*$"
