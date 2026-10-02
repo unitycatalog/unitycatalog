@@ -1,0 +1,34 @@
+[package]
+name = "uc-ui-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "Same-origin Connect bridge between the Unity Catalog UI and the UC Java server"
+
+[[bin]]
+name = "uc-ui-bridge"
+path = "src/main.rs"
+
+[lib]
+name = "uc_ui_bridge"
+path = "src/lib.rs"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+wiremock = "0.6"
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
