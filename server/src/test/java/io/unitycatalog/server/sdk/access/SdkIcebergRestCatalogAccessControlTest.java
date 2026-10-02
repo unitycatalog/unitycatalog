@@ -10,6 +10,7 @@ import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -28,6 +29,8 @@ import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
+import org.apache.iceberg.rest.responses.ListNamespacesResponse;
+import org.apache.iceberg.rest.responses.ListTablesResponse;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -104,6 +107,9 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     assertThat(namespaces(p2)).contains(SCHEMA_P2).doesNotContain(SCHEMA); // owns only SCHEMA_P2
     assertThat(namespaces(r1)).contains(SCHEMA).doesNotContain(SCHEMA_P2); // USE_SCHEMA on SCHEMA
     assertThat(namespaces(r2)).contains(SCHEMA_R2).doesNotContain(SCHEMA); // owns only SCHEMA_R2
+    // Paged, each page is filtered on its own: one per page, the pages holding a schema the caller
+    // cannot read come back empty but keep their token, so following it yields the same listing.
+    assertThat(pagedNamespaces(r2)).containsExactlyInAnyOrderElementsOf(namespaces(r2));
 
     // ===== namespaceExists (GET_SCHEMA) -- HEAD, so denials are body-less =====
     assertThat(p1.namespaceExists(CAT, SCHEMA)).isTrue(); // catalog OWNER
@@ -194,6 +200,8 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
         .doesNotContain("tbl_none");
     // catalog owner passes GET_TABLE for every table, so nothing is filtered out.
     assertThat(tables(p1, SCHEMA)).contains("tbl_sel", "tbl_mod", "tbl_none", "tbl_r1own");
+    // Paged, as for listNamespaces: tbl_none's page comes back empty and the listing goes on.
+    assertThat(pagedTables(r1, SCHEMA)).containsExactlyInAnyOrderElementsOf(tables(r1, SCHEMA));
 
     // ===== loadView gate (GET_TABLE); the endpoint is a stub that 404s once authorized =====
     assertDenied(() -> r1.loadView(CAT, SCHEMA, "tbl_none")); // no table privilege -> 403
@@ -413,6 +421,32 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     return client.listTables(CAT, schema).identifiers().stream()
         .map(TableIdentifier::name)
         .collect(Collectors.toList());
+  }
+
+  /** The whole listing, read one namespace per page by following the token to the end. */
+  @SneakyThrows
+  private static List<String> pagedNamespaces(IcebergRestClient client) {
+    List<String> names = new ArrayList<>();
+    String pageToken = "";
+    do {
+      ListNamespacesResponse page = client.listNamespaces(CAT, pageToken, 1);
+      page.namespaces().forEach(namespace -> names.add(namespace.level(0)));
+      pageToken = page.nextPageToken();
+    } while (pageToken != null);
+    return names;
+  }
+
+  /** The whole listing, read one table per page by following the token to the end. */
+  @SneakyThrows
+  private static List<String> pagedTables(IcebergRestClient client, String schema) {
+    List<String> names = new ArrayList<>();
+    String pageToken = "";
+    do {
+      ListTablesResponse page = client.listTables(CAT, schema, pageToken, 1);
+      page.identifiers().forEach(identifier -> names.add(identifier.name()));
+      pageToken = page.nextPageToken();
+    } while (pageToken != null);
+    return names;
   }
 
   /** A minimal valid scan-metrics report for the given table (its single field is {@code id}). */

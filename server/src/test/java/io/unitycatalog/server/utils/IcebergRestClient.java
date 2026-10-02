@@ -57,6 +57,13 @@ public class IcebergRestClient {
     return parse(get(namespacesPath(catalog)), ListNamespacesResponse.class);
   }
 
+  public ListNamespacesResponse listNamespaces(String catalog, String pageToken, int pageSize)
+      throws ApiException {
+    return parse(
+        get(namespacesPath(catalog) + pageQuery(pageToken, pageSize)),
+        ListNamespacesResponse.class);
+  }
+
   public GetNamespaceResponse loadNamespace(String catalog, String namespace) throws ApiException {
     return parse(get(namespacePath(catalog, namespace)), GetNamespaceResponse.class);
   }
@@ -105,6 +112,13 @@ public class IcebergRestClient {
 
   public ListTablesResponse listTables(String catalog, String namespace) throws ApiException {
     return parse(get(tablesPath(catalog, namespace)), ListTablesResponse.class);
+  }
+
+  public ListTablesResponse listTables(
+      String catalog, String namespace, String pageToken, int pageSize) throws ApiException {
+    return parse(
+        get(tablesPath(catalog, namespace) + pageQuery(pageToken, pageSize)),
+        ListTablesResponse.class);
   }
 
   public LoadTableResponse loadTable(String catalog, String namespace, String table)
@@ -222,6 +236,10 @@ public class IcebergRestClient {
   @SneakyThrows
   private HttpResponse<String> post(String path, String jsonBody) {
     return TestUtils.sendRaw(config, "POST", BASE_PATH + path, Optional.of(jsonBody));
+  }
+
+  private static String pageQuery(String pageToken, int pageSize) {
+    return "?pageToken=" + pageToken + "&pageSize=" + pageSize;
   }
 
   private static String namespacesPath(String catalog) {
