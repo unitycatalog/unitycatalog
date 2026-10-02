@@ -66,6 +66,49 @@ The server config file is at the location `etc/conf/server.properties` (relative
     use the file `etc/db/h2db.mv.db` as the metadata store. Any changes made to the metadata will be persisted in this
     file.
 
+### Storage credential cache
+
+When the server vends temporary cloud storage credentials, it can reuse a recently vended credential
+for the same location, privileges, and credential binding instead of calling the cloud provider again
+on every request. The database binding for a location is always re-read, so changing its role or
+external ID changes the cache lookup on the next request.
+
+For AWS storage credentials, UC includes the stored external ID in both the cache key and the
+`AssumeRole` request. Updating the IAM role on a UC storage credential generates a new external ID,
+even when the role ARN is unchanged. The next request uses the new binding and cannot reuse
+credentials cached under the previous external ID. Ensure the AWS role's trust policy allows the
+newly returned external ID before requesting new credentials. Changing the cache identity does not
+revoke credentials already issued. See [AWS credential setup](aws.md) for configuring the external
+ID in the role's trust policy.
+
+The cache is controlled by these keys:
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `server.storage-credential-cache.enabled` | `true` | Whether to reuse vended credentials. When `false`, every request vends a fresh credential from the cloud provider. |
+| `server.storage-credential-cache.max-size` | `1000` | The maximum number of distinct credentials to keep. |
+| `server.storage-credential-cache.renewal-lead-time` | `PT1M` | Minimum remaining lifetime required to reuse a cached credential. When a cached credential is within this window of its expiry, the next request fetches a new credential from the cloud provider. |
+| `server.storage-credential-cache.max-age` | `PT5M` | The longest a vended credential is reused before it is refreshed, regardless of its own expiry. This is deliberately short: Unity Catalog cannot observe a cloud-side trust-policy change, so it bounds how long a credential keeps being served after such a change. |
+| `server.storage-credential-cache.backend` | *(unset)* | Fully-qualified class name of a custom cache store implementing `CredentialCacheBackend`. Unset uses the built-in in-process cache. The class needs either a public `CredentialCacheStoreContext` constructor or a public no-arg one. Freshness is always re-validated by the server, so an external store is never trusted for correctness. |
+| `server.storage-credential-cache.backend.<key>` | *(none)* | Config passed to the custom backend, exposed to it as a map with this prefix stripped. Only these keys are visible to the backend — no other server config. |
+
+Custom backends implement `io.unitycatalog.server.service.credential.cache.CredentialCacheBackend`,
+which extends `Cache<CredentialCacheKey, CachedCredential>`. This fixes the key and value types at
+compile time. The server checks at startup that the configured class implements this interface;
+implementing only the generic `Cache` interface is not sufficient.
+
+Backend property names are discovered from `server.properties` and JVM system properties. Values
+are resolved in order: JVM system property, environment variable with the exact property name, then
+the properties file. Environment-only backend property names are not discovered.
+
+> Note: when caching is enabled, a configured backend class that cannot be loaded or constructed
+> causes server startup to fail. After successful construction, backend read/write exceptions other
+> than `InterruptedException` are logged: failed reads become cache misses, and failed writes do not
+> prevent returning freshly vended credentials. Interruptions propagate with the thread's interrupt
+> flag restored; Java `Error`s also propagate.
+
+Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is five minutes).
+
 ## Logging
 
 The server logs are located at `etc/logs/server.log`. The log level and log rolling policy can be set in log4j2 config

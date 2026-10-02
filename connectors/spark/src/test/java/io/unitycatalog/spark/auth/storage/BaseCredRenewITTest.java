@@ -2,12 +2,14 @@ package io.unitycatalog.spark.auth.storage;
 
 import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.mockito.Mockito.mockStatic;
 
 import io.delta.tables.DeltaTable;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
+import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
@@ -26,6 +28,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -38,9 +41,11 @@ import org.apache.spark.sql.SparkSession;
 import org.apache.spark.util.SerializableConfiguration;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.MockedStatic;
 import org.sparkproject.guava.collect.ImmutableList;
 import org.sparkproject.guava.collect.Iterators;
 
@@ -60,12 +65,12 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
   private static final String CLOCK_NAME = UUID.randomUUID().toString();
   protected static final String CATALOG_NAME = "CredRenewalCatalog";
   private static final String SCHEMA_NAME = "Default";
-  private static final String TABLE_NAME = String.format("%s.%s.demo", CATALOG_NAME, SCHEMA_NAME);
+  protected static final String TABLE_NAME = String.format("%s.%s.demo", CATALOG_NAME, SCHEMA_NAME);
   protected static final String BUCKET_NAME = "test-bucket";
   protected static final long DEFAULT_INTERVAL_MILLIS = 30_000L;
 
-  @TempDir private File dataDir;
-  private SparkSession session;
+  @TempDir protected File dataDir;
+  protected SparkSession session;
   private SdkSchemaOperations schemaOperations;
 
   @Override
@@ -77,6 +82,40 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
 
   protected abstract Map<String, String> catalogExtraProps();
 
+  /** Whether the server-side storage credential cache is enabled for this test class. */
+  protected boolean cacheEnabled() {
+    return false;
+  }
+
+  /**
+   * Connector-side renewal lead in millis, written to the Spark Hadoop conf. 0 for the un-cached
+   * baseline (renew only at expiry); when the cache is on it is raised above the server lead so the
+   * connector re-asks the server while the cached credential is still fresh (the hit case).
+   */
+  private long connectorRenewalLeadMillis() {
+    return cacheEnabled() ? 10_000L : 0L;
+  }
+
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    if (cacheEnabled()) {
+      // Enable the cache and make it share the connector's manual timeline via the test clock
+      // provider, so its freshness check ticks on the same clock as the vend generator. Without
+      // this the cache runs on wall-clock time while credentials expire on the fast-forwarded
+      // manual clock, so it judges them fresh forever and suppresses renewal.
+      serverProperties.put("server.storage-credential-cache.enabled", "true");
+      serverProperties.put(
+          "server.storage-credential-cache.test-clock-provider", TestClockProvider.class.getName());
+      // Small server lead (< the connector lead, < credential validity) so the cache serves a
+      // credential nearly to its true expiry — this opens the window the hit test observes.
+      serverProperties.put("server.storage-credential-cache.renewal-lead-time", "PT1S");
+    } else {
+      // Baseline renewal tests exercise the un-cached, per-request vend path.
+      serverProperties.put("server.storage-credential-cache.enabled", "false");
+    }
+  }
+
   private SparkSession createSparkSession() {
     SparkSession.Builder builder =
         SparkSession.builder()
@@ -87,7 +126,9 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
                 "spark.sql.catalog.spark_catalog",
                 "org.apache.spark.sql.delta.catalog.DeltaCatalog")
             .config("spark.hadoop." + UCHadoopConfConstants.UC_TEST_CLOCK_NAME, CLOCK_NAME)
-            .config("spark.hadoop." + UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 0L)
+            .config(
+                "spark.hadoop." + UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY,
+                connectorRenewalLeadMillis())
             .config("spark.sql.shuffle.partitions", "1");
 
     // Set the default catalog properties.
@@ -155,7 +196,17 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
     return Clock.getManualClock(CLOCK_NAME);
   }
 
-  private String bucketRoot() {
+  /** Resets the server-side vend counter; call at the start of a measured section. */
+  static void resetVendCount() {
+    TimeBasedCredGenerator.GENERATE_COUNT.set(0);
+  }
+
+  /** Number of server-side vends (generator invocations) since the last {@link #resetVendCount}. */
+  static int vendCount() {
+    return TimeBasedCredGenerator.GENERATE_COUNT.get();
+  }
+
+  protected String bucketRoot() {
     return String.format("%s://%s", scheme(), BUCKET_NAME);
   }
 
@@ -275,7 +326,109 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
         .isEqualTo(ImmutableList.of(1, 2, 3));
   }
 
-  private List<Row> sql(String statement, Object... args) {
+  /**
+   * Within a credential's validity the server serves the <em>cached</em> credential to a repeat
+   * request; once it expires the server re-vends. Each access must fetch from UC, while only a miss
+   * or stale entry advances the server-side vend counter. Runs only when the cache is on (the
+   * cache-ON subclasses); it is a no-op on the un-cached baselines. The hit is reachable because
+   * {@code connectorLead (10s) > serverLead (1s)}, so the connector re-asks while the cache is
+   * still fresh.
+   */
+  @Test
+  public void testServesCachedCredentialWithinValidity() throws Exception {
+    Assumptions.assumeTrue(cacheEnabled(), "server credential cache disabled");
+
+    String location = String.format("%s%s/hit", bucketRoot(), dataDir.getCanonicalPath());
+    Path locPath = new Path(location);
+
+    sql("CREATE TABLE %s (id INT) USING delta LOCATION '%s'", TABLE_NAME, location);
+    sql("INSERT INTO %s VALUES (1)", TABLE_NAME);
+
+    SerializableConfiguration serialConf =
+        new SerializableConfiguration(
+            DeltaTable.forName(session, TABLE_NAME).deltaLog().newDeltaHadoopConf());
+
+    List<Row> rows =
+        session
+            .read()
+            .format("delta")
+            .table(TABLE_NAME)
+            .toJavaRDD()
+            .map(
+                row -> {
+                  Configuration conf = serialConf.value();
+                  FileSystem rawFs = FileSystem.get(new URI(location), conf);
+                  CredRenewFileSystem<?> fs =
+                      (CredRenewFileSystem<?>)
+                          (rawFs instanceof CredScopedFileSystem
+                              ? ((CredScopedFileSystem) rawFs).getRawFileSystem()
+                              : rawFs);
+
+                  AtomicInteger ucFetchCount = new AtomicInteger();
+                  withCountingCredentialFetcher(
+                      fs,
+                      ucFetchCount,
+                      () -> {
+                        // Align to a 30s boundary after the planning credential has expired.
+                        long now = testClock().now().toEpochMilli();
+                        long toWindowStart =
+                            DEFAULT_INTERVAL_MILLIS - (now % DEFAULT_INTERVAL_MILLIS);
+                        testClock().sleep(Duration.ofMillis(toWindowStart));
+                        resetVendCount();
+
+                        // Window start: one UC fetch and one server vend.
+                        fs.getFileStatus(locPath);
+                        assertThat(ucFetchCount.get())
+                            .as("UC fetches at window start")
+                            .isEqualTo(1);
+                        assertThat(vendCount()).isEqualTo(1);
+
+                        // +21s: connector renews, but the server still considers its cache fresh.
+                        testClock().sleep(Duration.ofMillis(21_000));
+                        fs.getFileStatus(locPath);
+                        assertThat(ucFetchCount.get()).as("UC fetches at +21s").isEqualTo(2);
+                        assertThat(vendCount()).isEqualTo(1);
+
+                        // +31s: the expired credential requires another fetch and a new vend.
+                        testClock().sleep(Duration.ofMillis(10_000));
+                        fs.getFileStatus(locPath);
+                        assertThat(ucFetchCount.get()).as("UC fetches at +31s").isEqualTo(3);
+                        assertThat(vendCount()).isEqualTo(2);
+                      });
+
+                  return RowFactory.create(1);
+                })
+            .collect();
+
+    assertThat(rows.stream().map(r -> r.getInt(0)).collect(Collectors.toList()))
+        .isEqualTo(ImmutableList.of(1));
+  }
+
+  private static void withCountingCredentialFetcher(
+      CredRenewFileSystem<?> fs, AtomicInteger ucFetchCount, Callable action) throws Exception {
+    Configuration conf = fs.getConf();
+    GenericCredentialFetcher realFetcher = GenericCredentialFetcher.create(conf);
+    GenericCredentialFetcher countingFetcher =
+        () -> {
+          var credentials = realFetcher.createCredentials();
+          ucFetchCount.incrementAndGet();
+          return credentials;
+        };
+
+    // Static interception is thread-local; the caller runs this on the Spark worker.
+    try (MockedStatic<GenericCredentialFetcher> fetchers =
+        mockStatic(GenericCredentialFetcher.class)) {
+      fetchers.when(() -> GenericCredentialFetcher.create(conf)).thenReturn(countingFetcher);
+      // A reused filesystem may already hold a provider with an uncounted fetcher.
+      fs.lazyProvider = null;
+      action.call();
+    } finally {
+      // Do not retain the counting fetcher in the filesystem after this section.
+      fs.lazyProvider = null;
+    }
+  }
+
+  protected List<Row> sql(String statement, Object... args) {
     return session.sql(String.format(statement, args)).collectAsList();
   }
 
@@ -286,7 +439,12 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
    * Catalog server and serves credential generation requests from client REST API calls.
    */
   public abstract static class TimeBasedCredGenerator<T> {
+    // Counts generate() calls across test generator instances; server-cache hits do not increment
+    // it.
+    static final AtomicInteger GENERATE_COUNT = new AtomicInteger();
+
     public T generate(CredentialContext ignored) {
+      GENERATE_COUNT.incrementAndGet();
       long curTsMillis = testClock().now().toEpochMilli();
       // Align it into the window [starTs, starTs + DEFAULT_INTERVAL_MILLIS].
       long startTsMillis = curTsMillis / DEFAULT_INTERVAL_MILLIS * DEFAULT_INTERVAL_MILLIS;

@@ -22,6 +22,7 @@ import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
+import io.unitycatalog.server.service.credential.cache.StorageCredentialCache;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcsStorageConfig;
 import io.unitycatalog.server.service.credential.gcp.StaticTestingCredentialGenerator;
@@ -63,8 +64,12 @@ public class CloudCredentialVendorTest {
 
   private TemporaryCredentials vendCredential(
       String path, Set<CredentialContext.Privilege> privileges) {
+    // The mock ServerProperties leaves the cache disabled (isStorageCredentialCacheEnabled()
+    // defaults to false), so the vendor vends directly on every call — behavior unchanged.
+    StorageCredentialCache credentialCache =
+        new StorageCredentialCache(credentialsOperations, serverProperties);
     StorageCredentialVendor storageCredentialVendor =
-        new StorageCredentialVendor(credentialsOperations, externalLocationUtils);
+        new StorageCredentialVendor(credentialCache, externalLocationUtils);
     return storageCredentialVendor.vendCredential(NormalizedURL.from(path), privileges);
   }
 

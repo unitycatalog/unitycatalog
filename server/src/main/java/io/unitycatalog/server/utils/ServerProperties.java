@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.IntPredicate;
@@ -235,6 +236,15 @@ public class ServerProperties {
         "server.storage-cleanup.initial-delay", "P7D", POSITIVE_DURATION_VALIDATOR),
     STORAGE_CLEANUP_RETRY_BACKOFF(
         "server.storage-cleanup.retry-backoff", "PT1H", POSITIVE_DURATION_VALIDATOR),
+    STORAGE_CREDENTIAL_CACHE_ENABLED(
+        "server.storage-credential-cache.enabled", "true", BOOLEAN_VALIDATOR),
+    STORAGE_CREDENTIAL_CACHE_MAX_SIZE(
+        "server.storage-credential-cache.max-size", "1000", POSITIVE_INTEGER_VALIDATOR),
+    STORAGE_CREDENTIAL_CACHE_RENEWAL_LEAD_TIME(
+        "server.storage-credential-cache.renewal-lead-time", "PT1M", POSITIVE_DURATION_VALIDATOR),
+    STORAGE_CREDENTIAL_CACHE_MAX_AGE(
+        "server.storage-credential-cache.max-age", "PT5M", POSITIVE_DURATION_VALIDATOR),
+    STORAGE_CREDENTIAL_CACHE_BACKEND("server.storage-credential-cache.backend"),
     AUTHORIZATION_URL("server.authorization-url", URL_VALIDATOR),
     TOKEN_URL("server.token-url", URL_VALIDATOR),
     CLIENT_ID("server.client-id"),
@@ -550,6 +560,69 @@ public class ServerProperties {
 
   public Duration getStorageCleanupRetryBackoff() {
     return Duration.parse(get(Property.STORAGE_CLEANUP_RETRY_BACKOFF));
+  }
+
+  public boolean isStorageCredentialCacheEnabled() {
+    return Boolean.parseBoolean(get(Property.STORAGE_CREDENTIAL_CACHE_ENABLED));
+  }
+
+  public int getStorageCredentialCacheMaxSize() {
+    return Integer.parseInt(get(Property.STORAGE_CREDENTIAL_CACHE_MAX_SIZE));
+  }
+
+  public Duration getStorageCredentialCacheRenewalLeadTime() {
+    return Duration.parse(get(Property.STORAGE_CREDENTIAL_CACHE_RENEWAL_LEAD_TIME));
+  }
+
+  public Duration getStorageCredentialCacheMaxAge() {
+    return Duration.parse(get(Property.STORAGE_CREDENTIAL_CACHE_MAX_AGE));
+  }
+
+  /**
+   * The fully-qualified class name of a custom {@link
+   * io.unitycatalog.server.service.credential.cache.CredentialCacheBackend}, or empty to use the
+   * built-in in-process cache. The class is loaded reflectively by {@link
+   * io.unitycatalog.server.service.credential.cache.StorageCredentialCache}.
+   */
+  public Optional<String> getStorageCredentialCacheBackend() {
+    return Optional.ofNullable(get(Property.STORAGE_CREDENTIAL_CACHE_BACKEND))
+        .filter(fqcn -> !fqcn.isBlank());
+  }
+
+  /**
+   * The custom backend's own config: the {@code server.storage-credential-cache.backend.*} subtree
+   * with that prefix stripped, as an unmodifiable map. Scoped on purpose — a backend plugin sees
+   * only its own keys, never other server config. Empty when nothing is configured.
+   */
+  public Map<String, String> getStorageCredentialCacheBackendProperties() {
+    String prefix = Property.STORAGE_CREDENTIAL_CACHE_BACKEND.key + ".";
+    Map<String, String> result = new HashMap<>();
+    // Discovery scans the properties file and system properties, not env vars: env is read by exact
+    // key (see getProperty), never enumerated, and enumerating it could surface unrelated keys.
+    collectPrefixed(properties.stringPropertyNames(), prefix, result);
+    collectPrefixed(System.getProperties().stringPropertyNames(), prefix, result);
+    return Map.copyOf(result);
+  }
+
+  private void collectPrefixed(Set<String> keys, String prefix, Map<String, String> out) {
+    for (String key : keys) {
+      if (key.startsWith(prefix)) {
+        out.put(key.substring(prefix.length()), getProperty(key));
+      }
+    }
+  }
+
+  /**
+   * Test-only hook: the fully-qualified class name of a {@code Supplier<java.time.Clock>} whose
+   * clock the storage credential cache uses instead of {@link java.time.Clock#systemUTC()}. It lets
+   * an integration test drive cache freshness on the same manual timeline as the connector and the
+   * vend generator. Absent in production (returns empty), so the cache runs on the system clock.
+   *
+   * <p>Deliberately not a first-class {@link Property}: it is an internal test seam, not a released
+   * validated config surface, mirroring how {@code s3.credentialGenerator.N} is read internally.
+   */
+  public Optional<String> getStorageCredentialCacheTestClockProvider() {
+    return Optional.ofNullable(getProperty("server.storage-credential-cache.test-clock-provider"));
   }
 
   public boolean isIncludeStackTraceInError() {
