@@ -1,0 +1,61 @@
+spec_version: 1
+name: kernel-pr-reviewer
+description: >-
+  A delta-kernel-rs PR review orchestrator. Fans a PR diff out to a team of
+  specialized read-only reviewer sub-agents (protocol compliance, architecture,
+  test coverage, docs, plus Claude and Codex maintainer-level passes), runs a
+  disprove gate over candidate findings, then consolidates into one review.
+  Ported from the repo's local /kernel-review reviewer roster; writes no code
+  and posts nothing itself -- the workflow posts the consolidated review.
+skills: none
+
+# The orchestrator brain runs on the claude-sdk harness against the configured
+# gateway (see ~/.omnigent/config.yaml written by the workflow). It only plans,
+# delegates to the reviewer sub-agents, and synthesizes -- it never edits code.
+executor:
+  type: omnigent
+  context_window: 1000000
+  model: default
+  config:
+    harness: claude-sdk
+
+instructions: REVIEW.md
+
+async: true
+cancellable: true
+timers: true
+
+tools:
+  # Reviewer sub-agents -- see agents/<name>/config.yaml. All are read-only
+  # reviewers pointed at the same gateway as the orchestrator.
+  agents:
+    - delta-protocol-reviewer
+    - maintainer-claude-reviewer
+    - maintainer-codex-reviewer
+    - architecture-reviewer
+    - test-coverage-reviewer
+    - docs-reviewer
+    - disprove-reviewer
+
+guardrails:
+  ask_timeout: 86400
+  policies:
+    inject_review_context:
+      type: function
+      function:
+        path: review_context_policy.inject_review_context
+        arguments:
+          context_path: /tmp/reviewer_context.txt
+    spawn_bounds:
+      type: function
+      function:
+        path: omnigent.inner.nessie.policies.spawn_bounds
+        arguments:
+          max_dispatches_per_turn: 6
+          dispatch_tools: [sys_session_send]
+    headless_subagent_purpose_guard:
+      type: function
+      function:
+        path: omnigent.inner.nessie.policies.headless_subagent_purpose_guard
+        arguments:
+          allowed_purposes: [review, explore, search]
