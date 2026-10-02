@@ -64,6 +64,11 @@ public abstract class BaseServerTest {
 
   protected void setUpCredentialOperations(ServerProperties serverProperties) {}
 
+  /** Subclasses can override this to wrap the server's {@link FileOperations}, e.g. for tests. */
+  protected FileOperations decorateFileOperations(FileOperations fileOperations) {
+    return fileOperations;
+  }
+
   /**
    * Subclasses can override this to decorate the server's {@link FileOperations}, e.g. to map cloud
    * storage to local files for Iceberg tests. Returns the instance unchanged by default.
