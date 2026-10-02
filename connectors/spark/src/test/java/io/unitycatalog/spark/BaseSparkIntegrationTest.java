@@ -67,7 +67,7 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   }
 
   /** The base Spark builder shared by all integration tests (local master, small shuffle width). */
-  protected SparkSession.Builder newSparkSessionBuilder() {
+  private SparkSession.Builder newSparkSessionBuilder() {
     return SparkSession.builder()
         .appName("test")
         .master("local[*]")

@@ -902,11 +902,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     for (int i = 0; i < cols.size(); i++) {
       ColSpec spec = cols.get(i);
       if (spec.getTypeName() == ColumnTypeName.BINARY) {
-        // BINARY comes back as a Java byte[]; read it from the raw row (the stringified `row` above
-        // only keeps its "[B@" object ref) and check the inserted X'CAFEBABE' round-trips exactly.
-        assertThat((byte[]) resultRow.get(i))
-            .as("row value for %s", spec.getName())
-            .containsExactly(0xCA, 0xFE, 0xBA, 0xBE);
+        // Read BINARY from the raw row; stringified `row` only keeps its "[B@" ref.
+        assertCafebabeBinary(resultRow.get(i), spec.getName());
       } else {
         assertThat(row.get(i)).as("row value for %s", spec.getName()).isEqualTo(spec.getRowValue());
       }
@@ -991,5 +988,16 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
             t ->
                 assertThat(t.getClass().getName())
                     .isEqualTo("org.apache.iceberg.exceptions.NoSuchNamespaceException"));
+  }
+
+  /**
+   * Asserts a BINARY column round-tripped the inserted {@code X'CAFEBABE'} byte-for-byte. Shared
+   * with the {@code testTableWithSupportedDataTypes} override so the expected bytes live in one
+   * place; {@code rowValue} is the raw row cell, which is a Java {@code byte[]} for BINARY.
+   */
+  protected static void assertCafebabeBinary(Object rowValue, String columnName) {
+    assertThat((byte[]) rowValue)
+        .as("row value for %s", columnName)
+        .containsExactly(0xCA, 0xFE, 0xBA, 0xBE);
   }
 }

@@ -182,11 +182,7 @@ public abstract class IcebergTableReadWriteTest extends BaseTableReadWriteTest {
     for (int i = 0; i < cols.size(); i++) {
       ColSpec spec = cols.get(i);
       if (spec.typeName == ColumnTypeName.BINARY) {
-        // Verify the inserted X'CAFEBABE' survived the round-trip byte-for-byte; toString() on a
-        // byte[] is only an object ref and would assert nothing about the value.
-        assertThat((byte[]) row.get(i))
-            .as("row value for %s", spec.name)
-            .containsExactly(0xCA, 0xFE, 0xBA, 0xBE);
+        assertCafebabeBinary(row.get(i), spec.name);
       } else {
         assertThat(row.get(i).toString())
             .as("row value for %s", spec.name)
