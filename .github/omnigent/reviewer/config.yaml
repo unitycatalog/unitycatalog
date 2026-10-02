@@ -1,12 +1,12 @@
 spec_version: 1
-name: kernel-pr-reviewer
+name: uc-pr-reviewer
 description: >-
-  A delta-kernel-rs PR review orchestrator. Fans a PR diff out to a team of
-  specialized read-only reviewer sub-agents (protocol compliance, architecture,
+  A Unity Catalog PR review orchestrator. Fans a PR diff out to a team of
+  specialized read-only reviewer sub-agents (domain guards, architecture,
   test coverage, docs, plus Claude and Codex maintainer-level passes), runs a
-  disprove gate over candidate findings, then consolidates into one review.
-  Ported from the repo's local /kernel-review reviewer roster; writes no code
-  and posts nothing itself -- the workflow posts the consolidated review.
+  disprove gate over candidate findings, then consolidates into one review. It
+  writes no code and posts nothing itself -- the workflow posts the consolidated
+  review.
 skills: none
 
 # The orchestrator brain runs on the claude-sdk harness against the configured
@@ -29,7 +29,7 @@ tools:
   # Reviewer sub-agents -- see agents/<name>/config.yaml. All are read-only
   # reviewers pointed at the same gateway as the orchestrator.
   agents:
-    - delta-protocol-reviewer
+    - uc-domain-reviewer
     - maintainer-claude-reviewer
     - maintainer-codex-reviewer
     - architecture-reviewer

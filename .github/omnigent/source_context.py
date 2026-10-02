@@ -6,11 +6,10 @@ import os
 from pathlib import Path, PurePosixPath
 from typing import Iterator, Literal
 
-Repository = Literal["pr", "delta"]
+Repository = Literal["pr"]
 
 _ROOT_ENV = {
     "pr": "PR_SOURCE_ROOT",
-    "delta": "DELTA_SOURCE_ROOT",
 }
 _MAX_FILE_BYTES = 2_000_000
 _MAX_OUTPUT_CHARS = 40_000
@@ -21,7 +20,7 @@ _MAX_SCANNED_FILES = 20_000
 def _source_root(repository: Repository) -> Path:
     env_name = _ROOT_ENV.get(repository)
     if env_name is None:
-        raise ValueError("repository must be 'pr' or 'delta'")
+        raise ValueError("repository must be 'pr'")
     raw_root = os.environ.get(env_name)
     if not raw_root:
         raise ValueError(f"{env_name} is not configured")
@@ -87,7 +86,7 @@ def read_source_file(
     """Read bounded, line-numbered text from a source file.
 
     Args:
-        repository: Read from the exact PR checkout or read-only Delta reference.
+        repository: Read from the exact PR checkout.
         path: Repository-relative POSIX path to a text file.
         start_line: First line to return, using one-based numbering.
         line_count: Number of lines to return, from 1 through 1000.
@@ -114,7 +113,7 @@ def list_source_files(
     """List files recursively below a source-tree path.
 
     Args:
-        repository: List the exact PR checkout or read-only Delta reference.
+        repository: List the exact PR checkout.
         path: Optional repository-relative file or directory path.
         max_entries: Maximum paths to return, from 1 through 1000.
     """
@@ -141,7 +140,7 @@ def search_source_code(
     """Search source text for a fixed, case-sensitive string.
 
     Args:
-        repository: Search the exact PR checkout or read-only Delta reference.
+        repository: Search the exact PR checkout.
         query: Fixed text to find; regular expressions are not accepted.
         path: Optional repository-relative file or directory path.
         max_results: Maximum matching lines to return, from 1 through 500.
