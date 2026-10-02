@@ -9,6 +9,7 @@ import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.model.VolumeType;
+import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
@@ -38,6 +39,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 
@@ -196,6 +199,68 @@ class StorageCleanupWorkerE2ETest {
         .containsExactlyInAnyOrder(
             "root/tables/other/keep", "root/tables/" + tableId + "-sibling/keep");
     assertThat(findTask(tableId)).isNull();
+  }
+
+  @ParameterizedTest(name = "nested model cleanup: modelFirst={0}")
+  @ValueSource(booleans = {true, false})
+  void workerCompletesNestedModelCleanupInEitherOrder(boolean modelFirst) throws Exception {
+    UUID modelId = UUID.randomUUID();
+    UUID versionId = UUID.randomUUID();
+    Path modelsDir =
+        tempDir.resolve("root").resolve(ManagedResourceType.REGISTERED_MODEL.pathSegment());
+    Path modelDir = modelsDir.resolve(modelId.toString());
+    Path versionDir =
+        modelDir
+            .resolve(ManagedResourceType.MODEL_VERSION.pathSegment())
+            .resolve(versionId.toString());
+    Path siblingDir = modelsDir.resolve(UUID.randomUUID().toString());
+    Files.createDirectories(versionDir);
+    Files.createDirectories(siblingDir);
+    Path modelMarker = Files.writeString(modelDir.resolve("model.txt"), "model data");
+    Files.writeString(versionDir.resolve("version.txt"), "version data");
+    Path siblingMarker = Files.writeString(siblingDir.resolve("keep.txt"), "sibling data");
+
+    // Distinct, eligible timestamps make claim order deterministic without sleeps.
+    persist(
+        StorageCleanupTaskDAO.builder()
+            .id(modelId)
+            .name("model")
+            .resourceType(ManagedResourceType.REGISTERED_MODEL)
+            .storageLocation(modelDir.toUri().toString())
+            .deletedAt(new Date(modelFirst ? 1 : 2))
+            .build());
+    persist(
+        StorageCleanupTaskDAO.builder()
+            .id(versionId)
+            .name("1")
+            .resourceType(ManagedResourceType.MODEL_VERSION)
+            .storageLocation(versionDir.toUri().toString())
+            .deletedAt(new Date(modelFirst ? 2 : 1))
+            .build());
+
+    try (StorageCleanupWorker worker = localWorker()) {
+      assertThat(worker.runOnce()).isTrue();
+      assertThat(findTask(modelFirst ? modelId : versionId)).isNull();
+      StorageCleanupTaskDAO pending = findTask(modelFirst ? versionId : modelId);
+      assertThat(pending).isNotNull();
+      assertThat(pending.getFailureCount()).isZero();
+      assertThat(pending.getLeaseToken()).isNull();
+      assertThat(versionDir).doesNotExist();
+      if (modelFirst) {
+        assertThat(modelDir).doesNotExist();
+      } else {
+        assertThat(Files.readString(modelMarker)).isEqualTo("model data");
+      }
+      assertThat(Files.readString(siblingMarker)).isEqualTo("sibling data");
+
+      // Each task must finish on its first attempt, even if its directory is already gone.
+      assertThat(worker.runOnce()).isTrue();
+      assertThat(findTask(modelId)).isNull();
+      assertThat(findTask(versionId)).isNull();
+      assertThat(modelDir).doesNotExist();
+      assertThat(Files.readString(siblingMarker)).isEqualTo("sibling data");
+      assertThat(worker.runOnce()).isFalse();
+    }
   }
 
   /** Real FileOperations: local (file://) cleanup resolves to SimpleLocalFileIO, no credentials. */
