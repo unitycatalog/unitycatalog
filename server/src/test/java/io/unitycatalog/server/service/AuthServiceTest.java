@@ -82,12 +82,19 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   }
 
   @Test
-  public void testExpiredAccessTokenIsRejected() {
+  public void testExpiredAccessTokenIsRejected() throws Exception {
     // Request with expired access token should return 401
     RequestHeaders headers = buildLogoutRequestHeaderWithToken(createExpiredAccessToken());
 
     AggregatedHttpResponse response = client.execute(headers).aggregate().join();
     assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        "io.unitycatalog.server.service.AuthService",
+        "logout",
+        HttpStatus.UNAUTHORIZED.code(),
+        1.0);
   }
 
   private RequestHeaders buildLogoutRequestHeader(boolean includeCookie) {

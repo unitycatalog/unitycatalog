@@ -81,6 +81,12 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
   }
 
   private void assertHealthAndPortIsolation() throws Exception {
+    HttpResponse<String> apiRoot = sendRawGet(serverConfig, "/");
+    assertThat(apiRoot.statusCode()).isEqualTo(200);
+    assertThat(apiRoot.body()).contains("Hello, Unity Catalog!");
+    List<String> before = httpRequestMetrics();
+    assertThat(before).isNotEmpty();
+
     // The synchronous startup probe has already checked the H2 database.
     for (String path : List.of("/livez", "/readyz")) {
       HttpResponse<String> response = sendRawGet(observabilityServerConfig, path);
@@ -88,16 +94,24 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
       assertThat(response.body()).contains("\"healthy\":true");
     }
 
-    for (String path : List.of("/livez", "/readyz", "/metrics")) {
-      assertThat(sendRawGet(serverConfig, path).statusCode()).as(path).isEqualTo(404);
-    }
-
-    HttpResponse<String> apiRoot = sendRawGet(serverConfig, "/");
-    assertThat(apiRoot.statusCode()).isEqualTo(200);
-    assertThat(apiRoot.body()).contains("Hello, Unity Catalog!");
     for (String path : List.of("/", "/docs", "/api/2.1/unity-catalog/catalogs")) {
       assertThat(sendRawGet(observabilityServerConfig, path).statusCode()).as(path).isEqualTo(404);
     }
+    assertThat(httpRequestMetrics()).containsExactlyInAnyOrderElementsOf(before);
+
+    for (String path : List.of("/livez", "/readyz", "/metrics")) {
+      assertThat(sendRawGet(serverConfig, path).statusCode()).as(path).isEqualTo(404);
+    }
+  }
+
+  private List<String> httpRequestMetrics() throws Exception {
+    HttpResponse<String> response = sendRawGet(observabilityServerConfig, "/metrics");
+    assertThat(response.statusCode()).isEqualTo(200);
+    return response
+        .body()
+        .lines()
+        .filter(line -> line.startsWith("http_server_requests_total{"))
+        .toList();
   }
 
   private void ucRestCountsOnlySuccessfullyPersistedCreates() throws Exception {
