@@ -23,6 +23,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Flow;
@@ -472,6 +473,33 @@ public class TestUtils {
   /** Convenience wrapper over {@link #sendRaw} for GET probes. */
   public static HttpResponse<String> sendRawGet(ServerConfig config, String path) throws Exception {
     return sendRawGet(config, path, Optional.empty());
+  }
+
+  /** Asserts the exact Prometheus series emitted for one completed API request. */
+  public static void assertHttpRequestMetric(
+      ServerConfig apiConfig,
+      ServerConfig observabilityConfig,
+      String service,
+      String method,
+      int status,
+      double count)
+      throws Exception {
+    int apiPort = URI.create(apiConfig.getServerUrl()).getPort();
+    String expected =
+        "http_server_requests_total{hostname_pattern=\"*:"
+            + apiPort
+            + "\",http_status=\""
+            + status
+            + "\",method=\""
+            + method
+            + "\",service=\""
+            + service
+            + "\"} "
+            + count;
+    String scrape = sendRawGet(observabilityConfig, "/metrics").body();
+    List<String> httpRequestMetrics =
+        scrape.lines().filter(line -> line.startsWith("http_server_requests_total")).toList();
+    assertThat(httpRequestMetrics).contains(expected);
   }
 
   /** Convenience wrapper over {@link #sendRaw} for GET probes with an optional body. */

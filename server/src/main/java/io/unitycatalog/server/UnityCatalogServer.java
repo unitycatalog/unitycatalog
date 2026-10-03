@@ -204,6 +204,11 @@ public class UnityCatalogServer implements AutoCloseable {
     // Init security decorators
     addSecurityDecorators(
         armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
+    // Armeria runs decorators in reverse registration order. Register metrics last so it wraps
+    // authentication and authorization and records rejected requests as well.
+    if (metrics != null) {
+      armeriaServerBuilder.meterRegistry(metrics.registry());
+    }
     initializeCleanup(unityCatalogServerBuilder.serverProperties, repositories);
 
     return armeriaServerBuilder.build();
@@ -217,7 +222,6 @@ public class UnityCatalogServer implements AutoCloseable {
     // This server owns the registry and releases its JVM/GC binders on close().
     metrics = MetricsRegistries.createPrometheus();
     PrometheusMeterRegistry meterRegistry = metrics.registry();
-    armeriaServerBuilder.meterRegistry(meterRegistry);
     armeriaServerBuilder.observabilityService(
         "/metrics", PrometheusExpositionService.of(meterRegistry.getPrometheusRegistry()));
 

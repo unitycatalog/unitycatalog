@@ -99,12 +99,48 @@ Collector, etc.).
 | `jvm_memory_used_bytes`, `jvm_gc_*`, `jvm_threads_*` | JVM heap and non-heap memory, GC pause, and thread counts |
 | `process_cpu_usage`, `system_cpu_usage` | Process and host CPU utilisation |
 | `armeria_server_*`, `armeria_executor_*` | Armeria server and executor internals |
-| `http_server_requests_total` | Total HTTP requests, tagged by `service`, `method`, `http_status` |
+| `http_server_requests_total` | Completed HTTP requests on the API listener, tagged by `hostname_pattern`, `service`, `method`, and `http_status`; includes authentication and authorization rejections |
 | `uc_securable_table_creations_total` | Table securables created after their database transactions commit through UC, Delta, or Iceberg REST, including tables, views, and metric views |
 
 Within the `http_server_*` family, only `http_server_requests_total` is exposed, without a `result`
 tag. HTTP latency, request/response size, timeout, and in-flight metrics are not exposed. JVM,
 CPU, Armeria-internal, and UC metrics remain enabled.
+
+#### HTTP request counter labels
+
+- `hostname_pattern`: the API listener's virtual-host pattern, such as `*:8081` with the
+  default client port of `8080`. It identifies the internal API listener, not the client or
+  observability port.
+- `service`: the fully qualified Java service class, such as
+  `io.unitycatalog.server.service.CatalogService`.
+- `method`: the annotated Java handler name, such as `createCatalog`, **not** the HTTP verb.
+  When no annotated handler is selected, the service is
+  `com.linecorp.armeria.server.FallbackService` and the method is the HTTP verb, such as `GET`.
+- `http_status`: the final HTTP response status, such as `200`, `400`, or `500`.
+
+For example, the following series show a successful catalog creation, a malformed catalog
+creation request, a server error during SCIM user creation, and an unmatched request that
+returns `404`. These examples use the default internal API port of `8081` and an illustrative
+count of one request per series:
+
+```text
+http_server_requests_total{hostname_pattern="*:8081",http_status="200",method="createCatalog",service="io.unitycatalog.server.service.CatalogService"} 1.0
+http_server_requests_total{hostname_pattern="*:8081",http_status="400",method="createCatalog",service="io.unitycatalog.server.service.CatalogService"} 1.0
+http_server_requests_total{hostname_pattern="*:8081",http_status="500",method="createScimUser",service="io.unitycatalog.server.service.Scim2UserService"} 1.0
+http_server_requests_total{hostname_pattern="*:8081",http_status="404",method="GET",service="com.linecorp.armeria.server.FallbackService"} 1.0
+```
+
+Requests to `/metrics`, `/livez`, and `/readyz` on the observability listener are not included
+in this counter. A failure after response headers have been sent cannot change the status
+already sent to the client. Without a `result` tag, this counter does not distinguish such a
+failure from another request with the same HTTP status.
+
+The persisted-create counter is separate from HTTP request outcomes. For example, a total
+of one committed table-securable creation is exposed as:
+
+```text
+uc_securable_table_creations_total 1.0
+```
 
 !!! note "Per-route metrics are lazily populated"
     HTTP request metrics for a given route (`service`/`method` combination) appear in the

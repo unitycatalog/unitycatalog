@@ -66,6 +66,20 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
     }
   }
 
+  @Test
+  public void nonExistingApiEndpointIsRecorded() throws Exception {
+    HttpResponse<String> response = sendRawGet(serverConfig, "/does-not-exist");
+
+    assertThat(response.statusCode()).isEqualTo(404);
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        "com.linecorp.armeria.server.FallbackService",
+        "GET",
+        404,
+        1.0);
+  }
+
   private void assertHealthAndPortIsolation() throws Exception {
     // The synchronous startup probe has already checked the H2 database.
     for (String path : List.of("/livez", "/readyz")) {
