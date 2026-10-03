@@ -26,14 +26,6 @@ lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.3.1")
 // This String val is used for libraryDependencies coordinates; the SettingKey is
 // queryable in SBT via `show spark/sparkVersion`.
 lazy val sparkVersion = CrossSparkVersions.getSparkArtifactVersion()
-lazy val sparkMajorMinorVersion = CrossSparkVersions.getSparkVersionSpec().shortVersion
-
-// delta-spark is only needed for tests. When UC is published to local Maven before
-// Delta is built (e.g. CI pre-Delta publishM2 step), the matching Delta artifact may
-// not exist yet. Pass -DskipDeltaSpark=true to exclude it and avoid resolution failures.
-def deltaSparkTestDeps: Seq[ModuleID] =
-  if (sys.props.getOrElse("skipDeltaSpark", "false").toBoolean) Seq.empty
-  else Seq("io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test)
 
 // Apache Snapshots resolver is in build/sbt-config/repositories (global).
 // No per-module sparkResolvers needed.
@@ -695,6 +687,8 @@ lazy val spark = (project in file("connectors/spark"))
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
       "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED",
     ),
+    // Arrow-backed vectorized reads need java.nio opened for off-heap memory access.
+    Test / javaOptions += "--add-opens=java.base/java.nio=ALL-UNNAMED",
     javafmtCheckSettings(),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
     Compile / compile / javacOptions ++= javacRelease11,
@@ -743,7 +737,8 @@ lazy val spark = (project in file("connectors/spark"))
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-    ) ++ deltaSparkTestDeps,
+    ) ++ CrossSparkVersions.deltaSparkTestDeps(deltaVersion)
+      ++ CrossSparkVersions.icebergSparkTestDeps(icebergVersion),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % sparkJacksonVersion,
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % sparkJacksonVersion,
@@ -833,7 +828,7 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-    ) ++ deltaSparkTestDeps,
+    ) ++ CrossSparkVersions.deltaSparkTestDeps(deltaVersion),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % sparkJacksonVersion,
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % sparkJacksonVersion,
