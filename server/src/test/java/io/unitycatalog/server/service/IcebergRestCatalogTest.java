@@ -34,7 +34,6 @@ import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.NormalizedURL;
-import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.io.InputStream;
@@ -119,13 +118,6 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   // hand-built HTTP. Tests that assert HTTP-level behavior (status/headers, invalid input, unrouted
   // paths) keep using the raw {@code client} below.
   private IcebergRestClient icebergClient;
-
-  @Override
-  protected void setUpProperties() {
-    super.setUpProperties();
-    // Native Iceberg REST writes are opt-in in production; this integration suite exercises them.
-    serverProperties.setProperty(Property.ICEBERG_TABLE_ENABLED.getKey(), "true");
-  }
 
   @BeforeEach
   public void setUp() {
