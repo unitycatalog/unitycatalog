@@ -4,6 +4,7 @@ import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static io.unitycatalog.spark.DeltaVersionUtils.MIN_DELTA_VERSION_FOR_UC_DELTA_API;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CreateCatalog;
@@ -12,9 +13,12 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.service.credential.gcp.TestingCredentialGenerator;
+import io.unitycatalog.server.utils.LocalMappingFileOperations;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import io.unitycatalog.spark.utils.OptionsUtil;
@@ -41,6 +45,10 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   private SchemaOperations schemaOperations;
   // Each test would create this session. It will be closed automatically.
   protected SparkSession session;
+
+  // Maps the emulated cloud storage root to the test directory when Iceberg runs on it; registered
+  // in setUp() once the server (and its storage root property) is up.
+  private LocalMappingFileOperations mappingFileOperations;
 
   /**
    * True when this suite drives the given catalog as Iceberg's own REST {@code SparkCatalog}
@@ -150,18 +158,25 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
 
   /**
    * Wires one catalog as Iceberg's REST {@code SparkCatalog} against the server's Iceberg REST
-   * catalog, reading and writing data files through Iceberg's {@code HadoopFileIO} on the local
-   * warehouse.
+   * catalog, with the client FileIO following the storage scheme: on emulated S3 the table consumes
+   * the credentials UC vends through a mock S3 client ({@code MockS3ClientFactory}); otherwise data
+   * files read and write locally through {@code HadoopFileIO}.
    */
   private SparkSession.Builder icebergCatalogConfig(SparkSession.Builder builder, String catalog) {
     String catalogConf = catalogConfKey(catalog);
-    return builder
-        .config(catalogConf, "org.apache.iceberg.spark.SparkCatalog")
-        .config(catalogConf + ".type", "rest")
-        .config(catalogConf + ".uri", serverConfig.getServerUrl() + ICEBERG_REST_PATH)
-        .config(catalogConf + ".warehouse", catalog)
-        .config(catalogConf + ".io-impl", "org.apache.iceberg.hadoop.HadoopFileIO")
-        .config(catalogConf + ".token", serverConfig.getAuthToken());
+    builder =
+        builder
+            .config(catalogConf, "org.apache.iceberg.spark.SparkCatalog")
+            .config(catalogConf + ".type", "rest")
+            .config(catalogConf + ".uri", serverConfig.getServerUrl() + ICEBERG_REST_PATH)
+            .config(catalogConf + ".warehouse", catalog)
+            .config(catalogConf + ".token", serverConfig.getAuthToken());
+    if ("s3".equals(managedStorageCloudScheme())) {
+      return builder
+          .config(catalogConf + ".io-impl", "org.apache.iceberg.aws.s3.S3FileIO")
+          .config(catalogConf + ".s3.client-factory-impl", FakeS3.MOCK_S3_CLIENT_FACTORY);
+    }
+    return builder.config(catalogConf + ".io-impl", "org.apache.iceberg.hadoop.HadoopFileIO");
   }
 
   protected List<Row> sql(String statement, Object... args) {
@@ -176,10 +191,36 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     return runMajor > major || (runMajor == major && runMinor >= minor);
   }
 
+  /**
+   * True when Iceberg tables sit on emulated S3 storage, the only cloud scheme wired end to end
+   * (client {@code S3FileIO} + mock factory, server-side cloud-to-local mapping). The Iceberg
+   * suites always drive {@code CATALOG_NAME} as their Iceberg catalog, so asking about it answers
+   * for the suite's Iceberg IO.
+   */
+  private boolean icebergOnEmulatedS3() {
+    if (!isIcebergCatalog(CATALOG_NAME)) {
+      return false;
+    }
+    String scheme = managedStorageCloudScheme();
+    if ("s3".equals(scheme)) {
+      return true;
+    }
+    // s3 is the only emulated cloud wired for Iceberg; the only other scheme the suites use is
+    // local file. Fail loudly if an unwired scheme (e.g. gs/abfs) ever reaches here.
+    assertThat(scheme).as("Iceberg storage scheme").isEqualTo("file");
+    return false;
+  }
+
   @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
+    if (icebergOnEmulatedS3()) {
+      // Map the emulated storage root (s3://bucket/<test dir>) onto that test directory; the
+      // client-side mock maps the same object keys to the same absolute local paths.
+      mappingFileOperations.mapLocation(
+          NormalizedURL.from(tableStorageRoot), testDirectoryRoot.toAbsolutePath());
+    }
     // Some Delta Spark functionalities needs testing mode to be turned on so that we can test.
     // Specifically the file CreateDeltaTableCommand.scala in Delta checks for Utils.isTesting
     // before allowing catalog owned table creation.
@@ -190,6 +231,22 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     } catch (ApiException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  /**
+   * When Iceberg runs on emulated cloud storage, the server itself reads and writes Iceberg
+   * metadata for those tables; map that IO onto the test directory while still vending and
+   * validating the real credentials, so the server side shares the fake bucket with the client
+   * side.
+   */
+  @Override
+  protected FileOperations decorateFileOperations(FileOperations fileOperations) {
+    if (icebergOnEmulatedS3()) {
+      mappingFileOperations =
+          new LocalMappingFileOperations(fileOperations, FakeS3.EXPECTED_VENDED_CREDENTIALS);
+      return mappingFileOperations;
+    }
+    return fileOperations;
   }
 
   @Override
@@ -229,6 +286,11 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     serverProperties.put("adls.clientId.1", "clientId1");
     serverProperties.put("adls.clientSecret.1", "clientSecret1");
     serverProperties.put("adls.testMode.1", "true");
+
+    if (icebergOnEmulatedS3()) {
+      // The S3 FileIO config the server vends requires a configured region for the bucket.
+      serverProperties.put("s3.region.0", TestUtils.TEST_AWS_REGION);
+    }
   }
 
   @Override
