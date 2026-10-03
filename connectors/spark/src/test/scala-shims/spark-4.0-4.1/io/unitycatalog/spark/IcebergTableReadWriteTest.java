@@ -2,7 +2,6 @@ package io.unitycatalog.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 
-import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.params.provider.Arguments;
@@ -39,14 +38,6 @@ public abstract class IcebergTableReadWriteTest extends BaseTableReadWriteTest {
   @Override
   protected boolean isIcebergCatalog(String catalog) {
     return true;
-  }
-
-  @Override
-  protected void setUpProperties() {
-    super.setUpProperties();
-    // Advertise and accept the Iceberg write endpoints (createTable / updateTable / dropTable);
-    // otherwise the REST client refuses them as unsupported and the server rejects them.
-    serverProperties.setProperty(ServerProperties.Property.ICEBERG_TABLE_ENABLED.getKey(), "true");
   }
 
   @Override

@@ -122,14 +122,15 @@ public class ServerPropertiesTest {
   @Test
   public void testIcebergTableEnabledCheck() {
     ServerProperties serverProperties = new ServerProperties();
+    // Iceberg tables are enabled by default, so the check passes without extra configuration.
+    assertThat(serverProperties.isIcebergTableEnabled()).isTrue();
+    serverProperties.checkIcebergTableEnabled();
+
+    serverProperties.set(Property.ICEBERG_TABLE_ENABLED, "false");
     assertThat(serverProperties.isIcebergTableEnabled()).isFalse();
     assertThatThrownBy(serverProperties::checkIcebergTableEnabled)
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("server.iceberg-table.enabled=true");
-
-    serverProperties.set(Property.ICEBERG_TABLE_ENABLED, "true");
-    assertThat(serverProperties.isIcebergTableEnabled()).isTrue();
-    serverProperties.checkIcebergTableEnabled();
   }
 
   @Test

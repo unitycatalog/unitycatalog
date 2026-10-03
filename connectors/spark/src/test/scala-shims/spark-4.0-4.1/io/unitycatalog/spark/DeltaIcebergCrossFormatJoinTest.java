@@ -9,7 +9,6 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
-import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import org.apache.spark.sql.Row;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,12 +38,6 @@ public class DeltaIcebergCrossFormatJoinTest extends BaseSparkIntegrationTest {
   public void setUp() {
     super.setUp();
     tableOperations = new SdkTableOperations(createApiClient(serverConfig));
-  }
-
-  @Override
-  protected void setUpProperties() {
-    super.setUpProperties();
-    serverProperties.setProperty(ServerProperties.Property.ICEBERG_TABLE_ENABLED.getKey(), "true");
   }
 
   // Only CATALOG_NAME is Iceberg; SPARK_CATALOG stays on the UC connector for Delta, so the base
