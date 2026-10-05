@@ -22,6 +22,9 @@ import org.junit.jupiter.api.io.TempDir;
 public abstract class BaseServerTest {
 
   public static final ServerConfig serverConfig = new ServerConfig("http://localhost", "");
+
+  protected ServerConfig observabilityServerConfig;
+  protected boolean observabilityEnabled;
   protected UnityCatalogServer unityCatalogServer;
   protected Properties serverProperties;
   protected HibernateConfigurator hibernateConfigurator;
@@ -93,8 +96,13 @@ public abstract class BaseServerTest {
     }
     if (serverConfig.getServerUrl().contains("localhost")) {
       System.out.println("Running tests on localhost..");
-      // start the server on a random port
-      int port = findAvailablePort();
+      // Start the server on a random port, reserving a second random port for optional
+      // observability. Both are taken at once so the two ports are guaranteed distinct: sequential
+      // ServerSocket(0) calls can hand back the same port (the first is closed before the second
+      // opens), which the API/observability-port validation would then reject.
+      int[] ports = findTwoAvailablePorts();
+      int port = ports[0];
+      int observabilityPort = ports[1];
       Files.createDirectories(testDirectoryRoot);
 
       setUpProperties();
@@ -104,23 +112,32 @@ public abstract class BaseServerTest {
           HibernateConfigurator.setupHibernateProperties(initServerProperties);
       setUpHibernateProperties(hibernateProperties);
       hibernateConfigurator = new HibernateConfigurator(hibernateProperties);
-      unityCatalogServer =
+      UnityCatalogServer.Builder serverBuilder =
           UnityCatalogServer.builder()
               .port(port)
               .serverProperties(initServerProperties)
               .hibernateConfigurator(hibernateConfigurator)
               .credentialOperations(cloudCredentialVendor)
-              .fileOperationsDecorator(this::decorateFileOperations)
-              .build();
+              .fileOperationsDecorator(this::decorateFileOperations);
+      if (observabilityEnabled) {
+        serverBuilder.observabilityPort(observabilityPort);
+      }
+      unityCatalogServer = serverBuilder.build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);
+      observabilityServerConfig = new ServerConfig("http://localhost:" + observabilityPort, "");
     }
   }
 
-  /** Finds an available port for the UC server. */
-  private int findAvailablePort() throws IOException {
-    try (ServerSocket socket = new ServerSocket(0)) {
-      return socket.getLocalPort();
+  /**
+   * Returns two distinct free ports (for the API and observability listeners). Both sockets are
+   * held open at once so the OS cannot return the same port twice, which a pair of sequential
+   * {@code ServerSocket(0)} calls can, since each closes before the next opens.
+   */
+  private static int[] findTwoAvailablePorts() throws IOException {
+    try (ServerSocket first = new ServerSocket(0);
+        ServerSocket second = new ServerSocket(0)) {
+      return new int[] {first.getLocalPort(), second.getLocalPort()};
     }
   }
 

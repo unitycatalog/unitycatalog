@@ -22,6 +22,7 @@ import com.linecorp.armeria.common.RequestHeadersBuilder;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
+import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
@@ -45,6 +46,12 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
 
   private WebClient client;
 
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    observabilityEnabled = true;
+  }
+
   @BeforeEach
   @Override
   public void setUp() {
@@ -53,13 +60,20 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   }
 
   @Test
-  public void testLogout() {
+  public void testLogout() throws Exception {
     // Logout with cookie should return status as 200 and empty ejson content
     RequestHeaders headersWithCookie = buildLogoutRequestHeader(true);
 
     AggregatedHttpResponse response = client.execute(headersWithCookie).aggregate().join();
     assertEquals(HttpStatus.OK, response.status());
     assertThat(response.contentUtf8()).isEqualTo(EMPTY_RESPONSE);
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        "io.unitycatalog.server.service.AuthService",
+        "logout",
+        HttpStatus.OK.code(),
+        1.0);
 
     // Logout without cookie should return 401 (no credentials provided)
     RequestHeaders headersWithoutCookie = buildLogoutRequestHeader(false);
@@ -68,12 +82,19 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   }
 
   @Test
-  public void testExpiredAccessTokenIsRejected() {
+  public void testExpiredAccessTokenIsRejected() throws Exception {
     // Request with expired access token should return 401
     RequestHeaders headers = buildLogoutRequestHeaderWithToken(createExpiredAccessToken());
 
     AggregatedHttpResponse response = client.execute(headers).aggregate().join();
     assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        "io.unitycatalog.server.service.AuthService",
+        "logout",
+        HttpStatus.UNAUTHORIZED.code(),
+        1.0);
   }
 
   private RequestHeaders buildLogoutRequestHeader(boolean includeCookie) {
@@ -235,7 +256,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   }
 
   @Test
-  public void testTokenExchangeRejectsDisallowedPrincipals() throws IOException {
+  public void testTokenExchangeRejectsDisallowedPrincipals() throws Exception {
     // The reserved "admin" principal (the internal service-token, metastore-OWNER identity) must
     // never be exchangeable, including a case variant such as "ADMIN" that a case-insensitive
     // database collation would resolve back to the admin user; and a correctly-signed token for
@@ -260,6 +281,13 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
             .withClaim(JwtClaim.EMAIL.key(), "admin")
             .sign(testIssuerAlgorithm);
     assertExchangeRejectedAsInvalid("email=admin", emailAdminToken);
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        "io.unitycatalog.server.service.AuthService",
+        "grantToken",
+        HttpStatus.BAD_REQUEST.code(),
+        4.0);
   }
 
   private void assertExchangeRejectedAsInvalid(String description, String token)
@@ -288,11 +316,25 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     AggregatedHttpResponse first =
         client.execute(headers, HttpData.ofUtf8(userJson)).aggregate().join();
     assertThat(first.status().code()).isEqualTo(201);
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        "io.unitycatalog.server.service.Scim2UserService",
+        "createScimUser",
+        HttpStatus.CREATED.code(),
+        1.0);
 
     // Second create triggers Scim2RuntimeException wrapping ResourceConflictException
     AggregatedHttpResponse second =
         client.execute(headers, HttpData.ofUtf8(userJson)).aggregate().join();
     assertThat(second.status()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        "io.unitycatalog.server.service.Scim2UserService",
+        "createScimUser",
+        HttpStatus.INTERNAL_SERVER_ERROR.code(),
+        1.0);
 
     // Verify the SCIM error response is a valid JSON object (not double-serialized)
     // with the expected SCIM error fields

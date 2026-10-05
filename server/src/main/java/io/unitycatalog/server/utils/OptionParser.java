@@ -15,6 +15,7 @@ import org.apache.commons.cli.ParseException;
 @Getter
 public class OptionParser {
   private int port = 8080;
+  private Integer observabilityPort;
 
   private final Options options = new Options();
 
@@ -24,6 +25,13 @@ public class OptionParser {
             .longOpt("port")
             .hasArg()
             .desc("Port number to run the server on. Default is 8080.")
+            .type(Integer.class)
+            .build());
+    options.addOption(
+        Option.builder()
+            .longOpt("obs-port")
+            .hasArg()
+            .desc("Enable health and metrics on this port (1-65535). Disabled when omitted.")
             .type(Integer.class)
             .build());
     options.addOption(
@@ -63,6 +71,9 @@ public class OptionParser {
       }
       if (cmd.hasOption("p")) {
         setPort(cmd.getParsedOptionValue("p"));
+      }
+      if (cmd.hasOption("obs-port")) {
+        setObservabilityPort(cmd.getParsedOptionValue("obs-port"));
       }
     } catch (ParseException e) {
       System.out.println();

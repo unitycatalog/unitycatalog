@@ -3,6 +3,10 @@ package io.unitycatalog.server;
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 
 import com.linecorp.armeria.server.Server;
+import com.linecorp.armeria.server.ServerListener;
+import com.linecorp.armeria.server.healthcheck.HealthCheckService;
+import com.linecorp.armeria.server.prometheus.PrometheusExpositionService;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -12,6 +16,9 @@ import io.unitycatalog.server.cleanup.StorageCleanupWorker;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.observability.DbReadinessChecker;
+import io.unitycatalog.server.observability.MetricsRegistries;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
@@ -75,6 +82,13 @@ public class UnityCatalogServer implements AutoCloseable {
   /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private StorageCleanupWorker cleanupWorker;
 
+  /**
+   * Metrics registry owned by this server instance; set during {@link #initializeServer}. Closed on
+   * shutdown to release the JVM/GC metric listeners it binds (may be null if construction fails
+   * early).
+   */
+  private MetricsRegistries.PrometheusMetrics metrics;
+
   static {
     System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
     Configurator.initialize(null, "etc/conf/server.log4j2.properties");
@@ -99,8 +113,9 @@ public class UnityCatalogServer implements AutoCloseable {
       // Construction failed after the SessionFactory was built; close it so a failed boot does
       // not leak its connection pool. Errors matter as much as RuntimeExceptions here: a
       // NoClassDefFoundError out of initializeServer() would leak the pool just the same.
-      closeCleanupWorker(t);
-      closeAuthorizer(t);
+      closeQuietly(metrics, t, "the metrics registry");
+      closeQuietly(cleanupWorker, t, "the storage cleanup worker");
+      closeQuietly(authorizer instanceof AutoCloseable c ? c : null, t, "the authorizer");
       closeOwnedSessionFactory(t);
       throw t;
     }
@@ -122,18 +137,23 @@ public class UnityCatalogServer implements AutoCloseable {
     }
   }
 
-  /** Stops the authorizer if closeable; failures are suppressed onto {@code primaryFailure}. */
-  private void closeAuthorizer(Throwable primaryFailure) {
-    if (!(authorizer instanceof AutoCloseable closeable)) {
+  /**
+   * Closes a cleanup resource without letting its own failure abort the caller. The failure is
+   * attached to {@code primaryFailure} when there is one, otherwise logged. Catches {@link
+   * Throwable} so an {@link Error} cannot break a cleanup chain that still has resources (notably
+   * the SessionFactory) left to release.
+   */
+  private void closeQuietly(AutoCloseable resource, Throwable primaryFailure, String description) {
+    if (resource == null) {
       return;
     }
     try {
-      closeable.close();
-    } catch (Exception closeFailure) {
+      resource.close();
+    } catch (Throwable closeFailure) {
       if (primaryFailure != null) {
         primaryFailure.addSuppressed(closeFailure);
       } else {
-        LOGGER.warn("Failed to close the authorizer", closeFailure);
+        LOGGER.warn("Failed to close {}", description, closeFailure);
       }
     }
   }
@@ -155,13 +175,21 @@ public class UnityCatalogServer implements AutoCloseable {
             CONTROL_PATH,
             unityCatalogServerBuilder.serverProperties);
 
-    // Init all repositories
+    UnityCatalogMetrics domainMetrics = null;
+    if (unityCatalogServerBuilder.observabilityPort != null) {
+      domainMetrics =
+          initializeObservability(
+              armeriaServerBuilder,
+              unityCatalogServerBuilder.observabilityPort,
+              unityCatalogServerBuilder.serverProperties);
+    }
     Repositories repositories =
         new Repositories(
             hibernateConfigurator.getSessionFactory(),
             unityCatalogServerBuilder.serverProperties,
             unityCatalogServerBuilder.cloudCredentialVendor,
-            unityCatalogServerBuilder.fileOperationsDecorator);
+            unityCatalogServerBuilder.fileOperationsDecorator,
+            domainMetrics);
     // Init metastore
     repositories.getMetastoreRepository().initMetastoreIfNeeded();
     // Init authorizer
@@ -176,9 +204,50 @@ public class UnityCatalogServer implements AutoCloseable {
     // Init security decorators
     addSecurityDecorators(
         armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
+    // Armeria runs decorators in reverse registration order. Register metrics last so it wraps
+    // authentication and authorization and records rejected requests as well.
+    if (metrics != null) {
+      armeriaServerBuilder.meterRegistry(metrics.registry());
+    }
     initializeCleanup(unityCatalogServerBuilder.serverProperties, repositories);
 
     return armeriaServerBuilder.build();
+  }
+
+  private UnityCatalogMetrics initializeObservability(
+      ArmeriaServerBuilder armeriaServerBuilder,
+      int observabilityPort,
+      ServerProperties serverProperties) {
+    armeriaServerBuilder.observabilityPort(observabilityPort);
+    // This server owns the registry and releases its JVM/GC binders on close().
+    metrics = MetricsRegistries.createPrometheus();
+    PrometheusMeterRegistry meterRegistry = metrics.registry();
+    armeriaServerBuilder.observabilityService(
+        "/metrics", PrometheusExpositionService.of(meterRegistry.getPrometheusRegistry()));
+
+    // Observability: unauthenticated liveness probe on the observability port. HealthCheckService
+    // .of() has no checkers, so it is healthy while the process is serving and never touches the
+    // DB. Like /readyz it flips to 503 once graceful shutdown begins (HealthCheckService drains on
+    // stop). Kubelet-style probes target the observability port directly.
+    armeriaServerBuilder.observabilityService("/livez", HealthCheckService.of());
+
+    // Readiness: 503 until the DB is reachable. The check runs on a background scheduler
+    // (never on the request path); start()/close() are tied to the Armeria server lifecycle so
+    // the synchronous initial probe runs on the startup thread and the scheduler is torn down on
+    // shutdown. HealthCheckService also flips these probes to 503 during graceful shutdown.
+    DbReadinessChecker readinessChecker =
+        DbReadinessChecker.forSessionFactory(
+            hibernateConfigurator.getSessionFactory(),
+            serverProperties.getReadinessProbeInterval(),
+            serverProperties.getReadinessDbTimeout());
+    armeriaServerBuilder.observabilityService(
+        "/readyz", HealthCheckService.builder().checkers(readinessChecker.healthChecker()).build());
+    armeriaServerBuilder.serverListener(
+        ServerListener.builder()
+            .whenStarting(server -> readinessChecker.start())
+            .whenStopped(server -> readinessChecker.close())
+            .build());
+    return new UnityCatalogMetrics(meterRegistry);
   }
 
   private void initializeCleanup(ServerProperties serverProperties, Repositories repositories) {
@@ -188,21 +257,6 @@ public class UnityCatalogServer implements AutoCloseable {
             repositories.getFileOperations(),
             Clock.systemUTC(),
             serverProperties);
-  }
-
-  private void closeCleanupWorker(Throwable primaryFailure) {
-    if (cleanupWorker == null) {
-      return;
-    }
-    try {
-      cleanupWorker.close();
-    } catch (Throwable closeFailure) {
-      if (primaryFailure != null) {
-        primaryFailure.addSuppressed(closeFailure);
-      } else {
-        LOGGER.warn("Failed to close the storage cleanup worker", closeFailure);
-      }
-    }
   }
 
   private UnityCatalogAuthorizer initializeAuthorizer(
@@ -334,25 +388,38 @@ public class UnityCatalogServer implements AutoCloseable {
   public static void main(String[] args) {
     OptionParser options = new OptionParser();
     options.parse(args);
+    int clientPort = options.getPort();
+    ServerProperties serverProperties = new ServerProperties(SERVER_PROPERTIES_FILE);
+    UnityCatalogServer.Builder serverBuilder =
+        UnityCatalogServer.builder().port(clientPort + 1).serverProperties(serverProperties);
+    if (options.getObservabilityPort() != null) {
+      validateObservabilityPort(clientPort, options.getObservabilityPort());
+      serverBuilder.observabilityPort(options.getObservabilityPort());
+    }
     // Start Unity Catalog server
-    UnityCatalogServer unityCatalogServer =
-        UnityCatalogServer.builder().port(options.getPort() + 1).build();
+    UnityCatalogServer unityCatalogServer = serverBuilder.build();
     unityCatalogServer.printArt();
     unityCatalogServer.start();
     // Start URL transcoder. Clients use its port, not Armeria's, so wait for it to be listening
     // before this process reports itself started, and fail rather than serve only the internal
     // port if it cannot bind.
     Vertx vertx = Vertx.vertx();
-    Verticle transcodeVerticle =
-        new URLTranscoderVerticle(options.getPort(), options.getPort() + 1);
+    Verticle transcodeVerticle = new URLTranscoderVerticle(clientPort, clientPort + 1);
     try {
       vertx.deployVerticle(transcodeVerticle).toCompletionStage().toCompletableFuture().join();
     } catch (CompletionException e) {
-      LOGGER.error(
-          "Failed to start the URL transcoder on port {}", options.getPort(), e.getCause());
+      LOGGER.error("Failed to start the URL transcoder on port {}", clientPort, e.getCause());
       vertx.close();
       unityCatalogServer.close();
       throw e;
+    }
+  }
+
+  static void validateObservabilityPort(int clientPort, int observabilityPort) {
+    ArmeriaServerBuilder.validateObservabilityPort(clientPort + 1, observabilityPort);
+    if (observabilityPort == clientPort) {
+      throw new IllegalArgumentException(
+          "Observability port is already used by the client-facing listener: " + clientPort);
     }
   }
 
@@ -383,8 +450,9 @@ public class UnityCatalogServer implements AutoCloseable {
     try {
       stop();
     } finally {
-      closeCleanupWorker(null);
-      closeAuthorizer(null);
+      closeQuietly(metrics, null, "the metrics registry");
+      closeQuietly(cleanupWorker, null, "the storage cleanup worker");
+      closeQuietly(authorizer instanceof AutoCloseable c ? c : null, null, "the authorizer");
       if (ownsHibernateConfigurator) {
         hibernateConfigurator.close();
       }
@@ -414,6 +482,7 @@ public class UnityCatalogServer implements AutoCloseable {
 
   public static class Builder {
     private int port;
+    private Integer observabilityPort;
     private ServerProperties serverProperties;
     private HibernateConfigurator hibernateConfigurator;
     private CloudCredentialVendor cloudCredentialVendor;
@@ -423,6 +492,15 @@ public class UnityCatalogServer implements AutoCloseable {
 
     public UnityCatalogServer.Builder port(int port) {
       this.port = port;
+      return this;
+    }
+
+    /**
+     * Enables observability on the supplied port (1-65535). Observability is disabled if this
+     * method is not called.
+     */
+    public UnityCatalogServer.Builder observabilityPort(int observabilityPort) {
+      this.observabilityPort = observabilityPort;
       return this;
     }
 
