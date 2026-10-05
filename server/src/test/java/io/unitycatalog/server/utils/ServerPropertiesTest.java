@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.time.Duration;
 import java.util.Properties;
@@ -411,5 +412,34 @@ public class ServerPropertiesTest {
     } finally {
       System.clearProperty("server.allowed-issuers");
     }
+  }
+
+  @Test
+  public void testS3EndpointResolutionPrecedence() {
+    Properties global = new Properties();
+    global.setProperty("aws.endpointUrl", "http://legacy:9000");
+    global.setProperty("aws.stsEndpointUrl", "https://mcg.example.com/sts");
+    global.setProperty("aws.s3EndpointUrl", "https://mcg.example.com/s3");
+    ServerProperties serverProperties = new ServerProperties(global);
+
+    S3StorageConfig masterConfig = serverProperties.getS3MasterRoleConfiguration();
+    assertThat(masterConfig.getStsEndpointUrl()).isEqualTo("https://mcg.example.com/sts");
+    assertThat(masterConfig.getS3EndpointUrl()).isEqualTo("https://mcg.example.com/s3");
+  }
+
+  @Test
+  public void testIndexedPerBucketEndpointResolution() {
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://bucket-a");
+    props.setProperty("s3.region.0", "us-east-1");
+    props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
+    props.setProperty("s3.endpointUrl.0", "http://legacy:9000");
+    props.setProperty("s3.stsEndpointUrl.0", "https://mcg.example.com/sts");
+    ServerProperties serverProperties = new ServerProperties(props);
+
+    S3StorageConfig config =
+        serverProperties.getS3Configurations().get(NormalizedURL.from("s3://bucket-a"));
+    assertThat(config.getStsEndpointUrl()).isEqualTo("https://mcg.example.com/sts");
+    assertThat(config.getS3EndpointUrl()).isEqualTo("http://legacy:9000");
   }
 }

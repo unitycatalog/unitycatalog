@@ -151,6 +151,64 @@ Similarly, schemas can be created with managed storage just like catalogs:
 bin/uc schema create --catalog my_cat2 --name my_schema --storage_root s3://my-bucket/path
 ```
 
+# S3-compatible storage
+
+## Endpoint URLs
+
+S3-compatible stores often expose separate routes for STS (AssumeRole) and S3 data access. Unity
+Catalog supports both through distinct configuration keys. The legacy `aws.endpointUrl` property
+remains as a fallback when the explicit keys are unset.
+
+### Global configuration (recommended)
+
+Use this path when credentials are vended through storage credentials and external locations:
+
+```ini
+# Region used for signing and STS calls
+aws.region=us-east-1
+
+# STS endpoint for server-side AssumeRole calls
+aws.stsEndpointUrl=https://mcg.example.com/sts
+
+# S3 data endpoint returned as endpoint_url with vended temporary credentials
+aws.s3EndpointUrl=https://mcg.example.com/s3
+
+# Deprecated fallback applied to both STS and S3 when the explicit keys above are unset
+# aws.endpointUrl=https://legacy.example.com
+```
+
+Precedence:
+
+- **STS client:** `aws.stsEndpointUrl` → `aws.endpointUrl` → AWS SDK default
+- **S3 endpoint returned to clients:** `aws.s3EndpointUrl` → `aws.endpointUrl` → absent
+
+### Legacy per-bucket configuration
+
+Indexed `s3.*` entries still support separate STS and S3 endpoints when different legacy buckets
+target different backends:
+
+```ini
+s3.bucketPath.0=s3://some-bucket
+s3.region.0=us-east-1
+s3.awsRoleArn.0=arn:aws:iam::123456789012:role/storage-role
+s3.endpointUrl.0=https://mcg.example.com/s3
+s3.stsEndpointUrl.0=https://mcg.example.com/sts
+```
+
+For each index, STS uses `s3.stsEndpointUrl.N` → `s3.endpointUrl.N`. The S3 data endpoint is
+`s3.endpointUrl.N`.
+
+### Session policy S3 actions
+
+Vended STS session policies use explicit S3 actions (`s3:GetObject`, `s3:PutObject`,
+`s3:DeleteObject`, multipart helpers, and `s3:ListBucket` with `s3:prefix` conditions). Partial
+action wildcards such as `s3:GetO*` are not emitted.
+
+KMS permissions (`kms:Decrypt` / `kms:GenerateDataKey*`) scoped by `kms:ViaService` are included for
+AWS STS endpoints so SSE-KMS buckets work on AWS. Encryption-context ARNs are omitted to stay within
+STS packed-policy limits on long paths. The KMS statement is omitted entirely when the configured STS
+endpoint is not an AWS STS host (MinIO reports `invalid condition key` for `kms:ViaService`).
+
 # Migration of existing per-bucket credential configuration
 
 For a server with old credentials configured in the `server.properties` file that are used for accessing S3 buckets directly, without creating a storage credential according to this doc, they are recommended to be migrated. These old configurations may look like this:

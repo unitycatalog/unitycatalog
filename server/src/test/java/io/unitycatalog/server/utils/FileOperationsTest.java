@@ -239,6 +239,7 @@ public class FileOperationsTest {
         .containsEntry(S3FileIOProperties.SESSION_TOKEN, "token")
         .containsEntry(AwsClientProperties.CLIENT_REGION, "us-west-2")
         .containsEntry(S3FileIOProperties.SESSION_TOKEN_EXPIRES_AT_MS, "12345")
+        .doesNotContainKey(S3FileIOProperties.ENDPOINT)
         // This overload builds config for the server's own FileIO, which has no catalog URI to
         // resolve a refresh endpoint against.
         .doesNotContainKey(AwsClientProperties.REFRESH_CREDENTIALS_ENDPOINT);
@@ -820,5 +821,102 @@ public class FileOperationsTest {
     assertThatThrownBy(() -> fileOps.getFileIOConfig(NormalizedURL.from("s3://timeout-408/table")))
         .isInstanceOfSatisfying(
             BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INTERNAL));
+  }
+
+  @Test
+  public void testGetFileIOConfigS3UsesVendedEndpointWhenNoPerBucketEntry() {
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://my-bucket");
+    props.setProperty("s3.region.0", "us-west-2");
+    props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("AKIA")
+                        .secretAccessKey("secret")
+                        .sessionToken("token"))
+                .endpointUrl("https://mcg.example.com/s3"));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(props));
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
+
+    assertThat(config)
+        .containsEntry(S3FileIOProperties.ENDPOINT, "https://mcg.example.com/s3")
+        .containsEntry(S3FileIOProperties.PATH_STYLE_ACCESS, "true");
+  }
+
+  @Test
+  public void testGetFileIOConfigS3CustomEndpoint() {
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://my-bucket");
+    props.setProperty("s3.region.0", "us-west-2");
+    props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
+    props.setProperty("s3.endpointUrl.0", "http://localhost:9000");
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("AKIA")
+                        .secretAccessKey("secret")
+                        .sessionToken("token")));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(props));
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
+
+    assertThat(config)
+        .containsEntry(S3FileIOProperties.ENDPOINT, "http://localhost:9000")
+        .containsEntry(S3FileIOProperties.PATH_STYLE_ACCESS, "true")
+        .containsEntry(AwsClientProperties.CLIENT_REGION, "us-west-2");
+  }
+
+  @Test
+  public void testGetFileIOConfigS3CustomEndpointWithoutRegionSkipsDiscovery() {
+    // HeadBucket targets AWS, so an S3-compatible bucket with no s3.region.N must not probe it.
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://my-bucket");
+    props.setProperty("s3.accessKey.0", "AKIA");
+    props.setProperty("s3.secretKey.0", "secret");
+    props.setProperty("s3.sessionToken.0", "token");
+    props.setProperty("s3.endpointUrl.0", "http://localhost:9000");
+    props.setProperty("aws.region", "eu-west-1");
+    @SuppressWarnings("unchecked")
+    Supplier<S3ClientBuilder> supplier = mock(Supplier.class);
+    FileOperations fileOps =
+        new FileOperationsImpl(awsCredentialVendor(), new ServerProperties(props), supplier);
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
+
+    assertThat(config)
+        .containsEntry(S3FileIOProperties.ENDPOINT, "http://localhost:9000")
+        .containsEntry(AwsClientProperties.CLIENT_REGION, "eu-west-1");
+    verify(supplier, never()).get();
+  }
+
+  @Test
+  public void testGetFileIOConfigS3CustomEndpointDefaultsRegionToUsEast1() {
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://my-bucket");
+    props.setProperty("s3.accessKey.0", "AKIA");
+    props.setProperty("s3.secretKey.0", "secret");
+    props.setProperty("s3.sessionToken.0", "token");
+    props.setProperty("s3.endpointUrl.0", "http://localhost:9000");
+    @SuppressWarnings("unchecked")
+    Supplier<S3ClientBuilder> supplier = mock(Supplier.class);
+    FileOperations fileOps =
+        new FileOperationsImpl(awsCredentialVendor(), new ServerProperties(props), supplier);
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
+
+    assertThat(config).containsEntry(AwsClientProperties.CLIENT_REGION, "us-east-1");
+    verify(supplier, never()).get();
   }
 }
