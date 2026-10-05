@@ -44,6 +44,7 @@ lazy val micrometerVersion = "1.17.0"
 lazy val nettyVersion = "4.2.18.Final"
 lazy val nettyTcnativeVersion = "2.0.84.Final"
 lazy val vertxVersion = "4.5.34"
+lazy val caffeineVersion = "3.1.8"
 lazy val junitJupiterVersion = "5.13.4"
 // Declared in each test module: the jupiter-interface bridge pulls launcher 1.9, which must match.
 lazy val junitPlatformVersion = "1.13.4"
@@ -411,6 +412,7 @@ lazy val server = (project in file("server"))
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
 
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
+      "com.github.ben-manes.caffeine" % "caffeine" % caffeineVersion,
       "com.h2database" %  "h2" % "2.2.224",
 
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
