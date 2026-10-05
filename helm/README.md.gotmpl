@@ -6,6 +6,13 @@
 This chart deploys [Unity Catalog](https://github.com/unitycatalog/unitycatalog) on a Kubernetes cluster
 using the [Helm](https://github.com/helm/helm) package manager.
 
+Supports Unity Catalog OSS 0.3.0 and up.
+
+> **Note**
+>
+> Unity Catalog OSS UI is in early stage of development and may not be suitable for production usage.
+>
+
 ## Prerequisites
 - Kubernetes 1.20+ cluster
 - Helm 3.1+
@@ -35,11 +42,6 @@ If persistent volumes are used, they are not deleted by default. To delete them,
 
 ## Configuration
 The following table lists the configurable parameters of the Unity Catalog chart and their default values.
-
-> **Note**
->
-> Auth integration in UI works only with Google OAuth provider and
-> it does not work with UC versions 0.2.1 and below.
 
 {{ template "chart.valuesSectionHtml" . }}
 
