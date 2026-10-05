@@ -44,6 +44,9 @@ lazy val micrometerVersion = "1.17.0"
 lazy val nettyVersion = "4.2.18.Final"
 lazy val nettyTcnativeVersion = "2.0.84.Final"
 lazy val vertxVersion = "4.5.34"
+lazy val junitJupiterVersion = "5.13.4"
+// Declared in each test module: the jupiter-interface bridge pulls launcher 1.9, which must match.
+lazy val junitPlatformVersion = "1.13.4"
 val orgApacheHttpVersion = "4.5.14"
 
 // Latest patch on the Jackson line each Spark version ships, used to compile and test the
@@ -228,7 +231,8 @@ lazy val client = (project in file("clients/java"))
       "org.mockito" % "mockito-core" % "5.11.0" % Test,
       "org.mockito" % "mockito-inline" % "5.2.0" % Test,
       "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
-      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % junitJupiterVersion % Test,
+      "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
     ),
@@ -459,7 +463,8 @@ lazy val server = (project in file("server"))
       "com.auth0" % "jwks-rsa" % "0.24.1",
 
       // Test dependencies
-      "org.junit.jupiter" %  "junit-jupiter" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % junitJupiterVersion % Test,
+      "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
       "org.mockito" % "mockito-core" % "5.11.0" % Test,
       "org.mockito" % "mockito-inline" % "5.2.0" % Test,
       "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
@@ -638,7 +643,8 @@ lazy val cli = (project in file("examples") / "cli")
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion,
       "com.google.guava" % "guava" % "31.0.1-jre",
       // Test dependencies
-      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % junitJupiterVersion % Test,
+      "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     ),
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
@@ -731,7 +737,8 @@ lazy val spark = (project in file("connectors/spark"))
     ),
     libraryDependencies ++= Seq(
       // Test dependencies
-      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % junitJupiterVersion % Test,
+      "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
       "org.mockito" % "mockito-core" % "5.11.0" % Test,
       "org.mockito" % "mockito-inline" % "5.2.0" % Test,
@@ -797,7 +804,8 @@ lazy val hadoop = (project in file("connectors/hadoop"))
     ),
     libraryDependencies ++= Seq(
       // Test dependencies
-      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % junitJupiterVersion % Test,
+      "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
       "org.mockito" % "mockito-core" % "5.11.0" % Test,
       "org.mockito" % "mockito-inline" % "5.2.0" % Test,
@@ -824,7 +832,8 @@ lazy val integrationTests = (project in file("integration-tests"))
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
     skipReleaseSettings,
     libraryDependencies ++= Seq(
-      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % junitJupiterVersion % Test,
+      "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
