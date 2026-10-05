@@ -21,12 +21,17 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Flow;
+import java.util.function.Supplier;
 import org.apache.iceberg.rest.responses.ErrorResponse;
 import org.apache.iceberg.rest.responses.ErrorResponseParser;
 import org.junit.jupiter.api.function.Executable;
@@ -77,6 +82,26 @@ public class TestUtils {
   public static final Map<String, String> NEW_PROPERTIES =
       new HashMap<>(Map.of("prop2", "value22", "prop3", "value33"));
   public static final String COMMON_ENTITY_NAME = "zz_uc_common_entity_name";
+
+  /** A UTC {@link Clock} whose current instant comes from {@code now}, e.g. a manual test clock. */
+  public static Clock clockOf(Supplier<Instant> now) {
+    return new Clock() {
+      @Override
+      public ZoneId getZone() {
+        return ZoneOffset.UTC;
+      }
+
+      @Override
+      public Clock withZone(ZoneId zone) {
+        return this;
+      }
+
+      @Override
+      public Instant instant() {
+        return now.get();
+      }
+    };
+  }
 
   public static ApiClient createApiClient(ServerConfig serverConfig) {
     URI uri = URI.create(serverConfig.getServerUrl());
