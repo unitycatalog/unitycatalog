@@ -32,6 +32,11 @@ public class CliCredentialOperations extends BaseCliOperations implements Creden
       argsList.add("--aws_iam_role_arn");
       argsList.add(createCredentialRequest.getAwsIamRole().getRoleArn());
     }
+    if (createCredentialRequest.getAwsS3AccessKey() != null
+        && createCredentialRequest.getAwsS3AccessKey().getAccessKeyId() != null) {
+      argsList.add("--aws_s3_access_key_id");
+      argsList.add(createCredentialRequest.getAwsS3AccessKey().getAccessKeyId());
+    }
     return execute(CredentialInfo.class, "create", argsList);
   }
 
@@ -67,6 +72,11 @@ public class CliCredentialOperations extends BaseCliOperations implements Creden
         && updateCredentialRequest.getAwsIamRole().getRoleArn() != null) {
       argsList.add("--aws_iam_role_arn");
       argsList.add(updateCredentialRequest.getAwsIamRole().getRoleArn());
+    }
+    if (updateCredentialRequest.getAwsS3AccessKey() != null
+        && updateCredentialRequest.getAwsS3AccessKey().getAccessKeyId() != null) {
+      argsList.add("--aws_s3_access_key_id");
+      argsList.add(updateCredentialRequest.getAwsS3AccessKey().getAccessKeyId());
     }
     return executeUpdate(
         CredentialInfo.class,

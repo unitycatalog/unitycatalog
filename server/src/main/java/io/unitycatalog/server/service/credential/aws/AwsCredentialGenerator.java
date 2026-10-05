@@ -5,6 +5,7 @@ import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -39,20 +40,34 @@ public interface AwsCredentialGenerator {
     private final String accessKeyId;
     private final String secretKey;
     private final String sessionToken;
+    private final Duration ttl;
 
     public StaticAwsCredentialGenerator(S3StorageConfig config) {
+      this(config, null);
+    }
+
+    /**
+     * @param ttl when non-null, stamped as {@link Credentials#expiration()} so clients refresh.
+     *     Does not expire the underlying access key.
+     */
+    public StaticAwsCredentialGenerator(S3StorageConfig config, Duration ttl) {
       this.accessKeyId = config.getAccessKey();
       this.secretKey = config.getSecretKey();
       this.sessionToken = config.getSessionToken();
+      this.ttl = ttl;
     }
 
     @Override
     public Credentials generate(CredentialContext ctx) {
-      return Credentials.builder()
-          .accessKeyId(accessKeyId)
-          .secretAccessKey(secretKey)
-          .sessionToken(sessionToken)
-          .build();
+      Credentials.Builder builder =
+          Credentials.builder()
+              .accessKeyId(accessKeyId)
+              .secretAccessKey(secretKey)
+              .sessionToken(sessionToken);
+      if (ttl != null) {
+        builder.expiration(Instant.now().plus(ttl));
+      }
+      return builder.build();
     }
   }
 

@@ -2,6 +2,8 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.AwsIamRoleRequest;
+import io.unitycatalog.server.model.AwsS3AccessKeyRequest;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.ListCredentialsResponse;
@@ -41,6 +43,7 @@ public class CredentialRepository {
 
   public CredentialInfo addCredential(CreateCredentialRequest createCredentialRequest) {
     ValidationUtils.validateSqlObjectName(createCredentialRequest.getName());
+    validateCreateCredentialRequest(createCredentialRequest);
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     CredentialDAO dao = CredentialDAO.from(createCredentialRequest, callerId);
     return TransactionManager.executeWithTransaction(
@@ -134,8 +137,19 @@ public class CredentialRepository {
             }
             existingCredential.setName(updateCredential.getNewName());
           }
+          if (updateCredential.getAwsIamRole() != null
+              && updateCredential.getAwsS3AccessKey() != null) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT,
+                "Specify at most one of aws_iam_role or aws_s3_access_key");
+          }
           if (updateCredential.getAwsIamRole() != null) {
+            validateAwsIamRoleRequest(updateCredential.getAwsIamRole());
             existingCredential.setAwsIamRole(updateCredential.getAwsIamRole());
+          }
+          if (updateCredential.getAwsS3AccessKey() != null) {
+            validateAwsS3AccessKeyRequest(updateCredential.getAwsS3AccessKey());
+            existingCredential.setAwsS3AccessKey(updateCredential.getAwsS3AccessKey());
           }
           if (updateCredential.getComment() != null) {
             existingCredential.setComment(updateCredential.getComment());
@@ -192,5 +206,40 @@ public class CredentialRepository {
 
   private Optional<String> getAwsS3MasterRoleArn() {
     return Optional.ofNullable(serverProperties.get(ServerProperties.Property.AWS_MASTER_ROLE_ARN));
+  }
+
+  private void validateCreateCredentialRequest(CreateCredentialRequest request) {
+    boolean hasIamRole = request.getAwsIamRole() != null;
+    boolean hasS3AccessKey = request.getAwsS3AccessKey() != null;
+    if (hasIamRole == hasS3AccessKey) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Specify exactly one of aws_iam_role or aws_s3_access_key");
+    }
+    if (hasIamRole) {
+      validateAwsIamRoleRequest(request.getAwsIamRole());
+    } else {
+      validateAwsS3AccessKeyRequest(request.getAwsS3AccessKey());
+    }
+  }
+
+  private void validateAwsIamRoleRequest(AwsIamRoleRequest awsIamRole) {
+    if (awsIamRole == null) {
+      return;
+    }
+    if (awsIamRole.getRoleArn() == null || awsIamRole.getRoleArn().isBlank()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "aws_iam_role.role_arn is required and must be non-empty");
+    }
+  }
+
+  private void validateAwsS3AccessKeyRequest(AwsS3AccessKeyRequest awsS3AccessKey) {
+    if (awsS3AccessKey == null) {
+      return;
+    }
+    if (awsS3AccessKey.getAccessKeyId() == null || awsS3AccessKey.getAccessKeyId().isBlank()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "aws_s3_access_key.access_key_id is required and must be non-empty");
+    }
   }
 }

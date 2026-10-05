@@ -237,7 +237,10 @@ public class FileOperationsImpl implements FileOperations {
     Map<String, String> config = new HashMap<>();
     config.put(S3FileIOProperties.ACCESS_KEY_ID, awsCredentials.getAccessKeyId());
     config.put(S3FileIOProperties.SECRET_ACCESS_KEY, awsCredentials.getSecretAccessKey());
-    config.put(S3FileIOProperties.SESSION_TOKEN, awsCredentials.getSessionToken());
+    // Static access keys carry no session token, and Map.copyOf rejects null values.
+    if (awsCredentials.getSessionToken() != null && !awsCredentials.getSessionToken().isEmpty()) {
+      config.put(S3FileIOProperties.SESSION_TOKEN, awsCredentials.getSessionToken());
+    }
     config.put(AwsClientProperties.CLIENT_REGION, s3Region);
     if (customEndpoint) {
       // Iceberg S3FileIO honours s3.endpoint; path-style is required for MinIO-style stores.

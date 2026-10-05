@@ -30,12 +30,18 @@ public final class AwsCredential extends GenericCredential {
         accessKeyId != null && !accessKeyId.isEmpty(), "AWS access key is missing");
     Preconditions.checkArgument(
         secretAccessKey != null && !secretAccessKey.isEmpty(), "AWS secret key is missing");
-    Preconditions.checkArgument(
-        sessionToken != null && !sessionToken.isEmpty(), "AWS session token is missing");
     this.accessKeyId = accessKeyId;
     this.secretAccessKey = secretAccessKey;
-    this.sessionToken = sessionToken;
+    // Session tokens are required for STS temporary credentials, but static S3 access keys
+    // (STS-less stores) vend access/secret only. Treat blank as absent so Hadoop/S3A can use
+    // AwsBasicCredentials without changing the STS path.
+    this.sessionToken = sessionToken == null || sessionToken.isEmpty() ? null : sessionToken;
     this.endpointUrl = endpointUrl;
+  }
+
+  /** {@code true} when this credential includes an STS session token. */
+  public boolean hasSessionToken() {
+    return sessionToken != null;
   }
 
   public String accessKeyId() {

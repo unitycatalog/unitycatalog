@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.IntPredicate;
@@ -265,6 +266,12 @@ public class ServerProperties {
     AWS_STS_ENDPOINT_URL("aws.stsEndpointUrl"),
     AWS_S3_ENDPOINT_URL("aws.s3EndpointUrl"),
     AWS_ENDPOINT_URL("aws.endpointUrl"),
+    /**
+     * Lifetime stamped on credentials vended via the static path so clients refresh. Does not
+     * expire the underlying access key.
+     */
+    S3_STATIC_CREDENTIAL_TTL_SECONDS(
+        "s3.static.credentialTtlSeconds", "3600", POSITIVE_INTEGER_VALIDATOR),
     INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR);
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
@@ -418,6 +425,37 @@ public class ServerProperties {
 
   private static boolean isNonBlank(String value) {
     return value != null && !value.isBlank();
+  }
+
+  /**
+   * Resolves the static S3 key pair for {@code accessKeyId}.
+   *
+   * <p>Secrets are keyed by access key id: {@code s3.static.secretKey.<accessKeyId>}, with an
+   * optional {@code s3.static.sessionToken.<accessKeyId>} for stores that issue one. There is no
+   * index, so a key can be added or removed without disturbing the others.
+   *
+   * @param accessKeyId access key id stored on a storage credential
+   * @return the matching config, or empty when no secret is configured for that access key id
+   */
+  public Optional<S3StorageConfig> resolveS3StaticAccessKeyConfiguration(String accessKeyId) {
+    if (accessKeyId == null || accessKeyId.isBlank()) {
+      return Optional.empty();
+    }
+    String secretKey = getProperty("s3.static.secretKey." + accessKeyId);
+    if (secretKey == null || secretKey.isBlank()) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        S3StorageConfig.builder()
+            .accessKey(accessKeyId)
+            .secretKey(secretKey)
+            .sessionToken(getProperty("s3.static.sessionToken." + accessKeyId))
+            .build());
+  }
+
+  /** Soft expiry stamped on statically vended credentials so clients refresh. */
+  public Duration getS3StaticCredentialTtl() {
+    return Duration.ofSeconds(Integer.parseInt(get(Property.S3_STATIC_CREDENTIAL_TTL_SECONDS)));
   }
 
   public Map<NormalizedURL, S3StorageConfig> getS3Configurations() {

@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
+import io.unitycatalog.client.model.AwsS3AccessKeyRequest;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CredentialInfo;
@@ -106,6 +107,40 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
     credentialOperations.deleteCredential(NEW_CREDENTIAL_NAME, Optional.empty());
     assertThatThrownBy(() -> credentialOperations.getCredential(NEW_CREDENTIAL_NAME))
         .isInstanceOf(ApiException.class);
+  }
+
+  @Test
+  public void testS3AccessKeyCredentialCRUD() throws ApiException {
+    final String accessKeyId = "AKIAEXAMPLEKEY";
+    CreateCredentialRequest createCredentialRequest =
+        new CreateCredentialRequest()
+            .name(CREDENTIAL_NAME)
+            .comment(COMMENT)
+            .purpose(CredentialPurpose.STORAGE)
+            .awsS3AccessKey(new AwsS3AccessKeyRequest().accessKeyId(accessKeyId));
+
+    CredentialInfo credentialInfo = credentialOperations.createCredential(createCredentialRequest);
+    assertThat(credentialInfo.getName()).isEqualTo(CREDENTIAL_NAME);
+    assertThat(credentialInfo.getAwsIamRole()).isNull();
+    assertThat(credentialInfo.getAwsS3AccessKey()).isNotNull();
+    assertThat(credentialInfo.getAwsS3AccessKey().getAccessKeyId()).isEqualTo(accessKeyId);
+
+    assertThat(
+            credentialOperations
+                .getCredential(CREDENTIAL_NAME)
+                .getAwsS3AccessKey()
+                .getAccessKeyId())
+        .isEqualTo(accessKeyId);
+
+    final String newAccessKeyId = "AKIAEXAMPLEKEY2";
+    CredentialInfo updated =
+        credentialOperations.updateCredential(
+            CREDENTIAL_NAME,
+            new UpdateCredentialRequest()
+                .awsS3AccessKey(new AwsS3AccessKeyRequest().accessKeyId(newAccessKeyId)));
+    assertThat(updated.getAwsS3AccessKey().getAccessKeyId()).isEqualTo(newAccessKeyId);
+
+    credentialOperations.deleteCredential(CREDENTIAL_NAME, Optional.empty());
   }
 
   @Test

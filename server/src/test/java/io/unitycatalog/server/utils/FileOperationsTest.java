@@ -824,6 +824,29 @@ public class FileOperationsTest {
   }
 
   @Test
+  public void testGetFileIOConfigS3OmitsNullSessionToken() {
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://my-bucket");
+    props.setProperty("s3.region.0", "us-west-2");
+    props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials().accessKeyId("AKIA").secretAccessKey("secret")));
+    FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(props));
+
+    Map<String, String> config =
+        fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table"));
+
+    assertThat(config)
+        .containsEntry(S3FileIOProperties.ACCESS_KEY_ID, "AKIA")
+        .containsEntry(S3FileIOProperties.SECRET_ACCESS_KEY, "secret")
+        .doesNotContainKey(S3FileIOProperties.SESSION_TOKEN);
+  }
+
+  @Test
   public void testGetFileIOConfigS3UsesVendedEndpointWhenNoPerBucketEntry() {
     Properties props = new Properties();
     props.setProperty("s3.bucketPath.0", "s3://my-bucket");

@@ -46,7 +46,9 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
     AwsCredential aws = (AwsCredential) cred;
     set(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, aws.accessKeyId());
     set(UCHadoopConfConstants.S3A_INIT_SECRET_KEY, aws.secretAccessKey());
-    set(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, aws.sessionToken());
+    if (aws.hasSessionToken()) {
+      set(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, aws.sessionToken());
+    }
     // Expiration may be absent (e.g. a static token provider), so write the key only when set.
     if (aws.expirationTimeMillis() != null) {
       set(
@@ -65,7 +67,9 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
     AwsCredential aws = (AwsCredential) cred;
     set(S3A_ACCESS_KEY, aws.accessKeyId());
     set(S3A_SECRET_KEY, aws.secretAccessKey());
-    set(S3A_SESSION_TOKEN, aws.sessionToken());
+    if (aws.hasSessionToken()) {
+      set(S3A_SESSION_TOKEN, aws.sessionToken());
+    }
     setEndpointKeys(aws);
   }
 

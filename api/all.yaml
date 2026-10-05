@@ -2807,6 +2807,8 @@ components:
           type: string
         aws_iam_role:
           $ref: '#/components/schemas/AwsIamRoleResponse'
+        aws_s3_access_key:
+          $ref: '#/components/schemas/AwsS3AccessKeyResponse'
         comment:
           description: Comment associated with the credential.
           type: string
@@ -2836,6 +2838,11 @@ components:
         purpose:
           $ref: "#/components/schemas/CredentialPurpose"
     CreateCredentialRequest:
+      description: |
+        Request to create a storage credential. Exactly one of aws_iam_role or aws_s3_access_key
+        must be set: aws_iam_role for credentials vended through STS AssumeRole, or
+        aws_s3_access_key for S3-compatible stores without STS. Requests setting both or neither
+        are rejected with INVALID_ARGUMENT.
       type: object
       required:
         - name
@@ -2848,9 +2855,15 @@ components:
           type: string
         aws_iam_role:
           $ref: '#/components/schemas/AwsIamRoleRequest'
+        aws_s3_access_key:
+          $ref: '#/components/schemas/AwsS3AccessKeyRequest'
         purpose:
           $ref: "#/components/schemas/CredentialPurpose"
     UpdateCredentialRequest:
+      description: |
+        Request to update a storage credential. At most one of aws_iam_role or aws_s3_access_key
+        may be set; setting one replaces the credential type of the existing credential. Requests
+        setting both are rejected with INVALID_ARGUMENT.
       type: object
       properties:
         comment:
@@ -2861,6 +2874,8 @@ components:
           type: string
         aws_iam_role:
           $ref: '#/components/schemas/AwsIamRoleRequest'
+        aws_s3_access_key:
+          $ref: '#/components/schemas/AwsS3AccessKeyRequest'
         new_name:
           description: New name for the credential.
           type: string
@@ -2887,6 +2902,28 @@ components:
         external_id:
           description: The external ID used in role assumption to prevent confused deputy problem.
           type: string
+    AwsS3AccessKeyRequest:
+      type: object
+      required:
+        - access_key_id
+      properties:
+        access_key_id:
+          type: string
+          description: |
+            Access key ID for static S3 (or S3-compatible) credential vending. The matching secret
+            must be configured on the Unity Catalog server as the property
+            s3.static.secretKey.{access_key_id}. The secret is never accepted or stored via this
+            API.
+    AwsS3AccessKeyResponse:
+      type: object
+      required:
+        - access_key_id
+      properties:
+        access_key_id:
+          type: string
+          description: |
+            Access key ID for this credential. The secret is never returned; it is resolved from
+            server configuration at credential-vending time.
     ListCredentialsResponse:
       type: object
       properties:
