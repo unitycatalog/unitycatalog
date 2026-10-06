@@ -24,7 +24,7 @@ public final class OpenSharingLifecycle implements AutoCloseable {
   }
 
   /**
-   * Mounts OpenSharing's provider API at {@code server.opensharing.protocol-prefix + "/provider"}.
+   * Mounts OpenSharing's provider API at UC's base path + {@code opensharing/provider}.
    *
    * <p>OpenSharing's tables, all prefixed {@code os_}, live in UC's database but are mapped by a
    * session factory of their own, because UC's is already built. So an operation that touches both
@@ -53,7 +53,7 @@ public final class OpenSharingLifecycle implements AutoCloseable {
               .transactions(new HibernateTransactions(sessionFactory))
               .build();
       server.annotate(
-          serverProperties.getOpenSharingProviderBasePath(),
+          "opensharing/provider",
           new OpenSharingShareService(openSharing, repositories.getUserRepository()));
       return new OpenSharingLifecycle(sessionFactory);
     } catch (RuntimeException e) {
