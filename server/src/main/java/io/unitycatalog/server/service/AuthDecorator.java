@@ -1,5 +1,9 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
+
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.linecorp.armeria.common.Cookie;
 import com.linecorp.armeria.common.HttpHeaderNames;
@@ -9,17 +13,23 @@ import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.HttpService;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import io.netty.util.AttributeKey;
+import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.AuthorizationException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.security.UnityCatalogIdentityService;
+import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.security.SecurityContext;
+import io.unitycatalog.server.utils.JwksOperations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Simple JWT access-token authorization decorator.
  *
- * <p>This decorator requires a bearer token and delegates its validation to {@link
- * UnityCatalogIdentityService}.
+ * <p>This decorator implements simple authorization. It requires an Authorization header in the
+ * request with a Bearer token. The token is verified to be from the "internal" issuer and the token
+ * signature is checked against the internal issuer key. If all these checks pass, the request is
+ * allowed to continue.
  *
  * <p>The decoded token is also added to the request attributes so it can be referenced by the
  * request if needed.
@@ -27,7 +37,7 @@ import org.slf4j.LoggerFactory;
 public class AuthDecorator implements DecoratingHttpServiceFunction {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthDecorator.class);
-  private final UnityCatalogIdentityService identities;
+  private final UserRepository userRepository;
 
   public static final String UC_TOKEN_KEY = "UC_TOKEN";
 
@@ -36,8 +46,11 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
   public static final AttributeKey<DecodedJWT> DECODED_JWT_ATTR =
       AttributeKey.valueOf(DecodedJWT.class, "DECODED_JWT_ATTR");
 
-  public AuthDecorator(UnityCatalogIdentityService identities) {
-    this.identities = identities;
+  private final JwksOperations jwksOperations;
+
+  public AuthDecorator(SecurityContext securityContext, Repositories repositories) {
+    this.jwksOperations = new JwksOperations(securityContext);
+    this.userRepository = repositories.getUserRepository();
   }
 
   @Override
@@ -53,11 +66,39 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
             .findFirst()
             .orElse(null);
 
-    UnityCatalogIdentityService.Identity identity =
-        identities.authenticate(
-            getAccessTokenFromCookieOrAuthHeader(authorizationHeader, authorizationCookie));
-    LOGGER.debug("Access allowed for subject: {}", identity.name());
-    ctx.setAttr(DECODED_JWT_ATTR, identity.decodedJwt());
+    DecodedJWT decodedJWT =
+        JWT.decode(getAccessTokenFromCookieOrAuthHeader(authorizationHeader, authorizationCookie));
+
+    String issuer = decodedJWT.getIssuer();
+    String keyId = decodedJWT.getKeyId();
+    String alg = decodedJWT.getAlgorithm();
+
+    LOGGER.debug("Validating access-token for issuer: {} and keyId: {}", issuer, keyId);
+
+    if (!issuer.equals(INTERNAL)) {
+      throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "Invalid access token.");
+    }
+
+    // Internal tokens don't need audience validation
+    JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg);
+    decodedJWT = jwtVerifier.verify(decodedJWT);
+
+    String subject = decodedJWT.getSubject();
+
+    User user;
+    try {
+      user = userRepository.getUserByEmail(subject);
+    } catch (Exception e) {
+      LOGGER.debug("User not found: {}", subject);
+      user = null;
+    }
+    if (user == null || user.getState() != User.StateEnum.ENABLED) {
+      throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed: " + subject);
+    }
+
+    LOGGER.debug("Access allowed for subject: {}", subject);
+
+    ctx.setAttr(DECODED_JWT_ATTR, decodedJWT);
 
     return delegate.serve(ctx, req);
   }

@@ -16,7 +16,6 @@ import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
-import io.unitycatalog.server.security.UnityCatalogIdentityService;
 import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.AuthService;
 import io.unitycatalog.server.service.CatalogService;
@@ -136,13 +135,6 @@ public class UnityCatalogServer implements AutoCloseable {
     if (unityCatalogServerBuilder.port == 0) {
       unityCatalogServerBuilder.port(DEFAULT_PORT);
     }
-    // Only main() below sits behind a separate public-facing port (its own Armeria port + 1); a
-    // caller with no such split — every test — gets embedded OpenSharing's external url pointed
-    // at the one port it has, which is also the only case where that would matter, since none of
-    // them enable OpenSharing.
-    if (unityCatalogServerBuilder.publicPort == 0) {
-      unityCatalogServerBuilder.publicPort(unityCatalogServerBuilder.port);
-    }
     if (unityCatalogServerBuilder.serverProperties == null) {
       unityCatalogServerBuilder.serverProperties(new ServerProperties(SERVER_PROPERTIES_FILE));
     }
@@ -168,39 +160,29 @@ public class UnityCatalogServer implements AutoCloseable {
     authorizer =
         initializeAuthorizer(
             unityCatalogServerBuilder.serverProperties, hibernateConfigurator, repositories);
-    UnityCatalogIdentityService identities =
-        new UnityCatalogIdentityService(
-            securityContext, repositories, unityCatalogServerBuilder.serverProperties);
     // Configure error response stack traces
     BaseExceptionHandler.setIncludeStackTrace(
         unityCatalogServerBuilder.serverProperties.isIncludeStackTraceInError());
     // Init services
     addApiServices(armeriaServerBuilder, unityCatalogServerBuilder, authorizer, repositories);
-    // Init security decorators
-    addSecurityDecorators(
-        armeriaServerBuilder,
-        unityCatalogServerBuilder.serverProperties,
-        authorizer,
-        repositories,
-        identities);
-
     openSharingLifecycle =
         startEmbeddedOpenSharing(
             unityCatalogServerBuilder.serverProperties,
+            armeriaServerBuilder,
             repositories,
-            authorizer,
-            identities,
-            unityCatalogServerBuilder.publicPort);
+            authorizer);
+    // Init security decorators
+    addSecurityDecorators(
+        armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
 
     return armeriaServerBuilder.build();
   }
 
   private AutoCloseable startEmbeddedOpenSharing(
       ServerProperties serverProperties,
+      ArmeriaServerBuilder armeriaServerBuilder,
       Repositories repositories,
-      UnityCatalogAuthorizer authorizer,
-      UnityCatalogIdentityService identities,
-      int publicPort) {
+      UnityCatalogAuthorizer authorizer) {
     if (!serverProperties.isOpenSharingEnabled()) {
       return null;
     }
@@ -212,20 +194,18 @@ public class UnityCatalogServer implements AutoCloseable {
               .getMethod(
                   "start",
                   ServerProperties.class,
+                  ArmeriaServerBuilder.class,
                   HibernateConfigurator.class,
                   Repositories.class,
-                  UnityCatalogAuthorizer.class,
-                  UnityCatalogIdentityService.class,
-                  int.class)
+                  UnityCatalogAuthorizer.class)
               .invoke(
                   null,
                   serverProperties,
+                  armeriaServerBuilder,
                   hibernateConfigurator,
                   repositories,
-                  authorizer,
-                  identities,
-                  publicPort);
-      return started == null ? null : (AutoCloseable) started;
+                  authorizer);
+      return (AutoCloseable) started;
     } catch (ReflectiveOperationException e) {
       throw new BaseException(ErrorCode.INTERNAL, "Failed to start embedded OpenSharing.", e);
     }
@@ -347,41 +327,28 @@ public class UnityCatalogServer implements AutoCloseable {
       ArmeriaServerBuilder armeriaServerBuilder,
       ServerProperties serverProperties,
       UnityCatalogAuthorizer authorizer,
-      Repositories repositories,
-      UnityCatalogIdentityService identities) {
+      Repositories repositories) {
     // TODO: eventually might want to make this secure-by-default.
     if (serverProperties.isAuthorizationEnabled()) {
       LOGGER.info("Enabling security decorators...");
       armeriaServerBuilder.withSecurityDecorators(
-          new UnityAccessDecorator(authorizer, repositories), new AuthDecorator(identities));
+          new UnityAccessDecorator(authorizer, repositories),
+          new AuthDecorator(securityContext, repositories));
     }
   }
 
   public static void main(String[] args) {
     OptionParser options = new OptionParser();
     options.parse(args);
-    ServerProperties serverProperties = new ServerProperties(SERVER_PROPERTIES_FILE);
     // Start Unity Catalog server
     UnityCatalogServer unityCatalogServer =
-        UnityCatalogServer.builder()
-            .port(options.getPort() + 1)
-            .publicPort(options.getPort())
-            .serverProperties(serverProperties)
-            .build();
+        UnityCatalogServer.builder().port(options.getPort() + 1).build();
     unityCatalogServer.printArt();
     unityCatalogServer.start();
-    // Start URL transcoder — also the one public listener embedded OpenSharing shares a port
-    // with, when enabled: a request under one of its path prefixes is routed to its own port
-    // instead of Armeria's, so a client reaches either half of the process at the same address.
+    // Start URL transcoder
     Vertx vertx = Vertx.vertx();
     Verticle transcodeVerticle =
-        serverProperties.isOpenSharingEnabled()
-            ? new URLTranscoderVerticle(
-                options.getPort(),
-                options.getPort() + 1,
-                serverProperties.getOpenSharingPort(),
-                serverProperties.getOpenSharingRoutedPathPrefixes())
-            : new URLTranscoderVerticle(options.getPort(), options.getPort() + 1);
+        new URLTranscoderVerticle(options.getPort(), options.getPort() + 1);
     vertx.deployVerticle(transcodeVerticle);
   }
 
@@ -447,7 +414,6 @@ public class UnityCatalogServer implements AutoCloseable {
 
   public static class Builder {
     private int port;
-    private int publicPort;
     private ServerProperties serverProperties;
     private HibernateConfigurator hibernateConfigurator;
     private CloudCredentialVendor cloudCredentialVendor;
@@ -456,18 +422,6 @@ public class UnityCatalogServer implements AutoCloseable {
 
     public UnityCatalogServer.Builder port(int port) {
       this.port = port;
-      return this;
-    }
-
-    /**
-     * The port a client actually reaches this process on, when it differs from {@link #port} — true
-     * only for {@code main()}, where Armeria (this server's own port) sits behind {@code
-     * URLTranscoderVerticle} on {@code port - 1}. Used only to tell embedded OpenSharing what
-     * address to put in a recipient's activation link and {@code config.share}; unset, it defaults
-     * to {@link #port} itself.
-     */
-    public UnityCatalogServer.Builder publicPort(int publicPort) {
-      this.publicPort = publicPort;
       return this;
     }
 

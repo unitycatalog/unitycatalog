@@ -101,11 +101,8 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
    * document. Reading only {@code hibernate.connection.user} left the casbin JDBC adapter with a
    * null username for any standard configuration, which the JDBC driver then silently replaced with
    * a process default.
-   *
-   * <p>Public so embedded OpenSharing (see {@code io.unitycatalog.server.sharing}) resolves the
-   * same username Casbin does, rather than a third, independent guess at which key was set.
    */
-  public static String resolveConnectionUsername(Properties properties) {
+  static String resolveConnectionUsername(Properties properties) {
     String username = properties.getProperty("hibernate.connection.username");
     if (username == null) {
       username = properties.getProperty("hibernate.connection.user");

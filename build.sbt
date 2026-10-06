@@ -493,44 +493,38 @@ lazy val serverSharing = (project in file("server-sharing"))
     commonSettings,
     javaOnlyReleaseSettings,
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
-    // 21, not 17 like the rest of this build: opensharing-server-core compiles at release 21 (it
-    // pattern-matches over a sealed CatalogCaller.Credential in a switch), and --release rejects a
-    // classpath jar newer than what it names outright — "class file has wrong version" — not merely
-    // one whose syntax it declines to use. Embedding OpenSharing is opt-in and its own module, so
-    // this raises the JDK this one jar needs to build (and, transitively, for serverEmbedded to run
-    // on) without moving the floor for anyone building plain `server`.
+    // 21, not 17 like the rest of this build: opensharing-server-core is built for Java 21, and
+    // --release rejects a classpath jar newer than what it names outright ("class file has wrong
+    // version"). Embedding OpenSharing is opt-in and its own module, so this raises the JDK this one
+    // jar needs to build (and, transitively, for serverEmbedded to run on) without moving the
+    // floor for anyone building plain `server`.
     Compile / compile / javacOptions ++= javacRelease21,
     libraryDependencies ++= Seq(
-      "io.opensharing" % "opensharing-server-core" % "0.1.0-SNAPSHOT"
-        exclude("org.apache.logging.log4j", "log4j-to-slf4j")
-        exclude("ch.qos.logback", "logback-classic")
-        exclude("ch.qos.logback", "logback-core")
-        exclude("org.slf4j", "jul-to-slf4j"),
-      "jakarta.servlet" % "jakarta.servlet-api" % "6.1.0" % Provided,
-      "org.projectlombok" % "lombok" % "1.18.32" % Provided,
-      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
-      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      "org.mockito" % "mockito-core" % "5.11.0" % Test,
-      "org.mockito" % "mockito-inline" % "5.2.0" % Test,
-      "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
+      // Plain Java with JPA annotations: no Spring and no servlet container. UC supplies the
+      // Hibernate it runs on and the Armeria server it is served from.
+      "io.opensharing" % "opensharing-server-core" % "0.1.0-SNAPSHOT",
     ),
+    openSharingJacksonSettings,
   )
 
-// Aggregates server + embedded OpenSharing for run/demo classpaths without a circular sbt graph.
-lazy val exportEmbeddedClasspath = taskKey[Unit]("Write serverEmbedded runtime classpath to server-embedded/target/classpath")
+// OpenSharing's BOM manages a newer Jackson; projects that pull in opensharing-server-core keep
+// the one the rest of UC runs on.
+lazy val openSharingJacksonSettings = Seq(
+  dependencyOverrides ++= Seq(
+    "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+    "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
+    "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+  ),
+)
 
+// Runs the server with embedded OpenSharing on its classpath, without a circular sbt graph.
 lazy val serverEmbedded = (project in file("server-embedded"))
   .dependsOn(server, serverSharing, serverModels, controlModels)
   .settings(
     name := s"$artifactNamePrefix-server-embedded",
+    openSharingJacksonSettings,
     publish / skip := true,
     Compile / run / mainClass := (server / Compile / run / mainClass).value,
-    exportEmbeddedClasspath := {
-      val cp = (Runtime / fullClasspath).value
-      val out = (Compile / target).value / "classpath"
-      IO.write(out, cp.files.mkString(File.pathSeparator))
-      println(s"Wrote embedded classpath to $out")
-    },
   )
 
 lazy val serverModels = (project in file("server") / "target" / "models")
@@ -661,7 +655,7 @@ lazy val cli = (project in file("examples") / "cli")
   * This was necessary because Spark 3.5 has a dependency on Jackson 2.15, which conflicts with the Jackson 2.17
  */
 lazy val serverShaded = (project in file("server-shaded"))
-  .dependsOn(serverEmbedded % "compile->compile, test->compile")
+  .dependsOn(server % "compile->compile, test->compile")
   .settings(
     name := s"$artifactNamePrefix-server-shaded",
     commonSettings,
@@ -677,7 +671,7 @@ lazy val serverShaded = (project in file("server-shaded"))
     ),
     assemblyPackageScala / assembleArtifact := false,
     assembly / fullClasspath := {
-      val compileClasspath = (serverEmbedded / Compile / fullClasspath).value
+      val compileClasspath = (server / Compile / fullClasspath).value
       val testClasses = (server / Test / products).value
       compileClasspath ++ testClasses.map(Attributed.blank)
     }

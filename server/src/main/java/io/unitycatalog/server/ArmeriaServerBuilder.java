@@ -19,6 +19,7 @@ import io.unitycatalog.server.auth.decorator.AuthorizationGateConverter;
 import io.unitycatalog.server.exception.GlobalExceptionHandlingDecorator;
 import io.unitycatalog.server.exception.ServiceExceptionHandlingDecorator;
 import io.unitycatalog.server.service.AuthService;
+import io.unitycatalog.server.service.ExtensionService;
 import io.unitycatalog.server.service.IcebergRestCatalogService;
 import io.unitycatalog.server.service.RegisteredService;
 import io.unitycatalog.server.service.ScimService;
@@ -27,6 +28,7 @@ import io.unitycatalog.server.service.delta.DeltaApiMappers;
 import io.unitycatalog.server.service.delta.DeltaApiService;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -58,6 +60,8 @@ public class ArmeriaServerBuilder {
    * waiting on an authorizer that nothing will produce.
    */
   private final boolean authorizationEnabled;
+
+  private final List<String> extensionPaths = new ArrayList<>();
 
   // Body mappers and response converters, created once and reused across registrations. Only the
   // body mapper and the (optional) response converter vary by protocol; see bodyConverter for how
@@ -124,11 +128,31 @@ public class ArmeriaServerBuilder {
   }
 
   /**
-   * Wires the access and authentication decorators onto the API path prefixes. The caller owns the
-   * decision of whether to enable authorization (and simply skips calling this when it is
-   * disabled); this method only knows how to attach the decorators it is given -- path prefixes,
-   * the {@code auth/tokens} exclusion, and that the exception handler must sit at the bottom of the
-   * chain.
+   * Registers an embedded extension's service at the absolute {@code path}, outside UC's base and
+   * control paths. It reads and writes bodies with its own mapper and renders errors in its own
+   * dialect. {@link #withSecurityDecorators} covers {@code path} too, so it must be registered
+   * first.
+   */
+  public ArmeriaServerBuilder annotate(String path, ExtensionService service) {
+    ExceptionHandlerFunction handler = service.exceptionHandler();
+    armeriaServerBuilder
+        .annotatedService()
+        .pathPrefix(path)
+        .requestConverters(bodyConverter(service.objectMapper()))
+        .responseConverters(new JacksonResponseConverterFunction(service.objectMapper()))
+        .exceptionHandlers(handler)
+        .decorator(delegate -> new ServiceExceptionHandlingDecorator(delegate, handler))
+        .build(service);
+    extensionPaths.add(path);
+    return this;
+  }
+
+  /**
+   * Wires the access and authentication decorators onto the API and extension path prefixes. The
+   * caller owns the decision of whether to enable authorization (and simply skips calling this when
+   * it is disabled); this method only knows how to attach the decorators it is given -- path
+   * prefixes, the {@code auth/tokens} exclusion, and that the exception handler must sit at the
+   * bottom of the chain.
    *
    * <p>Both decorators are attached to the same path prefixes. Armeria runs decorators in the
    * reverse of their registration order, so {@code authDecorator} (authentication) runs before
@@ -148,6 +172,9 @@ public class ArmeriaServerBuilder {
           .pathPrefix(controlPath)
           .exclude(controlPath + "auth/tokens")
           .build(decorator);
+      for (String path : extensionPaths) {
+        armeriaServerBuilder.routeDecorator().pathPrefix(path).build(decorator);
+      }
     }
 
     // Also registered globally, where it is outermost and can catch what the route decorators above
