@@ -123,6 +123,11 @@ public class CachingCloudCredentialVendorTest {
             perBucket("s3://bucket/data"),
             perBucket("s3://bucket/data2")),
         Arguments.of("scheme", perBucket("s3://bucket/data"), perBucket("gs://bucket/data")),
+        // Only single-location contexts exist today; AWS and GCP scope a vend to every location.
+        Arguments.of(
+            "an additional location",
+            perBucket("s3://bucket/data"),
+            perBucket("s3://bucket/data", "s3://bucket/other")),
         Arguments.of(
             "per-bucket config instead of a credential", original, perBucket(LOC.toString())));
   }
@@ -130,6 +135,19 @@ public class CachingCloudCredentialVendorTest {
   /** A READ_ONLY context for {@code location} with no credential DAO (per-bucket config). */
   private static CredentialContext perBucket(String location) {
     return CredentialContext.create(NormalizedURL.from(location), READ_ONLY, Optional.empty());
+  }
+
+  /** Like {@link #perBucket(String)}, but covering several locations in one context. */
+  private static CredentialContext perBucket(String first, String... more) {
+    CredentialContext single = perBucket(first);
+    return CredentialContext.builder()
+        .storageScheme(single.getStorageScheme())
+        .storageBase(single.getStorageBase())
+        .privileges(single.getPrivileges())
+        .locations(
+            Stream.concat(Stream.of(first), Stream.of(more)).map(NormalizedURL::from).toList())
+        .credentialDAO(Optional.empty())
+        .build();
   }
 
   @ParameterizedTest(name = "{0}")

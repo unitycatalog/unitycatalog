@@ -23,7 +23,6 @@ import org.hibernate.SessionFactory;
 public class Repositories {
   private final SessionFactory sessionFactory;
   private final ExternalLocationUtils externalLocationUtils;
-  private final CloudCredentialVendor cloudCredentialVendor;
   private final StorageCredentialVendor storageCredentialVendor;
   private final FileOperations fileOperations;
 
@@ -85,12 +84,12 @@ public class Repositories {
             metrics, () -> new UnityCatalogMetrics(new CompositeMeterRegistry()));
     this.sessionFactory = sessionFactory;
     this.externalLocationUtils = new ExternalLocationUtils(sessionFactory);
-    this.cloudCredentialVendor =
+    CloudCredentialVendor resolvedCloudCredentialVendor =
         cloudCredentialVendor != null
             ? cloudCredentialVendor
             : defaultCloudCredentialVendor(serverProperties);
     this.storageCredentialVendor =
-        new StorageCredentialVendor(this.cloudCredentialVendor, externalLocationUtils);
+        new StorageCredentialVendor(resolvedCloudCredentialVendor, externalLocationUtils);
     this.fileOperations =
         fileOperationsDecorator.apply(
             new FileOperationsImpl(storageCredentialVendor, serverProperties));
@@ -117,8 +116,7 @@ public class Repositories {
     this.keyMapper = new KeyMapper(this);
   }
 
-  private static CloudCredentialVendor defaultCloudCredentialVendor(
-      ServerProperties serverProperties) {
+  static CloudCredentialVendor defaultCloudCredentialVendor(ServerProperties serverProperties) {
     CloudCredentialVendor vendor = new CloudCredentialVendor(serverProperties);
     return serverProperties.isStorageCredentialCacheEnabled()
         ? new CachingCloudCredentialVendor(vendor, serverProperties)

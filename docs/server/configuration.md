@@ -78,9 +78,9 @@ For AWS storage credentials, UC includes the stored external ID in both the cach
 `AssumeRole` request. Updating the IAM role on a UC storage credential generates a new external ID,
 even when the role ARN is unchanged. The next request uses the new binding and cannot reuse
 credentials cached under the previous external ID. Ensure the AWS role's trust policy allows the
-newly returned external ID before requesting new credentials. Changing the cache identity does not
-revoke credentials already issued. See [AWS credential setup](aws.md) for configuring the external
-ID in the role's trust policy.
+newly returned external ID before requesting new credentials. Temporary credentials already vended
+under the previous external ID stay valid until they expire. See [AWS credential setup](aws.md) for
+configuring the external ID in the role's trust policy.
 
 The cache is controlled by these keys:
 
@@ -88,8 +88,8 @@ The cache is controlled by these keys:
 | --- | --- | --- |
 | `server.storage-credential-cache.enabled` | `false` | Whether to reuse vended credentials. When `false`, every request vends a fresh credential from the cloud provider. |
 | `server.storage-credential-cache.max-size` | `1000` | The maximum number of distinct credentials to keep. |
-| `server.storage-credential-cache.renewal-lead-time` | `PT1M` | Minimum remaining lifetime required to reuse a cached credential. When a cached credential is within this window of its expiry, the next request fetches a new credential from the cloud provider. Set it shorter than the lifetime of the credentials your cloud provider issues, or no credential is reused. Keep it at least as long as the clients' renewal lead time (`fs.unitycatalog.renewal.leadTimeMillis`, 30 seconds by default), so a client does not receive a credential it immediately renews again. |
-| `server.storage-credential-cache.max-age` | `PT5M` | The longest a vended credential is reused, regardless of its own expiry. Keep it short so that a cloud-side change, such as a trust-policy update, takes effect for new requests within this time. |
+| `server.storage-credential-cache.renewal-lead-time` | `PT1M` | Minimum remaining lifetime required to reuse a cached credential. When a cached credential is within this window of its expiry, the next request fetches a new credential from the cloud provider. Set it shorter than the lifetime of the credentials your cloud provider issues, or no credential is reused. Keep it at least as long as the clients' renewal lead time (`fs.unitycatalog.renewal.leadTimeMillis`, 30 seconds by default), so a client does not receive a credential it immediately renews again. For credentials that live longer than the max age plus this lead time, the max age ends reuse first. |
+| `server.storage-credential-cache.max-age` | `PT5M` | The longest a vended credential is reused, regardless of its own expiry. It is counted from when the credential was vended, and serving the credential from the cache does not extend it. A cached credential is handed out with its remaining lifetime, so clients receive at least the credential's lifetime minus the max age (55 minutes for a 1-hour credential with the default). Keep it short so that a cloud-side change, such as a trust-policy update, takes effect for new requests within this time. |
 
 Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is five minutes).
 

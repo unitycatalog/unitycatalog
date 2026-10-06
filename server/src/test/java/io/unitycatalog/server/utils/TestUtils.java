@@ -23,7 +23,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneId;
+import java.time.InstantSource;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -85,22 +85,8 @@ public class TestUtils {
 
   /** A UTC {@link Clock} whose current instant comes from {@code now}, e.g. a manual test clock. */
   public static Clock clockOf(Supplier<Instant> now) {
-    return new Clock() {
-      @Override
-      public ZoneId getZone() {
-        return ZoneOffset.UTC;
-      }
-
-      @Override
-      public Clock withZone(ZoneId zone) {
-        return this;
-      }
-
-      @Override
-      public Instant instant() {
-        return now.get();
-      }
-    };
+    InstantSource source = now::get;
+    return source.withZone(ZoneOffset.UTC);
   }
 
   public static ApiClient createApiClient(ServerConfig serverConfig) {

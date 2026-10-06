@@ -11,6 +11,7 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -21,7 +22,7 @@ import lombok.SneakyThrows;
  * provider on every request. {@link StorageCredentialVendor} resolves the database binding before
  * calling it, so only the cloud vend is skipped; the binding is re-read on every request.
  *
- * <p>An entry is keyed by {@code (location, privileges, roleArn, externalId)}. It is served while
+ * <p>An entry is keyed by {@code (locations, privileges, roleArn, externalId)}. It is served while
  * {@code now < credentialExpiry - renewalLeadTime} and {@code now < vendTime + maxAge}; a static
  * credential with no expiry is bounded by the max age alone. Callers always receive a copy, so they
  * cannot change a cached credential.
@@ -83,11 +84,13 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
    * changes the key, so credentials cached under the previous binding are never reused.
    */
   private record Key(
-      NormalizedURL location,
+      List<NormalizedURL> locations,
       Set<CredentialContext.Privilege> privileges,
       String roleArn,
       String externalId) {
     Key {
+      // AWS and GCP scope a credential to every location in the context, so the key has them all.
+      locations = List.copyOf(locations);
       privileges = Set.copyOf(privileges);
     }
 
@@ -97,7 +100,7 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
       Optional<AwsIamRoleResponse> awsIamRole =
           context.getCredentialDAO().map(CredentialDAO::getAwsIamRoleResponse);
       return new Key(
-          context.getLocations().get(0),
+          context.getLocations(),
           context.getPrivileges(),
           awsIamRole.map(AwsIamRoleResponse::getRoleArn).orElse(null),
           awsIamRole.map(AwsIamRoleResponse::getExternalId).orElse(null));
