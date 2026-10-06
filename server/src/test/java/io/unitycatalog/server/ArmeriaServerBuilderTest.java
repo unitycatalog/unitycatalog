@@ -40,10 +40,7 @@ public class ArmeriaServerBuilderTest {
     // which a loopback bind accepts anyway. Off-box exposure of the observability port is guarded
     // by
     // network policy (see the source comment on the port binding).
-    try (Server server =
-        newBuilder(8080)
-            .observabilityPort(8090)
-            .build()) {
+    try (Server server = newBuilder(8080).observabilityPort(8090).build()) {
       // The API port is reached only through the in-process URL transcoder, so it binds the
       // loopback interfaces.
       assertThat(server.config().ports())
@@ -66,19 +63,14 @@ public class ArmeriaServerBuilderTest {
   public void rejectsObservabilityPortEqualToApiPort() {
     // The two ports must be distinct: sharing one would collapse the API and the observability
     // endpoints onto a single listener, defeating the isolation. Fails fast at construction.
-    assertThatThrownBy(
-            () ->
-                newBuilder(8080)
-                    .observabilityPort(8080))
+    assertThatThrownBy(() -> newBuilder(8080).observabilityPort(8080))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Observability port");
   }
 
   @Test
   public void defaultConfigurationBindsOnlyTheApiPort() {
-    try (Server server =
-        newBuilder(8080)
-            .build()) {
+    try (Server server = newBuilder(8080).build()) {
       assertThat(server.config().ports())
           .isNotEmpty()
           .allSatisfy(
@@ -92,10 +84,7 @@ public class ArmeriaServerBuilderTest {
   @ParameterizedTest
   @ValueSource(ints = {1, 9464, 65535})
   public void bindsExplicitObservabilityPort(int observabilityPort) {
-    try (Server server =
-        newBuilder(9001)
-            .observabilityPort(observabilityPort)
-            .build()) {
+    try (Server server = newBuilder(9001).observabilityPort(observabilityPort).build()) {
       assertThat(server.config().ports())
           .extracting(port -> port.localAddress().getPort())
           .contains(9001, observabilityPort);
@@ -105,20 +94,14 @@ public class ArmeriaServerBuilderTest {
   @ParameterizedTest
   @ValueSource(ints = {0, -1, 65536, Integer.MAX_VALUE})
   public void rejectsOutOfRangeObservabilityPort(int configuredPort) {
-    assertThatThrownBy(
-            () ->
-                newBuilder(9001)
-                    .observabilityPort(configuredPort))
+    assertThatThrownBy(() -> newBuilder(9001).observabilityPort(configuredPort))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("between 1 and 65535");
   }
 
   @Test
   public void standaloneServerDoesNotReserveAnAbsentClientPort() {
-    try (Server server =
-        newBuilder(9001)
-            .observabilityPort(9000)
-            .build()) {
+    try (Server server = newBuilder(9001).observabilityPort(9000).build()) {
       assertThat(server.config().ports())
           .extracting(port -> port.localAddress().getPort())
           .contains(9001, 9000);

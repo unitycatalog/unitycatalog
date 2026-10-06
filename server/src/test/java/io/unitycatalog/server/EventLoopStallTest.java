@@ -13,6 +13,7 @@ import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.annotation.Get;
 import io.unitycatalog.server.service.UnityCatalogRestService;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.net.ServerSocket;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -50,7 +51,11 @@ class EventLoopStallTest {
         BlockingTaskExecutor.builder().numThreads(2).build();
     ArmeriaServerBuilder builder =
         new ArmeriaServerBuilder(
-            0, "/api/", "/control/", new ServerProperties(new Properties()), blockingTaskExecutor);
+            findAvailablePort(),
+            "/api/",
+            "/control/",
+            new ServerProperties(new Properties()),
+            blockingTaskExecutor);
     builder.withSecurityDecorators(passThrough, blockingAuth);
     builder.annotate("probe", new Probe(fastEntered));
 
@@ -71,7 +76,11 @@ class EventLoopStallTest {
         BlockingTaskExecutor.builder().numThreads(2).build();
     ArmeriaServerBuilder builder =
         new ArmeriaServerBuilder(
-            0, "/api/", "/control/", new ServerProperties(new Properties()), blockingTaskExecutor);
+            findAvailablePort(),
+            "/api/",
+            "/control/",
+            new ServerProperties(new Properties()),
+            blockingTaskExecutor);
     builder.annotate("probe", new BlockingProbe(entered, release, fastEntered));
 
     Server server = builder.build();
@@ -88,7 +97,11 @@ class EventLoopStallTest {
         BlockingTaskExecutor.builder().numThreads(2).build();
     ArmeriaServerBuilder builder =
         new ArmeriaServerBuilder(
-            0, "/api/", "/control/", new ServerProperties(new Properties()), blockingTaskExecutor);
+            findAvailablePort(),
+            "/api/",
+            "/control/",
+            new ServerProperties(new Properties()),
+            blockingTaskExecutor);
     builder.annotate("probe", new BlockingProbe(entered, release, new CountDownLatch(1), finished));
 
     Server server = builder.build();
@@ -120,6 +133,13 @@ class EventLoopStallTest {
       } finally {
         blockingTaskExecutor.shutdown();
       }
+    }
+  }
+
+  // The API surface is a port-based virtual host, which needs a concrete port rather than 0.
+  private static int findAvailablePort() throws Exception {
+    try (ServerSocket socket = new ServerSocket(0)) {
+      return socket.getLocalPort();
     }
   }
 
