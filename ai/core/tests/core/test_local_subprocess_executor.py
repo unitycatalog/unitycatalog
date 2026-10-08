@@ -1,8 +1,12 @@
 import inspect
+import sys
 
 import pytest
 
-from unitycatalog.ai.core.executor.local_subprocess import run_in_sandbox_subprocess
+from unitycatalog.ai.core.executor.local_subprocess import (
+    _generate_runner_script,
+    run_in_sandbox_subprocess,
+)
 
 
 def simple_function(x: int, y: int) -> int:
@@ -107,3 +111,16 @@ def test_non_callable_function():
     # run_in_sandbox_subprocess now expects a string containing function source.
     with pytest.raises(TypeError):
         run_in_sandbox_subprocess(12345, {})
+
+
+def test_runner_script_skips_limits_without_resource_module(monkeypatch):
+    monkeypatch.setitem(sys.modules, "resource", None)
+    script = _generate_runner_script(
+        inspect.getsource(simple_function), cpu_time_limit=1, memory_limit=1
+    )
+    namespace = {"__name__": "runner"}
+
+    exec(script, namespace)
+    namespace["_limit_resources"]()
+
+    assert namespace["simple_function"](x=1, y=2) == 3

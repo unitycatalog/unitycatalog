@@ -55,3 +55,9 @@ TERMINATED_MESSAGE_TEMPLATE = (
 IMPORT_DISALLOWED_MESSAGE_TEMPLATE = (
     "The import of module '{module_name}' is restricted. {import_disallowed_message}"
 )
+
+SANDBOX_UNSUPPORTED_MESSAGE = (
+    "The 'sandbox' execution mode runs functions in a forked subprocess, but the 'fork' start "
+    "method is not available on this platform (for example, Windows). "
+    "Set execution_mode='local' in your function client to execute functions in the current process."
+)
