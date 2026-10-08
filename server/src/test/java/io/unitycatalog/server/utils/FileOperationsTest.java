@@ -463,6 +463,10 @@ public class FileOperationsTest {
 
     try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from("s3://my-bucket/table"))) {
       assertThat(fileIO).isInstanceOf(ResolvingFileIO.class);
+      // Builds the real S3 client (no request is sent), which loads the SDK HTTP client that
+      // S3FileIO selects by default; this fails if that client is missing from the classpath.
+      assertThatCode(() -> fileIO.newOutputFile("s3://my-bucket/table/metadata.json"))
+          .doesNotThrowAnyException();
     }
   }
 
