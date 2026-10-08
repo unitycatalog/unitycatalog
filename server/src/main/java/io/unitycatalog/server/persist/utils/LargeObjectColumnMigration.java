@@ -70,6 +70,10 @@ final class LargeObjectColumnMigration {
       }
       List<TableColumn> columns = columns(metadata, settings);
       boolean autoCommit = connection.getAutoCommit();
+      int transactionIsolation = connection.getTransactionIsolation();
+      // Each statement takes a new snapshot, so the check after the advisory lock sees the
+      // conversion of a server that held it before; a transaction-wide snapshot would not.
+      connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
       connection.setAutoCommit(false);
       try {
         if (!largeObjectColumns(connection, columns).isEmpty()) {
@@ -81,6 +85,7 @@ final class LargeObjectColumnMigration {
         throw e;
       } finally {
         connection.setAutoCommit(autoCommit);
+        connection.setTransactionIsolation(transactionIsolation);
       }
     } catch (SQLException e) {
       throw new RuntimeException("Failed to convert large object columns to text", e);

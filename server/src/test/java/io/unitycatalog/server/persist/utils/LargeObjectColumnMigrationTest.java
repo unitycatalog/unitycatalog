@@ -1,6 +1,7 @@
 package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.model.AwsIamRoleRequest;
 import io.unitycatalog.server.model.CreateCredentialRequest;
@@ -15,7 +16,10 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
@@ -66,10 +70,57 @@ class LargeObjectColumnMigrationTest {
     upgradeKeepsValues("MixedCase", settings);
   }
 
+  @Test
+  void rollsBackAPartialConversionAndConvertsOnRetry() throws SQLException {
+    Ids ids = createLargeObjectRows("public", new Properties());
+    Map<String, List<String>> values = largeObjectValues("public");
+    assertThat(values.values()).allSatisfy(column -> assertThat(column).isNotEmpty());
+
+    try (Connection blocker = connect();
+        Statement statement = blocker.createStatement()) {
+      blocker.setAutoCommit(false);
+      // Altering a table needs ACCESS EXCLUSIVE, so even the weakest lock blocks it. The
+      // credentials are converted last, so the other three columns are text when it waits.
+      statement.execute("lock table uc_credentials in access share mode");
+
+      Properties properties = properties("update", new Properties());
+      properties.setProperty("hibernate.connection.url", withStatementTimeout("2s"));
+      assertThatThrownBy(() -> new HibernateConfigurator(properties))
+          .hasStackTraceContaining("canceling statement due to statement timeout");
+
+      // Still holding the lock: the rollback, not a retry, kept the columns as they were.
+      assertDataTypes("public", "oid");
+      assertThat(largeObjectValues("public")).isEqualTo(values);
+      blocker.rollback();
+    }
+
+    try (HibernateConfigurator configurator =
+        new HibernateConfigurator(properties("update", new Properties()))) {
+      assertDataTypes("public", "text");
+      assertRowsIntact(configurator, ids);
+    }
+  }
+
+  private record Ids(UUID view, UUID table, UUID function, UUID credential) {}
+
   private static void upgradeKeepsValues(String schema, Properties settings) throws SQLException {
-    UUID viewId = UUID.randomUUID();
-    UUID tableId = UUID.randomUUID();
-    UUID functionId = UUID.randomUUID();
+    Ids ids = createLargeObjectRows(schema, settings);
+
+    try (HibernateConfigurator configurator =
+        new HibernateConfigurator(properties("update", settings))) {
+      assertDataTypes(schema, "text");
+      assertRowsIntact(configurator, ids);
+    }
+
+    // Later starts find text columns and leave them as they are.
+    try (HibernateConfigurator configurator =
+        new HibernateConfigurator(properties("update", settings))) {
+      assertRowsIntact(configurator, ids);
+    }
+  }
+
+  /** Creates the schema and rows, then stores the columns as the earlier mapping did. */
+  private static Ids createLargeObjectRows(String schema, Properties settings) throws SQLException {
     CredentialDAO credential =
         CredentialDAO.from(
             new CreateCredentialRequest()
@@ -77,18 +128,18 @@ class LargeObjectColumnMigrationTest {
                 .purpose(CredentialPurpose.STORAGE)
                 .awsIamRole(new AwsIamRoleRequest().roleArn(ROLE_ARN)),
             "owner");
-    UUID credentialId = credential.getId();
+    Ids ids = new Ids(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), credential.getId());
     try (HibernateConfigurator configurator =
         new HibernateConfigurator(properties("create", settings))) {
       configurator
           .getSessionFactory()
           .inTransaction(
               session -> {
-                session.persist(table(viewId, "v", VIEW_DEFINITION));
-                session.persist(table(tableId, "t", null));
+                session.persist(table(ids.view(), "v", VIEW_DEFINITION));
+                session.persist(table(ids.table(), "t", null));
                 session.persist(
                     FunctionInfoDAO.builder()
-                        .id(functionId)
+                        .id(ids.function())
                         .name("f")
                         .routineDefinition(ROUTINE_DEFINITION)
                         .build());
@@ -97,41 +148,25 @@ class LargeObjectColumnMigrationTest {
     }
     storeAsLargeObjects(schema);
     assertDataTypes(schema, "oid");
-
-    try (HibernateConfigurator configurator =
-        new HibernateConfigurator(properties("update", settings))) {
-      assertDataTypes(schema, "text");
-      assertRowsIntact(configurator, viewId, tableId, functionId, credentialId);
-    }
-
-    // Later starts find text columns and leave them as they are.
-    try (HibernateConfigurator configurator =
-        new HibernateConfigurator(properties("update", settings))) {
-      assertRowsIntact(configurator, viewId, tableId, functionId, credentialId);
-    }
+    return ids;
   }
 
-  private static void assertRowsIntact(
-      HibernateConfigurator configurator,
-      UUID viewId,
-      UUID tableId,
-      UUID functionId,
-      UUID credentialId) {
+  private static void assertRowsIntact(HibernateConfigurator configurator, Ids ids) {
     configurator
         .getSessionFactory()
         .inSession(
             session -> {
-              TableInfoDAO view = session.get(TableInfoDAO.class, viewId);
+              TableInfoDAO view = session.get(TableInfoDAO.class, ids.view());
               assertThat(view.getViewDefinition()).isEqualTo(VIEW_DEFINITION);
               assertThat(view.getColumns())
                   .extracting(ColumnInfoDAO::getTypeText)
                   .containsExactly(TYPE_TEXT);
-              assertThat(session.get(TableInfoDAO.class, tableId).getViewDefinition()).isNull();
-              assertThat(session.get(FunctionInfoDAO.class, functionId).getRoutineDefinition())
+              assertThat(session.get(TableInfoDAO.class, ids.table()).getViewDefinition()).isNull();
+              assertThat(session.get(FunctionInfoDAO.class, ids.function()).getRoutineDefinition())
                   .isEqualTo(ROUTINE_DEFINITION);
               assertThat(
                       session
-                          .get(CredentialDAO.class, credentialId)
+                          .get(CredentialDAO.class, ids.credential())
                           .toCredentialInfo(Optional.empty())
                           .getAwsIamRole()
                           .getRoleArn())
@@ -189,6 +224,35 @@ class LargeObjectColumnMigrationTest {
         }
       }
     }
+  }
+
+  /** Each column's large objects, read back as text, keyed by table and column. */
+  private static Map<String, List<String>> largeObjectValues(String schema) throws SQLException {
+    Map<String, List<String>> values = new HashMap<>();
+    try (Connection connection = connect();
+        Statement statement = connection.createStatement()) {
+      for (List<String> column : LARGE_OBJECT_COLUMNS) {
+        List<String> rows = new ArrayList<>();
+        try (ResultSet resultSet =
+            statement.executeQuery(
+                String.format(
+                    "select convert_from(lo_get(%3$s), 'UTF8') from \"%1$s\".%2$s"
+                        + " where %3$s is not null order by 1",
+                    schema, column.get(0), column.get(1)))) {
+          while (resultSet.next()) {
+            rows.add(resultSet.getString(1));
+          }
+        }
+        values.put(column.get(0) + "." + column.get(1), rows);
+      }
+    }
+    return values;
+  }
+
+  /** The database's URL, with every connection cancelling statements after {@code timeout}. */
+  private static String withStatementTimeout(String timeout) {
+    String url = POSTGRES.getJdbcUrl();
+    return url + (url.contains("?") ? "&" : "?") + "options=-c%20statement_timeout%3D" + timeout;
   }
 
   private static void execute(String sql) throws SQLException {
