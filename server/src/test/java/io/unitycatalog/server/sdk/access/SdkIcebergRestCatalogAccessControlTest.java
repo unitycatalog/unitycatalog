@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.IcebergRestClient;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -127,7 +128,22 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     String registeredPathA = externalLocation.resolve("t1").toUri().toString();
     String registeredPathB = externalLocation.resolve("t2").toUri().toString();
     // unregistered path, no CREATE_EXTERNAL_TABLE -> allowed (also the table-OWNER fixture)
-    createTable(r1, SCHEMA, "tbl_r1own", tmpLocation("tbl_r1own"));
+    String r1OwnLocation = tmpLocation("tbl_r1own");
+    createTable(r1, SCHEMA, "tbl_r1own", r1OwnLocation);
+    // inside that table -> denied by the overlap check; with an escape the overlap check would
+    // not see ("%74bl" is "tbl"), rejected before it
+    String r1Own = NormalizedURL.from(r1OwnLocation).toString();
+    assertDenied(() -> createTable(r2, SCHEMA_R2, "ct_overlap_deny", r1Own + "/sub1"));
+    assertIcebergApiException(
+        () ->
+            createTable(
+                r2,
+                SCHEMA_R2,
+                "ct_overlap_escaped",
+                r1Own.replace("/tbl_r1own_", "/%74bl_r1own_") + "/sub2"),
+        400,
+        "unneeded escapes");
+    assertThat(Path.of(NormalizedURL.from(r1Own).toUri()).resolve("sub2")).doesNotExist();
     // registered path, no CREATE_EXTERNAL_TABLE -> denied
     assertDenied(() -> createTable(r1, SCHEMA, "ct_reg_deny", registeredPathA));
     grantPermissions(

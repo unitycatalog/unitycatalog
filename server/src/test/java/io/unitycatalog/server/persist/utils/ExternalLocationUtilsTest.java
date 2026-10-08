@@ -181,6 +181,25 @@ public class ExternalLocationUtilsTest {
   }
 
   @Test
+  public void testListLocalExternalLocationUrls() {
+    session.beginTransaction();
+    String externalLocationUrl = NormalizedURL.from(tempDir.resolve("el").toUri()).toString();
+    for (String url : List.of(externalLocationUrl, "s3://bucket/el")) {
+      session.persist(
+          ExternalLocationDAO.builder()
+              .id(UUID.randomUUID())
+              .name("external_" + url.length())
+              .url(url)
+              .credentialId(UUID.randomUUID())
+              .build());
+    }
+    session.getTransaction().commit();
+
+    assertThat(externalLocationUtils.listLocalExternalLocationUrls())
+        .containsExactly(externalLocationUrl);
+  }
+
+  @Test
   public void testPendingCleanupCoversEveryResourceType() {
     session.beginTransaction();
     StorageCleanupTaskRepository repository = new StorageCleanupTaskRepository(sessionFactory);
