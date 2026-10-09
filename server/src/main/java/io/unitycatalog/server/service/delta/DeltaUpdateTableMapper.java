@@ -1,10 +1,13 @@
 package io.unitycatalog.server.service.delta;
 
 import io.unitycatalog.server.delta.model.DeltaAddCommitUpdate;
+import io.unitycatalog.server.delta.model.DeltaArrayType;
 import io.unitycatalog.server.delta.model.DeltaAssertEtag;
 import io.unitycatalog.server.delta.model.DeltaAssertTableUUID;
 import io.unitycatalog.server.delta.model.DeltaCommit;
+import io.unitycatalog.server.delta.model.DeltaDataType;
 import io.unitycatalog.server.delta.model.DeltaDomainMetadataUpdates;
+import io.unitycatalog.server.delta.model.DeltaMapType;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DeltaRemoveDomainMetadataUpdate;
 import io.unitycatalog.server.delta.model.DeltaRemovePropertiesUpdate;
@@ -16,6 +19,7 @@ import io.unitycatalog.server.delta.model.DeltaSetProtocolUpdate;
 import io.unitycatalog.server.delta.model.DeltaSetSchemaUpdate;
 import io.unitycatalog.server.delta.model.DeltaSetTableCommentUpdate;
 import io.unitycatalog.server.delta.model.DeltaStructField;
+import io.unitycatalog.server.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableRequirement;
 import io.unitycatalog.server.delta.model.DeltaTableUpdate;
@@ -34,10 +38,12 @@ import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -187,11 +193,12 @@ public final class DeltaUpdateTableMapper {
      * omitted: it is EXTERNAL-only and so can never co-occur with {@code add-commit}.
      *
      * <p>A {@code set-domain-metadata} that touches only the {@code delta.rowTracking} domain does
-     * not count: the Delta protocol requires writers to advance the row-tracking high-water mark in
-     * every commit that assigns fresh row IDs, so clients mirror it alongside otherwise data-only
-     * {@code add-commit}s. It is per-commit snapshot bookkeeping, not a metadata change; counting
-     * it would advance {@code updatedAt} and the {@code delta.lastUpdateVersion} stamp on every
-     * data commit of a row-tracking table. The high-water-mark property itself is still persisted.
+     * not count: row-tracking high-water-mark updates are per-commit snapshot bookkeeping, not
+     * metadata changes. The Delta protocol requires writers to mirror the high-water mark in every
+     * commit that assigns fresh row IDs, so clients send it alongside otherwise data-only {@code
+     * add-commit}s. Counting it as a metadata change would incorrectly advance {@code updatedAt}
+     * and the {@code delta.lastUpdateVersion} stamp on every data commit of a row-tracking table.
+     * The high-water-mark property itself is still persisted.
      */
     boolean hasManagedTableMetadataChange() {
       return setProperties.isPresent()
@@ -362,7 +369,10 @@ public final class DeltaUpdateTableMapper {
       CollectedRequest collected,
       ServerProperties serverProperties) {
     CollectedUpdates c = collected.updates();
-    applySchemaAndPartitionColumns(session, dao, c.setSchema, c.setPartitionColumns);
+    String rawMode = properties.get(DeltaConsts.TableProperties.COLUMN_MAPPING_MODE);
+    String columnMappingMode = normalizeColumnMappingMode(rawMode);
+    applySchemaAndPartitionColumns(
+        session, dao, c.setSchema, c.setPartitionColumns, columnMappingMode);
     c.setProtocol.ifPresent(u -> applySetProtocol(properties, u.getProtocol()));
     c.setProperties.ifPresent(u -> applySetProperties(properties, u.getUpdates()));
     c.removeProperties.ifPresent(u -> applyRemoveProperties(properties, u.getRemovals()));
@@ -429,12 +439,18 @@ public final class DeltaUpdateTableMapper {
    * <p>Swap semantics rely on the orphanRemoval mapping on {@link TableInfoDAO#getColumns()} to
    * clean up the old rows; the intervening flush ensures the deletes hit the DB before the inserts,
    * so the {@code (table_id, ordinal_position, name)} unique constraint doesn't trip.
+   *
+   * <p>On every {@code set-columns}, each column receives a fresh database UUID (to match standard
+   * catalog semantics where column identity is refreshed on every set-columns). A retained column
+   * that drops its active-mode column-mapping key is rejected via {@link
+   * #validateNoCmIdentityStripped} before the swap runs.
    */
   private static void applySchemaAndPartitionColumns(
       Session session,
       TableInfoDAO dao,
       Optional<DeltaSetSchemaUpdate> setSchema,
-      Optional<DeltaSetPartitionColumnsUpdate> setPartition) {
+      Optional<DeltaSetPartitionColumnsUpdate> setPartition,
+      String columnMappingMode) {
     if (setSchema.isEmpty() && setPartition.isEmpty()) {
       return;
     }
@@ -469,6 +485,13 @@ public final class DeltaUpdateTableMapper {
       partitionNames = currentPartitionColumnNames(dao);
     }
     ColumnUtils.applyPartitionColumns(newColumns, partitionNames);
+    // Reject any retained column (same logical name) that lost its active mode column-mapping key.
+    // Mode-specific and recursive into nested types.
+    if (setSchema.isPresent()) {
+      validateNoCmIdentityStripped(dao.getColumns(), newColumns, columnMappingMode);
+    }
+    // Build the new DAO list. On every set-columns, every column receives a fresh UUID
+    // (standard catalog semantics; the UUID has no known OSS consumers keying on it).
     List<ColumnInfoDAO> newColumnDAOs = ColumnInfoDAO.fromList(newColumns);
     newColumnDAOs.forEach(
         c -> {
@@ -478,6 +501,126 @@ public final class DeltaUpdateTableMapper {
     dao.getColumns().clear();
     session.flush();
     dao.getColumns().addAll(newColumnDAOs);
+  }
+
+  // ---------------------------------------------------------------------- column-mapping guards
+
+  /**
+   * Rejects a {@code set-columns} where a column present in both the existing schema and the
+   * incoming schema (matched by logical name) has lost the ACTIVE MODE'S column-mapping identity
+   * key. Mode-specific (checks only the active mode's key -- {@code delta.columnMapping.id} for
+   * id-mode, {@code delta.columnMapping.physicalName} for name-mode) and recursive into nested
+   * struct/array/map types.
+   *
+   * <p>Columns whose existing schema carries no active-mode CM key are not subject to this check.
+   *
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} naming the offending columns
+   */
+  private static void validateNoCmIdentityStripped(
+      List<ColumnInfoDAO> existingDaos,
+      List<ColumnInfo> incomingColumns,
+      String columnMappingMode) {
+    String activeCmKey = activeCmKeyForMode(columnMappingMode);
+    if (activeCmKey == null) return; // no active mode, nothing to check
+    List<DeltaStructField> curFields =
+        existingDaos.stream()
+            .map(d -> ColumnUtils.toStructField(d.toColumnInfo()))
+            .collect(Collectors.toList());
+    List<DeltaStructField> incFields =
+        incomingColumns.stream().map(ColumnUtils::toStructField).collect(Collectors.toList());
+    List<String> stripped = detectStrippedCmKeys(curFields, incFields, activeCmKey);
+    if (!stripped.isEmpty()) {
+      stripped.sort(String::compareTo);
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "set-columns dropped column mapping metadata for column(s): "
+              + String.join(", ", stripped));
+    }
+  }
+
+  /**
+   * Returns the logical names of fields (at the current nesting level) that are retained in {@code
+   * incFields} (by case-insensitive logical name) but have lost the {@code activeCmKey} from their
+   * metadata. Recurses into nested struct/array/map types.
+   */
+  private static List<String> detectStrippedCmKeys(
+      List<DeltaStructField> curFields, List<DeltaStructField> incFields, String activeCmKey) {
+    Map<String, DeltaStructField> incByLower =
+        incFields.stream()
+            .collect(
+                Collectors.toMap(f -> f.getName().toLowerCase(Locale.ROOT), Function.identity()));
+    List<String> stripped = new ArrayList<>();
+    for (DeltaStructField cur : curFields) {
+      // Only flag fields that currently have the active CM key.
+      if (!hasCmKeyInFieldTopLevel(cur, activeCmKey)) continue;
+      DeltaStructField inc = incByLower.get(cur.getName().toLowerCase(Locale.ROOT));
+      if (inc == null) continue; // dropped column, not a strip of an existing one
+      if (!hasCmKeyInFieldTopLevel(inc, activeCmKey)) {
+        stripped.add(cur.getName());
+      }
+      // Recurse into nested type trees for the retained field.
+      stripped.addAll(detectStrippedCmKeysInTypes(cur.getType(), inc.getType(), activeCmKey));
+    }
+    return stripped;
+  }
+
+  /** Recurses into nested struct/array/map types for the CM-key-strip check. */
+  private static List<String> detectStrippedCmKeysInTypes(
+      DeltaDataType curType, DeltaDataType incType, String activeCmKey) {
+    if (curType instanceof DeltaStructType curStruct
+        && incType instanceof DeltaStructType incStruct) {
+      return detectStrippedCmKeys(
+          curStruct.getFields() != null ? curStruct.getFields() : List.of(),
+          incStruct.getFields() != null ? incStruct.getFields() : List.of(),
+          activeCmKey);
+    } else if (curType instanceof DeltaArrayType curArr
+        && incType instanceof DeltaArrayType incArr) {
+      return detectStrippedCmKeysInTypes(
+          curArr.getElementType(), incArr.getElementType(), activeCmKey);
+    } else if (curType instanceof DeltaMapType curMap && incType instanceof DeltaMapType incMap) {
+      List<String> result =
+          new ArrayList<>(
+              detectStrippedCmKeysInTypes(curMap.getKeyType(), incMap.getKeyType(), activeCmKey));
+      result.addAll(
+          detectStrippedCmKeysInTypes(curMap.getValueType(), incMap.getValueType(), activeCmKey));
+      return result;
+    }
+    return List.of();
+  }
+
+  /** Returns {@code true} if this specific field's OWN metadata contains {@code cmKey}. */
+  private static boolean hasCmKeyInFieldTopLevel(DeltaStructField field, String cmKey) {
+    DeltaStructFieldMetadata meta = field.getMetadata();
+    return meta != null && meta.get(cmKey) != null;
+  }
+
+  /**
+   * Returns the metadata key string for the active column-mapping mode: {@code "id"} → {@code
+   * "delta.columnMapping.id"}, {@code "name"} → {@code "delta.columnMapping.physicalName"},
+   * anything else → {@code null} (no active CM key).
+   */
+  private static String activeCmKeyForMode(String mode) {
+    return switch (mode) {
+      case "id" -> "delta.columnMapping.id";
+      case "name" -> "delta.columnMapping.physicalName";
+      default -> null;
+    };
+  }
+
+  /**
+   * Normalises and validates the raw {@code delta.columnMapping.mode} property value. Returns
+   * {@code "none"} for absent/null values; throws {@link ErrorCode#INVALID_ARGUMENT} for any value
+   * that is not {@code "none"}, {@code "name"}, or {@code "id"}.
+   */
+  private static String normalizeColumnMappingMode(String rawMode) {
+    if (rawMode == null) return "none";
+    String mode = rawMode.trim().toLowerCase(Locale.ROOT);
+    return switch (mode) {
+      case "none", "name", "id" -> mode;
+      default ->
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT, "Invalid column mapping mode: " + rawMode);
+    };
   }
 
   /** Names of the DAO's partition columns, ordered by partition index. */
