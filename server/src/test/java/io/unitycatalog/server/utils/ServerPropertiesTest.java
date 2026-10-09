@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.time.Duration;
 import java.util.Properties;
@@ -411,5 +412,98 @@ public class ServerPropertiesTest {
     } finally {
       System.clearProperty("server.allowed-issuers");
     }
+  }
+
+  @Test
+  public void testS3EndpointResolutionPrecedence() {
+    Properties global = new Properties();
+    global.setProperty("aws.endpointUrl", "http://legacy:9000");
+    global.setProperty("aws.stsEndpointUrl", "https://mcg.example.com/sts");
+    global.setProperty("aws.s3EndpointUrl", "https://mcg.example.com/s3");
+    ServerProperties serverProperties = new ServerProperties(global);
+
+    S3StorageConfig masterConfig = serverProperties.getS3MasterRoleConfiguration();
+    assertThat(masterConfig.getStsEndpointUrl()).isEqualTo("https://mcg.example.com/sts");
+    assertThat(masterConfig.getS3EndpointUrl()).isEqualTo("https://mcg.example.com/s3");
+  }
+
+  @Test
+  public void testIndexedPerBucketEndpointResolution() {
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://bucket-a");
+    props.setProperty("s3.region.0", "us-east-1");
+    props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
+    props.setProperty("s3.endpointUrl.0", "http://legacy:9000");
+    props.setProperty("s3.stsEndpointUrl.0", "https://mcg.example.com/sts");
+    ServerProperties serverProperties = new ServerProperties(props);
+
+    S3StorageConfig config =
+        serverProperties.getS3Configurations().get(NormalizedURL.from("s3://bucket-a"));
+    assertThat(config.getStsEndpointUrl()).isEqualTo("https://mcg.example.com/sts");
+    assertThat(config.getS3EndpointUrl()).isEqualTo("http://legacy:9000");
+  }
+
+  @Test
+  public void testS3StaticCredentialTtl() {
+    assertThat(new ServerProperties().getS3StaticCredentialTtl()).isEqualTo(Duration.ofHours(1));
+
+    Properties props = new Properties();
+    props.setProperty(Property.S3_STATIC_CREDENTIAL_TTL_SECONDS.getKey(), "90");
+    assertThat(new ServerProperties(props).getS3StaticCredentialTtl())
+        .isEqualTo(Duration.ofSeconds(90));
+
+    testInvalidProperty(
+        Property.S3_STATIC_CREDENTIAL_TTL_SECONDS,
+        "0",
+        "Invalid value '0'",
+        "s3.static.credentialTtlSeconds",
+        "Expected a positive integer (> 0)");
+    testInvalidProperty(
+        Property.S3_STATIC_CREDENTIAL_TTL_SECONDS,
+        "abc",
+        "Invalid value 'abc'",
+        "s3.static.credentialTtlSeconds",
+        "Expected an integer");
+  }
+
+  @Test
+  public void testResolveS3StaticAccessKeyConfiguration() {
+    Properties props = new Properties();
+    props.setProperty("s3.static.secretKey.AKIA_A", "secretA");
+    props.setProperty("s3.static.secretKey.AKIA_B", "secretB");
+    props.setProperty("s3.static.sessionToken.AKIA_B", "tokenB");
+    ServerProperties serverProperties = new ServerProperties(props);
+
+    assertThat(serverProperties.resolveS3StaticAccessKeyConfiguration("AKIA_A"))
+        .get()
+        .satisfies(
+            config -> {
+              assertThat(config.getAccessKey()).isEqualTo("AKIA_A");
+              assertThat(config.getSecretKey()).isEqualTo("secretA");
+              assertThat(config.getSessionToken()).isNull();
+            });
+
+    assertThat(serverProperties.resolveS3StaticAccessKeyConfiguration("AKIA_B"))
+        .get()
+        .satisfies(
+            config -> {
+              assertThat(config.getSecretKey()).isEqualTo("secretB");
+              assertThat(config.getSessionToken()).isEqualTo("tokenB");
+            });
+  }
+
+  @Test
+  public void testResolveS3StaticAccessKeyConfigurationWhenUnconfigured() {
+    Properties props = new Properties();
+    props.setProperty("s3.static.secretKey.AKIA_A", "secretA");
+    props.setProperty("s3.static.sessionToken.AKIA_TOKEN_ONLY", "tokenOnly");
+    props.setProperty("s3.static.secretKey.AKIA_BLANK", "");
+    ServerProperties serverProperties = new ServerProperties(props);
+
+    assertThat(serverProperties.resolveS3StaticAccessKeyConfiguration("AKIA_UNKNOWN")).isEmpty();
+    assertThat(serverProperties.resolveS3StaticAccessKeyConfiguration(null)).isEmpty();
+    assertThat(serverProperties.resolveS3StaticAccessKeyConfiguration(" ")).isEmpty();
+    assertThat(serverProperties.resolveS3StaticAccessKeyConfiguration("AKIA_TOKEN_ONLY")).isEmpty();
+    assertThat(serverProperties.resolveS3StaticAccessKeyConfiguration("AKIA_BLANK")).isEmpty();
   }
 }

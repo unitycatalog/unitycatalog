@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.IntPredicate;
@@ -262,6 +263,15 @@ public class ServerProperties {
     AWS_SECRET_KEY("aws.secretKey"),
     AWS_SESSION_TOKEN("aws.sessionToken"),
     AWS_REGION("aws.region"),
+    AWS_STS_ENDPOINT_URL("aws.stsEndpointUrl"),
+    AWS_S3_ENDPOINT_URL("aws.s3EndpointUrl"),
+    AWS_ENDPOINT_URL("aws.endpointUrl"),
+    /**
+     * Lifetime stamped on credentials vended via the static path so clients refresh. Does not
+     * expire the underlying access key.
+     */
+    S3_STATIC_CREDENTIAL_TTL_SECONDS(
+        "s3.static.credentialTtlSeconds", "3600", POSITIVE_INTEGER_VALIDATOR),
     INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR);
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
@@ -381,12 +391,71 @@ public class ServerProperties {
   public S3StorageConfig getS3MasterRoleConfiguration() {
     // These values may be null and that is OK. An empty config means AWS credential vending will
     // use the default credential provider which is typically the same when running on AWS cloud.
+    String legacyEndpoint = get(Property.AWS_ENDPOINT_URL);
     return S3StorageConfig.builder()
         .region(get(Property.AWS_REGION))
         .accessKey(get(Property.AWS_ACCESS_KEY))
         .secretKey(get(Property.AWS_SECRET_KEY))
+        .endpointUrl(legacyEndpoint)
+        .stsEndpointUrl(resolveStsEndpoint(get(Property.AWS_STS_ENDPOINT_URL), legacyEndpoint))
+        .s3EndpointUrl(resolveS3Endpoint(get(Property.AWS_S3_ENDPOINT_URL), legacyEndpoint))
         // Does not take AWS_SESSION_TOKEN as it's only part of a temporary credential.
         .build();
+  }
+
+  private static String resolveStsEndpoint(String explicitStsEndpoint, String legacyEndpoint) {
+    if (isNonBlank(explicitStsEndpoint)) {
+      return explicitStsEndpoint;
+    }
+    if (isNonBlank(legacyEndpoint)) {
+      return legacyEndpoint;
+    }
+    return null;
+  }
+
+  private static String resolveS3Endpoint(String explicitS3Endpoint, String legacyEndpoint) {
+    if (isNonBlank(explicitS3Endpoint)) {
+      return explicitS3Endpoint;
+    }
+    if (isNonBlank(legacyEndpoint)) {
+      return legacyEndpoint;
+    }
+    return null;
+  }
+
+  private static boolean isNonBlank(String value) {
+    return value != null && !value.isBlank();
+  }
+
+  /**
+   * Resolves the static S3 key pair for {@code accessKeyId}.
+   *
+   * <p>Secrets are keyed by access key id: {@code s3.static.secretKey.<accessKeyId>}, with an
+   * optional {@code s3.static.sessionToken.<accessKeyId>} for stores that issue one. There is no
+   * index, so a key can be added or removed without disturbing the others.
+   *
+   * @param accessKeyId access key id stored on a storage credential
+   * @return the matching config, or empty when no secret is configured for that access key id
+   */
+  public Optional<S3StorageConfig> resolveS3StaticAccessKeyConfiguration(String accessKeyId) {
+    if (accessKeyId == null || accessKeyId.isBlank()) {
+      return Optional.empty();
+    }
+    String secretKey = getProperty("s3.static.secretKey." + accessKeyId);
+    if (secretKey == null || secretKey.isBlank()) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        S3StorageConfig.builder()
+            .accessKey(accessKeyId)
+            .secretKey(secretKey)
+            .sessionToken(getProperty("s3.static.sessionToken." + accessKeyId))
+            .build());
+  }
+
+  /** Soft expiry stamped on statically vended credentials so clients refresh. */
+  public Duration getS3StaticCredentialTtl() {
+    return Duration.ofSeconds(Integer.parseInt(get(Property.S3_STATIC_CREDENTIAL_TTL_SECONDS)));
   }
 
   public Map<NormalizedURL, S3StorageConfig> getS3Configurations() {
@@ -399,6 +468,8 @@ public class ServerProperties {
       String accessKey = getProperty("s3.accessKey." + i);
       String secretKey = getProperty("s3.secretKey." + i);
       String sessionToken = getProperty("s3.sessionToken." + i);
+      String endpointUrl = getProperty("s3.endpointUrl." + i);
+      String stsEndpointUrl = getProperty("s3.stsEndpointUrl." + i);
       String credentialGenerator = getProperty("s3.credentialGenerator." + i);
       if ((bucketPath == null || region == null || awsRoleArn == null)
           && (accessKey == null || secretKey == null || sessionToken == null)) {
@@ -412,6 +483,9 @@ public class ServerProperties {
               .accessKey(accessKey)
               .secretKey(secretKey)
               .sessionToken(sessionToken)
+              .endpointUrl(endpointUrl)
+              .stsEndpointUrl(resolveStsEndpoint(stsEndpointUrl, endpointUrl))
+              .s3EndpointUrl(endpointUrl)
               .credentialGenerator(credentialGenerator)
               .build();
       s3BucketConfigMap.put(NormalizedURL.from(bucketPath), s3StorageConfig);
