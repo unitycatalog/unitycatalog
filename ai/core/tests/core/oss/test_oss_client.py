@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Union
+from unittest import mock
 
 import pytest
 import pytest_asyncio
@@ -36,6 +37,7 @@ from unitycatalog.client import (
     ApiClient,
     CatalogsApi,
     Configuration,
+    FunctionInfo,
     FunctionParameterInfo,
     FunctionParameterInfos,
     FunctionsApi,
@@ -327,9 +329,9 @@ async def test_create_function(uc_client):
         uc_client.execute_function(function_name=function_name, parameters={"x": "test"}).value
         == "test"
     )
-    assert uc_client.func_cache.get("test_function") is not None
+    assert uc_client.func_cache.get(function_name) is not None
     uc_client.clear_function_cache()
-    assert uc_client.func_cache.get("test_function") is None
+    assert uc_client.func_cache.get(function_name) is None
 
 
 @pytest.mark.asyncio
@@ -955,7 +957,7 @@ async def test_function_caching(uc_client):
     assert result1.value == 4
     assert result2.value == 6
 
-    assert function_name.split(".")[-1] in uc_client.func_cache
+    assert function_name in uc_client.func_cache
 
 
 @pytest.mark.asyncio
@@ -1004,6 +1006,129 @@ async def test_function_overwrite_cache_invalidate(uc_client):
     # Execute the function again to check if the cache is invalidated
     result2 = uc_client.execute_function(function_name=function_name, parameters={"x": 2})
     assert result2.value == 6
+
+
+@pytest_asyncio.fixture
+async def mocked_store_client():
+    uc_api_client = ApiClient(configuration=Configuration())
+    client = UnitycatalogFunctionClient(api_client=uc_api_client, execution_mode="local")
+    client.uc.functions_client = mock.AsyncMock(spec=FunctionsApi)
+    yield client
+    await client.close_async()
+
+
+def stored_python_function(
+    full_name: str,
+    routine_definition: str,
+    data_type: str,
+    parameters: Optional[List[FunctionParameterInfo]] = None,
+) -> FunctionInfo:
+    catalog_name, schema_name, name = full_name.split(".")
+    return FunctionInfo(
+        name=name,
+        catalog_name=catalog_name,
+        schema_name=schema_name,
+        full_name=full_name,
+        data_type=data_type,
+        full_data_type=data_type,
+        input_params={"parameters": parameters or []},
+        routine_body="EXTERNAL",
+        routine_definition=routine_definition,
+        external_language="PYTHON",
+    )
+
+
+def int_param(name: str) -> FunctionParameterInfo:
+    return FunctionParameterInfo(
+        name=name,
+        type_name="INT",
+        type_text="int",
+        type_json=f'{{"name":"{name}","type":"integer","nullable":false,"metadata":{{}}}}',
+        position=0,
+    )
+
+
+def serve_functions(client: UnitycatalogFunctionClient, *function_infos: FunctionInfo) -> None:
+    by_name = {info.full_name: info for info in function_infos}
+    client.uc.functions_client.get_function.side_effect = lambda name, **_: by_name[name]
+
+
+async def execute(client: UnitycatalogFunctionClient, use_async: bool, name: str, params: dict):
+    if use_async:
+        return await client.execute_function_async(name, params)
+    return client.execute_function(name, params)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_same_function_name_in_different_schemas_executes_own_definition(
+    mocked_store_client, use_async
+):
+    serve_functions(
+        mocked_store_client,
+        stored_python_function(
+            f"{CATALOG}.s1.fold", "return n * fold(n - 1) if n > 1 else 1", "INT", [int_param("n")]
+        ),
+        stored_python_function(
+            f"{CATALOG}.s2.fold", "return n + fold(n - 1) if n > 0 else 0", "INT", [int_param("n")]
+        ),
+    )
+
+    results = [
+        (await execute(mocked_store_client, use_async, f"{CATALOG}.{schema}.fold", {"n": 5})).value
+        for schema in ("s1", "s2", "s1", "s2")
+    ]
+
+    assert results == [120, 15, 120, 15]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_function_with_list_argument_runs_on_repeated_calls(mocked_store_client, use_async):
+    xs_param = FunctionParameterInfo(
+        name="xs",
+        type_name="ARRAY",
+        type_text="array<int>",
+        type_json='{"name":"xs","type":{"type":"array","elementType":"integer","containsNull":true},'
+        '"nullable":false,"metadata":{}}',
+        position=0,
+    )
+    serve_functions(
+        mocked_store_client,
+        stored_python_function(f"{CATALOG}.{SCHEMA}.total", "return sum(xs)", "INT", [xs_param]),
+    )
+
+    results = [
+        await execute(mocked_store_client, use_async, f"{CATALOG}.{SCHEMA}.total", {"xs": xs})
+        for xs in ([1, 2], [3, 4], [1, 2])
+    ]
+
+    assert [(result.error, result.value) for result in results] == [(None, 3), (None, 7), (None, 3)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_function_is_reexecuted_instead_of_memoized(
+    mocked_store_client, use_async, monkeypatch
+):
+    serve_functions(
+        mocked_store_client,
+        stored_python_function(
+            f"{CATALOG}.{SCHEMA}.read_setting",
+            'import os\nreturn os.environ["UC_AI_TEST_SETTING"]',
+            "STRING",
+        ),
+    )
+
+    results = []
+    for value in ("first", "second", "third"):
+        monkeypatch.setenv("UC_AI_TEST_SETTING", value)
+        result = await execute(
+            mocked_store_client, use_async, f"{CATALOG}.{SCHEMA}.read_setting", {}
+        )
+        results.append(result.value)
+
+    assert results == ["first", "second", "third"]
 
 
 @pytest.mark.asyncio
