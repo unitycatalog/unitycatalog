@@ -6,6 +6,7 @@ import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.FileOperationsImpl;
+import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -63,8 +64,9 @@ public class Repositories {
   }
 
   /**
-   * @param cloudCredentialVendor an injected cloud credential vendor (e.g. a test mock), or {@code
-   *     null} to build the default from {@code serverProperties}. Owning the credential/file-IO
+   * @param cloudCredentialVendor an injected cloud credential vendor (e.g. a test mock), used as
+   *     is, or {@code null} to build the default from {@code serverProperties}, which caches vended
+   *     credentials when the storage credential cache is enabled. Owning the credential/file-IO
    *     chain here lets repositories read table storage (e.g. Delta commit files) without
    *     late-binding.
    * @param fileOperationsDecorator wraps the default {@link FileOperations} before use ({@link
@@ -85,7 +87,7 @@ public class Repositories {
     CloudCredentialVendor resolvedCloudCredentialVendor =
         cloudCredentialVendor != null
             ? cloudCredentialVendor
-            : new CloudCredentialVendor(serverProperties);
+            : defaultCloudCredentialVendor(serverProperties);
     this.storageCredentialVendor =
         new StorageCredentialVendor(resolvedCloudCredentialVendor, externalLocationUtils);
     this.fileOperations =
@@ -112,5 +114,12 @@ public class Repositories {
 
     // KeyMapper uses all the repositories above.
     this.keyMapper = new KeyMapper(this);
+  }
+
+  static CloudCredentialVendor defaultCloudCredentialVendor(ServerProperties serverProperties) {
+    CloudCredentialVendor vendor = new CloudCredentialVendor(serverProperties);
+    return serverProperties.isStorageCredentialCacheEnabled()
+        ? new CachingCloudCredentialVendor(vendor, serverProperties)
+        : vendor;
   }
 }

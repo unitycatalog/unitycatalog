@@ -1,14 +1,23 @@
 package io.unitycatalog.server.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -22,6 +31,8 @@ import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class RepositoriesTest {
 
@@ -77,6 +88,41 @@ class RepositoriesTest {
             UnaryOperator.identity());
 
     assertThat(repositories.getFileOperations()).isInstanceOf(FileOperationsImpl.class);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void defaultCloudCredentialVendorCachesOnlyWhenTheCacheIsEnabled(boolean cacheEnabled) {
+    Properties properties = new Properties();
+    properties.setProperty("server.env", "test");
+    properties.setProperty("server.storage-credential-cache.enabled", String.valueOf(cacheEnabled));
+
+    CloudCredentialVendor vendor =
+        Repositories.defaultCloudCredentialVendor(new ServerProperties(properties));
+
+    assertThat(vendor.getClass())
+        .isEqualTo(cacheEnabled ? CachingCloudCredentialVendor.class : CloudCredentialVendor.class);
+  }
+
+  @Test
+  void injectedCloudCredentialVendorIsUsedAsIs() {
+    Properties properties = new Properties();
+    properties.setProperty("server.env", "test");
+    properties.setProperty("server.storage-credential-cache.enabled", "true");
+    CloudCredentialVendor injected = mock(CloudCredentialVendor.class);
+    when(injected.vendCredential(any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .expirationTime(System.currentTimeMillis() + Duration.ofHours(1).toMillis()));
+    Repositories repositories =
+        new Repositories(sessionFactory, new ServerProperties(properties), injected);
+    NormalizedURL path = NormalizedURL.from("s3://bucket/table");
+
+    repositories.getStorageCredentialVendor().vendCredential(path, CredentialContext.READ_ONLY);
+    repositories.getStorageCredentialVendor().vendCredential(path, CredentialContext.READ_ONLY);
+
+    // Even with the cache enabled, an injected vendor is not wrapped: every request reaches it.
+    verify(injected, times(2)).vendCredential(any());
   }
 
   /** Test wrapper that records its delegate; methods forward, but the tests only check identity. */
