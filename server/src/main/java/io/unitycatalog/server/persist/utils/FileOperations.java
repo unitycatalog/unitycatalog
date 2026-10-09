@@ -64,23 +64,36 @@ public interface FileOperations {
   }
 
   /**
-   * Returns an Iceberg {@link FileIO} for reading the given location. Cloud paths are served with
-   * credentials vended for the location; the concrete FileIO is chosen by the implementation.
+   * Returns an Iceberg {@link FileIO} for reading under the given location. Cloud paths are served
+   * with credentials vended for the location; the concrete FileIO is chosen by the implementation.
+   *
+   * @param rootPath the root location of the data entity (e.g. a table location), not a file under
+   *     it. A local FileIO rejects paths outside it and paths through symbolic links below it (see
+   *     {@link SimpleLocalFileIO}).
    */
-  default FileIO getFileIO(NormalizedURL path) {
-    return getFileIO(path, CredentialContext.READ_ONLY);
+  default FileIO getFileIO(NormalizedURL rootPath) {
+    return getFileIO(rootPath, CredentialContext.READ_ONLY);
   }
 
-  /** Returns a FileIO configured for the requested storage privileges. */
-  FileIO getFileIO(NormalizedURL path, Set<CredentialContext.Privilege> privileges);
+  /**
+   * Returns a FileIO configured for the requested storage privileges.
+   *
+   * @param rootPath the root location of the data entity, as for {@link #getFileIO(NormalizedURL)}
+   * @param privileges the storage privileges the FileIO needs
+   */
+  FileIO getFileIO(NormalizedURL rootPath, Set<CredentialContext.Privilege> privileges);
 
   /**
    * Returns fresh, write-enabled prefix operations sharing the attempt's cancellation checks.
    *
    * <p>Cloud cleanup uses the provider's default request settings. Cancellation is checked between
    * batches and does not impose a timeout on an in-flight storage call.
+   *
+   * @param rootPath the root location of the data entity to clean up, as for {@link
+   *     #getFileIO(NormalizedURL)}
+   * @param deadline the cancellation checks shared with the cleanup attempt
    */
-  SupportsPrefixOperations getCleanupFileIO(NormalizedURL path, CooperativeDeadline deadline);
+  SupportsPrefixOperations getCleanupFileIO(NormalizedURL rootPath, CooperativeDeadline deadline);
 
   /**
    * Builds the Iceberg FileIO configuration (credentials, region, token expiry) for the given

@@ -134,7 +134,7 @@ public class FileOperationsTest {
 
     List<String> listed;
     try (CloseableIterable<FileInfo> files =
-        new SimpleLocalFileIO().listPrefix(dir.toUri().toString())) {
+        new SimpleLocalFileIO(dir).listPrefix(dir.toUri().toString())) {
       listed =
           StreamSupport.stream(files.spliterator(), false)
               .map(FileInfo::location)
@@ -156,7 +156,7 @@ public class FileOperationsTest {
     Files.writeString(dir.resolve("a.json"), "hello");
 
     try (CloseableIterable<FileInfo> files =
-        new SimpleLocalFileIO().listPrefix(dir.toUri().toString())) {
+        new SimpleLocalFileIO(dir).listPrefix(dir.toUri().toString())) {
       List<FileInfo> infos =
           StreamSupport.stream(files.spliterator(), false).collect(Collectors.toList());
       assertThat(infos).hasSize(1);
@@ -174,7 +174,7 @@ public class FileOperationsTest {
     Files.writeString(a, "a");
     Files.writeString(b, "b");
 
-    new SimpleLocalFileIO().deleteFiles(List.of(a.toUri().toString()));
+    new SimpleLocalFileIO(dir).deleteFiles(List.of(a.toUri().toString()));
 
     assertThat(Files.exists(a)).isFalse();
     assertThat(Files.exists(b)).isTrue();
@@ -193,7 +193,8 @@ public class FileOperationsTest {
     // and the deletable file is still removed.
     assertThatThrownBy(
             () ->
-                new SimpleLocalFileIO().deleteFiles(List.of(existing.toUri().toString(), missing)))
+                new SimpleLocalFileIO(dir)
+                    .deleteFiles(List.of(existing.toUri().toString(), missing)))
         .isInstanceOf(BulkDeletionFailureException.class);
     assertThat(Files.exists(existing)).isFalse();
   }

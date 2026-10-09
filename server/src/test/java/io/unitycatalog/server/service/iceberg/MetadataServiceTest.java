@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -92,11 +93,13 @@ public class MetadataServiceTest {
   @SneakyThrows
   @Test
   public void testGetTableMetadataFromLocalFS(@TempDir Path tableRoot) {
-    when(mockFileOperations.getFileIO(any())).thenReturn(new SimpleLocalFileIO());
     // Read a real Iceberg metadata fixture from local disk. The fixture's baked table root is
     // rewritten onto a hermetic temp directory, then written under it, so the metadata file
     // resolves inside the persisted table location the two-arg read validates against.
     NormalizedURL tableLocation = NormalizedURL.from(tableRoot.toUri());
+    // The FileIO is requested for the table location, not the metadata file.
+    when(mockFileOperations.getFileIO(eq(tableLocation)))
+        .thenReturn(new SimpleLocalFileIO(tableRoot));
     Path metadataFile = tableRoot.resolve("metadata/v1.metadata.json");
     Files.createDirectories(metadataFile.getParent());
     Files.writeString(metadataFile, fixtureWithTableRoot(tableLocation));

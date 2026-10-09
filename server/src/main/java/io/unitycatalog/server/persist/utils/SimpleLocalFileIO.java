@@ -1,17 +1,21 @@
 package io.unitycatalog.server.persist.utils;
 
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CancellationException;
 import java.util.stream.Stream;
 import org.apache.iceberg.io.BulkDeletionFailureException;
@@ -34,33 +38,60 @@ import org.slf4j.LoggerFactory;
  *
  * <p>It implements {@link DelegateFileIO} (rather than plain {@code FileIO}) for the {@link
  * #deletePrefix(String)} operation that backs directory deletion for managed tables/volumes.
+ *
+ * <p>Each instance is bound to the root directory of one data entity (e.g. a table location) and
+ * only operates at or under it. The server writes with its own OS identity, and clients that share
+ * the local file system can create symbolic links in the entity's directories, which could
+ * otherwise redirect a server operation outside the entity. So:
+ *
+ * <ul>
+ *   <li>an operation whose path goes through a link below the root, when the operation starts, is
+ *       rejected;
+ *   <li>listings skip links, and deletion removes a link itself rather than its target;
+ *   <li>the root itself and its ancestors are not checked.
+ * </ul>
+ *
+ * <p>The check is not atomic with the file access: a link created after it (including before a
+ * returned {@link InputFile} or {@link OutputFile} is opened) is not detected.
  */
 public class SimpleLocalFileIO implements DelegateFileIO {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(SimpleLocalFileIO.class);
+  private final Path root;
   private final CooperativeDeadline deadline;
   private final CloseableGroup listings = new CloseableGroup();
 
-  /** Creates local operations with interrupt checks and no deadline. */
-  public SimpleLocalFileIO() {
-    this(CooperativeDeadline.NO_DEADLINE);
+  /**
+   * Creates local operations for one data entity, with interrupt checks and no deadline.
+   *
+   * @param root the root directory of the data entity, as a local path
+   */
+  public SimpleLocalFileIO(Path root) {
+    this(root, CooperativeDeadline.NO_DEADLINE);
   }
 
-  /** Creates local operations sharing the given deadline and interruption checks. */
-  public SimpleLocalFileIO(CooperativeDeadline deadline) {
+  /**
+   * Creates local operations for one data entity, sharing the given deadline and interruption
+   * checks.
+   *
+   * @param root the root directory of the data entity, as a local path
+   * @param deadline the cancellation checks shared with the caller
+   */
+  public SimpleLocalFileIO(Path root, CooperativeDeadline deadline) {
+    this.root = Objects.requireNonNull(root, "root").normalize();
     this.deadline = Objects.requireNonNull(deadline, "deadline");
   }
 
   @Override
   public InputFile newInputFile(String path) {
-    return org.apache.iceberg.Files.localInput(path);
+    return org.apache.iceberg.Files.localInput(resolve(path).toFile());
   }
 
   @Override
   public OutputFile newOutputFile(String path) {
     // Local Iceberg REST tables write metadata through the same FileIO abstraction as cloud
     // tables. The core local adapter supplies the required atomic create/overwrite semantics.
-    Path filePath = toPath(path);
+    Path filePath = resolve(path);
     Path parent = filePath.getParent();
     if (parent != null) {
       try {
@@ -75,7 +106,7 @@ public class SimpleLocalFileIO implements DelegateFileIO {
   @Override
   public void deleteFile(String path) {
     try {
-      Files.delete(toPath(path));
+      Files.delete(resolve(path));
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to delete " + path, e);
     }
@@ -113,7 +144,7 @@ public class SimpleLocalFileIO implements DelegateFileIO {
 
   @Override
   public void deletePrefix(String prefix) {
-    deleteDirectory(prefix, deadline);
+    deleteDirectory(resolve(prefix), deadline);
   }
 
   /** Closes directory listings, including listings whose iteration stopped early. */
@@ -136,13 +167,15 @@ public class SimpleLocalFileIO implements DelegateFileIO {
    *     interrupt status before throwing so an executor can reuse the thread.
    */
   public static void deleteDirectory(String prefix) {
-    new SimpleLocalFileIO().deletePrefix(prefix);
+    new SimpleLocalFileIO(toPath(prefix)).deletePrefix(prefix);
   }
 
-  private static void deleteDirectory(String prefix, CooperativeDeadline deadline) {
+  // The walk does not follow links: a link is visited as a file, so deleting it removes the
+  // link and leaves its target alone.
+  private static void deleteDirectory(Path prefix, CooperativeDeadline deadline) {
     try {
       Files.walkFileTree(
-          toPath(prefix),
+          prefix,
           new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(
@@ -190,8 +223,8 @@ public class SimpleLocalFileIO implements DelegateFileIO {
    * the returned iterable. Returns an empty iterable if the prefix does not exist.
    */
   private CloseableIterable<Path> walkPrefix(String prefix) {
-    Path dirPath = toPath(prefix);
-    if (!Files.exists(dirPath)) {
+    Path dirPath = resolve(prefix);
+    if (!Files.exists(dirPath, LinkOption.NOFOLLOW_LINKS)) {
       return CloseableIterable.empty();
     }
     Stream<Path> walk;
@@ -201,7 +234,8 @@ public class SimpleLocalFileIO implements DelegateFileIO {
       throw new UncheckedIOException("Failed to walk " + prefix, e);
     }
     listings.addCloseable(walk);
-    Stream<Path> entries = walk.filter(Files::isRegularFile);
+    // The walk does not descend into linked directories; NOFOLLOW_LINKS also skips linked files.
+    Stream<Path> entries = walk.filter(p -> Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS));
     return CloseableIterable.combine(entries::iterator, walk::close);
   }
 
@@ -213,6 +247,57 @@ public class SimpleLocalFileIO implements DelegateFileIO {
           path.toUri().toString(), attrs.size(), attrs.lastModifiedTime().toMillis());
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to stat " + path, e);
+    }
+  }
+
+  /**
+   * Returns the local path of a location under the root, rejecting it if any existing component
+   * below the root is a symbolic link. Components that do not exist yet are not links.
+   *
+   * @param path a file URI at or under the root
+   * @throws BaseException with {@code PERMISSION_DENIED} if the path goes through a link
+   * @throws IllegalArgumentException if the path is not at or under the root
+   * @throws UncheckedIOException if a component's attributes cannot be read
+   */
+  private Path resolve(String path) {
+    Path filePath = toPath(path).normalize();
+    if (!filePath.startsWith(root)) {
+      throw new IllegalArgumentException(
+          String.format("Local path %s is not under %s", filePath, root));
+    }
+    if (filePath.equals(root)) {
+      return filePath;
+    }
+    Path current = root;
+    for (Path name : root.relativize(filePath)) {
+      current = current.resolve(name);
+      Optional<BasicFileAttributes> attributes = readAttributesNoFollow(current);
+      if (attributes.isEmpty()) {
+        break;
+      }
+      if (attributes.get().isSymbolicLink()) {
+        throw new BaseException(
+            ErrorCode.PERMISSION_DENIED,
+            "Local path goes through a symbolic link, which the server does not follow: " + path);
+      }
+    }
+    return filePath;
+  }
+
+  /**
+   * Reads a path's own attributes, without following a link at it.
+   *
+   * @return the attributes, or empty if nothing exists at the path
+   * @throws UncheckedIOException if the attributes cannot be read
+   */
+  private static Optional<BasicFileAttributes> readAttributesNoFollow(Path path) {
+    try {
+      return Optional.of(
+          Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS));
+    } catch (NoSuchFileException e) {
+      return Optional.empty();
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to read attributes of " + path, e);
     }
   }
 

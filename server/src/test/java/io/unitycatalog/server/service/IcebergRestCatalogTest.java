@@ -1214,6 +1214,53 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   }
 
   @Test
+  public void testCommitThroughALinkedMetadataDirectoryIsRejected()
+      throws ApiException, IOException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+    Path table = Files.createTempDirectory(testDirectoryRoot, "iceberg-linked-table");
+    Path outside = Files.createTempDirectory(testDirectoryRoot, "iceberg-link-target");
+    icebergClient.createTable(
+        TestUtils.CATALOG_NAME,
+        TestUtils.SCHEMA_NAME,
+        CreateTableRequest.builder()
+            .withName(TestUtils.TABLE_NAME)
+            .withSchema(new Schema(Types.NestedField.required(1, "id", Types.LongType.get())))
+            .withLocation(table.toUri().toString())
+            .build());
+
+    // A client sharing the file system swaps the metadata directory for a link to a directory
+    // holding the same files, so following the link would read and commit successfully.
+    Path metadata = table.resolve("metadata");
+    try (var files = Files.list(metadata)) {
+      for (Path file : files.toList()) {
+        Files.copy(file, outside.resolve(file.getFileName()));
+      }
+    }
+    Files.move(metadata, table.resolve("metadata.moved"));
+    Files.createSymbolicLink(metadata, outside);
+    long filesBefore;
+    try (var files = Files.list(outside)) {
+      filesBefore = files.count();
+    }
+
+    UpdateTableRequest commit =
+        new UpdateTableRequest(
+            List.of(), List.of(new MetadataUpdate.SetProperties(Map.of("k", "v"))));
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.updateTable(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, commit),
+        403,
+        "goes through a symbolic link");
+    try (var files = Files.list(outside)) {
+      assertThat(files.count()).isEqualTo(filesBefore);
+    }
+  }
+
+  @Test
   public void testConcurrentCommitsSerializeWithCompareAndSwap()
       throws ApiException, IOException, InterruptedException, ExecutionException, TimeoutException {
     catalogOperations.createCatalog(

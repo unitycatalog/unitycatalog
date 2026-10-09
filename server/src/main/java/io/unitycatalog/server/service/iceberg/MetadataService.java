@@ -41,7 +41,7 @@ public class MetadataService {
     validateMetadataLocation(metadataLocation, persistedTableLocation);
     // TODO: cache fileIO
     TableMetadata tableMetadata;
-    try (FileIO fileIO = fileOperations.getFileIO(metadataLocation)) {
+    try (FileIO fileIO = fileOperations.getFileIO(persistedTableLocation)) {
       tableMetadata = TableMetadataParser.read(fileIO, metadataLocation.toString());
     }
     validateTableMetadataLocation(tableMetadata, persistedTableLocation);
@@ -55,7 +55,8 @@ public class MetadataService {
       NormalizedURL persistedTableLocation) {
     validateTableMetadataLocation(tableMetadata, persistedTableLocation);
     validateMetadataLocation(metadataLocation, persistedTableLocation);
-    try (FileIO fileIO = fileOperations.getFileIO(metadataLocation, CredentialContext.READ_WRITE)) {
+    try (FileIO fileIO =
+        fileOperations.getFileIO(persistedTableLocation, CredentialContext.READ_WRITE)) {
       TableMetadataParser.write(tableMetadata, fileIO.newOutputFile(metadataLocation.toString()));
     }
   }
@@ -74,9 +75,15 @@ public class MetadataService {
     createStorageLocationDirIfAbsent(NormalizedURL.from(location + "/data"));
   }
 
-  /** Best-effort cleanup of a metadata file that lost a commit race or whose commit failed. */
-  private void deleteTableMetadata(NormalizedURL metadataLocation) {
-    try (FileIO fileIO = fileOperations.getFileIO(metadataLocation, CredentialContext.READ_WRITE)) {
+  /**
+   * Best-effort cleanup of a metadata file that lost a commit race or whose commit failed,
+   * constrained to the persisted table location.
+   */
+  public void deleteTableMetadata(
+      NormalizedURL metadataLocation, NormalizedURL persistedTableLocation) {
+    validateMetadataLocation(metadataLocation, persistedTableLocation);
+    try (FileIO fileIO =
+        fileOperations.getFileIO(persistedTableLocation, CredentialContext.READ_WRITE)) {
       fileIO.deleteFile(metadataLocation.toString());
     } catch (Exception e) {
       // Orphaned metadata files are harmless; the commit outcome is decided by the catalog. Still
@@ -84,13 +91,6 @@ public class MetadataService {
       // diagnosable rather than being silently swallowed.
       LOGGER.warn("Best-effort cleanup of Iceberg metadata file {} failed", metadataLocation, e);
     }
-  }
-
-  /** Best-effort cleanup constrained to the persisted table location. */
-  public void deleteTableMetadata(
-      NormalizedURL metadataLocation, NormalizedURL persistedTableLocation) {
-    validateMetadataLocation(metadataLocation, persistedTableLocation);
-    deleteTableMetadata(metadataLocation);
   }
 
   /** Builds the location of the next metadata file, following Iceberg's naming scheme. */
