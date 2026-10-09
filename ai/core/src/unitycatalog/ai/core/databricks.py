@@ -42,6 +42,7 @@ from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
     convert_timedelta_to_interval_str,
     is_time_type,
+    is_value_of_column_type,
 )
 from unitycatalog.ai.core.utils.validation_utils import (
     FullFunctionName,
@@ -620,7 +621,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         if value_python_type is Variant:
             Variant.validate(value)
             return
-        if not isinstance(value, value_python_type):
+        if not is_value_of_column_type(value, param_info.type_name.value, value_python_type):
             raise ValueError(
                 f"Parameter {param_info.name} should be of type {param_info.type_name.value} "
                 f"(corresponding python type {value_python_type}), but got {type(value)}"

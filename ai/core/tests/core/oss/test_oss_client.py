@@ -37,6 +37,7 @@ from unitycatalog.client import (
     CatalogsApi,
     Configuration,
     FunctionParameterInfo,
+    FunctionParameterInfos,
     FunctionsApi,
     SchemasApi,
 )
@@ -844,6 +845,54 @@ async def test_validate_param_invalid_interval():
 
     with pytest.raises(ValueError, match="Invalid interval type text"):
         validate_param(param, column_type, param_type_text)
+
+
+def floating_point_param_infos(type_name: str, type_text: str) -> FunctionParameterInfos:
+    return FunctionParameterInfos(
+        parameters=[
+            FunctionParameterInfo(
+                name="radius",
+                type_name=type_name,
+                type_text=type_text,
+                type_json=f'{{"name":"radius","type":"{type_text}","nullable":false,"metadata":{{}}}}',
+                position=0,
+            )
+        ]
+    )
+
+
+FLOATING_POINT_TYPES = [("FLOAT", "float"), ("DOUBLE", "double"), ("DECIMAL", "decimal(10,2)")]
+
+
+@pytest_asyncio.fixture
+async def validation_client():
+    uc_api_client = ApiClient(configuration=Configuration())
+    client = UnitycatalogFunctionClient(api_client=uc_api_client)
+    yield client
+    await client.close_async()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("type_name,type_text", FLOATING_POINT_TYPES)
+@pytest.mark.parametrize("param_value", [2, 0, -7])
+async def test_validate_input_params_accepts_int_for_floating_point_types(
+    validation_client, type_name, type_text, param_value
+):
+    validation_client.validate_input_params(
+        floating_point_param_infos(type_name, type_text), {"radius": param_value}
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("type_name,type_text", FLOATING_POINT_TYPES)
+@pytest.mark.parametrize("param_value", [True, False])
+async def test_validate_input_params_rejects_bool_for_floating_point_types(
+    validation_client, type_name, type_text, param_value
+):
+    with pytest.raises(ValueError, match=f"Parameter radius should be of type .*{type_name}"):
+        validation_client.validate_input_params(
+            floating_point_param_infos(type_name, type_text), {"radius": param_value}
+        )
 
 
 @pytest.mark.asyncio
