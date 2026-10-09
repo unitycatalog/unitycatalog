@@ -473,10 +473,10 @@ lazy val server = (project in file("server"))
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
 
       // Integration testing
-      "org.testcontainers" % "testcontainers" % "1.19.8" % Test,
-      "org.testcontainers" % "postgresql" % "1.19.8" % Test,
-      "org.testcontainers" % "mysql" % "1.19.8" % Test,
-      "org.testcontainers" % "junit-jupiter" % "1.19.8" % Test,
+      "org.testcontainers" % "testcontainers" % "1.21.4" % Test,
+      "org.testcontainers" % "postgresql" % "1.21.4" % Test,
+      "org.testcontainers" % "mysql" % "1.21.4" % Test,
+      "org.testcontainers" % "junit-jupiter" % "1.21.4" % Test,
       "org.postgresql" % "postgresql" % "42.7.13" % Test,
       "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
 
