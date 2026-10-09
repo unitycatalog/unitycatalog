@@ -63,6 +63,8 @@ public abstract class BaseServerTest {
     serverProperties.setProperty(Property.INCLUDE_STACK_TRACE_IN_ERROR.getKey(), "true");
     tableStorageRoot = getManagedStorageCloudPath(testDirectoryRoot);
     serverProperties.setProperty(Property.TABLE_STORAGE_ROOT.getKey(), tableStorageRoot);
+    serverProperties.setProperty(
+        Property.EXTERNAL_LOCAL_ROOTS.getKey(), testDirectoryRoot.toString());
   }
 
   protected void setUpCredentialOperations(ServerProperties serverProperties) {}
