@@ -149,7 +149,7 @@ print(result.value)  # Outputs: 2
 Now we create an agent and use the tools.
 
 ```python
-from langchain_community.chat_models.databricks import ChatDatabricks
+from databricks_langchain import ChatDatabricks
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
 
