@@ -27,7 +27,10 @@ from unitycatalog.ai.core.utils.callable_utils_oss import (
 )
 from unitycatalog.ai.core.utils.execution_utils import ExecutionMode, load_function_from_string
 from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
-from unitycatalog.ai.core.utils.type_utils import column_type_to_python_type
+from unitycatalog.ai.core.utils.type_utils import (
+    column_type_to_python_type,
+    is_value_of_column_type,
+)
 from unitycatalog.ai.core.utils.validation_utils import (
     FullFunctionName,
     validate_function_name_length,
@@ -847,7 +850,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         value_python_type = column_type_to_python_type(
             param_info.type_name, mapping=SQL_TYPE_TO_PYTHON_TYPE_MAPPING_UC_OSS
         )
-        if not isinstance(value, value_python_type):
+        if not is_value_of_column_type(value, param_info.type_name, value_python_type):
             raise ValueError(
                 f"Parameter {param_info.name} should be of type {param_info.type_name} "
                 f"(corresponding python type {value_python_type}), but got {type(value)}"
