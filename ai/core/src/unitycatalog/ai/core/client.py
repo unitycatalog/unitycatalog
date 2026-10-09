@@ -4,7 +4,7 @@ import datetime
 import decimal
 import logging
 from enum import Enum
-from functools import lru_cache, partial, wraps
+from functools import partial, wraps
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import nest_asyncio
@@ -865,13 +865,14 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         applies parameter defaults, and caches the function for future calls.
         """
         parameters = process_function_parameter_defaults(function_info, parameters)
-        if function_info.name in self.func_cache:
-            func = self.func_cache[function_info.name]
+        if function_info.full_name in self.func_cache:
+            func = self.func_cache[function_info.full_name]
         else:
             python_function = get_callable_definition(function_info)
-            exec(python_function, self.func_cache)
-            func = self.func_cache[function_info.name]
-            self.func_cache[function_info.name] = lru_cache()(func)
+            namespace = {}
+            exec(python_function, namespace)
+            func = namespace[function_info.name]
+            self.func_cache[function_info.full_name] = func
         return func, parameters
 
     @override
