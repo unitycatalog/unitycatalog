@@ -51,12 +51,8 @@ public interface FileOperations {
 
   private static void createLocalDirectory(NormalizedURL url) {
     Path dirPath = Paths.get(url.toUri());
-    // Never create a directory at a symbolic link (see SimpleLocalFileIO). A table's metadata/ and
-    // data/ directories are created after the table location itself, so a linked table location is
-    // refused before anything is created through it.
-    SimpleLocalFileIO.existsAsNonLink(dirPath, url.toString());
-    // Check if directory already exists
-    if (Files.exists(dirPath)) {
+    // Never create a directory at a symbolic link (see SimpleLocalFileIO).
+    if (SimpleLocalFileIO.existsRejectingLink(dirPath, url.toString())) {
       throw new BaseException(ErrorCode.ALREADY_EXISTS, "Directory already exists: " + dirPath);
     }
     // Create the directory

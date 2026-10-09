@@ -70,6 +70,8 @@ public class MetadataService {
       TableMetadata tableMetadata, NormalizedURL persistedTableLocation) {
     validateTableMetadataLocation(tableMetadata, persistedTableLocation);
     NormalizedURL location = persistedTableLocation;
+    // The table location first: creating a directory at a symbolic link is refused, so a linked
+    // table location fails here, before metadata/ or data/ could be created through it.
     createStorageLocationDirIfAbsent(location);
     createStorageLocationDirIfAbsent(NormalizedURL.from(location + "/metadata"));
     createStorageLocationDirIfAbsent(NormalizedURL.from(location + "/data"));

@@ -164,12 +164,15 @@ public class SimpleLocalFileIOTest {
     write(uri(root.resolve("metadata/v1.json")), "m");
     write(uri(root.resolve("data/part-0")), "d");
     Files.writeString(outside.resolve("target.txt"), "outside");
+    Files.writeString(outside.resolve("file.txt"), "outside file");
     Files.createSymbolicLink(root.resolve("data/dirLink"), outside);
+    Files.createSymbolicLink(root.resolve("metadata/fileLink"), outside.resolve("file.txt"));
 
     fileIO.deletePrefix(uri(root));
     assertThat(Files.exists(root)).isFalse();
-    // The link was removed, not followed.
+    // The links were removed, not followed.
     assertThat(outside.resolve("target.txt")).hasContent("outside");
+    assertThat(outside.resolve("file.txt")).hasContent("outside file");
   }
 
   @Test
@@ -260,20 +263,22 @@ public class SimpleLocalFileIOTest {
 
   @Test
   public void pathOutsideTheRootIsRejected() {
-    assertThatThrownBy(() -> fileIO.newOutputFile(uri(outside.resolve("v1.json"))))
-        .isInstanceOf(IllegalArgumentException.class);
+    assertInvalidArgument(() -> fileIO.newOutputFile(uri(outside.resolve("v1.json"))));
     // An escape that decodes to a separator and a dot segment is rejected before it is decoded.
     String escaped = uri(tempDir) + "sub/..%2F..%2Fescaped.json";
-    assertThatThrownBy(() -> fileIO.newInputFile(escaped))
+    assertInvalidArgument(() -> fileIO.newInputFile(escaped));
+    assertInvalidArgument(() -> fileIO.newInputFile(uri(tempDir.resolve("../escaped.json"))));
+  }
+
+  private static void assertInvalidArgument(ThrowingCallable call) {
+    assertThatThrownBy(call)
         .isInstanceOf(BaseException.class)
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.INVALID_ARGUMENT);
-    assertThatThrownBy(() -> fileIO.newInputFile(uri(tempDir.resolve("../escaped.json"))))
-        .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
-  public void linkAtTheRootIsRejectedButNotAboveIt() throws IOException {
+  public void linkAtTheRootIsRejectedExceptOnDeleteAndNotCheckedAboveIt() throws IOException {
     Files.writeString(outside.resolve("target.txt"), "outside");
     // The root itself is a link, e.g. a table location replaced by a link to another directory.
     Path linkedRoot = Files.createSymbolicLink(tempDir.resolve("linkedRoot"), outside);
@@ -281,7 +286,9 @@ public class SimpleLocalFileIOTest {
       assertLinkRejected(() -> linked.newOutputFile(uri(linkedRoot.resolve("metadata/v1.json"))));
       assertLinkRejected(() -> linked.newInputFile(uri(linkedRoot.resolve("target.txt"))));
       assertLinkRejected(() -> linked.listPrefix(uri(linkedRoot)));
-      assertLinkRejected(() -> linked.deletePrefix(uri(linkedRoot)));
+      // Deleting the root removes the link itself, so cleanup of the entity can finish.
+      linked.deletePrefix(uri(linkedRoot));
+      assertThat(linkedRoot).doesNotExist();
     }
     assertThat(outside.resolve("metadata")).doesNotExist();
     assertThat(outside.resolve("target.txt")).hasContent("outside");

@@ -4,6 +4,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ValidationUtils;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.FileVisitResult;
@@ -46,7 +47,7 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li>an operation whose path goes through a link at or below the root, when the operation
- *       starts, is rejected;
+ *       starts, is rejected, except deleting the root itself;
  *   <li>listings skip links, and deletion removes a link itself rather than its target;
  *   <li>the ancestors of the root are not checked.
  * </ul>
@@ -144,7 +145,11 @@ public class SimpleLocalFileIO implements DelegateFileIO {
 
   @Override
   public void deletePrefix(String prefix) {
-    deleteDirectory(resolve(prefix), deadline);
+    Path dir = toPath(prefix).normalize();
+    // The walk does not follow a link at the path it starts from, but the OS follows links in the
+    // components before it. At the root, a link is removed itself, so cleanup of an entity whose
+    // directory was replaced by a link can finish; below it, check the components in between.
+    deleteDirectory(dir.equals(root) ? dir : resolve(prefix), deadline);
   }
 
   /** Closes directory listings, including listings whose iteration stopped early. */
@@ -256,23 +261,21 @@ public class SimpleLocalFileIO implements DelegateFileIO {
    *
    * @param path a file URI at or under the root
    * @throws BaseException with {@code PERMISSION_DENIED} if the path goes through a link
-   * @throws IllegalArgumentException if the path is not at or under the root
+   * @throws BaseException with {@code INVALID_ARGUMENT} if the path is not at or under the root
    * @throws UncheckedIOException if a component's attributes cannot be read
    */
   private Path resolve(String path) {
     Path filePath = toPath(path).normalize();
-    if (!filePath.startsWith(root)) {
-      throw new IllegalArgumentException(
-          String.format("Local path %s is not under %s", filePath, root));
-    }
+    ValidationUtils.checkArgument(
+        filePath.startsWith(root), "Local path %s is not under %s", filePath, root);
     // The root itself, then each component below it, until one does not exist yet.
-    if (!existsAsNonLink(root, path) || filePath.equals(root)) {
+    if (!existsRejectingLink(root, path) || filePath.equals(root)) {
       return filePath;
     }
     Path current = root;
     for (Path name : root.relativize(filePath)) {
       current = current.resolve(name);
-      if (!existsAsNonLink(current, path)) {
+      if (!existsRejectingLink(current, path)) {
         break;
       }
     }
@@ -288,7 +291,7 @@ public class SimpleLocalFileIO implements DelegateFileIO {
    * @throws BaseException with {@code PERMISSION_DENIED} if the path is a symbolic link
    * @throws UncheckedIOException if the attributes cannot be read
    */
-  static boolean existsAsNonLink(Path path, String location) {
+  static boolean existsRejectingLink(Path path, String location) {
     BasicFileAttributes attributes;
     try {
       attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
@@ -300,7 +303,9 @@ public class SimpleLocalFileIO implements DelegateFileIO {
     if (attributes.isSymbolicLink()) {
       throw new BaseException(
           ErrorCode.PERMISSION_DENIED,
-          "Local path goes through a symbolic link, which the server does not follow: " + location);
+          String.format(
+              "Local path %s goes through a symbolic link at %s, which the server does not follow",
+              location, path));
     }
     return true;
   }
