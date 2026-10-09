@@ -3,9 +3,9 @@ package io.unitycatalog.server.persist.utils;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.CooperativeDeadline;
+import io.unitycatalog.server.utils.NormalizedURL;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.net.URI;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -288,7 +288,7 @@ public class SimpleLocalFileIO implements DelegateFileIO {
    * @throws BaseException with {@code PERMISSION_DENIED} if the path is a symbolic link
    * @throws UncheckedIOException if the attributes cannot be read
    */
-  private static boolean existsAsNonLink(Path path, String location) {
+  static boolean existsAsNonLink(Path path, String location) {
     BasicFileAttributes attributes;
     try {
       attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
@@ -305,7 +305,14 @@ public class SimpleLocalFileIO implements DelegateFileIO {
     return true;
   }
 
+  /**
+   * Returns the local path the file system opens for a location. The location is normalized first,
+   * which rejects an escape that would change the path when decoded (e.g. {@code ..%2F}), so the
+   * path checked is the path opened.
+   *
+   * @throws BaseException with {@code INVALID_ARGUMENT} if the location is not one plain path
+   */
   private static Path toPath(String path) {
-    return Paths.get(URI.create(path));
+    return Paths.get(NormalizedURL.from(path).toUri());
   }
 }

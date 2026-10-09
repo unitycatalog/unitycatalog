@@ -51,6 +51,10 @@ public interface FileOperations {
 
   private static void createLocalDirectory(NormalizedURL url) {
     Path dirPath = Paths.get(url.toUri());
+    // Never create a directory at a symbolic link (see SimpleLocalFileIO). A table's metadata/ and
+    // data/ directories are created after the table location itself, so a linked table location is
+    // refused before anything is created through it.
+    SimpleLocalFileIO.existsAsNonLink(dirPath, url.toString());
     // Check if directory already exists
     if (Files.exists(dirPath)) {
       throw new BaseException(ErrorCode.ALREADY_EXISTS, "Directory already exists: " + dirPath);
@@ -68,8 +72,8 @@ public interface FileOperations {
    * with credentials vended for the location; the concrete FileIO is chosen by the implementation.
    *
    * @param rootPath the root location of the data entity (e.g. a table location), not a file under
-   *     it. A local FileIO rejects paths outside it and paths through symbolic links below it (see
-   *     {@link SimpleLocalFileIO}).
+   *     it. A local FileIO rejects paths outside it and paths through symbolic links at or below it
+   *     (see {@link SimpleLocalFileIO}).
    */
   default FileIO getFileIO(NormalizedURL rootPath) {
     return getFileIO(rootPath, CredentialContext.READ_ONLY);

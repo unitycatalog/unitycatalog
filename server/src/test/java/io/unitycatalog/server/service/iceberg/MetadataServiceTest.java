@@ -6,12 +6,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import com.amazonaws.util.IOUtils;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
+import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -120,6 +125,63 @@ public class MetadataServiceTest {
       return new String(fixture.readAllBytes(), StandardCharsets.UTF_8)
           .replace("file:/tmp/uniform_iceberg_table", root.toString());
     }
+  }
+
+  @SneakyThrows
+  @Test
+  public void testPrepareTableLocationThatIsALinkIsRejected(
+      @TempDir Path dir, @TempDir Path outside) {
+    // A staged create at a table location that is a link: no directory is created in its target.
+    Path linkedTable = Files.createSymbolicLink(dir.resolve("table"), outside);
+    NormalizedURL tableLocation = NormalizedURL.from(linkedTable.toUri());
+    TableMetadata tableMetadata =
+        TableMetadata.newTableMetadata(
+            new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
+            PartitionSpec.unpartitioned(),
+            tableLocation.toString(),
+            Map.of());
+
+    assertThatThrownBy(() -> metadataService.prepareTableLocation(tableMetadata, tableLocation))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.PERMISSION_DENIED);
+    assertThat(outside.resolve("metadata")).doesNotExist();
+    assertThat(outside.resolve("data")).doesNotExist();
+  }
+
+  @SneakyThrows
+  @Test
+  public void testWriteAndDeleteOnLocalFSUseTheTableLocation(
+      @TempDir Path tableRoot, @TempDir Path outside) {
+    NormalizedURL tableLocation = NormalizedURL.from(tableRoot.toUri());
+    // Bound to the table location, so a link under it is refused rather than followed.
+    when(mockFileOperations.getFileIO(eq(tableLocation), eq(CredentialContext.READ_WRITE)))
+        .thenAnswer(invocation -> new SimpleLocalFileIO(tableRoot));
+    TableMetadata tableMetadata =
+        TableMetadata.newTableMetadata(
+            new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
+            PartitionSpec.unpartitioned(),
+            tableLocation.toString(),
+            Map.of());
+    Files.createSymbolicLink(tableRoot.resolve("metadata"), outside);
+    String fileName = "00001-" + UUID.randomUUID() + ".metadata.json";
+    NormalizedURL metadataLocation =
+        NormalizedURL.from(tableRoot.resolve("metadata").resolve(fileName).toUri());
+
+    assertThatThrownBy(
+            () ->
+                metadataService.writeTableMetadata(tableMetadata, metadataLocation, tableLocation))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.PERMISSION_DENIED);
+    assertThat(outside.resolve(fileName)).doesNotExist();
+
+    // Delete is best effort and only logs a failure, so check the file through the link survives
+    // and that both calls asked for a FileIO bound to the table location.
+    Files.writeString(outside.resolve(fileName), "keep");
+    metadataService.deleteTableMetadata(metadataLocation, tableLocation);
+    assertThat(outside.resolve(fileName)).hasContent("keep");
+    verify(mockFileOperations, times(2)).getFileIO(tableLocation, CredentialContext.READ_WRITE);
   }
 
   @SneakyThrows

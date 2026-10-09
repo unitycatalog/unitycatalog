@@ -67,11 +67,11 @@ The server config file is at the location `etc/conf/server.properties` (relative
     file.
 - `server.external-local-roots`: A comma-separated list of local directories (plain paths or `file:` URLs) under
     which external Iceberg tables may be created through the Iceberg REST catalog without an external location. The
-    server creates these tables' directories and writes their metadata itself (see
-    [Local file system storage](#local-file-system-storage)), so it accepts a local location only when the location
-    is under an external location or strictly under one of these roots (the root itself is not accepted). Unset by
-    default: a local external Iceberg table then needs an external location. No securable governs a root, so any
-    principal who can create a table can use it. Each entry must be a local path; an entry such as an `s3://` URL
+    server creates these tables' directories and writes their metadata itself
+    (see [Local file system storage](#local-file-system-storage)), so it accepts a local location only when the
+    location is under an external location or strictly under one of these roots (the root itself is not accepted).
+    Unset by default: a local external Iceberg table then needs an external location. No securable governs a root, so
+    any principal who can create a table can use it. Each entry must be a local path; an entry such as an `s3://` URL
     fails server startup. As with `storage-root.*`, a relative path containing `/` (for example `./uc-external`) is
     resolved against the server's working directory, and a directory that does not exist yet is accepted.
 

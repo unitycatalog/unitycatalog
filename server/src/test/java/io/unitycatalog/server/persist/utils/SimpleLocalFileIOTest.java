@@ -239,17 +239,21 @@ public class SimpleLocalFileIOTest {
     Files.writeString(outside.resolve("sub/keep.txt"), "keep");
     Files.createSymbolicLink(tempDir.resolve("dirLink"), outside);
     Files.createSymbolicLink(tempDir.resolve("fileLink"), outside.resolve("target.txt"));
+    // A link whose target does not exist yet: writing through it would create the target.
+    Files.createSymbolicLink(tempDir.resolve("danglingLink"), outside.resolve("new.json"));
     String throughDirLink = uri(tempDir.resolve("dirLink/metadata/v1.json"));
     String fileLink = uri(tempDir.resolve("fileLink"));
 
     assertLinkRejected(() -> fileIO.newOutputFile(throughDirLink));
     assertLinkRejected(() -> fileIO.newOutputFile(fileLink));
+    assertLinkRejected(() -> fileIO.newOutputFile(uri(tempDir.resolve("danglingLink"))));
     assertLinkRejected(() -> fileIO.newInputFile(fileLink));
     assertLinkRejected(() -> fileIO.deleteFile(fileLink));
     assertLinkRejected(() -> fileIO.listPrefix(uri(tempDir.resolve("dirLink"))));
     assertLinkRejected(() -> fileIO.deletePrefix(uri(tempDir.resolve("dirLink/sub"))));
     // Nothing was created, changed, or deleted outside the root.
     assertThat(outside.resolve("metadata")).doesNotExist();
+    assertThat(outside.resolve("new.json")).doesNotExist();
     assertThat(outside.resolve("target.txt")).hasContent("outside");
     assertThat(outside.resolve("sub/keep.txt")).hasContent("keep");
   }
@@ -258,6 +262,12 @@ public class SimpleLocalFileIOTest {
   public void pathOutsideTheRootIsRejected() {
     assertThatThrownBy(() -> fileIO.newOutputFile(uri(outside.resolve("v1.json"))))
         .isInstanceOf(IllegalArgumentException.class);
+    // An escape that decodes to a separator and a dot segment is rejected before it is decoded.
+    String escaped = uri(tempDir) + "sub/..%2F..%2Fescaped.json";
+    assertThatThrownBy(() -> fileIO.newInputFile(escaped))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
     assertThatThrownBy(() -> fileIO.newInputFile(uri(tempDir.resolve("../escaped.json"))))
         .isInstanceOf(IllegalArgumentException.class);
   }

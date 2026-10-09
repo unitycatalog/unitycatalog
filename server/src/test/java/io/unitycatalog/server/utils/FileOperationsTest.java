@@ -79,6 +79,26 @@ public class FileOperationsTest {
 
   @SneakyThrows
   @Test
+  public void testCreateStorageLocationDirAtALinkIsRejectedButNotUnderOne() {
+    Path outside = Files.createDirectories(rootBase.resolve("outside"));
+    Path link = Files.createSymbolicLink(rootBase.resolve("link"), outside);
+
+    // The location is a link, e.g. a replaced table directory.
+    assertThatThrownBy(
+            () -> FileOperations.createStorageLocationDir(NormalizedURL.from(link.toUri())))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("symbolic link")
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.PERMISSION_DENIED);
+
+    // Ancestors are not checked, as for SimpleLocalFileIO, so a location under a linked directory
+    // is created.
+    FileOperations.createStorageLocationDir(NormalizedURL.from(link.resolve("table").toUri()));
+    assertThat(outside.resolve("table")).isDirectory();
+  }
+
+  @SneakyThrows
+  @Test
   public void testModelDirectory() {
     // Test model directory creation with a given storage root
     NormalizedURL parentStorageLocation = NormalizedURL.from(rootBase.toString());
