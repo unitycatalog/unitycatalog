@@ -7,6 +7,7 @@ case class OpenApiSpec(
   apiPackage: String = null,
   modelPackage: String = null,
   packageName: String = null,
+  templateDir: String = null,
   additionalProperties: Map[String, String] = Map.empty,
   globalProperties: Map[String, String] = Map.empty
 )
@@ -25,11 +26,12 @@ case class OpenApiSpec(
  *
  * Differences from the plugin:
  * - Added: loop over multiple specs, packageName parameter (for Python),
+ *   optional templateDir (for per-spec template overrides),
  *   per-instance suppression of test/metadata generation via
  *   setGeneratorPropertyDefault (equivalent to the plugin's
  *   openApiGenerateModelTests := SettingDisabled).
  * - Removed: ~30 config knobs not needed here (verbose, validateSpec,
- *   skipOverwrite, templateDir, auth, gitHost, importMappings,
+ *   skipOverwrite, auth, gitHost, importMappings,
  *   typeMappings, etc.). These all have sensible defaults in
  *   CodegenConfigurator.
  * - No behavioral change in generated code: the output is identical to
@@ -53,6 +55,7 @@ object OpenApiHelper {
       if (spec.apiPackage != null) config.setApiPackage(spec.apiPackage)
       if (spec.modelPackage != null) config.setModelPackage(spec.modelPackage)
       if (spec.packageName != null) config.setPackageName(spec.packageName)
+      if (spec.templateDir != null) config.setTemplateDir(spec.templateDir)
       spec.additionalProperties.foreach { case (k, v) => config.addAdditionalProperty(k, v) }
       spec.globalProperties.foreach { case (k, v) => config.addGlobalProperty(k, v) }
       val gen = new DefaultGenerator()
