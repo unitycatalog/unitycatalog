@@ -314,7 +314,8 @@ lazy val pythonClient = (project in file("clients/python"))
             OpenApiSpec(
               inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "all.yaml").getAbsolutePath,
               packageName = s"$artifactNamePrefix.client",
-              additionalProperties = commonProps
+              additionalProperties = commonProps,
+              templateDir = (baseDirectory.value / "build" / "templates").getAbsolutePath
             ),
             OpenApiSpec(
               inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "delta.yaml").getAbsolutePath,
