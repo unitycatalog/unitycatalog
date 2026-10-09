@@ -1,5 +1,6 @@
 package io.unitycatalog.spark;
 
+import io.unitycatalog.server.utils.ServerProperties;
 import java.io.File;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.io.TempDir;
@@ -16,6 +17,17 @@ import org.junit.jupiter.api.io.TempDir;
 public class IcebergExternalTableReadWriteTest extends IcebergTableReadWriteTest {
 
   @TempDir protected File dataDir;
+
+  @Override
+  @SneakyThrows
+  protected void setUpProperties() {
+    super.setUpProperties();
+    // The tables live under dataDir, outside testDirectoryRoot; allow it as a local root, spelled
+    // as getLocation spells the table paths.
+    String key = ServerProperties.Property.EXTERNAL_LOCAL_ROOTS.getKey();
+    serverProperties.setProperty(
+        key, serverProperties.getProperty(key) + "," + dataDir.getCanonicalPath());
+  }
 
   @Override
   protected boolean isManagedTable() {

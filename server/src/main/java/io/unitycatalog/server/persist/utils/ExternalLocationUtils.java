@@ -267,6 +267,19 @@ public class ExternalLocationUtils {
         .toList();
   }
 
+  /** Returns the URL of every external location on the local file system, as stored. */
+  public List<String> listLocalExternalLocationUrls() {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session ->
+            session
+                .createQuery(
+                    "SELECT url FROM ExternalLocationDAO WHERE url LIKE 'file:%'", String.class)
+                .list(),
+        "Failed to list local external locations",
+        /* readOnly= */ true);
+  }
+
   /**
    * Finds the storage credential associated with the external location that covers the given path.
    *
