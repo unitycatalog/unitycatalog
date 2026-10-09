@@ -8,6 +8,7 @@ import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -49,6 +50,10 @@ public class FileOperationsImpl implements FileOperations {
   // Per-bucket S3 region: seeded from the configured s3.region.N, then filled by HeadBucket
   // discovery for buckets that have none configured. A discovered region is cached for reuse.
   private final Map<NormalizedURL, String> s3BucketRegionMap;
+  // Per-bucket S3-compatible endpoint (MinIO, MCG/NooBaa, ...) from s3.endpointUrl.N.
+  private final Map<NormalizedURL, String> s3BucketEndpointMap;
+  // Fallback region for S3-compatible buckets that have no s3.region.N configured.
+  private final String defaultS3Region;
   private final Supplier<S3ClientBuilder> s3ClientBuilderSupplier;
 
   public FileOperationsImpl(
@@ -69,6 +74,7 @@ public class FileOperationsImpl implements FileOperations {
     this.storageCredentialVendor = storageCredentialVendor;
     this.s3ClientBuilderSupplier = s3ClientBuilderSupplier;
     this.s3BucketRegionMap = new ConcurrentHashMap<>();
+    this.s3BucketEndpointMap = new HashMap<>();
     serverProperties
         .getS3Configurations()
         .forEach(
@@ -76,7 +82,22 @@ public class FileOperationsImpl implements FileOperations {
               if (config.getRegion() != null) {
                 s3BucketRegionMap.put(bucket, config.getRegion());
               }
+              String endpoint = s3Endpoint(config);
+              if (endpoint != null) {
+                s3BucketEndpointMap.put(bucket, endpoint);
+              }
             });
+    String awsRegion = serverProperties.get(ServerProperties.Property.AWS_REGION);
+    this.defaultS3Region =
+        awsRegion == null || awsRegion.isEmpty() ? Region.US_EAST_1.id() : awsRegion;
+  }
+
+  private static String s3Endpoint(S3StorageConfig config) {
+    String endpoint = config.getS3EndpointUrl();
+    if (endpoint == null || endpoint.isEmpty()) {
+      endpoint = config.getEndpointUrl();
+    }
+    return endpoint == null || endpoint.isEmpty() ? null : endpoint;
   }
 
   // TODO: Cache fileIOs
@@ -142,7 +163,11 @@ public class FileOperationsImpl implements FileOperations {
       return getGCSConfig(cred.getGcpOauthToken(), cred.getExpirationTime(), credentialsEndpoint);
     } else if (cred.getAwsTempCredentials() != null) {
       return getS3Config(
-          path, cred.getAwsTempCredentials(), cred.getExpirationTime(), credentialsEndpoint);
+          path,
+          cred.getAwsTempCredentials(),
+          cred.getEndpointUrl(),
+          cred.getExpirationTime(),
+          credentialsEndpoint);
     } else {
       // Cloud vend returned no recognized credential type. This should not happen for a cloud
       // scheme, so fail loudly rather than silently returning an empty (credential-less) config
@@ -187,15 +212,25 @@ public class FileOperationsImpl implements FileOperations {
   private Map<String, String> getS3Config(
       NormalizedURL path,
       AwsCredentials awsCredentials,
+      String vendedEndpointUrl,
       Long expirationTime,
       Optional<String> credentialsEndpoint) {
+    NormalizedURL storageBase = path.getStorageBase();
+    String endpointUrl = s3BucketEndpointMap.get(storageBase);
+    if (endpointUrl == null || endpointUrl.isEmpty()) {
+      endpointUrl = vendedEndpointUrl;
+    }
+    boolean customEndpoint = endpointUrl != null && !endpointUrl.isEmpty();
     // Use the configured region if present, otherwise discover it and cache it per bucket.
     // Discovery runs outside any map lock (get + putIfAbsent rather than computeIfAbsent): a bucket
     // whose discovery fails is never cached and so is re-probed on every request, and holding the
     // bin lock across HeadBucket would serialize those probes and pile request threads up on it.
-    NormalizedURL storageBase = path.getStorageBase();
     String s3Region = s3BucketRegionMap.get(storageBase);
-    if (s3Region == null) {
+    if (s3Region == null && customEndpoint) {
+      // HeadBucket discovery targets AWS itself, so it would ask AWS about a bucket that lives on
+      // an S3-compatible store. Such stores accept any signing region; use the server default.
+      s3Region = defaultS3Region;
+    } else if (s3Region == null) {
       s3Region = discoverRegion(storageBase);
       s3BucketRegionMap.putIfAbsent(storageBase, s3Region);
     }
@@ -204,6 +239,11 @@ public class FileOperationsImpl implements FileOperations {
     config.put(S3FileIOProperties.SECRET_ACCESS_KEY, awsCredentials.getSecretAccessKey());
     config.put(S3FileIOProperties.SESSION_TOKEN, awsCredentials.getSessionToken());
     config.put(AwsClientProperties.CLIENT_REGION, s3Region);
+    if (customEndpoint) {
+      // Iceberg S3FileIO honours s3.endpoint; path-style is required for MinIO-style stores.
+      config.put(S3FileIOProperties.ENDPOINT, endpointUrl);
+      config.put(S3FileIOProperties.PATH_STYLE_ACCESS, "true");
+    }
     if (expirationTime != null) {
       // Without this, an Iceberg client cannot tell when the session it was handed dies, so it
       // neither renews ahead of the expiry nor treats the credential as expiring at all.
