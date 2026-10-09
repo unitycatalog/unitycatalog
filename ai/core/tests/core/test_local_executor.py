@@ -1,9 +1,14 @@
 import asyncio
 import concurrent.futures
+import importlib
+import multiprocessing
+import sys
 import time
 
 import pytest
 
+import unitycatalog.ai.core.executor.local as local_executor
+from unitycatalog.ai.core.executor.common import SANDBOX_UNSUPPORTED_MESSAGE
 from unitycatalog.ai.core.executor.local import run_in_sandbox, run_in_sandbox_async
 
 
@@ -230,3 +235,27 @@ def test_concurrent_sync_calls():
     for succeeded, result in results:
         assert succeeded
         assert result == 1
+
+
+@pytest.fixture
+def executor_without_resource_module(monkeypatch):
+    monkeypatch.setitem(sys.modules, "resource", None)
+    yield importlib.reload(local_executor)
+    monkeypatch.undo()
+    importlib.reload(local_executor)
+
+
+def test_executor_imports_and_skips_limits_without_resource_module(
+    executor_without_resource_module,
+):
+    assert executor_without_resource_module.resource is None
+    executor_without_resource_module._limit_resources(cpu_time_limit=1, memory_limit=1)
+
+
+def test_sandbox_reports_unsupported_platform_without_fork(monkeypatch):
+    monkeypatch.setattr(multiprocessing, "get_all_start_methods", lambda: ["spawn"])
+
+    assert run_in_sandbox(simple_function, {"x": 1, "y": 2}) == (
+        False,
+        SANDBOX_UNSUPPORTED_MESSAGE,
+    )
