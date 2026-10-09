@@ -51,6 +51,8 @@ import io.unitycatalog.server.persist.TableRepository.IcebergTablePage;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.persist.utils.LocalStorageLocationValidator;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.iceberg.IcebergCommitLocationExtractor;
@@ -149,6 +151,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   private final SchemaRepository schemaRepository;
   private final StagingTableRepository stagingTableRepository;
   private final TableRepository tableRepository;
+  private final ExternalLocationUtils externalLocationUtils;
 
   @Override
   public ExceptionHandlerFunction exceptionHandler() {
@@ -168,6 +171,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     this.schemaRepository = repositories.getSchemaRepository();
     this.stagingTableRepository = repositories.getStagingTableRepository();
     this.tableRepository = repositories.getTableRepository();
+    this.externalLocationUtils = repositories.getExternalLocationUtils();
   }
 
   // Config APIs
@@ -499,6 +503,9 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     } else {
       tableType = TableType.EXTERNAL;
       location = NormalizedURL.from(request.location());
+      // Validate before the server creates a directory or writes metadata there.
+      LocalStorageLocationValidator.validateLocalLocation(
+          location, serverProperties, externalLocationUtils);
     }
     Map<String, String> properties = request.properties() == null ? Map.of() : request.properties();
     PartitionSpec spec = request.spec() == null ? PartitionSpec.unpartitioned() : request.spec();
@@ -769,6 +776,9 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       // the caller owns the staging table at this location. Verify that here before writing
       // metadata.
       stagingTableRepository.requireOwnedStagingTable(NormalizedURL.from(tableMetadata.location()));
+    } else {
+      LocalStorageLocationValidator.validateLocalLocation(
+          NormalizedURL.from(tableMetadata.location()), serverProperties, externalLocationUtils);
     }
     return finalizeIcebergTableCreation(catalog, namespace, table, tableType, tableMetadata, true);
   }

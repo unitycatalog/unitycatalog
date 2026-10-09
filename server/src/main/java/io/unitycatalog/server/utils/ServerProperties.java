@@ -9,6 +9,7 @@ import io.unitycatalog.server.service.credential.gcp.GcsStorageConfig;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Files;
@@ -111,6 +112,23 @@ public class ServerProperties {
     }
   }
 
+  /** Validator for a comma-separated list of local paths: plain paths or file: URLs. */
+  private static class LocalPathListValidator implements PropertyValidator {
+    @Override
+    public void validate(String key, String value) {
+      for (String entry : splitCommaSeparated(value)) {
+        try {
+          toLocalRoot(entry);
+        } catch (Exception e) {
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              String.format(
+                  "Invalid local path '%s' for property '%s': %s", entry, key, e.getMessage()));
+        }
+      }
+    }
+  }
+
   /** Validator for integer properties with a custom condition */
   private static class IntegerValidator implements PropertyValidator {
     private final IntPredicate condition;
@@ -208,6 +226,8 @@ public class ServerProperties {
   private static final BooleanValidator BOOLEAN_VALIDATOR = new BooleanValidator();
   private static final UrlValidator URL_VALIDATOR = new UrlValidator();
   private static final StoragePathValidator STORAGE_PATH_VALIDATOR = new StoragePathValidator();
+  private static final LocalPathListValidator LOCAL_PATH_LIST_VALIDATOR =
+      new LocalPathListValidator();
   private static final PositiveIntegerValidator POSITIVE_INTEGER_VALIDATOR =
       new PositiveIntegerValidator();
   private static final NoOpValidator NOOP_VALIDATOR = new NoOpValidator();
@@ -250,6 +270,8 @@ public class ServerProperties {
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
     // Enables native Iceberg tables; when disabled, existing ones stay readable.
     ICEBERG_TABLE_ENABLED("server.iceberg-table.enabled", "true", BOOLEAN_VALIDATOR),
+    // Local roots where external Iceberg tables may be created without an external location.
+    EXTERNAL_LOCAL_ROOTS("server.external-local-roots", LOCAL_PATH_LIST_VALIDATOR),
     MANAGED_TABLE_USE_DELTA_API_ONLY(
         "server.managed-table.use-delta-api-only", "false", BOOLEAN_VALIDATOR),
     UNIFORM_ICEBERG_V2_ALLOW_MISSING_DV(
@@ -717,6 +739,31 @@ public class ServerProperties {
   }
 
   /**
+   * Get the local roots under which external Iceberg tables may be created without an external
+   * location. No securable governs a root, so any principal who can create a table may use it.
+   *
+   * @return the local path of each root; empty (nothing allowed) when unset
+   */
+  public List<Path> getExternalLocalRoots() {
+    return getCommaSeparatedList(Property.EXTERNAL_LOCAL_ROOTS.key).stream()
+        .map(ServerProperties::toLocalRoot)
+        .toList();
+  }
+
+  /**
+   * Returns the local path of a {@code server.external-local-roots} entry.
+   *
+   * @throws IllegalArgumentException if the entry is not a local path, e.g. a cloud URL
+   */
+  private static Path toLocalRoot(String entry) {
+    URI uri = NormalizedURL.from(entry).toUri();
+    if (UriScheme.fromURI(uri) != UriScheme.FILE) {
+      throw new IllegalArgumentException("only local paths are allowed");
+    }
+    return Paths.get(uri.getPath());
+  }
+
+  /**
    * Get the list of expected JWT audience values.
    *
    * <p>When authorization is enabled, tokens must contain an {@code aud} value matching one of
@@ -748,7 +795,10 @@ public class ServerProperties {
    * @return List of trimmed values, or empty list if the property is null or blank
    */
   private List<String> getCommaSeparatedList(String key) {
-    String value = getProperty(key);
+    return splitCommaSeparated(getProperty(key));
+  }
+
+  private static List<String> splitCommaSeparated(String value) {
     if (value == null || value.isBlank()) {
       return List.of();
     }
