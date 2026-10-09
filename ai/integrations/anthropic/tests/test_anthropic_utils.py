@@ -170,6 +170,49 @@ def test_generate_tool_call_messages_multiple_tools(
     assert tool_message_content[1]["content"] == "65 degrees"
 
 
+def _tool_use_response(*blocks):
+    response = Mock(spec=Message)
+    response.stop_reason = "tool_use"
+    response.content = list(blocks)
+    response.role = "assistant"
+    return response
+
+
+def test_generate_tool_call_messages_accepts_previous_round_as_history(mock_client, dummy_history):
+    first_response = _tool_use_response(
+        TextBlock(text="Let me check the weather in San Francisco.", type="text"),
+        ToolUseBlock(
+            id="toolu_first",
+            name="catalog__schema__get_weather",
+            input={"location": "San Francisco, CA"},
+            type="tool_use",
+        ),
+    )
+    second_response = _tool_use_response(
+        ToolUseBlock(
+            id="toolu_second",
+            name="catalog__schema__get_weather",
+            input={"location": "New York, NY"},
+            type="tool_use",
+        )
+    )
+
+    first_round = generate_tool_call_messages(
+        response=first_response, conversation_history=dummy_history, client=mock_client
+    )
+    second_round = generate_tool_call_messages(
+        response=second_response, conversation_history=first_round, client=mock_client
+    )
+
+    assert second_round[: len(first_round)] == first_round
+    assert second_round[-1] == {
+        "role": "user",
+        "content": [
+            {"type": "tool_result", "tool_use_id": "toolu_second", "content": "65 degrees"}
+        ],
+    }
+
+
 def test_generate_tool_call_messages_no_tool_use(mock_client, dummy_history):
     response = Mock(spec=Message)
     response.stop_reason = "stop"
