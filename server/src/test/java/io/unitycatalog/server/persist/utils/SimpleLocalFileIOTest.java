@@ -263,16 +263,29 @@ public class SimpleLocalFileIOTest {
   }
 
   @Test
-  public void theRootItselfMayBeALink() throws IOException {
-    // Only components below the root are checked; the root (and its ancestors) are trusted.
+  public void linkAtTheRootIsRejectedButNotAboveIt() throws IOException {
+    Files.writeString(outside.resolve("target.txt"), "outside");
+    // The root itself is a link, e.g. a table location replaced by a link to another directory.
     Path linkedRoot = Files.createSymbolicLink(tempDir.resolve("linkedRoot"), outside);
     try (SimpleLocalFileIO linked = new SimpleLocalFileIO(linkedRoot)) {
-      OutputFile file = linked.newOutputFile(uri(linkedRoot.resolve("metadata/v1.json")));
+      assertLinkRejected(() -> linked.newOutputFile(uri(linkedRoot.resolve("metadata/v1.json"))));
+      assertLinkRejected(() -> linked.newInputFile(uri(linkedRoot.resolve("target.txt"))));
+      assertLinkRejected(() -> linked.listPrefix(uri(linkedRoot)));
+      assertLinkRejected(() -> linked.deletePrefix(uri(linkedRoot)));
+    }
+    assertThat(outside.resolve("metadata")).doesNotExist();
+    assertThat(outside.resolve("target.txt")).hasContent("outside");
+
+    // Ancestors of the root are not checked, so a root under a linked directory works.
+    Path rootUnderLink =
+        Files.createSymbolicLink(tempDir.resolve("linkedParent"), outside).resolve("table");
+    try (SimpleLocalFileIO underLink = new SimpleLocalFileIO(rootUnderLink)) {
+      OutputFile file = underLink.newOutputFile(uri(rootUnderLink.resolve("metadata/v1.json")));
       try (OutputStream out = file.create()) {
         out.write('x');
       }
     }
-    assertThat(outside.resolve("metadata/v1.json")).hasContent("x");
+    assertThat(outside.resolve("table/metadata/v1.json")).hasContent("x");
   }
 
   private static void assertLinkRejected(ThrowingCallable call) {
@@ -288,9 +301,18 @@ public class SimpleLocalFileIOTest {
   public void closeReleasesListings(String scenario) throws Exception {
     Path file = tempDir.resolve("data.txt");
     AtomicBoolean closed = new AtomicBoolean();
+    // The root's link check reads the real directory's attributes, read before Files is mocked.
+    BasicFileAttributes rootAttributes =
+        Files.readAttributes(tempDir, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
     try (Stream<Path> walk = Stream.of(file).onClose(() -> closed.set(true));
         MockedStatic<Files> files = mockStatic(Files.class)) {
       files.when(() -> Files.exists(tempDir, LinkOption.NOFOLLOW_LINKS)).thenReturn(true);
+      files
+          .when(
+              () ->
+                  Files.readAttributes(
+                      tempDir, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS))
+          .thenReturn(rootAttributes);
       files.when(() -> Files.walk(tempDir)).thenReturn(walk);
       files.when(() -> Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)).thenReturn(true);
       files

@@ -15,7 +15,6 @@ import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.CancellationException;
 import java.util.stream.Stream;
 import org.apache.iceberg.io.BulkDeletionFailureException;
@@ -41,14 +40,15 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Each instance is bound to the root directory of one data entity (e.g. a table location) and
  * only operates at or under it. The server writes with its own OS identity, and clients that share
- * the local file system can create symbolic links in the entity's directories, which could
- * otherwise redirect a server operation outside the entity. So:
+ * the local file system can create symbolic links in the entity's directories, or make the entity
+ * directory itself a link, which could otherwise redirect a server operation outside the entity.
+ * So:
  *
  * <ul>
- *   <li>an operation whose path goes through a link below the root, when the operation starts, is
- *       rejected;
+ *   <li>an operation whose path goes through a link at or below the root, when the operation
+ *       starts, is rejected;
  *   <li>listings skip links, and deletion removes a link itself rather than its target;
- *   <li>the root itself and its ancestors are not checked.
+ *   <li>the ancestors of the root are not checked.
  * </ul>
  *
  * <p>The check is not atomic with the file access: a link created after it (including before a
@@ -251,8 +251,8 @@ public class SimpleLocalFileIO implements DelegateFileIO {
   }
 
   /**
-   * Returns the local path of a location under the root, rejecting it if any existing component
-   * below the root is a symbolic link. Components that do not exist yet are not links.
+   * Returns the local path of a location under the root, rejecting it if the root itself or any
+   * existing component below it is a symbolic link. Components that do not exist yet are not links.
    *
    * @param path a file URI at or under the root
    * @throws BaseException with {@code PERMISSION_DENIED} if the path goes through a link
@@ -265,40 +265,44 @@ public class SimpleLocalFileIO implements DelegateFileIO {
       throw new IllegalArgumentException(
           String.format("Local path %s is not under %s", filePath, root));
     }
-    if (filePath.equals(root)) {
+    // The root itself, then each component below it, until one does not exist yet.
+    if (!existsAsNonLink(root, path) || filePath.equals(root)) {
       return filePath;
     }
     Path current = root;
     for (Path name : root.relativize(filePath)) {
       current = current.resolve(name);
-      Optional<BasicFileAttributes> attributes = readAttributesNoFollow(current);
-      if (attributes.isEmpty()) {
+      if (!existsAsNonLink(current, path)) {
         break;
-      }
-      if (attributes.get().isSymbolicLink()) {
-        throw new BaseException(
-            ErrorCode.PERMISSION_DENIED,
-            "Local path goes through a symbolic link, which the server does not follow: " + path);
       }
     }
     return filePath;
   }
 
   /**
-   * Reads a path's own attributes, without following a link at it.
+   * Returns whether something exists at a path, without following a link at it.
    *
-   * @return the attributes, or empty if nothing exists at the path
+   * @param path the component to check
+   * @param location the location being resolved, for the error message
+   * @return false if nothing exists at the path
+   * @throws BaseException with {@code PERMISSION_DENIED} if the path is a symbolic link
    * @throws UncheckedIOException if the attributes cannot be read
    */
-  private static Optional<BasicFileAttributes> readAttributesNoFollow(Path path) {
+  private static boolean existsAsNonLink(Path path, String location) {
+    BasicFileAttributes attributes;
     try {
-      return Optional.of(
-          Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS));
+      attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
     } catch (NoSuchFileException e) {
-      return Optional.empty();
+      return false;
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to read attributes of " + path, e);
     }
+    if (attributes.isSymbolicLink()) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED,
+          "Local path goes through a symbolic link, which the server does not follow: " + location);
+    }
+    return true;
   }
 
   private static Path toPath(String path) {
