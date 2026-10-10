@@ -36,7 +36,7 @@ import org.apache.iceberg.io.SupportsPrefixOperations;
  */
 public class LocalMappingFileIO implements SupportsPrefixOperations {
 
-  private final SimpleLocalFileIO delegate = new SimpleLocalFileIO();
+  private final SimpleLocalFileIO delegate;
   private final NormalizedURL cloudPrefix;
   private final Path localDir;
   private final Map<String, String> config;
@@ -58,6 +58,7 @@ public class LocalMappingFileIO implements SupportsPrefixOperations {
       Map<String, String> config,
       Map<String, String> expectedCredentials,
       Set<CredentialContext.Privilege> privileges) {
+    this.delegate = new SimpleLocalFileIO(localDir);
     this.cloudPrefix = cloudPrefix;
     this.localDir = localDir;
     this.config = config;
