@@ -28,6 +28,7 @@ import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.AuthService;
+import io.unitycatalog.server.service.CatalogCallLoggingDecorator;
 import io.unitycatalog.server.service.CatalogService;
 import io.unitycatalog.server.service.CredentialService;
 import io.unitycatalog.server.service.DeltaCommitsService;
@@ -121,6 +122,11 @@ public class UnityCatalogServer {
     // Init security decorators
     addSecurityDecorators(
         armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
+    // Log one INFO line per catalog API call (operation name only)
+    armeriaServerBuilder
+        .routeDecorator()
+        .pathPrefix(BASE_PATH)
+        .build(new CatalogCallLoggingDecorator());
 
     return armeriaServerBuilder.build();
   }
