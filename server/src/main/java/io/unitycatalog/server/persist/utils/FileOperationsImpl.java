@@ -13,6 +13,7 @@ import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.UriScheme;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -81,17 +82,17 @@ public class FileOperationsImpl implements FileOperations {
 
   // TODO: Cache fileIOs
   @Override
-  public FileIO getFileIO(NormalizedURL path, Set<CredentialContext.Privilege> privileges) {
-    return switch (UriScheme.fromURI(path.toUri())) {
+  public FileIO getFileIO(NormalizedURL rootPath, Set<CredentialContext.Privilege> privileges) {
+    return switch (UriScheme.fromURI(rootPath.toUri())) {
       // Local paths are served by SimpleLocalFileIO (backed by java.nio + iceberg-core). We
       // deliberately do NOT route these through ResolvingFileIO: it resolves the file:// scheme to
       // Iceberg's HadoopFileIO, which requires hadoop-client-runtime on the classpath. The server
       // only depends on hadoop-client-api, and SimpleLocalFileIO covers the local read and
       // directory operations we need without that heavy runtime dependency.
-      case FILE, NULL -> new SimpleLocalFileIO();
+      case FILE, NULL -> new SimpleLocalFileIO(Paths.get(rootPath.toUri()));
       case S3, GS, ABFS, ABFSS -> {
         ResolvingFileIO fileio = new ResolvingFileIO();
-        fileio.initialize(getFileIOConfig(path, privileges));
+        fileio.initialize(getFileIOConfig(rootPath, privileges));
         yield fileio;
       }
     };
@@ -105,18 +106,18 @@ public class FileOperationsImpl implements FileOperations {
    */
   @Override
   public SupportsPrefixOperations getCleanupFileIO(
-      NormalizedURL path, CooperativeDeadline deadline) {
-    return switch (UriScheme.fromURI(path.toUri())) {
-      case FILE, NULL -> new SimpleLocalFileIO(deadline);
+      NormalizedURL rootPath, CooperativeDeadline deadline) {
+    return switch (UriScheme.fromURI(rootPath.toUri())) {
+      case FILE, NULL -> new SimpleLocalFileIO(Paths.get(rootPath.toUri()), deadline);
       case S3, GS -> {
         ResolvingFileIO fileIO = new ResolvingFileIO();
-        fileIO.initialize(getFileIOConfig(path, CredentialContext.READ_WRITE));
-        yield new InterruptiblePrefixOperations(fileIO, path + "/", deadline);
+        fileIO.initialize(getFileIOConfig(rootPath, CredentialContext.READ_WRITE));
+        yield new InterruptiblePrefixOperations(fileIO, rootPath + "/", deadline);
       }
       case ABFS, ABFSS -> {
         ADLSFileIO fileIO = new ADLSFileIO();
-        fileIO.initialize(getFileIOConfig(path, CredentialContext.READ_WRITE));
-        yield new ADLSPrefixOperations(fileIO, path + "/", deadline);
+        fileIO.initialize(getFileIOConfig(rootPath, CredentialContext.READ_WRITE));
+        yield new ADLSPrefixOperations(fileIO, rootPath + "/", deadline);
       }
     };
   }
