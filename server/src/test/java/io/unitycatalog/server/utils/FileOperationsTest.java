@@ -79,6 +79,26 @@ public class FileOperationsTest {
 
   @SneakyThrows
   @Test
+  public void testCreateStorageLocationDirAtALinkIsRejectedButNotUnderOne() {
+    Path outside = Files.createDirectories(rootBase.resolve("outside"));
+    Path link = Files.createSymbolicLink(rootBase.resolve("link"), outside);
+
+    // The location is a link, e.g. a replaced table directory.
+    assertThatThrownBy(
+            () -> FileOperations.createStorageLocationDir(NormalizedURL.from(link.toUri())))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("symbolic link")
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.PERMISSION_DENIED);
+
+    // Ancestors are not checked, as for SimpleLocalFileIO, so a location under a linked directory
+    // is created.
+    FileOperations.createStorageLocationDir(NormalizedURL.from(link.resolve("table").toUri()));
+    assertThat(outside.resolve("table")).isDirectory();
+  }
+
+  @SneakyThrows
+  @Test
   public void testModelDirectory() {
     // Test model directory creation with a given storage root
     NormalizedURL parentStorageLocation = NormalizedURL.from(rootBase.toString());
@@ -134,7 +154,7 @@ public class FileOperationsTest {
 
     List<String> listed;
     try (CloseableIterable<FileInfo> files =
-        new SimpleLocalFileIO().listPrefix(dir.toUri().toString())) {
+        new SimpleLocalFileIO(dir).listPrefix(dir.toUri().toString())) {
       listed =
           StreamSupport.stream(files.spliterator(), false)
               .map(FileInfo::location)
@@ -156,7 +176,7 @@ public class FileOperationsTest {
     Files.writeString(dir.resolve("a.json"), "hello");
 
     try (CloseableIterable<FileInfo> files =
-        new SimpleLocalFileIO().listPrefix(dir.toUri().toString())) {
+        new SimpleLocalFileIO(dir).listPrefix(dir.toUri().toString())) {
       List<FileInfo> infos =
           StreamSupport.stream(files.spliterator(), false).collect(Collectors.toList());
       assertThat(infos).hasSize(1);
@@ -174,7 +194,7 @@ public class FileOperationsTest {
     Files.writeString(a, "a");
     Files.writeString(b, "b");
 
-    new SimpleLocalFileIO().deleteFiles(List.of(a.toUri().toString()));
+    new SimpleLocalFileIO(dir).deleteFiles(List.of(a.toUri().toString()));
 
     assertThat(Files.exists(a)).isFalse();
     assertThat(Files.exists(b)).isTrue();
@@ -193,7 +213,8 @@ public class FileOperationsTest {
     // and the deletable file is still removed.
     assertThatThrownBy(
             () ->
-                new SimpleLocalFileIO().deleteFiles(List.of(existing.toUri().toString(), missing)))
+                new SimpleLocalFileIO(dir)
+                    .deleteFiles(List.of(existing.toUri().toString(), missing)))
         .isInstanceOf(BulkDeletionFailureException.class);
     assertThat(Files.exists(existing)).isFalse();
   }

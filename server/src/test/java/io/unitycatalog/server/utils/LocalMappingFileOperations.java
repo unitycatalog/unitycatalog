@@ -53,25 +53,25 @@ public class LocalMappingFileOperations implements FileOperations {
   }
 
   @Override
-  public FileIO getFileIO(NormalizedURL path, Set<CredentialContext.Privilege> privileges) {
-    UriScheme scheme = UriScheme.fromURI(path.toUri());
+  public FileIO getFileIO(NormalizedURL rootPath, Set<CredentialContext.Privilege> privileges) {
+    UriScheme scheme = UriScheme.fromURI(rootPath.toUri());
     if (scheme == UriScheme.FILE || scheme == UriScheme.NULL) {
-      return delegate.getFileIO(path, privileges);
+      return delegate.getFileIO(rootPath, privileges);
     }
-    return mappingFileIO(path, privileges);
+    return mappingFileIO(rootPath, privileges);
   }
 
   @Override
   public SupportsPrefixOperations getCleanupFileIO(
-      NormalizedURL path, CooperativeDeadline deadline) {
-    UriScheme scheme = UriScheme.fromURI(path.toUri());
+      NormalizedURL rootPath, CooperativeDeadline deadline) {
+    UriScheme scheme = UriScheme.fromURI(rootPath.toUri());
     if (scheme == UriScheme.FILE || scheme == UriScheme.NULL) {
-      return delegate.getCleanupFileIO(path, deadline);
+      return delegate.getCleanupFileIO(rootPath, deadline);
     }
     // The mapping FileIO also serves prefix operations, so cleanup runs on the mapped local dir.
     // Cloud cleanup vends read/write credentials in production, so vend and validate the same here.
     // The deadline drives cancellation only for real cloud IO, which the local mapping does not do.
-    return mappingFileIO(path, CredentialContext.READ_WRITE);
+    return mappingFileIO(rootPath, CredentialContext.READ_WRITE);
   }
 
   /**
