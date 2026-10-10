@@ -13,6 +13,7 @@ import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.UriScheme;
+import java.net.URI;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
@@ -50,6 +51,7 @@ public class FileOperationsImpl implements FileOperations {
   // Per-bucket S3 region: seeded from the configured s3.region.N, then filled by HeadBucket
   // discovery for buckets that have none configured. A discovered region is cached for reuse.
   private final Map<NormalizedURL, String> s3BucketRegionMap;
+  private final Map<NormalizedURL, String> s3BucketEndpointMap;
   private final Supplier<S3ClientBuilder> s3ClientBuilderSupplier;
 
   public FileOperationsImpl(
@@ -70,12 +72,17 @@ public class FileOperationsImpl implements FileOperations {
     this.storageCredentialVendor = storageCredentialVendor;
     this.s3ClientBuilderSupplier = s3ClientBuilderSupplier;
     this.s3BucketRegionMap = new ConcurrentHashMap<>();
+    this.s3BucketEndpointMap = new ConcurrentHashMap<>();
     serverProperties
         .getS3Configurations()
         .forEach(
             (bucket, config) -> {
               if (config.getRegion() != null) {
                 s3BucketRegionMap.put(bucket, config.getRegion());
+              }
+              String endpoint = config.getEndpoint();
+              if (endpoint != null && !endpoint.isEmpty()) {
+                s3BucketEndpointMap.put(bucket, endpoint);
               }
             });
   }
@@ -205,6 +212,13 @@ public class FileOperationsImpl implements FileOperations {
     config.put(S3FileIOProperties.SECRET_ACCESS_KEY, awsCredentials.getSecretAccessKey());
     config.put(S3FileIOProperties.SESSION_TOKEN, awsCredentials.getSessionToken());
     config.put(AwsClientProperties.CLIENT_REGION, s3Region);
+    String s3Endpoint = s3BucketEndpointMap.get(storageBase);
+    if (s3Endpoint != null) {
+      // Self-hosted S3-compatible backends typically cannot issue wildcard certs for
+      // bucket.host, so an endpoint override pairs with path-style access.
+      config.put(S3FileIOProperties.ENDPOINT, s3Endpoint);
+      config.put(S3FileIOProperties.PATH_STYLE_ACCESS, "true");
+    }
     if (expirationTime != null) {
       // Without this, an Iceberg client cannot tell when the session it was handed dies, so it
       // neither renews ahead of the expiry nor treats the credential as expiring at all.
@@ -227,12 +241,16 @@ public class FileOperationsImpl implements FileOperations {
    */
   private String discoverRegion(NormalizedURL storageBase) {
     String bucket = storageBase.toUri().getHost();
-    try (S3Client s3Client =
+    S3ClientBuilder builder =
         s3ClientBuilderSupplier
             .get()
             .credentialsProvider(AnonymousCredentialsProvider.create())
-            .region(Region.US_EAST_1)
-            .build()) {
+            .region(Region.US_EAST_1);
+    String endpoint = s3BucketEndpointMap.get(storageBase);
+    if (endpoint != null) {
+      builder.endpointOverride(URI.create(endpoint)).forcePathStyle(true);
+    }
+    try (S3Client s3Client = builder.build()) {
       String region =
           s3Client.headBucket(HeadBucketRequest.builder().bucket(bucket).build()).bucketRegion();
       if (region != null) {
