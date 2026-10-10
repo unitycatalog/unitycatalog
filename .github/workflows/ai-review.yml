@@ -7,8 +7,8 @@
 #   GATEWAY_CLIENT_ID      OAuth client id of the gateway service principal.
 #   GATEWAY_CLIENT_SECRET  OAuth client secret of the gateway service principal.
 #   GATEWAY_BASE_URL       Gateway base URL, e.g. https://<host>/serving-endpoints
+#   GATEWAY_HOST           Bare hostname of GATEWAY_BASE_URL, for the egress allowlist.
 # Required repository variables:
-#   GATEWAY_HOST      Bare hostname of GATEWAY_BASE_URL, for the egress allowlist.
 #   MODEL                    Default Claude model.
 #   CLAUDE_MAINTAINER_MODEL  Claude maintainer-pass model.
 #   CODEX_MAINTAINER_MODEL   Codex maintainer-pass model.
@@ -185,11 +185,11 @@ jobs:
     steps:
       - name: Require GATEWAY_HOST for the egress allowlist
         env:
-          GATEWAY_HOST: ${{ vars.GATEWAY_HOST }}
+          GATEWAY_HOST: ${{ secrets.GATEWAY_HOST }}
         run: |
           set -euo pipefail
           if [ -z "${GATEWAY_HOST}" ]; then
-            echo "::error::Repo variable GATEWAY_HOST is not set. It must be the bare hostname of GATEWAY_BASE_URL."
+            echo "::error::Repo secret GATEWAY_HOST is not set. It must be the bare hostname of GATEWAY_BASE_URL."
             exit 1
           fi
           case "${GATEWAY_HOST}" in
@@ -216,7 +216,7 @@ jobs:
             registry.npmjs.org:443
             pypi.org:443
             files.pythonhosted.org:443
-            ${{ vars.GATEWAY_HOST }}:443
+            ${{ secrets.GATEWAY_HOST }}:443
 
       - name: Check LLM credentials available
         id: creds
@@ -925,7 +925,7 @@ jobs:
       - name: Mint LLM gateway token
         if: steps.creds.outputs.available == 'true'
         env:
-          GATEWAY_HOST: ${{ vars.GATEWAY_HOST }}
+          GATEWAY_HOST: ${{ secrets.GATEWAY_HOST }}
           GATEWAY_CLIENT_ID: ${{ secrets.GATEWAY_CLIENT_ID }}
           GATEWAY_CLIENT_SECRET: ${{ secrets.GATEWAY_CLIENT_SECRET }}
         run: |
