@@ -12,14 +12,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.CleanupFailureReport;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -40,6 +42,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 @SuppressWarnings("unchecked")
@@ -66,7 +69,7 @@ class StorageCleanupWorkerTest {
 
   @BeforeEach
   void setUp() {
-    setClaim(ResourceType.TABLE, LOCATION.toString());
+    setClaim(ManagedResourceType.TABLE, LOCATION.toString());
     when(clock.instant()).thenReturn(NOW);
     when(fileOperations.getCleanupFileIO(eq(LOCATION), any())).thenReturn(fileIO);
     when(fileIO.listPrefix(PREFIX)).thenReturn(List.of());
@@ -240,16 +243,31 @@ class StorageCleanupWorkerTest {
 
   @Test
   void validatesTaskBeforeCreatingFileIO() {
-    setClaim(ResourceType.TABLE, "s3://bucket/volumes/" + RESOURCE_ID);
+    setClaim(ManagedResourceType.TABLE, "s3://bucket/volumes/" + RESOURCE_ID);
     assertThat(worker.runOnce()).isTrue();
     verifyNoInteractions(fileOperations);
     verifyFailure("Storage cleanup failed: IllegalArgumentException");
   }
 
   @ParameterizedTest
+  @MethodSource("storageFailures")
+  void retriesRegardlessOfStorageFailureType(RuntimeException failure) {
+    doThrow(failure).when(fileIO).deletePrefix(PREFIX);
+    assertThat(worker.runOnce()).isTrue();
+    verifyFailure("Storage cleanup failed: " + failure.getClass().getSimpleName());
+  }
+
+  private static List<RuntimeException> storageFailures() {
+    return List.of(
+        new RuntimeException("boom"),
+        new IllegalStateException("boom"),
+        new UncheckedIOException(new IOException("boom")));
+  }
+
+  @ParameterizedTest
   @ValueSource(strings = {"?query", "#fragment"})
   void rejectsQueryAndFragmentLocations(String suffix) {
-    setClaim(ResourceType.TABLE, LOCATION + suffix);
+    setClaim(ManagedResourceType.TABLE, LOCATION + suffix);
     assertThat(worker.runOnce()).isTrue();
     verifyNoInteractions(fileOperations);
     verifyFailure("Storage cleanup failed: IllegalArgumentException");
@@ -447,7 +465,7 @@ class StorageCleanupWorkerTest {
     return new StorageCleanupWorker(taskRepository, fileOperations, clock, serverProperties);
   }
 
-  private void setClaim(ResourceType type, String location) {
+  private void setClaim(ManagedResourceType type, String location) {
     when(taskRepository.claim(LEASE_DURATION, INITIAL_DELAY))
         .thenReturn(Optional.of(new Claim(type, RESOURCE_ID, location, LEASE_TOKEN)));
   }

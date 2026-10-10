@@ -1,6 +1,7 @@
 package io.unitycatalog.server.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -22,9 +23,12 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Flow;
+import org.apache.iceberg.rest.responses.ErrorResponse;
+import org.apache.iceberg.rest.responses.ErrorResponseParser;
 import org.junit.jupiter.api.function.Executable;
 
 public class TestUtils {
@@ -160,6 +164,51 @@ public class TestUtils {
         .isTrue();
   }
 
+  public static void assertIcebergApiException(Executable executable, int expectedStatus) {
+    assertIcebergApiExceptionImpl(executable, expectedStatus, Optional.empty());
+  }
+
+  /**
+   * As {@link #assertIcebergApiException(Executable, int)}, additionally asserting the error
+   * message contains {@code containsMessage}.
+   */
+  public static void assertIcebergApiException(
+      Executable executable, int expectedStatus, String containsMessage) {
+    assertIcebergApiExceptionImpl(executable, expectedStatus, Optional.of(containsMessage));
+  }
+
+  /**
+   * Asserts the call fails with {@code expectedStatus} and an Iceberg REST {@code ErrorResponse}
+   * body. The Iceberg endpoints use Iceberg's own error format ({@code {"error": {"code", "type",
+   * "message"}}}), distinct from the UC envelope ({@link #assertApiException}) and the Delta
+   * envelope ({@link #assertDeltaApiException}). Mirroring {@link #assertDeltaApiException}, this
+   * parses the body into an {@link ErrorResponse} and checks that both the HTTP status and the code
+   * echoed in the body equal {@code expectedStatus} (and, when present, that the message contains
+   * {@code containsMessage}).
+   */
+  private static void assertIcebergApiExceptionImpl(
+      Executable executable, int expectedStatus, Optional<String> containsMessage) {
+    ApiException ex = assertThrows(ApiException.class, executable);
+    assertThat(ex.getCode()).isEqualTo(expectedStatus);
+    ErrorResponse error = parseIcebergErrorBody(ex.getResponseBody());
+    assertThat(error.code())
+        .as("Iceberg ErrorResponse code in: %s", ex.getResponseBody())
+        .isEqualTo(expectedStatus);
+    containsMessage.ifPresent(
+        m ->
+            assertThat(error.message())
+                .as("Iceberg error message in: %s", ex.getResponseBody())
+                .contains(m));
+  }
+
+  private static ErrorResponse parseIcebergErrorBody(String bodyText) {
+    try {
+      return ErrorResponseParser.fromJson(bodyText);
+    } catch (Exception e) {
+      return fail("Error response was not a valid Iceberg ErrorResponse: " + bodyText, e);
+    }
+  }
+
   public static void assertDeltaApiException(
       Executable executable, DeltaErrorType expectedType, String expectedMessageSubstring) {
     int expectedCode = ErrorCode.getDeltaHttpStatus(expectedType.getValue()).code();
@@ -278,8 +327,7 @@ public class TestUtils {
     try {
       return new ObjectMapper().readTree(bodyText);
     } catch (Exception e) {
-      return org.assertj.core.api.Assertions.fail(
-          "Error response was not valid JSON: " + bodyText, e);
+      return fail("Error response was not valid JSON: " + bodyText, e);
     }
   }
 
@@ -398,7 +446,10 @@ public class TestUtils {
     if (config.getAuthToken() != null && !config.getAuthToken().isEmpty()) {
       reqBuilder.header("Authorization", "Bearer " + config.getAuthToken());
     }
-    return HttpClient.newHttpClient()
+    // Avoid the JDK client's h2c upgrade path, which can truncate large metrics responses.
+    return HttpClient.newBuilder()
+        .version(HttpClient.Version.HTTP_1_1)
+        .build()
         .send(reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
   }
 
@@ -420,6 +471,38 @@ public class TestUtils {
   }
 
   /** Convenience wrapper over {@link #sendRaw} for GET probes. */
+  public static HttpResponse<String> sendRawGet(ServerConfig config, String path) throws Exception {
+    return sendRawGet(config, path, Optional.empty());
+  }
+
+  /** Asserts the exact Prometheus series emitted for one completed API request. */
+  public static void assertHttpRequestMetric(
+      ServerConfig apiConfig,
+      ServerConfig observabilityConfig,
+      String service,
+      String method,
+      int status,
+      double count)
+      throws Exception {
+    int apiPort = URI.create(apiConfig.getServerUrl()).getPort();
+    String expected =
+        "http_server_requests_total{hostname_pattern=\"*:"
+            + apiPort
+            + "\",http_status=\""
+            + status
+            + "\",method=\""
+            + method
+            + "\",service=\""
+            + service
+            + "\"} "
+            + count;
+    String scrape = sendRawGet(observabilityConfig, "/metrics").body();
+    List<String> httpRequestMetrics =
+        scrape.lines().filter(line -> line.startsWith("http_server_requests_total")).toList();
+    assertThat(httpRequestMetrics).contains(expected);
+  }
+
+  /** Convenience wrapper over {@link #sendRaw} for GET probes with an optional body. */
   public static HttpResponse<String> sendRawGet(
       ServerConfig config, String path, Optional<String> jsonBody) throws Exception {
     return sendRaw(config, "GET", path, jsonBody);

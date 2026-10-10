@@ -1,6 +1,7 @@
 package io.unitycatalog.server.base;
 
 import io.unitycatalog.server.UnityCatalogServer;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -21,6 +22,9 @@ import org.junit.jupiter.api.io.TempDir;
 public abstract class BaseServerTest {
 
   public static final ServerConfig serverConfig = new ServerConfig("http://localhost", "");
+
+  protected ServerConfig observabilityServerConfig;
+  protected boolean observabilityEnabled;
   protected UnityCatalogServer unityCatalogServer;
   protected Properties serverProperties;
   protected HibernateConfigurator hibernateConfigurator;
@@ -59,9 +63,19 @@ public abstract class BaseServerTest {
     serverProperties.setProperty(Property.INCLUDE_STACK_TRACE_IN_ERROR.getKey(), "true");
     tableStorageRoot = getManagedStorageCloudPath(testDirectoryRoot);
     serverProperties.setProperty(Property.TABLE_STORAGE_ROOT.getKey(), tableStorageRoot);
+    serverProperties.setProperty(
+        Property.EXTERNAL_LOCAL_ROOTS.getKey(), testDirectoryRoot.toString());
   }
 
   protected void setUpCredentialOperations(ServerProperties serverProperties) {}
+
+  /**
+   * Subclasses can override this to decorate the server's {@link FileOperations}, e.g. to map cloud
+   * storage to local files for Iceberg tests. Returns the instance unchanged by default.
+   */
+  protected FileOperations decorateFileOperations(FileOperations fileOperations) {
+    return fileOperations;
+  }
 
   /**
    * Subclasses can override this to customize the hibernate properties before the session factory
@@ -84,8 +98,13 @@ public abstract class BaseServerTest {
     }
     if (serverConfig.getServerUrl().contains("localhost")) {
       System.out.println("Running tests on localhost..");
-      // start the server on a random port
-      int port = findAvailablePort();
+      // Start the server on a random port, reserving a second random port for optional
+      // observability. Both are taken at once so the two ports are guaranteed distinct: sequential
+      // ServerSocket(0) calls can hand back the same port (the first is closed before the second
+      // opens), which the API/observability-port validation would then reject.
+      int[] ports = findTwoAvailablePorts();
+      int port = ports[0];
+      int observabilityPort = ports[1];
       Files.createDirectories(testDirectoryRoot);
 
       setUpProperties();
@@ -95,22 +114,32 @@ public abstract class BaseServerTest {
           HibernateConfigurator.setupHibernateProperties(initServerProperties);
       setUpHibernateProperties(hibernateProperties);
       hibernateConfigurator = new HibernateConfigurator(hibernateProperties);
-      unityCatalogServer =
+      UnityCatalogServer.Builder serverBuilder =
           UnityCatalogServer.builder()
               .port(port)
               .serverProperties(initServerProperties)
               .hibernateConfigurator(hibernateConfigurator)
               .credentialOperations(cloudCredentialVendor)
-              .build();
+              .fileOperationsDecorator(this::decorateFileOperations);
+      if (observabilityEnabled) {
+        serverBuilder.observabilityPort(observabilityPort);
+      }
+      unityCatalogServer = serverBuilder.build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);
+      observabilityServerConfig = new ServerConfig("http://localhost:" + observabilityPort, "");
     }
   }
 
-  /** Finds an available port for the UC server. */
-  private int findAvailablePort() throws IOException {
-    try (ServerSocket socket = new ServerSocket(0)) {
-      return socket.getLocalPort();
+  /**
+   * Returns two distinct free ports (for the API and observability listeners). Both sockets are
+   * held open at once so the OS cannot return the same port twice, which a pair of sequential
+   * {@code ServerSocket(0)} calls can, since each closes before the next opens.
+   */
+  private static int[] findTwoAvailablePorts() throws IOException {
+    try (ServerSocket first = new ServerSocket(0);
+        ServerSocket second = new ServerSocket(0)) {
+      return new int[] {first.getLocalPort(), second.getLocalPort()};
     }
   }
 
@@ -139,11 +168,11 @@ public abstract class BaseServerTest {
       // close() rather than stop() so a server that built its own SessionFactory releases it;
       // this harness injects one, so the server leaves it open and we close it below.
       unityCatalogServer.close();
-      // Release the factory this harness built and injected in setUp(). setUp() builds a fresh
-      // one per test, so leaked factories would otherwise accumulate for the whole JVM run. In
-      // test env hbm2ddl is create-drop, so closing also drops the schema — keep this after the
+      // Release the factory and pool this harness built and injected in setUp(). setUp() builds
+      // a fresh one per test, so leaked factories would otherwise accumulate for the whole JVM run.
+      // In test env hbm2ddl is create-drop, so closing also drops the schema — keep this after the
       // cleanup queries above.
-      sessionFactory.close();
+      hibernateConfigurator.close();
       // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
       unityCatalogServer = null;
     }

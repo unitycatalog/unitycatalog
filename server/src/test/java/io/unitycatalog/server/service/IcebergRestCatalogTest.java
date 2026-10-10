@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
@@ -9,13 +10,20 @@ import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.auth.AuthToken;
+import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.CredentialsApi;
+import io.unitycatalog.client.api.ExternalLocationsApi;
+import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.CatalogInfo;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCatalog;
+import io.unitycatalog.client.model.CreateCredentialRequest;
+import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateTable;
+import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.TableInfo;
@@ -31,6 +39,8 @@ import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
+import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
@@ -56,8 +66,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.iceberg.MetadataUpdate;
+import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Snapshot;
+import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.catalog.Namespace;
@@ -65,6 +77,7 @@ import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.CommitFailedException;
+import org.apache.iceberg.exceptions.ForbiddenException;
 import org.apache.iceberg.exceptions.NamespaceNotEmptyException;
 import org.apache.iceberg.exceptions.NoSuchNamespaceException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
@@ -90,7 +103,6 @@ import org.apache.iceberg.rest.responses.ErrorResponseParser;
 import org.apache.iceberg.rest.responses.GetNamespaceResponse;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
 import org.apache.iceberg.rest.responses.ListTablesResponse;
-import org.apache.iceberg.rest.responses.LoadCredentialsResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.rest.responses.UpdateNamespacePropertiesResponse;
 import org.apache.iceberg.types.Types;
@@ -98,6 +110,7 @@ import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.api.io.TempDir;
 
 public class IcebergRestCatalogTest extends BaseServerTest {
@@ -108,18 +121,18 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   private static final int PAGE_SIZE = PagedListingHelper.DEFAULT_PAGE_SIZE;
 
   @TempDir private Path icebergTableLocation;
+  // Outside testDirectoryRoot, the only local root configured by default.
+  @TempDir private Path outsideLocalRoots;
+  @TempDir private Path managedStorageRoot;
 
   protected CatalogOperations catalogOperations;
   protected SchemaOperations schemaOperations;
   protected TableOperations tableOperations;
   private WebClient client;
-
-  @Override
-  protected void setUpProperties() {
-    super.setUpProperties();
-    // Native Iceberg REST writes are opt-in in production; this integration suite exercises them.
-    serverProperties.setProperty(Property.ICEBERG_TABLE_ENABLED.getKey(), "true");
-  }
+  // Typed client for the standard REST calls, so CRUD tests read as catalog operations rather than
+  // hand-built HTTP. Tests that assert HTTP-level behavior (status/headers, invalid input, unrouted
+  // paths) keep using the raw {@code client} below.
+  private IcebergRestClient icebergClient;
 
   @BeforeEach
   public void setUp() {
@@ -130,6 +143,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     schemaOperations = new SdkSchemaOperations(TestUtils.createApiClient(serverConfig));
     tableOperations = new SdkTableOperations(TestUtils.createApiClient(serverConfig));
     client = WebClient.builder(uri).auth(AuthToken.ofOAuth2(token)).build();
+    icebergClient = new IcebergRestClient(serverConfig);
     cleanUp();
   }
 
@@ -365,32 +379,16 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     TableInfo tableInfo = tableOperations.createTable(createTableRequest);
 
     // Uniform table doesn't exist at this point
-    {
-      AggregatedHttpResponse resp =
-          client
-              .head(
-                  TEST_BASE_PREFIX
-                      + "/namespaces/"
-                      + TestUtils.SCHEMA_NAME
-                      + "/tables/"
-                      + TestUtils.TABLE_NAME)
-              .aggregate()
-              .join();
-      assertThat(resp.status().code()).isEqualTo(404);
-    }
-    {
-      AggregatedHttpResponse resp =
-          client
-              .get(
-                  TEST_BASE_PREFIX
-                      + "/namespaces/"
-                      + TestUtils.SCHEMA_NAME
-                      + "/tables/"
-                      + TestUtils.TABLE_NAME)
-              .aggregate()
-              .join();
-      assertErrorType(resp, 404, NoSuchTableException.class);
-    }
+    assertThat(
+            icebergClient.tableExists(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME))
+        .isFalse();
+    assertErrorType(
+        () ->
+            icebergClient.loadTable(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME),
+        404,
+        NoSuchTableException.class);
 
     // Register UniForm-derived Iceberg metadata for the table. The fixture's baked table root is
     // rewritten onto a hermetic temp directory and the metadata file is written under it, modeling
@@ -436,24 +434,14 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     }
     // metadata is valid metadata content and metadata location matches
     {
-      AggregatedHttpResponse resp =
-          client
-              .get(
-                  TEST_BASE_PREFIX
-                      + "/namespaces/"
-                      + TestUtils.SCHEMA_NAME
-                      + "/tables/"
-                      + TestUtils.TABLE_NAME)
-              .aggregate()
-              .join();
-      assertThat(resp.status().code()).isEqualTo(200);
       LoadTableResponse loadTableResponse =
-          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+          icebergClient.loadTable(
+              TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
       assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
           .isEqualTo(metadataFile.toString());
 
       // non-prefixed URL should result in 404
-      resp =
+      AggregatedHttpResponse resp =
           client
               .get(
                   TEST_BASE_NON_PREFIX
@@ -468,19 +456,13 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
     // List uniform tables
     {
-      AggregatedHttpResponse resp =
-          client
-              .get(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables")
-              .aggregate()
-              .join();
-      assertThat(resp.status().code()).isEqualTo(200);
-      ListTablesResponse loadTableResponse =
-          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
-      assertThat(loadTableResponse.identifiers())
+      ListTablesResponse listResponse =
+          icebergClient.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
+      assertThat(listResponse.identifiers())
           .containsExactly(TableIdentifier.of(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME));
 
       // non-prefixed URL should result in 404
-      resp =
+      AggregatedHttpResponse resp =
           client
               .get(TEST_BASE_NON_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables")
               .aggregate()
@@ -491,27 +473,34 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     // UniForm-derived Iceberg metadata is read-only: commits and drops through the Iceberg REST
     // catalog must be rejected.
     {
-      String tablePath =
-          TEST_BASE_PREFIX
-              + "/namespaces/"
-              + TestUtils.SCHEMA_NAME
-              + "/tables/"
-              + TestUtils.TABLE_NAME;
       UpdateTableRequest commitRequest =
           new UpdateTableRequest(
               List.of(), List.of(new MetadataUpdate.SetProperties(Map.of("foo", "bar"))));
-      AggregatedHttpResponse resp =
-          postJson(tablePath, IcebergObjectMapper.mapper().writeValueAsString(commitRequest));
-      assertErrorType(resp, 400, BadRequestException.class);
-
-      resp = client.delete(tablePath).aggregate().join();
-      assertErrorType(resp, 400, BadRequestException.class);
-
-      resp =
-          postJson(
-              "/v1/catalogs/" + TestUtils.CATALOG_NAME + "/tables/rename",
-              renameRequest(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, "renamed"));
-      assertErrorType(resp, 400, BadRequestException.class);
+      assertErrorType(
+          () ->
+              icebergClient.updateTable(
+                  TestUtils.CATALOG_NAME,
+                  TestUtils.SCHEMA_NAME,
+                  TestUtils.TABLE_NAME,
+                  commitRequest),
+          400,
+          BadRequestException.class);
+      assertErrorType(
+          () ->
+              icebergClient.dropTable(
+                  TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME),
+          400,
+          BadRequestException.class);
+      assertErrorType(
+          () ->
+              icebergClient.renameTable(
+                  TestUtils.CATALOG_NAME,
+                  TestUtils.SCHEMA_NAME,
+                  TestUtils.TABLE_NAME,
+                  TestUtils.SCHEMA_NAME,
+                  "renamed"),
+          400,
+          BadRequestException.class);
     }
 
     // Credentials must never be scoped by a conflicting location in the metadata payload. Repoint
@@ -525,29 +514,22 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       conflicting.setUrl(icebergTableLocation.resolve("other_table").toString());
       tx.commit();
     }
-    AggregatedHttpResponse conflictResp =
-        client
-            .get(
-                TEST_BASE_PREFIX
-                    + "/namespaces/"
-                    + TestUtils.SCHEMA_NAME
-                    + "/tables/"
-                    + TestUtils.TABLE_NAME)
-            .aggregate()
-            .join();
-    assertErrorType(conflictResp, 400, BadRequestException.class);
-    assertThat(ErrorResponseParser.fromJson(conflictResp.contentUtf8()).message())
-        .contains("persisted table location");
+    ApiException conflict =
+        assertThrows(
+            ApiException.class,
+            () ->
+                icebergClient.loadTable(
+                    TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME));
+    assertThat(conflict.getCode()).isEqualTo(400);
+    ErrorResponse conflictError = ErrorResponseParser.fromJson(conflict.getResponseBody());
+    assertThat(conflictError.type()).isEqualTo(BadRequestException.class.getSimpleName());
+    assertThat(conflictError.message()).contains("persisted table location");
   }
 
   @Test
   public void testIcebergTableWriteLifecycle() throws ApiException, IOException {
     catalogOperations.createCatalog(
         new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
-
-    String namespacesPath = TEST_BASE_PREFIX + "/namespaces";
-    String tablesPath = namespacesPath + "/" + TestUtils.SCHEMA_NAME + "/tables";
-    String tablePath = tablesPath + "/" + TestUtils.TABLE_NAME;
 
     // Create the namespace through the Iceberg REST catalog
     {
@@ -556,26 +538,24 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               .withNamespace(Namespace.of(TestUtils.SCHEMA_NAME))
               .setProperties(TestUtils.PROPERTIES)
               .build();
-      AggregatedHttpResponse resp =
-          postJson(namespacesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertThat(resp.status().code()).isEqualTo(200);
       CreateNamespaceResponse createNamespaceResponse =
-          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), CreateNamespaceResponse.class);
+          icebergClient.createNamespace(TestUtils.CATALOG_NAME, request);
       assertThat(createNamespaceResponse.namespace())
           .isEqualTo(Namespace.of(TestUtils.SCHEMA_NAME));
 
       // creating it again is a conflict
-      resp = postJson(namespacesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertErrorType(resp, 409, AlreadyExistsException.class);
-      assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
-          .isEqualTo(AlreadyExistsException.class.getSimpleName());
+      assertErrorType(
+          () -> icebergClient.createNamespace(TestUtils.CATALOG_NAME, request),
+          409,
+          AlreadyExistsException.class);
     }
 
     Schema schema =
         new Schema(
             Types.NestedField.required(1, "id", Types.LongType.get()),
             Types.NestedField.optional(2, "data", Types.StringType.get()));
-    String location = Files.createTempDirectory("iceberg-rest-table").toUri().toString();
+    String location =
+        Files.createTempDirectory(testDirectoryRoot, "iceberg-rest-table").toUri().toString();
 
     // Staged creation is stateless: it returns metadata without a metadata-location and
     // registers nothing, so the direct create below still succeeds.
@@ -587,13 +567,14 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               .withLocation(location)
               .stageCreate()
               .build();
-      AggregatedHttpResponse resp =
-          postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertThat(resp.status().code()).as(resp.contentUtf8()).isEqualTo(200);
       LoadTableResponse loadTableResponse =
-          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+          icebergClient.createTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, request);
       assertThat(loadTableResponse.tableMetadata().metadataFileLocation()).isNull();
-      assertThat(client.get(tablePath).aggregate().join().status().code()).isEqualTo(404);
+      TestUtils.assertIcebergApiException(
+          () ->
+              icebergClient.loadTable(
+                  TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME),
+          404);
     }
 
     // Create the table
@@ -606,11 +587,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               .withLocation(location)
               .setProperty("created-by", "iceberg-rest-test")
               .build();
-      AggregatedHttpResponse resp =
-          postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertThat(resp.status().code()).as(resp.contentUtf8()).isEqualTo(200);
       LoadTableResponse loadTableResponse =
-          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+          icebergClient.createTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, request);
       initialMetadataLocation = loadTableResponse.tableMetadata().metadataFileLocation();
       assertThat(initialMetadataLocation).contains("/metadata/00000-");
       assertThat(loadTableResponse.tableMetadata().schema().columns()).hasSize(2);
@@ -623,10 +601,10 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       }
 
       // creating it again is a conflict
-      resp = postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertErrorType(resp, 409, AlreadyExistsException.class);
-      assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
-          .isEqualTo(AlreadyExistsException.class.getSimpleName());
+      assertErrorType(
+          () -> icebergClient.createTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, request),
+          409,
+          AlreadyExistsException.class);
     }
 
     // The table is registered in UC as a native Iceberg table with converted columns
@@ -643,21 +621,20 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     // The table is loadable and listable through the Iceberg REST catalog
     String tableUuid;
     {
-      AggregatedHttpResponse resp = client.head(tablePath).aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(204);
+      assertThat(
+              icebergClient.tableExists(
+                  TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME))
+          .isTrue();
 
-      resp = client.get(tablePath).aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(200);
       LoadTableResponse loadTableResponse =
-          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+          icebergClient.loadTable(
+              TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
       assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
           .isEqualTo(initialMetadataLocation);
       tableUuid = loadTableResponse.tableMetadata().uuid();
 
-      resp = client.get(tablesPath).aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(200);
       ListTablesResponse listTablesResponse =
-          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
+          icebergClient.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
       assertThat(listTablesResponse.identifiers())
           .containsExactly(TableIdentifier.of(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME));
     }
@@ -676,11 +653,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                   new MetadataUpdate.AddSchema(updatedSchema),
                   new MetadataUpdate.SetCurrentSchema(-1),
                   new MetadataUpdate.SetProperties(Map.of("foo", "bar"))));
-      AggregatedHttpResponse resp =
-          postJson(tablePath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertThat(resp.status().code()).isEqualTo(200);
       LoadTableResponse loadTableResponse =
-          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+          icebergClient.updateTable(
+              TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, request);
       assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
           .contains("/metadata/00001-");
       assertThat(loadTableResponse.tableMetadata().properties()).containsEntry("foo", "bar");
@@ -695,10 +670,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(tableInfo.getProperties()).containsEntry("foo", "bar");
 
       // the new metadata location is what loadTable now returns
-      resp = client.get(tablePath).aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(200);
       LoadTableResponse reloaded =
-          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+          icebergClient.loadTable(
+              TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
       assertThat(reloaded.tableMetadata().metadataFileLocation())
           .isEqualTo(loadTableResponse.tableMetadata().metadataFileLocation());
       assertThat(reloaded.tableMetadata().properties()).containsEntry("foo", "bar");
@@ -710,78 +684,98 @@ public class IcebergRestCatalogTest extends BaseServerTest {
           new UpdateTableRequest(
               List.of(new UpdateRequirement.AssertTableUUID(UUID.randomUUID().toString())),
               List.of(new MetadataUpdate.SetProperties(Map.of("should", "fail"))));
-      AggregatedHttpResponse resp =
-          postJson(tablePath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertErrorType(resp, 409, CommitFailedException.class);
+      assertErrorType(
+          () ->
+              icebergClient.updateTable(
+                  TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, request),
+          409,
+          CommitFailedException.class);
     }
 
     // Rename the table, and rename it back so the steps below still find it
     {
-      String renamePath = "/v1/catalogs/" + TestUtils.CATALOG_NAME + "/tables/rename";
-      AggregatedHttpResponse resp =
-          postJson(
-              renamePath, renameRequest(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, "renamed"));
-      assertThat(resp.status().code()).isEqualTo(204);
-      assertThat(resp.contentUtf8()).isEmpty();
+      icebergClient.renameTable(
+          TestUtils.CATALOG_NAME,
+          TestUtils.SCHEMA_NAME,
+          TestUtils.TABLE_NAME,
+          TestUtils.SCHEMA_NAME,
+          "renamed");
 
       // The table answers under its new name and no longer under the old one.
-      assertThat(client.get(tablesPath + "/renamed").aggregate().join().status().code())
-          .isEqualTo(200);
-      assertThat(client.get(tablePath).aggregate().join().status().code()).isEqualTo(404);
-      ListTablesResponse listed =
-          IcebergObjectMapper.mapper()
-              .readValue(
-                  client.get(tablesPath).aggregate().join().contentUtf8(),
-                  ListTablesResponse.class);
-      assertThat(listed.identifiers())
+      assertThat(
+              icebergClient.tableExists(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "renamed"))
+          .isTrue();
+      assertThat(
+              icebergClient.tableExists(
+                  TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME))
+          .isFalse();
+      assertThat(
+              icebergClient.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME).identifiers())
           .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "renamed"));
 
       // A source that is not there is a 404, and a destination that is taken is a 409.
-      resp =
-          postJson(renamePath, renameRequest(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, "other"));
-      assertThat(resp.status().code()).isEqualTo(404);
+      TestUtils.assertIcebergApiException(
+          () ->
+              icebergClient.renameTable(
+                  TestUtils.CATALOG_NAME,
+                  TestUtils.SCHEMA_NAME,
+                  TestUtils.TABLE_NAME,
+                  TestUtils.SCHEMA_NAME,
+                  "other"),
+          404);
       createTable("taken");
-      resp = postJson(renamePath, renameRequest(TestUtils.SCHEMA_NAME, "renamed", "taken"));
-      assertThat(resp.status().code()).isEqualTo(409);
+      TestUtils.assertIcebergApiException(
+          () ->
+              icebergClient.renameTable(
+                  TestUtils.CATALOG_NAME,
+                  TestUtils.SCHEMA_NAME,
+                  "renamed",
+                  TestUtils.SCHEMA_NAME,
+                  "taken"),
+          409);
 
       // Unity Catalog cannot move a table between namespaces, and says so rather than half-doing
       // it.
-      resp =
-          postJson(
-              renamePath, renameRequest(TestUtils.SCHEMA_NAME, "renamed", "moved", "other_ns"));
-      assertThat(resp.status().code()).isEqualTo(501);
+      TestUtils.assertIcebergApiException(
+          () ->
+              icebergClient.renameTable(
+                  TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "renamed", "other_ns", "moved"),
+          501);
 
-      // A request without a source or a destination is a bad request, not a server error.
-      assertThat(postJson(renamePath, "{}").status().code()).isEqualTo(400);
+      // A request without a source or a destination is a bad request, not a server error. The 5-arg
+      // rename can't express an empty body, so send the raw JSON through the client's raw path.
+      TestUtils.assertIcebergApiException(
+          () -> icebergClient.renameTableRaw(TestUtils.CATALOG_NAME, "{}"), 400);
 
-      resp =
-          postJson(
-              renamePath, renameRequest(TestUtils.SCHEMA_NAME, "renamed", TestUtils.TABLE_NAME));
-      assertThat(resp.status().code()).isEqualTo(204);
+      icebergClient.renameTable(
+          TestUtils.CATALOG_NAME,
+          TestUtils.SCHEMA_NAME,
+          "renamed",
+          TestUtils.SCHEMA_NAME,
+          TestUtils.TABLE_NAME);
     }
 
     // Drop the table
     {
-      AggregatedHttpResponse resp = client.delete(tablePath).aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(204);
-
-      resp = client.head(tablePath).aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(404);
-
-      resp = client.get(tablePath).aggregate().join();
-      assertErrorType(resp, 404, NoSuchTableException.class);
+      icebergClient.dropTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
+      assertThat(
+              icebergClient.tableExists(
+                  TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME))
+          .isFalse();
+      assertErrorType(
+          () ->
+              icebergClient.loadTable(
+                  TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME),
+          404,
+          NoSuchTableException.class);
     }
 
     // A create request without a location gets a server-assigned managed location
     {
-      String managedTablePath = tablesPath + "/managed_iceberg_table";
       CreateTableRequest request =
           CreateTableRequest.builder().withName("managed_iceberg_table").withSchema(schema).build();
-      AggregatedHttpResponse resp =
-          postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertThat(resp.status().code()).isEqualTo(200);
       LoadTableResponse loadTableResponse =
-          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+          icebergClient.createTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, request);
       assertThat(loadTableResponse.tableMetadata().location()).contains("/tables/");
       assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
           .contains("/metadata/00000-");
@@ -794,8 +788,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(tableInfo.getStorageLocation())
           .isEqualTo(loadTableResponse.tableMetadata().location());
 
-      resp = client.delete(managedTablePath).aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(204);
+      icebergClient.dropTable(
+          TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "managed_iceberg_table");
     }
   }
 
@@ -886,8 +880,6 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     schemaOperations.createSchema(
         new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
 
-    String tablesPath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables";
-    String tablePath = tablesPath + "/" + TestUtils.TABLE_NAME;
     Schema schema =
         new Schema(
             Types.NestedField.required(1, "id", Types.LongType.get()),
@@ -904,12 +896,10 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               .withSchema(schema)
               .stageCreate()
               .build();
-      AggregatedHttpResponse resp =
-          postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertThat(resp.status().code()).isEqualTo(200);
-      LoadTableResponse loadTableResponse =
-          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
-      staged = loadTableResponse.tableMetadata();
+      staged =
+          icebergClient
+              .createTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, request)
+              .tableMetadata();
       assertThat(staged.metadataFileLocation()).isNull();
       assertThat(staged.location()).contains("/tables/");
 
@@ -919,7 +909,11 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       stagingTableId = stagingTable.getId();
 
       // the staged table is not yet a permanent UC table, so it is not loadable or listable
-      assertThat(client.get(tablePath).aggregate().join().status().code()).isEqualTo(404);
+      TestUtils.assertIcebergApiException(
+          () ->
+              icebergClient.loadTable(
+                  TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME),
+          404);
     }
 
     // Commit the staged create: assert-create requirement + updates rebuilding the metadata
@@ -938,11 +932,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                   new MetadataUpdate.SetDefaultSortOrder(-1),
                   new MetadataUpdate.SetLocation(staged.location()),
                   new MetadataUpdate.SetProperties(Map.of("staged", "true"))));
-      AggregatedHttpResponse resp =
-          postJson(tablePath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertThat(resp.status().code()).isEqualTo(200);
       LoadTableResponse loadTableResponse =
-          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+          icebergClient.updateTable(
+              TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, request);
       assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
           .contains("/metadata/00000-");
       assertThat(loadTableResponse.tableMetadata().uuid()).isEqualTo(staged.uuid());
@@ -956,11 +948,20 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
         assertThat(session.get(StagingTableDAO.class, stagingTableId).isStageCommitted()).isTrue();
       }
-      assertThat(client.get(tablePath).aggregate().join().status().code()).isEqualTo(200);
+      assertThat(
+              icebergClient
+                  .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME)
+                  .tableMetadata()
+                  .uuid())
+          .isEqualTo(staged.uuid());
 
       // replaying the create commit loses the race: 409 CommitFailedException
-      resp = postJson(tablePath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertErrorType(resp, 409, CommitFailedException.class);
+      assertErrorType(
+          () ->
+              icebergClient.updateTable(
+                  TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, request),
+          409,
+          CommitFailedException.class);
     }
 
     // staging a create for an existing table is a conflict
@@ -971,9 +972,291 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               .withSchema(schema)
               .stageCreate()
               .build();
-      AggregatedHttpResponse resp =
-          postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertErrorType(resp, 409, AlreadyExistsException.class);
+      assertErrorType(
+          () -> icebergClient.createTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, request),
+          409,
+          AlreadyExistsException.class);
+    }
+  }
+
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    // Managed tables live outside every local root: the location check is for external tables.
+    tableStorageRoot = getManagedStorageCloudPath(managedStorageRoot);
+    serverProperties.setProperty(Property.TABLE_STORAGE_ROOT.getKey(), tableStorageRoot);
+  }
+
+  @Test
+  public void testLocalExternalTableAtALocationThatIsNotAPlainPathIsRejected() throws Exception {
+    createCatalogAndNamespace();
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+    String root = NormalizedURL.from(testDirectoryRoot.toUri()).toString();
+    for (String location :
+        List.of(root + "/a%00b", root + "/a%2Fb", root + "/a/%2e%2e/b", root + "/t?x=1")) {
+      CreateTableRequest create =
+          CreateTableRequest.builder()
+              .withName(TestUtils.TABLE_NAME)
+              .withSchema(schema)
+              .withLocation(location)
+              .build();
+      for (Executable call :
+          List.<Executable>of(
+              () ->
+                  icebergClient.createTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, create),
+              () ->
+                  icebergClient.updateTable(
+                      TestUtils.CATALOG_NAME,
+                      TestUtils.SCHEMA_NAME,
+                      TestUtils.TABLE_NAME,
+                      stagedCreateCommit(schema, location)))) {
+        assertErrorType(call, 400, BadRequestException.class);
+        TestUtils.assertIcebergApiException(call, 400, "Unsupported local path");
+      }
+    }
+    assertThat(testDirectoryRoot.resolve("a")).doesNotExist();
+    assertThat(testDirectoryRoot.resolve("b")).doesNotExist();
+  }
+
+  /** A staged-create commit for an external table at {@code location}. */
+  private static UpdateTableRequest stagedCreateCommit(Schema schema, String location) {
+    return new UpdateTableRequest(
+        List.of(new UpdateRequirement.AssertTableDoesNotExist()),
+        List.of(
+            new MetadataUpdate.AssignUUID(UUID.randomUUID().toString()),
+            new MetadataUpdate.UpgradeFormatVersion(2),
+            new MetadataUpdate.AddSchema(schema),
+            new MetadataUpdate.SetCurrentSchema(-1),
+            new MetadataUpdate.AddPartitionSpec(PartitionSpec.unpartitioned()),
+            new MetadataUpdate.SetDefaultPartitionSpec(-1),
+            new MetadataUpdate.AddSortOrder(SortOrder.unsorted()),
+            new MetadataUpdate.SetDefaultSortOrder(-1),
+            new MetadataUpdate.SetLocation(location)));
+  }
+
+  @Test
+  public void testLocalExternalTableNotUnderARootIsRejected() throws ApiException, IOException {
+    // testDirectoryRoot is the only local root configured by default.
+    createCatalogAndNamespace();
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+    String root = NormalizedURL.from(testDirectoryRoot.toUri()).toString();
+    for (String location :
+        List.of(
+            NormalizedURL.from(outsideLocalRoots.resolve("t").toUri()).toString(),
+            root,
+            root + "-sibling/t")) {
+      CreateTableRequest stagedCreate =
+          CreateTableRequest.builder()
+              .withName(TestUtils.TABLE_NAME)
+              .withSchema(schema)
+              .withLocation(location)
+              .stageCreate()
+              .build();
+      CreateTableRequest create =
+          CreateTableRequest.builder()
+              .withName(TestUtils.TABLE_NAME)
+              .withSchema(schema)
+              .withLocation(location)
+              .build();
+      for (Executable call :
+          List.<Executable>of(
+              () ->
+                  icebergClient.createTable(
+                      TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, stagedCreate),
+              () ->
+                  icebergClient.createTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, create),
+              () ->
+                  icebergClient.updateTable(
+                      TestUtils.CATALOG_NAME,
+                      TestUtils.SCHEMA_NAME,
+                      TestUtils.TABLE_NAME,
+                      stagedCreateCommit(schema, location)))) {
+        assertErrorType(call, 403, ForbiddenException.class);
+        TestUtils.assertIcebergApiException(call, 403, Property.EXTERNAL_LOCAL_ROOTS.getKey());
+      }
+    }
+    // Rejected before the server created any directory.
+    assertThat(outsideLocalRoots.resolve("t")).doesNotExist();
+    assertThat(testDirectoryRoot.resolve("metadata")).doesNotExist();
+    assertThat(testDirectoryRoot.resolveSibling(testDirectoryRoot.getFileName() + "-sibling"))
+        .doesNotExist();
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.loadTable(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME),
+        404);
+  }
+
+  @Test
+  public void testLocalExternalTableUnderAnExternalLocationOutsideTheRoots() throws Exception {
+    // The external location is outside every local root, so only it can allow the location.
+    createCatalogAndNamespace();
+    Path registered = outsideLocalRoots.resolve("registered");
+    createLocalExternalLocation(NormalizedURL.from(registered.toUri()).toString());
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+
+    icebergClient.createTable(
+        TestUtils.CATALOG_NAME,
+        TestUtils.SCHEMA_NAME,
+        CreateTableRequest.builder()
+            .withName("registered")
+            .withSchema(schema)
+            .withLocation(NormalizedURL.from(registered.resolve("t").toUri()).toString())
+            .build());
+    assertThat(registered.resolve("t").resolve("metadata")).isDirectory();
+
+    // A sibling of the external location is under neither it nor a root.
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.createTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                CreateTableRequest.builder()
+                    .withName("unregistered")
+                    .withSchema(schema)
+                    .withLocation(
+                        NormalizedURL.from(outsideLocalRoots.resolve("unregistered").toUri())
+                            .toString())
+                    .build()),
+        403,
+        Property.EXTERNAL_LOCAL_ROOTS.getKey());
+    assertThat(outsideLocalRoots.resolve("unregistered")).doesNotExist();
+  }
+
+  @Test
+  public void testLocalExternalTableUnderAnExternalLocationRegisteredWithAnEscapeIsRejected()
+      throws Exception {
+    createCatalogAndNamespace();
+    String root = NormalizedURL.from(testDirectoryRoot.toUri()).toString();
+    // "%2D" is an escaped "-": the external location's directory is <root>/el-x, under a root.
+    createLocalExternalLocation(root + "/el%2Dx");
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+
+    // Spelled as registered: the escape is not needed, so the location is rejected.
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.createTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                CreateTableRequest.builder()
+                    .withName("escaped")
+                    .withSchema(schema)
+                    .withLocation(root + "/el%2Dx/t")
+                    .build()),
+        400,
+        "unneeded escapes");
+    // Spelled canonically: authorization matched no external location by string, so it checked no
+    // privilege on el%2Dx. Denied, although a root covers the location.
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.createTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                CreateTableRequest.builder()
+                    .withName("unescaped")
+                    .withSchema(schema)
+                    .withLocation(root + "/el-x/u")
+                    .build()),
+        403,
+        "el%2Dx");
+    assertThat(testDirectoryRoot.resolve("el-x")).doesNotExist();
+  }
+
+  /** Registers an external location at {@code url} with a placeholder storage credential. */
+  private void createLocalExternalLocation(String url) throws ApiException {
+    ApiClient apiClient = TestUtils.createApiClient(serverConfig);
+    new CredentialsApi(apiClient)
+        .createCredential(
+            new CreateCredentialRequest()
+                .name("local_cred")
+                .purpose(CredentialPurpose.STORAGE)
+                .awsIamRole(new AwsIamRoleRequest().roleArn("fake_arn")));
+    new ExternalLocationsApi(apiClient)
+        .createExternalLocation(
+            new CreateExternalLocation().name("local_el").url(url).credentialName("local_cred"));
+  }
+
+  @Test
+  public void testStagedCreateCommitAtAnEscapedManagedLocationIsRejected()
+      throws ApiException, IOException {
+    createCatalogAndNamespace();
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+    TableMetadata staged =
+        icebergClient
+            .createTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                CreateTableRequest.builder()
+                    .withName(TestUtils.TABLE_NAME)
+                    .withSchema(schema)
+                    .stageCreate()
+                    .build())
+            .tableMetadata();
+    // "%5F" decodes to "_", so this names the staging location without its managed marker.
+    String escapedStagingLocation =
+        staged.location().replace(Constants.MANAGED_STORAGE_PREFIX, "%5F%5Funitystorage");
+
+    // Classified as external, and rejected for its unneeded escapes.
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.updateTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                TestUtils.TABLE_NAME,
+                stagedCreateCommit(schema, escapedStagingLocation)),
+        400,
+        "unneeded escapes");
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.loadTable(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME),
+        404);
+  }
+
+  @Test
+  public void testCommitThroughALinkedMetadataDirectoryIsRejected()
+      throws ApiException, IOException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+    Path table = Files.createTempDirectory(testDirectoryRoot, "iceberg-linked-table");
+    Path outside = Files.createTempDirectory(testDirectoryRoot, "iceberg-link-target");
+    icebergClient.createTable(
+        TestUtils.CATALOG_NAME,
+        TestUtils.SCHEMA_NAME,
+        CreateTableRequest.builder()
+            .withName(TestUtils.TABLE_NAME)
+            .withSchema(new Schema(Types.NestedField.required(1, "id", Types.LongType.get())))
+            .withLocation(table.toUri().toString())
+            .build());
+
+    // A client sharing the file system swaps the metadata directory for a link to a directory
+    // holding the same files, so following the link would read and commit successfully.
+    Path metadata = table.resolve("metadata");
+    try (var files = Files.list(metadata)) {
+      for (Path file : files.toList()) {
+        Files.copy(file, outside.resolve(file.getFileName()));
+      }
+    }
+    Files.move(metadata, table.resolve("metadata.moved"));
+    Files.createSymbolicLink(metadata, outside);
+    long filesBefore;
+    try (var files = Files.list(outside)) {
+      filesBefore = files.count();
+    }
+
+    UpdateTableRequest commit =
+        new UpdateTableRequest(
+            List.of(), List.of(new MetadataUpdate.SetProperties(Map.of("k", "v"))));
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.updateTable(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, commit),
+        403,
+        "goes through a symbolic link");
+    try (var files = Files.list(outside)) {
+      assertThat(files.count()).isEqualTo(filesBefore);
     }
   }
 
@@ -985,10 +1268,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     schemaOperations.createSchema(
         new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
 
-    String tablesPath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables";
-    String tablePath = tablesPath + "/" + TestUtils.TABLE_NAME;
     Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
-    String location = Files.createTempDirectory("iceberg-rest-concurrent").toUri().toString();
+    String location =
+        Files.createTempDirectory(testDirectoryRoot, "iceberg-rest-concurrent").toUri().toString();
 
     // Create the table; its current-schema-id is 0.
     CreateTableRequest createRequest =
@@ -997,11 +1279,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
             .withSchema(schema)
             .withLocation(location)
             .build();
-    AggregatedHttpResponse createResp =
-        postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(createRequest));
-    assertThat(createResp.status().code()).isEqualTo(200);
     LoadTableResponse created =
-        IcebergObjectMapper.mapper().readValue(createResp.contentUtf8(), LoadTableResponse.class);
+        icebergClient.createTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, createRequest);
     assertThat(created.tableMetadata().metadataFileLocation()).contains("/metadata/00000-");
 
     // Fire N commits at once. Each asserts the original current-schema-id (0) and bumps the schema
@@ -1029,9 +1308,16 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                         List.of(
                             new MetadataUpdate.AddSchema(bumpedSchema),
                             new MetadataUpdate.SetCurrentSchema(-1)));
-                String body = IcebergObjectMapper.mapper().writeValueAsString(request);
                 barrier.await();
-                return postJson(tablePath, body).status().code();
+                // The typed client throws on a non-2xx; map it back to the HTTP status so the
+                // win/lose bookkeeping below stays status-based.
+                try {
+                  icebergClient.updateTable(
+                      TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, request);
+                  return 200;
+                } catch (ApiException e) {
+                  return e.getCode();
+                }
               }));
     }
 
@@ -1057,10 +1343,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
     // The single winner advanced the table to version 1 with the bumped schema; losers left no
     // trace (their metadata files were rolled back), so the table is loadable and consistent.
-    AggregatedHttpResponse loadResp = client.get(tablePath).aggregate().join();
-    assertThat(loadResp.status().code()).isEqualTo(200);
     LoadTableResponse loaded =
-        IcebergObjectMapper.mapper().readValue(loadResp.contentUtf8(), LoadTableResponse.class);
+        icebergClient.loadTable(
+            TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
     assertThat(loaded.tableMetadata().metadataFileLocation()).contains("/metadata/00001-");
     assertThat(loaded.tableMetadata().schema().columns()).hasSize(2);
   }
@@ -1068,17 +1353,13 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   @Test
   public void testLoadCredentials() throws Exception {
     createUniformIcebergTable();
-    String tablesPath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables/";
-
     // The route is served: a table UC serves as Iceberg answers 200 with the spec's response. This
     // table is local, so it vends nothing -- an empty list, not a credential with an empty config,
     // which Iceberg's own Credential type rejects.
-    AggregatedHttpResponse resp =
-        client.get(tablesPath + TestUtils.TABLE_NAME + "/credentials").aggregate().join();
-    assertThat(resp.status().code()).as(resp.contentUtf8()).isEqualTo(200);
     assertThat(
-            IcebergObjectMapper.mapper()
-                .readValue(resp.contentUtf8(), LoadCredentialsResponse.class)
+            icebergClient
+                .loadCredentials(
+                    TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME)
                 .credentials())
         .isEmpty();
 
@@ -1087,11 +1368,15 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     // generic 404 an unrouted path answers, which is how a client can tell this endpoint is served.
     createTable("plainTable");
     assertErrorType(
-        client.get(tablesPath + "plainTable/credentials").aggregate().join(),
+        () ->
+            icebergClient.loadCredentials(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "plainTable"),
         404,
         NoSuchTableException.class);
     assertErrorType(
-        client.get(tablesPath + "noSuchTable/credentials").aggregate().join(),
+        () ->
+            icebergClient.loadCredentials(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "noSuchTable"),
         404,
         NoSuchTableException.class);
   }
@@ -1099,6 +1384,16 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   @Test
   public void testReportMetrics() throws Exception {
     createUniformIcebergTable();
+
+    // Per the REST spec, a report is acknowledged with 204 No Content.
+    icebergClient.reportMetrics(
+        TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, scanReport());
+    icebergClient.reportMetrics(
+        TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, commitReport());
+
+    // A body that isn't a metrics report is rejected rather than silently accepted. Iceberg's own
+    // parser raises IllegalArgumentException for it, whose name means nothing to a client. The
+    // typed client can't send a non-report body, so this stays a raw probe.
     String metricsPath =
         TEST_BASE_PREFIX
             + "/namespaces/"
@@ -1106,47 +1401,38 @@ public class IcebergRestCatalogTest extends BaseServerTest {
             + "/tables/"
             + TestUtils.TABLE_NAME
             + "/metrics";
-
-    // Per the REST spec, a report is acknowledged with 204 No Content.
-    assertThat(postJson(metricsPath, scanReportJson()).status().code()).isEqualTo(204);
-    assertThat(postJson(metricsPath, commitReportJson()).status().code()).isEqualTo(204);
-
-    // A body that isn't a metrics report is rejected rather than silently accepted. Iceberg's own
-    // parser raises IllegalArgumentException for it, whose name means nothing to a client.
     assertErrorType(postJson(metricsPath, "{\"foo\":\"bar\"}"), 400, BadRequestException.class);
 
     // A table UC knows about but doesn't serve as an Iceberg table is a 404, like loadTable.
     createTable("plainTable");
-    AggregatedHttpResponse resp =
-        postJson(
-            TEST_BASE_PREFIX
-                + "/namespaces/"
-                + TestUtils.SCHEMA_NAME
-                + "/tables/plainTable/metrics",
-            scanReportJson());
-    assertErrorType(resp, 404, NoSuchTableException.class);
+    assertErrorType(
+        () ->
+            icebergClient.reportMetrics(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "plainTable", scanReport()),
+        404,
+        NoSuchTableException.class);
 
     // A table that doesn't exist at all is a 404 too.
-    resp =
-        postJson(
-            TEST_BASE_PREFIX
-                + "/namespaces/"
-                + TestUtils.SCHEMA_NAME
-                + "/tables/missingTable/metrics",
-            scanReportJson());
-    assertErrorType(resp, 404, NoSuchTableException.class);
+    assertErrorType(
+        () ->
+            icebergClient.reportMetrics(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "missingTable", scanReport()),
+        404,
+        NoSuchTableException.class);
 
     // The non-prefixed URL isn't routed, matching the other Iceberg endpoints.
-    resp =
-        postJson(
-            TEST_BASE_NON_PREFIX
-                + "/namespaces/"
-                + TestUtils.SCHEMA_NAME
-                + "/tables/"
-                + TestUtils.TABLE_NAME
-                + "/metrics",
-            scanReportJson());
-    assertThat(resp.status().code()).isEqualTo(404);
+    assertThat(
+            postJson(
+                    TEST_BASE_NON_PREFIX
+                        + "/namespaces/"
+                        + TestUtils.SCHEMA_NAME
+                        + "/tables/"
+                        + TestUtils.TABLE_NAME
+                        + "/metrics",
+                    scanReportJson())
+                .status()
+                .code())
+        .isEqualTo(404);
   }
 
   @Test
@@ -1162,12 +1448,36 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       created.add(name);
     }
 
-    AggregatedHttpResponse resp = client.get(TEST_BASE_PREFIX + "/namespaces").aggregate().join();
-
-    assertThat(resp.status().code()).isEqualTo(200);
-    ListNamespacesResponse listed =
-        IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListNamespacesResponse.class);
+    // A request that does not ask to paginate is answered with the whole listing and no token,
+    // which the REST spec requires of a server that does paginate.
+    ListNamespacesResponse listed = listedNamespaces("");
     assertThat(listed.namespaces()).map(Namespace::toString).containsExactlyElementsOf(created);
+    assertThat(listed.nextPageToken()).isNull();
+    // Naming a size without opening a paginated listing does not paginate either.
+    assertThat(listedNamespaces("?pageSize=10").namespaces()).hasSize(created.size());
+
+    // Opening one with an empty token, as Iceberg's client does, answers a page and a token; the
+    // pages together are the same listing, each namespace once.
+    List<String> paged = new ArrayList<>();
+    String pageToken = "";
+    int pages = 0;
+    do {
+      ListNamespacesResponse page = listedNamespaces("?pageToken=" + pageToken);
+      page.namespaces().forEach(namespace -> paged.add(namespace.toString()));
+      pageToken = page.nextPageToken();
+      pages++;
+    } while (pageToken != null);
+    assertThat(pages).isEqualTo(2);
+    assertThat(paged).containsExactlyElementsOf(created);
+
+    // pageSize is the upper bound on one page.
+    assertThat(listedNamespaces("?pageToken=&pageSize=10").namespaces()).hasSize(10);
+    // A size the spec does not allow is a bad request rather than a page of some other size, and
+    // says so in the same words whether it is below the minimum or not a number at all.
+    assertRejectedPageSize("0", "Invalid pageSize: 0. It must be a whole number of at least 1.");
+    assertRejectedPageSize("-1", "Invalid pageSize: -1. It must be a whole number of at least 1.");
+    assertRejectedPageSize(
+        "ten", "Invalid pageSize: ten. It must be a whole number of at least 1.");
   }
 
   @Test
@@ -1178,24 +1488,41 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     schemaOperations.createSchema(
         new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
 
-    // Fill the first page with tables the Iceberg endpoints don't serve, so that the only uniform
-    // table sorts onto the second page
+    // Fill the first page with tables the Iceberg endpoints don't serve, so that the uniform tables
+    // sort onto the second page
     for (int i = 0; i < PAGE_SIZE; i++) {
       createTable("delta_%03d".formatted(i));
     }
     setUniformMetadata(createTable("uniform_table"), writeIcebergMetadata());
+    setUniformMetadata(createTable("uniform_table_b"), writeIcebergMetadata());
 
-    AggregatedHttpResponse resp =
-        client
-            .get(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables")
-            .aggregate()
-            .join();
-
-    assertThat(resp.status().code()).isEqualTo(200);
-    ListTablesResponse listed =
-        IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
+    ListTablesResponse listed = listedTables("");
     assertThat(listed.identifiers())
+        .containsExactly(
+            TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table"),
+            TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table_b"));
+    assertThat(listed.nextPageToken()).isNull();
+
+    // A page of one, opened the way Iceberg's client opens a paginated listing. The hundred rows
+    // that carry no Iceberg metadata are not part of this listing at all, so the first page is the
+    // first uniform table rather than the empty page those rows would otherwise make.
+    ListTablesResponse firstPage = listedTables("?pageToken=&pageSize=1");
+    assertThat(firstPage.identifiers())
         .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table"));
+    assertThat(firstPage.nextPageToken()).isNotNull();
+
+    // The token resumes after the table just listed, and following it to the end yields the same
+    // listing once. A full page always carries a token, so the last one holds nothing: a client
+    // must follow the token rather than stop at an empty page -- which is also what the response
+    // filter can leave behind once permissions are applied to a page.
+    List<TableIdentifier> paged = new ArrayList<>(firstPage.identifiers());
+    String pageToken = firstPage.nextPageToken();
+    do {
+      ListTablesResponse page = listedTables("?pageToken=" + pageToken + "&pageSize=1");
+      paged.addAll(page.identifiers());
+      pageToken = page.nextPageToken();
+    } while (pageToken != null);
+    assertThat(paged).containsExactlyElementsOf(listed.identifiers());
   }
 
   @Test
@@ -1270,59 +1597,55 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     assertThat(error.code()).isEqualTo(expectedCode);
   }
 
-  private static String renameRequest(String namespace, String from, String to) {
-    return renameRequest(namespace, from, to, namespace);
-  }
-
-  private static String renameRequest(
-      String namespace, String from, String to, String destinationNamespace) {
-    return "{\"source\": {\"namespace\": [\""
-        + namespace
-        + "\"], \"name\": \""
-        + from
-        + "\"}, \"destination\": {\"namespace\": [\""
-        + destinationNamespace
-        + "\"], \"name\": \""
-        + to
-        + "\"}}";
+  /**
+   * As {@link #assertErrorType} but for a typed {@link IcebergRestClient} call, which throws {@link
+   * ApiException} carrying the Iceberg error body on a non-2xx response.
+   */
+  private static void assertErrorType(
+      Executable call, int expectedCode, Class<? extends Exception> expectedType) {
+    ApiException e = assertThrows(ApiException.class, call);
+    assertThat(e.getCode()).isEqualTo(expectedCode);
+    ErrorResponse error = ErrorResponseParser.fromJson(e.getResponseBody());
+    assertThat(error.type()).isEqualTo(expectedType.getSimpleName());
+    assertThat(error.code()).isEqualTo(expectedCode);
   }
 
   @Test
   public void testLoadTableSnapshotsParameter() throws Exception {
     createUniformIcebergTable("/iceberg.metadata.two-snapshots.json");
-    String tablePath =
-        TEST_BASE_PREFIX
-            + "/namespaces/"
-            + TestUtils.SCHEMA_NAME
-            + "/tables/"
-            + TestUtils.TABLE_NAME;
-
     // The default is every snapshot the metadata holds, which includes the one no ref points at.
-    assertThat(loadedSnapshotIds(client.get(tablePath).aggregate().join())).hasSize(2);
-    assertThat(loadedSnapshotIds(client.get(tablePath + "?snapshots=all").aggregate().join()))
+    assertThat(
+            loadedSnapshotIds(
+                icebergClient.loadTable(
+                    TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME)))
+        .hasSize(2);
+    assertThat(
+            loadedSnapshotIds(
+                icebergClient.loadTable(
+                    TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, "all")))
         .hasSize(2);
 
     // "refs" asks for only the snapshots the table's refs point at.
-    AggregatedHttpResponse refsOnly = client.get(tablePath + "?snapshots=refs").aggregate().join();
-    assertThat(refsOnly.status().code()).isEqualTo(200);
     LoadTableResponse loaded =
-        IcebergObjectMapper.mapper().readValue(refsOnly.contentUtf8(), LoadTableResponse.class);
-    assertThat(loadedSnapshotIds(refsOnly))
+        icebergClient.loadTable(
+            TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, "refs");
+    assertThat(loadedSnapshotIds(loaded))
         .containsExactly(loaded.tableMetadata().currentSnapshot().snapshotId());
     // The rest of the metadata is the same table, so a client can still use what it got back.
     assertThat(loaded.tableMetadata().metadataFileLocation())
         .isEqualTo(
-            IcebergObjectMapper.mapper()
-                .readValue(
-                    client.get(tablePath).aggregate().join().contentUtf8(), LoadTableResponse.class)
+            icebergClient
+                .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME)
                 .tableMetadata()
                 .metadataFileLocation());
 
     // Any other value is a bad request rather than a silently complete response.
-    AggregatedHttpResponse rejected = client.get(tablePath + "?snapshots=some").aggregate().join();
-    assertThat(rejected.status().code()).isEqualTo(400);
-    assertThat(ErrorResponseParser.fromJson(rejected.contentUtf8()).type())
-        .isEqualTo(BadRequestException.class.getSimpleName());
+    assertErrorType(
+        () ->
+            icebergClient.loadTable(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, "some"),
+        400,
+        BadRequestException.class);
   }
 
   @Test
@@ -1419,10 +1742,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         .join();
   }
 
-  private static List<Long> loadedSnapshotIds(AggregatedHttpResponse resp) throws IOException {
-    assertThat(resp.status().code()).isEqualTo(200);
-    LoadTableResponse loaded =
-        IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+  private static List<Long> loadedSnapshotIds(LoadTableResponse loaded) {
     return loaded.tableMetadata().snapshots().stream().map(Snapshot::snapshotId).toList();
   }
 
@@ -1575,28 +1895,56 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     // The catalog still lists the table; the file its metadata pointer names is gone.
     Files.delete(icebergTableLocation.resolve("iceberg.metadata.json"));
 
-    AggregatedHttpResponse resp =
-        client
-            .get(
-                TEST_BASE_PREFIX
-                    + "/namespaces/"
-                    + TestUtils.SCHEMA_NAME
-                    + "/tables/"
-                    + TestUtils.TABLE_NAME)
-            .aggregate()
-            .join();
+    ApiException e =
+        assertThrows(
+            ApiException.class,
+            () ->
+                icebergClient.loadTable(
+                    TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME));
 
     // A table whose metadata cannot be read is a server-side failure, not a missing table, so the
     // type has to be one that means that: a 500 typed "NotFoundException" describes the failure as
     // something the client could act on.
-    assertThat(resp.status().code()).isEqualTo(500);
-    ErrorResponse error = ErrorResponseParser.fromJson(resp.contentUtf8());
+    assertThat(e.getCode()).isEqualTo(500);
+    ErrorResponse error = ErrorResponseParser.fromJson(e.getResponseBody());
     assertThat(error.code()).isEqualTo(500);
     assertThat(error.type()).isEqualTo(ServiceFailureException.class.getSimpleName());
     // The message says the table could not be read, and where the server keeps its files is not the
     // client's business.
     assertThat(error.message()).isEqualTo("Could not read this table");
     assertThat(error.message()).doesNotContain(icebergTableLocation.toString());
+  }
+
+  /** Asserts the listing refuses the given {@code pageSize} as a bad request naming the value. */
+  private void assertRejectedPageSize(String pageSize, String expectedMessage) {
+    AggregatedHttpResponse resp =
+        client
+            .get(TEST_BASE_PREFIX + "/namespaces?pageToken=&pageSize=" + pageSize)
+            .aggregate()
+            .join();
+    assertThat(resp.status().code()).isEqualTo(400);
+    ErrorResponse error = ErrorResponseParser.fromJson(resp.contentUtf8());
+    assertThat(error.type()).isEqualTo(BadRequestException.class.getSimpleName());
+    assertThat(error.message()).isEqualTo(expectedMessage);
+  }
+
+  /** The namespaces the listing endpoint answers with for the given query string. */
+  private ListNamespacesResponse listedNamespaces(String query) throws IOException {
+    AggregatedHttpResponse resp =
+        client.get(TEST_BASE_PREFIX + "/namespaces" + query).aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(200);
+    return IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListNamespacesResponse.class);
+  }
+
+  /** The tables the listing endpoint answers with for the given query string. */
+  private ListTablesResponse listedTables(String query) throws IOException {
+    AggregatedHttpResponse resp =
+        client
+            .get(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables" + query)
+            .aggregate()
+            .join();
+    assertThat(resp.status().code()).isEqualTo(200);
+    return IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
   }
 
   private AggregatedHttpResponse postJson(String path, String body) {
@@ -1624,30 +1972,32 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         .getSingleResult();
   }
 
-  private static String scanReportJson() {
-    return ReportMetricsRequestParser.toJson(
-        ReportMetricsRequest.of(
-            ImmutableScanReport.builder()
-                .tableName(TestUtils.TABLE_NAME)
-                .schemaId(0)
-                .addProjectedFieldIds(1)
-                .addProjectedFieldNames("as_int")
-                .snapshotId(23L)
-                .filter(Expressions.alwaysTrue())
-                .scanMetrics(ScanMetricsResult.fromScanMetrics(ScanMetrics.noop()))
-                .build()));
+  private static ReportMetricsRequest scanReport() {
+    return ReportMetricsRequest.of(
+        ImmutableScanReport.builder()
+            .tableName(TestUtils.TABLE_NAME)
+            .schemaId(0)
+            .addProjectedFieldIds(1)
+            .addProjectedFieldNames("as_int")
+            .snapshotId(23L)
+            .filter(Expressions.alwaysTrue())
+            .scanMetrics(ScanMetricsResult.fromScanMetrics(ScanMetrics.noop()))
+            .build());
   }
 
-  private static String commitReportJson() {
-    return ReportMetricsRequestParser.toJson(
-        ReportMetricsRequest.of(
-            ImmutableCommitReport.builder()
-                .tableName(TestUtils.TABLE_NAME)
-                .snapshotId(23L)
-                .sequenceNumber(4L)
-                .operation("append")
-                .commitMetrics(CommitMetricsResult.from(CommitMetrics.noop(), Map.of()))
-                .build()));
+  private static String scanReportJson() {
+    return ReportMetricsRequestParser.toJson(scanReport());
+  }
+
+  private static ReportMetricsRequest commitReport() {
+    return ReportMetricsRequest.of(
+        ImmutableCommitReport.builder()
+            .tableName(TestUtils.TABLE_NAME)
+            .snapshotId(23L)
+            .sequenceNumber(4L)
+            .operation("append")
+            .commitMetrics(CommitMetricsResult.from(CommitMetrics.noop(), Map.of()))
+            .build());
   }
 
   /** Creates a table that the Iceberg endpoints see, i.e. one with uniform Iceberg metadata. */

@@ -91,6 +91,27 @@ def column_type_to_python_type(
     )
 
 
+INT_COMPATIBLE_COLUMN_TYPES = frozenset({"FLOAT", "DOUBLE", "DECIMAL"})
+
+
+def is_value_of_column_type(value: Any, column_type: str, python_type: Any) -> bool:
+    """
+    Check whether a parameter value is acceptable for a SQL column type.
+    Integers are accepted for FLOAT, DOUBLE and DECIMAL columns because JSON (and therefore
+    LLM tool call arguments) does not distinguish `2` from `2.0`. Booleans are rejected
+    for those columns even though `bool` is a subclass of `int` in Python.
+    Args:
+        value (Any): The parameter value.
+        column_type (str): The SQL column type name.
+        python_type (Any): The python type (or tuple of types) mapped to the column type.
+    Returns:
+        bool: True if the value is acceptable for the column type, False otherwise.
+    """
+    if column_type in INT_COMPATIBLE_COLUMN_TYPES and isinstance(value, int):
+        return not isinstance(value, bool)
+    return isinstance(value, python_type)
+
+
 def is_time_type(column_type: str) -> bool:
     """
     Check if the column type is a time-related type.

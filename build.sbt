@@ -26,14 +26,6 @@ lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.3.1")
 // This String val is used for libraryDependencies coordinates; the SettingKey is
 // queryable in SBT via `show spark/sparkVersion`.
 lazy val sparkVersion = CrossSparkVersions.getSparkArtifactVersion()
-lazy val sparkMajorMinorVersion = CrossSparkVersions.getSparkVersionSpec().shortVersion
-
-// delta-spark is only needed for tests. When UC is published to local Maven before
-// Delta is built (e.g. CI pre-Delta publishM2 step), the matching Delta artifact may
-// not exist yet. Pass -DskipDeltaSpark=true to exclude it and avoid resolution failures.
-def deltaSparkTestDeps: Seq[ModuleID] =
-  if (sys.props.getOrElse("skipDeltaSpark", "false").toBoolean) Seq.empty
-  else Seq("io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test)
 
 // Apache Snapshots resolver is in build/sbt-config/repositories (global).
 // No per-module sparkResolvers needed.
@@ -41,10 +33,35 @@ lazy val hadoopVersion = sys.props.getOrElse("hadoopVersion", "3.4.2")
 
 // Library versions
 lazy val icebergVersion = "1.11.0"
-lazy val jacksonVersion = "2.17.0"
-lazy val openApiToolsJacksonBindNullableVersion = "0.2.6"
-lazy val log4jVersion = "2.25.3"
+lazy val jacksonVersion = "2.18.10"
+lazy val openApiToolsJacksonBindNullableVersion = "0.2.11"
+lazy val log4jVersion = "2.26.1"
+lazy val awsSdkV1Version = "1.12.797"
+lazy val awsSdkV2Version = "2.54.18"
+lazy val armeriaVersion = "1.41.1"
+// Keep in lockstep with Armeria's Micrometer line.
+lazy val micrometerVersion = "1.17.0"
+lazy val nettyVersion = "4.2.18.Final"
+lazy val nettyTcnativeVersion = "2.0.84.Final"
+lazy val vertxVersion = "4.5.34"
 val orgApacheHttpVersion = "4.5.14"
+
+// Latest patch on the Jackson line each Spark version ships, used to compile and test the
+// connector: Spark 4.0 ships 2.18 (4.0.0: 2.18.2), Spark 4.1 ships 2.20 (4.1.0: 2.20.0), and
+// Spark 4.2 ships 2.21 (4.2.0: 2.21.2). Clusters still run Spark's own jars.
+// jackson-core >= 2.18 is required by Spark 4.2's jackson-dataformat-yaml
+// (YAMLParser._updateToken).
+lazy val sparkJacksonVersion =
+  if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 2)) "2.21.7"
+  else if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 1)) "2.20.2"
+  else "2.18.11"
+// jackson-annotations is published as major.minor only from 2.20 onward (2.20, 2.21; for
+// example, 2.21.7 does not exist). 2.18.x still has patch releases, so Spark 4.0 matches
+// sparkJacksonVersion.
+lazy val sparkJacksonAnnotationsVersion =
+  if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 2)) "2.21"
+  else if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 1)) "2.20"
+  else "2.18.11"
 
 lazy val commonSettings = Seq(
   organization := orgName,
@@ -67,8 +84,6 @@ lazy val commonSettings = Seq(
   libraryDependencies ++= Seq(
     "org.slf4j" % "slf4j-api" % "2.0.13",
     "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
-    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % log4jVersion,
-    "org.apache.logging.log4j" % "log4j-api" % log4jVersion
   ),
   excludeDependencies ++= Seq(
     ExclusionRule("org.slf4j", "slf4j-reload4j")
@@ -124,6 +139,13 @@ lazy val commonSettings = Seq(
   },
   
   assembly / test := {}
+)
+
+lazy val log4jProcessSettings = Seq(
+  libraryDependencies ++= Seq(
+    "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
+    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % log4jVersion,
+  )
 )
 
 // Configure resolvers
@@ -356,6 +378,7 @@ lazy val server = (project in file("server"))
     name := s"$artifactNamePrefix-server",
     mainClass := Some(orgName + ".server.UnityCatalogServer"),
     commonSettings,
+    log4jProcessSettings,
     javaOnlyReleaseSettings,
     javafmtCheckSettings(),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
@@ -364,11 +387,17 @@ lazy val server = (project in file("server"))
       "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
     ) ++ javacRelease17,
     libraryDependencies ++= Seq(
-      "com.linecorp.armeria" %  "armeria" % "1.28.4",
+      "com.linecorp.armeria" %  "armeria" % armeriaVersion,
+      "com.linecorp.armeria" % "armeria-prometheus1" % armeriaVersion,
+      "io.micrometer" % "micrometer-registry-prometheus" % micrometerVersion,
       "org.apache.commons" % "commons-lang3" % "3.19.0",
 
-      // Netty dependencies
-      "io.netty" % "netty-all" % "4.1.111.Final",
+      // Netty dependencies. Armeria 1.33+ requires Netty 4.2; 4.2.x OpenSSL engine
+      // calls SSL.getGroupName, which exists only in tcnative 2.0.81+ (azure-core-http-netty
+      // otherwise wins with tcnative-classes 2.0.65 and Azure credential work hangs).
+      "io.netty" % "netty-all" % nettyVersion,
+      "io.netty" % "netty-tcnative-classes" % nettyTcnativeVersion,
+      "io.netty" % "netty-tcnative-boringssl-static" % nettyTcnativeVersion,
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       // Jackson dependencies
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
@@ -381,23 +410,24 @@ lazy val server = (project in file("server"))
       "com.h2database" %  "h2" % "2.2.224",
 
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
+      "com.zaxxer" % "HikariCP" % "7.1.0",
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
 
       // For ALDS access
-      "com.azure" % "azure-identity" % "1.13.2",
-      "com.azure" % "azure-storage-file-datalake" % "12.20.0",
+      "com.azure" % "azure-identity" % "1.18.6",
+      "com.azure" % "azure-storage-file-datalake" % "12.28.1",
 
       // For GCS Access
-      "com.google.cloud" % "google-cloud-storage" % "2.30.1",
-      "com.google.auth" % "google-auth-library-oauth2-http" % "1.20.0",
+      "com.google.cloud" % "google-cloud-storage" % "2.73.0",
+      "com.google.auth" % "google-auth-library-oauth2-http" % "1.52.0",
 
       //For s3 access
-      "com.amazonaws" % "aws-java-sdk-s3" % "1.12.728",
-      "software.amazon.awssdk" % "sso" % "2.27.12",
-      "software.amazon.awssdk" % "ssooidc" % "2.27.12",
+      "com.amazonaws" % "aws-java-sdk-s3" % awsSdkV1Version,
+      "software.amazon.awssdk" % "sso" % awsSdkV2Version,
+      "software.amazon.awssdk" % "ssooidc" % awsSdkV2Version,
 
       "org.apache.httpcomponents" % "httpcore" % "4.4.16",
       "org.apache.httpcomponents" % "httpclient" % "4.5.14",
@@ -407,26 +437,29 @@ lazy val server = (project in file("server"))
       "org.apache.iceberg" % "iceberg-aws" % icebergVersion,
       "org.apache.iceberg" % "iceberg-azure" % icebergVersion,
       "org.apache.iceberg" % "iceberg-gcp" % icebergVersion,
-      "software.amazon.awssdk" % "s3" % "2.24.0",
-      "software.amazon.awssdk" % "sts" % "2.24.0",
+      "software.amazon.awssdk" % "s3" % awsSdkV2Version,
+      "software.amazon.awssdk" % "sts" % awsSdkV2Version,
       // iceberg-aws transitively requires this dependency for table encryption support
-      "software.amazon.awssdk" % "kms" % "2.24.0",
-      "io.vertx" % "vertx-core" % "4.3.5",
-      "io.vertx" % "vertx-web" % "4.3.5",
-      "io.vertx" % "vertx-web-client" % "4.3.5",
+      "software.amazon.awssdk" % "kms" % awsSdkV2Version,
+      // Iceberg's S3FileIO loads the "apache" HTTP client by default, but AWS SDK v2 now pulls in
+      // apache5-client instead, so declare apache-client explicitly
+      "software.amazon.awssdk" % "apache-client" % awsSdkV2Version,
+      "io.vertx" % "vertx-core" % vertxVersion,
+      "io.vertx" % "vertx-web" % vertxVersion,
+      "io.vertx" % "vertx-web-client" % vertxVersion,
 
       // Hadoop dependencies for ExternalLocationUtils
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
 
       // Auth dependencies
-      "com.unboundid.product.scim2" % "scim2-sdk-common" % "3.1.0",
-      "org.casbin" % "jcasbin" % "1.55.0",
-      "org.casbin" % "jdbc-adapter" % "2.7.0"
+      "com.unboundid.product.scim2" % "scim2-sdk-common" % "3.2.0",
+      "org.casbin" % "jcasbin" % "1.99.0",
+      "org.casbin" % "jdbc-adapter" % "2.13.0"
         exclude("com.microsoft.sqlserver", "mssql-jdbc")
         exclude("com.oracle.database.jdbc", "ojdbc6"),
-      "org.springframework" % "spring-expression" % "6.1.11",
-      "com.auth0" % "java-jwt" % "4.4.0",
-      "com.auth0" % "jwks-rsa" % "0.22.1",
+      "org.springframework" % "spring-expression" % "6.2.19",
+      "com.auth0" % "java-jwt" % "4.6.1",
+      "com.auth0" % "jwks-rsa" % "0.24.1",
 
       // Test dependencies
       "org.junit.jupiter" %  "junit-jupiter" % "5.10.3" % Test,
@@ -444,14 +477,24 @@ lazy val server = (project in file("server"))
       "org.testcontainers" % "postgresql" % "1.19.8" % Test,
       "org.testcontainers" % "mysql" % "1.19.8" % Test,
       "org.testcontainers" % "junit-jupiter" % "1.19.8" % Test,
-      "org.postgresql" % "postgresql" % "42.7.12" % Test,
+      "org.postgresql" % "postgresql" % "42.7.13" % Test,
       "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
 
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
     ),
-    // Iceberg 1.11.0 brings its own Jackson version that conflicts with the project's pinned jackson version
+    // Iceberg 1.11.0 brings its own Jackson version that conflicts with the project's pinned jackson version.
+    // Force AWS SDK v2 onto a single release as well (Iceberg and Hadoop otherwise mix 2.24 / 2.27).
     dependencyOverrides ++= Seq(
+      "software.amazon.awssdk" % "sso" % awsSdkV2Version,
+      "software.amazon.awssdk" % "ssooidc" % awsSdkV2Version,
+      "software.amazon.awssdk" % "s3" % awsSdkV2Version,
+      "software.amazon.awssdk" % "sts" % awsSdkV2Version,
+      "software.amazon.awssdk" % "kms" % awsSdkV2Version,
+      "software.amazon.awssdk" % "auth" % awsSdkV2Version,
+      "io.netty" % "netty-all" % nettyVersion,
+      "io.netty" % "netty-tcnative-classes" % nettyTcnativeVersion,
+      "io.netty" % "netty-tcnative-boringssl-static" % nettyTcnativeVersion,
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
@@ -572,6 +615,7 @@ lazy val cli = (project in file("examples") / "cli")
     name := s"$artifactNamePrefix-cli",
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
+    log4jProcessSettings,
     skipReleaseSettings,
     javafmtCheckSettings(),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
@@ -592,7 +636,7 @@ lazy val cli = (project in file("examples") / "cli")
       "de.vandermeer" % "asciitable" % "0.3.2",
       // for s3 access
       "org.fusesource.jansi" % "jansi" % "2.4.1",
-      "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
+      "com.amazonaws" % "aws-java-sdk-core" % awsSdkV1Version,
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion,
       "com.google.guava" % "guava" % "31.0.1-jre",
@@ -650,6 +694,8 @@ lazy val spark = (project in file("connectors/spark"))
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
       "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED",
     ),
+    // Arrow-backed vectorized reads need java.nio opened for off-heap memory access.
+    Test / javaOptions += "--add-opens=java.base/java.nio=ALL-UNNAMED",
     javafmtCheckSettings(),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
     Compile / compile / javacOptions ++= javacRelease11,
@@ -675,16 +721,16 @@ lazy val spark = (project in file("connectors/spark"))
     },
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-databind" % sparkJacksonVersion,
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % sparkJacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % sparkJacksonAnnotationsVersion,
+      "com.fasterxml.jackson.core" % "jackson-core" % sparkJacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % sparkJacksonVersion,
       "org.antlr" % "antlr4-runtime" % "4.13.1",
       "org.antlr" % "antlr4" % "4.13.1",
       "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Provided,
-      "software.amazon.awssdk" % "auth" % "2.25.37" % Provided,
+      "software.amazon.awssdk" % "auth" % awsSdkV2Version % Provided,
     ),
     libraryDependencies ++= Seq(
       // Test dependencies
@@ -698,14 +744,14 @@ lazy val spark = (project in file("connectors/spark"))
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-    ) ++ deltaSparkTestDeps,
+    ) ++ CrossSparkVersions.deltaSparkTestDeps(deltaVersion)
+      ++ CrossSparkVersions.icebergSparkTestDeps(icebergVersion),
     dependencyOverrides ++= Seq(
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      // jackson-core >= 2.18 required by Spark 4.2's jackson-dataformat-yaml (YAMLParser._updateToken).
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.19.2",
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-databind" % sparkJacksonVersion,
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % sparkJacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % sparkJacksonAnnotationsVersion,
+      "com.fasterxml.jackson.core" % "jackson-core" % sparkJacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % sparkJacksonVersion,
       "org.antlr" % "antlr4-runtime" % "4.13.1",
       "org.antlr" % "antlr4" % "4.13.1",
     ),
@@ -750,7 +796,7 @@ lazy val hadoop = (project in file("connectors/hadoop"))
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion % Provided,
       "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Provided,
-      "software.amazon.awssdk" % "auth" % "2.25.37" % Provided,
+      "software.amazon.awssdk" % "auth" % awsSdkV2Version % Provided,
     ),
     libraryDependencies ++= Seq(
       // Test dependencies
@@ -789,13 +835,13 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-    ) ++ deltaSparkTestDeps,
+    ) ++ CrossSparkVersions.deltaSparkTestDeps(deltaVersion),
     dependencyOverrides ++= Seq(
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-databind" % sparkJacksonVersion,
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % sparkJacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % sparkJacksonAnnotationsVersion,
+      "com.fasterxml.jackson.core" % "jackson-core" % sparkJacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % sparkJacksonVersion,
       "org.antlr" % "antlr4-runtime" % "4.13.1",
       "org.antlr" % "antlr4" % "4.13.1",
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,

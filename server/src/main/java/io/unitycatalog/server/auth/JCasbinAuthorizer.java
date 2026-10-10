@@ -4,18 +4,20 @@ import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.InputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.sql.DataSource;
 import org.apache.commons.io.IOUtils;
 import org.casbin.adapter.JDBCAdapter;
 import org.casbin.jcasbin.main.Enforcer;
@@ -30,10 +32,13 @@ import org.slf4j.LoggerFactory;
  * <p>This class is an implementation of UnityCatalogAuthorizor that uses JCasbin as the back end to
  * both store and enforce access control policies.
  *
- * <p>The implementation stores the policies in a database using the JDBCAdapter class. A {@link
- * SyncedEnforcer} is used because the UC server shares one authorizer across concurrent REST
- * requests; jCasbin's plain {@link Enforcer} is not thread-safe for concurrent {@code enforce()}
- * and policy mutations.
+ * <p>The implementation stores the policies in a database using the JDBCAdapter class. jdbc-adapter
+ * 2.7.0 pins one pooled connection for the authorizer lifetime; it does not check connections out
+ * per operation, so this shares a connection bound with Hibernate rather than the connections
+ * themselves. That checkout is forced to autocommit so policy reads do not sit idle-in-transaction
+ * on the Hibernate pool's autocommit-off default. A {@link SyncedEnforcer} is used because the UC
+ * server shares one authorizer across concurrent REST requests; jCasbin's plain {@link Enforcer} is
+ * not thread-safe for concurrent {@code enforce()} and policy mutations.
  *
  * <p>{@link CasbinPolicyRefresher} polls the shared {@code casbin_rule} table so grants and
  * revocations made through other instances are picked up. Reload builds a fresh enforcer and swaps
@@ -50,11 +55,8 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   private final JDBCAdapter adapter;
   private final String modelText;
   private final CasbinPolicyRefresher refresher;
-  private final long refreshDebounceNanos;
 
   private final boolean refreshEnabled;
-
-  private final AtomicLong lastRefreshNanos = new AtomicLong(Long.MIN_VALUE / 2);
 
   private static final int PRINCIPAL_INDEX = 0;
   private static final int RESOURCE_INDEX = 1;
@@ -67,21 +69,18 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   public JCasbinAuthorizer(
       HibernateConfigurator hibernateConfigurator, ServerProperties serverProperties)
       throws Exception {
-    Properties properties = hibernateConfigurator.getHibernateProperties();
-    String driver = properties.getProperty("hibernate.connection.driver_class");
-    String url = properties.getProperty("hibernate.connection.url");
-    String user = resolveConnectionUsername(properties);
-    String password = properties.getProperty("hibernate.connection.password");
-    this.adapter = new JDBCAdapter(driver, url, user, password);
+    this.adapter = new JDBCAdapter(autocommitOnCheckout(hibernateConfigurator.getDataSource()));
 
     InputStream modelStream = this.getClass().getResourceAsStream("/jcasbin_auth_model.conf");
     this.modelText = IOUtils.toString(modelStream, StandardCharsets.UTF_8);
     currentEnforcer.set(newEnforcer());
 
-    this.refreshDebounceNanos = serverProperties.getPolicyRefreshDebounceInterval().toNanos();
     this.refreshEnabled = serverProperties.isPolicyRefreshEnabled();
     this.refresher =
-        new CasbinPolicyRefresher(this::reloadFromStore, hibernateConfigurator.getSessionFactory());
+        new CasbinPolicyRefresher(
+            this::reloadFromStore,
+            hibernateConfigurator.getSessionFactory(),
+            serverProperties.getPolicyRefreshMinProbeInterval());
     if (refreshEnabled) {
       refresher.start(serverProperties.getPolicyRefreshInterval());
     } else {
@@ -93,21 +92,32 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   }
 
   /**
-   * Resolves the database connection username from the Hibernate properties.
-   *
-   * <p>Prefers the standard Hibernate key {@code hibernate.connection.username} (used by the main
-   * session factory configuration and by the project's own tests) and falls back to the
-   * non-standard {@code hibernate.connection.user} that the deployment docs and Helm chart
-   * document. Reading only {@code hibernate.connection.user} left the casbin JDBC adapter with a
-   * null username for any standard configuration, which the JDBC driver then silently replaced with
-   * a process default.
+   * jdbc-adapter 2.7.0 calls {@link DataSource#getConnection()} once and holds it. Force autocommit
+   * on that checkout so {@code loadPolicy} does not leave Postgres/MySQL idle-in-transaction.
    */
-  static String resolveConnectionUsername(Properties properties) {
-    String username = properties.getProperty("hibernate.connection.username");
-    if (username == null) {
-      username = properties.getProperty("hibernate.connection.user");
-    }
-    return username;
+  static DataSource autocommitOnCheckout(DataSource pool) {
+    return (DataSource)
+        Proxy.newProxyInstance(
+            DataSource.class.getClassLoader(),
+            new Class<?>[] {DataSource.class},
+            (proxy, method, args) -> {
+              try {
+                Object result = method.invoke(pool, args);
+                if (!(result instanceof Connection connection)) {
+                  return result;
+                }
+                try {
+                  connection.setAutoCommit(true);
+                  return connection;
+                } catch (Exception e) {
+                  try (connection) {
+                    throw e;
+                  }
+                }
+              } catch (InvocationTargetException e) {
+                throw e.getCause();
+              }
+            });
   }
 
   private SyncedEnforcer newEnforcer() {
@@ -250,31 +260,25 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   }
 
   /**
-   * Rate-limited policy check before returning 403, for cross-instance create-then-read.
-   *
-   * @return true if the current enforcer was replaced (this call or a coalesced concurrent check)
+   * Reload after a deny if the in-memory policy may be stale. Returns true when the caller should
+   * re-evaluate.
    */
   @Override
-  public boolean refreshAuthorizations() {
+  public boolean refreshAuthorizations(long operationStartNanos) {
     if (!refreshEnabled) {
       return false;
     }
-    long now = System.nanoTime();
-    long last = lastRefreshNanos.get();
-    if (now - last < refreshDebounceNanos) {
-      return false;
-    }
-    if (!lastRefreshNanos.compareAndSet(last, now)) {
-      return false;
-    }
-    SyncedEnforcer before = currentEnforcer.get();
-    refresher.checkAndReload();
-    return currentEnforcer.get() != before;
+    return refresher.checkAndReloadAfter(operationStartNanos);
   }
 
   @Override
   public void close() {
     refresher.close();
+    try {
+      adapter.close();
+    } catch (Exception e) {
+      LOGGER.warn("Failed to close the Casbin JDBC adapter", e);
+    }
   }
 
   CasbinPolicyRefresher getRefresher() {

@@ -31,8 +31,8 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.base.volume.VolumeOperations;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -375,7 +375,12 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
         hibernateConfigurator.getSessionFactory(),
         session ->
             repository
-                .create(session, ResourceType.TABLE, UUID.randomUUID(), "orders", storageLocation)
+                .create(
+                    session,
+                    ManagedResourceType.TABLE,
+                    UUID.randomUUID(),
+                    "orders",
+                    storageLocation)
                 .getId(),
         "Failed to create test cleanup task",
         /* readOnly= */ false);

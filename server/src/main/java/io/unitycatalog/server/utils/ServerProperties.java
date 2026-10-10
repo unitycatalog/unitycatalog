@@ -9,6 +9,7 @@ import io.unitycatalog.server.service.credential.gcp.GcsStorageConfig;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Files;
@@ -111,6 +112,23 @@ public class ServerProperties {
     }
   }
 
+  /** Validator for a comma-separated list of local paths: plain paths or file: URLs. */
+  private static class LocalPathListValidator implements PropertyValidator {
+    @Override
+    public void validate(String key, String value) {
+      for (String entry : splitCommaSeparated(value)) {
+        try {
+          toLocalRoot(entry);
+        } catch (Exception e) {
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              String.format(
+                  "Invalid local path '%s' for property '%s': %s", entry, key, e.getMessage()));
+        }
+      }
+    }
+  }
+
   /** Validator for integer properties with a custom condition */
   private static class IntegerValidator implements PropertyValidator {
     private final IntPredicate condition;
@@ -155,17 +173,24 @@ public class ServerProperties {
 
   /**
    * Validator for the string format of {@code java.time.Duration}. Check function {@Duration.parse}
-   * for all the accepted forms.
+   * for all the accepted forms. Negative durations are rejected; zero is allowed.
    */
   private static class DurationValidator implements PropertyValidator {
     @Override
     public void validate(String key, String value) {
+      Duration duration;
       try {
-        Duration.parse(value);
+        duration = Duration.parse(value);
       } catch (DateTimeParseException e) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,
             String.format("Invalid value '%s' for property '%s': %s", value, key, e.getMessage()));
+      }
+      if (duration.isNegative()) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            String.format(
+                "Invalid value '%s' for property '%s': must be zero or positive", value, key));
       }
     }
   }
@@ -201,6 +226,8 @@ public class ServerProperties {
   private static final BooleanValidator BOOLEAN_VALIDATOR = new BooleanValidator();
   private static final UrlValidator URL_VALIDATOR = new UrlValidator();
   private static final StoragePathValidator STORAGE_PATH_VALIDATOR = new StoragePathValidator();
+  private static final LocalPathListValidator LOCAL_PATH_LIST_VALIDATOR =
+      new LocalPathListValidator();
   private static final PositiveIntegerValidator POSITIVE_INTEGER_VALIDATOR =
       new PositiveIntegerValidator();
   private static final NoOpValidator NOOP_VALIDATOR = new NoOpValidator();
@@ -216,8 +243,8 @@ public class ServerProperties {
     POLICY_REFRESH_ENABLED("server.authorization.policy-refresh", "false", BOOLEAN_VALIDATOR),
     POLICY_REFRESH_INTERVAL(
         "server.authorization.policy-refresh-interval", "PT1M", DURATION_VALIDATOR),
-    POLICY_REFRESH_DEBOUNCE_INTERVAL(
-        "server.authorization.policy-refresh-debounce-interval", "PT1S", DURATION_VALIDATOR),
+    POLICY_REFRESH_MIN_PROBE_INTERVAL(
+        "server.authorization.policy-refresh-min-probe-interval", "PT1S", DURATION_VALIDATOR),
     STORAGE_CLEANUP_POLL_INTERVAL(
         "server.storage-cleanup.poll-interval", "PT1M", POSITIVE_DURATION_VALIDATOR),
     STORAGE_CLEANUP_ATTEMPT_TIMEOUT(
@@ -237,9 +264,14 @@ public class ServerProperties {
     AUDIENCES("server.audiences"),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
     ACCESS_TOKEN_TIMEOUT("server.access-token-timeout", "PT24H", DURATION_VALIDATOR),
+    READINESS_PROBE_INTERVAL(
+        "server.readiness.probe-interval", "PT5S", POSITIVE_DURATION_VALIDATOR),
+    READINESS_DB_TIMEOUT("server.readiness.db-timeout", "PT2S", POSITIVE_DURATION_VALIDATOR),
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
-    // Native Iceberg REST writes are experimental and opt-in until the API is stable.
-    ICEBERG_TABLE_ENABLED("server.iceberg-table.enabled", "false", BOOLEAN_VALIDATOR),
+    // Enables native Iceberg tables; when disabled, existing ones stay readable.
+    ICEBERG_TABLE_ENABLED("server.iceberg-table.enabled", "true", BOOLEAN_VALIDATOR),
+    // Local roots where external Iceberg tables may be created without an external location.
+    EXTERNAL_LOCAL_ROOTS("server.external-local-roots", LOCAL_PATH_LIST_VALIDATOR),
     MANAGED_TABLE_USE_DELTA_API_ONLY(
         "server.managed-table.use-delta-api-only", "false", BOOLEAN_VALIDATOR),
     UNIFORM_ICEBERG_V2_ALLOW_MISSING_DV(
@@ -525,8 +557,8 @@ public class ServerProperties {
     return Duration.parse(get(Property.POLICY_REFRESH_INTERVAL));
   }
 
-  public Duration getPolicyRefreshDebounceInterval() {
-    return Duration.parse(get(Property.POLICY_REFRESH_DEBOUNCE_INTERVAL));
+  public Duration getPolicyRefreshMinProbeInterval() {
+    return Duration.parse(get(Property.POLICY_REFRESH_MIN_PROBE_INTERVAL));
   }
 
   public Duration getStorageCleanupPollInterval() {
@@ -547,6 +579,20 @@ public class ServerProperties {
 
   public Duration getStorageCleanupRetryBackoff() {
     return Duration.parse(get(Property.STORAGE_CLEANUP_RETRY_BACKOFF));
+  }
+
+  /** How often the {@code /readyz} background probe re-checks database reachability. */
+  public Duration getReadinessProbeInterval() {
+    return Duration.parse(get(Property.READINESS_PROBE_INTERVAL));
+  }
+
+  /**
+   * Timeout for the {@code /readyz} database reachability check ({@code Connection.isValid}). This
+   * bounds only the validity check, not connection acquisition (see the connection pool's connect
+   * timeout for that).
+   */
+  public Duration getReadinessDbTimeout() {
+    return Duration.parse(get(Property.READINESS_DB_TIMEOUT));
   }
 
   public boolean isIncludeStackTraceInError() {
@@ -582,8 +628,8 @@ public class ServerProperties {
   }
 
   /**
-   * Check if experimental native Iceberg REST table writes are enabled. Reads remain available when
-   * this flag is disabled; only namespace/table mutations are gated by this check.
+   * Check if native Iceberg tables are enabled. When disabled, existing native Iceberg tables stay
+   * readable; only namespace/table mutations are rejected by this check.
    */
   public void checkIcebergTableEnabled() {
     if (!isIcebergTableEnabled()) {
@@ -697,6 +743,31 @@ public class ServerProperties {
   }
 
   /**
+   * Get the local roots under which external Iceberg tables may be created without an external
+   * location. No securable governs a root, so any principal who can create a table may use it.
+   *
+   * @return the local path of each root; empty (nothing allowed) when unset
+   */
+  public List<Path> getExternalLocalRoots() {
+    return getCommaSeparatedList(Property.EXTERNAL_LOCAL_ROOTS.key).stream()
+        .map(ServerProperties::toLocalRoot)
+        .toList();
+  }
+
+  /**
+   * Returns the local path of a {@code server.external-local-roots} entry.
+   *
+   * @throws IllegalArgumentException if the entry is not a local path, e.g. a cloud URL
+   */
+  private static Path toLocalRoot(String entry) {
+    URI uri = NormalizedURL.from(entry).toUri();
+    if (UriScheme.fromURI(uri) != UriScheme.FILE) {
+      throw new IllegalArgumentException("only local paths are allowed");
+    }
+    return Paths.get(uri.getPath());
+  }
+
+  /**
    * Get the list of expected JWT audience values.
    *
    * <p>When authorization is enabled, tokens must contain an {@code aud} value matching one of
@@ -728,7 +799,10 @@ public class ServerProperties {
    * @return List of trimmed values, or empty list if the property is null or blank
    */
   private List<String> getCommaSeparatedList(String key) {
-    String value = getProperty(key);
+    return splitCommaSeparated(getProperty(key));
+  }
+
+  private static List<String> splitCommaSeparated(String value) {
     if (value == null || value.isBlank()) {
       return List.of();
     }

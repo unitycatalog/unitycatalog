@@ -28,6 +28,10 @@ case class SparkVersionSpec(
   // identical shims are written once instead of copied per version. sbt ignores non-existent
   // dirs, so listing a dir a module doesn't use is harmless.
   additionalSourceDirs: Seq[String],
+  // Whether an iceberg-spark-runtime is published for this Spark version. Declared per version
+  // rather than inferred from the version number: Iceberg's Spark runtime lags new Spark releases,
+  // so a version-math guess would silently break when a runtime is (or isn't) published.
+  supportIceberg: Boolean = false,
   requiresSparkCommit: Boolean = false,
   sourceBuildArtifactBaseVersion: Option[String] = None,
   sourceBuildDefaultRef: Option[String] = None
@@ -67,11 +71,13 @@ object SparkVersionSpec {
               case l: List[_] => l.map(_.asInstanceOf[String])
             }
             SparkVersionSpec(
-              v("version").asInstanceOf[String],
-              sourceDirs,
-              v.get("requiresSparkCommit").exists(_.asInstanceOf[Boolean]),
-              v.get("sourceBuildArtifactBaseVersion").map(_.asInstanceOf[String]),
-              v.get("sourceBuildDefaultRef").map(_.asInstanceOf[String])
+              fullVersion = v("version").asInstanceOf[String],
+              additionalSourceDirs = sourceDirs,
+              supportIceberg = v.get("supportIceberg").exists(_.asInstanceOf[Boolean]),
+              requiresSparkCommit = v.get("requiresSparkCommit").exists(_.asInstanceOf[Boolean]),
+              sourceBuildArtifactBaseVersion =
+                v.get("sourceBuildArtifactBaseVersion").map(_.asInstanceOf[String]),
+              sourceBuildDefaultRef = v.get("sourceBuildDefaultRef").map(_.asInstanceOf[String])
             )
           }
           (default, versions)
@@ -170,6 +176,37 @@ object CrossSparkVersions extends AutoPlugin {
     val skip = sys.props.getOrElse("skipSparkSuffix", "false").toBoolean
     if (skip) baseName
     else s"${baseName}_${getSparkVersionSpec().shortVersion}"
+  }
+
+  /**
+   * Test-only `iceberg-spark-runtime` for the Spark + Iceberg suites; empty when `supportIceberg` is
+   * false. Those suites live in a shim dir, so a version with `supportIceberg` must also list that
+   * dir in its `sourceDirs`, or the dep is added but no Iceberg test is compiled.
+   *
+   * The runtime does not bundle the AWS SDK; the fake-S3 Iceberg tests get it from the
+   * server-shaded test jar (the server depends on it), which precedes this runtime on the test
+   * classpath.
+   */
+  def icebergSparkTestDeps(icebergVersion: String): Seq[ModuleID] = {
+    val spec = getSparkVersionSpec()
+    if (!spec.supportIceberg) Seq.empty
+    else
+      Seq(
+        "org.apache.iceberg" %
+          s"iceberg-spark-runtime-${spec.shortVersion}_2.13" % icebergVersion % Test)
+  }
+
+  /**
+   * Test-only `delta-spark` matching the active Spark version. `delta-spark` is published for every
+   * supported Spark version, so this is unconditional except for one escape hatch: when UC is
+   * published to local Maven before Delta is built (the CI pre-Delta publishM2 step), the matching
+   * Delta artifact may not exist yet, so `-DskipDeltaSpark=true` drops it to avoid a resolution
+   * failure.
+   */
+  def deltaSparkTestDeps(deltaVersion: String): Seq[ModuleID] = {
+    if (sys.props.getOrElse("skipDeltaSpark", "false").toBoolean) Seq.empty
+    else
+      Seq("io.delta" %% s"delta-spark_${getSparkVersionSpec().shortVersion}" % deltaVersion % Test)
   }
 
   /**

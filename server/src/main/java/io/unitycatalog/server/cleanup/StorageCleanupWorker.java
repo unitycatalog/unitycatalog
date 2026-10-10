@@ -1,9 +1,9 @@
 package io.unitycatalog.server.cleanup;
 
+import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.CleanupFailureReport;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -145,6 +145,15 @@ public final class StorageCleanupWorker implements AutoCloseable {
       cleanup(claim, deadline);
       taskRepository.finish(claim.resourceId(), claim.leaseToken());
     } catch (Exception exception) {
+      // Surface the failure to operators: the DB only keeps a sanitized class-name string, so
+      // without this a stuck cleanup is invisible. Location/id are the resource's own managed
+      // path, not secrets; the throwable gives the stack trace for debugging.
+      LOGGER.warn(
+          "Storage cleanup failed for {} {} at {}; will retry after backoff",
+          claim.resourceType(),
+          claim.resourceId(),
+          claim.storageLocation(),
+          exception);
       taskRepository.reportFailure(
           claim.resourceId(),
           claim.leaseToken(),
@@ -178,14 +187,8 @@ public final class StorageCleanupWorker implements AutoCloseable {
 
   /** Validates the stored resource and path before storage credentials are requested. */
   private static NormalizedURL validateTask(Claim claim) {
-    ResourceType resourceType = Objects.requireNonNull(claim.resourceType(), "resourceType");
-    String segment =
-        switch (resourceType) {
-          case TABLE, STAGING_TABLE -> "tables";
-          case VOLUME -> "volumes";
-          case REGISTERED_MODEL -> "models";
-          case MODEL_VERSION -> "versions";
-        };
+    ManagedResourceType resourceType = Objects.requireNonNull(claim.resourceType(), "resourceType");
+    String segment = resourceType.pathSegment();
     NormalizedURL location = NormalizedURL.from(claim.storageLocation());
     URI uri = location.toUri();
     if (claim.resourceId() == null

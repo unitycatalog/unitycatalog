@@ -110,10 +110,22 @@ public class TokenExchangeSubjectTokenHandler {
       LOGGER.error("Failed to look up user by {} {}", lookupType, key, e);
       throw e;
     }
-    if (user != null && user.getState() == User.StateEnum.ENABLED) {
+    if (user != null && user.getState() == User.StateEnum.ENABLED && isAssumablePrincipal(user)) {
       return Optional.of(user);
     }
     return Optional.empty();
+  }
+
+  /**
+   * The bootstrap admin user is provisioned with the literal email "admin" (not a conventional
+   * name@domain address) and holds metastore OWNER; it exists only for the internal service token
+   * and must never be assumable through external token exchange, via either the email-claim or the
+   * OAuth-client resolution path. The incoming subject is only a lookup key: we compare the
+   * resolved user's stored email so that a case variant like "ADMIN", which a case-insensitive
+   * database collation resolves back to the same stored "admin" user, is rejected as well.
+   */
+  private static boolean isAssumablePrincipal(User user) {
+    return !"admin".equals(user.getEmail());
   }
 
   private Optional<String> tryResolvePrincipalEmailForClient(String clientId) {
@@ -139,11 +151,6 @@ public class TokenExchangeSubjectTokenHandler {
     }
 
     LOGGER.debug("Trying principal resolution from token claims: {}", subject);
-
-    if ("admin".equals(subject)) {
-      LOGGER.debug("admin always allowed");
-      return Optional.of(subject);
-    }
 
     Optional<User> user =
         findEnabledUser(() -> userRepository.getUserByEmail(subject), "email", subject);
