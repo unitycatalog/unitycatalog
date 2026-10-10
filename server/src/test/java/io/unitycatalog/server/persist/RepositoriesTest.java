@@ -88,14 +88,14 @@ class RepositoriesTest {
     }
 
     @Override
-    public FileIO getFileIO(NormalizedURL path, Set<CredentialContext.Privilege> privileges) {
-      return delegate.getFileIO(path, privileges);
+    public FileIO getFileIO(NormalizedURL rootPath, Set<CredentialContext.Privilege> privileges) {
+      return delegate.getFileIO(rootPath, privileges);
     }
 
     @Override
     public SupportsPrefixOperations getCleanupFileIO(
-        NormalizedURL path, CooperativeDeadline deadline) {
-      return delegate.getCleanupFileIO(path, deadline);
+        NormalizedURL rootPath, CooperativeDeadline deadline) {
+      return delegate.getCleanupFileIO(rootPath, deadline);
     }
 
     @Override
