@@ -123,9 +123,8 @@ public class ArmeriaServerBuilder {
     this.port = port;
     this.armeriaServerBuilder =
         Server.builder()
-            // The launcher URL transcoder fronts this loopback-only API port. Local callers and
-            // tests can still address it directly.
-            .localPort(port, SessionProtocol.HTTP)
+            // Clients connect to this port directly, so it binds all interfaces.
+            .http(port)
             // Armeria names HTTP/1 headers in their lowercase HTTP/2 form by default. Released
             // Iceberg clients read our response headers out of a plain map keyed by the name as
             // received, so a header they look up by its traditional spelling -- "ETag" for a

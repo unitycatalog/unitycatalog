@@ -276,6 +276,13 @@ public class IcebergRestCatalogTest extends BaseServerTest {
           400,
           BadRequestException.class);
 
+      // Iceberg clients join nested namespace levels with %1F. It is not rewritten to a period, so
+      // the name matches no schema and the namespace is reported missing.
+      assertErrorType(
+          client.get(TEST_BASE_PREFIX + "/namespaces/nested%1Fnamespace").aggregate().join(),
+          404,
+          NoSuchNamespaceException.class);
+
       // non-prefixed URL should result in 404
       resp =
           client

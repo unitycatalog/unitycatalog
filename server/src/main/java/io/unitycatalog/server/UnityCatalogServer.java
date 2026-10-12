@@ -54,8 +54,6 @@ import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
-import io.vertx.core.Verticle;
-import io.vertx.core.Vertx;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -438,44 +436,23 @@ public class UnityCatalogServer implements AutoCloseable {
   public static void main(String[] args) {
     OptionParser options = new OptionParser();
     options.parse(args);
-    int clientPort = options.getPort();
+    int port = options.getPort();
     ServerProperties serverProperties = new ServerProperties(SERVER_PROPERTIES_FILE);
     UnityCatalogServer.Builder serverBuilder =
-        UnityCatalogServer.builder().port(clientPort + 1).serverProperties(serverProperties);
+        UnityCatalogServer.builder().port(port).serverProperties(serverProperties);
     if (options.getObservabilityPort() != null) {
-      validateObservabilityPort(clientPort, options.getObservabilityPort());
       serverBuilder.observabilityPort(options.getObservabilityPort());
     }
-    // Start Unity Catalog server
     UnityCatalogServer unityCatalogServer = serverBuilder.build();
     unityCatalogServer.printArt();
-    unityCatalogServer.start();
-    // Start URL transcoder. Clients use its port, not Armeria's, so wait for it to be listening
-    // before this process reports itself started, and fail rather than serve only the internal
-    // port if it cannot bind.
-    Vertx vertx = Vertx.vertx();
-    // Same capacity as the Armeria blocking pool. HTTP/1.1 is one request per connection, so a
-    // smaller proxy pool would be the limit no matter how large the JDBC pool is.
-    Verticle transcodeVerticle =
-        new URLTranscoderVerticle(
-            clientPort,
-            clientPort + 1,
-            unityCatalogServer.hibernateConfigurator.getConnectionPoolSize());
+    // A port that cannot be bound must end the process rather than leave the pool and background
+    // threads holding it open with nothing listening.
     try {
-      vertx.deployVerticle(transcodeVerticle).toCompletionStage().toCompletableFuture().join();
+      unityCatalogServer.start();
     } catch (CompletionException e) {
-      LOGGER.error("Failed to start the URL transcoder on port {}", clientPort, e.getCause());
-      vertx.close();
+      LOGGER.error("Failed to start the Unity Catalog server on port {}", port, e.getCause());
       unityCatalogServer.close();
       throw e;
-    }
-  }
-
-  static void validateObservabilityPort(int clientPort, int observabilityPort) {
-    ArmeriaServerBuilder.validateObservabilityPort(clientPort + 1, observabilityPort);
-    if (observabilityPort == clientPort) {
-      throw new IllegalArgumentException(
-          "Observability port is already used by the client-facing listener: " + clientPort);
     }
   }
 
