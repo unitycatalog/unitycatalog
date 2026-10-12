@@ -43,7 +43,6 @@ lazy val armeriaVersion = "1.41.1"
 lazy val micrometerVersion = "1.17.0"
 lazy val nettyVersion = "4.2.18.Final"
 lazy val nettyTcnativeVersion = "2.0.84.Final"
-lazy val vertxVersion = "4.5.34"
 val orgApacheHttpVersion = "4.5.14"
 
 // Latest patch on the Jackson line each Spark version ships, used to compile and test the
@@ -444,9 +443,6 @@ lazy val server = (project in file("server"))
       // Iceberg's S3FileIO loads the "apache" HTTP client by default, but AWS SDK v2 now pulls in
       // apache5-client instead, so declare apache-client explicitly
       "software.amazon.awssdk" % "apache-client" % awsSdkV2Version,
-      "io.vertx" % "vertx-core" % vertxVersion,
-      "io.vertx" % "vertx-web" % vertxVersion,
-      "io.vertx" % "vertx-web-client" % vertxVersion,
 
       // Hadoop dependencies for ExternalLocationUtils
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
