@@ -1096,7 +1096,7 @@ def validate_param(param: Any, column_type: str, param_type_text: str) -> None:
     if (
         column_type == "INTERVAL"
         and isinstance(param, datetime.timedelta)
-        and param_type_text != "interval day to second"
+        and param_type_text.lower() != "interval day to second"
     ):
         raise ValueError(
             f"Invalid interval type text: {param_type_text}, expecting 'interval day to second', "

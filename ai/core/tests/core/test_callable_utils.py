@@ -1,3 +1,5 @@
+import datetime
+import decimal
 import re
 import textwrap
 import warnings
@@ -14,6 +16,7 @@ from unitycatalog.ai.core.utils.callable_utils import (
     construct_dependency_statement,
     construct_secrets_statement,
     dynamically_construct_python_function,
+    extract_function_metadata,
     generate_sql_function_body,
     generate_wrapped_sql_function_body,
 )
@@ -890,6 +893,33 @@ AS $$
 $$;
     """
     assert sql_body.strip() == expected_sql.strip()
+
+
+def test_base_type_names_strip_precision_and_qualifiers():
+    def func(
+        amount: decimal.Decimal, delta: datetime.timedelta, amounts: List[decimal.Decimal]
+    ) -> decimal.Decimal:
+        """
+        A function with parameterized SQL types.
+
+        Args:
+            amount: a decimal
+            delta: a duration
+            amounts: a list of decimals
+        """
+        return amount
+
+    def interval_return() -> datetime.timedelta:
+        """
+        A function that returns a duration.
+        """
+        return datetime.timedelta(minutes=1)
+
+    metadata = extract_function_metadata(func)
+
+    assert [p["base_type_name"] for p in metadata.parameters] == ["DECIMAL", "INTERVAL", "ARRAY"]
+    assert metadata.base_return_type_name == "DECIMAL"
+    assert extract_function_metadata(interval_return).base_return_type_name == "INTERVAL"
 
 
 # ---------------------------

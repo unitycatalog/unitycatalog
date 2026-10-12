@@ -1062,6 +1062,70 @@ async def test_create_and_execute_python_function(uc_client):
 
 
 @pytest.mark.asyncio
+async def test_create_and_execute_python_function_with_decimal_and_interval(uc_client):
+    def double_amount(amount: decimal.Decimal) -> str:
+        """
+        Doubles an amount.
+
+        Args:
+            amount: the amount
+        """
+        return str(amount * 2)
+
+    def parse_amount(text: str) -> decimal.Decimal:
+        """
+        Parses an amount.
+
+        Args:
+            text: the amount as text
+        """
+        import decimal
+
+        return decimal.Decimal(text)
+
+    def shift_time(delta: datetime.timedelta) -> str:
+        """
+        Shifts a fixed time by a duration.
+
+        Args:
+            delta: the duration
+        """
+        import datetime
+
+        return (datetime.datetime(2024, 1, 1) + delta).isoformat()
+
+    def to_duration(minutes: int) -> datetime.timedelta:
+        """
+        Converts minutes to a duration.
+
+        Args:
+            minutes: the number of minutes
+        """
+        import datetime
+
+        return datetime.timedelta(minutes=minutes)
+
+    cases = [
+        (double_amount, {"amount": decimal.Decimal("1.25")}, "2.50"),
+        (parse_amount, {"text": "3.75"}, decimal.Decimal("3.75")),
+        (shift_time, {"delta": datetime.timedelta(minutes=90)}, "2024-01-01T01:30:00"),
+        (to_duration, {"minutes": 45}, datetime.timedelta(minutes=45)),
+    ]
+    for func, parameters, expected in cases:
+        function_name = f"{CATALOG}.{SCHEMA}.{func.__name__}"
+        try:
+            uc_client.create_python_function(
+                func=func, catalog=CATALOG, schema=SCHEMA, replace=True
+            )
+            result = uc_client.execute_function(function_name=function_name, parameters=parameters)
+        finally:
+            try_delete_function(uc_client, function_name)
+
+        assert result.error is None
+        assert result.value == expected
+
+
+@pytest.mark.asyncio
 async def test_create_python_function_with_invalid_arguments(uc_client):
     def invalid_func(self, x: int) -> str:
         """
