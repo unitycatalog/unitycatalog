@@ -65,11 +65,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Snapshot;
+import org.apache.iceberg.SnapshotsTable;
 import org.apache.iceberg.SortOrder;
+import org.apache.iceberg.Table;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.catalog.Namespace;
@@ -92,6 +95,8 @@ import org.apache.iceberg.metrics.ImmutableCommitReport;
 import org.apache.iceberg.metrics.ImmutableScanReport;
 import org.apache.iceberg.metrics.ScanMetrics;
 import org.apache.iceberg.metrics.ScanMetricsResult;
+import org.apache.iceberg.rest.RESTCatalog;
+import org.apache.iceberg.rest.auth.OAuth2Properties;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
@@ -1379,6 +1384,52 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                 TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "noSuchTable"),
         404,
         NoSuchTableException.class);
+  }
+
+  @Test
+  public void testTableRoutesReportAMissingNamespaceAsAMissingTable() throws Exception {
+    createUniformIcebergTable();
+    // One level below the table is the shape an Iceberg metadata table takes on the wire:
+    // schema.table.snapshots arrives as namespace "schema<0x1F>table", table "snapshots". That
+    // namespace does not exist, and the routes addressed to one table answer as the spec says
+    // they do, with NoSuchTableException rather than NoSuchNamespaceException.
+    String nestedNamespace = TestUtils.SCHEMA_NAME + "%1F" + TestUtils.TABLE_NAME;
+    assertErrorType(
+        () -> icebergClient.loadTable(TestUtils.CATALOG_NAME, nestedNamespace, "snapshots"),
+        404,
+        NoSuchTableException.class);
+    assertErrorType(
+        () -> icebergClient.loadCredentials(TestUtils.CATALOG_NAME, nestedNamespace, "snapshots"),
+        404,
+        NoSuchTableException.class);
+    assertErrorType(
+        () -> icebergClient.dropTable(TestUtils.CATALOG_NAME, nestedNamespace, "snapshots"),
+        404,
+        NoSuchTableException.class);
+    assertThat(icebergClient.tableExists(TestUtils.CATALOG_NAME, nestedNamespace, "snapshots"))
+        .isFalse();
+    // The namespace routes themselves still report a missing namespace as one.
+    assertErrorType(
+        () -> icebergClient.loadNamespace(TestUtils.CATALOG_NAME, nestedNamespace),
+        404,
+        NoSuchNamespaceException.class);
+
+    // Which is what lets Iceberg's own client resolve the identifier as a metadata table.
+    try (RESTCatalog restCatalog = new RESTCatalog()) {
+      restCatalog.initialize(
+          "uc",
+          Map.of(
+              CatalogProperties.URI,
+              serverConfig.getServerUrl() + ICEBERG_BASE_PATH,
+              CatalogProperties.WAREHOUSE_LOCATION,
+              TestUtils.CATALOG_NAME,
+              OAuth2Properties.TOKEN,
+              serverConfig.getAuthToken()));
+      Table snapshots =
+          restCatalog.loadTable(
+              TableIdentifier.of(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, "snapshots"));
+      assertThat(snapshots).isInstanceOf(SnapshotsTable.class);
+    }
   }
 
   @Test
