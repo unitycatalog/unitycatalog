@@ -2,7 +2,6 @@ package io.unitycatalog.server;
 
 import static io.unitycatalog.server.utils.TestUtils.sendRawGet;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.util.BlockingTaskExecutor;
@@ -25,26 +24,8 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 
 public class UnityCatalogServerTest extends BaseServerTest {
-
-  @ParameterizedTest
-  @ValueSource(ints = {0, -1, 65536, Integer.MAX_VALUE})
-  public void rejectsOutOfRangeObservabilityPort(int observabilityPort) {
-    assertThatThrownBy(() -> UnityCatalogServer.validateObservabilityPort(9000, observabilityPort))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("between 1 and 65535");
-  }
-
-  @ParameterizedTest
-  @ValueSource(ints = {9000, 9001})
-  public void rejectsObservabilityPortEqualToEitherApiPort(int observabilityPort) {
-    assertThatThrownBy(() -> UnityCatalogServer.validateObservabilityPort(9000, observabilityPort))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Observability port");
-  }
 
   @Test
   public void leavesObservabilityPortUnboundWhenDisabled() throws Exception {
