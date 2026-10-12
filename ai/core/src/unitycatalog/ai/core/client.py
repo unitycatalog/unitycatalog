@@ -1,5 +1,6 @@
 import asyncio
 import atexit
+import base64
 import datetime
 import decimal
 import logging
@@ -846,6 +847,13 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
     def _validate_param_type(self, value: Any, param_info: FunctionParameterInfo) -> None:
         if value is None and param_info.parameter_default == "NULL":
             return
+        try:
+            value = convert_json_argument(value, param_info.type_name)
+        except (ValueError, decimal.InvalidOperation) as e:
+            raise ValueError(
+                f"Parameter {param_info.name} should be of type {param_info.type_name}, "
+                f"but got invalid value {value!r}: {e}"
+            ) from e
 
         value_python_type = column_type_to_python_type(
             param_info.type_name, mapping=SQL_TYPE_TO_PYTHON_TYPE_MAPPING_UC_OSS
@@ -864,6 +872,12 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         Extracts or dynamically constructs the function from the FunctionInfo,
         applies parameter defaults, and caches the function for future calls.
         """
+        input_params = (function_info.input_params and function_info.input_params.parameters) or []
+        param_types = {param.name: param.type_name for param in input_params}
+        parameters = {
+            name: convert_json_argument(value, param_types.get(name))
+            for name, value in (parameters or {}).items()
+        }
         parameters = process_function_parameter_defaults(function_info, parameters)
         if function_info.full_name in self.func_cache:
             func = self.func_cache[function_info.full_name]
@@ -1083,6 +1097,29 @@ def validate_input_parameter(
             f"{parameter}, allowed values are {ALLOWED_DATA_TYPES}."
         )
     return parameter
+
+
+def convert_json_argument(value: Any, column_type: Optional[str]) -> Any:
+    """
+    Convert a JSON value, such as an argument of an LLM tool call, to the python type that a
+    function parameter of the given column type expects. Other values are returned unchanged.
+    DATE and TIMESTAMP strings are parsed as ISO 8601, BINARY strings are base64 decoded and
+    DECIMAL numbers or strings become `decimal.Decimal`.
+    """
+    if column_type == "DECIMAL" and isinstance(value, (int, float, str)):
+        return value if isinstance(value, bool) else decimal.Decimal(str(value))
+    if not isinstance(value, str):
+        return value
+    if column_type == "DATE":
+        return datetime.date.fromisoformat(value)
+    if column_type in ("TIMESTAMP", "TIMESTAMP_NTZ"):
+        # NB: datetime.fromisoformat accepts a trailing "Z" only from Python 3.11
+        return datetime.datetime.fromisoformat(
+            value[:-1] + "+00:00" if value.endswith("Z") else value
+        )
+    if column_type == "BINARY":
+        return base64.b64decode(value, validate=True)
+    return value
 
 
 def validate_param(param: Any, column_type: str, param_type_text: str) -> None:
