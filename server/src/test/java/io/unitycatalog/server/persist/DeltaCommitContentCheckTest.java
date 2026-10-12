@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.DeltaCommitRepository.BackfillVerificationRequiredException;
 import io.unitycatalog.server.persist.DeltaCommitRepository.CommitContentCheckRequiredException;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
@@ -21,6 +22,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import org.apache.iceberg.aws.s3.S3FileIO;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.InputFile;
@@ -181,6 +184,58 @@ public class DeltaCommitContentCheckTest {
   }
 
   @Test
+  public void backfillVerificationRereadsTheDatabaseBeforeRejectingAMissingFile() {
+    // v2 is gone: another request backfilled through v4 after this one read the range, and log
+    // cleanup removed v2. v3 and v4 are still published.
+    putPublished("tbl_raced", 3L, "v3\n");
+    putPublished("tbl_raced", 4L, "v4\n");
+    DeltaCommitRepository repository = new DeltaCommitRepository(null, null, fileOperations);
+    BackfillVerificationRequiredException range2To4 = required("tbl_raced", 2L, 4L);
+
+    // The database now has the backfill through v4: success, and no purge is attempted.
+    List<Boolean> attempts = new ArrayList<>();
+    assertThat(
+            repository.<String>withPublishedCommitVerification(
+                filesChecked -> {
+                  attempts.add(filesChecked);
+                  if (attempts.size() == 1) {
+                    throw range2To4;
+                  }
+                  return "done";
+                }))
+        .isEqualTo("done");
+    assertThat(attempts).containsExactly(false, false);
+
+    // Another request backfilled only through v2: v3 and v4 are still needed and present.
+    attempts.clear();
+    assertThat(
+            repository.<String>withPublishedCommitVerification(
+                filesChecked -> {
+                  attempts.add(filesChecked);
+                  if (attempts.size() == 1) {
+                    throw range2To4;
+                  }
+                  if (!filesChecked) {
+                    throw required("tbl_raced", 3L, 4L);
+                  }
+                  return "purged";
+                }))
+        .isEqualTo("purged");
+    assertThat(attempts).containsExactly(false, false, true);
+
+    // Nothing else backfilled: v2 is still needed, so the missing file is the caller's error.
+    assertThatThrownBy(
+            () ->
+                repository.<String>withPublishedCommitVerification(
+                    filesChecked -> {
+                      throw range2To4;
+                    }))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+  }
+
+  @Test
   public void backfillVerificationInclusiveRangeDoesNotOverflowAtMaxValue() {
     FileIO fileIO = mock();
     InputFile inputFile = mock();
@@ -198,6 +253,12 @@ public class DeltaCommitContentCheckTest {
         NormalizedURL.from("s3://" + BUCKET + "/" + tableName),
         fromVersion,
         toVersion);
+  }
+
+  private static BackfillVerificationRequiredException required(
+      String tableName, long fromVersion, long toVersion) {
+    return new BackfillVerificationRequiredException(
+        NormalizedURL.from("s3://" + BUCKET + "/" + tableName), fromVersion, toVersion);
   }
 
   private void runContentCheck(String tableName) {

@@ -323,14 +323,29 @@ public class DeltaCommitRepository {
    * rolled back; this HEADs that range with no table lock held, then runs {@code attempt} once more
    * so it can purge. New commits only append, and backfill only deletes downward, so the HEADed
    * range still covers whatever the retry purges.
+   *
+   * <p>A missing file is not yet the caller's error: with the lock released, another request may
+   * have backfilled the same range and log cleanup removed the file since. So the database is read
+   * again first. If it no longer needs this range, the attempt goes through as is; otherwise only
+   * what it still needs is HEADed, and a file missing from that is the 400.
    */
   <T> T withPublishedCommitVerification(Function<Boolean, T> attempt) {
+    BackfillVerificationRequiredException required;
     try {
       return attempt.apply(false);
     } catch (BackfillVerificationRequiredException e) {
-      requirePublishedCommitFiles(fileOperations, e.tableLocation, e.fromVersion, e.toVersion);
-      return attempt.apply(true);
+      required = e;
     }
+    if (findMissingPublishedCommitFile(
+            fileOperations, required.tableLocation, required.fromVersion, required.toVersion)
+        .isPresent()) {
+      try {
+        return attempt.apply(false);
+      } catch (BackfillVerificationRequiredException e) {
+        requirePublishedCommitFiles(fileOperations, e.tableLocation, e.fromVersion, e.toVersion);
+      }
+    }
+    return attempt.apply(true);
   }
 
   private void postCommitInTransaction(DeltaCommit commit, boolean filesChecked) {
@@ -884,12 +899,34 @@ public class DeltaCommitRepository {
       NormalizedURL tableLocation,
       long fromVersion,
       long toVersion) {
-    if (fromVersion > toVersion) {
-      return;
+    Optional<String> missingPath =
+        findMissingPublishedCommitFile(fileOperations, tableLocation, fromVersion, toVersion);
+    if (missingPath.isPresent()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Cannot backfill through version "
+              + toVersion
+              + ": published commit file is missing: "
+              + missingPath.get());
     }
-    // Record a miss inside the FileIO block and throw INVALID_ARGUMENT after it, so credential
-    // vending, HEAD, and close failures (which also throw BaseException) are not passed through
-    // as a client 400. v == toVersion is an explicit stop so v++ cannot overflow at MAX_VALUE.
+  }
+
+  /**
+   * The first published {@code _delta_log/<version>.json} in [{@code fromVersion}, {@code
+   * toVersion}] that does not exist, if any. Storage failures throw {@code COMMIT_STATE_UNKNOWN};
+   * see {@link #requirePublishedCommitFiles}.
+   */
+  private static Optional<String> findMissingPublishedCommitFile(
+      FileOperations fileOperations,
+      NormalizedURL tableLocation,
+      long fromVersion,
+      long toVersion) {
+    if (fromVersion > toVersion) {
+      return Optional.empty();
+    }
+    // Record a miss inside the FileIO block and return it after, so credential vending, HEAD, and
+    // close failures (which also throw BaseException) are not passed through as a client 400.
+    // v == toVersion is an explicit stop so v++ cannot overflow at MAX_VALUE.
     String missingPath = null;
     try (FileIO fileIO = fileOperations.getFileIO(tableLocation)) {
       for (long v = fromVersion; ; v++) {
@@ -912,14 +949,7 @@ public class DeltaCommitRepository {
               + "; retry the request.",
           e);
     }
-    if (missingPath != null) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "Cannot backfill through version "
-              + toVersion
-              + ": published commit file is missing: "
-              + missingPath);
-    }
+    return Optional.ofNullable(missingPath);
   }
 
   /**

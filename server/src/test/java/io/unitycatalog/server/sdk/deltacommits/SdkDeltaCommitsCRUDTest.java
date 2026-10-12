@@ -650,21 +650,21 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     writePublishedCommitFiles(1L, 1L);
     writePublishedCommitFiles(3L, 3L);
 
-    // Backfill through v2 must refuse: purging would drop the DB row for v2 while its published
+    // Backfill through v3 must refuse: purging would drop the DB row for v2 while its published
     // file is unreadable, which is the precondition for the OSS Delta COMMIT_STATE_UNKNOWN retry
-    // loop.
+    // loop. v2 sits inside the range, so checking only the upper bound would not catch it.
     assertApiException(
-        () -> deltaCommitsApi.commit(createBackfillOnlyCommitObject(2L)),
+        () -> deltaCommitsApi.commit(createBackfillOnlyCommitObject(3L)),
         ErrorCode.INVALID_ARGUMENT,
         "published commit file is missing");
 
     // All three versions remain tracked.
     verifyDeltaCommits(/* expectedLatestTableVersion= */ 3, /* expectedCommits= */ 3, 2, 1);
 
-    // Once the gap is filled, the same backfill succeeds and purges v1 and v2.
+    // Once the gap is filled, the same backfill succeeds and purges through v3.
     writePublishedCommitFiles(2L, 2L);
-    deltaCommitsApi.commit(createBackfillOnlyCommitObject(2L));
-    verifyDeltaCommits(/* expectedLatestTableVersion= */ 3, /* expectedCommits= */ 3);
+    deltaCommitsApi.commit(createBackfillOnlyCommitObject(3L));
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 3);
   }
 
   @Test
