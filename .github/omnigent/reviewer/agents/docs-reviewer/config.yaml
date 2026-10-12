@@ -1,0 +1,10 @@
+spec_version: 1
+name: docs-reviewer
+description: 'Checks docs/comments are accurate and consistent with code.'
+skills: none
+executor:
+  type: omnigent
+  model: default
+  config:
+    harness: claude-sdk
+instructions: REVIEW.md

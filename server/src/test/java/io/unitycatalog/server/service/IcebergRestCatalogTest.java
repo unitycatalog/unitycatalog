@@ -10,13 +10,20 @@ import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.auth.AuthToken;
+import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.CredentialsApi;
+import io.unitycatalog.client.api.ExternalLocationsApi;
+import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.CatalogInfo;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCatalog;
+import io.unitycatalog.client.model.CreateCredentialRequest;
+import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateTable;
+import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.TableInfo;
@@ -32,8 +39,10 @@ import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
+import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.io.InputStream;
@@ -57,8 +66,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.iceberg.MetadataUpdate;
+import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Snapshot;
+import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.catalog.Namespace;
@@ -66,6 +77,7 @@ import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.CommitFailedException;
+import org.apache.iceberg.exceptions.ForbiddenException;
 import org.apache.iceberg.exceptions.NamespaceNotEmptyException;
 import org.apache.iceberg.exceptions.NoSuchNamespaceException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
@@ -109,6 +121,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   private static final int PAGE_SIZE = PagedListingHelper.DEFAULT_PAGE_SIZE;
 
   @TempDir private Path icebergTableLocation;
+  // Outside testDirectoryRoot, the only local root configured by default.
+  @TempDir private Path outsideLocalRoots;
+  @TempDir private Path managedStorageRoot;
 
   protected CatalogOperations catalogOperations;
   protected SchemaOperations schemaOperations;
@@ -539,7 +554,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         new Schema(
             Types.NestedField.required(1, "id", Types.LongType.get()),
             Types.NestedField.optional(2, "data", Types.StringType.get()));
-    String location = Files.createTempDirectory("iceberg-rest-table").toUri().toString();
+    String location =
+        Files.createTempDirectory(testDirectoryRoot, "iceberg-rest-table").toUri().toString();
 
     // Staged creation is stateless: it returns metadata without a metadata-location and
     // registers nothing, so the direct create below still succeeds.
@@ -963,6 +979,287 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     }
   }
 
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    // Managed tables live outside every local root: the location check is for external tables.
+    tableStorageRoot = getManagedStorageCloudPath(managedStorageRoot);
+    serverProperties.setProperty(Property.TABLE_STORAGE_ROOT.getKey(), tableStorageRoot);
+  }
+
+  @Test
+  public void testLocalExternalTableAtALocationThatIsNotAPlainPathIsRejected() throws Exception {
+    createCatalogAndNamespace();
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+    String root = NormalizedURL.from(testDirectoryRoot.toUri()).toString();
+    for (String location :
+        List.of(root + "/a%00b", root + "/a%2Fb", root + "/a/%2e%2e/b", root + "/t?x=1")) {
+      CreateTableRequest create =
+          CreateTableRequest.builder()
+              .withName(TestUtils.TABLE_NAME)
+              .withSchema(schema)
+              .withLocation(location)
+              .build();
+      for (Executable call :
+          List.<Executable>of(
+              () ->
+                  icebergClient.createTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, create),
+              () ->
+                  icebergClient.updateTable(
+                      TestUtils.CATALOG_NAME,
+                      TestUtils.SCHEMA_NAME,
+                      TestUtils.TABLE_NAME,
+                      stagedCreateCommit(schema, location)))) {
+        assertErrorType(call, 400, BadRequestException.class);
+        TestUtils.assertIcebergApiException(call, 400, "Unsupported local path");
+      }
+    }
+    assertThat(testDirectoryRoot.resolve("a")).doesNotExist();
+    assertThat(testDirectoryRoot.resolve("b")).doesNotExist();
+  }
+
+  /** A staged-create commit for an external table at {@code location}. */
+  private static UpdateTableRequest stagedCreateCommit(Schema schema, String location) {
+    return new UpdateTableRequest(
+        List.of(new UpdateRequirement.AssertTableDoesNotExist()),
+        List.of(
+            new MetadataUpdate.AssignUUID(UUID.randomUUID().toString()),
+            new MetadataUpdate.UpgradeFormatVersion(2),
+            new MetadataUpdate.AddSchema(schema),
+            new MetadataUpdate.SetCurrentSchema(-1),
+            new MetadataUpdate.AddPartitionSpec(PartitionSpec.unpartitioned()),
+            new MetadataUpdate.SetDefaultPartitionSpec(-1),
+            new MetadataUpdate.AddSortOrder(SortOrder.unsorted()),
+            new MetadataUpdate.SetDefaultSortOrder(-1),
+            new MetadataUpdate.SetLocation(location)));
+  }
+
+  @Test
+  public void testLocalExternalTableNotUnderARootIsRejected() throws ApiException, IOException {
+    // testDirectoryRoot is the only local root configured by default.
+    createCatalogAndNamespace();
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+    String root = NormalizedURL.from(testDirectoryRoot.toUri()).toString();
+    for (String location :
+        List.of(
+            NormalizedURL.from(outsideLocalRoots.resolve("t").toUri()).toString(),
+            root,
+            root + "-sibling/t")) {
+      CreateTableRequest stagedCreate =
+          CreateTableRequest.builder()
+              .withName(TestUtils.TABLE_NAME)
+              .withSchema(schema)
+              .withLocation(location)
+              .stageCreate()
+              .build();
+      CreateTableRequest create =
+          CreateTableRequest.builder()
+              .withName(TestUtils.TABLE_NAME)
+              .withSchema(schema)
+              .withLocation(location)
+              .build();
+      for (Executable call :
+          List.<Executable>of(
+              () ->
+                  icebergClient.createTable(
+                      TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, stagedCreate),
+              () ->
+                  icebergClient.createTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, create),
+              () ->
+                  icebergClient.updateTable(
+                      TestUtils.CATALOG_NAME,
+                      TestUtils.SCHEMA_NAME,
+                      TestUtils.TABLE_NAME,
+                      stagedCreateCommit(schema, location)))) {
+        assertErrorType(call, 403, ForbiddenException.class);
+        TestUtils.assertIcebergApiException(call, 403, Property.EXTERNAL_LOCAL_ROOTS.getKey());
+      }
+    }
+    // Rejected before the server created any directory.
+    assertThat(outsideLocalRoots.resolve("t")).doesNotExist();
+    assertThat(testDirectoryRoot.resolve("metadata")).doesNotExist();
+    assertThat(testDirectoryRoot.resolveSibling(testDirectoryRoot.getFileName() + "-sibling"))
+        .doesNotExist();
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.loadTable(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME),
+        404);
+  }
+
+  @Test
+  public void testLocalExternalTableUnderAnExternalLocationOutsideTheRoots() throws Exception {
+    // The external location is outside every local root, so only it can allow the location.
+    createCatalogAndNamespace();
+    Path registered = outsideLocalRoots.resolve("registered");
+    createLocalExternalLocation(NormalizedURL.from(registered.toUri()).toString());
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+
+    icebergClient.createTable(
+        TestUtils.CATALOG_NAME,
+        TestUtils.SCHEMA_NAME,
+        CreateTableRequest.builder()
+            .withName("registered")
+            .withSchema(schema)
+            .withLocation(NormalizedURL.from(registered.resolve("t").toUri()).toString())
+            .build());
+    assertThat(registered.resolve("t").resolve("metadata")).isDirectory();
+
+    // A sibling of the external location is under neither it nor a root.
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.createTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                CreateTableRequest.builder()
+                    .withName("unregistered")
+                    .withSchema(schema)
+                    .withLocation(
+                        NormalizedURL.from(outsideLocalRoots.resolve("unregistered").toUri())
+                            .toString())
+                    .build()),
+        403,
+        Property.EXTERNAL_LOCAL_ROOTS.getKey());
+    assertThat(outsideLocalRoots.resolve("unregistered")).doesNotExist();
+  }
+
+  @Test
+  public void testLocalExternalTableUnderAnExternalLocationRegisteredWithAnEscapeIsRejected()
+      throws Exception {
+    createCatalogAndNamespace();
+    String root = NormalizedURL.from(testDirectoryRoot.toUri()).toString();
+    // "%2D" is an escaped "-": the external location's directory is <root>/el-x, under a root.
+    createLocalExternalLocation(root + "/el%2Dx");
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+
+    // Spelled as registered: the escape is not needed, so the location is rejected.
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.createTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                CreateTableRequest.builder()
+                    .withName("escaped")
+                    .withSchema(schema)
+                    .withLocation(root + "/el%2Dx/t")
+                    .build()),
+        400,
+        "unneeded escapes");
+    // Spelled canonically: authorization matched no external location by string, so it checked no
+    // privilege on el%2Dx. Denied, although a root covers the location.
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.createTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                CreateTableRequest.builder()
+                    .withName("unescaped")
+                    .withSchema(schema)
+                    .withLocation(root + "/el-x/u")
+                    .build()),
+        403,
+        "el%2Dx");
+    assertThat(testDirectoryRoot.resolve("el-x")).doesNotExist();
+  }
+
+  /** Registers an external location at {@code url} with a placeholder storage credential. */
+  private void createLocalExternalLocation(String url) throws ApiException {
+    ApiClient apiClient = TestUtils.createApiClient(serverConfig);
+    new CredentialsApi(apiClient)
+        .createCredential(
+            new CreateCredentialRequest()
+                .name("local_cred")
+                .purpose(CredentialPurpose.STORAGE)
+                .awsIamRole(new AwsIamRoleRequest().roleArn("fake_arn")));
+    new ExternalLocationsApi(apiClient)
+        .createExternalLocation(
+            new CreateExternalLocation().name("local_el").url(url).credentialName("local_cred"));
+  }
+
+  @Test
+  public void testStagedCreateCommitAtAnEscapedManagedLocationIsRejected()
+      throws ApiException, IOException {
+    createCatalogAndNamespace();
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+    TableMetadata staged =
+        icebergClient
+            .createTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                CreateTableRequest.builder()
+                    .withName(TestUtils.TABLE_NAME)
+                    .withSchema(schema)
+                    .stageCreate()
+                    .build())
+            .tableMetadata();
+    // "%5F" decodes to "_", so this names the staging location without its managed marker.
+    String escapedStagingLocation =
+        staged.location().replace(Constants.MANAGED_STORAGE_PREFIX, "%5F%5Funitystorage");
+
+    // Classified as external, and rejected for its unneeded escapes.
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.updateTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                TestUtils.TABLE_NAME,
+                stagedCreateCommit(schema, escapedStagingLocation)),
+        400,
+        "unneeded escapes");
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.loadTable(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME),
+        404);
+  }
+
+  @Test
+  public void testCommitThroughALinkedMetadataDirectoryIsRejected()
+      throws ApiException, IOException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+    Path table = Files.createTempDirectory(testDirectoryRoot, "iceberg-linked-table");
+    Path outside = Files.createTempDirectory(testDirectoryRoot, "iceberg-link-target");
+    icebergClient.createTable(
+        TestUtils.CATALOG_NAME,
+        TestUtils.SCHEMA_NAME,
+        CreateTableRequest.builder()
+            .withName(TestUtils.TABLE_NAME)
+            .withSchema(new Schema(Types.NestedField.required(1, "id", Types.LongType.get())))
+            .withLocation(table.toUri().toString())
+            .build());
+
+    // A client sharing the file system swaps the metadata directory for a link to a directory
+    // holding the same files, so following the link would read and commit successfully.
+    Path metadata = table.resolve("metadata");
+    try (var files = Files.list(metadata)) {
+      for (Path file : files.toList()) {
+        Files.copy(file, outside.resolve(file.getFileName()));
+      }
+    }
+    Files.move(metadata, table.resolve("metadata.moved"));
+    Files.createSymbolicLink(metadata, outside);
+    long filesBefore;
+    try (var files = Files.list(outside)) {
+      filesBefore = files.count();
+    }
+
+    UpdateTableRequest commit =
+        new UpdateTableRequest(
+            List.of(), List.of(new MetadataUpdate.SetProperties(Map.of("k", "v"))));
+    TestUtils.assertIcebergApiException(
+        () ->
+            icebergClient.updateTable(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, commit),
+        403,
+        "goes through a symbolic link");
+    try (var files = Files.list(outside)) {
+      assertThat(files.count()).isEqualTo(filesBefore);
+    }
+  }
+
   @Test
   public void testConcurrentCommitsSerializeWithCompareAndSwap()
       throws ApiException, IOException, InterruptedException, ExecutionException, TimeoutException {
@@ -972,7 +1269,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
 
     Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
-    String location = Files.createTempDirectory("iceberg-rest-concurrent").toUri().toString();
+    String location =
+        Files.createTempDirectory(testDirectoryRoot, "iceberg-rest-concurrent").toUri().toString();
 
     // Create the table; its current-schema-id is 0.
     CreateTableRequest createRequest =

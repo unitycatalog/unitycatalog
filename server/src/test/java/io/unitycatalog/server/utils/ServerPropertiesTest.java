@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
@@ -131,6 +132,43 @@ public class ServerPropertiesTest {
     assertThatThrownBy(serverProperties::checkIcebergTableEnabled)
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("server.iceberg-table.enabled=true");
+  }
+
+  @Test
+  public void testExternalLocalRootsValidator() {
+    testValidProperty(Property.EXTERNAL_LOCAL_ROOTS, "/data/uc-external");
+    testValidProperty(Property.EXTERNAL_LOCAL_ROOTS, "file:///data/uc-external/");
+    testValidProperty(Property.EXTERNAL_LOCAL_ROOTS, "/data/a, file:///data/b");
+
+    // Only local paths.
+    testInvalidProperty(
+        Property.EXTERNAL_LOCAL_ROOTS,
+        "/data/ok,s3://bucket/b",
+        "Invalid local path 's3://bucket/b'",
+        "server.external-local-roots");
+    // A local path NormalizedURL rejects (see NormalizedURLTest for the cases).
+    testInvalidProperty(
+        Property.EXTERNAL_LOCAL_ROOTS,
+        "/data/ok,file:///data/a%2Fb",
+        "Invalid local path 'file:///data/a%2Fb'",
+        "server.external-local-roots");
+  }
+
+  @Test
+  public void testExternalLocalRoots() {
+    // Fails closed: no local roots unless configured.
+    assertThat(new ServerProperties().getExternalLocalRoots()).isEmpty();
+
+    Properties props = new Properties();
+    props.setProperty(
+        Property.EXTERNAL_LOCAL_ROOTS.getKey(), " /data/uc-external/ , file:///mnt/shared,");
+    assertThat(new ServerProperties(props).getExternalLocalRoots())
+        .containsExactly(Paths.get("/data/uc-external"), Paths.get("/mnt/shared"));
+
+    // A root is the path the server opens: %2D is "-".
+    props.setProperty(Property.EXTERNAL_LOCAL_ROOTS.getKey(), "file:///data/uc%2Dext");
+    assertThat(new ServerProperties(props).getExternalLocalRoots())
+        .containsExactly(Paths.get("/data/uc-ext"));
   }
 
   @Test

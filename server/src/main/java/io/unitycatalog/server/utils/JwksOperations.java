@@ -3,14 +3,17 @@ package io.unitycatalog.server.utils;
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 
 import com.auth0.jwk.Jwk;
+import com.auth0.jwk.JwkException;
 import com.auth0.jwk.JwkProvider;
 import com.auth0.jwk.JwkProviderBuilder;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.client.WebClient;
+import com.linecorp.armeria.common.AggregatedHttpResponse;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.OAuthInvalidClientException;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
@@ -21,6 +24,7 @@ import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Map;
 import lombok.SneakyThrows;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,6 +35,7 @@ public class JwksOperations {
   private final SecurityContext securityContext;
 
   private static final Logger LOGGER = LoggerFactory.getLogger(JwksOperations.class);
+  private static final int MAX_LOGGED_BODY_LENGTH = 500;
 
   public JwksOperations(SecurityContext securityContext) {
     this.securityContext = securityContext;
@@ -39,7 +44,16 @@ public class JwksOperations {
   @SneakyThrows
   public JWTVerifier verifierForIssuerAndKey(String issuer, String keyId, String alg) {
     JwkProvider jwkProvider = loadJwkProvider(issuer);
-    Jwk jwk = jwkProvider.get(keyId);
+    Jwk jwk;
+    try {
+      jwk = jwkProvider.get(keyId);
+    } catch (JwkException e) {
+      LOGGER.warn("Failed to get signing key '{}' for issuer '{}'", keyId, issuer, e);
+      throw new OAuthInvalidRequestException(
+          ErrorCode.INTERNAL,
+          String.format("Could not get signing key '%s' for issuer %s", keyId, issuer),
+          e);
+    }
 
     Algorithm algorithm = algorithmForJwk(jwk, alg);
 
@@ -100,22 +114,53 @@ public class JwksOperations {
       var path = wellKnownConfigUrl + ".well-known/openid-configuration";
       LOGGER.debug("path: {}", path);
 
-      String response = webClient.get(path).aggregate().join().contentUtf8();
+      AggregatedHttpResponse httpResponse = webClient.get(path).aggregate().join();
+      String response = httpResponse.contentUtf8();
+
+      // The body is only logged, not returned: callers of token exchange are not yet
+      // authenticated, and a proxy error page may describe internal infrastructure.
+      if (!httpResponse.status().isSuccess()) {
+        LOGGER.warn(
+            "Failed to fetch issuer configuration from '{}': status={}, body='{}'",
+            path,
+            httpResponse.status(),
+            abbreviate(response));
+        throw new OAuthInvalidRequestException(
+            ErrorCode.INTERNAL,
+            String.format(
+                "Could not get issuer configuration from %s: HTTP %s",
+                path, httpResponse.status()));
+      }
 
       // TODO: We should cache this. No need to fetch it each time.
-      Map<String, Object> configMap = mapper.readValue(response, new TypeReference<>() {});
+      Map<String, Object> configMap;
+      try {
+        configMap = mapper.readValue(response, new TypeReference<>() {});
+      } catch (JsonProcessingException e) {
+        LOGGER.warn(
+            "Issuer configuration from '{}' is not valid JSON: contentType={}, body='{}'",
+            path,
+            httpResponse.contentType(),
+            abbreviate(response));
+        throw new OAuthInvalidRequestException(
+            ErrorCode.INTERNAL,
+            String.format("Issuer configuration from %s is not valid JSON", path));
+      }
 
       if (configMap == null || configMap.isEmpty()) {
         throw new OAuthInvalidRequestException(
-            ErrorCode.ABORTED, "Could not get issuer configuration");
+            ErrorCode.ABORTED, "Could not get issuer configuration from " + path);
       }
 
       String configIssuer = (String) configMap.get("issuer");
       String configJwksUri = (String) configMap.get("jwks_uri");
 
-      if (!configIssuer.equals(issuer)) {
+      if (!issuer.equals(configIssuer)) {
         throw new OAuthInvalidRequestException(
-            ErrorCode.ABORTED, "Issuer doesn't match configuration");
+            ErrorCode.ABORTED,
+            String.format(
+                "Issuer '%s' doesn't match configuration issuer '%s' from %s",
+                issuer, configIssuer, path));
       }
 
       if (configJwksUri == null) {
@@ -125,5 +170,9 @@ public class JwksOperations {
       // TODO: Or maybe just cache the provider for reuse.
       return new JwkProviderBuilder(URI.create(configJwksUri).toURL()).cached(false).build();
     }
+  }
+
+  private static String abbreviate(String body) {
+    return StringUtils.abbreviate(body, MAX_LOGGED_BODY_LENGTH);
   }
 }

@@ -47,6 +47,8 @@ This guide outlines how to deploy the Unity Catalog server.
     the backend database whereas `test` will spin up an in-memory database.
 - The `etc/data/` directory contains the data files that are used by the UC server. This includes the tables and volumes
     that are created.
+- If you configure local storage, the server reads and writes it with its own identity; see
+    [Local file system storage](./configuration.md#local-file-system-storage) before letting other users write to it.
 - The `etc/db/` directory contains the backend database that is used by the UC server.
 
 ### Configuring the database

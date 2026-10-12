@@ -300,6 +300,43 @@ def test_validate_param_type(client: DatabricksFunctionClient, param_value, para
     client._validate_param_type(param_value, param_info)
 
 
+@pytest.mark.parametrize(
+    ("type_name", "type_text"),
+    [
+        (ColumnTypeName.FLOAT, "float"),
+        (ColumnTypeName.DOUBLE, "double"),
+        (ColumnTypeName.DECIMAL, "decimal(10,2)"),
+    ],
+)
+@pytest.mark.parametrize("param_value", [2, 0, -7])
+def test_validate_param_type_accepts_int_for_floating_point_types(
+    client: DatabricksFunctionClient, param_value, type_name, type_text
+):
+    client._validate_param_type(
+        param_value,
+        FunctionParameterInfo("radius", type_name=type_name, type_text=type_text, position=0),
+    )
+
+
+@pytest.mark.parametrize(
+    ("type_name", "type_text"),
+    [
+        (ColumnTypeName.FLOAT, "float"),
+        (ColumnTypeName.DOUBLE, "double"),
+        (ColumnTypeName.DECIMAL, "decimal(10,2)"),
+    ],
+)
+@pytest.mark.parametrize("param_value", [True, False])
+def test_validate_param_type_rejects_bool_for_floating_point_types(
+    client: DatabricksFunctionClient, param_value, type_name, type_text
+):
+    with pytest.raises(ValueError, match=rf"Parameter radius should be of type {type_name.value}"):
+        client._validate_param_type(
+            param_value,
+            FunctionParameterInfo("radius", type_name=type_name, type_text=type_text, position=0),
+        )
+
+
 def test_validate_param_type_errors(client: DatabricksFunctionClient):
     with pytest.raises(ValueError, match=r"Parameter a should be of type STRING"):
         client._validate_param_type(

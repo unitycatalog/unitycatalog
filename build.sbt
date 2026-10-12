@@ -441,6 +441,9 @@ lazy val server = (project in file("server"))
       "software.amazon.awssdk" % "sts" % awsSdkV2Version,
       // iceberg-aws transitively requires this dependency for table encryption support
       "software.amazon.awssdk" % "kms" % awsSdkV2Version,
+      // Iceberg's S3FileIO loads the "apache" HTTP client by default, but AWS SDK v2 now pulls in
+      // apache5-client instead, so declare apache-client explicitly
+      "software.amazon.awssdk" % "apache-client" % awsSdkV2Version,
       "io.vertx" % "vertx-core" % vertxVersion,
       "io.vertx" % "vertx-web" % vertxVersion,
       "io.vertx" % "vertx-web-client" % vertxVersion,
