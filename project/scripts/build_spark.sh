@@ -13,6 +13,8 @@
 #   SPARK_MVN_PROFILES=<profiles, default: -Pscala-2.13 -Phive -Phive-thriftserver -Pconnect>
 #   SPARK_MVN_GOALS=<maven goals, default: install>
 #   SPARK_MVN_EXTRA_ARGS=<additional args>
+#   SPARK_MVN_REPO_LOCAL=<Maven repo used by the Spark build, default: /tmp/spark-m2>
+#   MAVEN_LOCAL_REPO=<repo that receives the Spark artifacts, default: ~/.m2/repository>
 #
 set -euo pipefail
 
@@ -23,6 +25,8 @@ SPARK_VERSION="${SPARK_VERSION:-4.2}"
 SPARK_MVN_PROFILES="${SPARK_MVN_PROFILES:--Pscala-2.13 -Phive -Phive-thriftserver -Pconnect}"
 SPARK_MVN_GOALS="${SPARK_MVN_GOALS:-install}"
 SPARK_MVN_EXTRA_ARGS="${SPARK_MVN_EXTRA_ARGS:-}"
+SPARK_MVN_REPO_LOCAL="${SPARK_MVN_REPO_LOCAL:-/tmp/spark-m2}"
+MAVEN_LOCAL_REPO="${MAVEN_LOCAL_REPO:-$HOME/.m2/repository}"
 
 if [[ -d "$SPARK_DIR/.git" ]]; then
   echo "Using existing Spark checkout at $SPARK_DIR"
@@ -78,8 +82,13 @@ echo "Building Spark ref $SPARK_SOURCE_REF ($ACTUAL_SHA) as Maven version $SPARK
 
 # Spark's Maven build does not use the `revision` property for its own module
 # versions, so update the checked-out POMs before publishing the local artifacts.
+# Build in a separate Maven repo. Maven leaves POM-only entries for dependencies it
+# resolves but never downloads, and sbt fails on those if it finds them in ~/.m2.
+# Only the Spark artifacts are copied to MAVEN_LOCAL_REPO, which matches what the CI
+# cache restores.
 # shellcheck disable=SC2086
 ./build/mvn \
+  -Dmaven.repo.local="$SPARK_MVN_REPO_LOCAL" \
   $SPARK_MVN_EXTRA_ARGS \
   versions:set \
   -DnewVersion="$SPARK_ARTIFACT_VERSION" \
@@ -87,11 +96,15 @@ echo "Building Spark ref $SPARK_SOURCE_REF ($ACTUAL_SHA) as Maven version $SPARK
 
 # shellcheck disable=SC2086
 ./build/mvn \
+  -Dmaven.repo.local="$SPARK_MVN_REPO_LOCAL" \
   -DskipTests \
   -Dscala.version=2.13.17 \
   $SPARK_MVN_PROFILES \
   $SPARK_MVN_EXTRA_ARGS \
   $SPARK_MVN_GOALS
+
+mkdir -p "$MAVEN_LOCAL_REPO/org/apache"
+cp -R "$SPARK_MVN_REPO_LOCAL/org/apache/spark" "$MAVEN_LOCAL_REPO/org/apache/"
 
 emit_output() {
   local key="$1" value="$2"
