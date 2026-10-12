@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import org.apache.iceberg.aws.s3.S3FileIO;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -66,6 +67,17 @@ public class DeltaCommitContentCheckTest {
 
   private static final String STAGED_FILE_NAME = "00000000000000000002.abc-uuid.json";
 
+  /** A published commit as Delta writes it: commitInfo with the in-commit timestamp first. */
+  private static final long COMMIT_TIMESTAMP = 1_760_000_000_123L;
+
+  private static final String PUBLISHED_COMMIT =
+      "{\"commitInfo\":{\"inCommitTimestamp\":"
+          + COMMIT_TIMESTAMP
+          + ",\"operation\":\"WRITE\"}}\n"
+          + "{\"add\":{\"path\":\"part-0.parquet\",\"size\":10}}\n";
+
+  private static final long FILE_SIZE = PUBLISHED_COMMIT.getBytes(StandardCharsets.UTF_8).length;
+
   @Test
   public void localContentCheckDoesNotResolveAnEscapedOrLinkedStagedPath(@TempDir Path dir)
       throws IOException {
@@ -103,7 +115,7 @@ public class DeltaCommitContentCheckTest {
                 DeltaCommitRepository.verifyContentReplayOrThrowConflict(
                     fileOperations,
                     new CommitContentCheckRequiredException(
-                        tableLocation, VERSION, stagedFileName)))
+                        tableLocation, VERSION, stagedFileName, FILE_SIZE, COMMIT_TIMESTAMP)))
         .isInstanceOfSatisfying(
             BaseException.class,
             e -> {
@@ -140,11 +152,87 @@ public class DeltaCommitContentCheckTest {
         .isEqualTo(ErrorCode.COMMIT_VERSION_CONFLICT);
   }
 
+  @Test
+  public void withoutAStagedFileTheRequestIsComparedWithThePublishedCommit() {
+    // The client removed its staged file, so only the published file is left to compare with.
+
+    // Same size and in-commit timestamp: a replay -> no exception.
+    putPublished("tbl_no_staged_match", PUBLISHED_COMMIT);
+    assertThatCode(() -> runContentCheck("tbl_no_staged_match")).doesNotThrowAnyException();
+
+    // A different size or in-commit timestamp means another writer won this version -> 409.
+    putPublished("tbl_no_staged_size", PUBLISHED_COMMIT);
+    assertConflict(() -> runContentCheck("tbl_no_staged_size", FILE_SIZE + 1, COMMIT_TIMESTAMP));
+    putPublished("tbl_no_staged_timestamp", PUBLISHED_COMMIT);
+    assertConflict(
+        () -> runContentCheck("tbl_no_staged_timestamp", FILE_SIZE, COMMIT_TIMESTAMP + 1));
+
+    // A first line that is not a commitInfo with an in-commit timestamp cannot be compared: the
+    // outcome is unknown, a retriable 500 rather than a false conflict.
+    String noTimestamp = "{\"add\":{\"path\":\"part-0.parquet\"}}\n";
+    putPublished("tbl_no_timestamp", noTimestamp);
+    assertUnknown(
+        () ->
+            runContentCheck(
+                "tbl_no_timestamp",
+                noTimestamp.getBytes(StandardCharsets.UTF_8).length,
+                COMMIT_TIMESTAMP));
+    String notJson = "not json\n";
+    putPublished("tbl_not_json", notJson);
+    assertUnknown(
+        () ->
+            runContentCheck(
+                "tbl_not_json", notJson.getBytes(StandardCharsets.UTF_8).length, COMMIT_TIMESTAMP));
+
+    // Neither file exists: still unknown.
+    assertUnknown(() -> runContentCheck("tbl_nothing"));
+  }
+
+  @Test
+  public void localCheckWithNeitherFileIsUnknown(@TempDir Path dir) throws IOException {
+    // A local FileIO reports length 0 for a missing file rather than failing, so a missing
+    // published file must not be compared by size, which would read as a conflict.
+    Path table = Files.createDirectories(dir.resolve("t").resolve("_delta_log")).getParent();
+    when(fileOperations.getFileIO(any())).thenReturn(new SimpleLocalFileIO(table));
+    assertUnknown(
+        () ->
+            DeltaCommitRepository.verifyContentReplayOrThrowConflict(
+                fileOperations,
+                new CommitContentCheckRequiredException(
+                    NormalizedURL.from(table.toUri()),
+                    VERSION,
+                    STAGED_FILE_NAME,
+                    FILE_SIZE,
+                    COMMIT_TIMESTAMP)));
+  }
+
+  private static void assertConflict(ThrowingCallable check) {
+    assertThatThrownBy(check)
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.COMMIT_VERSION_CONFLICT);
+  }
+
+  private static void assertUnknown(ThrowingCallable check) {
+    assertThatThrownBy(check)
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN);
+  }
+
   private void runContentCheck(String tableName) {
+    runContentCheck(tableName, FILE_SIZE, COMMIT_TIMESTAMP);
+  }
+
+  private void runContentCheck(String tableName, long fileSize, long commitTimestamp) {
     DeltaCommitRepository.verifyContentReplayOrThrowConflict(
         fileOperations,
         new CommitContentCheckRequiredException(
-            NormalizedURL.from("s3://" + BUCKET + "/" + tableName), VERSION, STAGED_FILE_NAME));
+            NormalizedURL.from("s3://" + BUCKET + "/" + tableName),
+            VERSION,
+            STAGED_FILE_NAME,
+            fileSize,
+            commitTimestamp));
   }
 
   private void putPublished(String tableName, String content) {

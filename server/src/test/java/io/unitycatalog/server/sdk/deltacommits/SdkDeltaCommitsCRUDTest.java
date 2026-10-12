@@ -354,6 +354,35 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         ErrorCode.COMMIT_VERSION_CONFLICT,
         "Commit version already accepted.");
 
+    // Once the client has removed its staged file, the request is compared with the published
+    // commit instead: the same size and in-commit timestamp are a replay.
+    Files.delete(Path.of(URI.create(loc + "/_delta_log/_staged_commits/file2")));
+    String v2Published =
+        "{\"commitInfo\":{\"inCommitTimestamp\":" + commit2.getCommitInfo().getTimestamp() + "}}\n";
+    byte[] v2PublishedBytes = v2Published.getBytes(StandardCharsets.UTF_8);
+    writeTableFile(loc, "_delta_log/00000000000000000002.json", v2PublishedBytes);
+    DeltaCommit replayWithoutStaged =
+        new DeltaCommit()
+            .tableId(commit2.getTableId())
+            .tableUri(commit2.getTableUri())
+            .commitInfo(
+                new DeltaCommitInfo()
+                    .version(2L)
+                    .fileName("file2")
+                    .fileSize((long) v2PublishedBytes.length)
+                    .timestamp(commit2.getCommitInfo().getTimestamp())
+                    .fileModificationTimestamp(
+                        commit2.getCommitInfo().getFileModificationTimestamp()));
+    deltaCommitsApi.commit(replayWithoutStaged);
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 4);
+
+    // A different size is another writer's commit: 409.
+    replayWithoutStaged.getCommitInfo().fileSize(v2PublishedBytes.length + 1L);
+    assertApiException(
+        () -> deltaCommitsApi.commit(replayWithoutStaged),
+        ErrorCode.COMMIT_VERSION_CONFLICT,
+        "Commit version already accepted.");
+
     // v3 is purged too. Its published _delta_log/<v>.json is absent here (in normal operation a
     // backfilled version has one; a missing file models log truncation, deletion, or a transient
     // storage read error). The content check cannot read it, so the outcome is unknown and surfaces

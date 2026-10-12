@@ -2,6 +2,8 @@ package io.unitycatalog.server.persist;
 
 import static java.sql.Connection.TRANSACTION_REPEATABLE_READ;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.TransactionRollbackException;
@@ -30,6 +32,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
@@ -94,8 +97,9 @@ public class DeltaCommitRepository {
    * Thrown when the DB alone cannot decide whether a commit at an already-taken version is a replay
    * or a conflict, because the version was backfilled and purged so its staged file name is no
    * longer tracked. Rolls the transaction back (releasing the table lock) so the entry point can
-   * settle it out of the transaction by comparing the incoming staged commit file against the
-   * published {@code _delta_log/<version>.json} (see {@link #verifyContentReplayOrThrowConflict}).
+   * settle it out of the transaction against the published {@code _delta_log/<version>.json}: by
+   * content while the incoming staged commit file exists, otherwise by the size and in-commit
+   * timestamp the request reports (see {@link #verifyContentReplayOrThrowConflict}).
    *
    * <p>Like {@link CommitAlreadyAcceptedException} this is a {@link TransactionRollbackException},
    * not a client-facing error, and is always caught within {@link #postCommit} / {@link
@@ -106,6 +110,9 @@ public class DeltaCommitRepository {
     private final NormalizedURL tableLocation;
     private final long version;
     private final String stagedFileName;
+    // The request's file_size and timestamp, for when the staged file is gone.
+    private final long fileSize;
+    private final long commitTimestamp;
   }
 
   private static final Logger LOGGER = LoggerFactory.getLogger(DeltaCommitRepository.class);
@@ -131,6 +138,11 @@ public class DeltaCommitRepository {
 
   /** Chunk size for the streamed commit-file content comparison in {@link #hasSameFileContent}. */
   private static final int CONTENT_COMPARE_BUFFER_BYTES = 8192;
+
+  /** Upper bound on the published commit's first line, read in {@link #readInCommitTimestamp}. */
+  private static final int COMMIT_INFO_LINE_MAX_BYTES = 1024 * 1024;
+
+  private static final ObjectMapper COMMIT_JSON = new ObjectMapper();
 
   private final SessionFactory sessionFactory;
   private final ServerProperties serverProperties;
@@ -559,12 +571,7 @@ public class DeltaCommitRepository {
     if (newCommitVersion <= lastCommitVersion) {
       // This version is already taken: throw the outcome (replay, content-check, or conflict).
       throw exceptionForAlreadyTakenVersion(
-          session,
-          tableInfoDAO,
-          newCommitVersion,
-          commitInfo.getFileName(),
-          firstCommitDAO,
-          lastCommitDAO);
+          session, tableInfoDAO, commitInfo, firstCommitDAO, lastCommitDAO);
     }
     if (newCommitVersion > lastCommitVersion + 1) {
       throw new BaseException(
@@ -789,11 +796,12 @@ public class DeltaCommitRepository {
   private static RuntimeException exceptionForAlreadyTakenVersion(
       Session session,
       TableInfoDAO tableInfoDAO,
-      long version,
-      String fileName,
+      DeltaCommitInfo commitInfo,
       DeltaCommitDAO firstCommitDAO,
       DeltaCommitDAO lastCommitDAO) {
     UUID tableId = tableInfoDAO.getId();
+    long version = commitInfo.getVersion();
+    String fileName = commitInfo.getFileName();
     // Resolve the commit tracked at `version` against the caller's already-read boundary commits,
     // querying the DB only for a version strictly between them (never re-reading the whole log).
     DeltaCommitDAO existing;
@@ -820,7 +828,11 @@ public class DeltaCommitRepository {
       // Below the oldest tracked version: backfilled and purged, so the file name is no longer
       // stored and the DB alone can't tell a replay from a conflict. Defer to a content check.
       return new CommitContentCheckRequiredException(
-          NormalizedURL.from(tableInfoDAO.getUrl()), version, fileName);
+          NormalizedURL.from(tableInfoDAO.getUrl()),
+          version,
+          fileName,
+          commitInfo.getFileSize(),
+          commitInfo.getTimestamp());
     }
     if (existing.getCommitFilename().equals(fileName)) {
       return new CommitAlreadyAcceptedException();
@@ -853,18 +865,26 @@ public class DeltaCommitRepository {
   }
 
   /**
-   * Settles a {@link CommitContentCheckRequiredException} out of the transaction by comparing the
-   * incoming staged commit file against the published {@code _delta_log/<version>.json} (both are
-   * immutable once written, so this is safe to read outside the table lock):
+   * Settles a {@link CommitContentCheckRequiredException} out of the transaction against the
+   * published {@code _delta_log/<version>.json} (immutable once written, so this is safe to read
+   * outside the table lock):
    *
    * <ul>
-   *   <li>identical content -&gt; a replay of the already-published commit; returns normally so the
-   *       caller reports an idempotent no-op success.
+   *   <li>a replay of the already-published commit -&gt; returns normally so the caller reports an
+   *       idempotent no-op success.
    *   <li>a definitive difference -&gt; another writer won this version; throws {@code
    *       COMMIT_VERSION_CONFLICT} (409).
-   *   <li>either file unreadable -&gt; {@code COMMIT_STATE_UNKNOWN} (500, retriable), so the client
+   *   <li>a file unreadable -&gt; {@code COMMIT_STATE_UNKNOWN} (500, retriable), so the client
    *       retries rather than receiving a false conflict.
    * </ul>
+   *
+   * <p>While the incoming staged commit file exists, the two files are compared byte for byte. Once
+   * a client has removed it, the published file is the only copy left; Delta publishes by copying
+   * the staged file, so the published file has the request's {@code file_size}, and its {@code
+   * commitInfo} carries the request's {@code timestamp} as its in-commit timestamp. Both matching
+   * is taken as a replay. That is strong evidence rather than proof: another writer's commit of the
+   * same version, with the same in-commit timestamp to the millisecond and the same byte size,
+   * would also match.
    */
   static void verifyContentReplayOrThrowConflict(
       FileOperations fileOperations, CommitContentCheckRequiredException check) {
@@ -874,13 +894,24 @@ public class DeltaCommitRepository {
     String publishedPath = String.format(Locale.ROOT, "%s/%020d.json", logDir, check.version);
     String stagedPath =
         String.format(Locale.ROOT, "%s/_staged_commits/%s", logDir, check.stagedFileName);
-    boolean sameContent;
+    boolean sameCommit;
     // getFileIO can vend credentials (cloud paths) and open resources, so it is acquired inside the
     // guarded block (and closed): a vend or read failure is equally "cannot determine" and must
     // fail open to COMMIT_STATE_UNKNOWN.
     try (FileIO fileIO = fileOperations.getFileIO(check.tableLocation)) {
-      sameContent =
-          hasSameFileContent(fileIO.newInputFile(publishedPath), fileIO.newInputFile(stagedPath));
+      InputFile published = fileIO.newInputFile(publishedPath);
+      InputFile staged = fileIO.newInputFile(stagedPath);
+      if (staged.exists()) {
+        sameCommit = hasSameFileContent(published, staged);
+      } else if (published.exists()) {
+        sameCommit =
+            published.getLength() == check.fileSize
+                && readInCommitTimestamp(published) == check.commitTimestamp;
+      } else {
+        // Checked explicitly: a local FileIO reports a length of 0 for a missing file instead of
+        // failing, which would read as a size mismatch and so a false conflict.
+        throw new IOException("Neither the staged nor the published commit file exists");
+      }
     } catch (Exception e) {
       throw new BaseException(
           ErrorCode.COMMIT_STATE_UNKNOWN,
@@ -891,11 +922,42 @@ public class DeltaCommitRepository {
               + "; retry the request.",
           e);
     }
-    if (!sameContent) {
+    if (!sameCommit) {
       throw new BaseException(
           ErrorCode.COMMIT_VERSION_CONFLICT,
           "Commit version already accepted. Version " + check.version + " is already published.");
     }
+  }
+
+  /**
+   * The in-commit timestamp of a published commit, from the {@code commitInfo} action that must be
+   * its first line when in-commit timestamps are enabled, as they are for catalog-managed tables.
+   * Reads at most {@link #COMMIT_INFO_LINE_MAX_BYTES} of the file. A missing, oversized, or
+   * unparsable first line, or one without the timestamp, throws, so the caller reports {@code
+   * COMMIT_STATE_UNKNOWN} rather than a conflict.
+   */
+  private static long readInCommitTimestamp(InputFile published) throws IOException {
+    byte[] head;
+    try (InputStream stream = published.newStream()) {
+      head = stream.readNBytes(COMMIT_INFO_LINE_MAX_BYTES + 1);
+    }
+    int end = 0;
+    while (end < head.length && head[end] != '\n') {
+      end++;
+    }
+    if (end > COMMIT_INFO_LINE_MAX_BYTES) {
+      throw new IOException(
+          "First line of the published commit is longer than " + COMMIT_INFO_LINE_MAX_BYTES);
+    }
+    JsonNode timestamp =
+        COMMIT_JSON
+            .readTree(new String(head, 0, end, StandardCharsets.UTF_8))
+            .path("commitInfo")
+            .path("inCommitTimestamp");
+    if (!timestamp.isIntegralNumber()) {
+      throw new IOException("First action of the published commit has no inCommitTimestamp");
+    }
+    return timestamp.asLong();
   }
 
   /**
