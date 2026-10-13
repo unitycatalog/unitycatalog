@@ -7,6 +7,9 @@ import com.github.benmanes.caffeine.cache.Expiry;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
+import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
+import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.utils.JsonUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -21,8 +24,10 @@ import lombok.SneakyThrows;
 
 /**
  * A {@link CloudCredentialVendor} that reuses vended credentials instead of calling the cloud
- * provider on every request. {@link StorageCredentialVendor} resolves the database binding before
- * calling it, so only the cloud vend is skipped; the binding is re-read on every request.
+ * provider on every request; on a miss it vends through the inherited {@link
+ * CloudCredentialVendor#vendCredential}. {@link StorageCredentialVendor} resolves the database
+ * binding before calling it, so only the cloud vend is skipped; the binding is re-read on every
+ * request.
  *
  * <p>An entry is keyed by {@code (locations, privileges, roleArn, externalId)}. It is served until
  * {@code min(vendTime + maxAge, credentialExpiry - expiryMargin)}, where {@code vendTime} is read
@@ -33,15 +38,13 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
   /** A cached credential is never served within this time of its expiry. */
   static final Duration DEFAULT_EXPIRY_MARGIN = Duration.ofMinutes(1);
 
-  private final CloudCredentialVendor delegate;
   private final Clock clock;
   private final long maxAgeMs;
   private final long expiryMarginMs;
   private final Cache<Key, Entry> entries;
 
-  public CachingCloudCredentialVendor(
-      CloudCredentialVendor delegate, ServerProperties serverProperties) {
-    this(delegate, serverProperties, Clock.systemUTC(), DEFAULT_EXPIRY_MARGIN);
+  public CachingCloudCredentialVendor(ServerProperties serverProperties) {
+    this(serverProperties, Clock.systemUTC(), DEFAULT_EXPIRY_MARGIN);
   }
 
   /**
@@ -49,13 +52,25 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
    * #DEFAULT_EXPIRY_MARGIN}; tests pass a manual clock and a margin shorter than their credentials.
    */
   public CachingCloudCredentialVendor(
-      CloudCredentialVendor delegate,
+      ServerProperties serverProperties, Clock clock, Duration expiryMargin) {
+    this(
+        new AwsCredentialVendor(serverProperties),
+        new AzureCredentialVendor(serverProperties),
+        new GcpCredentialVendor(serverProperties),
+        serverProperties,
+        clock,
+        expiryMargin);
+  }
+
+  /** Vends through the given cloud-specific vendors; unit tests pass mocks. */
+  CachingCloudCredentialVendor(
+      AwsCredentialVendor awsCredentialVendor,
+      AzureCredentialVendor azureCredentialVendor,
+      GcpCredentialVendor gcpCredentialVendor,
       ServerProperties serverProperties,
       Clock clock,
       Duration expiryMargin) {
-    // Vending is delegated, so this instance needs no cloud-specific vendors of its own.
-    super(/* awsCredentialVendor= */ null, /* azure= */ null, /* gcp= */ null);
-    this.delegate = Objects.requireNonNull(delegate, "delegate");
+    super(awsCredentialVendor, azureCredentialVendor, gcpCredentialVendor);
     this.clock = Objects.requireNonNull(clock, "clock");
     this.maxAgeMs = serverProperties.getStorageCredentialCacheMaxAge().toMillis();
     this.expiryMarginMs = Objects.requireNonNull(expiryMargin, "expiryMargin").toMillis();
@@ -79,7 +94,7 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
     // Read before the call: the cloud checks the binding (for example the AWS trust policy) during
     // the vend, so max age counts from then.
     long vendStartMs = now();
-    TemporaryCredentials vended = delegate.vendCredential(context);
+    TemporaryCredentials vended = super.vendCredential(context);
     long serveUntilMs = vendStartMs + maxAgeMs;
     if (vended.getExpirationTime() != null) {
       serveUntilMs = Math.min(serveUntilMs, vended.getExpirationTime() - expiryMarginMs);

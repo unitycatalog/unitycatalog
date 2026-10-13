@@ -4,25 +4,33 @@ import static io.unitycatalog.server.service.credential.CredentialContext.READ_O
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_WRITE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.google.auth.oauth2.AccessToken;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
+import io.unitycatalog.server.service.credential.azure.AzureCredential;
+import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
+import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -44,6 +52,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import software.amazon.awssdk.services.sts.model.Credentials;
 
 public class CachingCloudCredentialVendorTest {
 
@@ -51,12 +60,16 @@ public class CachingCloudCredentialVendorTest {
   private static final long T0 = 1_000_000_000_000L;
   private static final long ONE_HOUR_MS = 3_600_000L;
 
-  private CloudCredentialVendor delegate;
+  private AwsCredentialVendor aws;
+  private AzureCredentialVendor azure;
+  private GcpCredentialVendor gcp;
   private Clock clock;
 
   @BeforeEach
   void setUp() {
-    delegate = mock(CloudCredentialVendor.class);
+    aws = mock(AwsCredentialVendor.class);
+    azure = mock(AzureCredentialVendor.class);
+    gcp = mock(GcpCredentialVendor.class);
     clock = mock(Clock.class);
     tick(T0);
   }
@@ -65,20 +78,56 @@ public class CachingCloudCredentialVendorTest {
     when(clock.instant()).thenReturn(Instant.ofEpochMilli(epochMs));
   }
 
-  /** A cache over {@link #delegate} with the given property overrides. */
+  /** A cache over the mocked cloud vendors with the given property overrides. */
   private CachingCloudCredentialVendor cache(String... kv) {
     Properties p = new Properties();
     for (int i = 0; i < kv.length; i += 2) {
       p.setProperty(kv[i], kv[i + 1]);
     }
     return new CachingCloudCredentialVendor(
-        delegate,
+        aws,
+        azure,
+        gcp,
         new ServerProperties(p),
         clock,
         CachingCloudCredentialVendor.DEFAULT_EXPIRY_MARGIN);
   }
 
-  /** An AWS credential with the given access key, expiring at {@code expiryEpochMs} (or never). */
+  /** AWS session credentials as STS returns them; a {@code null} expiry is a static credential. */
+  private static Credentials awsCreds(String accessKey, Long expiryEpochMs) {
+    return Credentials.builder()
+        .accessKeyId(accessKey)
+        .secretAccessKey("SK")
+        .sessionToken("TK")
+        .expiration(expiryEpochMs == null ? null : Instant.ofEpochMilli(expiryEpochMs))
+        .build();
+  }
+
+  /** Every cloud vends a new, distinct credential on each call, valid for an hour. */
+  private void vendDistinctCredentials() {
+    AtomicInteger next = new AtomicInteger();
+    when(aws.vendAwsCredentials(any()))
+        .thenAnswer(i -> awsCreds("AK" + next.incrementAndGet(), T0 + ONE_HOUR_MS));
+    when(azure.vendAzureCredential(any()))
+        .thenAnswer(
+            i ->
+                AzureCredential.builder()
+                    .sasToken("SAS" + next.incrementAndGet())
+                    .expirationTimeInEpochMillis(T0 + ONE_HOUR_MS)
+                    .build());
+    when(gcp.vendGcpCredential(any()))
+        .thenAnswer(
+            i -> new AccessToken("TOKEN" + next.incrementAndGet(), new Date(T0 + ONE_HOUR_MS)));
+  }
+
+  /** The number of cloud vends across all three clouds. */
+  private int vends() {
+    return Stream.of(aws, azure, gcp)
+        .mapToInt(vendor -> mockingDetails(vendor).getInvocations().size())
+        .sum();
+  }
+
+  /** What {@link #awsCreds} becomes once vended: an AWS credential with the given access key. */
   private static TemporaryCredentials creds(String accessKey, Long expiryEpochMs) {
     return new TemporaryCredentials()
         .awsTempCredentials(
@@ -104,7 +153,7 @@ public class CachingCloudCredentialVendorTest {
 
   @Test
   void secondCallForSameBindingIsServedFromTheCache() {
-    when(delegate.vendCredential(any())).thenReturn(creds("AK", T0 + ONE_HOUR_MS));
+    when(aws.vendAwsCredentials(any())).thenReturn(awsCreds("AK", T0 + ONE_HOUR_MS));
     CachingCloudCredentialVendor cache = cache();
 
     cache.vendCredential(ctx("arn:role/A"));
@@ -112,7 +161,7 @@ public class CachingCloudCredentialVendorTest {
 
     // The hit equals the vended AWS credential exactly, with no other cloud's fields added.
     assertEquals(creds("AK", T0 + ONE_HOUR_MS), hit);
-    verify(delegate, times(1)).vendCredential(any());
+    verify(aws, times(1)).vendAwsCredentials(any());
   }
 
   static Stream<Arguments> changedBindings() {
@@ -159,16 +208,15 @@ public class CachingCloudCredentialVendorTest {
   @MethodSource("changedBindings")
   void changedBindingIsCachedSeparately(
       String changed, CredentialContext original, CredentialContext updated) {
-    when(delegate.vendCredential(original)).thenReturn(creds("AK_A", T0 + ONE_HOUR_MS));
-    when(delegate.vendCredential(updated)).thenReturn(creds("AK_B", T0 + ONE_HOUR_MS));
+    vendDistinctCredentials();
     CachingCloudCredentialVendor cache = cache();
 
-    assertEquals("AK_A", accessKey(cache.vendCredential(original)));
-    assertEquals("AK_B", accessKey(cache.vendCredential(updated)));
-    assertEquals("AK_A", accessKey(cache.vendCredential(original)));
-    assertEquals("AK_B", accessKey(cache.vendCredential(updated)));
-    verify(delegate, times(1)).vendCredential(original);
-    verify(delegate, times(1)).vendCredential(updated);
+    TemporaryCredentials first = cache.vendCredential(original);
+    TemporaryCredentials second = cache.vendCredential(updated);
+    assertNotEquals(first, second);
+    assertEquals(first, cache.vendCredential(original));
+    assertEquals(second, cache.vendCredential(updated));
+    assertEquals(2, vends());
   }
 
   @ParameterizedTest
@@ -177,29 +225,29 @@ public class CachingCloudCredentialVendorTest {
     // Per-bucket config vends have no credential DAO, so the role fields in the key are null.
     NormalizedURL url = NormalizedURL.from(location);
     NormalizedURL other = NormalizedURL.from(location + "/other");
-    when(delegate.vendCredential(any())).thenReturn(creds("AK", T0 + ONE_HOUR_MS));
+    vendDistinctCredentials();
     CachingCloudCredentialVendor cache = cache();
 
     cache.vendCredential(CredentialContext.create(url, READ_ONLY, Optional.empty()));
     cache.vendCredential(CredentialContext.create(url, READ_ONLY, Optional.empty()));
-    verify(delegate, times(1)).vendCredential(any());
+    assertEquals(1, vends());
 
     cache.vendCredential(CredentialContext.create(other, READ_ONLY, Optional.empty()));
-    verify(delegate, times(2)).vendCredential(any());
+    assertEquals(2, vends());
   }
 
   @Test
   void credentialNearItsExpiryIsReplacedAndTheReplacementIsReused() {
     // The first credential expires at T0+120s; with the 60s margin, reuse stops at T0+60s.
-    when(delegate.vendCredential(any()))
-        .thenReturn(creds("AK_OLD", T0 + 120_000L))
-        .thenReturn(creds("AK_NEW", T0 + ONE_HOUR_MS));
+    when(aws.vendAwsCredentials(any()))
+        .thenReturn(awsCreds("AK_OLD", T0 + 120_000L))
+        .thenReturn(awsCreds("AK_NEW", T0 + ONE_HOUR_MS));
     CachingCloudCredentialVendor cache = cache();
 
     assertEquals("AK_OLD", accessKey(cache.vendCredential(ctx("arn:role/A"))));
     tick(T0 + 59_000L); // before the margin: served from the cache
     assertEquals("AK_OLD", accessKey(cache.vendCredential(ctx("arn:role/A"))));
-    verify(delegate, times(1)).vendCredential(any());
+    verify(aws, times(1)).vendAwsCredentials(any());
 
     tick(T0 + 61_000L); // inside the margin: vend and cache the replacement
     TemporaryCredentials renewed = cache.vendCredential(ctx("arn:role/A"));
@@ -208,7 +256,7 @@ public class CachingCloudCredentialVendorTest {
 
     tick(T0 + 62_000L); // the replacement is served without a third vend
     assertEquals("AK_NEW", accessKey(cache.vendCredential(ctx("arn:role/A"))));
-    verify(delegate, times(2)).vendCredential(any());
+    verify(aws, times(2)).vendAwsCredentials(any());
   }
 
   @ParameterizedTest(
@@ -223,14 +271,14 @@ public class CachingCloudCredentialVendorTest {
   })
   void expiryMarginBoundary(
       String maxAge, long lifetimeMs, long elapsedMs, boolean servedFromCache) {
-    when(delegate.vendCredential(any())).thenReturn(creds("AK", T0 + lifetimeMs));
+    when(aws.vendAwsCredentials(any())).thenReturn(awsCreds("AK", T0 + lifetimeMs));
     CachingCloudCredentialVendor cache = cache("server.storage-credential-cache.max-age", maxAge);
 
     cache.vendCredential(ctx("arn:role/A"));
     tick(T0 + elapsedMs);
     cache.vendCredential(ctx("arn:role/A"));
 
-    verify(delegate, times(servedFromCache ? 1 : 2)).vendCredential(any());
+    verify(aws, times(servedFromCache ? 1 : 2)).vendAwsCredentials(any());
   }
 
   @ParameterizedTest(name = "now = T0 + {0}ms -> served from cache: {1}")
@@ -240,14 +288,14 @@ public class CachingCloudCredentialVendorTest {
     "300000, false",
   })
   void maxAgeBoundary(long elapsedMs, boolean servedFromCache) {
-    when(delegate.vendCredential(any())).thenReturn(creds("AK", T0 + ONE_HOUR_MS));
+    when(aws.vendAwsCredentials(any())).thenReturn(awsCreds("AK", T0 + ONE_HOUR_MS));
     CachingCloudCredentialVendor cache = cache("server.storage-credential-cache.max-age", "PT5M");
 
     cache.vendCredential(ctx("arn:role/A"));
     tick(T0 + elapsedMs);
     cache.vendCredential(ctx("arn:role/A"));
 
-    verify(delegate, times(servedFromCache ? 1 : 2)).vendCredential(any());
+    verify(aws, times(servedFromCache ? 1 : 2)).vendAwsCredentials(any());
   }
 
   @ParameterizedTest
@@ -255,17 +303,17 @@ public class CachingCloudCredentialVendorTest {
   @ValueSource(longs = T0 + ONE_HOUR_MS)
   void maxAgeCapsReuse(Long credentialExpiry) {
     // Applies both to a static credential with no expiry and to one valid for an hour.
-    when(delegate.vendCredential(any())).thenReturn(creds("AK", credentialExpiry));
+    when(aws.vendAwsCredentials(any())).thenReturn(awsCreds("AK", credentialExpiry));
     CachingCloudCredentialVendor cache = cache("server.storage-credential-cache.max-age", "PT5M");
 
     cache.vendCredential(ctx("arn:role/A"));
     tick(T0 + 299_000L);
     cache.vendCredential(ctx("arn:role/A"));
-    verify(delegate, times(1)).vendCredential(any());
+    verify(aws, times(1)).vendAwsCredentials(any());
 
     tick(T0 + 301_000L);
     cache.vendCredential(ctx("arn:role/A"));
-    verify(delegate, times(2)).vendCredential(any());
+    verify(aws, times(2)).vendAwsCredentials(any());
   }
 
   @ParameterizedTest(name = "lifetime {0}ms -> cached: {1}")
@@ -276,31 +324,31 @@ public class CachingCloudCredentialVendorTest {
     "60001, true",
   })
   void credentialLivingNoLongerThanTheMarginIsNotCached(long lifetimeMs, boolean cached) {
-    when(delegate.vendCredential(any())).thenReturn(creds("AK", T0 + lifetimeMs));
+    when(aws.vendAwsCredentials(any())).thenReturn(awsCreds("AK", T0 + lifetimeMs));
     CachingCloudCredentialVendor cache = cache();
 
     assertEquals("AK", accessKey(cache.vendCredential(ctx("arn:role/A"))));
     cache.vendCredential(ctx("arn:role/A"));
 
-    verify(delegate, times(cached ? 1 : 2)).vendCredential(any());
+    verify(aws, times(cached ? 1 : 2)).vendAwsCredentials(any());
   }
 
   @Test
   void customExpiryMarginEndsReuseThatLongBeforeExpiry() {
     // A 10s margin on a credential expiring at T0 + 120s: reuse ends at T0 + 110s.
-    when(delegate.vendCredential(any())).thenReturn(creds("AK", T0 + 120_000L));
+    when(aws.vendAwsCredentials(any())).thenReturn(awsCreds("AK", T0 + 120_000L));
     CachingCloudCredentialVendor cache =
         new CachingCloudCredentialVendor(
-            delegate, new ServerProperties(new Properties()), clock, Duration.ofSeconds(10));
+            aws, azure, gcp, new ServerProperties(new Properties()), clock, Duration.ofSeconds(10));
 
     cache.vendCredential(ctx("arn:role/A"));
     tick(T0 + 109_999L);
     cache.vendCredential(ctx("arn:role/A"));
-    verify(delegate, times(1)).vendCredential(any());
+    verify(aws, times(1)).vendAwsCredentials(any());
 
     tick(T0 + 110_000L);
     cache.vendCredential(ctx("arn:role/A"));
-    verify(delegate, times(2)).vendCredential(any());
+    verify(aws, times(2)).vendAwsCredentials(any());
   }
 
   /**
@@ -310,14 +358,14 @@ public class CachingCloudCredentialVendorTest {
    */
   private CachingCloudCredentialVendor cacheWithConcurrentMiss(long outerLifetimeMs) {
     CachingCloudCredentialVendor[] cache = new CachingCloudCredentialVendor[1];
-    when(delegate.vendCredential(any()))
+    when(aws.vendAwsCredentials(any()))
         .thenAnswer(
             invocation -> {
               cache[0].vendCredential(ctx("arn:role/A"));
-              return creds("AK_OUTER", T0 + outerLifetimeMs);
+              return awsCreds("AK_OUTER", T0 + outerLifetimeMs);
             })
-        .thenReturn(creds("AK_NESTED", T0 + ONE_HOUR_MS))
-        .thenReturn(creds("AK_FRESH", T0 + ONE_HOUR_MS));
+        .thenReturn(awsCreds("AK_NESTED", T0 + ONE_HOUR_MS))
+        .thenReturn(awsCreds("AK_FRESH", T0 + ONE_HOUR_MS));
     cache[0] = cache();
     cache[0].vendCredential(ctx("arn:role/A"));
     return cache[0];
@@ -329,7 +377,7 @@ public class CachingCloudCredentialVendorTest {
     CachingCloudCredentialVendor cache = cacheWithConcurrentMiss(30_000L);
 
     assertEquals("AK_NESTED", accessKey(cache.vendCredential(ctx("arn:role/A"))));
-    verify(delegate, times(2)).vendCredential(any());
+    verify(aws, times(2)).vendAwsCredentials(any());
   }
 
   @Test
@@ -342,52 +390,52 @@ public class CachingCloudCredentialVendorTest {
     assertEquals("AK_OUTER", accessKey(cache.vendCredential(ctx("arn:role/A"))));
     tick(T0 + 120_000L);
     assertEquals("AK_FRESH", accessKey(cache.vendCredential(ctx("arn:role/A"))));
-    verify(delegate, times(3)).vendCredential(any());
+    verify(aws, times(3)).vendAwsCredentials(any());
   }
 
   @Test
   void maxAgeCountsFromBeforeTheCloudCall() {
     // The first vend takes 2 minutes. Max age counts from its start, so reuse ends at T0 + 5m,
     // not at T0 + 7m.
-    when(delegate.vendCredential(any()))
+    when(aws.vendAwsCredentials(any()))
         .thenAnswer(
             invocation -> {
               tick(T0 + 120_000L);
-              return creds("AK", T0 + ONE_HOUR_MS);
+              return awsCreds("AK", T0 + ONE_HOUR_MS);
             })
-        .thenReturn(creds("AK", T0 + ONE_HOUR_MS));
+        .thenReturn(awsCreds("AK", T0 + ONE_HOUR_MS));
     CachingCloudCredentialVendor cache = cache("server.storage-credential-cache.max-age", "PT5M");
 
     cache.vendCredential(ctx("arn:role/A"));
     tick(T0 + 299_999L);
     cache.vendCredential(ctx("arn:role/A"));
-    verify(delegate, times(1)).vendCredential(any());
+    verify(aws, times(1)).vendAwsCredentials(any());
 
     tick(T0 + 300_000L);
     cache.vendCredential(ctx("arn:role/A"));
-    verify(delegate, times(2)).vendCredential(any());
+    verify(aws, times(2)).vendAwsCredentials(any());
   }
 
   @Test
   void failedVendIsNotCachedAndTheNextRequestVends() {
-    when(delegate.vendCredential(any()))
+    when(aws.vendAwsCredentials(any()))
         .thenThrow(new IllegalStateException("cloud unavailable"))
-        .thenReturn(creds("AK", T0 + ONE_HOUR_MS));
+        .thenReturn(awsCreds("AK", T0 + ONE_HOUR_MS));
     CachingCloudCredentialVendor cache = cache();
 
     assertThrows(IllegalStateException.class, () -> cache.vendCredential(ctx("arn:role/A")));
     assertEquals("AK", accessKey(cache.vendCredential(ctx("arn:role/A"))));
     assertEquals("AK", accessKey(cache.vendCredential(ctx("arn:role/A"))));
 
-    verify(delegate, times(2)).vendCredential(any());
+    verify(aws, times(2)).vendAwsCredentials(any());
   }
 
   @Test
   void staleCredentialIsNotServedWhenItsRenewalFails() {
-    when(delegate.vendCredential(any()))
-        .thenReturn(creds("AK_OLD", T0 + 120_000L))
+    when(aws.vendAwsCredentials(any()))
+        .thenReturn(awsCreds("AK_OLD", T0 + 120_000L))
         .thenThrow(new IllegalStateException("cloud unavailable"))
-        .thenReturn(creds("AK_NEW", T0 + ONE_HOUR_MS));
+        .thenReturn(awsCreds("AK_NEW", T0 + ONE_HOUR_MS));
     CachingCloudCredentialVendor cache = cache();
 
     cache.vendCredential(ctx("arn:role/A"));
@@ -395,37 +443,59 @@ public class CachingCloudCredentialVendorTest {
 
     assertThrows(IllegalStateException.class, () -> cache.vendCredential(ctx("arn:role/A")));
     assertEquals("AK_NEW", accessKey(cache.vendCredential(ctx("arn:role/A"))));
-    verify(delegate, times(3)).vendCredential(any());
+    verify(aws, times(3)).vendAwsCredentials(any());
   }
 
-  @Test
-  void cachedCredentialIsACompleteCopyThatCallersCannotChange() {
-    TemporaryCredentials vended =
-        creds("AK", T0 + ONE_HOUR_MS)
-            .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("SAS"))
-            .gcpOauthToken(new GcpOauthToken().oauthToken("OAUTH"))
-            .url(LOC.toString());
-    TemporaryCredentials expected =
-        creds("AK", T0 + ONE_HOUR_MS)
-            .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("SAS"))
-            .gcpOauthToken(new GcpOauthToken().oauthToken("OAUTH"))
-            .url(LOC.toString());
-    when(delegate.vendCredential(any())).thenReturn(vended);
+  static Stream<Arguments> vendedPerCloud() {
+    return Stream.of(
+        Arguments.of("s3://bucket/t", creds("AK1", T0 + ONE_HOUR_MS)),
+        Arguments.of(
+            "gs://bucket/t",
+            new TemporaryCredentials()
+                .gcpOauthToken(new GcpOauthToken().oauthToken("TOKEN1"))
+                .expirationTime(T0 + ONE_HOUR_MS)),
+        Arguments.of(
+            "abfs://container@account.dfs.core.windows.net/t",
+            new TemporaryCredentials()
+                .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("SAS1"))
+                .expirationTime(T0 + ONE_HOUR_MS)));
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("vendedPerCloud")
+  void cachedCredentialIsACompleteCopyThatCallersCannotChange(
+      String location, TemporaryCredentials expected) {
+    vendDistinctCredentials();
     CachingCloudCredentialVendor cache = cache();
+    CredentialContext context = perBucket(location);
 
-    cache.vendCredential(ctx("arn:role/A")).getAwsTempCredentials().setAccessKeyId("CHANGED");
-    vended.getAzureUserDelegationSas().setSasToken("CHANGED_BY_DELEGATE");
-
-    TemporaryCredentials hit = cache.vendCredential(ctx("arn:role/A"));
+    TemporaryCredentials vended = cache.vendCredential(context);
+    assertEquals(expected, vended);
+    scramble(vended); // the caller changes the credential it was vended
+    TemporaryCredentials hit = cache.vendCredential(context);
     assertEquals(expected, hit);
-    hit.getGcpOauthToken().setOauthToken("CHANGED_BY_CALLER");
-    assertEquals(expected, cache.vendCredential(ctx("arn:role/A")));
-    verify(delegate, times(1)).vendCredential(any());
+    scramble(hit); // and the one it was served from the cache
+    assertEquals(expected, cache.vendCredential(context));
+    assertEquals(1, vends());
+  }
+
+  /** Changes every field a caller can reach, including the nested cloud credential. */
+  private static void scramble(TemporaryCredentials credentials) {
+    credentials.setExpirationTime(0L);
+    if (credentials.getAwsTempCredentials() != null) {
+      credentials.getAwsTempCredentials().setAccessKeyId("CHANGED");
+    }
+    if (credentials.getAzureUserDelegationSas() != null) {
+      credentials.getAzureUserDelegationSas().setSasToken("CHANGED");
+    }
+    if (credentials.getGcpOauthToken() != null) {
+      credentials.getGcpOauthToken().setOauthToken("CHANGED");
+    }
   }
 
   @Test
   void changingTheCallersPrivilegeSetDoesNotChangeTheCachedKey() {
-    when(delegate.vendCredential(any())).thenReturn(creds("AK", T0 + ONE_HOUR_MS));
+    when(aws.vendAwsCredentials(any())).thenReturn(awsCreds("AK", T0 + ONE_HOUR_MS));
     CachingCloudCredentialVendor cache = cache();
     Set<CredentialContext.Privilege> privileges = new HashSet<>(READ_ONLY);
 
@@ -433,12 +503,12 @@ public class CachingCloudCredentialVendorTest {
     privileges.add(CredentialContext.Privilege.UPDATE);
     cache.vendCredential(CredentialContext.create(LOC, READ_ONLY, Optional.empty()));
 
-    verify(delegate, times(1)).vendCredential(any());
+    verify(aws, times(1)).vendAwsCredentials(any());
   }
 
   @Test
   void maxSizeBoundsTheNumberOfCachedCredentials() {
-    when(delegate.vendCredential(any())).thenReturn(creds("AK", T0 + ONE_HOUR_MS));
+    when(aws.vendAwsCredentials(any())).thenReturn(awsCreds("AK", T0 + ONE_HOUR_MS));
     CachingCloudCredentialVendor cache = cache("server.storage-credential-cache.max-size", "1");
 
     cache.vendCredential(ctx("arn:role/A"));
@@ -447,7 +517,7 @@ public class CachingCloudCredentialVendorTest {
     cache.vendCredential(ctx("arn:role/B"));
 
     // An unbounded cache would vend twice; with one slot at least one repeat is a miss.
-    verify(delegate, atLeast(3)).vendCredential(any());
+    verify(aws, atLeast(3)).vendAwsCredentials(any());
   }
 
   @Test
@@ -456,12 +526,12 @@ public class CachingCloudCredentialVendorTest {
     // across the cloud call. Every caller gets the vended credential.
     int callers = 4;
     CountDownLatch allVending = new CountDownLatch(callers);
-    when(delegate.vendCredential(any()))
+    when(aws.vendAwsCredentials(any()))
         .thenAnswer(
             invocation -> {
               allVending.countDown();
               assertThat(allVending.await(10, TimeUnit.SECONDS)).isTrue();
-              return creds("AK", T0 + ONE_HOUR_MS);
+              return awsCreds("AK", T0 + ONE_HOUR_MS);
             });
     CachingCloudCredentialVendor cache = cache();
     CredentialContext context = ctx("arn:role/A");
@@ -478,12 +548,12 @@ public class CachingCloudCredentialVendorTest {
     } finally {
       pool.shutdownNow();
     }
-    verify(delegate, times(callers)).vendCredential(any());
+    verify(aws, times(callers)).vendAwsCredentials(any());
   }
 
   @Test
   void concurrentHitsOnOneCredentialEachGetAnIndependentCopy() throws Exception {
-    when(delegate.vendCredential(any())).thenReturn(creds("AK", T0 + ONE_HOUR_MS));
+    when(aws.vendAwsCredentials(any())).thenReturn(awsCreds("AK", T0 + ONE_HOUR_MS));
     CachingCloudCredentialVendor cache = cache();
     CredentialContext context = ctx("arn:role/A");
     cache.vendCredential(context); // warm the cache before the threads start
@@ -499,19 +569,19 @@ public class CachingCloudCredentialVendorTest {
             hit.getAwsTempCredentials().setAccessKeyId("CHANGED_BY_CALLER");
           }
         });
-    verify(delegate, times(1)).vendCredential(any());
+    verify(aws, times(1)).vendAwsCredentials(any());
   }
 
   @Test
   void concurrentRequestsDuringRenewalAreNeverServedTheStaleCredential() throws Exception {
     // The first vend returns AK_OLD; every later vend returns AK_NEW.
     AtomicInteger vends = new AtomicInteger();
-    when(delegate.vendCredential(any()))
+    when(aws.vendAwsCredentials(any()))
         .thenAnswer(
             invocation ->
                 vends.getAndIncrement() == 0
-                    ? creds("AK_OLD", T0 + 120_000L)
-                    : creds("AK_NEW", T0 + ONE_HOUR_MS));
+                    ? awsCreds("AK_OLD", T0 + 120_000L)
+                    : awsCreds("AK_NEW", T0 + ONE_HOUR_MS));
     CachingCloudCredentialVendor cache = cache();
     CredentialContext context = ctx("arn:role/A");
     cache.vendCredential(context);

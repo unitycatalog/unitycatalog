@@ -44,7 +44,8 @@ lazy val micrometerVersion = "1.17.0"
 lazy val nettyVersion = "4.2.18.Final"
 lazy val nettyTcnativeVersion = "2.0.84.Final"
 lazy val vertxVersion = "4.5.34"
-lazy val caffeineVersion = "3.1.8"
+// Keep in step with the Caffeine version iceberg-core depends on (2.9.3 in Iceberg 1.11.0).
+lazy val caffeineVersion = "2.9.3"
 lazy val junitJupiterVersion = "5.13.4"
 // Declared in each test module: the jupiter-interface bridge pulls launcher 1.9, which must match.
 lazy val junitPlatformVersion = "1.13.4"

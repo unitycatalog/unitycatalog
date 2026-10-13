@@ -117,9 +117,8 @@ public class Repositories {
   }
 
   static CloudCredentialVendor defaultCloudCredentialVendor(ServerProperties serverProperties) {
-    CloudCredentialVendor vendor = new CloudCredentialVendor(serverProperties);
     return serverProperties.isStorageCredentialCacheEnabled()
-        ? new CachingCloudCredentialVendor(vendor, serverProperties)
-        : vendor;
+        ? new CachingCloudCredentialVendor(serverProperties)
+        : new CloudCredentialVendor(serverProperties);
   }
 }

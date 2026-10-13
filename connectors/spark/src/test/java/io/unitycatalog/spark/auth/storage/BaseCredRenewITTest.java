@@ -18,7 +18,6 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
-import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
@@ -117,7 +116,6 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
     if (cacheEnabled) {
       cloudCredentialVendor =
           new CachingCloudCredentialVendor(
-              new CloudCredentialVendor(serverProperties),
               serverProperties,
               TestUtils.clockOf(() -> testClock().now()),
               /* expiryMargin= */ Duration.ofSeconds(1));
