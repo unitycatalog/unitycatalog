@@ -1,6 +1,7 @@
 package io.unitycatalog.server.base.table;
 
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
+import static io.unitycatalog.server.utils.TestUtils.assertSameIdentity;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
@@ -13,6 +14,7 @@ import io.unitycatalog.client.model.Dependency;
 import io.unitycatalog.client.model.DependencyList;
 import io.unitycatalog.client.model.FunctionDependency;
 import io.unitycatalog.client.model.FunctionParameterInfos;
+import io.unitycatalog.client.model.ReplaceView;
 import io.unitycatalog.client.model.TableDependency;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
@@ -47,14 +49,18 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
       TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + SOURCE_FUNCTION_NAME;
 
   protected FunctionOperations functionOperations;
+  protected ViewOperations viewOperations;
 
   protected abstract FunctionOperations createFunctionOperations(ServerConfig serverConfig);
+
+  protected abstract ViewOperations createViewOperations(ServerConfig serverConfig);
 
   @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
     functionOperations = createFunctionOperations(serverConfig);
+    viewOperations = createViewOperations(serverConfig);
   }
 
   private void createSourceTable() throws Exception {
@@ -152,6 +158,54 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
         .columns(METRIC_VIEW_COLUMNS)
         .viewDefinition(VIEW_DEFINITION_ASSET_SOURCE)
         .viewDependencies(makeDependencyList(SOURCE_TABLE_FULL_NAME));
+  }
+
+  @Test
+  public void testReplaceMetricView() throws Exception {
+    createSourceTable();
+    TableInfo created = tableOperations.createTable(validMetricViewRequest());
+    String replacementDependency =
+        TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".replacement_events";
+    createTestingTable(
+        "replacement_events",
+        TableType.EXTERNAL,
+        Optional.of(Files.createTempDirectory(testDirectoryRoot, "replacement").toString()),
+        tableOperations);
+    ColumnInfo replacementColumn =
+        new ColumnInfo()
+            .name("event_total")
+            .typeName(ColumnTypeName.LONG)
+            .typeText("bigint")
+            .typeJson(
+                "{\"name\":\"event_total\",\"type\":\"long\",\"nullable\":true,"
+                    + "\"metadata\":{\"metric_view.type\":\"measure\","
+                    + "\"metric_view.expr\":\"sum(as_int)\"}}")
+            .nullable(true)
+            .position(0);
+    ReplaceView replace =
+        new ReplaceView()
+            .tableType(TableType.METRIC_VIEW)
+            .columns(List.of(replacementColumn))
+            .viewDefinition(
+                "version: \"0.1\"\nsource: "
+                    + replacementDependency
+                    + "\nmeasures:\n  - name: event_total\n    expr: sum(as_int)")
+            .viewDependencies(makeDependencyList(replacementDependency))
+            .comment("Replaced metric view")
+            .properties(Map.of("refresh", "hourly"));
+
+    TableInfo replaced = viewOperations.replaceView(METRIC_VIEW_FULL_NAME, replace);
+
+    assertSameIdentity(created, replaced);
+    assertThat(replaced.getTableType()).isEqualTo(TableType.METRIC_VIEW);
+    assertThat(replaced.getComment()).isEqualTo("Replaced metric view");
+    assertThat(replaced.getProperties()).containsExactly(Map.entry("refresh", "hourly"));
+    assertThat(replaced.getViewDefinition()).isEqualTo(replace.getViewDefinition());
+    assertThat(replaced.getColumns()).containsExactly(replacementColumn);
+    assertThat(replaced.getViewDependencies().getDependencies())
+        .extracting(dependency -> dependency.getTable().getTableFullName())
+        .containsExactly(replacementDependency);
+    assertThat(tableOperations.getTable(METRIC_VIEW_FULL_NAME)).isEqualTo(replaced);
   }
 
   @Test

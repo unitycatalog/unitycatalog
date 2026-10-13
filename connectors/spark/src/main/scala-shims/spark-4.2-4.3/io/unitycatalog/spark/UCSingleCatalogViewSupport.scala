@@ -42,7 +42,7 @@ trait UCSingleCatalogViewSupport extends RelationCatalog { self: UCSingleCatalog
     ucProxy.createView(ident, view)
 
   override def replaceView(ident: Identifier, view: View): View =
-    throw new UnsupportedOperationException("Replacing a view is not supported yet")
+    ucProxy.replaceView(ident, view)
 
   override def dropView(ident: Identifier): Boolean =
     ucProxy.dropView(ident)

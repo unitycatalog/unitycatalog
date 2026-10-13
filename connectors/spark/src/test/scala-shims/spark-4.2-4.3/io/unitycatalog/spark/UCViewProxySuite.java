@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -22,7 +23,9 @@ import io.unitycatalog.client.model.ListTablesResponse;
 import io.unitycatalog.client.model.TableDependency;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.ReplaceView;
 import java.lang.reflect.Field;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
@@ -460,19 +463,122 @@ public class UCViewProxySuite {
   }
 
   @Test
-  public void testReplaceViewThrowsUnsupportedOperation() throws Exception {
+  public void testReplaceViewSendsFullRequestAndReturnsView() throws Exception {
     View view =
         new View.Builder()
             .withColumns(new Column[] {Column.create("c", DataTypes.StringType, true)})
             .withProperties(
-                Map.of(TableCatalog.PROP_TABLE_TYPE, TableSummary.METRIC_VIEW_TABLE_TYPE))
+                Map.of(
+                    TableCatalog.PROP_TABLE_TYPE,
+                    TableSummary.METRIC_VIEW_TABLE_TYPE,
+                    TableCatalog.PROP_COMMENT,
+                    "Replaced metric view",
+                    "refresh",
+                    "hourly"))
             .withQueryText("version: \"0.1\"")
             .withCurrentCatalog(CATALOG_NAME)
             .withCurrentNamespace(NAMESPACE)
+            .withViewDependencies(
+                org.apache.spark.sql.connector.catalog.DependencyList.of(
+                    new org.apache.spark.sql.connector.catalog.Dependency[] {
+                      org.apache.spark.sql.connector.catalog.Dependency.table(
+                          new String[] {CATALOG_NAME, SCHEMA_NAME, "events"})
+                    }))
             .build();
+    TableInfo replaced =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("mv1")
+            .tableType(TableType.METRIC_VIEW)
+            .viewDefinition("version: \"0.1\"")
+            .columns(
+                List.of(
+                    new ColumnInfo()
+                        .name("c")
+                        .typeName(ColumnTypeName.STRING)
+                        .typeText("string")
+                        .typeJson(
+                            "{\"name\":\"c\",\"type\":\"string\",\"nullable\":true,"
+                                + "\"metadata\":{}}")
+                        .nullable(true)
+                        .position(0)));
+    when(mockTablesApi.replaceView(eq("test_catalog.test_schema.mv1"), any(ReplaceView.class)))
+        .thenReturn(replaced);
 
-    assertThatThrownBy(() -> proxyViews.replaceView(Identifier.of(NAMESPACE, "mv1"), view))
-        .isInstanceOf(UnsupportedOperationException.class);
+    View result = proxyViews.replaceView(Identifier.of(NAMESPACE, "mv1"), view);
+
+    ArgumentCaptor<ReplaceView> captor = ArgumentCaptor.forClass(ReplaceView.class);
+    verify(mockTablesApi).replaceView(eq("test_catalog.test_schema.mv1"), captor.capture());
+    assertThat(captor.getValue().getTableType()).isEqualTo(TableType.METRIC_VIEW);
+    assertThat(captor.getValue().getViewDefinition()).isEqualTo("version: \"0.1\"");
+    assertThat(captor.getValue().getColumns()).extracting(ColumnInfo::getName).containsExactly("c");
+    assertThat(captor.getValue().getComment()).isEqualTo("Replaced metric view");
+    assertThat(captor.getValue().getProperties()).containsEntry("refresh", "hourly");
+    assertThat(captor.getValue().getViewDependencies().getDependencies())
+        .extracting(dependency -> dependency.getTable().getTableFullName())
+        .containsExactly("test_catalog.test_schema.events");
+    assertThat(result.queryText()).isEqualTo("version: \"0.1\"");
+  }
+
+  /**
+   * TABLE_NOT_FOUND (no table) and FAILED_PRECONDITION (a non-view) both become
+   * NoSuchViewException, so Spark's default createOrReplaceView falls back to createView.
+   */
+  @Test
+  public void testReplaceMissingViewOrNonViewMapsToNoSuchView() throws Exception {
+    for (ApiException error :
+        List.of(
+            new ApiException(404, "not found", null, "{\"error_code\":\"TABLE_NOT_FOUND\"}"),
+            new ApiException(
+                400, "bad request", null, "{\"error_code\":\"FAILED_PRECONDITION\"}"))) {
+      doThrow(error)
+          .when(mockTablesApi)
+          .replaceView(eq("test_catalog.test_schema.v1"), any(ReplaceView.class));
+
+      assertThatThrownBy(
+              () ->
+                  proxyViews.replaceView(
+                      Identifier.of(NAMESPACE, "v1"), plainViewBuilder().build()))
+          .isInstanceOf(NoSuchViewException.class);
+    }
+  }
+
+  /**
+   * Every other error reaches the caller unchanged: absent or malformed bodies and other
+   * *_NOT_FOUND codes (e.g. a missing dependency) must not be mistaken for a missing view.
+   */
+  @Test
+  public void testReplaceViewPreservesOtherErrors() throws Exception {
+    // Explicit (empty) dependencies skip query-text derivation, which needs an active session.
+    View view =
+        plainViewBuilder()
+            .withViewDependencies(
+                org.apache.spark.sql.connector.catalog.DependencyList.of(
+                    new org.apache.spark.sql.connector.catalog.Dependency[0]))
+            .build();
+    for (ApiException error :
+        List.of(
+            notFound(null),
+            notFound(""),
+            notFound("null"),
+            notFound("{}"),
+            notFound("not JSON"),
+            notFound("{\"error_code\":\"NOT_FOUND\",\"message\":\"View dependency missing\"}"),
+            notFound("{\"error_code\":\"SCHEMA_NOT_FOUND\"}"),
+            new ApiException(
+                400, "bad request", null, "{\"error_code\":\"INVALID_ARGUMENT\"}"))) {
+      doThrow(error)
+          .when(mockTablesApi)
+          .replaceView(eq("test_catalog.test_schema.v1"), any(ReplaceView.class));
+
+      assertThatThrownBy(() -> proxyViews.replaceView(Identifier.of(NAMESPACE, "v1"), view))
+          .isSameAs(error);
+    }
+  }
+
+  private static ApiException notFound(String body) {
+    return new ApiException(404, "not found", null, body);
   }
 
   @Test
@@ -546,6 +652,46 @@ public class UCViewProxySuite {
 
     assertThatThrownBy(() -> proxyViews.createView(Identifier.of(NAMESPACE, "mv1"), view))
         .isInstanceOf(ViewAlreadyExistsException.class);
+  }
+
+  /**
+   * The UC REST API reports a name collision as 400 TABLE_ALREADY_EXISTS (legacy status). Mapping
+   * it lets `CREATE OR REPLACE VIEW` over a table surface Spark's table-is-not-a-view error.
+   */
+  @Test
+  public void testCreateViewMapsLegacyTableAlreadyExistsToViewAlreadyExistsException()
+      throws Exception {
+    when(mockTablesApi.createTable(any(CreateTable.class)))
+        .thenThrow(
+            new ApiException(
+                400, "bad request", null, "{\"error_code\":\"TABLE_ALREADY_EXISTS\"}"));
+
+    assertThatThrownBy(
+            () -> proxyViews.createView(Identifier.of(NAMESPACE, "v1"), plainViewBuilder().build()))
+        .isInstanceOf(ViewAlreadyExistsException.class);
+  }
+
+  @Test
+  public void testCreateViewPreservesOtherBadRequestErrors() throws Exception {
+    // Explicit (empty) dependencies skip query-text derivation, which needs an active session.
+    View view =
+        plainViewBuilder()
+            .withViewDependencies(
+                org.apache.spark.sql.connector.catalog.DependencyList.of(
+                    new org.apache.spark.sql.connector.catalog.Dependency[0]))
+            .build();
+    for (String body :
+        Arrays.asList(
+            null,
+            "not JSON",
+            "{\"error_code\":\"INVALID_ARGUMENT\",\"message\":\"Invalid name:"
+                + " TABLE_ALREADY_EXISTS\"}")) {
+      ApiException error = new ApiException(400, "bad request", null, body);
+      doThrow(error).when(mockTablesApi).createTable(any(CreateTable.class));
+
+      assertThatThrownBy(() -> proxyViews.createView(Identifier.of(NAMESPACE, "v1"), view))
+          .isSameAs(error);
+    }
   }
 
   @Test
