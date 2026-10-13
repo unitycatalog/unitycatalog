@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -91,6 +92,61 @@ public class NormalizedURLTest {
     assertThrows(BaseException.class, () -> NormalizedURL.from("  "));
     assertThat(NormalizedURL.from((String) null)).isNull();
     assertThat(NormalizedURL.from((URI) null)).isNull();
+  }
+
+  @Test
+  public void testLocalFileURIEscapes() {
+    // Escapes that keep one plain path are kept as sent.
+    assertNormalizedURL("file:///data/%74", "file:///data/%74");
+    assertNormalizedURL("file:///data/my%20table", "file:///data/my%20table");
+    assertNormalizedURL("file:///data/a%25b", "file:///data/a%25b");
+    assertNormalizedURL("file:///data/a%2e%2eb", "file:///data/a%2e%2eb");
+    assertNormalizedURL("file:///data/a%2E%2Eb", "file:///data/a%2E%2Eb");
+    // Decoded once, "%252e%252e" is the name "%2e%2e", not "..".
+    assertNormalizedURL("file:///data/%252e%252e/x", "file:///data/%252e%252e/x");
+    // Without a scheme the path is taken literally: "%2F" is three characters of a name.
+    assertNormalizedURL("/data/a%2Fb", "file:///data/a%252Fb");
+
+    // An encoded '/' or NUL, or an encoded dot segment, in either case.
+    assertRejected("file:///data/a%2Fb");
+    assertRejected("file:///data/a%2fb");
+    assertRejected("file:///data/a%2F");
+    assertRejected("file:///data/root/%2e%2e/etc");
+    assertRejected("file:///data/root/%2E%2E/etc");
+    assertRejected("file:///data/root/%2e%2E/etc");
+    assertRejected("file:///data/root/.%2e/etc");
+    assertRejected("file:///data/root/%2E./etc");
+    assertRejected("file:///data/root/%2e/etc");
+    assertRejected("file:///data/root/%2e%2e");
+    // Plain dot segments collapse, but one above the root is not a plain path, with or without a
+    // scheme.
+    assertNormalizedURL("file:///data/a/../b", "file:///data/b");
+    assertNormalizedURL("/data/a/../b", "file:///data/b");
+    assertRejected("file:///../etc");
+    assertRejected("file:///data/../../etc");
+    assertRejected("/../etc");
+    assertRejected("file:///data/a%00b");
+    // A host is the first directory of the path, so its escapes and dots count too.
+    assertNormalizedURL("file://data/../etc/x", "file:///etc/x");
+    assertRejected("file://data%2Froot%2F..%2F..%2Fetc/x");
+    assertRejected("file://%2e%2e/etc");
+    assertRejected("file://[::1]/x");
+    // Not a local path.
+    assertRejected("file:///data/t?x=1");
+    assertRejected("file:///data/t#frag");
+    assertRejected("file:a/b");
+
+    // Cloud locations keep their escapes, since an object key may contain a literal '%'.
+    assertNormalizedURL("s3://bucket/a%2Fb", "s3://bucket/a%2Fb");
+    assertNormalizedURL("gs://bucket/%2e%2e/x", "gs://bucket/%2e%2e/x");
+  }
+
+  private void assertRejected(String url) {
+    assertThatThrownBy(() -> NormalizedURL.from(url))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(url)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
   }
 
   @Test

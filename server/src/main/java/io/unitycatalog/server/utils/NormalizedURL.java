@@ -15,6 +15,7 @@ import lombok.EqualsAndHashCode;
  *
  * <ul>
  *   <li>Local file paths are converted to proper file:/// URIs
+ *   <li>Local file URIs whose escapes would change the path they name are rejected
  *   <li>Cloud storage URLs (s3://, gs://, abfs://) have consistent formatting
  *   <li>Trailing slashes are removed
  *   <li>Multiple consecutive slashes are collapsed
@@ -163,10 +164,56 @@ public final class NormalizedURL {
     UriScheme scheme = UriScheme.fromURI(uri);
     return switch (scheme) {
       // It's a local path without file://. Construct a file:// URI using Path.
-      case NULL -> localFileURIToString(Paths.get(inputPath).toAbsolutePath().toUri().normalize());
-      case FILE -> localFileURIToString(uri);
+      case NULL ->
+          validateLocalFileURI(
+              localFileURIToString(Paths.get(inputPath).toAbsolutePath().toUri().normalize()),
+              inputPath);
+      // A host is read as the first directory (file://tmp/x is /tmp/x): check after folding it in.
+      case FILE -> validateLocalFileURI(localFileURIToString(uri), inputPath);
       case S3, GS, ABFS, ABFSS -> removeExtraSlashes(uri.toString());
     };
+  }
+
+  /**
+   * Normalizes a local file URI and rejects it if it does not name one plain path. The file system
+   * decodes the path, so an encoded '/' or NUL, or an encoded dot segment, would make the server
+   * read or write a different path than the one checked: file:///data/root/%2e%2e/etc is /data/etc.
+   * A ".." above the root (file:///../etc), a query, a fragment, or an opaque URI (file:a/b) is not
+   * a plain path either.
+   *
+   * @return the URI as a file:/// string
+   */
+  private static String validateLocalFileURI(String fileUri, String inputPath) {
+    URI uri;
+    try {
+      uri = URI.create(fileUri).normalize();
+    } catch (IllegalArgumentException e) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Unsupported local path: " + inputPath, e);
+    }
+    if (uri.isOpaque()
+        || uri.getRawQuery() != null
+        || uri.getRawFragment() != null
+        || uri.getPath().indexOf('\0') >= 0
+        || hasEncodedSeparatorOrDotSegment(uri)) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unsupported local path: " + inputPath);
+    }
+    return localFileURIToString(uri);
+  }
+
+  private static boolean hasEncodedSeparatorOrDotSegment(URI uri) {
+    String[] segments = uri.getPath().split("/", -1);
+    // A decoded '/' adds a segment.
+    if (segments.length != uri.getRawPath().split("/", -1).length) {
+      return true;
+    }
+    // normalize() collapsed the rest, so a "." or ".." left is escaped or above the root.
+    for (String segment : segments) {
+      if (segment.equals(".") || segment.equals("..")) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

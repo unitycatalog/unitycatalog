@@ -251,7 +251,9 @@ A fast pre-push scan; each item is detailed in the sections above.
 
 - `CONTRIBUTING.md` for the authoritative contribution rules and governance.
 - `AI_POLICY.md` for the policy on AI-assisted contribution and review.
-- `CODE_REVIEW.md` for what reviewers look for, when reviewing a pull request or self-reviewing your own.
+- `CODE_REVIEW.md` for what reviewers look for, when reviewing a pull request or self-reviewing your own. It is also the AI reviewer's rubric:
+  - The reviewer files under `.github/omnigent/` (`reviewer/REVIEW.md` and each `reviewer/agents/*/REVIEW.md`) hold only an agent's scope, steps, and output format. Where they rely on a guideline, they name the `CODE_REVIEW.md` section by its heading instead of copying it.
+  - When asked to add or update review guidelines (for example, from the last N PRs' review comments), edit `CODE_REVIEW.md`, not `.github/omnigent/`. Change a reviewer file only when an agent's scope or steps change, and replace any guideline text found there with a reference to the section.
 - `README.md` for the quickstart, build, and deployment details.
 - `api/README.md` and `api/all.yaml` for the API specification.
 - `spec/protocols/` for protocol specifications.
