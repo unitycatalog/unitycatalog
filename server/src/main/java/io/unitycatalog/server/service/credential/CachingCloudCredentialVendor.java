@@ -3,6 +3,7 @@ package io.unitycatalog.server.service.credential;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.Expiry;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import lombok.SneakyThrows;
 
 /**
@@ -22,37 +24,46 @@ import lombok.SneakyThrows;
  * provider on every request. {@link StorageCredentialVendor} resolves the database binding before
  * calling it, so only the cloud vend is skipped; the binding is re-read on every request.
  *
- * <p>An entry is keyed by {@code (locations, privileges, roleArn, externalId)}. It is served while
- * {@code now < credentialExpiry - renewalLeadTime} and {@code now < vendTime + maxAge}; a static
- * credential with no expiry is bounded by the max age alone. Callers always receive a copy, so they
- * cannot change a cached credential.
+ * <p>An entry is keyed by {@code (locations, privileges, roleArn, externalId)}. It is served until
+ * {@code min(vendTime + maxAge, credentialExpiry - expiryMargin)}, where {@code vendTime} is read
+ * before the cloud call; a static credential with no expiry is bounded by the max age alone.
+ * Callers always receive a copy, so they cannot change a cached credential.
  */
 public class CachingCloudCredentialVendor extends CloudCredentialVendor {
+  /** A cached credential is never served within this time of its expiry. */
+  static final Duration DEFAULT_EXPIRY_MARGIN = Duration.ofMinutes(1);
+
   private final CloudCredentialVendor delegate;
   private final Clock clock;
-  private final long renewalLeadMs;
   private final long maxAgeMs;
+  private final long expiryMarginMs;
   private final Cache<Key, Entry> entries;
 
   public CachingCloudCredentialVendor(
       CloudCredentialVendor delegate, ServerProperties serverProperties) {
-    this(delegate, serverProperties, Clock.systemUTC());
+    this(delegate, serverProperties, Clock.systemUTC(), DEFAULT_EXPIRY_MARGIN);
   }
 
-  /** Uses {@code clock} to decide freshness; tests pass a manual clock to control expiry. */
+  /**
+   * Uses {@code clock} to decide when an entry expires and {@code expiryMargin} in place of {@link
+   * #DEFAULT_EXPIRY_MARGIN}; tests pass a manual clock and a margin shorter than their credentials.
+   */
   public CachingCloudCredentialVendor(
-      CloudCredentialVendor delegate, ServerProperties serverProperties, Clock clock) {
+      CloudCredentialVendor delegate,
+      ServerProperties serverProperties,
+      Clock clock,
+      Duration expiryMargin) {
     // Vending is delegated, so this instance needs no cloud-specific vendors of its own.
     super(/* awsCredentialVendor= */ null, /* azure= */ null, /* gcp= */ null);
     this.delegate = Objects.requireNonNull(delegate, "delegate");
     this.clock = Objects.requireNonNull(clock, "clock");
-    this.renewalLeadMs = serverProperties.getStorageCredentialCacheRenewalLeadTime().toMillis();
     this.maxAgeMs = serverProperties.getStorageCredentialCacheMaxAge().toMillis();
-    // Expiry here only bounds memory; whether an entry may be served is decided by Entry#isFresh.
+    this.expiryMarginMs = Objects.requireNonNull(expiryMargin, "expiryMargin").toMillis();
     this.entries =
         Caffeine.newBuilder()
             .maximumSize(serverProperties.getStorageCredentialCacheMaxSize())
-            .expireAfterWrite(Duration.ofMillis(maxAgeMs))
+            .ticker(() -> TimeUnit.MILLISECONDS.toNanos(now()))
+            .expireAfter(new UntilServeDeadline())
             // Run Caffeine's small eviction work on the calling thread, not the common pool.
             .executor(Runnable::run)
             .build();
@@ -62,15 +73,21 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
   public TemporaryCredentials vendCredential(CredentialContext context) {
     Key key = Key.of(context);
     Entry cached = entries.getIfPresent(key);
-    if (cached != null && cached.isFresh(now(), renewalLeadMs)) {
+    if (cached != null) {
       return copy(cached.credential());
     }
+    // Read before the call: the cloud checks the binding (for example the AWS trust policy) during
+    // the vend, so max age counts from then.
+    long vendStartMs = now();
     TemporaryCredentials vended = delegate.vendCredential(context);
-    long vendedAtMs = now();
-    Entry entry = new Entry(copy(vended), vendedAtMs + maxAgeMs);
-    // A credential that is already inside its renewal window would never be served from the cache.
-    if (entry.isFresh(vendedAtMs, renewalLeadMs)) {
-      entries.put(key, entry);
+    long serveUntilMs = vendStartMs + maxAgeMs;
+    if (vended.getExpirationTime() != null) {
+      serveUntilMs = Math.min(serveUntilMs, vended.getExpirationTime() - expiryMarginMs);
+    }
+    // A credential already past its serve deadline is returned but not cached, so it cannot replace
+    // a valid entry that a concurrent request just cached.
+    if (serveUntilMs > now()) {
+      entries.put(key, new Entry(copy(vended), serveUntilMs));
     }
     return vended;
   }
@@ -107,11 +124,25 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
     }
   }
 
-  private record Entry(TemporaryCredentials credential, long maxAgeExpiresAtMs) {
-    boolean isFresh(long nowMs, long renewalLeadMs) {
-      Long expiresAtMs = credential.getExpirationTime();
-      return (expiresAtMs == null || nowMs < expiresAtMs - renewalLeadMs)
-          && nowMs < maxAgeExpiresAtMs;
+  private record Entry(TemporaryCredentials credential, long serveUntilMs) {}
+
+  /** Expires each entry at its serve deadline; Caffeine's time comes from {@link #clock}. */
+  private static final class UntilServeDeadline implements Expiry<Key, Entry> {
+    @Override
+    public long expireAfterCreate(Key key, Entry entry, long currentTimeNanos) {
+      return TimeUnit.MILLISECONDS.toNanos(entry.serveUntilMs()) - currentTimeNanos;
+    }
+
+    @Override
+    public long expireAfterUpdate(
+        Key key, Entry entry, long currentTimeNanos, long currentDurationNanos) {
+      return expireAfterCreate(key, entry, currentTimeNanos);
+    }
+
+    @Override
+    public long expireAfterRead(
+        Key key, Entry entry, long currentTimeNanos, long currentDurationNanos) {
+      return currentDurationNanos;
     }
   }
 

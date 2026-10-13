@@ -239,8 +239,6 @@ public class ServerProperties {
         "server.storage-credential-cache.enabled", "false", BOOLEAN_VALIDATOR),
     STORAGE_CREDENTIAL_CACHE_MAX_SIZE(
         "server.storage-credential-cache.max-size", "1000", POSITIVE_INTEGER_VALIDATOR),
-    STORAGE_CREDENTIAL_CACHE_RENEWAL_LEAD_TIME(
-        "server.storage-credential-cache.renewal-lead-time", "PT1M", POSITIVE_DURATION_VALIDATOR),
     STORAGE_CREDENTIAL_CACHE_MAX_AGE(
         "server.storage-credential-cache.max-age", "PT5M", POSITIVE_DURATION_VALIDATOR),
     AUTHORIZATION_URL("server.authorization-url", URL_VALIDATOR),
@@ -569,10 +567,6 @@ public class ServerProperties {
 
   public int getStorageCredentialCacheMaxSize() {
     return Integer.parseInt(get(Property.STORAGE_CREDENTIAL_CACHE_MAX_SIZE));
-  }
-
-  public Duration getStorageCredentialCacheRenewalLeadTime() {
-    return Duration.parse(get(Property.STORAGE_CREDENTIAL_CACHE_RENEWAL_LEAD_TIME));
   }
 
   public Duration getStorageCredentialCacheMaxAge() {

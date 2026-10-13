@@ -21,6 +21,7 @@ import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
@@ -70,7 +71,11 @@ public class CachingCloudCredentialVendorTest {
     for (int i = 0; i < kv.length; i += 2) {
       p.setProperty(kv[i], kv[i + 1]);
     }
-    return new CachingCloudCredentialVendor(delegate, new ServerProperties(p), clock);
+    return new CachingCloudCredentialVendor(
+        delegate,
+        new ServerProperties(p),
+        clock,
+        CachingCloudCredentialVendor.DEFAULT_EXPIRY_MARGIN);
   }
 
   /** An AWS credential with the given access key, expiring at {@code expiryEpochMs} (or never). */
@@ -184,20 +189,19 @@ public class CachingCloudCredentialVendorTest {
   }
 
   @Test
-  void credentialWithinRenewalLeadIsReplacedAndTheReplacementIsReused() {
-    // The first credential expires at T0+120s; with a 60s lead its renewal window opens at T0+60s.
+  void credentialNearItsExpiryIsReplacedAndTheReplacementIsReused() {
+    // The first credential expires at T0+120s; with the 60s margin, reuse stops at T0+60s.
     when(delegate.vendCredential(any()))
         .thenReturn(creds("AK_OLD", T0 + 120_000L))
         .thenReturn(creds("AK_NEW", T0 + ONE_HOUR_MS));
-    CachingCloudCredentialVendor cache =
-        cache("server.storage-credential-cache.renewal-lead-time", "PT1M");
+    CachingCloudCredentialVendor cache = cache();
 
     assertEquals("AK_OLD", accessKey(cache.vendCredential(ctx("arn:role/A"))));
-    tick(T0 + 59_000L); // before the renewal window: served from the cache
+    tick(T0 + 59_000L); // before the margin: served from the cache
     assertEquals("AK_OLD", accessKey(cache.vendCredential(ctx("arn:role/A"))));
     verify(delegate, times(1)).vendCredential(any());
 
-    tick(T0 + 61_000L); // inside the renewal window: vend and cache the replacement
+    tick(T0 + 61_000L); // inside the margin: vend and cache the replacement
     TemporaryCredentials renewed = cache.vendCredential(ctx("arn:role/A"));
     assertEquals("AK_NEW", accessKey(renewed));
     assertEquals(T0 + ONE_HOUR_MS, renewed.getExpirationTime());
@@ -207,16 +211,20 @@ public class CachingCloudCredentialVendorTest {
     verify(delegate, times(2)).vendCredential(any());
   }
 
-  @ParameterizedTest(name = "now = T0 + {0}ms -> served from cache: {1}")
+  @ParameterizedTest(
+      name = "max age {0}, lifetime {1}ms, now = T0 + {2}ms -> served from cache: {3}")
   @CsvSource({
-    // credential expires at T0 + 120s with a 60s renewal lead: stale from T0 + 60s
-    "59999, true",
-    "60000, false",
+    // a 2-minute credential: the margin ends reuse at T0 + 60s, before the 5-minute max age
+    "PT5M, 120000, 59999, true",
+    "PT5M, 120000, 60000, false",
+    // max age as long as a 1-hour credential: the margin ends reuse 1 minute before expiry
+    "PT1H, 3600000, 3539999, true",
+    "PT1H, 3600000, 3540000, false",
   })
-  void renewalLeadBoundary(long elapsedMs, boolean servedFromCache) {
-    when(delegate.vendCredential(any())).thenReturn(creds("AK", T0 + 120_000L));
-    CachingCloudCredentialVendor cache =
-        cache("server.storage-credential-cache.renewal-lead-time", "PT1M");
+  void expiryMarginBoundary(
+      String maxAge, long lifetimeMs, long elapsedMs, boolean servedFromCache) {
+    when(delegate.vendCredential(any())).thenReturn(creds("AK", T0 + lifetimeMs));
+    CachingCloudCredentialVendor cache = cache("server.storage-credential-cache.max-age", maxAge);
 
     cache.vendCredential(ctx("arn:role/A"));
     tick(T0 + elapsedMs);
@@ -260,16 +268,103 @@ public class CachingCloudCredentialVendorTest {
     verify(delegate, times(2)).vendCredential(any());
   }
 
-  @Test
-  void credentialAlreadyInsideRenewalLeadIsNotCached() {
-    // Expires in 30s, inside the 60s lead: it is returned but every request re-vends.
-    when(delegate.vendCredential(any())).thenReturn(creds("AK", T0 + 30_000L));
-    CachingCloudCredentialVendor cache =
-        cache("server.storage-credential-cache.renewal-lead-time", "PT1M");
+  @ParameterizedTest(name = "lifetime {0}ms -> cached: {1}")
+  @CsvSource({
+    // A credential that lives no longer than the 60s margin is returned, but never cached.
+    "30000, false",
+    "60000, false",
+    "60001, true",
+  })
+  void credentialLivingNoLongerThanTheMarginIsNotCached(long lifetimeMs, boolean cached) {
+    when(delegate.vendCredential(any())).thenReturn(creds("AK", T0 + lifetimeMs));
+    CachingCloudCredentialVendor cache = cache();
 
     assertEquals("AK", accessKey(cache.vendCredential(ctx("arn:role/A"))));
     cache.vendCredential(ctx("arn:role/A"));
 
+    verify(delegate, times(cached ? 1 : 2)).vendCredential(any());
+  }
+
+  @Test
+  void customExpiryMarginEndsReuseThatLongBeforeExpiry() {
+    // A 10s margin on a credential expiring at T0 + 120s: reuse ends at T0 + 110s.
+    when(delegate.vendCredential(any())).thenReturn(creds("AK", T0 + 120_000L));
+    CachingCloudCredentialVendor cache =
+        new CachingCloudCredentialVendor(
+            delegate, new ServerProperties(new Properties()), clock, Duration.ofSeconds(10));
+
+    cache.vendCredential(ctx("arn:role/A"));
+    tick(T0 + 109_999L);
+    cache.vendCredential(ctx("arn:role/A"));
+    verify(delegate, times(1)).vendCredential(any());
+
+    tick(T0 + 110_000L);
+    cache.vendCredential(ctx("arn:role/A"));
+    verify(delegate, times(2)).vendCredential(any());
+  }
+
+  /**
+   * Simulates a concurrent miss without threads: while the outer vend is in flight, a nested
+   * request for the same key vends and caches a 1-hour credential. The outer vend then finishes
+   * with a credential that expires at {@code T0 + outerLifetimeMs}.
+   */
+  private CachingCloudCredentialVendor cacheWithConcurrentMiss(long outerLifetimeMs) {
+    CachingCloudCredentialVendor[] cache = new CachingCloudCredentialVendor[1];
+    when(delegate.vendCredential(any()))
+        .thenAnswer(
+            invocation -> {
+              cache[0].vendCredential(ctx("arn:role/A"));
+              return creds("AK_OUTER", T0 + outerLifetimeMs);
+            })
+        .thenReturn(creds("AK_NESTED", T0 + ONE_HOUR_MS))
+        .thenReturn(creds("AK_FRESH", T0 + ONE_HOUR_MS));
+    cache[0] = cache();
+    cache[0].vendCredential(ctx("arn:role/A"));
+    return cache[0];
+  }
+
+  @Test
+  void credentialPastItsDeadlineDoesNotReplaceAConcurrentlyCachedOne() {
+    // The outer credential expires within the 60s margin, so the nested one stays cached.
+    CachingCloudCredentialVendor cache = cacheWithConcurrentMiss(30_000L);
+
+    assertEquals("AK_NESTED", accessKey(cache.vendCredential(ctx("arn:role/A"))));
+    verify(delegate, times(2)).vendCredential(any());
+  }
+
+  @Test
+  void replacingAnEntryAppliesTheReplacementsOwnDeadline() {
+    // The outer credential expires at T0 + 180s, so it replaces the nested one and is served
+    // only until T0 + 120s, not until the nested entry's T0 + 5m.
+    CachingCloudCredentialVendor cache = cacheWithConcurrentMiss(180_000L);
+
+    tick(T0 + 119_999L);
+    assertEquals("AK_OUTER", accessKey(cache.vendCredential(ctx("arn:role/A"))));
+    tick(T0 + 120_000L);
+    assertEquals("AK_FRESH", accessKey(cache.vendCredential(ctx("arn:role/A"))));
+    verify(delegate, times(3)).vendCredential(any());
+  }
+
+  @Test
+  void maxAgeCountsFromBeforeTheCloudCall() {
+    // The first vend takes 2 minutes. Max age counts from its start, so reuse ends at T0 + 5m,
+    // not at T0 + 7m.
+    when(delegate.vendCredential(any()))
+        .thenAnswer(
+            invocation -> {
+              tick(T0 + 120_000L);
+              return creds("AK", T0 + ONE_HOUR_MS);
+            })
+        .thenReturn(creds("AK", T0 + ONE_HOUR_MS));
+    CachingCloudCredentialVendor cache = cache("server.storage-credential-cache.max-age", "PT5M");
+
+    cache.vendCredential(ctx("arn:role/A"));
+    tick(T0 + 299_999L);
+    cache.vendCredential(ctx("arn:role/A"));
+    verify(delegate, times(1)).vendCredential(any());
+
+    tick(T0 + 300_000L);
+    cache.vendCredential(ctx("arn:role/A"));
     verify(delegate, times(2)).vendCredential(any());
   }
 
@@ -293,11 +388,10 @@ public class CachingCloudCredentialVendorTest {
         .thenReturn(creds("AK_OLD", T0 + 120_000L))
         .thenThrow(new IllegalStateException("cloud unavailable"))
         .thenReturn(creds("AK_NEW", T0 + ONE_HOUR_MS));
-    CachingCloudCredentialVendor cache =
-        cache("server.storage-credential-cache.renewal-lead-time", "PT1M");
+    CachingCloudCredentialVendor cache = cache();
 
     cache.vendCredential(ctx("arn:role/A"));
-    tick(T0 + 61_000L); // AK_OLD is inside its renewal window
+    tick(T0 + 61_000L); // AK_OLD is inside the margin before its expiry
 
     assertThrows(IllegalStateException.class, () -> cache.vendCredential(ctx("arn:role/A")));
     assertEquals("AK_NEW", accessKey(cache.vendCredential(ctx("arn:role/A"))));
@@ -418,11 +512,10 @@ public class CachingCloudCredentialVendorTest {
                 vends.getAndIncrement() == 0
                     ? creds("AK_OLD", T0 + 120_000L)
                     : creds("AK_NEW", T0 + ONE_HOUR_MS));
-    CachingCloudCredentialVendor cache =
-        cache("server.storage-credential-cache.renewal-lead-time", "PT1M");
+    CachingCloudCredentialVendor cache = cache();
     CredentialContext context = ctx("arn:role/A");
     cache.vendCredential(context);
-    tick(T0 + 61_000L); // AK_OLD is now inside its renewal window
+    tick(T0 + 61_000L); // AK_OLD is now inside the margin before its expiry
 
     int callers = 8;
     runConcurrently(

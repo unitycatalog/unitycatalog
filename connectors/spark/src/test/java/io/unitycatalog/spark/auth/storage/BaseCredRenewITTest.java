@@ -98,26 +98,19 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
 
   /**
    * Connector-side renewal lead in millis, written to the Spark Hadoop conf. 0 for the un-cached
-   * baseline (renew only at expiry); when the cache is on it is raised above the server lead so the
-   * connector re-asks the server while the cached credential is still fresh (the hit case).
+   * baseline (renew only at expiry); when the cache is on it is raised above the server's expiry
+   * margin so the connector re-asks the server while the cached credential is still served (the hit
+   * case).
    */
   private long connectorRenewalLeadMillis() {
     return cacheEnabled ? 10_000L : 0L;
   }
 
-  @Override
-  protected void setUpProperties() {
-    super.setUpProperties();
-    if (cacheEnabled) {
-      // Small server lead (< the connector lead, < credential validity) so the cache serves a
-      // credential nearly to its true expiry — this opens the window the hit test observes.
-      serverProperties.put("server.storage-credential-cache.renewal-lead-time", "PT1S");
-    }
-  }
-
   /**
    * With the cache enabled, the server vends through a caching vendor on the connector's manual
-   * clock, so it judges freshness on the same timeline the vend generator uses to set expiry.
+   * clock, so it judges expiry on the same timeline the vend generator uses. Its expiry margin is
+   * 1s (shorter than the connector lead and the 30s credentials), so a credential is served nearly
+   * to its expiry; this opens the window the hit test observes.
    */
   @Override
   protected void setUpCredentialOperations(ServerProperties serverProperties) {
@@ -126,7 +119,8 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
           new CachingCloudCredentialVendor(
               new CloudCredentialVendor(serverProperties),
               serverProperties,
-              TestUtils.clockOf(() -> testClock().now()));
+              TestUtils.clockOf(() -> testClock().now()),
+              /* expiryMargin= */ Duration.ofSeconds(1));
     }
   }
 
@@ -342,8 +336,9 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
 
   /**
    * A repeat request within a credential's validity is served from the server cache. Credentials
-   * last one 30s window; the connector renews 10s before expiry and the server 1s before, so in
-   * between the connector asks UC again and gets the cached credential back.
+   * last one 30s window; the connector renews 10s before expiry and the server stops reusing a
+   * credential 1s before, so in between the connector asks UC again and gets the cached credential
+   * back.
    *
    * <pre>
    *   t=0    fetch #1, vend #1   miss: the server vends

@@ -279,20 +279,15 @@ public class ServerPropertiesTest {
     ServerProperties defaults = new ServerProperties();
     assertThat(defaults.isStorageCredentialCacheEnabled()).isFalse();
     assertThat(defaults.getStorageCredentialCacheMaxSize()).isEqualTo(1000);
-    assertThat(defaults.getStorageCredentialCacheRenewalLeadTime())
-        .isEqualTo(Duration.ofMinutes(1));
     assertThat(defaults.getStorageCredentialCacheMaxAge()).isEqualTo(Duration.ofMinutes(5));
 
     Properties custom = new Properties();
     custom.setProperty(Property.STORAGE_CREDENTIAL_CACHE_ENABLED.getKey(), "true");
     custom.setProperty(Property.STORAGE_CREDENTIAL_CACHE_MAX_SIZE.getKey(), "10");
-    custom.setProperty(Property.STORAGE_CREDENTIAL_CACHE_RENEWAL_LEAD_TIME.getKey(), "PT30S");
     custom.setProperty(Property.STORAGE_CREDENTIAL_CACHE_MAX_AGE.getKey(), "PT2M");
     ServerProperties overridden = new ServerProperties(custom);
     assertThat(overridden.isStorageCredentialCacheEnabled()).isTrue();
     assertThat(overridden.getStorageCredentialCacheMaxSize()).isEqualTo(10);
-    assertThat(overridden.getStorageCredentialCacheRenewalLeadTime())
-        .isEqualTo(Duration.ofSeconds(30));
     assertThat(overridden.getStorageCredentialCacheMaxAge()).isEqualTo(Duration.ofMinutes(2));
 
     testInvalidProperty(
