@@ -43,7 +43,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class JwksOperationsTest {
 
   private static KeyPair signingKey;
-  private static Algorithm signingAlgorithm;
+  private static KeyPair rotatedSigningKey;
   private HttpServer issuerServer;
   private String issuer;
   private int discoveryStatus;
@@ -64,13 +64,11 @@ class JwksOperationsTest {
       new JwksOperations(null, List.of(), elapsedNanos::get);
 
   @BeforeAll
-  static void createSigningKey() throws Exception {
+  static void createSigningKeys() throws Exception {
     KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
     generator.initialize(2048);
     signingKey = generator.generateKeyPair();
-    signingAlgorithm =
-        Algorithm.RSA256(
-            (RSAPublicKey) signingKey.getPublic(), (RSAPrivateKey) signingKey.getPrivate());
+    rotatedSigningKey = generator.generateKeyPair();
   }
 
   @BeforeEach
@@ -196,15 +194,6 @@ class JwksOperationsTest {
   }
 
   @Test
-  void loadJwkProvider_reusesDiscoveryAndProvider() {
-    respondWithDiscovery(issuer + "/jwks");
-
-    var provider = jwksOperations.loadJwkProvider(issuer);
-    assertThat(jwksOperations.loadJwkProvider(issuer)).isSameAs(provider);
-    assertThat(discoveryRequests).hasValue(1);
-  }
-
-  @Test
   void verifierForIssuerAndKey_reusesKeysAndRefreshesOnRotation() {
     respondWithDiscovery(issuer + "/jwks");
     respondWithKey("key-1");
@@ -220,29 +209,25 @@ class JwksOperationsTest {
     assertThat(discoveryRequests).hasValue(1);
     assertThat(jwksRequests).hasValue(1);
 
-    // The same key under a new ID exercises refresh without a second discovery request.
-    respondWithKey("key-2");
+    respondWithKey("key-2", rotatedSigningKey);
+    String rotatedToken = tokenForKey("key-2", rotatedSigningKey);
     assertThat(
             jwksOperations
                 .verifierForIssuerAndKey(issuer, "key-2", "RS256")
-                .verify(tokenForKey("key-2"))
+                .verify(rotatedToken)
                 .getIssuer())
         .isEqualTo(issuer);
     assertThat(discoveryRequests).hasValue(1);
     assertThat(jwksRequests).hasValue(2);
 
-    String[] parts = token.split("\\.");
-    String invalidToken =
-        parts[0]
-            + "."
-            + parts[1]
-            + "."
-            + Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[256]);
     assertThatThrownBy(
             () ->
                 jwksOperations
                     .verifierForIssuerAndKey(issuer, "key-1", "RS256")
-                    .verify(invalidToken))
+                    .verify(rotatedToken))
+        .isInstanceOf(SignatureVerificationException.class);
+    assertThatThrownBy(
+            () -> jwksOperations.verifierForIssuerAndKey(issuer, "key-2", "RS256").verify(token))
         .isInstanceOf(SignatureVerificationException.class);
     assertThat(jwksRequests).hasValue(2);
   }
@@ -304,18 +289,23 @@ class JwksOperationsTest {
     respondWithDiscovery(issuer + "/jwks");
     respondWithKey("key-1");
     var provider = jwksOperations.loadJwkProvider(issuer);
-    jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256");
+    String token = tokenForKey("key-1");
+    jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(token);
     elapsedNanos.set(Duration.ofHours(1).minusNanos(1).toNanos());
     assertThat(jwksOperations.loadJwkProvider(issuer)).isSameAs(provider);
 
     elapsedNanos.incrementAndGet();
-    respondWithKey("key-2");
+    // Reusing the key ID proves that expiry also replaces cached key material.
+    respondWithKey("key-1", rotatedSigningKey);
     assertThat(jwksOperations.loadJwkProvider(issuer)).isNotSameAs(provider);
-    jwksOperations.verifierForIssuerAndKey(issuer, "key-2", "RS256").verify(tokenForKey("key-2"));
-    assertThatThrownBy(() -> jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256"))
-        .isInstanceOf(OAuthInvalidRequestException.class)
-        .hasMessage("Could not get signing key 'key-1' for issuer " + issuer);
+    jwksOperations
+        .verifierForIssuerAndKey(issuer, "key-1", "RS256")
+        .verify(tokenForKey("key-1", rotatedSigningKey));
+    assertThatThrownBy(
+            () -> jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(token))
+        .isInstanceOf(SignatureVerificationException.class);
     assertThat(discoveryRequests).hasValue(2);
+    assertThat(jwksRequests).hasValue(2);
   }
 
   @ParameterizedTest
@@ -403,6 +393,7 @@ class JwksOperationsTest {
         "https://idp.example.com/jwks#keys",
         "https://idp.example.com:0/jwks",
         "https://idp.example.com:65536/jwks",
+        "https:///jwks",
         "https://",
         "not a URL"
       })
@@ -424,12 +415,28 @@ class JwksOperationsTest {
         List.of(
             issuer + "?query",
             issuer + "#fragment",
-            issuer.replace("127.0.0.1", "user@127.0.0.1"))) {
+            issuer.substring("http://".length()) + "#fragment",
+            issuer.replace("127.0.0.1", "user@127.0.0.1"),
+            issuer.replace("http://", "ftp://"),
+            issuer.replace("http://", "file://"))) {
       assertThatThrownBy(() -> jwksOperations.loadJwkProvider(invalid))
           .isInstanceOf(OAuthInvalidRequestException.class)
-          .hasMessageContaining("Invalid");
+          .hasMessageStartingWith("Invalid ")
+          .extracting(e -> ((BaseException) e).getErrorCode())
+          .isEqualTo(ErrorCode.ABORTED);
     }
     assertThat(discoveryRequests).hasValue(0);
+  }
+
+  @Test
+  void loadJwkProvider_preservesUppercaseHttpScheme() {
+    issuer = issuer.replace("http://", "HTTP://");
+    respondWithDiscovery(issuer + "/jwks");
+    respondWithKey("key-1");
+
+    jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(tokenForKey("key-1"));
+    assertThat(discoveryRequests).hasValue(1);
+    assertThat(jwksRequests).hasValue(1);
   }
 
   @Test
@@ -515,7 +522,11 @@ class JwksOperationsTest {
   }
 
   private void respondWithKey(String keyId) {
-    var key = (RSAPublicKey) signingKey.getPublic();
+    respondWithKey(keyId, signingKey);
+  }
+
+  private void respondWithKey(String keyId, KeyPair keyPair) {
+    var key = (RSAPublicKey) keyPair.getPublic();
     byte[] modulus = key.getModulus().toByteArray();
     // RSA generation sets the high bit; BigInteger adds a leading sign byte.
     modulus = Arrays.copyOfRange(modulus, 1, modulus.length);
@@ -530,6 +541,12 @@ class JwksOperationsTest {
   }
 
   private String tokenForKey(String keyId) {
-    return JWT.create().withIssuer(issuer).withKeyId(keyId).sign(signingAlgorithm);
+    return tokenForKey(keyId, signingKey);
+  }
+
+  private String tokenForKey(String keyId, KeyPair keyPair) {
+    Algorithm algorithm =
+        Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+    return JWT.create().withIssuer(issuer).withKeyId(keyId).sign(algorithm);
   }
 }
