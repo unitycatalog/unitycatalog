@@ -6,39 +6,89 @@ import com.auth0.jwk.Jwk;
 import com.auth0.jwk.JwkException;
 import com.auth0.jwk.JwkProvider;
 import com.auth0.jwk.JwkProviderBuilder;
+import com.auth0.jwk.JwksHttpResponse;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.Ticker;
+import com.linecorp.armeria.client.ResponseTimeoutMode;
 import com.linecorp.armeria.client.WebClient;
+import com.linecorp.armeria.client.redirect.RedirectConfig;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.OAuthInvalidClientException;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import io.unitycatalog.server.security.SecurityContext;
+import java.io.IOException;
 import java.net.URI;
+import java.net.URL;
 import java.nio.file.Path;
 import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
-import java.util.Map;
+import java.time.Duration;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CompletionException;
 import lombok.SneakyThrows;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/** Loads signing keys from trusted identity providers and reuses providers across requests. */
 public class JwksOperations {
 
-  private final WebClient webClient = WebClient.builder().build();
+  private final WebClient webClient =
+      WebClient.builder()
+          .followRedirects(RedirectConfig.disabled())
+          .responseTimeoutMode(ResponseTimeoutMode.FROM_START)
+          .responseTimeout(Duration.ofSeconds(5))
+          .maxResponseLength(1024 * 1024)
+          .build();
   private static final ObjectMapper mapper = new ObjectMapper();
   private final SecurityContext securityContext;
+  private final Set<URI> allowedJwksUris;
+  private final Cache<String, JwkProvider> providers;
+  private final Cache<String, OAuthInvalidRequestException> discoveryFailures;
 
   private static final Logger LOGGER = LoggerFactory.getLogger(JwksOperations.class);
   private static final int MAX_LOGGED_BODY_LENGTH = 500;
 
   public JwksOperations(SecurityContext securityContext) {
+    this(securityContext, List.of());
+  }
+
+  /**
+   * @param securityContext internal signing-key configuration
+   * @param allowedJwksUris exact URLs permitted in addition to the issuer's own origin
+   */
+  public JwksOperations(SecurityContext securityContext, List<String> allowedJwksUris) {
+    this(securityContext, allowedJwksUris, Ticker.systemTicker());
+  }
+
+  JwksOperations(SecurityContext securityContext, List<String> allowedJwksUris, Ticker ticker) {
     this.securityContext = securityContext;
+    this.allowedJwksUris =
+        Set.copyOf(allowedJwksUris.stream().map(JwksOperations::httpUri).toList());
+    // Bound wildcard-issuer cardinality and the lifetime of both discovery metadata and keys.
+    this.providers =
+        Caffeine.newBuilder()
+            .maximumSize(100)
+            .expireAfterWrite(Duration.ofHours(1))
+            .ticker(ticker)
+            .executor(Runnable::run)
+            .build();
+    this.discoveryFailures =
+        Caffeine.newBuilder()
+            .maximumSize(100)
+            .expireAfterWrite(Duration.ofSeconds(30))
+            .ticker(ticker)
+            .executor(Runnable::run)
+            .build();
   }
 
   @SneakyThrows
@@ -89,6 +139,12 @@ public class JwksOperations {
     };
   }
 
+  /**
+   * Reuses an external provider after the caller checks the issuer allowlist.
+   *
+   * @param issuer token issuer, or {@code internal} for the server's own keys
+   * @return the signing-key provider
+   */
   @SneakyThrows
   public JwkProvider loadJwkProvider(String issuer) {
     LOGGER.debug("Loading JwkProvider for issuer '{}'", issuer);
@@ -97,79 +153,171 @@ public class JwksOperations {
       // TODO: This should be configurable
       Path certsFile = securityContext.getCertsFile();
       return new JwkProviderBuilder(certsFile.toUri().toURL()).cached(false).build();
-    } else {
-      // Get the JWKS from the OIDC well-known location described here
-      // https://openid.net/specs/openid-connect-discovery-1_0-21.html#ProviderConfig
-
-      if (!issuer.startsWith("https://") && !issuer.startsWith("http://")) {
-        issuer = "https://" + issuer;
-      }
-
-      String wellKnownConfigUrl = issuer;
-
-      if (!wellKnownConfigUrl.endsWith("/")) {
-        wellKnownConfigUrl += "/";
-      }
-
-      var path = wellKnownConfigUrl + ".well-known/openid-configuration";
-      LOGGER.debug("path: {}", path);
-
-      AggregatedHttpResponse httpResponse = webClient.get(path).aggregate().join();
-      String response = httpResponse.contentUtf8();
-
-      // The body is only logged, not returned: callers of token exchange are not yet
-      // authenticated, and a proxy error page may describe internal infrastructure.
-      if (!httpResponse.status().isSuccess()) {
-        LOGGER.warn(
-            "Failed to fetch issuer configuration from '{}': status={}, body='{}'",
-            path,
-            httpResponse.status(),
-            abbreviate(response));
-        throw new OAuthInvalidRequestException(
-            ErrorCode.INTERNAL,
-            String.format(
-                "Could not get issuer configuration from %s: HTTP %s",
-                path, httpResponse.status()));
-      }
-
-      // TODO: We should cache this. No need to fetch it each time.
-      Map<String, Object> configMap;
-      try {
-        configMap = mapper.readValue(response, new TypeReference<>() {});
-      } catch (JsonProcessingException e) {
-        LOGGER.warn(
-            "Issuer configuration from '{}' is not valid JSON: contentType={}, body='{}'",
-            path,
-            httpResponse.contentType(),
-            abbreviate(response));
-        throw new OAuthInvalidRequestException(
-            ErrorCode.INTERNAL,
-            String.format("Issuer configuration from %s is not valid JSON", path));
-      }
-
-      if (configMap == null || configMap.isEmpty()) {
-        throw new OAuthInvalidRequestException(
-            ErrorCode.ABORTED, "Could not get issuer configuration from " + path);
-      }
-
-      String configIssuer = (String) configMap.get("issuer");
-      String configJwksUri = (String) configMap.get("jwks_uri");
-
-      if (!issuer.equals(configIssuer)) {
-        throw new OAuthInvalidRequestException(
-            ErrorCode.ABORTED,
-            String.format(
-                "Issuer '%s' doesn't match configuration issuer '%s' from %s",
-                issuer, configIssuer, path));
-      }
-
-      if (configJwksUri == null) {
-        throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "JWKS configuration missing");
-      }
-
-      // TODO: Or maybe just cache the provider for reuse.
-      return new JwkProviderBuilder(URI.create(configJwksUri).toURL()).cached(false).build();
     }
+    return providers.get(
+        issuer,
+        key -> {
+          OAuthInvalidRequestException failure = discoveryFailures.getIfPresent(key);
+          if (failure != null) {
+            throw failure;
+          }
+          try {
+            return fetchJwkProvider(key);
+          } catch (OAuthInvalidRequestException e) {
+            // Failed loads also need a cooldown; the provider cache only stores successes.
+            discoveryFailures.put(key, e);
+            throw e;
+          }
+        });
+  }
+
+  @SneakyThrows
+  private JwkProvider fetchJwkProvider(String issuer) {
+    // Get the JWKS from the OIDC well-known location described here
+    // https://openid.net/specs/openid-connect-discovery-1_0-21.html#ProviderConfig
+
+    if (!issuer.startsWith("https://") && !issuer.startsWith("http://")) {
+      issuer = "https://" + issuer;
+    }
+
+    URI issuerUri = httpUri(issuer);
+    if (issuerUri.getRawQuery() != null) {
+      throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "Invalid issuer URL");
+    }
+
+    String wellKnownConfigUrl = issuer;
+
+    if (!wellKnownConfigUrl.endsWith("/")) {
+      wellKnownConfigUrl += "/";
+    }
+
+    var path = wellKnownConfigUrl + ".well-known/openid-configuration";
+    LOGGER.debug("path: {}", path);
+
+    AggregatedHttpResponse httpResponse;
+    try {
+      httpResponse = webClient.get(path).aggregate().join();
+    } catch (CompletionException e) {
+      throw new OAuthInvalidRequestException(
+          ErrorCode.INTERNAL, "Could not get issuer configuration from " + path, e);
+    }
+    String response = httpResponse.contentUtf8();
+
+    // The body is only logged, not returned: callers of token exchange are not yet
+    // authenticated, and a proxy error page may describe internal infrastructure.
+    if (!httpResponse.status().isSuccess()) {
+      LOGGER.warn(
+          "Failed to fetch issuer configuration from '{}': status={}, body='{}'",
+          path,
+          httpResponse.status(),
+          abbreviate(response));
+      throw new OAuthInvalidRequestException(
+          ErrorCode.INTERNAL,
+          String.format(
+              "Could not get issuer configuration from %s: HTTP %s", path, httpResponse.status()));
+    }
+
+    JsonNode config;
+    try {
+      config = mapper.readTree(response);
+    } catch (JsonProcessingException e) {
+      LOGGER.warn(
+          "Issuer configuration from '{}' is not valid JSON: contentType={}, body='{}'",
+          path,
+          httpResponse.contentType(),
+          abbreviate(response));
+      throw new OAuthInvalidRequestException(
+          ErrorCode.INTERNAL,
+          String.format("Issuer configuration from %s is not valid JSON", path));
+    }
+
+    if (config == null || config.isEmpty()) {
+      throw new OAuthInvalidRequestException(
+          ErrorCode.ABORTED, "Could not get issuer configuration from " + path);
+    }
+
+    String configIssuer = config.path("issuer").textValue();
+    String configJwksUri = config.path("jwks_uri").textValue();
+
+    if (!issuer.equals(configIssuer)) {
+      throw new OAuthInvalidRequestException(
+          ErrorCode.ABORTED,
+          String.format(
+              "Issuer '%s' doesn't match configuration issuer '%s' from %s",
+              issuer, configIssuer, path));
+    }
+
+    if (configJwksUri == null) {
+      throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "JWKS configuration missing");
+    }
+
+    URI jwksUri = jwksUriForIssuer(issuerUri, configJwksUri);
+
+    // Keep the key cache outside the rate limiter so normal logins do not use its budget.
+    return new JwkProviderBuilder(jwksUri.toURL())
+        .cached(100, Duration.ofHours(1))
+        .httpClient(this::fetchSigningKeys)
+        .build();
+  }
+
+  private JwksHttpResponse fetchSigningKeys(URL url) throws IOException {
+    try {
+      AggregatedHttpResponse keys = webClient.get(url.toString()).aggregate().join();
+      if (!keys.status().isSuccess()) {
+        throw new IOException("Could not get signing keys: HTTP " + keys.status());
+      }
+      return new JwksHttpResponse(keys.contentUtf8());
+    } catch (CompletionException e) {
+      throw new IOException("Could not get signing keys", e);
+    }
+  }
+
+  /**
+   * Accepts the issuer's origin or an exact configured URL, with no HTTPS downgrade.
+   *
+   * @param issuerUri validated discovery issuer URL
+   * @param value discovery document's JWKS URL
+   * @return the validated JWKS URL
+   */
+  URI jwksUriForIssuer(URI issuerUri, String value) {
+    URI jwksUri = httpUri(value);
+    boolean isSameOrigin =
+        issuerUri.getScheme().equalsIgnoreCase(jwksUri.getScheme())
+            && issuerUri.getHost().equalsIgnoreCase(jwksUri.getHost())
+            && effectivePort(issuerUri) == effectivePort(jwksUri);
+    boolean isDowngrade =
+        issuerUri.getScheme().equalsIgnoreCase("https")
+            && !jwksUri.getScheme().equalsIgnoreCase("https");
+    if (isDowngrade || (!isSameOrigin && !allowedJwksUris.contains(jwksUri))) {
+      throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "JWKS URI is not allowed");
+    }
+
+    return jwksUri;
+  }
+
+  /** Rejects URL components that can change the destination or are not sent to the provider. */
+  private static URI httpUri(String value) {
+    URI uri;
+    try {
+      uri = URI.create(value);
+    } catch (IllegalArgumentException e) {
+      throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "Invalid identity provider URL", e);
+    }
+    if (!("https".equalsIgnoreCase(uri.getScheme()) || "http".equalsIgnoreCase(uri.getScheme()))
+        || uri.getHost() == null
+        || uri.getRawUserInfo() != null
+        || uri.getRawFragment() != null
+        || uri.getPort() == 0
+        || uri.getPort() > 65535) {
+      throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "Invalid identity provider URL");
+    }
+    return uri;
+  }
+
+  private static int effectivePort(URI uri) {
+    return uri.getPort() == -1
+        ? (uri.getScheme().equalsIgnoreCase("https") ? 443 : 80)
+        : uri.getPort();
   }
 
   private static String abbreviate(String body) {

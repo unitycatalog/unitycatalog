@@ -1,27 +1,77 @@
 package io.unitycatalog.server.utils;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.auth0.jwk.JwkProvider;
+import com.auth0.jwk.RateLimitReachedException;
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.exceptions.SignatureVerificationException;
+import com.linecorp.armeria.client.ResponseTimeoutException;
+import com.linecorp.armeria.common.ContentTooLargeException;
 import com.sun.net.httpserver.HttpServer;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.interfaces.RSAPrivateKey;
+import java.security.interfaces.RSAPublicKey;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class JwksOperationsTest {
 
+  private static KeyPair signingKey;
+  private static Algorithm signingAlgorithm;
   private HttpServer issuerServer;
   private String issuer;
   private int discoveryStatus;
   private String discoveryContentType;
   private String discoveryBody;
+  private String discoveryRedirect;
+  private boolean isDiscoveryStalled;
+  private String jwksBody = "RBAC: access denied";
+  private int jwksStatus = 403;
+  private String jwksRedirect;
+  private boolean isJwksStalled;
+  private final AtomicInteger discoveryRequests = new AtomicInteger();
+  private final AtomicInteger jwksRequests = new AtomicInteger();
+  private final AtomicInteger redirectRequests = new AtomicInteger();
+  private final AtomicLong elapsedNanos = new AtomicLong();
 
-  private final JwksOperations jwksOperations = new JwksOperations(null);
+  private final JwksOperations jwksOperations =
+      new JwksOperations(null, List.of(), elapsedNanos::get);
+
+  @BeforeAll
+  static void createSigningKey() throws Exception {
+    KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+    generator.initialize(2048);
+    signingKey = generator.generateKeyPair();
+    signingAlgorithm =
+        Algorithm.RSA256(
+            (RSAPublicKey) signingKey.getPublic(), (RSAPrivateKey) signingKey.getPrivate());
+  }
 
   @BeforeEach
   void startIssuerServer() throws Exception {
@@ -37,8 +87,15 @@ class JwksOperationsTest {
     issuerServer.createContext(
         "/.well-known/openid-configuration",
         exchange -> {
+          discoveryRequests.incrementAndGet();
+          if (isDiscoveryStalled) {
+            return;
+          }
           byte[] body = discoveryBody.getBytes(StandardCharsets.UTF_8);
           exchange.getResponseHeaders().set("Content-Type", discoveryContentType);
+          if (discoveryRedirect != null) {
+            exchange.getResponseHeaders().set("Location", discoveryRedirect);
+          }
           exchange.sendResponseHeaders(discoveryStatus, body.length);
           exchange.getResponseBody().write(body);
           exchange.close();
@@ -46,10 +103,24 @@ class JwksOperationsTest {
     issuerServer.createContext(
         "/jwks",
         exchange -> {
-          byte[] body = "RBAC: access denied".getBytes(StandardCharsets.UTF_8);
-          exchange.getResponseHeaders().set("Content-Type", "text/plain");
-          exchange.sendResponseHeaders(403, body.length);
+          jwksRequests.incrementAndGet();
+          if (isJwksStalled) {
+            return;
+          }
+          byte[] body = jwksBody.getBytes(StandardCharsets.UTF_8);
+          exchange.getResponseHeaders().set("Content-Type", "application/json");
+          if (jwksRedirect != null) {
+            exchange.getResponseHeaders().set("Location", jwksRedirect);
+          }
+          exchange.sendResponseHeaders(jwksStatus, body.length);
           exchange.getResponseBody().write(body);
+          exchange.close();
+        });
+    issuerServer.createContext(
+        "/redirect-target",
+        exchange -> {
+          redirectRequests.incrementAndGet();
+          exchange.sendResponseHeaders(200, -1);
           exchange.close();
         });
     issuerServer.start();
@@ -73,6 +144,10 @@ class JwksOperationsTest {
         .hasMessageNotContaining("RBAC")
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.INTERNAL);
+    assertThatThrownBy(() -> jwksOperations.loadJwkProvider(issuer))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasMessageContaining("HTTP 403");
+    assertThat(discoveryRequests).hasValue(1);
   }
 
   @Test
@@ -120,9 +195,341 @@ class JwksOperationsTest {
         .hasMessageContaining("doesn't match configuration issuer 'null'");
   }
 
+  @Test
+  void loadJwkProvider_reusesDiscoveryAndProvider() {
+    respondWithDiscovery(issuer + "/jwks");
+
+    var provider = jwksOperations.loadJwkProvider(issuer);
+    assertThat(jwksOperations.loadJwkProvider(issuer)).isSameAs(provider);
+    assertThat(discoveryRequests).hasValue(1);
+  }
+
+  @Test
+  void verifierForIssuerAndKey_reusesKeysAndRefreshesOnRotation() {
+    respondWithDiscovery(issuer + "/jwks");
+    respondWithKey("key-1");
+    String token = tokenForKey("key-1");
+    for (int i = 0; i < 20; i++) {
+      assertThat(
+              jwksOperations
+                  .verifierForIssuerAndKey(issuer, "key-1", "RS256")
+                  .verify(token)
+                  .getIssuer())
+          .isEqualTo(issuer);
+    }
+    assertThat(discoveryRequests).hasValue(1);
+    assertThat(jwksRequests).hasValue(1);
+
+    // The same key under a new ID exercises refresh without a second discovery request.
+    respondWithKey("key-2");
+    assertThat(
+            jwksOperations
+                .verifierForIssuerAndKey(issuer, "key-2", "RS256")
+                .verify(tokenForKey("key-2"))
+                .getIssuer())
+        .isEqualTo(issuer);
+    assertThat(discoveryRequests).hasValue(1);
+    assertThat(jwksRequests).hasValue(2);
+
+    String[] parts = token.split("\\.");
+    String invalidToken =
+        parts[0]
+            + "."
+            + parts[1]
+            + "."
+            + Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[256]);
+    assertThatThrownBy(
+            () ->
+                jwksOperations
+                    .verifierForIssuerAndKey(issuer, "key-1", "RS256")
+                    .verify(invalidToken))
+        .isInstanceOf(SignatureVerificationException.class);
+    assertThat(jwksRequests).hasValue(2);
+  }
+
+  @Test
+  void verifierForIssuerAndKey_limitsUnknownKeysWithoutBlockingCachedKeys() {
+    respondWithDiscovery(issuer + "/jwks");
+    respondWithKey("key-1");
+    jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256");
+    for (int i = 0; i < 9; i++) {
+      String missingKey = "missing-" + i;
+      assertThatThrownBy(() -> jwksOperations.verifierForIssuerAndKey(issuer, missingKey, "RS256"))
+          .isInstanceOf(OAuthInvalidRequestException.class)
+          .hasMessage("Could not get signing key '" + missingKey + "' for issuer " + issuer);
+    }
+    int requests = jwksRequests.get();
+    assertThatThrownBy(
+            () -> jwksOperations.verifierForIssuerAndKey(issuer, "missing-after-limit", "RS256"))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasCauseInstanceOf(RateLimitReachedException.class);
+    jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(tokenForKey("key-1"));
+    assertThat(discoveryRequests).hasValue(1);
+    assertThat(jwksRequests).hasValue(requests);
+  }
+
+  @Test
+  void loadJwkProvider_sharesConcurrentLoads() throws Exception {
+    respondWithDiscovery(issuer + "/jwks");
+    respondWithKey("key-1");
+    CountDownLatch start = new CountDownLatch(1);
+    var executor = Executors.newFixedThreadPool(8);
+    try {
+      List<Future<JwkProvider>> requests =
+          IntStream.range(0, 8)
+              .mapToObj(
+                  i ->
+                      executor.submit(
+                          () -> {
+                            start.await();
+                            JwkProvider provider = jwksOperations.loadJwkProvider(issuer);
+                            provider.get("key-1");
+                            return provider;
+                          }))
+              .toList();
+      start.countDown();
+      JwkProvider provider = requests.get(0).get(10, TimeUnit.SECONDS);
+      for (var request : requests) {
+        assertThat(request.get(10, TimeUnit.SECONDS)).isSameAs(provider);
+      }
+      assertThat(discoveryRequests).hasValue(1);
+      assertThat(jwksRequests).hasValue(1);
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void loadJwkProvider_expiresDiscoveryAndKeys() {
+    respondWithDiscovery(issuer + "/jwks");
+    respondWithKey("key-1");
+    var provider = jwksOperations.loadJwkProvider(issuer);
+    jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256");
+    elapsedNanos.set(Duration.ofHours(1).minusNanos(1).toNanos());
+    assertThat(jwksOperations.loadJwkProvider(issuer)).isSameAs(provider);
+
+    elapsedNanos.incrementAndGet();
+    respondWithKey("key-2");
+    assertThat(jwksOperations.loadJwkProvider(issuer)).isNotSameAs(provider);
+    jwksOperations.verifierForIssuerAndKey(issuer, "key-2", "RS256").verify(tokenForKey("key-2"));
+    assertThatThrownBy(() -> jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256"))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasMessage("Could not get signing key 'key-1' for issuer " + issuer);
+    assertThat(discoveryRequests).hasValue(2);
+  }
+
+  @ParameterizedTest
+  @CsvSource(
+      value = {
+        "not JSON|INTERNAL|not valid JSON",
+        "{\"issuer\":123}|ABORTED|doesn't match configuration issuer",
+        "{\"issuer\":\"%s\",\"jwks_uri\":123}|ABORTED|JWKS configuration missing",
+        "{}|ABORTED|Could not get issuer configuration"
+      },
+      delimiter = '|')
+  void loadJwkProvider_delaysRetriesAfterDiscoveryFailure(
+      String body, ErrorCode errorCode, String message) {
+    respondWith(200, "application/json", body.formatted(issuer));
+    assertThatThrownBy(() -> jwksOperations.loadJwkProvider(issuer))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasMessageContaining(message)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(errorCode);
+    respondWithDiscovery(issuer + "/jwks");
+    elapsedNanos.set(Duration.ofSeconds(30).minusNanos(1).toNanos());
+    assertThatThrownBy(() -> jwksOperations.loadJwkProvider(issuer))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasMessageContaining(message)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(errorCode);
+    assertThat(discoveryRequests).hasValue(1);
+
+    elapsedNanos.incrementAndGet();
+    jwksOperations.loadJwkProvider(issuer);
+    assertThat(discoveryRequests).hasValue(2);
+  }
+
+  @Test
+  void loadJwkProvider_usesAnExplicitlyAllowedJwksUrl() {
+    String keysUrl = issuer.replace("127.0.0.1", "localhost") + "/jwks";
+    respondWithDiscovery(keysUrl);
+    respondWithKey("key-1");
+    var operations = new JwksOperations(null, List.of(keysUrl));
+    operations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(tokenForKey("key-1"));
+    assertThat(jwksRequests).hasValue(1);
+  }
+
+  @Test
+  void jwksUriForIssuer_checksOriginAndExactAllowlistWithoutHttpsDowngrade() {
+    var operations =
+        new JwksOperations(
+            null,
+            List.of("https://www.googleapis.com/oauth2/v3/certs", "http://keys.example.com/jwks"));
+    URI google = URI.create("https://accounts.google.com");
+    for (String allowed :
+        List.of(
+            "https://accounts.google.com/jwks",
+            "https://ACCOUNTS.GOOGLE.COM:443/jwks?version=1",
+            "https://www.googleapis.com/oauth2/v3/certs")) {
+      assertThat(operations.jwksUriForIssuer(google, allowed)).isEqualTo(URI.create(allowed));
+    }
+    for (String rejected :
+        List.of(
+            "https://accounts.google.com:8443/jwks",
+            "https://other.example.com/jwks",
+            "http://accounts.google.com/jwks",
+            "http://keys.example.com/jwks",
+            "https://www.googleapis.com/other")) {
+      assertThatThrownBy(() -> operations.jwksUriForIssuer(google, rejected))
+          .isInstanceOf(OAuthInvalidRequestException.class)
+          .hasMessage("JWKS URI is not allowed")
+          .extracting(e -> ((BaseException) e).getErrorCode())
+          .isEqualTo(ErrorCode.ABORTED);
+    }
+    assertThat(
+            operations.jwksUriForIssuer(
+                URI.create("http://idp.example.com"), "http://idp.example.com:80/jwks"))
+        .isEqualTo(URI.create("http://idp.example.com:80/jwks"));
+    assertThat(discoveryRequests).hasValue(0);
+    assertThat(jwksRequests).hasValue(0);
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "/jwks",
+        "file:///keys.json",
+        "https://user@idp.example.com/jwks",
+        "https://idp.example.com/jwks#keys",
+        "https://idp.example.com:0/jwks",
+        "https://idp.example.com:65536/jwks",
+        "https://",
+        "not a URL"
+      })
+  void jwksUriForIssuer_rejectsInvalidUrls(String keysUrl) {
+    assertThatThrownBy(
+            () -> jwksOperations.jwksUriForIssuer(URI.create("https://idp.example.com"), keysUrl))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasMessage("Invalid identity provider URL")
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.ABORTED);
+    assertThatThrownBy(() -> new JwksOperations(null, List.of(keysUrl)))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasMessage("Invalid identity provider URL");
+  }
+
+  @Test
+  void loadJwkProvider_rejectsInvalidIssuerUrlsBeforeDiscovery() {
+    for (String invalid :
+        List.of(
+            issuer + "?query",
+            issuer + "#fragment",
+            issuer.replace("127.0.0.1", "user@127.0.0.1"))) {
+      assertThatThrownBy(() -> jwksOperations.loadJwkProvider(invalid))
+          .isInstanceOf(OAuthInvalidRequestException.class)
+          .hasMessageContaining("Invalid");
+    }
+    assertThat(discoveryRequests).hasValue(0);
+  }
+
+  @Test
+  void loadJwkProvider_rejectsDiscoveryRedirects() {
+    respondWith(302, "application/json", "redirect");
+    discoveryRedirect = issuer + "/redirect-target";
+    assertThatThrownBy(() -> jwksOperations.loadJwkProvider(issuer))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasMessageContaining("HTTP 302");
+    assertThat(redirectRequests).hasValue(0);
+  }
+
+  @Test
+  void verifierForIssuerAndKey_rejectsJwksRedirects() {
+    respondWithDiscovery(issuer + "/jwks");
+    jwksStatus = 302;
+    jwksRedirect = issuer + "/redirect-target";
+    assertThatThrownBy(() -> jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256"))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasMessage("Could not get signing key 'key-1' for issuer " + issuer);
+    assertThat(jwksRequests).hasValue(1);
+    assertThat(redirectRequests).hasValue(0);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void requests_rejectOversizedResponses(boolean isDiscovery) {
+    respondWithDiscovery(issuer + "/jwks");
+    String oversized = " ".repeat(1024 * 1024 + 1);
+    if (isDiscovery) {
+      discoveryBody = oversized;
+    } else {
+      jwksStatus = 200;
+      jwksBody = oversized;
+    }
+    assertThatThrownBy(() -> jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256"))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasRootCauseInstanceOf(ContentTooLargeException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.INTERNAL);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void requests_timeOutWhenProviderDoesNotRespond(boolean isDiscovery) {
+    respondWithDiscovery(issuer + "/jwks");
+    isDiscoveryStalled = isDiscovery;
+    isJwksStalled = !isDiscovery;
+    assertThatThrownBy(() -> jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256"))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasRootCauseInstanceOf(ResponseTimeoutException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.INTERNAL);
+  }
+
+  @Test
+  void loadJwkProvider_rejectsJwksOnAnotherOrigin() {
+    respondWith(
+        200,
+        "application/json",
+        String.format(
+            "{\"issuer\":\"%s\",\"jwks_uri\":\"https://keys.example.com/jwks\"}", issuer));
+
+    assertThatThrownBy(() -> jwksOperations.loadJwkProvider(issuer))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasMessageContaining("JWKS URI is not allowed")
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.ABORTED);
+    assertThat(jwksRequests).hasValue(0);
+  }
+
   private void respondWith(int status, String contentType, String body) {
     discoveryStatus = status;
     discoveryContentType = contentType;
     discoveryBody = body;
+  }
+
+  private void respondWithDiscovery(String keysUrl) {
+    respondWith(
+        200,
+        "application/json",
+        String.format("{\"issuer\":\"%s\",\"jwks_uri\":\"%s\"}", issuer, keysUrl));
+  }
+
+  private void respondWithKey(String keyId) {
+    var key = (RSAPublicKey) signingKey.getPublic();
+    byte[] modulus = key.getModulus().toByteArray();
+    // RSA generation sets the high bit; BigInteger adds a leading sign byte.
+    modulus = Arrays.copyOfRange(modulus, 1, modulus.length);
+    Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
+    jwksStatus = 200;
+    jwksBody =
+        String.format(
+            "{\"keys\":[{\"kty\":\"RSA\",\"kid\":\"%s\",\"n\":\"%s\",\"e\":\"%s\"}]}",
+            keyId,
+            encoder.encodeToString(modulus),
+            encoder.encodeToString(key.getPublicExponent().toByteArray()));
+  }
+
+  private String tokenForKey(String keyId) {
+    return JWT.create().withIssuer(issuer).withKeyId(keyId).sign(signingAlgorithm);
   }
 }
