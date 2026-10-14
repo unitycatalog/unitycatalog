@@ -82,7 +82,7 @@ public class AuthServiceAllowlistTest {
   }
 
   @Nested
-  class ExplicitJwksUri extends TokenExchangeTestBase {
+  class WildcardIssuer extends TokenExchangeTestBase {
 
     @Override
     protected void setUpProperties() {
@@ -90,24 +90,6 @@ public class AuthServiceAllowlistTest {
       testJwksUri = testJwksUri.replace("localhost", "127.0.0.1");
       serverProperties.setProperty(
           ServerProperties.Property.ALLOWED_JWKS_URIS.getKey(), testJwksUri);
-    }
-
-    @Test
-    public void testTokenExchange() throws IOException {
-      AggregatedHttpResponse response =
-          exchangeToken(
-              createIdentityToken(testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId));
-      assertThat(response.status()).isEqualTo(HttpStatus.OK);
-      assertThat(MAPPER.readTree(response.contentUtf8()).get("access_token").asText()).isNotEmpty();
-    }
-  }
-
-  @Nested
-  class WildcardIssuer extends TokenExchangeTestBase {
-
-    @Override
-    protected void setUpProperties() {
-      super.setUpProperties();
       serverProperties.setProperty(
           ServerProperties.Property.ALLOWED_ISSUERS.getKey(), "http://localhost:*");
     }
