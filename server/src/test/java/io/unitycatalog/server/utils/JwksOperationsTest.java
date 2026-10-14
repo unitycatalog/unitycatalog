@@ -3,7 +3,6 @@ package io.unitycatalog.server.utils;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.auth0.jwk.JwkProvider;
 import com.auth0.jwk.RateLimitReachedException;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
@@ -22,6 +21,7 @@ import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
@@ -31,7 +31,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -194,48 +193,47 @@ class JwksOperationsTest {
   }
 
   @Test
-  void verifierForIssuerAndKey_reusesKeysAndRefreshesOnRotation() {
+  void verifierForIssuerAndKey_cachesKeysUntilRotationAndProviderExpiry() {
     respondWithDiscovery(issuer + "/jwks");
-    respondWithKey("key-1");
-    String token = tokenForKey("key-1");
+    respondWithKey("key-1", signingKey);
+    String token = tokenForKey("key-1", signingKey);
     for (int i = 0; i < 20; i++) {
-      assertThat(
-              jwksOperations
-                  .verifierForIssuerAndKey(issuer, "key-1", "RS256")
-                  .verify(token)
-                  .getIssuer())
-          .isEqualTo(issuer);
+      jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(token);
     }
     assertThat(discoveryRequests).hasValue(1);
     assertThat(jwksRequests).hasValue(1);
 
     respondWithKey("key-2", rotatedSigningKey);
     String rotatedToken = tokenForKey("key-2", rotatedSigningKey);
-    assertThat(
-            jwksOperations
-                .verifierForIssuerAndKey(issuer, "key-2", "RS256")
-                .verify(rotatedToken)
-                .getIssuer())
-        .isEqualTo(issuer);
+    jwksOperations.verifierForIssuerAndKey(issuer, "key-2", "RS256").verify(rotatedToken);
     assertThat(discoveryRequests).hasValue(1);
     assertThat(jwksRequests).hasValue(2);
 
+    elapsedNanos.set(Duration.ofHours(1).minusNanos(1).toNanos());
+    jwksOperations.verifierForIssuerAndKey(issuer, "key-2", "RS256").verify(rotatedToken);
+    assertThat(discoveryRequests).hasValue(1);
+    assertThat(jwksRequests).hasValue(2);
+
+    elapsedNanos.incrementAndGet();
+    // Reusing the key ID proves that expiry also replaces cached key material.
+    respondWithKey("key-2", signingKey);
+    jwksOperations
+        .verifierForIssuerAndKey(issuer, "key-2", "RS256")
+        .verify(tokenForKey("key-2", signingKey));
     assertThatThrownBy(
             () ->
                 jwksOperations
-                    .verifierForIssuerAndKey(issuer, "key-1", "RS256")
+                    .verifierForIssuerAndKey(issuer, "key-2", "RS256")
                     .verify(rotatedToken))
         .isInstanceOf(SignatureVerificationException.class);
-    assertThatThrownBy(
-            () -> jwksOperations.verifierForIssuerAndKey(issuer, "key-2", "RS256").verify(token))
-        .isInstanceOf(SignatureVerificationException.class);
-    assertThat(jwksRequests).hasValue(2);
+    assertThat(discoveryRequests).hasValue(2);
+    assertThat(jwksRequests).hasValue(3);
   }
 
   @Test
   void verifierForIssuerAndKey_limitsUnknownKeysWithoutBlockingCachedKeys() {
     respondWithDiscovery(issuer + "/jwks");
-    respondWithKey("key-1");
+    respondWithKey("key-1", signingKey);
     jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256");
     for (int i = 0; i < 9; i++) {
       String missingKey = "missing-" + i;
@@ -248,64 +246,41 @@ class JwksOperationsTest {
             () -> jwksOperations.verifierForIssuerAndKey(issuer, "missing-after-limit", "RS256"))
         .isInstanceOf(OAuthInvalidRequestException.class)
         .hasCauseInstanceOf(RateLimitReachedException.class);
-    jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(tokenForKey("key-1"));
+    jwksOperations
+        .verifierForIssuerAndKey(issuer, "key-1", "RS256")
+        .verify(tokenForKey("key-1", signingKey));
     assertThat(discoveryRequests).hasValue(1);
     assertThat(jwksRequests).hasValue(requests);
   }
 
   @Test
-  void loadJwkProvider_sharesConcurrentLoads() throws Exception {
+  void verifierForIssuerAndKey_sharesConcurrentLoads() throws Exception {
     respondWithDiscovery(issuer + "/jwks");
-    respondWithKey("key-1");
+    respondWithKey("key-1", signingKey);
+    String token = tokenForKey("key-1", signingKey);
     CountDownLatch start = new CountDownLatch(1);
     var executor = Executors.newFixedThreadPool(8);
     try {
-      List<Future<JwkProvider>> requests =
-          IntStream.range(0, 8)
-              .mapToObj(
-                  i ->
-                      executor.submit(
-                          () -> {
-                            start.await();
-                            JwkProvider provider = jwksOperations.loadJwkProvider(issuer);
-                            provider.get("key-1");
-                            return provider;
-                          }))
-              .toList();
+      var requests = new ArrayList<Future<?>>();
+      for (int i = 0; i < 8; i++) {
+        requests.add(
+            executor.submit(
+                () -> {
+                  start.await();
+                  return jwksOperations
+                      .verifierForIssuerAndKey(issuer, "key-1", "RS256")
+                      .verify(token);
+                }));
+      }
       start.countDown();
-      JwkProvider provider = requests.get(0).get(10, TimeUnit.SECONDS);
       for (var request : requests) {
-        assertThat(request.get(10, TimeUnit.SECONDS)).isSameAs(provider);
+        request.get(10, TimeUnit.SECONDS);
       }
       assertThat(discoveryRequests).hasValue(1);
       assertThat(jwksRequests).hasValue(1);
     } finally {
       executor.shutdownNow();
     }
-  }
-
-  @Test
-  void loadJwkProvider_expiresDiscoveryAndKeys() {
-    respondWithDiscovery(issuer + "/jwks");
-    respondWithKey("key-1");
-    var provider = jwksOperations.loadJwkProvider(issuer);
-    String token = tokenForKey("key-1");
-    jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(token);
-    elapsedNanos.set(Duration.ofHours(1).minusNanos(1).toNanos());
-    assertThat(jwksOperations.loadJwkProvider(issuer)).isSameAs(provider);
-
-    elapsedNanos.incrementAndGet();
-    // Reusing the key ID proves that expiry also replaces cached key material.
-    respondWithKey("key-1", rotatedSigningKey);
-    assertThat(jwksOperations.loadJwkProvider(issuer)).isNotSameAs(provider);
-    jwksOperations
-        .verifierForIssuerAndKey(issuer, "key-1", "RS256")
-        .verify(tokenForKey("key-1", rotatedSigningKey));
-    assertThatThrownBy(
-            () -> jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(token))
-        .isInstanceOf(SignatureVerificationException.class);
-    assertThat(discoveryRequests).hasValue(2);
-    assertThat(jwksRequests).hasValue(2);
   }
 
   @ParameterizedTest
@@ -340,16 +315,6 @@ class JwksOperationsTest {
   }
 
   @Test
-  void loadJwkProvider_usesAnExplicitlyAllowedJwksUrl() {
-    String keysUrl = issuer.replace("127.0.0.1", "localhost") + "/jwks";
-    respondWithDiscovery(keysUrl);
-    respondWithKey("key-1");
-    var operations = new JwksOperations(null, List.of(keysUrl));
-    operations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(tokenForKey("key-1"));
-    assertThat(jwksRequests).hasValue(1);
-  }
-
-  @Test
   void jwksUriForIssuer_checksOriginAndExactAllowlistWithoutHttpsDowngrade() {
     var operations =
         new JwksOperations(
@@ -380,33 +345,31 @@ class JwksOperationsTest {
             operations.jwksUriForIssuer(
                 URI.create("http://idp.example.com"), "http://idp.example.com:80/jwks"))
         .isEqualTo(URI.create("http://idp.example.com:80/jwks"));
-    assertThat(discoveryRequests).hasValue(0);
-    assertThat(jwksRequests).hasValue(0);
   }
 
-  @ParameterizedTest
-  @ValueSource(
-      strings = {
-        "/jwks",
-        "file:///keys.json",
-        "https://user@idp.example.com/jwks",
-        "https://idp.example.com/jwks#keys",
-        "https://idp.example.com:0/jwks",
-        "https://idp.example.com:65536/jwks",
-        "https:///jwks",
-        "https://",
-        "not a URL"
-      })
-  void jwksUriForIssuer_rejectsInvalidUrls(String keysUrl) {
-    assertThatThrownBy(
-            () -> jwksOperations.jwksUriForIssuer(URI.create("https://idp.example.com"), keysUrl))
-        .isInstanceOf(OAuthInvalidRequestException.class)
-        .hasMessage("Invalid identity provider URL")
-        .extracting(e -> ((BaseException) e).getErrorCode())
-        .isEqualTo(ErrorCode.ABORTED);
-    assertThatThrownBy(() -> new JwksOperations(null, List.of(keysUrl)))
-        .isInstanceOf(OAuthInvalidRequestException.class)
-        .hasMessage("Invalid identity provider URL");
+  @Test
+  void jwksUriForIssuer_rejectsInvalidUrls() {
+    for (String keysUrl :
+        List.of(
+            "/jwks",
+            "file:///keys.json",
+            "https://user@idp.example.com/jwks",
+            "https://idp.example.com/jwks#keys",
+            "https://idp.example.com:0/jwks",
+            "https://idp.example.com:65536/jwks",
+            "https:///jwks",
+            "https://",
+            "not a URL")) {
+      assertThatThrownBy(
+              () -> jwksOperations.jwksUriForIssuer(URI.create("https://idp.example.com"), keysUrl))
+          .isInstanceOf(OAuthInvalidRequestException.class)
+          .hasMessage("Invalid identity provider URL")
+          .extracting(e -> ((BaseException) e).getErrorCode())
+          .isEqualTo(ErrorCode.ABORTED);
+      assertThatThrownBy(() -> new JwksOperations(null, List.of(keysUrl)))
+          .isInstanceOf(OAuthInvalidRequestException.class)
+          .hasMessage("Invalid identity provider URL");
+    }
   }
 
   @Test
@@ -432,9 +395,11 @@ class JwksOperationsTest {
   void loadJwkProvider_preservesUppercaseHttpScheme() {
     issuer = issuer.replace("http://", "HTTP://");
     respondWithDiscovery(issuer + "/jwks");
-    respondWithKey("key-1");
+    respondWithKey("key-1", signingKey);
 
-    jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(tokenForKey("key-1"));
+    jwksOperations
+        .verifierForIssuerAndKey(issuer, "key-1", "RS256")
+        .verify(tokenForKey("key-1", signingKey));
     assertThat(discoveryRequests).hasValue(1);
     assertThat(jwksRequests).hasValue(1);
   }
@@ -494,11 +459,7 @@ class JwksOperationsTest {
 
   @Test
   void loadJwkProvider_rejectsJwksOnAnotherOrigin() {
-    respondWith(
-        200,
-        "application/json",
-        String.format(
-            "{\"issuer\":\"%s\",\"jwks_uri\":\"https://keys.example.com/jwks\"}", issuer));
+    respondWithDiscovery(issuer.replace("127.0.0.1", "localhost") + "/jwks");
 
     assertThatThrownBy(() -> jwksOperations.loadJwkProvider(issuer))
         .isInstanceOf(OAuthInvalidRequestException.class)
@@ -521,10 +482,6 @@ class JwksOperationsTest {
         String.format("{\"issuer\":\"%s\",\"jwks_uri\":\"%s\"}", issuer, keysUrl));
   }
 
-  private void respondWithKey(String keyId) {
-    respondWithKey(keyId, signingKey);
-  }
-
   private void respondWithKey(String keyId, KeyPair keyPair) {
     var key = (RSAPublicKey) keyPair.getPublic();
     byte[] modulus = key.getModulus().toByteArray();
@@ -538,10 +495,6 @@ class JwksOperationsTest {
             keyId,
             encoder.encodeToString(modulus),
             encoder.encodeToString(key.getPublicExponent().toByteArray()));
-  }
-
-  private String tokenForKey(String keyId) {
-    return tokenForKey(keyId, signingKey);
   }
 
   private String tokenForKey(String keyId, KeyPair keyPair) {

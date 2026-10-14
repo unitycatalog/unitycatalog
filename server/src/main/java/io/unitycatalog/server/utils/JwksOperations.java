@@ -154,110 +154,105 @@ public class JwksOperations {
       Path certsFile = securityContext.getCertsFile();
       return new JwkProviderBuilder(certsFile.toUri().toURL()).cached(false).build();
     }
-    return providers.get(
-        issuer,
-        key -> {
-          OAuthInvalidRequestException failure = discoveryFailures.getIfPresent(key);
-          if (failure != null) {
-            throw failure;
-          }
-          try {
-            return fetchJwkProvider(key);
-          } catch (OAuthInvalidRequestException e) {
-            // Failed loads also need a cooldown; the provider cache only stores successes.
-            discoveryFailures.put(key, e);
-            throw e;
-          }
-        });
+    return providers.get(issuer, this::fetchJwkProvider);
   }
 
   @SneakyThrows
   private JwkProvider fetchJwkProvider(String issuer) {
-    // Get the JWKS from the OIDC well-known location described here
-    // https://openid.net/specs/openid-connect-discovery-1_0-21.html#ProviderConfig
-
-    if (!issuer.contains("://")) {
-      issuer = "https://" + issuer;
+    OAuthInvalidRequestException failure = discoveryFailures.getIfPresent(issuer);
+    if (failure != null) {
+      throw failure;
     }
-
-    URI issuerUri = httpUri(issuer);
-    if (issuerUri.getRawQuery() != null) {
-      throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "Invalid issuer URL");
-    }
-
-    String wellKnownConfigUrl = issuer;
-
-    if (!wellKnownConfigUrl.endsWith("/")) {
-      wellKnownConfigUrl += "/";
-    }
-
-    var path = wellKnownConfigUrl + ".well-known/openid-configuration";
-    LOGGER.debug("path: {}", path);
-
-    AggregatedHttpResponse httpResponse;
     try {
-      httpResponse = webClient.get(path).aggregate().join();
-    } catch (CompletionException e) {
-      throw new OAuthInvalidRequestException(
-          ErrorCode.INTERNAL, "Could not get issuer configuration from " + path, e);
+      // Get the JWKS from the OIDC well-known location described here
+      // https://openid.net/specs/openid-connect-discovery-1_0-21.html#ProviderConfig
+
+      String issuerUrl = issuer.contains("://") ? issuer : "https://" + issuer;
+
+      URI issuerUri = httpUri(issuerUrl);
+      if (issuerUri.getRawQuery() != null) {
+        throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "Invalid issuer URL");
+      }
+
+      String wellKnownConfigUrl = issuerUrl;
+
+      if (!wellKnownConfigUrl.endsWith("/")) {
+        wellKnownConfigUrl += "/";
+      }
+
+      var path = wellKnownConfigUrl + ".well-known/openid-configuration";
+      LOGGER.debug("path: {}", path);
+
+      AggregatedHttpResponse httpResponse;
+      try {
+        httpResponse = webClient.get(path).aggregate().join();
+      } catch (CompletionException e) {
+        throw new OAuthInvalidRequestException(
+            ErrorCode.INTERNAL, "Could not get issuer configuration from " + path, e);
+      }
+      String response = httpResponse.contentUtf8();
+
+      // The body is only logged, not returned: callers of token exchange are not yet
+      // authenticated, and a proxy error page may describe internal infrastructure.
+      if (!httpResponse.status().isSuccess()) {
+        LOGGER.warn(
+            "Failed to fetch issuer configuration from '{}': status={}, body='{}'",
+            path,
+            httpResponse.status(),
+            abbreviate(response));
+        throw new OAuthInvalidRequestException(
+            ErrorCode.INTERNAL,
+            String.format(
+                "Could not get issuer configuration from %s: HTTP %s",
+                path, httpResponse.status()));
+      }
+
+      JsonNode config;
+      try {
+        config = mapper.readTree(response);
+      } catch (JsonProcessingException e) {
+        LOGGER.warn(
+            "Issuer configuration from '{}' is not valid JSON: contentType={}, body='{}'",
+            path,
+            httpResponse.contentType(),
+            abbreviate(response));
+        throw new OAuthInvalidRequestException(
+            ErrorCode.INTERNAL,
+            String.format("Issuer configuration from %s is not valid JSON", path));
+      }
+
+      if (config.isEmpty()) {
+        throw new OAuthInvalidRequestException(
+            ErrorCode.ABORTED, "Could not get issuer configuration from " + path);
+      }
+
+      String configIssuer = config.path("issuer").textValue();
+      String configJwksUri = config.path("jwks_uri").textValue();
+
+      if (!issuerUrl.equals(configIssuer)) {
+        throw new OAuthInvalidRequestException(
+            ErrorCode.ABORTED,
+            String.format(
+                "Issuer '%s' doesn't match configuration issuer '%s' from %s",
+                issuerUrl, configIssuer, path));
+      }
+
+      if (configJwksUri == null) {
+        throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "JWKS configuration missing");
+      }
+
+      URI jwksUri = jwksUriForIssuer(issuerUri, configJwksUri);
+
+      // Keep the key cache outside the rate limiter so normal logins do not use its budget.
+      return new JwkProviderBuilder(jwksUri.toURL())
+          .cached(100, Duration.ofHours(1))
+          .httpClient(this::fetchSigningKeys)
+          .build();
+    } catch (OAuthInvalidRequestException e) {
+      // Failed loads also need a cooldown; the provider cache only stores successes.
+      discoveryFailures.put(issuer, e);
+      throw e;
     }
-    String response = httpResponse.contentUtf8();
-
-    // The body is only logged, not returned: callers of token exchange are not yet
-    // authenticated, and a proxy error page may describe internal infrastructure.
-    if (!httpResponse.status().isSuccess()) {
-      LOGGER.warn(
-          "Failed to fetch issuer configuration from '{}': status={}, body='{}'",
-          path,
-          httpResponse.status(),
-          abbreviate(response));
-      throw new OAuthInvalidRequestException(
-          ErrorCode.INTERNAL,
-          String.format(
-              "Could not get issuer configuration from %s: HTTP %s", path, httpResponse.status()));
-    }
-
-    JsonNode config;
-    try {
-      config = mapper.readTree(response);
-    } catch (JsonProcessingException e) {
-      LOGGER.warn(
-          "Issuer configuration from '{}' is not valid JSON: contentType={}, body='{}'",
-          path,
-          httpResponse.contentType(),
-          abbreviate(response));
-      throw new OAuthInvalidRequestException(
-          ErrorCode.INTERNAL,
-          String.format("Issuer configuration from %s is not valid JSON", path));
-    }
-
-    if (config == null || config.isEmpty()) {
-      throw new OAuthInvalidRequestException(
-          ErrorCode.ABORTED, "Could not get issuer configuration from " + path);
-    }
-
-    String configIssuer = config.path("issuer").textValue();
-    String configJwksUri = config.path("jwks_uri").textValue();
-
-    if (!issuer.equals(configIssuer)) {
-      throw new OAuthInvalidRequestException(
-          ErrorCode.ABORTED,
-          String.format(
-              "Issuer '%s' doesn't match configuration issuer '%s' from %s",
-              issuer, configIssuer, path));
-    }
-
-    if (configJwksUri == null) {
-      throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "JWKS configuration missing");
-    }
-
-    URI jwksUri = jwksUriForIssuer(issuerUri, configJwksUri);
-
-    // Keep the key cache outside the rate limiter so normal logins do not use its budget.
-    return new JwkProviderBuilder(jwksUri.toURL())
-        .cached(100, Duration.ofHours(1))
-        .httpClient(this::fetchSigningKeys)
-        .build();
   }
 
   private JwksHttpResponse fetchSigningKeys(URL url) throws IOException {
