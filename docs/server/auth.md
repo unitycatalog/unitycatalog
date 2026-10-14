@@ -48,6 +48,7 @@ server.token-url=https://oauth2.googleapis.com/token
 server.client-id=<Client ID provided earlier>
 server.client-secret=<Client secret provided earlier>
 server.allowed-issuers=https://accounts.google.com
+server.allowed-jwks-uris=https://www.googleapis.com/oauth2/v3/certs
 server.audiences=<Client ID provided earlier>
 ```
 
@@ -56,6 +57,7 @@ server.audiences=<Client ID provided earlier>
 When authorization is enabled, the server validates incoming identity tokens against configured issuers and audiences:
 
 - **server.allowed-issuers**: Comma-separated list of allowed token issuers (exact match or wildcard with `*`). Tokens from issuers not in this list will be rejected. This prevents attackers from using their own identity provider to forge tokens.
+- **server.allowed-jwks-uris**: Comma-separated list of exact JWKS URLs on other origins. By default, the discovery document's `jwks_uri` must use the issuer's scheme, host, and port. Set this property when the provider publishes keys on another origin. For example, Google requires `https://www.googleapis.com/oauth2/v3/certs`. Wildcards are not supported. HTTPS issuers require HTTPS key URLs, even for configured URLs. HTTP issuers can use HTTP key URLs for local or private providers. Restart the server after changing this property.
 - **server.audiences**: Comma-separated list of expected JWT audience values. Tokens must contain an `aud` value matching one of these entries (exact match or wildcard with `*`). A single value of `*` disables audience validation (issuer and user checks still apply); that sentinel cannot be combined with other values.
 
 #### Programmatic exchange (service principals)
@@ -73,6 +75,7 @@ You can configure multiple issuers and audiences by separating them with commas:
 
 ```properties
 server.allowed-issuers=https://accounts.google.com,https://login.microsoftonline.com/{tenant-id}/v2.0
+server.allowed-jwks-uris=https://www.googleapis.com/oauth2/v3/certs
 server.audiences=your-google-client-id,your-azure-client-id
 ```
 
@@ -109,6 +112,22 @@ values under that pattern can steer JWKS fetches (an SSRF-style surface).
 
 Use wildcard issuers only where necessary, only for domains you control, and avoid patterns that
 cover internal or sensitive hosts. Prefer exact issuer URLs and `https://` issuers when possible.
+
+#### Signing-key requests
+
+The server rejects discovery and JWKS redirects. Each request has a response timeout of five seconds.
+The server limits each response to 1 MiB. Issuer URLs cannot contain credentials, a query, or a
+fragment. JWKS URLs cannot contain credentials or a fragment.
+
+The server keeps up to 100 external providers for one hour. Concurrent requests for an issuer
+share discovery. Failed discovery requests have a 30-second retry delay. Each provider's key-ID
+cache keeps up to 100 entries and permits up to 10 cache misses per minute. Cached entries do not
+use that budget. A new key ID triggers a key refresh, subject to that limit. Provider expiry bounds
+how long removed keys can remain cached. Cache eviction can cause an earlier reload.
+
+The issuer allowlist and extra JWKS URLs define trusted destinations, including their DNS records.
+These settings do not replace network egress rules. When upgrading, add an entry in
+`server.allowed-jwks-uris` for each provider whose keys use another origin.
 
 ### Multiple server instances
 

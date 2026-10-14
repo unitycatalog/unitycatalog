@@ -39,6 +39,7 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
   // Test identity provider keypair and mock OIDC server
   private HttpServer mockOidcServer;
   protected String testIssuer;
+  protected String testJwksUri;
   protected Algorithm testIssuerAlgorithm;
   protected String testIssuerKeyId;
 
@@ -98,7 +99,7 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
         "/.well-known/openid-configuration",
         exchange -> {
           String discoveryDoc =
-              String.format("{\"issuer\":\"%s\",\"jwks_uri\":\"%s/jwks\"}", testIssuer, testIssuer);
+              String.format("{\"issuer\":\"%s\",\"jwks_uri\":\"%s\"}", testIssuer, testJwksUri);
           byte[] body = discoveryDoc.getBytes(StandardCharsets.UTF_8);
           exchange.getResponseHeaders().set("Content-Type", "application/json");
           exchange.sendResponseHeaders(200, body.length);
@@ -120,6 +121,7 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
 
     int port = mockOidcServer.getAddress().getPort();
     testIssuer = "http://localhost:" + port;
+    testJwksUri = testIssuer + "/jwks";
   }
 
   /** Builds a JWKS JSON string containing a single RSA public key. */
