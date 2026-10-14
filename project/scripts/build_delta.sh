@@ -75,6 +75,7 @@ cd "$DELTA_DIR"
 # (delta-spark-v1, delta-spark-v2) that aren't published separately. The M2 POM
 # filters them via pomPostProcess. UC's build/sbt forces maven-local in the
 # resolver chain, so ~/.m2 artifacts are found.
+USE_MAVEN_LOCAL_FOR_SOURCE_SPARK="${SPARK_ARTIFACT_VERSION:+true}" \
 build/sbt -DsparkVersion="$SPARK_VERSION" \
   "${SPARK_COMMIT_ARGS[@]}" \
   -Ddelta.autoBuildPinnedUnityCatalog=false \

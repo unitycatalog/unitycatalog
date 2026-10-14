@@ -48,11 +48,11 @@ import org.mockito.ArgumentCaptor;
  * UCProxyTestFixture} (which builds the mock-backed proxy) and adds the {@code RelationCatalog} /
  * {@code ViewCatalog} casts plus the view CRUD / metric-view tests.
  *
- * <p>This file lives under {@code src/test/scala-shims/spark-4.2/}, so the cross-Spark build only
- * compiles and runs it for the Spark 4.2 build, where {@code UCProxy} actually mixes in the V2 view
- * catalog surface ({@code Relation}, {@code View}, {@code RelationCatalog}, {@code ViewCatalog},
- * the V2 {@code TableInfo}). The version-agnostic table/namespace tests live in {@code
- * UCProxySuite} under {@code src/test/java/} and run on all Spark versions.
+ * <p>This file lives under {@code src/test/scala-shims/spark-4.2-4.3/}, so the cross-Spark build
+ * only compiles and runs it for the Spark 4.2 and 4.3 builds, where {@code UCProxy} actually mixes
+ * in the V2 view catalog surface ({@code Relation}, {@code View}, {@code RelationCatalog}, {@code
+ * ViewCatalog}, the V2 {@code TableInfo}). The version-agnostic table/namespace tests live in
+ * {@code UCProxySuite} under {@code src/test/java/} and run on all Spark versions.
  *
  * <p>The Spark V2 {@code Dependency} / {@code DependencyList} / {@code TableDependency} / {@code
  * TableInfo} types are used fully-qualified to disambiguate from the UC-client homonyms imported
