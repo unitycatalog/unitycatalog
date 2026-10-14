@@ -176,7 +176,7 @@ public class JwksOperations {
     // Get the JWKS from the OIDC well-known location described here
     // https://openid.net/specs/openid-connect-discovery-1_0-21.html#ProviderConfig
 
-    if (!issuer.startsWith("https://") && !issuer.startsWith("http://")) {
+    if (!issuer.contains("://")) {
       issuer = "https://" + issuer;
     }
 
