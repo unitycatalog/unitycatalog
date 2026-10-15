@@ -7,8 +7,10 @@ import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.linecorp.armeria.common.Cookie;
 import com.linecorp.armeria.common.HttpHeaderNames;
+import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.HttpService;
 import com.linecorp.armeria.server.ServiceRequestContext;
@@ -21,6 +23,7 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,6 +46,8 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
   public static final String UC_TOKEN_KEY = "UC_TOKEN";
 
   private static final String BEARER_PREFIX = "Bearer ";
+  private static final Set<HttpMethod> SAFE_METHODS =
+      Set.of(HttpMethod.GET, HttpMethod.HEAD, HttpMethod.OPTIONS);
 
   public static final AttributeKey<DecodedJWT> DECODED_JWT_ATTR =
       AttributeKey.valueOf(DecodedJWT.class, "DECODED_JWT_ATTR");
@@ -68,7 +73,9 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
             .orElse(null);
 
     DecodedJWT decodedJWT =
-        JWT.decode(getAccessTokenFromCookieOrAuthHeader(authorizationHeader, authorizationCookie));
+        JWT.decode(
+            getAccessTokenFromCookieOrAuthHeader(
+                authorizationHeader, authorizationCookie, req.headers()));
 
     String issuer = decodedJWT.getIssuer();
     String keyId = decodedJWT.getKeyId();
@@ -110,13 +117,23 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
   }
 
   private String getAccessTokenFromCookieOrAuthHeader(
-      String authorizationHeader, String authorizationCookie) {
+      String authorizationHeader, String authorizationCookie, RequestHeaders headers) {
     if (authorizationHeader != null && authorizationHeader.startsWith(BEARER_PREFIX)) {
       return authorizationHeader.substring(BEARER_PREFIX.length());
     }
     if (authorizationCookie != null) {
+      validateCsrfHeader(headers);
       return authorizationCookie;
     }
     throw new AuthorizationException(ErrorCode.UNAUTHENTICATED, "No authorization found.");
+  }
+
+  /** Requires a header that browsers cannot send across origins without CORS preflight approval. */
+  static void validateCsrfHeader(RequestHeaders headers) {
+    if (!SAFE_METHODS.contains(headers.method())
+        && !"XMLHttpRequest".equals(headers.get(HttpHeaderNames.X_REQUESTED_WITH))) {
+      throw new AuthorizationException(
+          ErrorCode.PERMISSION_DENIED, "Cookie requests require X-Requested-With: XMLHttpRequest");
+    }
   }
 }

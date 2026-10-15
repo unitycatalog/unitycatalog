@@ -182,6 +182,7 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
             .method(HttpMethod.POST)
             .path("/api/1.0/unity-control/scim2/Users")
             .contentType(MediaType.JSON)
+            .add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest")
             .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
             .build();
     AggregatedHttpResponse response =
