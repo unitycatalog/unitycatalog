@@ -15,7 +15,7 @@ import org.apache.spark.sql.connector.catalog.{
  * directory mechanism (see `project/CrossSparkVersions.scala`):
  *
  *   - `scala-shims/spark-4.0-4.1/io/unitycatalog/spark/UCSingleCatalogViewSupport.scala`: empty trait
- *   - this file (`scala-shims/spark-4.2/...`): real impl
+ *   - this file (`scala-shims/spark-4.2-4.3/...`): real impl
  *
  * The trait is self-typed against [[UCSingleCatalog]] so it can read the catalog's
  * `delegate` and `ucProxy` state (declared `protected[spark]` for that purpose).

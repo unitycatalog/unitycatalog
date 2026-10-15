@@ -109,6 +109,32 @@ server acts on behalf of every principal that can write those directories:
 For a deployment shared by users who should not have each other's file access, use cloud storage, where the server
 vends credentials scoped to each location.
 
+### Storage credential cache
+
+When the server vends temporary cloud storage credentials, it can reuse a recently vended credential
+for the same location, privileges, and credential binding instead of calling the cloud provider again
+on every request. The cache is disabled by default. The database binding for a location is always
+re-read, so changing its role or external ID changes the cache lookup on the next request. For
+per-bucket configuration (any cloud), the cache lookup uses the location and privileges.
+
+For AWS storage credentials, UC includes the stored external ID in both the cache key and the
+`AssumeRole` request. Updating the IAM role on a UC storage credential generates a new external ID,
+even when the role ARN is unchanged. The next request uses the new binding and cannot reuse
+credentials cached under the previous external ID. Ensure the AWS role's trust policy allows the
+newly returned external ID before requesting new credentials. Temporary credentials already vended
+under the previous external ID stay valid until they expire. See [AWS credential setup](aws.md) for
+configuring the external ID in the role's trust policy.
+
+The cache is controlled by these keys:
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `server.storage-credential-cache.enabled` | `false` | Whether to reuse vended credentials. When `false`, every request vends a fresh credential from the cloud provider. |
+| `server.storage-credential-cache.max-size` | `1000` | The maximum number of distinct credentials to keep. |
+| `server.storage-credential-cache.max-age` | `PT5M` | The longest a vended credential is reused. It is counted from when the credential was vended, and serving the credential from the cache does not extend it. A cached credential is handed out with its remaining lifetime, so clients receive at least the credential's lifetime minus the max age (55 minutes for a 1-hour credential with the default); lower it if clients need more. A credential is never reused within one minute of its expiry, and one that lives one minute or less is not cached. Keep it short so that a cloud-side change, such as a trust-policy update, takes effect for new requests within this time. |
+
+Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is five minutes).
+
 ## Logging
 
 The server logs are located at `etc/logs/server.log`. The log level and log rolling policy can be set in log4j2 config
