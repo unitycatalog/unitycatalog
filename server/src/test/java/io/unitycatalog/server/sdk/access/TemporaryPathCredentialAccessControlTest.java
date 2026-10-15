@@ -43,9 +43,9 @@ import io.unitycatalog.client.model.VolumeInfo;
 import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
@@ -359,7 +359,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
         hibernateConfigurator.getSessionFactory(),
         session -> {
           new StorageCleanupTaskRepository(hibernateConfigurator.getSessionFactory())
-              .create(session, ResourceType.TABLE, resourceId, "orders", cleanupPath);
+              .create(session, ManagedResourceType.TABLE, resourceId, "orders", cleanupPath);
           return null;
         },
         "Failed to create test cleanup task",

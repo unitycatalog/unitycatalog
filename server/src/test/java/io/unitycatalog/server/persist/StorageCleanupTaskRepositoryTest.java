@@ -2,15 +2,18 @@ package io.unitycatalog.server.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.CleanupFailureReport;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.util.Date;
 import java.util.Optional;
@@ -65,7 +68,7 @@ public class StorageCleanupTaskRepositoryTest {
         session ->
             repository.create(
                 session,
-                ResourceType.TABLE,
+                ManagedResourceType.TABLE,
                 resourceId,
                 "orders",
                 "s3://bucket/a/unused/../b/c///"),
@@ -90,7 +93,11 @@ public class StorageCleanupTaskRepositoryTest {
                     sessionFactory,
                     session -> {
                       repository.create(
-                          session, ResourceType.TABLE, resourceId, "orders", "s3://bucket/path");
+                          session,
+                          ManagedResourceType.TABLE,
+                          resourceId,
+                          "orders",
+                          "s3://bucket/path");
                       throw new IllegalStateException("rollback");
                     },
                     "Expected rollback",
@@ -113,7 +120,7 @@ public class StorageCleanupTaskRepositoryTest {
     Claim first = repository.claim(LEASE_DURATION, INITIAL_DELAY).orElseThrow();
     Date afterClaim = databaseNow();
     assertThat(first.resourceId()).isEqualTo(earliest.getId());
-    assertThat(first.resourceType()).isEqualTo(ResourceType.TABLE);
+    assertThat(first.resourceType()).isEqualTo(ManagedResourceType.TABLE);
     assertThat(first.storageLocation()).isEqualTo("s3://bucket/earliest");
     assertThat(get(earliest.getId()).getLeaseToken()).isEqualTo(first.leaseToken());
     assertThat(get(earliest.getId()).getLeaseExpiresAt().getTime())
@@ -159,6 +166,34 @@ public class StorageCleanupTaskRepositoryTest {
               });
     }
     assertThat(repository.claim(Duration.ofMillis(1), Duration.ZERO)).isPresent();
+  }
+
+  @Test
+  void claimFindsTaskDeletedInSameMillisecondAsClaim() {
+    // Regression: claim() built its cutoff with Date.from(now.toInstant()...), which drops the
+    // sub-millisecond precision that deletedAt keeps from CURRENT_TIMESTAMP. When the task was
+    // deleted in the same millisecond as the claim, the truncated cutoff sat below deletedAt and
+    // the task was skipped. Pin the database clock (with a sub-millisecond component) so create and
+    // claim resolve to the exact same instant: a millisecond-truncated cutoff would miss the task,
+    // a full-precision cutoff includes it.
+    StorageCleanupTaskRepository spied = spy(repository);
+    Timestamp instant = new Timestamp(1_700_000_000_000L);
+    instant.setNanos(500_000); // 0.5 ms past the millisecond boundary
+    doReturn(instant).when(spied).currentDatabaseTime(any());
+
+    UUID resourceId = UUID.randomUUID();
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session ->
+            spied.create(
+                session, ManagedResourceType.TABLE, resourceId, "orders", "s3://bucket/precise"),
+        "Failed to create test storage cleanup task",
+        /* readOnly= */ false);
+
+    assertThat(spied.claim(LEASE_DURATION, Duration.ZERO))
+        .get()
+        .extracting(Claim::resourceId)
+        .isEqualTo(resourceId);
   }
 
   @Test
@@ -243,7 +278,8 @@ public class StorageCleanupTaskRepositoryTest {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session ->
-            repository.create(session, ResourceType.TABLE, UUID.randomUUID(), "orders", location),
+            repository.create(
+                session, ManagedResourceType.TABLE, UUID.randomUUID(), "orders", location),
         "Failed to create test storage cleanup task",
         /* readOnly= */ false);
   }
@@ -253,7 +289,8 @@ public class StorageCleanupTaskRepositoryTest {
         sessionFactory,
         session -> {
           StorageCleanupTaskDAO task =
-              repository.create(session, ResourceType.TABLE, UUID.randomUUID(), "orders", location);
+              repository.create(
+                  session, ManagedResourceType.TABLE, UUID.randomUUID(), "orders", location);
           task.setDeletedAt(deletedAt);
           return task;
         },

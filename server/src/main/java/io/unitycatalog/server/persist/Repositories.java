@@ -1,11 +1,17 @@
 package io.unitycatalog.server.persist;
 
+import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import io.unitycatalog.server.auth.decorator.KeyMapper;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
+import io.unitycatalog.server.persist.utils.FileOperationsImpl;
+import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.util.Objects;
+import java.util.function.UnaryOperator;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
 
@@ -41,29 +47,57 @@ public class Repositories {
     this(sessionFactory, serverProperties, null);
   }
 
-  /**
-   * @param cloudCredentialVendor an injected cloud credential vendor (e.g. a test mock), or {@code
-   *     null} to build the default from {@code serverProperties}. Owning the credential/file-IO
-   *     chain here lets repositories read table storage (e.g. Delta commit files) without
-   *     late-binding.
-   */
   public Repositories(
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
       CloudCredentialVendor cloudCredentialVendor) {
+    this(sessionFactory, serverProperties, cloudCredentialVendor, UnaryOperator.identity());
+  }
+
+  /** Creates repositories with no-op metrics backed by an empty composite registry. */
+  public Repositories(
+      SessionFactory sessionFactory,
+      ServerProperties serverProperties,
+      CloudCredentialVendor cloudCredentialVendor,
+      UnaryOperator<FileOperations> fileOperationsDecorator) {
+    this(sessionFactory, serverProperties, cloudCredentialVendor, fileOperationsDecorator, null);
+  }
+
+  /**
+   * @param cloudCredentialVendor an injected cloud credential vendor (e.g. a test mock), used as
+   *     is, or {@code null} to build the default from {@code serverProperties}, which caches vended
+   *     credentials when the storage credential cache is enabled. Owning the credential/file-IO
+   *     chain here lets repositories read table storage (e.g. Delta commit files) without
+   *     late-binding.
+   * @param fileOperationsDecorator wraps the default {@link FileOperations} before use ({@link
+   *     UnaryOperator#identity()} leaves it unchanged); lets tests map cloud IO to local storage.
+   * @param metrics the domain metrics, or {@code null} for no-op metrics
+   */
+  public Repositories(
+      SessionFactory sessionFactory,
+      ServerProperties serverProperties,
+      CloudCredentialVendor cloudCredentialVendor,
+      UnaryOperator<FileOperations> fileOperationsDecorator,
+      UnityCatalogMetrics metrics) {
+    UnityCatalogMetrics resolvedMetrics =
+        Objects.requireNonNullElseGet(
+            metrics, () -> new UnityCatalogMetrics(new CompositeMeterRegistry()));
     this.sessionFactory = sessionFactory;
     this.externalLocationUtils = new ExternalLocationUtils(sessionFactory);
     CloudCredentialVendor resolvedCloudCredentialVendor =
         cloudCredentialVendor != null
             ? cloudCredentialVendor
-            : new CloudCredentialVendor(serverProperties);
+            : defaultCloudCredentialVendor(serverProperties);
     this.storageCredentialVendor =
         new StorageCredentialVendor(resolvedCloudCredentialVendor, externalLocationUtils);
-    this.fileOperations = new FileOperations(storageCredentialVendor, serverProperties);
+    this.fileOperations =
+        fileOperationsDecorator.apply(
+            new FileOperationsImpl(storageCredentialVendor, serverProperties));
 
     this.catalogRepository = new CatalogRepository(this, sessionFactory);
     this.schemaRepository = new SchemaRepository(this, sessionFactory);
-    this.tableRepository = new TableRepository(this, sessionFactory, serverProperties);
+    this.tableRepository =
+        new TableRepository(this, sessionFactory, serverProperties, resolvedMetrics.getTables());
     this.stagingTableRepository =
         new StagingTableRepository(this, sessionFactory, serverProperties);
     this.volumeRepository = new VolumeRepository(this, sessionFactory);
@@ -80,5 +114,11 @@ public class Repositories {
 
     // KeyMapper uses all the repositories above.
     this.keyMapper = new KeyMapper(this);
+  }
+
+  static CloudCredentialVendor defaultCloudCredentialVendor(ServerProperties serverProperties) {
+    return serverProperties.isStorageCredentialCacheEnabled()
+        ? new CachingCloudCredentialVendor(serverProperties)
+        : new CloudCredentialVendor(serverProperties);
   }
 }

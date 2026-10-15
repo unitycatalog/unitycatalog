@@ -41,6 +41,12 @@ import org.junit.jupiter.api.Test;
  */
 public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest {
 
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    observabilityEnabled = true;
+  }
+
   @Test
   @SneakyThrows
   public void testCatalogAccess() {
@@ -83,6 +89,13 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
     // create a catalog -> -- -> denied
     CreateCatalog catalog2 = new CreateCatalog().name("catalog2").comment("(created from scratch)");
     assertPermissionDenied(() -> principal2CatalogsApi.createCatalog(catalog2));
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        "io.unitycatalog.server.service.CatalogService",
+        "createCatalog",
+        403,
+        1.0);
 
     // list catalogs (admin) -> metastore admin -> allowed - list all
     List<CatalogInfo> adminCatalogs = adminCatalogsApi.listCatalogs(null, null).getCatalogs();
@@ -296,6 +309,13 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
     assertHttpApiException(
         TestUtils.sendRawJsonPost(adminConfig, CATALOGS_PATH, "{\"name\":", "application/json"),
         ErrorCode.INVALID_ARGUMENT);
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        "io.unitycatalog.server.service.CatalogService",
+        "createCatalog",
+        400,
+        3.0);
 
     // Trailing whitespace after the JSON object must not be rejected by the gate.
     HttpResponse<String> trailingNewline =

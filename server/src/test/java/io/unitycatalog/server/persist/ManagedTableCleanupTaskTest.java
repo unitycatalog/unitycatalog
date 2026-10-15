@@ -3,12 +3,13 @@ package io.unitycatalog.server.persist;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.TransactionManager;
@@ -17,6 +18,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Date;
+import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.function.Function;
@@ -101,7 +103,7 @@ class ManagedTableCleanupTaskTest {
     repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, "gcs_table");
     assertDroppedWithTask(gcs, beforeDrop);
 
-    for (String scheme : java.util.List.of("abfs", "abfss")) {
+    for (String scheme : List.of("abfs", "abfss")) {
       TableInfoDAO adls =
           createTable(
               scheme + "_table",
@@ -114,15 +116,47 @@ class ManagedTableCleanupTaskTest {
   }
 
   @Test
-  void externalDropsDoNotCreateTasks() {
+  void externalTableDropsDoNotCreateTasks() {
     TableInfoDAO external =
         createTable(
             "external_table",
             TableType.EXTERNAL,
             id -> tempDir.resolve("external").resolve(id.toString()).toString());
+
     repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, external.getName());
+
+    // findTask == null is the real guard: an external drop queues no cleanup task, so the worker
+    // never touches its files. (No synchronous delete happens for any drop, managed or external.)
     assertThat(findTable(external.getId())).isNull();
     assertThat(findTask(external.getId())).isNull();
+  }
+
+  @Test
+  void cascadingSchemaDropQueuesCleanupForManagedTablesOnly() {
+    TableInfoDAO managed =
+        createTable(
+            "managed_cascade",
+            TableType.MANAGED,
+            id -> tempDir.resolve("__unitystorage/tables").resolve(id.toString()).toString());
+    TableInfoDAO external =
+        createTable(
+            "external_cascade",
+            TableType.EXTERNAL,
+            id -> tempDir.resolve("external").resolve(id.toString()).toString());
+    Date beforeDrop = new Date();
+
+    // A force schema drop cascades each child through TableRepository.deleteTable(session, ...),
+    // the same entry point a direct drop uses, so managed children still queue a cleanup task and
+    // external children still queue none.
+    repositories.getSchemaRepository().deleteSchema(CATALOG + "." + SCHEMA, /* force= */ true);
+
+    assertDroppedWithTask(managed, beforeDrop);
+    assertThat(findTable(external.getId())).isNull();
+    assertThat(findTask(external.getId())).isNull();
+    // Exactly one task: the managed child queued one, the external child queued none. Guards
+    // against a future change queueing a second task with a different id (the resource_id primary
+    // key only blocks a duplicate id).
+    assertThat(allTasks()).hasSize(1);
   }
 
   @Test
@@ -137,7 +171,7 @@ class ManagedTableCleanupTaskTest {
               .getStorageCleanupTaskRepository()
               .create(
                   session,
-                  ResourceType.TABLE,
+                  ManagedResourceType.TABLE,
                   table.getId(),
                   table.getName(),
                   existingTaskLocation);
@@ -148,8 +182,11 @@ class ManagedTableCleanupTaskTest {
 
     assertThatThrownBy(
             () -> repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, table.getName()))
-        .isInstanceOf(RuntimeException.class);
+        .isInstanceOf(BaseException.class);
 
+    // The rollback is what these assertions prove: the table delete and the duplicate task insert
+    // share one transaction, so the insert failure must undo both writes. The table row is still
+    // present, and the pre-existing task keeps its original location.
     assertThat(findTable(table.getId())).isNotNull();
     assertThat(findTask(table.getId()).getStorageLocation()).isEqualTo(existingTaskLocation);
   }
@@ -183,7 +220,7 @@ class ManagedTableCleanupTaskTest {
     assertThat(task).isNotNull();
     assertThat(task.getId()).isEqualTo(table.getId());
     assertThat(task.getName()).isEqualTo(table.getName());
-    assertThat(task.getResourceType()).isEqualTo(ResourceType.TABLE);
+    assertThat(task.getResourceType()).isEqualTo(ManagedResourceType.TABLE);
     assertThat(task.getStorageLocation()).isEqualTo(NormalizedURL.normalize(table.getUrl()));
     assertThat(task.getDeletedAt().getTime())
         .isBetween(beforeDrop.getTime(), System.currentTimeMillis());
@@ -196,8 +233,10 @@ class ManagedTableCleanupTaskTest {
   }
 
   private StorageCleanupTaskDAO findTask(UUID id) {
-    try (var session = sessionFactory.openSession()) {
-      return session.get(StorageCleanupTaskDAO.class, id);
-    }
+    return StorageCleanupTestSupport.findTask(sessionFactory, id);
+  }
+
+  private List<StorageCleanupTaskDAO> allTasks() {
+    return StorageCleanupTestSupport.allTasks(sessionFactory);
   }
 }

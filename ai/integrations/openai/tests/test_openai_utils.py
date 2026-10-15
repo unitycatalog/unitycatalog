@@ -3,7 +3,12 @@ from unittest import mock
 from unittest.mock import Mock
 
 import pytest
-from databricks.sdk.service.catalog import ColumnTypeName, FunctionInfo
+from databricks.sdk.service.catalog import (
+    ColumnTypeName,
+    FunctionInfo,
+    FunctionParameterInfo,
+    FunctionParameterInfos,
+)
 from openai.types.chat.chat_completion_message_tool_call import Function
 
 from tests.helper_functions import mock_chat_completion_response, mock_choice
@@ -147,3 +152,40 @@ def test_generate_tool_call_messages_multiple_choices(client: DatabricksFunction
             "content": json.dumps({"content": "value2"}),
             "tool_call_id": "call_mock",
         }
+
+
+def test_generate_tool_call_messages_accepts_int_for_double_param(client: DatabricksFunctionClient):
+    response = mock_chat_completion_response(
+        function=Function(name="ml__test__circle_area", arguments='{"radius": 2}'),
+    )
+    function_info = FunctionInfo(
+        name="circle_area",
+        full_name="ml.test.circle_area",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="radius",
+                    type_name=ColumnTypeName.DOUBLE,
+                    type_text="double",
+                    position=0,
+                )
+            ]
+        ),
+    )
+    execution_result = FunctionExecutionResult(format="SCALAR", value="12.566370614359172")
+
+    with (
+        mock.patch.object(client, "get_function", return_value=function_info),
+        mock.patch.object(
+            client, "_execute_uc_function", return_value=execution_result
+        ) as execute_mock,
+    ):
+        messages = generate_tool_call_messages(response=response, client=client)
+
+    execute_mock.assert_called_once()
+    assert execute_mock.call_args.args[1] == {"radius": 2}
+    assert messages[1] == {
+        "role": "tool",
+        "content": json.dumps({"content": "12.566370614359172"}),
+        "tool_call_id": "call_mock",
+    }

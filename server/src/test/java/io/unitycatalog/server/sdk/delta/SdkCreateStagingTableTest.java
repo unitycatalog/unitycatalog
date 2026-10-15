@@ -73,7 +73,7 @@ public class SdkCreateStagingTableTest extends BaseCRUDTestWithMockCredentials {
     DeltaStorageCredential sc = resp.getStorageCredentials().get(0);
     assertThat(sc.getOperation()).isEqualTo(DeltaCredentialOperation.READ_WRITE);
     assertThat(sc.getPrefix()).isEqualTo(resp.getLocation());
-    assertThat(sc.getConfig().getS3AccessKeyId()).isEqualTo("accessKey0");
+    assertThat(sc.getConfig().getS3AccessKeyId()).isEqualTo(S3_ACCESS_KEY);
     assertThat(sc.getConfig().getS3SecretAccessKey()).isNotBlank();
 
     // Required / suggested protocol + properties reflect UC's catalog-managed Delta contract.

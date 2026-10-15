@@ -1,5 +1,6 @@
 package io.unitycatalog.server.auth.annotation;
 
+import io.unitycatalog.server.auth.decorator.AuthorizeValueExtractor;
 import io.unitycatalog.server.model.SecurableType;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Repeatable;
@@ -61,4 +62,24 @@ public @interface AuthorizeResourceKey {
   SecurableType value();
 
   String key() default "";
+
+  /**
+   * A custom extractor that computes the resource key from the bound request body, used when a
+   * field lookup by {@link #key} cannot express it (e.g. the value depends on the contents of a
+   * list). When set (non-default), {@link #key} is unused (the variable name comes from {@link
+   * #value}) and no {@code @Param} may be present. Defaults to the sentinel {@link
+   * AuthorizeValueExtractor} itself, meaning "no extractor: use {@link #key}".
+   */
+  Class<? extends AuthorizeValueExtractor> extractor() default AuthorizeValueExtractor.class;
+
+  /**
+   * Names a non-resource SpEL variable (an {@code @AuthorizeKey}); when it evaluates truthy this
+   * resource key is skipped: not resolved to an id, and absent from the expression context. Used
+   * for a dual-purpose endpoint where a resource applies to only one request shape (e.g. the
+   * Iceberg {@code updateTable} {@code TABLE} key is skipped for a staged-create commit, where no
+   * table row exists yet). Because the deciding variable may come from the body, the skip is
+   * applied after request values are gathered and before ids are resolved. Empty (the default)
+   * means always resolve.
+   */
+  String skipWhen() default "";
 }

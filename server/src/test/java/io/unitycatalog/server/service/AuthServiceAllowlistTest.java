@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Test;
 public class AuthServiceAllowlistTest {
 
   private static final String TOKEN_ENDPOINT = "/api/1.0/unity-control/auth/tokens";
+  private static final String ENABLED_USER_EMAIL = "test-user@example.com";
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   abstract static class TokenExchangeTestBase extends BaseAuthCRUDTest {
@@ -38,11 +39,12 @@ public class AuthServiceAllowlistTest {
     public void setUp() {
       super.setUp();
       client = WebClient.builder(serverConfig.getServerUrl()).build();
+      createEnabledUser(ENABLED_USER_EMAIL);
     }
 
     protected String createIdentityToken(
         String issuer, String audience, Algorithm algorithm, String keyId) {
-      return createIdentityTokenForSubject(issuer, audience, "admin", algorithm, keyId);
+      return createIdentityTokenForSubject(issuer, audience, ENABLED_USER_EMAIL, algorithm, keyId);
     }
 
     protected String createIdentityTokenForSubject(

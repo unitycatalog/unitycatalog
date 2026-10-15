@@ -498,6 +498,15 @@ public class ModelRepository {
                 + registeredModelName);
       }
     }
+    // Versions live under the model directory, so one task covers a forced model deletion.
+    repositories
+        .getStorageCleanupTaskRepository()
+        .create(
+            session,
+            ManagedResourceType.REGISTERED_MODEL,
+            registeredModelInfoDAO.getId(),
+            registeredModelInfoDAO.getName(),
+            registeredModelInfoDAO.getUrl());
     session.remove(registeredModelInfoDAO);
   }
 
@@ -781,6 +790,14 @@ public class ModelRepository {
       throw new BaseException(
           ErrorCode.NOT_FOUND, "Model version not found: " + fullName + "/" + version);
     }
+    repositories
+        .getStorageCleanupTaskRepository()
+        .create(
+            session,
+            ManagedResourceType.MODEL_VERSION,
+            modelVersionInfoDAO.getId(),
+            modelVersionInfoDAO.getVersion().toString(),
+            modelVersionInfoDAO.getUrl());
     session.remove(modelVersionInfoDAO);
   }
 

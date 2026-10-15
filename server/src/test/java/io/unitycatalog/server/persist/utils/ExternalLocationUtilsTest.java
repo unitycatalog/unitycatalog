@@ -6,10 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
-import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO.ResourceType;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Path;
@@ -181,10 +181,29 @@ public class ExternalLocationUtilsTest {
   }
 
   @Test
+  public void testListLocalExternalLocationUrls() {
+    session.beginTransaction();
+    String externalLocationUrl = NormalizedURL.from(tempDir.resolve("el").toUri()).toString();
+    for (String url : List.of(externalLocationUrl, "s3://bucket/el")) {
+      session.persist(
+          ExternalLocationDAO.builder()
+              .id(UUID.randomUUID())
+              .name("external_" + url.length())
+              .url(url)
+              .credentialId(UUID.randomUUID())
+              .build());
+    }
+    session.getTransaction().commit();
+
+    assertThat(externalLocationUtils.listLocalExternalLocationUrls())
+        .containsExactly(externalLocationUrl);
+  }
+
+  @Test
   public void testPendingCleanupCoversEveryResourceType() {
     session.beginTransaction();
     StorageCleanupTaskRepository repository = new StorageCleanupTaskRepository(sessionFactory);
-    for (ResourceType resourceType : ResourceType.values()) {
+    for (ManagedResourceType resourceType : ManagedResourceType.values()) {
       NormalizedURL location = NormalizedURL.from("s3://bucket/" + resourceType);
       repository.create(
           session, resourceType, UUID.randomUUID(), "deleted_resource", location.toString());
@@ -221,7 +240,7 @@ public class ExternalLocationUtilsTest {
 
   private StorageCleanupTaskDAO createCleanupTask(String location) {
     return new StorageCleanupTaskRepository(sessionFactory)
-        .create(session, ResourceType.TABLE, UUID.randomUUID(), "orders", location);
+        .create(session, ManagedResourceType.TABLE, UUID.randomUUID(), "orders", location);
   }
 
   private static void assertPendingCleanupDenied(Runnable action) {

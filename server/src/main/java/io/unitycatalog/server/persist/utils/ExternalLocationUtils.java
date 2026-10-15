@@ -7,6 +7,7 @@ import com.google.common.annotations.VisibleForTesting;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
@@ -264,6 +265,19 @@ public class ExternalLocationUtils {
                     .map(entity -> Pair.<SecurableType, IdentifiableDAO>of(securableType, entity)))
         .limit(limit)
         .toList();
+  }
+
+  /** Returns the URL of every external location on the local file system, as stored. */
+  public List<String> listLocalExternalLocationUrls() {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session ->
+            session
+                .createQuery(
+                    "SELECT url FROM ExternalLocationDAO WHERE url LIKE 'file:%'", String.class)
+                .list(),
+        "Failed to list local external locations",
+        /* readOnly= */ true);
   }
 
   /**
@@ -695,21 +709,27 @@ public class ExternalLocationUtils {
 
   public static NormalizedURL getManagedLocationForTable(
       NormalizedURL parentStorageLocation, UUID tableId) {
-    return getManagedLocationForEntity(parentStorageLocation, "tables", tableId);
+    return getManagedLocationForEntity(
+        parentStorageLocation, ManagedResourceType.TABLE.pathSegment(), tableId);
   }
 
   public static NormalizedURL getManagedLocationForVolume(
       NormalizedURL parentStorageLocation, UUID volumeId) {
-    return getManagedLocationForEntity(parentStorageLocation, "volumes", volumeId);
+    return getManagedLocationForEntity(
+        parentStorageLocation, ManagedResourceType.VOLUME.pathSegment(), volumeId);
   }
 
   public static NormalizedURL getManagedLocationForModel(
       NormalizedURL parentStorageLocation, UUID modelId) {
-    return getManagedLocationForEntity(parentStorageLocation, "models", modelId);
+    return getManagedLocationForEntity(
+        parentStorageLocation, ManagedResourceType.REGISTERED_MODEL.pathSegment(), modelId);
   }
 
   public static NormalizedURL getManagedLocationForModelVersion(
       NormalizedURL parentModelStorageLocation, UUID modelVersionId) {
-    return getManagedLocationForEntity(parentModelStorageLocation, "versions", modelVersionId);
+    return getManagedLocationForEntity(
+        parentModelStorageLocation,
+        ManagedResourceType.MODEL_VERSION.pathSegment(),
+        modelVersionId);
   }
 }

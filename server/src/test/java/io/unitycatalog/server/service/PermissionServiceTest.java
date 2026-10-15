@@ -38,6 +38,12 @@ import org.junit.jupiter.api.Test;
  */
 public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
 
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    observabilityEnabled = true;
+  }
+
   @BeforeEach
   @SneakyThrows
   public void setUp() {
@@ -95,6 +101,16 @@ public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
     assertThat(privilegesFor(tablePermissions, REGULAR_1))
         .containsExactlyInAnyOrder(Privilege.SELECT, Privilege.MODIFY);
     assertThat(privilegesFor(tablePermissions, REGULAR_2)).isEmpty();
+
+    // A securable that does not exist is a not-found, whatever privileges the caller holds. The
+    // volume case is the one worth reading back: the securable is resolved through
+    // VolumeRepository.getVolume, which used its lookup without checking it found anything, so this
+    // endpoint answered a 500 that named an internal class.
+    String missingVolume = SCHEMA_FULL_NAME + ".no_such_volume";
+    assertApiException(
+        () -> grantsApi.get(SecurableType.VOLUME, missingVolume, null),
+        ErrorCode.NOT_FOUND,
+        "Volume not found: " + missingVolume);
   }
 
   @Test
@@ -108,6 +124,7 @@ public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
                     SecurableType.CATALOG,
                     CATALOG_NAME,
                     addPrivileges(REGULAR_2, Privilege.USE_CATALOG)));
+    assertHttpRequestMetric("updateCatalogAuthorization", 403);
   }
 
   @Test
@@ -127,6 +144,31 @@ public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
         () -> unauthGrantsApi.get(SecurableType.CATALOG, CATALOG_NAME, null),
         ErrorCode.UNAUTHENTICATED,
         "authorization");
+    assertHttpRequestMetric("getCatalogAuthorization", 401);
+  }
+
+  @Test
+  @SneakyThrows
+  public void unknownProtectedEndpointIsRecordedWithAndWithoutAuthentication() {
+    String path = "/api/2.1/unity-catalog/does-not-exist";
+    String fallbackService = "com.linecorp.armeria.server.FallbackService";
+
+    var unauthenticatedResponse = TestUtils.sendRawGet(serverConfig, path);
+    assertThat(unauthenticatedResponse.statusCode()).isEqualTo(401);
+    TestUtils.assertHttpRequestMetric(
+        serverConfig, observabilityServerConfig, fallbackService, "GET", 401, 1.0);
+
+    var authenticatedResponse = TestUtils.sendRawGet(adminConfig, path);
+    // Authorization currently turns an unmatched authenticated route into 500. Allow 404 so a
+    // future routing fix does not change this test's metric-counting contract.
+    assertThat(authenticatedResponse.statusCode()).isIn(404, 500);
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        fallbackService,
+        "GET",
+        authenticatedResponse.statusCode(),
+        1.0);
   }
 
   // ---------------------------------------------------------------------------
@@ -137,6 +179,17 @@ public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
   private GrantsApi grantsApiFor(String userEmail) {
     ServerConfig userConfig = createTestUserServerConfig(userEmail);
     return new GrantsApi(TestUtils.createApiClient(userConfig));
+  }
+
+  @SneakyThrows
+  private void assertHttpRequestMetric(String method, int status) {
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        "io.unitycatalog.server.service.PermissionService",
+        method,
+        status,
+        1.0);
   }
 
   private static UpdatePermissions addPrivileges(String principal, Privilege... privileges) {

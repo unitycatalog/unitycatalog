@@ -21,10 +21,11 @@ public final class AuthorizeExpressions {
   private AuthorizeExpressions() {}
 
   /**
-   * Authorization policy for reading table metadata (UC REST {@code GET /tables/{name}} and Delta
-   * REST Catalog {@code loadTable}). Metastore admin and catalog owner pass unconditionally; schema
-   * owner passes with catalog {@code USE_CATALOG}; regular callers need {@code USE_SCHEMA} + {@code
-   * USE_CATALOG} plus any of {@code OWNER} / {@code SELECT} / {@code MODIFY} on the table itself.
+   * Authorization policy for reading table metadata (UC REST {@code GET /tables/{name}}, UC Delta
+   * API, and the Iceberg REST {@code loadTable}). Metastore admin and catalog owner pass
+   * unconditionally; schema owner passes with catalog {@code USE_CATALOG}; regular callers need
+   * {@code USE_SCHEMA} + {@code USE_CATALOG} plus any of {@code OWNER} / {@code SELECT} / {@code
+   * MODIFY} on the table itself.
    */
   public static final String GET_TABLE =
       """
@@ -35,6 +36,72 @@ public final class AuthorizeExpressions {
           #authorize(#principal, #schema, USE_SCHEMA) &&
           #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
       """;
+
+  /**
+   * Catalog-level read access: metastore admin, or {@code OWNER}/{@code USE_CATALOG} on the
+   * catalog. Shared by the catalog get/list endpoints and the Delta/Iceberg config endpoints.
+   */
+  public static final String GET_CATALOG =
+      """
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
+      """;
+
+  /**
+   * Schema-level read access: metastore admin, catalog {@code OWNER}, or schema {@code
+   * OWNER}/{@code USE_SCHEMA} with catalog {@code USE_CATALOG}. Used as the get-schema gate and the
+   * list-schemas/namespaces response filter (listing and reading grant the same access).
+   */
+  public static final String GET_SCHEMA =
+      """
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorizeAny(#principal, #catalog, USE_CATALOG) &&
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA))
+      """;
+
+  /**
+   * Catalog tier for creating a schema: catalog {@code OWNER}, or {@code USE_CATALOG} + {@code
+   * CREATE_SCHEMA}. Used directly by Iceberg {@code createNamespace} (no storage root); {@link
+   * #CREATE_SCHEMA_WITH_STORAGE_ROOT} wraps it for the UC REST endpoint.
+   */
+  public static final String CREATE_SCHEMA =
+      """
+      #authorize(#principal, #catalog, OWNER) ||
+      #authorizeAll(#principal, #catalog, USE_CATALOG, CREATE_SCHEMA)
+      """;
+
+  /**
+   * UC REST create-schema policy: the {@link #CREATE_SCHEMA} catalog tier plus, when a {@code
+   * storage_root} is supplied, {@code OWNER}/{@code CREATE_MANAGED_STORAGE} on the covering
+   * (non-overlapping) external location. Mirrors the createCatalog storage-root gate.
+   */
+  public static final String CREATE_SCHEMA_WITH_STORAGE_ROOT =
+      "("
+          + CREATE_SCHEMA
+          + """
+          ) &&
+          (#storage_root == null ||
+           (#no_overlap_with_data_securable &&
+            #external_location != null &&
+            #authorizeAny(#principal, #external_location, OWNER, CREATE_MANAGED_STORAGE)))
+          """;
+
+  /**
+   * Schema-level mutation policy (update or delete a schema): catalog {@code OWNER}, or {@code
+   * USE_CATALOG} + schema {@code OWNER}. Metastore admin alone is intentionally not sufficient.
+   * Shared by the UC REST {@code updateSchema}/{@code deleteSchema} and the Iceberg REST {@code
+   * updateNamespaceProperties}/{@code dropNamespace} endpoints (updating and dropping a schema
+   * require the same privilege).
+   */
+  public static final String UPDATE_SCHEMA =
+      """
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER))
+      """;
+
+  /** Deleting a schema requires the same privilege as {@link #UPDATE_SCHEMA}. */
+  public static final String DELETE_SCHEMA = UPDATE_SCHEMA;
 
   /**
    * Authorization policy for creating a staging table (UC REST {@code POST /staging-tables} and UC
@@ -57,9 +124,10 @@ public final class AuthorizeExpressions {
    * needs {@code OWNER}/{@code CREATE_EXTERNAL_TABLE} on the external location (if one resolves)
    * and the storage path must not overlap a data securable.
    *
-   * <p>The {@code #table_type} SpEL variable comes from {@code @AuthorizeKey(key = "table-type")};
-   * kebab-case payload keys surface with hyphens mapped to underscores (see {@link
-   * io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator#getVariableName}).
+   * <p>The {@code #table_type} SpEL variable is {@code 'MANAGED'} or {@code 'EXTERNAL'}, supplied
+   * by the calling endpoint: a payload field for Delta ({@code @AuthorizeKey(key = "table-type")}),
+   * or a value derived by the Iceberg {@code *TableTypeExtractor} for the REST create and
+   * staged-commit paths.
    */
   public static final String CREATE_TABLE =
       """
@@ -90,9 +158,20 @@ public final class AuthorizeExpressions {
       """;
 
   /**
-   * Authorization policy for deleting a table, shared by the UC REST and Delta REST Catalog delete
-   * endpoints. Metastore admin alone is intentionally not sufficient -- the caller must hold {@code
-   * OWNER} somewhere in the catalog / schema / table hierarchy.
+   * Iceberg {@code updateTable} ({@code POST /tables/{table}}) policy for this dual-purpose
+   * endpoint: a staged-create commit ({@code #staged_create}, an {@code assert-create} requirement)
+   * is authorized exactly as {@link #CREATE_TABLE}; any other commit as {@link #UPDATE_TABLE}. The
+   * handler binds the {@code TABLE} resource key with {@code skipWhen = "staged_create"}, so it is
+   * not resolved for a staged create (no table row exists yet) and the two branches key on {@code
+   * #table} or not without one shape's resolution failing the other.
+   */
+  public static final String UPDATE_ICEBERG_TABLE =
+      "#staged_create ? (" + CREATE_TABLE + ") : (" + UPDATE_TABLE + ")";
+
+  /**
+   * Authorization policy for deleting a table, shared by the UC REST, UC Delta API, and Iceberg
+   * REST delete endpoints. Metastore admin alone is intentionally not sufficient -- the caller must
+   * hold {@code OWNER} somewhere in the catalog / schema / table hierarchy.
    */
   public static final String DELETE_TABLE =
       """

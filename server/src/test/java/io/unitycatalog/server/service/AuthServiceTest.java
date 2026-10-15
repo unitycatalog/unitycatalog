@@ -22,6 +22,7 @@ import com.linecorp.armeria.common.RequestHeadersBuilder;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
+import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
@@ -30,6 +31,7 @@ import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,10 +40,17 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
 
   private static final String LOGOUT_ENDPOINT = "/api/1.0/unity-control/auth/logout";
   private static final String TOKEN_ENDPOINT = "/api/1.0/unity-control/auth/tokens";
+  private static final String ENABLED_USER_EMAIL = "test-user@example.com";
   private static final String EMPTY_RESPONSE = "{}";
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private WebClient client;
+
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    observabilityEnabled = true;
+  }
 
   @BeforeEach
   @Override
@@ -51,13 +60,20 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   }
 
   @Test
-  public void testLogout() {
+  public void testLogout() throws Exception {
     // Logout with cookie should return status as 200 and empty ejson content
     RequestHeaders headersWithCookie = buildLogoutRequestHeader(true);
 
     AggregatedHttpResponse response = client.execute(headersWithCookie).aggregate().join();
     assertEquals(HttpStatus.OK, response.status());
     assertThat(response.contentUtf8()).isEqualTo(EMPTY_RESPONSE);
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        "io.unitycatalog.server.service.AuthService",
+        "logout",
+        HttpStatus.OK.code(),
+        1.0);
 
     // Logout without cookie should return 401 (no credentials provided)
     RequestHeaders headersWithoutCookie = buildLogoutRequestHeader(false);
@@ -66,12 +82,19 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   }
 
   @Test
-  public void testExpiredAccessTokenIsRejected() {
+  public void testExpiredAccessTokenIsRejected() throws Exception {
     // Request with expired access token should return 401
     RequestHeaders headers = buildLogoutRequestHeaderWithToken(createExpiredAccessToken());
 
     AggregatedHttpResponse response = client.execute(headers).aggregate().join();
     assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        "io.unitycatalog.server.service.AuthService",
+        "logout",
+        HttpStatus.UNAUTHORIZED.code(),
+        1.0);
   }
 
   private RequestHeaders buildLogoutRequestHeader(boolean includeCookie) {
@@ -116,6 +139,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   /**
    * Creates a signed identity token.
    *
+   * @param subject the principal asserted by the token (used as the {@code sub} claim)
    * @param issuer the token issuer
    * @param audience the token audience (may be null)
    * @param algorithm the signing algorithm
@@ -123,10 +147,10 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
    * @return signed JWT string
    */
   private String createIdentityToken(
-      String issuer, String audience, Algorithm algorithm, String keyId) {
+      String subject, String issuer, String audience, Algorithm algorithm, String keyId) {
     var builder =
         JWT.create()
-            .withSubject("admin")
+            .withSubject(subject)
             .withIssuer(issuer)
             .withIssuedAt(new Date())
             .withKeyId(keyId)
@@ -162,8 +186,10 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
    */
   @Test
   public void testTokenExchangeWithCorrectIssuerAndAudience() throws IOException {
+    createEnabledUser(ENABLED_USER_EMAIL);
     String token =
-        createIdentityToken(testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
+        createIdentityToken(
+            ENABLED_USER_EMAIL, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
 
     AggregatedHttpResponse response = exchangeToken(token);
 
@@ -176,7 +202,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
             JWT.decode(body.get("access_token").asText())
                 .getClaim(JwtClaim.SUBJECT.key())
                 .asString())
-        .isEqualTo("admin");
+        .isEqualTo(ENABLED_USER_EMAIL);
     assertThat(body.get("issued_token_type").asText())
         .isEqualTo("urn:ietf:params:oauth:token-type:access_token");
     assertThat(body.get("token_type").asText()).isEqualTo("Bearer");
@@ -195,7 +221,8 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   @Test
   public void testTokenExchangeWithCorrectIssuerAndWrongAudience() {
     String token =
-        createIdentityToken(testIssuer, "wrong-audience", testIssuerAlgorithm, testIssuerKeyId);
+        createIdentityToken(
+            ENABLED_USER_EMAIL, testIssuer, "wrong-audience", testIssuerAlgorithm, testIssuerKeyId);
 
     AggregatedHttpResponse response = exchangeToken(token);
 
@@ -216,12 +243,60 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
 
     String token =
         createIdentityToken(
-            "https://evil-issuer.example.com", TEST_AUDIENCE, foreignAlgorithm, foreignKeyId);
+            ENABLED_USER_EMAIL,
+            "https://evil-issuer.example.com",
+            TEST_AUDIENCE,
+            foreignAlgorithm,
+            foreignKeyId);
 
     AggregatedHttpResponse response = exchangeToken(token);
 
     // The issuer is not in the allowlist → 403 Forbidden
     assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+  }
+
+  @Test
+  public void testTokenExchangeRejectsDisallowedPrincipals() throws Exception {
+    // The reserved "admin" principal (the internal service-token, metastore-OWNER identity) must
+    // never be exchangeable, including a case variant such as "ADMIN" that a case-insensitive
+    // database collation would resolve back to the admin user; and a correctly-signed token for
+    // any non-enabled user must fail closed. All return the same generic INVALID_ARGUMENT.
+    for (String subject : List.of("admin", "ADMIN", "nobody@example.com")) {
+      assertExchangeRejectedAsInvalid(
+          "sub=" + subject,
+          createIdentityToken(
+              subject, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId));
+    }
+
+    // The principal is taken from the "email" claim (falling back to "sub"), so an opaque subject
+    // paired with email=admin must be rejected just like sub=admin.
+    String emailAdminToken =
+        JWT.create()
+            .withSubject("opaque-subject-id")
+            .withIssuer(testIssuer)
+            .withAudience(TEST_AUDIENCE)
+            .withIssuedAt(new Date())
+            .withKeyId(testIssuerKeyId)
+            .withJWTId(UUID.randomUUID().toString())
+            .withClaim(JwtClaim.EMAIL.key(), "admin")
+            .sign(testIssuerAlgorithm);
+    assertExchangeRejectedAsInvalid("email=admin", emailAdminToken);
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        "io.unitycatalog.server.service.AuthService",
+        "grantToken",
+        HttpStatus.BAD_REQUEST.code(),
+        4.0);
+  }
+
+  private void assertExchangeRejectedAsInvalid(String description, String token)
+      throws IOException {
+    AggregatedHttpResponse response = exchangeToken(token);
+    assertThat(response.status()).as(description).isEqualTo(HttpStatus.BAD_REQUEST);
+    JsonNode error = MAPPER.readTree(response.contentUtf8());
+    assertThat(error.get("error_code").asText()).as(description).isEqualTo("INVALID_ARGUMENT");
+    assertThat(error.has("access_token")).as(description).isFalse();
   }
 
   @Test
@@ -241,11 +316,25 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     AggregatedHttpResponse first =
         client.execute(headers, HttpData.ofUtf8(userJson)).aggregate().join();
     assertThat(first.status().code()).isEqualTo(201);
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        "io.unitycatalog.server.service.Scim2UserService",
+        "createScimUser",
+        HttpStatus.CREATED.code(),
+        1.0);
 
     // Second create triggers Scim2RuntimeException wrapping ResourceConflictException
     AggregatedHttpResponse second =
         client.execute(headers, HttpData.ofUtf8(userJson)).aggregate().join();
     assertThat(second.status()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    TestUtils.assertHttpRequestMetric(
+        serverConfig,
+        observabilityServerConfig,
+        "io.unitycatalog.server.service.Scim2UserService",
+        "createScimUser",
+        HttpStatus.INTERNAL_SERVER_ERROR.code(),
+        1.0);
 
     // Verify the SCIM error response is a valid JSON object (not double-serialized)
     // with the expected SCIM error fields

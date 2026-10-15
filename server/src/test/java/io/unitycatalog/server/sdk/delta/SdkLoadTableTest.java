@@ -149,7 +149,11 @@ public class SdkLoadTableTest extends BaseServerTest {
       // External table: no commits
       assertThat(response.getCommits()).isNullOrEmpty();
       assertThat(response.getLatestTableVersion()).isNull();
-      assertThat(response.getAllowedMaintenanceOperations()).isEmpty();
+      assertThat(response.getAllowedMaintenanceOperations())
+          .containsExactly(
+              DeltaMaintenanceOperation.DATA_REORGANIZATION,
+              DeltaMaintenanceOperation.DATA_CLEANUP,
+              DeltaMaintenanceOperation.METADATA_CLEANUP);
     }
 
     // -------- Managed DELTA table: commit + backfill flow --------

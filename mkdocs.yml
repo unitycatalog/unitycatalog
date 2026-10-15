@@ -37,6 +37,7 @@ nav:
       - Users and Privileges: server/users-privileges.md
       - Deployment: server/deployment.md
       - Deploy for AWS: server/aws.md
+      - Observability: server/observability.md
   - Integrations:
       - Overview: integrations/index.md
       - Apache Spark: integrations/unity-catalog-spark.md

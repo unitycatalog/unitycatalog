@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
@@ -122,14 +123,52 @@ public class ServerPropertiesTest {
   @Test
   public void testIcebergTableEnabledCheck() {
     ServerProperties serverProperties = new ServerProperties();
+    // Iceberg tables are enabled by default, so the check passes without extra configuration.
+    assertThat(serverProperties.isIcebergTableEnabled()).isTrue();
+    serverProperties.checkIcebergTableEnabled();
+
+    serverProperties.set(Property.ICEBERG_TABLE_ENABLED, "false");
     assertThat(serverProperties.isIcebergTableEnabled()).isFalse();
     assertThatThrownBy(serverProperties::checkIcebergTableEnabled)
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("server.iceberg-table.enabled=true");
+  }
 
-    serverProperties.set(Property.ICEBERG_TABLE_ENABLED, "true");
-    assertThat(serverProperties.isIcebergTableEnabled()).isTrue();
-    serverProperties.checkIcebergTableEnabled();
+  @Test
+  public void testExternalLocalRootsValidator() {
+    testValidProperty(Property.EXTERNAL_LOCAL_ROOTS, "/data/uc-external");
+    testValidProperty(Property.EXTERNAL_LOCAL_ROOTS, "file:///data/uc-external/");
+    testValidProperty(Property.EXTERNAL_LOCAL_ROOTS, "/data/a, file:///data/b");
+
+    // Only local paths.
+    testInvalidProperty(
+        Property.EXTERNAL_LOCAL_ROOTS,
+        "/data/ok,s3://bucket/b",
+        "Invalid local path 's3://bucket/b'",
+        "server.external-local-roots");
+    // A local path NormalizedURL rejects (see NormalizedURLTest for the cases).
+    testInvalidProperty(
+        Property.EXTERNAL_LOCAL_ROOTS,
+        "/data/ok,file:///data/a%2Fb",
+        "Invalid local path 'file:///data/a%2Fb'",
+        "server.external-local-roots");
+  }
+
+  @Test
+  public void testExternalLocalRoots() {
+    // Fails closed: no local roots unless configured.
+    assertThat(new ServerProperties().getExternalLocalRoots()).isEmpty();
+
+    Properties props = new Properties();
+    props.setProperty(
+        Property.EXTERNAL_LOCAL_ROOTS.getKey(), " /data/uc-external/ , file:///mnt/shared,");
+    assertThat(new ServerProperties(props).getExternalLocalRoots())
+        .containsExactly(Paths.get("/data/uc-external"), Paths.get("/mnt/shared"));
+
+    // A root is the path the server opens: %2D is "-".
+    props.setProperty(Property.EXTERNAL_LOCAL_ROOTS.getKey(), "file:///data/uc%2Dext");
+    assertThat(new ServerProperties(props).getExternalLocalRoots())
+        .containsExactly(Paths.get("/data/uc-ext"));
   }
 
   @Test
@@ -271,6 +310,61 @@ public class ServerPropertiesTest {
     leaseTooShort.setProperty(Property.STORAGE_CLEANUP_LEASE_DURATION.getKey(), "PT21S");
     assertThat(new ServerProperties(leaseTooShort).getStorageCleanupLeaseDuration())
         .isEqualTo(Duration.ofSeconds(21));
+  }
+
+  @Test
+  public void testStorageCredentialCacheConfiguration() {
+    ServerProperties defaults = new ServerProperties();
+    assertThat(defaults.isStorageCredentialCacheEnabled()).isFalse();
+    assertThat(defaults.getStorageCredentialCacheMaxSize()).isEqualTo(1000);
+    assertThat(defaults.getStorageCredentialCacheMaxAge()).isEqualTo(Duration.ofMinutes(5));
+
+    Properties custom = new Properties();
+    custom.setProperty(Property.STORAGE_CREDENTIAL_CACHE_ENABLED.getKey(), "true");
+    custom.setProperty(Property.STORAGE_CREDENTIAL_CACHE_MAX_SIZE.getKey(), "10");
+    custom.setProperty(Property.STORAGE_CREDENTIAL_CACHE_MAX_AGE.getKey(), "PT2M");
+    ServerProperties overridden = new ServerProperties(custom);
+    assertThat(overridden.isStorageCredentialCacheEnabled()).isTrue();
+    assertThat(overridden.getStorageCredentialCacheMaxSize()).isEqualTo(10);
+    assertThat(overridden.getStorageCredentialCacheMaxAge()).isEqualTo(Duration.ofMinutes(2));
+
+    testInvalidProperty(
+        Property.STORAGE_CREDENTIAL_CACHE_MAX_SIZE,
+        "0",
+        "server.storage-credential-cache.max-size");
+    testInvalidProperty(
+        Property.STORAGE_CREDENTIAL_CACHE_MAX_AGE,
+        "PT0S",
+        "server.storage-credential-cache.max-age",
+        "Expected at least one millisecond");
+  }
+
+  @Test
+  public void testReadinessConfiguration() {
+    // Defaults
+    ServerProperties defaults = new ServerProperties();
+    assertThat(defaults.getReadinessProbeInterval()).isEqualTo(Duration.ofSeconds(5));
+    assertThat(defaults.getReadinessDbTimeout()).isEqualTo(Duration.ofSeconds(2));
+
+    // Custom overrides are picked up
+    Properties custom = new Properties();
+    custom.setProperty(Property.READINESS_PROBE_INTERVAL.getKey(), "PT10S");
+    custom.setProperty(Property.READINESS_DB_TIMEOUT.getKey(), "PT3S");
+    ServerProperties overridden = new ServerProperties(custom);
+    assertThat(overridden.getReadinessProbeInterval()).isEqualTo(Duration.ofSeconds(10));
+    assertThat(overridden.getReadinessDbTimeout()).isEqualTo(Duration.ofSeconds(3));
+
+    // Invalid: non-positive and malformed durations are rejected
+    testInvalidProperty(
+        Property.READINESS_PROBE_INTERVAL,
+        "PT0S",
+        "server.readiness.probe-interval",
+        "Expected at least one millisecond");
+    testInvalidProperty(
+        Property.READINESS_DB_TIMEOUT,
+        "2 seconds",
+        "Invalid value '2 seconds'",
+        "server.readiness.db-timeout");
   }
 
   @Test

@@ -321,7 +321,8 @@ public class DeltaCommitRepository {
           // Serialize all commit/backfill mutations on this table by write-locking its uc_tables
           // row, matching the Delta update path. This makes the commit-log reads and writes below
           // atomic against a concurrent commit or backfill.
-          RepositoryUtils.lockTableForCommit(session, tableInfoDAO, tableId, Optional.empty());
+          RepositoryUtils.lockTableForCommit(
+              session, tableInfoDAO, tableId, Optional.empty(), ErrorCode.COMMIT_STATE_UNKNOWN);
           validateTableForCommit(session, commit, tableInfoDAO, uniformFields);
           postCommitCore(session, tableId, tableInfoDAO, commit, uniformFields);
           return null;

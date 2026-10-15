@@ -139,17 +139,7 @@ public class StagingTableRepository {
   public StagingTableDAO commitStagingTable(
       Session session, String callerId, NormalizedURL storageLocation) {
     serverProperties.checkManagedTableEnabled();
-    StagingTableDAO stagingTableDAO = findByStagingLocation(session, storageLocation);
-    if (stagingTableDAO == null) {
-      throw new BaseException(
-          ErrorCode.TABLE_NOT_FOUND, "Staging table not found: " + storageLocation);
-    }
-    if (!Objects.equals(stagingTableDAO.getCreatedBy(), callerId)) {
-      throw new BaseException(
-          ErrorCode.PERMISSION_DENIED,
-          "User attempts to create table on a staging location without ownership: "
-              + storageLocation);
-    }
+    StagingTableDAO stagingTableDAO = requireOwnedStagingTable(session, callerId, storageLocation);
     if (stagingTableDAO.isStageCommitted()) {
       throw new BaseException(
           ErrorCode.FAILED_PRECONDITION, "Staging table already committed: " + storageLocation);
@@ -161,6 +151,60 @@ public class StagingTableRepository {
     stagingTableDAO.setStageCommittedAt(now);
     stagingTableDAO.setAccessedAt(now);
     session.merge(stagingTableDAO);
+    return stagingTableDAO;
+  }
+
+  /**
+   * Read-only pre-check for a staged-create commit: returns the staging table at the given
+   * location, verifying it exists and is owned by the current caller. The Iceberg REST commit calls
+   * this before writing any metadata, so a managed location the caller does not own (e.g. a
+   * fabricated {@code __unitystorage} path) is rejected before a storage write happens.
+   * Committed-state and the authoritative ownership check are left to {@link #commitStagingTable}
+   * in the create transaction, so a replay of an already-materialized create still surfaces as the
+   * usual create conflict.
+   *
+   * @param storageLocation the normalized storage location URL of the staging table
+   * @return StagingTableDAO the owned staging table, as a detached read-only snapshot (its own
+   *     transaction has closed; safe to read, not attached for writes)
+   * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if no staging table exists there
+   * @throws BaseException with ErrorCode.PERMISSION_DENIED if the caller is not the owner
+   */
+  public StagingTableDAO requireOwnedStagingTable(NormalizedURL storageLocation) {
+    serverProperties.checkManagedTableEnabled();
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> requireOwnedStagingTable(session, callerId, storageLocation),
+        "Error validating staging table: " + storageLocation,
+        /* readOnly= */ true);
+  }
+
+  /**
+   * Returns the staging table at the given location, throwing if it is absent or owned by another
+   * user. Shared by {@link #requireOwnedStagingTable(NormalizedURL)} (the read-only pre-check) and
+   * {@link #commitStagingTable} (the authoritative commit) so both apply the same existence and
+   * ownership rules.
+   *
+   * @param session the Hibernate session for database operations
+   * @param callerId the identifier of the user that must own the staging table
+   * @param storageLocation the normalized storage location URL of the staging table
+   * @return StagingTableDAO the staging table owned by the caller
+   * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if no staging table exists there
+   * @throws BaseException with ErrorCode.PERMISSION_DENIED if the caller is not the owner
+   */
+  private StagingTableDAO requireOwnedStagingTable(
+      Session session, String callerId, NormalizedURL storageLocation) {
+    StagingTableDAO stagingTableDAO = findByStagingLocation(session, storageLocation);
+    if (stagingTableDAO == null) {
+      throw new BaseException(
+          ErrorCode.TABLE_NOT_FOUND, "Staging table not found: " + storageLocation);
+    }
+    if (!Objects.equals(stagingTableDAO.getCreatedBy(), callerId)) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED,
+          "User attempts to create table on a staging location without ownership: "
+              + storageLocation);
+    }
     return stagingTableDAO;
   }
 

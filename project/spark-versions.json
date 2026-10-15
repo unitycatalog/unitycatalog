@@ -1,8 +1,15 @@
 {
   "default": "4.1.0",
   "versions": [
-    {"version": "4.0.0", "sourceDirs": ["scala-shims/spark-4.0-4.1"]},
-    {"version": "4.1.0", "sourceDirs": ["scala-shims/spark-4.0-4.1"]},
-    {"version": "4.2.0", "sourceDirs": ["scala-shims/spark-4.2"]}
+    {"version": "4.0.0", "sourceDirs": ["scala-shims/spark-4.0-4.1"], "supportIceberg": true},
+    {"version": "4.1.0", "sourceDirs": ["scala-shims/spark-4.0-4.1"], "supportIceberg": true},
+    {"version": "4.2.0", "sourceDirs": ["scala-shims/spark-4.2-4.3"], "supportIceberg": false},
+    {
+      "version": "4.3.0-SNAPSHOT",
+      "sourceDirs": ["scala-shims/spark-4.2-4.3"],
+      "supportIceberg": false,
+      "sourceBuildArtifactBaseVersion": "4.3.0",
+      "sourceBuildDefaultRef": "v4.3.0-rc1"
+    }
   ]
 }

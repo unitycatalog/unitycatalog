@@ -1,8 +1,16 @@
 package io.unitycatalog.server.base.auth;
 
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.auth0.jwt.algorithms.Algorithm;
+import com.linecorp.armeria.client.WebClient;
+import com.linecorp.armeria.common.AggregatedHttpResponse;
+import com.linecorp.armeria.common.HttpData;
+import com.linecorp.armeria.common.HttpHeaderNames;
+import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.common.RequestHeaders;
 import com.sun.net.httpserver.HttpServer;
 import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.security.SecurityConfiguration;
@@ -161,5 +169,27 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
       mockOidcServer.stop(0);
       mockOidcServer = null;
     }
+  }
+
+  /** Creates an ENABLED user via the SCIM endpoint using the internal service token. */
+  protected void createEnabledUser(String email) {
+    String userJson =
+        String.format(
+            "{\"displayName\":\"Test User\",\"emails\":[{\"value\":\"%s\",\"primary\":true}]}",
+            email);
+    RequestHeaders headers =
+        RequestHeaders.builder()
+            .method(HttpMethod.POST)
+            .path("/api/1.0/unity-control/scim2/Users")
+            .contentType(MediaType.JSON)
+            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
+            .build();
+    AggregatedHttpResponse response =
+        WebClient.builder(serverConfig.getServerUrl())
+            .build()
+            .execute(headers, HttpData.ofUtf8(userJson))
+            .aggregate()
+            .join();
+    assertThat(response.status().code()).isEqualTo(201);
   }
 }
