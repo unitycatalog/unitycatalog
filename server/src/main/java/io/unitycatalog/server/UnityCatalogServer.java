@@ -501,8 +501,9 @@ public class UnityCatalogServer implements AutoCloseable {
    * be restarted after this call: the factory and pool are closed, so all persistence operations
    * would fail. Safe to call more than once and safe to call before {@link #start()}.
    *
-   * <p>{@code server.shutdown-timeout} is one budget for the whole call: the executor drain only
-   * gets what the graceful HTTP stop left over, so a wedged request cannot double the wait.
+   * <p>The blocking-executor drain uses the time remaining from {@code server.shutdown-timeout}.
+   * This is not a total shutdown deadline: other resource cleanup and Armeria's final shutdown can
+   * add time.
    */
   @Override
   public void close() {

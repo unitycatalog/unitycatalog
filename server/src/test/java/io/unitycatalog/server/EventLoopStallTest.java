@@ -92,7 +92,6 @@ class EventLoopStallTest {
   void stopWaitsForBlockedRequestAndExecutorRemainsActive() throws Exception {
     CountDownLatch entered = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
-    CountDownLatch finished = new CountDownLatch(1);
     BlockingTaskExecutor blockingTaskExecutor =
         BlockingTaskExecutor.builder().numThreads(2).build();
     ArmeriaServerBuilder builder =
@@ -102,7 +101,7 @@ class EventLoopStallTest {
             "/control/",
             new ServerProperties(new Properties()),
             blockingTaskExecutor);
-    builder.annotate("probe", new BlockingProbe(entered, release, new CountDownLatch(1), finished));
+    builder.annotate("probe", new BlockingProbe(entered, release, new CountDownLatch(1)));
 
     Server server = builder.build();
     try {
@@ -111,18 +110,19 @@ class EventLoopStallTest {
       WebClient client =
           WebClient.builder("h2c://127.0.0.1:" + port).responseTimeoutMillis(5_000).build();
 
-      client.get("/api/probe/hold").aggregate();
+      CompletableFuture<AggregatedHttpResponse> response =
+          client.get("/api/probe/hold").aggregate();
       assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
 
+      // Armeria spends about 2s in its own quiet period even without draining, so wait past that
+      // (but within the 5s shutdown timeout) before releasing: a stop that does not drain has
+      // closed the connection by then and the response below fails.
       CompletableFuture<Void> stopping = server.stop();
-      assertThatThrownBy(() -> stopping.get(250, TimeUnit.MILLISECONDS))
+      assertThatThrownBy(() -> stopping.get(3, TimeUnit.SECONDS))
           .isInstanceOf(TimeoutException.class);
 
       release.countDown();
-      // stop() can RST the HTTP/2 stream, so the client may see 500 even when hold() returned.
-      assertThat(finished.await(5, TimeUnit.SECONDS))
-          .as("the blocked handler ran to completion after release")
-          .isTrue();
+      assertThat(response.get(5, TimeUnit.SECONDS).status()).isEqualTo(HttpStatus.OK);
       stopping.join();
 
       assertThat(blockingTaskExecutor.submit(() -> "still active").get()).isEqualTo("still active");
@@ -210,29 +210,18 @@ class EventLoopStallTest {
     private final CountDownLatch entered;
     private final CountDownLatch release;
     private final CountDownLatch fastEntered;
-    private final CountDownLatch finished;
 
     private BlockingProbe(
         CountDownLatch entered, CountDownLatch release, CountDownLatch fastEntered) {
-      this(entered, release, fastEntered, new CountDownLatch(1));
-    }
-
-    private BlockingProbe(
-        CountDownLatch entered,
-        CountDownLatch release,
-        CountDownLatch fastEntered,
-        CountDownLatch finished) {
       this.entered = entered;
       this.release = release;
       this.fastEntered = fastEntered;
-      this.finished = finished;
     }
 
     @Get("/hold")
     public HttpResponse hold() throws InterruptedException {
       entered.countDown();
       release.await();
-      finished.countDown();
       return HttpResponse.of("hold");
     }
 

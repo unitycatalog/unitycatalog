@@ -267,8 +267,8 @@ public class ServerProperties {
     READINESS_PROBE_INTERVAL(
         "server.readiness.probe-interval", "PT5S", POSITIVE_DURATION_VALIDATOR),
     READINESS_DB_TIMEOUT("server.readiness.db-timeout", "PT2S", POSITIVE_DURATION_VALIDATOR),
-    // One shared bound for Armeria graceful stop and the blocking-executor drain. Keep it under
-    // the orchestrator grace period so a wedged request is logged instead of holding shutdown.
+    // Bounds Armeria's graceful request drain; the blocking-executor drain gets what is left.
+    // Not a total shutdown deadline, so leave headroom under the orchestrator grace period.
     SHUTDOWN_TIMEOUT("server.shutdown-timeout", "PT5S", POSITIVE_DURATION_VALIDATOR),
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
     // Enables native Iceberg tables; when disabled, existing ones stay readable.
