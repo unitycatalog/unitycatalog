@@ -12,6 +12,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.hibernate.boot.Metadata;
 import org.hibernate.boot.model.relational.SqlStringGenerationContext;
@@ -19,6 +20,8 @@ import org.hibernate.boot.model.relational.internal.SqlStringGenerationContextIm
 import org.hibernate.engine.jdbc.env.spi.JdbcEnvironment;
 import org.hibernate.mapping.Column;
 import org.hibernate.mapping.PersistentClass;
+import org.hibernate.tool.schema.Action;
+import org.hibernate.tool.schema.spi.SchemaManagementToolCoordinator.ActionGrouping;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,10 +31,12 @@ import org.slf4j.LoggerFactory;
  * alter the column type with PostgreSQL's default cast, turning each value into the decimal string
  * of its oid.
  *
- * <p>Runs on every start and does nothing on other databases or once the columns are text. Servers
- * that start together take an advisory lock in turn, so only the first converts. The large objects
- * stay behind as orphans. Removing one takes a lock on it, and a whole catalog's worth would
- * overflow the lock table in a single transaction, so leave that to {@code vacuumlo}.
+ * <p>Runs on every start and does nothing on other databases or once the columns are text. It
+ * converts only when the schema action is {@code update}; with any other action it refuses to
+ * start, so a server configured not to change the schema leaves it alone. Servers that start
+ * together take an advisory lock in turn, so only the first converts. The large objects stay behind
+ * as orphans. Removing one takes a lock on it, and a whole catalog's worth would overflow the lock
+ * table in a single transaction, so leave that to {@code vacuumlo}.
  */
 final class LargeObjectColumnMigration {
 
@@ -76,7 +81,21 @@ final class LargeObjectColumnMigration {
       connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
       connection.setAutoCommit(false);
       try {
-        if (!largeObjectColumns(connection, columns).isEmpty()) {
+        List<TableColumn> largeObjectColumns = largeObjectColumns(connection, columns);
+        if (!largeObjectColumns.isEmpty()) {
+          Action action = databaseAction(metadata, settings);
+          if (action != Action.UPDATE) {
+            throw new IllegalStateException(
+                "Columns "
+                    + largeObjectColumns.stream()
+                        .map(column -> column.table() + "." + column.column())
+                        .collect(Collectors.joining(", "))
+                    + " are still PostgreSQL large objects (oid). "
+                    + "Start once with hibernate.hbm2ddl.auto=update to convert them, or convert "
+                    + "them manually (see deployment docs). "
+                    + "Configured schema action: "
+                    + action);
+          }
           convert(connection, columns);
         }
         connection.commit();
@@ -90,6 +109,15 @@ final class LargeObjectColumnMigration {
     } catch (SQLException e) {
       throw new RuntimeException("Failed to convert large object columns to text", e);
     }
+  }
+
+  /** Reads hbm2ddl.auto and the jakarta setting the way the schema update will. */
+  private static Action databaseAction(Metadata metadata, Map<String, Object> settings) {
+    return ActionGrouping.interpret(metadata, settings).stream()
+        .map(ActionGrouping::getDatabaseAction)
+        .filter(action -> action != Action.NONE)
+        .findFirst()
+        .orElse(Action.NONE);
   }
 
   /** Names the columns the way Hibernate's schema update will. */

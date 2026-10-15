@@ -25,6 +25,8 @@ import java.util.Properties;
 import java.util.UUID;
 import org.hibernate.cfg.MappingSettings;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -93,6 +95,24 @@ class LargeObjectColumnMigrationTest {
       assertThat(largeObjectValues("public")).isEqualTo(values);
       blocker.rollback();
     }
+
+    try (HibernateConfigurator configurator =
+        new HibernateConfigurator(properties("update", new Properties()))) {
+      assertDataTypes("public", "text");
+      assertRowsIntact(configurator, ids);
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"none", "validate"})
+  void refusesToConvertWhenSchemaUpdatesAreDisabled(String hbm2ddl) throws SQLException {
+    Ids ids = createLargeObjectRows("public", new Properties());
+    Map<String, List<String>> values = largeObjectValues("public");
+
+    assertThatThrownBy(() -> new HibernateConfigurator(properties(hbm2ddl, new Properties())))
+        .hasStackTraceContaining("are still PostgreSQL large objects");
+    assertDataTypes("public", "oid");
+    assertThat(largeObjectValues("public")).isEqualTo(values);
 
     try (HibernateConfigurator configurator =
         new HibernateConfigurator(properties("update", new Properties()))) {

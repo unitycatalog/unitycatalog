@@ -122,7 +122,8 @@ This guide outlines how to deploy the Unity Catalog server.
 
 The server uses `hibernate.hbm2ddl.auto=update`. Hibernate can create missing tables and
 columns, but **it does not change the type or length of a column that already exists**. The
-exception is the PostgreSQL large object conversion below, which the server runs itself.
+exception is the PostgreSQL large object conversion below, which the server runs itself when
+the schema action is `update`.
 
 #### PostgreSQL: large object columns converted to `text`
 
@@ -131,6 +132,24 @@ Earlier versions stored these columns as PostgreSQL large objects (`oid`):
 `uc_credentials.credential`. **On its first start against such a database, the server converts
 them to `text`** before the schema update, in a single transaction. Later starts find `text`
 columns and skip it. H2 and MySQL are not affected.
+
+The server converts only when `hibernate.hbm2ddl.auto` is `update`. With any other setting, such
+as `none` or `validate`, it refuses to start while the columns are still `oid`. Either start once
+with `update`, or convert the columns yourself in a single transaction with the old servers
+stopped:
+
+```sql
+BEGIN;
+ALTER TABLE uc_tables ALTER COLUMN view_definition TYPE text
+  USING convert_from(lo_get(view_definition), 'UTF8');
+ALTER TABLE uc_columns ALTER COLUMN type_text TYPE text
+  USING convert_from(lo_get(type_text), 'UTF8');
+ALTER TABLE uc_functions ALTER COLUMN routine_definition TYPE text
+  USING convert_from(lo_get(routine_definition), 'UTF8');
+ALTER TABLE uc_credentials ALTER COLUMN credential TYPE text
+  USING convert_from(lo_get(credential), 'UTF8');
+COMMIT;
+```
 
 Before upgrading:
 
