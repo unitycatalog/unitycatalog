@@ -8,5 +8,6 @@ export const CLIENT = axios.create({
   baseURL: `${UC_API_PREFIX}`,
   headers: {
     'Content-type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
   },
 });
