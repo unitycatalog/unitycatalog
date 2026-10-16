@@ -669,8 +669,8 @@ lazy val testDatabaseServicesDirectory = file("server") / "src" / "test" / "reso
 
 // Lets projects that take the server test harness from server-shaded run it on PostgreSQL.
 lazy val testDatabaseDependencies = Seq(
-  "org.testcontainers" % "testcontainers" % "1.19.8" % Test,
-  "org.testcontainers" % "postgresql" % "1.19.8" % Test,
+  "org.testcontainers" % "testcontainers" % testcontainersVersion % Test,
+  "org.testcontainers" % "postgresql" % testcontainersVersion % Test,
   "org.postgresql" % "postgresql" % "42.7.13" % Test,
 )
 
