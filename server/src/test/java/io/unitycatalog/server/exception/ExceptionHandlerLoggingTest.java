@@ -6,6 +6,7 @@ import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.RequestId;
+import com.linecorp.armeria.common.util.SafeCloseable;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.unboundid.scim2.common.exceptions.ResourceConflictException;
@@ -15,7 +16,10 @@ import io.unitycatalog.server.utils.LogCapture;
 import java.util.List;
 import java.util.stream.Stream;
 import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -99,5 +103,45 @@ public class ExceptionHandlerLoggingTest {
         new Scim2RuntimeException(new ResourceConflictException("user exists"));
     assertThat(handle(GlobalExceptionHandler.INSTANCE, conflict, HttpStatus.INTERNAL_SERVER_ERROR))
         .isEmpty();
+  }
+
+  @Test
+  public void logsUnderItsOwnIdWhenAnotherRequestIsCurrent() {
+    ServiceRequestContext other =
+        ServiceRequestContext.of(HttpRequest.of(HttpMethod.GET, "/other"));
+    try (SafeCloseable ignored = other.push()) {
+      List<LogEvent> errors =
+          handle(
+              GlobalExceptionHandler.INSTANCE,
+              new IllegalStateException("unexpected"),
+              HttpStatus.INTERNAL_SERVER_ERROR);
+      assertThat(errors).hasSize(1);
+      assertThat(
+              errors.get(0).getContextData().<String>getValue(RequestIdContextDataProvider.LOG_KEY))
+          .isEqualTo(REQUEST_ID.text());
+    }
+  }
+
+  @Test
+  public void stillAnswersWhenLoggingFails() {
+    Logger logger = (Logger) LogManager.getLogger(BaseExceptionHandler.class);
+    AbstractAppender failing =
+        new AbstractAppender("failing", null, null, /* ignoreExceptions= */ false, null) {
+          @Override
+          public void append(LogEvent event) {
+            throw new IllegalStateException("disk full");
+          }
+        };
+    failing.start();
+    logger.addAppender(failing);
+    try {
+      handle(
+          GlobalExceptionHandler.INSTANCE,
+          new IllegalStateException("unexpected"),
+          HttpStatus.INTERNAL_SERVER_ERROR);
+    } finally {
+      logger.removeAppender(failing);
+      failing.stop();
+    }
   }
 }
