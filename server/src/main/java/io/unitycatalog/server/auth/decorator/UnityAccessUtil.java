@@ -36,8 +36,7 @@ public class UnityAccessUtil {
       userRepository.getUserByEmail("admin");
       return;
     } catch (BaseException e) {
-      // Only a missing admin means there is one to create. Any other error, such as an unreachable
-      // database, fails startup instead.
+      // Any other lookup error, such as an unreachable database, fails startup.
       if (e.getErrorCode() != ErrorCode.NOT_FOUND) {
         throw e;
       }

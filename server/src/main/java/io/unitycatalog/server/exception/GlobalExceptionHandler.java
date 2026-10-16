@@ -26,8 +26,7 @@ public class GlobalExceptionHandler extends BaseExceptionHandler {
     // SCIM has its own error format, handle before normalization
     if (cause instanceof Scim2RuntimeException) {
       ScimException scimException = (ScimException) cause.getCause();
-      // Every SCIM error is answered 500, but one that is the caller's fault, such as a duplicate
-      // user, is not a server error and is not logged as one.
+      // SCIM answers every error 500, so log by the error's own status.
       logIfServerError(ctx, HttpStatus.valueOf(scimException.getScimError().getStatus()), cause);
       return HttpResponse.ofJson(HttpStatus.INTERNAL_SERVER_ERROR, scimException.getScimError());
     }

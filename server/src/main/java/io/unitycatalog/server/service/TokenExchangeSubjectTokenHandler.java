@@ -104,7 +104,7 @@ public class TokenExchangeSubjectTokenHandler {
       if (e.getErrorCode() == ErrorCode.NOT_FOUND) {
         return Optional.empty();
       }
-      // No stack trace: the request's error handler logs the cause, under the same request ID.
+      // No stack trace: the error handler logs the cause.
       LOGGER.warn("Failed to look up user by {} {}", lookupType, key);
       throw e;
     } catch (RuntimeException e) {
