@@ -1,5 +1,6 @@
 package io.unitycatalog.server.sdk.deltacommits;
 
+import io.unitycatalog.server.testdatabase.UsesOwnDatabase;
 import java.util.Properties;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -12,6 +13,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * subquery selecting from the table being deleted from (error 1093), so this suite is what guards
  * the derived-table shape of that query against regressions that H2 and PostgreSQL would not catch.
  */
+@UsesOwnDatabase(reason = "MySQL coverage until MySQL is a supported test database")
 @Testcontainers(disabledWithoutDocker = true)
 public class MySQLDeltaCommitsCRUDTest extends SdkDeltaCommitsCRUDTest {
 
