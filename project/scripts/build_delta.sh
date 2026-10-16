@@ -73,8 +73,8 @@ cd "$DELTA_DIR"
 # is a safety net (redundant when -DunityCatalogVersion is set, but explicit).
 # publishM2 only (not publishLocal): Delta's ivy.xml lists internal modules
 # (delta-spark-v1, delta-spark-v2) that aren't published separately. The M2 POM
-# filters them via pomPostProcess. UC's build/sbt forces maven-local in the
-# resolver chain, so ~/.m2 artifacts are found.
+# filters them via pomPostProcess. USE_MAVEN_LOCAL_FOR_SOURCE_SPARK enables the
+# local Maven resolver when a source-built Spark needs those artifacts.
 USE_MAVEN_LOCAL_FOR_SOURCE_SPARK="${SPARK_ARTIFACT_VERSION:+true}" \
 build/sbt -DsparkVersion="$SPARK_VERSION" \
   "${SPARK_COMMIT_ARGS[@]}" \
