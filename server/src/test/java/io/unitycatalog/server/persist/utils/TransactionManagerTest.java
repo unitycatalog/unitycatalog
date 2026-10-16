@@ -6,6 +6,7 @@ import static io.unitycatalog.server.persist.utils.TransactionManagerTest.MockTr
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -18,6 +19,8 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.TransactionRollbackException;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
+import io.unitycatalog.server.persist.dao.StagingTableDAO;
+import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -28,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Random;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.hibernate.Session;
@@ -544,6 +548,49 @@ public class TransactionManagerTest {
 
       // Must see version 2 — not a stale snapshot showing only version 1
       assertThat(maxVersion).isEqualTo(2L);
+    }
+
+    /**
+     * PostgreSQL limits a btree index entry to 2,704 bytes. A longer staging location fails the
+     * insert into idx_staging_location, which the request caused, so it is INVALID_ARGUMENT.
+     */
+    @Test
+    public void testValueOverIndexLimitIsInvalidArgument() {
+      assumeTrue(SupportedDatabase.selected() == SupportedDatabase.POSTGRES_18);
+      StagingTableDAO stagingTableDAO = new StagingTableDAO();
+      stagingTableDAO.setDefaultFields();
+      stagingTableDAO.setId(UUID.randomUUID());
+      stagingTableDAO.setName("staging_table");
+      // 1,917 characters and 3,817 bytes: fits varchar(2048) but not an index entry.
+      stagingTableDAO.setStagingLocation("s3://test-bucket/" + randomTwoByteCharacters(1900));
+
+      assertThatThrownBy(
+              () ->
+                  TransactionManager.executeWithTransaction(
+                      realSessionFactory,
+                      session -> {
+                        session.persist(stagingTableDAO);
+                        return null;
+                      },
+                      "Error creating staging table",
+                      /* readOnly= */ false))
+          .isInstanceOf(BaseException.class)
+          .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_ARGUMENT)
+          .hasMessageContaining("index row size");
+    }
+
+    /**
+     * Returns random letters that each take 2 bytes in UTF-8. They are random because PostgreSQL
+     * compresses an index entry before it checks the size.
+     */
+    private static String randomTwoByteCharacters(int count) {
+      // Latin Extended-A, Latin Extended-B and IPA Extensions: U+0100 to U+02AF.
+      Random random = new Random(/* seed= */ 0);
+      StringBuilder characters = new StringBuilder();
+      for (int i = 0; i < count; i++) {
+        characters.append((char) (0x0100 + random.nextInt(0x02B0 - 0x0100)));
+      }
+      return characters.toString();
     }
 
     private DeltaCommitDAO buildCommitDAO(UUID tableId, long version) {
