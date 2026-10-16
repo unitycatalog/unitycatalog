@@ -531,6 +531,7 @@ lazy val server = (project in file("server"))
       (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
     },
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
+    Test / unmanagedResourceDirectories += (ThisBuild / baseDirectory).value / testDatabaseServicesDirectory.getPath,
     // Include server and control models in the bin package for server
     // This will allow us to have a single maven artifact and not multiple (server, server models, control models)
     Compile / packageBin / mappings ++= (Compile / packageBin / mappings).value ++
@@ -667,14 +668,11 @@ lazy val cli = (project in file("examples") / "cli")
   * and the server(with tests) is required as a test dependency)
   * This was necessary because Spark 3.5 has a dependency on Jackson 2.15, which conflicts with the Jackson 2.17
  */
-// server-shaded discards META-INF, so projects that take the server test harness from it copy the
-// harness's service registrations (test-database safeguards) into their own test resources.
-lazy val serverTestServiceRegistrations = Def.task {
-  val source = (server / Test / resourceDirectory).value / "META-INF" / "services"
-  val target = (Test / resourceManaged).value / "META-INF" / "services"
-  IO.copyDirectory(source, target)
-  (target ** "*").get.filter(_.isFile)
-}
+// Service registrations for the test-database safeguards (SelectionCheck, SelectedDatabaseCheck).
+// They live outside server/src/test/resources because the client project shares that directory
+// without the server test classes, and server-shaded discards META-INF, so every project that runs
+// the server test harness adds this directory to its test resources.
+lazy val testDatabaseServicesDirectory = file("server") / "src" / "test" / "resources-test-database"
 
 // Lets projects that take the server test harness from server-shaded run it on PostgreSQL.
 lazy val testDatabaseDependencies = Seq(
@@ -787,7 +785,7 @@ lazy val spark = (project in file("connectors/spark"))
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
     libraryDependencies ++= testDatabaseDependencies,
-    Test / resourceGenerators += serverTestServiceRegistrations.taskValue,
+    Test / unmanagedResourceDirectories += (ThisBuild / baseDirectory).value / testDatabaseServicesDirectory.getPath,
     // netty-codec-native-quic uses ${packaging.type} in its POM which Ivy (used by sbt-license-report) cannot resolve.
     // Exclude it so Ivy never attempts to fetch it; Coursier (used for normal builds) handles it fine.
     excludeDependencies += ExclusionRule("io.netty", "netty-codec-native-quic"),
@@ -845,7 +843,7 @@ lazy val hadoop = (project in file("connectors/hadoop"))
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
     libraryDependencies ++= testDatabaseDependencies,
-    Test / resourceGenerators += serverTestServiceRegistrations.taskValue,
+    Test / unmanagedResourceDirectories += (ThisBuild / baseDirectory).value / testDatabaseServicesDirectory.getPath,
   )
 
 lazy val integrationTests = (project in file("integration-tests"))
