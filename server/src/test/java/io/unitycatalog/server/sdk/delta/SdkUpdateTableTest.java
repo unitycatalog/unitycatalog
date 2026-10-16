@@ -4,13 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.delta.model.DeltaAddCommitUpdate;
+import io.unitycatalog.client.delta.model.DeltaArrayType;
 import io.unitycatalog.client.delta.model.DeltaAssertEtag;
 import io.unitycatalog.client.delta.model.DeltaAssertTableUUID;
 import io.unitycatalog.client.delta.model.DeltaClusteringDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaCommit;
+import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
 import io.unitycatalog.client.delta.model.DeltaDomainMetadataUpdates;
 import io.unitycatalog.client.delta.model.DeltaErrorType;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
+import io.unitycatalog.client.delta.model.DeltaMapType;
 import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
 import io.unitycatalog.client.delta.model.DeltaRemoveDomainMetadataUpdate;
@@ -28,6 +31,7 @@ import io.unitycatalog.client.delta.model.DeltaStructField;
 import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.client.delta.model.DeltaStructType;
 import io.unitycatalog.client.delta.model.DeltaTableRequirement;
+import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.delta.model.DeltaTableUpdate;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadata;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadataIceberg;
@@ -54,10 +58,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -249,8 +256,15 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     }
 
     // -------- set-columns + set-partition-columns --------
+    // physicalNames equal the new logical names (first-enable without rename).
     {
       Handle h = createDeltaExternal("tbl_setcols");
+      DeltaStructFieldMetadata newIdMeta = new DeltaStructFieldMetadata();
+      newIdMeta.put("delta.columnMapping.id", 1);
+      newIdMeta.put("delta.columnMapping.physicalName", "new_id");
+      DeltaStructFieldMetadata flagMeta = new DeltaStructFieldMetadata();
+      flagMeta.put("delta.columnMapping.id", 2);
+      flagMeta.put("delta.columnMapping.physicalName", "flag");
       DeltaLoadTableResponse r =
           updateTable(
               h,
@@ -264,12 +278,12 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                                       .name("new_id")
                                       .type(new DeltaPrimitiveType().type("long"))
                                       .nullable(false)
-                                      .metadata(new DeltaStructFieldMetadata()),
+                                      .metadata(newIdMeta),
                                   new DeltaStructField()
                                       .name("flag")
                                       .type(new DeltaPrimitiveType().type("boolean"))
                                       .nullable(true)
-                                      .metadata(new DeltaStructFieldMetadata())))),
+                                      .metadata(flagMeta)))),
               new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("flag")));
       assertThat(r.getMetadata().getColumns().getFields())
           .extracting(DeltaStructField::getName)
@@ -335,14 +349,20 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
 
     // -------- set-columns alone preserves existing partition columns by name --------
     // Establish a partitioned table partitioned by id, then send set-columns alone with a new
-    // schema that still contains id. Partition list must survive the schema swap; a silent
-    // clear would desynchronize the partition list from the column definitions.
-    // (createDeltaExternal seeds (id long, amount double); only `id` exists in both old and new.)
+    // schema that still contains id (plus a new "flag" column). Partition list must survive the
+    // schema swap. physicalName "id" == current logical "id": first-enable without rename for id.
+    // physicalName "flag" has no current match: new column, no rename.
     {
       Handle h = createDeltaExternal("tbl_setcols_preserve_part");
       DeltaLoadTableResponse partitionSetup =
           updateTable(h, new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("id")));
       Handle h1 = h.withEtag(partitionSetup.getMetadata().getEtag());
+      DeltaStructFieldMetadata idCmMeta = new DeltaStructFieldMetadata();
+      idCmMeta.put("delta.columnMapping.id", 1);
+      idCmMeta.put("delta.columnMapping.physicalName", "id");
+      DeltaStructFieldMetadata flagCmMeta = new DeltaStructFieldMetadata();
+      flagCmMeta.put("delta.columnMapping.id", 2);
+      flagCmMeta.put("delta.columnMapping.physicalName", "flag");
       DeltaLoadTableResponse r =
           updateTable(
               h1,
@@ -356,12 +376,12 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                                       .name("id")
                                       .type(new DeltaPrimitiveType().type("long"))
                                       .nullable(false)
-                                      .metadata(new DeltaStructFieldMetadata()),
+                                      .metadata(idCmMeta),
                                   new DeltaStructField()
                                       .name("flag")
                                       .type(new DeltaPrimitiveType().type("boolean"))
                                       .nullable(true)
-                                      .metadata(new DeltaStructFieldMetadata())))));
+                                      .metadata(flagCmMeta)))));
       assertThat(r.getMetadata().getColumns().getFields())
           .extracting(DeltaStructField::getName)
           .containsExactly("id", "flag");
@@ -369,8 +389,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     }
 
     // -------- set-columns alone that drops a previously-partition column is rejected --------
-    // Partition is on `id`; the new schema replaces `id` with `id2`. Silent partition clearing
-    // would leave the table inconsistent, so this must fail with the unknown-column error.
+    // Partition is on `id`; the new schema replaces `id` with `id2` (no set-partition-columns
+    // sent).
+    // physicalName "new-id2" doesn't match any current name, so no first-enable rename fires.
+    // The partition check then fails: "partition-columns references unknown column: id".
     {
       Handle h = createDeltaExternal("tbl_setcols_drop_part");
       Handle h1 =
@@ -378,6 +400,9 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               updateTable(h, new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("id")))
                   .getMetadata()
                   .getEtag());
+      DeltaStructFieldMetadata id2Meta = new DeltaStructFieldMetadata();
+      id2Meta.put("delta.columnMapping.id", 1);
+      id2Meta.put("delta.columnMapping.physicalName", "new-id2");
       TestUtils.assertDeltaApiException(
           () ->
               updateTable(
@@ -392,7 +417,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                                           .name("id2")
                                           .type(new DeltaPrimitiveType().type("long"))
                                           .nullable(false)
-                                          .metadata(new DeltaStructFieldMetadata()))))),
+                                          .metadata(id2Meta))))),
           DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "partition-columns references unknown column: id");
     }
@@ -1210,8 +1235,12 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     // -------- add-commit + set-schema stamps lastUpdateVersion (non-set-properties path) --
     // set-schema alone is a metadata change, so hasManagedTableMetadataChange() must fire and the
     // commit's version/timestamp should land on the stamping properties.
+    // physicalName "c1" doesn't match any current column name → first-enable without rename.
     {
       Handle h = createDeltaManaged("tbl_commit_meta_stamp_schema", Map.of());
+      DeltaStructFieldMetadata c1Meta = new DeltaStructFieldMetadata();
+      c1Meta.put("delta.columnMapping.id", 1);
+      c1Meta.put("delta.columnMapping.physicalName", "c1");
       DeltaLoadTableResponse r =
           updateTable(
               h,
@@ -1233,7 +1262,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                                       .name("c1")
                                       .type(new DeltaPrimitiveType().type("long"))
                                       .nullable(false)
-                                      .metadata(new DeltaStructFieldMetadata())))));
+                                      .metadata(c1Meta)))));
       assertThat(r.getMetadata().getLastCommitVersion()).isEqualTo(1L);
       assertThat(r.getMetadata().getLastCommitTimestampMs()).isEqualTo(1700000001L);
     }
@@ -1374,6 +1403,246 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     Files.createDirectories(Path.of(URI.create(storageLocation + "/" + relativePath)));
   }
 
+  // ---------------------------------------------------------------- column-mapping identity tests
+
+  /**
+   * After a set-columns rename (logical "a" → "b", same physicalName "col-1"), the rename succeeds:
+   * the new logical name is present, the old is gone, and physicalName is retained in the column's
+   * type_json metadata. Database row UUIDs are regenerated on every set-columns (standard catalog
+   * semantics); no UUID-preservation assertion is made here.
+   */
+  @Test
+  public void testRenameColumnNameMode() throws Exception {
+    Handle h = createCmNameModeManaged("tbl_rename_name_mode");
+    DeltaLoadTableResponse r = updateTable(h, setColumnsRenaming("a", "b", "col-1"));
+    assertThat(columnNames(r)).containsExactly("b");
+    DeltaLoadTableResponse reloaded =
+        deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name());
+    assertThat(columnNames(reloaded)).containsExactly("b");
+    // physicalName must survive the rename.
+    DeltaStructFieldMetadata meta =
+        reloaded.getMetadata().getColumns().getFields().get(0).getMetadata();
+    assertThat(meta.get("delta.columnMapping.physicalName")).isEqualTo("col-1");
+  }
+
+  /**
+   * set-columns that retains a column by logical name but strips its column-mapping identity key
+   * (present in the existing schema, absent in the incoming schema) must be rejected. Uses a
+   * two-column table: "a" retains its CM key, "b" loses it, so the incoming schema still has CM
+   * metadata overall (preventing the full-CM-drop check from firing first). The identity-strip
+   * check fires for "b" as the offending column.
+   */
+  @Test
+  public void testSetColumnsDroppingColumnMappingMetadataIsRejected() throws Exception {
+    Handle h = createTwoColCmNameModeManaged("tbl_drop_cm_meta");
+    // Send "a" with CM intact, "b" with CM stripped.
+    DeltaStructFieldMetadata aMetaOk = new DeltaStructFieldMetadata();
+    aMetaOk.put("delta.columnMapping.id", 1);
+    aMetaOk.put("delta.columnMapping.physicalName", "col-1");
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h,
+                new DeltaSetSchemaUpdate()
+                    .columns(
+                        new DeltaStructType()
+                            .type("struct")
+                            .fields(
+                                List.of(
+                                    new DeltaStructField()
+                                        .name("a")
+                                        .type(new DeltaPrimitiveType().type("long"))
+                                        .nullable(false)
+                                        .metadata(aMetaOk),
+                                    new DeltaStructField()
+                                        .name("b")
+                                        .type(new DeltaPrimitiveType().type("string"))
+                                        .nullable(true)
+                                        .metadata(new DeltaStructFieldMetadata()))))),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        "set-columns dropped column mapping metadata for column(s): b");
+  }
+
+  /**
+   * Renaming a nested field "x" → "y" inside a top-level struct column "s" (outer logical name and
+   * physicalName unchanged) succeeds: the outer column "s" is still present with the same outer
+   * physicalName; the nested field appears as "y" inside the struct type. DB-row UUIDs are
+   * regenerated on every set-columns; no UUID assertion is made here.
+   */
+  @Test
+  public void testNestedFieldRename() throws Exception {
+    Handle h = createCmNameModeStructManaged("tbl_nested_field_rename");
+    // Rename the nested field "x" to "y" while keeping top-level "s" and physicalNames unchanged.
+    DeltaStructFieldMetadata nestedMeta = new DeltaStructFieldMetadata();
+    nestedMeta.put("delta.columnMapping.id", 2);
+    nestedMeta.put("delta.columnMapping.physicalName", "col-x");
+    DeltaStructType newInnerType =
+        new DeltaStructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    new DeltaStructField()
+                        .name("y")
+                        .type(new DeltaPrimitiveType().type("long"))
+                        .nullable(true)
+                        .metadata(nestedMeta)));
+    DeltaStructFieldMetadata outerMeta = new DeltaStructFieldMetadata();
+    outerMeta.put("delta.columnMapping.id", 1);
+    outerMeta.put("delta.columnMapping.physicalName", "col-s");
+    updateTable(
+        h,
+        new DeltaSetSchemaUpdate()
+            .columns(
+                new DeltaStructType()
+                    .type("struct")
+                    .fields(
+                        List.of(
+                            new DeltaStructField()
+                                .name("s")
+                                .type(newInnerType)
+                                .nullable(false)
+                                .metadata(outerMeta)))));
+    DeltaLoadTableResponse reloaded =
+        deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name());
+    assertThat(columnNames(reloaded)).containsExactly("s");
+    // Outer physicalName must survive the nested rename.
+    DeltaStructFieldMetadata outerResult =
+        reloaded.getMetadata().getColumns().getFields().get(0).getMetadata();
+    assertThat(outerResult.get("delta.columnMapping.physicalName")).isEqualTo("col-s");
+  }
+
+  /**
+   * Renaming a field inside a {@code map<string, struct<...>>} value struct ("val" → "value")
+   * succeeds as a nested type_json passthrough: the top-level column "props" is retained with its
+   * outer physicalName, and the nested rename rides inside the value struct. Exercises the map arm
+   * of the recursive rename/consistency checks.
+   */
+  @Test
+  public void testMapStructNestedFieldRename() throws Exception {
+    Handle h = createCmNameModeMapStructManaged("tbl_map_struct_rename");
+    DeltaStructFieldMetadata nestedMeta = new DeltaStructFieldMetadata();
+    nestedMeta.put("delta.columnMapping.id", 2);
+    nestedMeta.put("delta.columnMapping.physicalName", "col-val");
+    DeltaStructType newValueStruct =
+        new DeltaStructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    new DeltaStructField()
+                        .name("value")
+                        .type(new DeltaPrimitiveType().type("string"))
+                        .nullable(true)
+                        .metadata(nestedMeta)));
+    DeltaStructFieldMetadata outerMeta = new DeltaStructFieldMetadata();
+    outerMeta.put("delta.columnMapping.id", 1);
+    outerMeta.put("delta.columnMapping.physicalName", "col-props");
+    updateTable(
+        h,
+        new DeltaSetSchemaUpdate()
+            .columns(
+                new DeltaStructType()
+                    .type("struct")
+                    .fields(
+                        List.of(
+                            new DeltaStructField()
+                                .name("props")
+                                .type(
+                                    new DeltaMapType()
+                                        .type("map")
+                                        .keyType(new DeltaPrimitiveType().type("string"))
+                                        .valueType(newValueStruct)
+                                        .valueContainsNull(true))
+                                .nullable(true)
+                                .metadata(outerMeta)))));
+    DeltaLoadTableResponse reloaded =
+        deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name());
+    assertThat(columnNames(reloaded)).containsExactly("props");
+    assertThat(
+            reloaded
+                .getMetadata()
+                .getColumns()
+                .getFields()
+                .get(0)
+                .getMetadata()
+                .get("delta.columnMapping.physicalName"))
+        .isEqualTo("col-props");
+  }
+
+  /**
+   * Renaming a field inside an {@code array<struct<...>>} element struct ("label" -> "tag")
+   * succeeds as a nested type_json passthrough: the top-level column "events" is retained with its
+   * outer physicalName, and the nested rename rides inside the element struct. Exercises the array
+   * arm of the recursive identity handling.
+   */
+  @Test
+  public void testArrayStructNestedFieldRename() throws Exception {
+    Handle h = createCmNameModeArrayStructManaged("tbl_array_struct_rename");
+    DeltaStructFieldMetadata nestedMeta = new DeltaStructFieldMetadata();
+    nestedMeta.put("delta.columnMapping.id", 2);
+    nestedMeta.put("delta.columnMapping.physicalName", "col-label");
+    DeltaStructType newElementStruct =
+        new DeltaStructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    new DeltaStructField()
+                        .name("tag")
+                        .type(new DeltaPrimitiveType().type("string"))
+                        .nullable(true)
+                        .metadata(nestedMeta)));
+    DeltaStructFieldMetadata outerMeta = new DeltaStructFieldMetadata();
+    outerMeta.put("delta.columnMapping.id", 1);
+    outerMeta.put("delta.columnMapping.physicalName", "col-events");
+    updateTable(
+        h,
+        new DeltaSetSchemaUpdate()
+            .columns(
+                new DeltaStructType()
+                    .type("struct")
+                    .fields(
+                        List.of(
+                            new DeltaStructField()
+                                .name("events")
+                                .type(
+                                    new DeltaArrayType()
+                                        .type("array")
+                                        .elementType(newElementStruct)
+                                        .containsNull(true))
+                                .nullable(true)
+                                .metadata(outerMeta)))));
+    DeltaLoadTableResponse reloaded =
+        deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name());
+    assertThat(columnNames(reloaded)).containsExactly("events");
+    assertThat(
+            reloaded
+                .getMetadata()
+                .getColumns()
+                .getFields()
+                .get(0)
+                .getMetadata()
+                .get("delta.columnMapping.physicalName"))
+        .isEqualTo("col-events");
+  }
+
+  /**
+   * Top-level rename on an id-mode table (CM identity keyed on {@code delta.columnMapping.id}).
+   * After "a" → "b" the new logical name is present, old is gone, and the CM id remains 1 in the
+   * column's type_json. DB-row UUIDs are regenerated on every set-columns.
+   */
+  @Test
+  public void testRenameColumnIdMode() throws Exception {
+    Handle h = createCmIdModeManaged("tbl_rename_id_mode");
+    DeltaLoadTableResponse r = updateTable(h, setColumnsRenamingIdMode("a", "b", 1, "col-1"));
+    assertThat(columnNames(r)).containsExactly("b");
+    DeltaLoadTableResponse reloaded =
+        deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name());
+    assertThat(columnNames(reloaded)).containsExactly("b");
+    // CM id must survive the rename in type_json.
+    DeltaStructFieldMetadata meta =
+        reloaded.getMetadata().getColumns().getFields().get(0).getMetadata();
+    assertThat(meta.get("delta.columnMapping.id")).isEqualTo(1);
+  }
+
   // ---------------------------------------------------------------- helpers
 
   /** Pins the update to the table's UUID and the Handle's etag. */
@@ -1405,5 +1674,651 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
   /** Convenience: assert-table-uuid only, no assert-etag. */
   private static DeltaUpdateTableRequest requestWith(UUID assertUuid, DeltaTableUpdate... updates) {
     return requestWith(assertUuid, Optional.empty(), updates);
+  }
+
+  // -------------------------------------------------------- CM table creation helpers
+
+  /**
+   * Creates a MANAGED Delta table with column-mapping name-mode enabled. Schema: single column "a"
+   * (long, not null, physicalName "col-1", delta.columnMapping.id 1).
+   */
+  private Handle createCmNameModeManaged(String tableName) throws ApiException {
+    DeltaStagingTableResponse staging = createDeltaStaging(tableName);
+    Map<String, String> properties =
+        new HashMap<>(managedContractProperties(staging.getTableId().toString()));
+    properties.put("delta.columnMapping.mode", "name");
+    properties.put("delta.columnMapping.maxColumnId", "1");
+    DeltaStructFieldMetadata meta = new DeltaStructFieldMetadata();
+    meta.put("delta.columnMapping.id", 1);
+    meta.put("delta.columnMapping.physicalName", "col-1");
+    DeltaLoadTableResponse resp =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            new DeltaCreateTableRequest()
+                .name(tableName)
+                .location(staging.getLocation())
+                .tableType(DeltaTableType.MANAGED)
+                .columns(
+                    new DeltaStructType()
+                        .type("struct")
+                        .fields(
+                            List.of(
+                                new DeltaStructField()
+                                    .name("a")
+                                    .type(new DeltaPrimitiveType().type("long"))
+                                    .nullable(false)
+                                    .metadata(meta))))
+                .protocol(managedProtocol())
+                .domainMetadata(
+                    new DeltaDomainMetadataUpdates()
+                        .deltaRowTracking(
+                            new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(99L)))
+                .lastCommitTimestampMs(PLACEHOLDER_LAST_COMMIT_TIMESTAMP_MS)
+                .properties(properties));
+    return new Handle(tableName, staging.getTableId(), resp.getMetadata().getEtag());
+  }
+
+  /**
+   * Creates a MANAGED Delta table with column-mapping name-mode enabled. Schema: single top-level
+   * struct column "s" (physicalName "col-s", id 1) containing nested field "x" (physicalName
+   * "col-x", id 2). Used by the nested-rename tests.
+   */
+  private Handle createCmNameModeStructManaged(String tableName) throws ApiException {
+    DeltaStagingTableResponse staging = createDeltaStaging(tableName);
+    Map<String, String> properties =
+        new HashMap<>(managedContractProperties(staging.getTableId().toString()));
+    properties.put("delta.columnMapping.mode", "name");
+    properties.put("delta.columnMapping.maxColumnId", "2");
+    DeltaStructFieldMetadata nestedMeta = new DeltaStructFieldMetadata();
+    nestedMeta.put("delta.columnMapping.id", 2);
+    nestedMeta.put("delta.columnMapping.physicalName", "col-x");
+    DeltaStructType innerType =
+        new DeltaStructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    new DeltaStructField()
+                        .name("x")
+                        .type(new DeltaPrimitiveType().type("long"))
+                        .nullable(true)
+                        .metadata(nestedMeta)));
+    DeltaStructFieldMetadata outerMeta = new DeltaStructFieldMetadata();
+    outerMeta.put("delta.columnMapping.id", 1);
+    outerMeta.put("delta.columnMapping.physicalName", "col-s");
+    DeltaLoadTableResponse resp =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            new DeltaCreateTableRequest()
+                .name(tableName)
+                .location(staging.getLocation())
+                .tableType(DeltaTableType.MANAGED)
+                .columns(
+                    new DeltaStructType()
+                        .type("struct")
+                        .fields(
+                            List.of(
+                                new DeltaStructField()
+                                    .name("s")
+                                    .type(innerType)
+                                    .nullable(false)
+                                    .metadata(outerMeta))))
+                .protocol(managedProtocol())
+                .domainMetadata(
+                    new DeltaDomainMetadataUpdates()
+                        .deltaRowTracking(
+                            new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(99L)))
+                .lastCommitTimestampMs(PLACEHOLDER_LAST_COMMIT_TIMESTAMP_MS)
+                .properties(properties));
+    return new Handle(tableName, staging.getTableId(), resp.getMetadata().getEtag());
+  }
+
+  /**
+   * Creates a MANAGED Delta table with column-mapping id-mode enabled. Schema: single column "a"
+   * (long, not null, delta.columnMapping.id 1, physicalName "col-1").
+   */
+  private Handle createCmIdModeManaged(String tableName) throws ApiException {
+    DeltaStagingTableResponse staging = createDeltaStaging(tableName);
+    Map<String, String> properties =
+        new HashMap<>(managedContractProperties(staging.getTableId().toString()));
+    properties.put("delta.columnMapping.mode", "id");
+    properties.put("delta.columnMapping.maxColumnId", "1");
+    DeltaStructFieldMetadata meta = new DeltaStructFieldMetadata();
+    meta.put("delta.columnMapping.id", 1);
+    meta.put("delta.columnMapping.physicalName", "col-1");
+    DeltaLoadTableResponse resp =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            new DeltaCreateTableRequest()
+                .name(tableName)
+                .location(staging.getLocation())
+                .tableType(DeltaTableType.MANAGED)
+                .columns(
+                    new DeltaStructType()
+                        .type("struct")
+                        .fields(
+                            List.of(
+                                new DeltaStructField()
+                                    .name("a")
+                                    .type(new DeltaPrimitiveType().type("long"))
+                                    .nullable(false)
+                                    .metadata(meta))))
+                .protocol(managedProtocol())
+                .domainMetadata(
+                    new DeltaDomainMetadataUpdates()
+                        .deltaRowTracking(
+                            new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(99L)))
+                .lastCommitTimestampMs(PLACEHOLDER_LAST_COMMIT_TIMESTAMP_MS)
+                .properties(properties));
+    return new Handle(tableName, staging.getTableId(), resp.getMetadata().getEtag());
+  }
+
+  /**
+   * Creates a MANAGED Delta table with column-mapping name-mode enabled. Schema: two columns "a"
+   * (long, not null, id 1, physicalName "col-1") and "b" (string, nullable, id 2, physicalName
+   * "col-2"). Used by tests that need two columns (drop, reorder, multi-rename).
+   */
+  private Handle createTwoColCmNameModeManaged(String tableName) throws ApiException {
+    DeltaStagingTableResponse staging = createDeltaStaging(tableName);
+    Map<String, String> properties =
+        new HashMap<>(managedContractProperties(staging.getTableId().toString()));
+    properties.put("delta.columnMapping.mode", "name");
+    properties.put("delta.columnMapping.maxColumnId", "2");
+    DeltaStructFieldMetadata aMeta = new DeltaStructFieldMetadata();
+    aMeta.put("delta.columnMapping.id", 1);
+    aMeta.put("delta.columnMapping.physicalName", "col-1");
+    DeltaStructFieldMetadata bMeta = new DeltaStructFieldMetadata();
+    bMeta.put("delta.columnMapping.id", 2);
+    bMeta.put("delta.columnMapping.physicalName", "col-2");
+    DeltaLoadTableResponse resp =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            new DeltaCreateTableRequest()
+                .name(tableName)
+                .location(staging.getLocation())
+                .tableType(DeltaTableType.MANAGED)
+                .columns(
+                    new DeltaStructType()
+                        .type("struct")
+                        .fields(
+                            List.of(
+                                new DeltaStructField()
+                                    .name("a")
+                                    .type(new DeltaPrimitiveType().type("long"))
+                                    .nullable(false)
+                                    .metadata(aMeta),
+                                new DeltaStructField()
+                                    .name("b")
+                                    .type(new DeltaPrimitiveType().type("string"))
+                                    .nullable(true)
+                                    .metadata(bMeta))))
+                .protocol(managedProtocol())
+                .domainMetadata(
+                    new DeltaDomainMetadataUpdates()
+                        .deltaRowTracking(
+                            new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(99L)))
+                .lastCommitTimestampMs(PLACEHOLDER_LAST_COMMIT_TIMESTAMP_MS)
+                .properties(properties));
+    return new Handle(tableName, staging.getTableId(), resp.getMetadata().getEtag());
+  }
+
+  /**
+   * Creates a MANAGED name-mode Delta table with a single {@code map<string, struct<val>>} column
+   * "props" (id 1, physicalName "col-props"); the value struct's field "val" has id 2, physicalName
+   * "col-val". Used by the map-value nested rename test.
+   */
+  private Handle createCmNameModeMapStructManaged(String tableName) throws ApiException {
+    DeltaStagingTableResponse staging = createDeltaStaging(tableName);
+    Map<String, String> properties =
+        new HashMap<>(managedContractProperties(staging.getTableId().toString()));
+    properties.put("delta.columnMapping.mode", "name");
+    properties.put("delta.columnMapping.maxColumnId", "2");
+    DeltaStructFieldMetadata nestedMeta = new DeltaStructFieldMetadata();
+    nestedMeta.put("delta.columnMapping.id", 2);
+    nestedMeta.put("delta.columnMapping.physicalName", "col-val");
+    DeltaStructType valueStruct =
+        new DeltaStructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    new DeltaStructField()
+                        .name("val")
+                        .type(new DeltaPrimitiveType().type("string"))
+                        .nullable(true)
+                        .metadata(nestedMeta)));
+    DeltaStructFieldMetadata outerMeta = new DeltaStructFieldMetadata();
+    outerMeta.put("delta.columnMapping.id", 1);
+    outerMeta.put("delta.columnMapping.physicalName", "col-props");
+    DeltaLoadTableResponse resp =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            new DeltaCreateTableRequest()
+                .name(tableName)
+                .location(staging.getLocation())
+                .tableType(DeltaTableType.MANAGED)
+                .columns(
+                    new DeltaStructType()
+                        .type("struct")
+                        .fields(
+                            List.of(
+                                new DeltaStructField()
+                                    .name("props")
+                                    .type(
+                                        new DeltaMapType()
+                                            .type("map")
+                                            .keyType(new DeltaPrimitiveType().type("string"))
+                                            .valueType(valueStruct)
+                                            .valueContainsNull(true))
+                                    .nullable(true)
+                                    .metadata(outerMeta))))
+                .protocol(managedProtocol())
+                .domainMetadata(
+                    new DeltaDomainMetadataUpdates()
+                        .deltaRowTracking(
+                            new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(99L)))
+                .lastCommitTimestampMs(PLACEHOLDER_LAST_COMMIT_TIMESTAMP_MS)
+                .properties(properties));
+    return new Handle(tableName, staging.getTableId(), resp.getMetadata().getEtag());
+  }
+
+  /**
+   * Creates a MANAGED name-mode Delta table with a single {@code array<struct<label>>} column
+   * "events" (id 1, physicalName "col-events"); the element struct's field "label" has id 2,
+   * physicalName "col-label". Used by the array-element nested rename test.
+   */
+  private Handle createCmNameModeArrayStructManaged(String tableName) throws ApiException {
+    DeltaStagingTableResponse staging = createDeltaStaging(tableName);
+    Map<String, String> properties =
+        new HashMap<>(managedContractProperties(staging.getTableId().toString()));
+    properties.put("delta.columnMapping.mode", "name");
+    properties.put("delta.columnMapping.maxColumnId", "2");
+    DeltaStructFieldMetadata nestedMeta = new DeltaStructFieldMetadata();
+    nestedMeta.put("delta.columnMapping.id", 2);
+    nestedMeta.put("delta.columnMapping.physicalName", "col-label");
+    DeltaStructType elementStruct =
+        new DeltaStructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    new DeltaStructField()
+                        .name("label")
+                        .type(new DeltaPrimitiveType().type("string"))
+                        .nullable(true)
+                        .metadata(nestedMeta)));
+    DeltaStructFieldMetadata outerMeta = new DeltaStructFieldMetadata();
+    outerMeta.put("delta.columnMapping.id", 1);
+    outerMeta.put("delta.columnMapping.physicalName", "col-events");
+    DeltaLoadTableResponse resp =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            new DeltaCreateTableRequest()
+                .name(tableName)
+                .location(staging.getLocation())
+                .tableType(DeltaTableType.MANAGED)
+                .columns(
+                    new DeltaStructType()
+                        .type("struct")
+                        .fields(
+                            List.of(
+                                new DeltaStructField()
+                                    .name("events")
+                                    .type(
+                                        new DeltaArrayType()
+                                            .type("array")
+                                            .elementType(elementStruct)
+                                            .containsNull(true))
+                                    .nullable(true)
+                                    .metadata(outerMeta))))
+                .protocol(managedProtocol())
+                .domainMetadata(
+                    new DeltaDomainMetadataUpdates()
+                        .deltaRowTracking(
+                            new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(99L)))
+                .lastCommitTimestampMs(PLACEHOLDER_LAST_COMMIT_TIMESTAMP_MS)
+                .properties(properties));
+    return new Handle(tableName, staging.getTableId(), resp.getMetadata().getEtag());
+  }
+
+  /**
+   * Creates a MANAGED Delta table with column-mapping id-mode enabled. Schema: single top-level
+   * struct column "s" (id 1, physicalName "col-s") containing nested field "x" (id 2, physicalName
+   * "col-x"). Used by the nested id-mode reassignment guard test.
+   */
+  private Handle createCmIdModeStructManaged(String tableName) throws ApiException {
+    DeltaStagingTableResponse staging = createDeltaStaging(tableName);
+    Map<String, String> properties =
+        new HashMap<>(managedContractProperties(staging.getTableId().toString()));
+    properties.put("delta.columnMapping.mode", "id");
+    properties.put("delta.columnMapping.maxColumnId", "2");
+    DeltaStructFieldMetadata nestedMeta = new DeltaStructFieldMetadata();
+    nestedMeta.put("delta.columnMapping.id", 2);
+    nestedMeta.put("delta.columnMapping.physicalName", "col-x");
+    DeltaStructType innerType =
+        new DeltaStructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    new DeltaStructField()
+                        .name("x")
+                        .type(new DeltaPrimitiveType().type("long"))
+                        .nullable(true)
+                        .metadata(nestedMeta)));
+    DeltaStructFieldMetadata outerMeta = new DeltaStructFieldMetadata();
+    outerMeta.put("delta.columnMapping.id", 1);
+    outerMeta.put("delta.columnMapping.physicalName", "col-s");
+    DeltaLoadTableResponse resp =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            new DeltaCreateTableRequest()
+                .name(tableName)
+                .location(staging.getLocation())
+                .tableType(DeltaTableType.MANAGED)
+                .columns(
+                    new DeltaStructType()
+                        .type("struct")
+                        .fields(
+                            List.of(
+                                new DeltaStructField()
+                                    .name("s")
+                                    .type(innerType)
+                                    .nullable(false)
+                                    .metadata(outerMeta))))
+                .protocol(managedProtocol())
+                .domainMetadata(
+                    new DeltaDomainMetadataUpdates()
+                        .deltaRowTracking(
+                            new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(99L)))
+                .lastCommitTimestampMs(PLACEHOLDER_LAST_COMMIT_TIMESTAMP_MS)
+                .properties(properties));
+    return new Handle(tableName, staging.getTableId(), resp.getMetadata().getEtag());
+  }
+
+  /**
+   * Creates a MANAGED Delta table with column-mapping name-mode enabled. Schema: two top-level
+   * struct columns "s1" and "s2", each containing a nested field "x" with physicalName "col-inner".
+   * Used to verify that the same physicalName reused across different nested-struct levels is not
+   * flagged as a reassignment (physicalName uniqueness is same-level only).
+   */
+  private Handle createTwoStructColCmNameModeManaged(String tableName) throws ApiException {
+    DeltaStagingTableResponse staging = createDeltaStaging(tableName);
+    Map<String, String> properties =
+        new HashMap<>(managedContractProperties(staging.getTableId().toString()));
+    properties.put("delta.columnMapping.mode", "name");
+    properties.put("delta.columnMapping.maxColumnId", "4");
+
+    DeltaStructFieldMetadata inner1Meta = new DeltaStructFieldMetadata();
+    inner1Meta.put("delta.columnMapping.id", 3);
+    inner1Meta.put("delta.columnMapping.physicalName", "col-inner"); // same as inner2
+    DeltaStructType innerType1 =
+        new DeltaStructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    new DeltaStructField()
+                        .name("x")
+                        .type(new DeltaPrimitiveType().type("long"))
+                        .nullable(true)
+                        .metadata(inner1Meta)));
+    DeltaStructFieldMetadata s1Meta = new DeltaStructFieldMetadata();
+    s1Meta.put("delta.columnMapping.id", 1);
+    s1Meta.put("delta.columnMapping.physicalName", "col-s1");
+
+    DeltaStructFieldMetadata inner2Meta = new DeltaStructFieldMetadata();
+    inner2Meta.put("delta.columnMapping.id", 4);
+    inner2Meta.put("delta.columnMapping.physicalName", "col-inner"); // same physName, diff level
+    DeltaStructType innerType2 =
+        new DeltaStructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    new DeltaStructField()
+                        .name("x")
+                        .type(new DeltaPrimitiveType().type("long"))
+                        .nullable(true)
+                        .metadata(inner2Meta)));
+    DeltaStructFieldMetadata s2Meta = new DeltaStructFieldMetadata();
+    s2Meta.put("delta.columnMapping.id", 2);
+    s2Meta.put("delta.columnMapping.physicalName", "col-s2");
+
+    DeltaLoadTableResponse resp =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            new DeltaCreateTableRequest()
+                .name(tableName)
+                .location(staging.getLocation())
+                .tableType(DeltaTableType.MANAGED)
+                .columns(
+                    new DeltaStructType()
+                        .type("struct")
+                        .fields(
+                            List.of(
+                                new DeltaStructField()
+                                    .name("s1")
+                                    .type(innerType1)
+                                    .nullable(false)
+                                    .metadata(s1Meta),
+                                new DeltaStructField()
+                                    .name("s2")
+                                    .type(innerType2)
+                                    .nullable(false)
+                                    .metadata(s2Meta))))
+                .protocol(managedProtocol())
+                .domainMetadata(
+                    new DeltaDomainMetadataUpdates()
+                        .deltaRowTracking(
+                            new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(99L)))
+                .lastCommitTimestampMs(PLACEHOLDER_LAST_COMMIT_TIMESTAMP_MS)
+                .properties(properties));
+    return new Handle(tableName, staging.getTableId(), resp.getMetadata().getEtag());
+  }
+
+  /**
+   * Creates an EXTERNAL Delta table with a single top-level struct column "s" containing a nested
+   * field "x" (long, no CM metadata on either field). Used to test nested rename detection on the
+   * first-enable path.
+   */
+  private Handle createSimpleStructExternal(String tableName) throws Exception {
+    String location =
+        java.nio.file.Files.createTempDirectory(testDirectoryRoot, "external_").toString();
+    DeltaStructType innerType =
+        new DeltaStructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    new DeltaStructField()
+                        .name("x")
+                        .type(new DeltaPrimitiveType().type("long"))
+                        .nullable(true)
+                        .metadata(new DeltaStructFieldMetadata())));
+    DeltaLoadTableResponse resp =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            new DeltaCreateTableRequest()
+                .name(tableName)
+                .location(location)
+                .tableType(DeltaTableType.EXTERNAL)
+                .columns(
+                    new DeltaStructType()
+                        .type("struct")
+                        .fields(
+                            List.of(
+                                new DeltaStructField()
+                                    .name("s")
+                                    .type(innerType)
+                                    .nullable(false)
+                                    .metadata(new DeltaStructFieldMetadata()))))
+                .protocol(
+                    new DeltaProtocol()
+                        .minReaderVersion(3)
+                        .minWriterVersion(7)
+                        .readerFeatures(List.of(TableFeature.DELETION_VECTORS.specName()))
+                        .writerFeatures(List.of(TableFeature.DELETION_VECTORS.specName())))
+                .lastCommitTimestampMs(PLACEHOLDER_LAST_COMMIT_TIMESTAMP_MS)
+                .properties(Map.of("delta.enableDeletionVectors", "true")));
+    return new Handle(tableName, resp.getMetadata().getTableUuid(), resp.getMetadata().getEtag());
+  }
+
+  /**
+   * Creates an id-mode MANAGED Delta table with a complex schema: top-level "x" (long, id=1,
+   * physicalName "col-x") and "s" (struct<x: string(id=3)>, id=2, physicalName "col-s"). The nested
+   * "x" has id=3 and physicalName "col-ix". Used to test the id-mode structural-scope negative
+   * control (same logical name "x" at top level and inside struct).
+   */
+  private Handle createIdModeComplexManaged(String tableName) throws ApiException {
+    DeltaStagingTableResponse staging = createDeltaStaging(tableName);
+    Map<String, String> properties =
+        new HashMap<>(managedContractProperties(staging.getTableId().toString()));
+    properties.put("delta.columnMapping.mode", "id");
+    properties.put("delta.columnMapping.maxColumnId", "3");
+    DeltaStructFieldMetadata innerXMeta = new DeltaStructFieldMetadata();
+    innerXMeta.put("delta.columnMapping.id", 3);
+    innerXMeta.put("delta.columnMapping.physicalName", "col-ix");
+    DeltaStructType innerType =
+        new DeltaStructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    new DeltaStructField()
+                        .name("x")
+                        .type(new DeltaPrimitiveType().type("string"))
+                        .nullable(true)
+                        .metadata(innerXMeta)));
+    DeltaStructFieldMetadata sMeta = new DeltaStructFieldMetadata();
+    sMeta.put("delta.columnMapping.id", 2);
+    sMeta.put("delta.columnMapping.physicalName", "col-s");
+    DeltaStructFieldMetadata xMeta = new DeltaStructFieldMetadata();
+    xMeta.put("delta.columnMapping.id", 1);
+    xMeta.put("delta.columnMapping.physicalName", "col-x");
+    DeltaLoadTableResponse resp =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            new DeltaCreateTableRequest()
+                .name(tableName)
+                .location(staging.getLocation())
+                .tableType(DeltaTableType.MANAGED)
+                .columns(
+                    new DeltaStructType()
+                        .type("struct")
+                        .fields(
+                            List.of(
+                                new DeltaStructField()
+                                    .name("x")
+                                    .type(new DeltaPrimitiveType().type("long"))
+                                    .nullable(false)
+                                    .metadata(xMeta),
+                                new DeltaStructField()
+                                    .name("s")
+                                    .type(innerType)
+                                    .nullable(false)
+                                    .metadata(sMeta))))
+                .protocol(managedProtocol())
+                .domainMetadata(
+                    new DeltaDomainMetadataUpdates()
+                        .deltaRowTracking(
+                            new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(99L)))
+                .lastCommitTimestampMs(PLACEHOLDER_LAST_COMMIT_TIMESTAMP_MS)
+                .properties(properties));
+    return new Handle(tableName, staging.getTableId(), resp.getMetadata().getEtag());
+  }
+
+  // -------------------------------------------------------- CM update helpers
+
+  /**
+   * Builds a {@code set-columns} update that renames a single column from {@code oldName} to {@code
+   * newName}, preserving the given {@code physicalName} in the column-mapping metadata (name-mode:
+   * keyed on physicalName; CM id remains 1).
+   */
+  private static DeltaSetSchemaUpdate setColumnsRenaming(
+      String oldName, String newName, String physicalName) {
+    DeltaStructFieldMetadata meta = new DeltaStructFieldMetadata();
+    meta.put("delta.columnMapping.id", 1);
+    meta.put("delta.columnMapping.physicalName", physicalName);
+    return new DeltaSetSchemaUpdate()
+        .columns(
+            new DeltaStructType()
+                .type("struct")
+                .fields(
+                    List.of(
+                        new DeltaStructField()
+                            .name(newName)
+                            .type(new DeltaPrimitiveType().type("long"))
+                            .nullable(false)
+                            .metadata(meta))));
+  }
+
+  /**
+   * Builds a {@code set-columns} update that renames a single column from {@code oldName} to {@code
+   * newName} in id-mode, preserving the given {@code cmId} and {@code physicalName}.
+   */
+  private static DeltaSetSchemaUpdate setColumnsRenamingIdMode(
+      String oldName, String newName, int cmId, String physicalName) {
+    DeltaStructFieldMetadata meta = new DeltaStructFieldMetadata();
+    meta.put("delta.columnMapping.id", cmId);
+    meta.put("delta.columnMapping.physicalName", physicalName);
+    return new DeltaSetSchemaUpdate()
+        .columns(
+            new DeltaStructType()
+                .type("struct")
+                .fields(
+                    List.of(
+                        new DeltaStructField()
+                            .name(newName)
+                            .type(new DeltaPrimitiveType().type("long"))
+                            .nullable(false)
+                            .metadata(meta))));
+  }
+
+  /**
+   * Builds a {@code set-columns} update for column {@code colName} with its column-mapping metadata
+   * stripped (empty metadata). Used by the test that verifies stripping CM keys is rejected.
+   */
+  private static DeltaSetSchemaUpdate setColumnsWithoutMappingMetadataFor(String colName) {
+    return new DeltaSetSchemaUpdate()
+        .columns(
+            new DeltaStructType()
+                .type("struct")
+                .fields(
+                    List.of(
+                        new DeltaStructField()
+                            .name(colName)
+                            .type(new DeltaPrimitiveType().type("long"))
+                            .nullable(false)
+                            .metadata(new DeltaStructFieldMetadata()))));
+  }
+
+  // -------------------------------------------------------- DB-level assertion helpers
+
+  /**
+   * Returns the {@code ColumnInfoDAO.id} UUID for the column with the given logical name in the
+   * table identified by {@code h}. Reads directly from the in-process Hibernate session factory so
+   * the test can assert on the DB-level identity that the REST API does not expose.
+   */
+  private UUID columnIdByName(Handle h, String colName) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      return session
+          .createQuery(
+              "select c.id from ColumnInfoDAO c"
+                  + " where c.table.id = :tableId and c.name = :name",
+              UUID.class)
+          .setParameter("tableId", h.tableId())
+          .setParameter("name", colName)
+          .getSingleResult();
+    }
+  }
+
+  /** Returns the ordered list of top-level column names from a {@link DeltaLoadTableResponse}. */
+  private static List<String> columnNames(DeltaLoadTableResponse resp) {
+    return resp.getMetadata().getColumns().getFields().stream()
+        .map(DeltaStructField::getName)
+        .collect(Collectors.toList());
   }
 }
