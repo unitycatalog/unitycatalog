@@ -459,7 +459,7 @@ class UCSingleCatalog
   private def isCatalogManagedDeltaTable(tableInfo: UCTableInfo): Boolean = {
     val tableProperties = Option(tableInfo.getProperties)
     tableInfo.getTableType == TableType.MANAGED &&
-    tableInfo.getDataSourceFormat == DataSourceFormat.DELTA &&
+    UCSingleCatalog.isDeltaTable(tableInfo) &&
     tableProperties.exists(
       _.get(UCTableProperties.DELTA_CATALOG_MANAGED_KEY) ==
         UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
@@ -925,6 +925,38 @@ object UCSingleCatalog {
       !ident.name().contains("/")
   }
 
+  /** True for a MANAGED or EXTERNAL Delta table: the rows the UC Delta REST API serves. */
+  private[spark] def isDeltaTable(t: UCTableInfo): Boolean =
+    (t.getTableType == TableType.MANAGED || t.getTableType == TableType.EXTERNAL) &&
+      t.getDataSourceFormat == DataSourceFormat.DELTA
+
+  /**
+   * Rejects a rename target outside the source's schema. Spark hands the RENAME TO target over as
+   * written, without stripping a leading catalog name, so `table`, `schema.table` and
+   * `<catalogName>.schema.table` are all accepted when they name the source's schema.
+   */
+  private[spark] def requireSameSchemaRenameTarget(
+      catalogName: String,
+      oldIdent: Identifier,
+      newIdent: Identifier): Unit = {
+    val schema = oldIdent.namespace().head
+    val sameSchema = newIdent.namespace() match {
+      case Array() => true
+      case Array(ns) => ns == schema
+      case Array(catalog, ns) => catalog == catalogName && ns == schema
+      case _ => false
+    }
+    if (!sameSchema) {
+      throw new UnsupportedOperationException(
+        s"Renaming a table into another catalog or schema is not supported: " +
+          s"${oldIdent.namespace().mkString(".")} to ${newIdent.namespace().mkString(".")}")
+    }
+  }
+
+  /** The Delta REST error type carried in `e`'s response body, if it has one. */
+  private[spark] def deltaErrorType(e: ApiException): Option[DeltaErrorType] =
+    Option(DeltaApiException.from(e).orElse(null)).flatMap(d => Option(d.getErrorType))
+
 }
 
 /** Internal signal that preserves a view row rejected by the table-only catalog surface. */
@@ -993,14 +1025,19 @@ private[spark] class UCProxy(
   // Names UC cannot address answer `None` without an RPC. UC rejects them with 400, which Spark's
   // resolver does not absorb the way it absorbs a not-found, so asking would surface a name Spark
   // is merely probing (a bare `parquet.`s3://...`` path) as a query failure.
-  private[spark] def getUCTableLike(ident: Identifier): Option[UCTableInfo] = {
+  //
+  // `readAsManaged` maps to UC's "read streaming table / materialized view as managed" flags. Pass
+  // `false` when the caller needs those rows to show their real type.
+  private[spark] def getUCTableLike(
+      ident: Identifier,
+      readAsManaged: Boolean = true): Option[UCTableInfo] = {
     if (!UCSingleCatalog.isAddressableTableName(ident)) return None
     val fullName = UCSingleCatalog.fullTableNameForApi(this.name, ident)
     try {
       Some(tablesApi.getTable(
         fullName,
-        /* readStreamingTableAsManaged = */ true,
-        /* readMaterializedViewAsManaged = */ true))
+        /* readStreamingTableAsManaged = */ readAsManaged,
+        /* readMaterializedViewAsManaged = */ readAsManaged))
     } catch {
       case e: ApiException if e.getCode == 404 => None
     }
@@ -1283,62 +1320,49 @@ private[spark] class UCProxy(
    */
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
     val fullName = UCSingleCatalog.fullTableNameForApi(this.name, oldIdent)
-    val schema = oldIdent.namespace().head
-    // Spark hands the RENAME TO target over as written, without stripping a leading catalog
-    // name, so accept `table`, `schema.table` and `<this catalog>.schema.table` in this schema.
-    val sameSchema = newIdent.namespace() match {
-      case Array() => true
-      case Array(ns) => ns == schema
-      case Array(catalog, ns) => catalog == this.name && ns == schema
-      case _ => false
-    }
-    if (!sameSchema) {
-      throw new UnsupportedOperationException(
-        s"Renaming a table into another catalog or schema is not supported: " +
-          s"${oldIdent.namespace().mkString(".")} to ${newIdent.namespace().mkString(".")}")
-    }
-    val t = try {
-      tablesApi.getTable(
-        fullName,
-        /* readStreamingTableAsManaged = */ false,
-        /* readMaterializedViewAsManaged = */ false)
-    } catch {
-      case e: ApiException if e.getCode == 404 => throw new NoSuchTableException(oldIdent)
-    }
+    UCSingleCatalog.requireSameSchemaRenameTarget(this.name, oldIdent, newIdent)
+    val t = getUCTableLike(oldIdent, readAsManaged = false)
+      .getOrElse(throw new NoSuchTableException(oldIdent))
     if (UCViewTypes.isViewLikeTableType(t.getTableType)) {
       throw new UnsupportedOperationException(
         s"Cannot rename $fullName with ALTER TABLE: it is a ${t.getTableType}, not a table")
     }
-    if ((t.getTableType != TableType.MANAGED && t.getTableType != TableType.EXTERNAL) ||
-        t.getDataSourceFormat != DataSourceFormat.DELTA) {
+    if (!UCSingleCatalog.isDeltaTable(t)) {
       throw new UnsupportedOperationException(
         s"Renaming is only supported for Delta tables; $fullName is a " +
           s"${t.getTableType} ${t.getDataSourceFormat} table")
     }
     try {
       deltaTablesApi.renameTable(
-        this.name, schema, oldIdent.name(), new DeltaRenameTableRequest().newName(newIdent.name()))
+        this.name,
+        oldIdent.namespace().head,
+        oldIdent.name(),
+        new DeltaRenameTableRequest().newName(newIdent.name()))
     } catch {
-      case e: ApiException =>
-        val deltaError =
-          Option(DeltaApiException.from(e).orElse(null)).flatMap(d => Option(d.getErrorType))
-        deltaError match {
-          case Some(DeltaErrorType.ALREADY_EXISTS_EXCEPTION) =>
-            throw new TableAlreadyExistsException(Identifier.of(Array(schema), newIdent.name()))
-          case Some(DeltaErrorType.NO_SUCH_TABLE_EXCEPTION) =>
-            // Dropped between the lookup above and the rename.
-            throw new NoSuchTableException(oldIdent)
-          case Some(DeltaErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION) =>
-            throw new UnsupportedOperationException(
-              s"Renaming is only supported for Delta tables: $fullName", e)
-          case None if e.getCode == 404 =>
-            // The table exists (looked up above), so a 404 without a Delta error body means the
-            // route is missing: a UC server that predates the Delta rename endpoint.
-            throw new UnsupportedOperationException(
-              "ALTER TABLE ... RENAME TO is not supported by this Unity Catalog server", e)
-          case _ => throw e
-        }
+      case e: ApiException => throw renameError(e, fullName, oldIdent, newIdent)
     }
+  }
+
+  /** Maps a failed Delta REST rename call to the exception `renameTable` should throw. */
+  private def renameError(
+      e: ApiException,
+      fullName: String,
+      oldIdent: Identifier,
+      newIdent: Identifier): Throwable = UCSingleCatalog.deltaErrorType(e) match {
+    case Some(DeltaErrorType.ALREADY_EXISTS_EXCEPTION) =>
+      new TableAlreadyExistsException(Identifier.of(oldIdent.namespace(), newIdent.name()))
+    case Some(DeltaErrorType.NO_SUCH_TABLE_EXCEPTION) =>
+      // Dropped between the lookup and the rename.
+      new NoSuchTableException(oldIdent)
+    case Some(DeltaErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION) =>
+      new UnsupportedOperationException(
+        s"Renaming is only supported for Delta tables: $fullName", e)
+    case None if e.getCode == 404 =>
+      // The table exists (looked up before the call), so a 404 without a Delta error body means
+      // the route is missing: a UC server that predates the Delta rename endpoint.
+      new UnsupportedOperationException(
+        "ALTER TABLE ... RENAME TO is not supported by this Unity Catalog server", e)
+    case _ => e
   }
 
   override def listNamespaces(): Array[Array[String]] = {
