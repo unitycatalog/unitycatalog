@@ -192,10 +192,26 @@ public class SdkRenameTableTest extends DeltaBaseTableCRUDTestEnv {
                 .columns(COLUMNS)
                 .tableType(TableType.VIEW)
                 .viewDefinition("SELECT 1 AS id"));
+    // UC REST accepts a view that claims the DELTA format; the type check must still reject it.
+    TableInfo deltaFormatView =
+        tableOperations.createTable(
+            new CreateTable()
+                .name("renameDeltaFormatView")
+                .catalogName(TestUtils.CATALOG_NAME)
+                .schemaName(TestUtils.SCHEMA_NAME)
+                .columns(COLUMNS)
+                .tableType(TableType.VIEW)
+                .dataSourceFormat(DataSourceFormat.DELTA)
+                .viewDefinition("SELECT 1 AS id"));
+    assertThat(deltaFormatView.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
     // A Delta table occupying the target name: the format check must win over the collision check.
     createDeltaManaged("renameExistingDelta", Map.of());
 
-    for (TableInfo source : new TableInfo[] {parquet, iceberg, view}) {
+    for (TableInfo source : new TableInfo[] {parquet, iceberg, view, deltaFormatView}) {
+      String expectedMessage =
+          source == deltaFormatView
+              ? "Only MANAGED and EXTERNAL tables can be renamed"
+              : "Table is not a Delta table";
       for (String newName : new String[] {"renameUnusedTarget", source.getName()}) {
         TestUtils.assertDeltaApiException(
             () ->
@@ -205,7 +221,7 @@ public class SdkRenameTableTest extends DeltaBaseTableCRUDTestEnv {
                     source.getName(),
                     new DeltaRenameTableRequest().newName(newName)),
             DeltaErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
-            "Table is not a Delta table");
+            expectedMessage);
       }
       TestUtils.assertDeltaApiException(
           () ->
@@ -215,7 +231,7 @@ public class SdkRenameTableTest extends DeltaBaseTableCRUDTestEnv {
                   source.getName(),
                   new DeltaRenameTableRequest().newName("renameExistingDelta")),
           DeltaErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
-          "Table is not a Delta table");
+          expectedMessage);
       // The rejected row keeps its name.
       String fullName =
           TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + source.getName();

@@ -1260,10 +1260,11 @@ public class TableRepository {
 
   /**
    * {@link #renameTable} for the Delta REST surface: additionally rejects a source that is not a
-   * Delta table (views, Iceberg, parquet, etc.) with {@link ErrorCode#UNSUPPORTED_TABLE_FORMAT}, as
-   * {@link #loadTableForDelta} and {@link #updateTableForDelta} do. The format check runs after the
-   * not-found check and before the no-op and collision checks, in the same transaction as the
-   * rename.
+   * MANAGED or EXTERNAL Delta table (views, Iceberg, parquet, etc.) with {@link
+   * ErrorCode#UNSUPPORTED_TABLE_FORMAT}. The format check is the one {@link #loadTableForDelta} and
+   * {@link #updateTableForDelta} use; the type check is needed on top because UC REST accepts a
+   * view with {@code data_source_format=DELTA}. Both run after the not-found check and before the
+   * no-op and collision checks, in the same transaction as the rename.
    */
   public void renameTableForDelta(String catalog, String schema, String table, String newName) {
     renameTable(catalog, schema, table, newName, /* requireDelta= */ true);
@@ -1284,6 +1285,19 @@ public class TableRepository {
           }
           if (requireDelta) {
             requireDeltaTable(tableInfoDAO, catalog, schema, table);
+            if (!TableType.MANAGED.toString().equals(tableInfoDAO.getType())
+                && !TableType.EXTERNAL.toString().equals(tableInfoDAO.getType())) {
+              throw new BaseException(
+                  ErrorCode.UNSUPPORTED_TABLE_FORMAT,
+                  "Only MANAGED and EXTERNAL tables can be renamed: "
+                      + catalog
+                      + "."
+                      + schema
+                      + "."
+                      + table
+                      + " is a "
+                      + tableInfoDAO.getType());
+            }
           }
           // Do the no-op check after the table lookup. A missing table must still return
           // TABLE_NOT_FOUND rather than succeed as a no-op.
