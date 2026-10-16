@@ -85,8 +85,8 @@ public abstract class BaseServerTest {
 
   /**
    * Subclasses can override this to customize the hibernate properties before the session factory
-   * is created, e.g. to point the server at an external database such as PostgreSQL via
-   * Testcontainers. Defaults to this test's database from {@link TestDatabases}.
+   * is created. Defaults to this test's database from {@link TestDatabases}; a subclass that points
+   * the server at another database needs {@code @UsesOwnDatabase}.
    */
   protected void setUpHibernateProperties(Properties hibernateProperties) {}
 
@@ -171,19 +171,23 @@ public abstract class BaseServerTest {
         session.createMutationQuery("delete from CredentialDAO").executeUpdate();
         tx.commit();
         session.close();
-
-        // close() rather than stop() so a server that built its own SessionFactory releases it;
-        // this harness injects one, so the server leaves it open and we close it below.
-        unityCatalogServer.close();
-        // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
-        unityCatalogServer = null;
       }
     } finally {
-      // Closes the configurator from setUp() too, even when setUp() or the cleanup above failed.
-      // Keep this after the cleanup queries: closing can drop the schema (H2 uses create-drop).
-      if (testDatabase != null) {
-        testDatabase.close();
-        testDatabase = null;
+      try {
+        if (unityCatalogServer != null) {
+          // close() rather than stop() so a server that built its own SessionFactory releases it;
+          // this harness injects one, so the server leaves it open; testDatabase.close() closes it.
+          unityCatalogServer.close();
+          // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
+          unityCatalogServer = null;
+        }
+      } finally {
+        // Runs even if setUp() or the cleanup above failed. Closes the configurator and removes the
+        // database, so it must follow unityCatalogServer.close().
+        if (testDatabase != null) {
+          testDatabase.close();
+          testDatabase = null;
+        }
       }
     }
   }

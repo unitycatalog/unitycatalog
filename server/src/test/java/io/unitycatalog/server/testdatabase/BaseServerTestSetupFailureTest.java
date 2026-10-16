@@ -7,7 +7,7 @@ import java.util.Properties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** A failure while building the SessionFactory must still release the database in tearDown. */
+/** A configurator that fails to build must still release the database in tearDown. */
 class BaseServerTestSetupFailureTest extends BaseServerTest {
 
   @Override

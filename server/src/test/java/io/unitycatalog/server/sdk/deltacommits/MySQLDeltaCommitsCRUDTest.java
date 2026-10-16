@@ -13,7 +13,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * subquery selecting from the table being deleted from (error 1093), so this suite is what guards
  * the derived-table shape of that query against regressions that H2 and PostgreSQL would not catch.
  */
-@UsesOwnDatabase(reason = "MySQL coverage until MySQL is a supported test database")
+@UsesOwnDatabase(reason = "runs on MySQL, which UC_TEST_DATABASE does not offer")
 @Testcontainers(disabledWithoutDocker = true)
 public class MySQLDeltaCommitsCRUDTest extends SdkDeltaCommitsCRUDTest {
 
@@ -31,7 +31,7 @@ public class MySQLDeltaCommitsCRUDTest extends SdkDeltaCommitsCRUDTest {
     hibernateProperties.setProperty("hibernate.connection.url", MYSQL.getJdbcUrl());
     hibernateProperties.setProperty("hibernate.connection.username", MYSQL.getUsername());
     hibernateProperties.setProperty("hibernate.connection.password", MYSQL.getPassword());
-    // MySQL builds its own schema per test, starting from the selected test database's settings.
+    // The selected database's settings may skip schema creation (PostgreSQL copies a template).
     hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
     // create-drop's drop step fails harmlessly on MySQL (it has no DROP FOREIGN KEY IF EXISTS).
     hibernateProperties.setProperty("hibernate.hbm2ddl.halt_on_error", "false");

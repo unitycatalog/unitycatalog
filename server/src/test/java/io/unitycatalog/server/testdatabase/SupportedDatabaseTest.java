@@ -11,9 +11,16 @@ import org.junit.jupiter.api.Test;
 class SupportedDatabaseTest {
 
   @Test
-  void unsetOrEmptyMeansH2() {
+  void unsetMeansH2() {
     assertThat(SupportedDatabase.parse(null)).isEqualTo(SupportedDatabase.H2);
-    assertThat(SupportedDatabase.parse("")).isEqualTo(SupportedDatabase.H2);
+  }
+
+  @Test
+  void emptyValueIsRejected() {
+    // An empty value is usually a CI expression that resolved to nothing, not a choice of H2.
+    assertThatThrownBy(() -> SupportedDatabase.parse(""))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("UC_TEST_DATABASE= is not one of [H2, POSTGRES_18]");
   }
 
   @Test
