@@ -11,8 +11,10 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.CleanupFailureReport;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
-import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabases;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.util.Date;
@@ -36,27 +38,22 @@ public class StorageCleanupTaskRepositoryTest {
   private static final Duration LEASE_DURATION = Duration.ofMinutes(10);
 
   private SessionFactory sessionFactory;
+  private TestDatabase testDatabase;
   private StorageCleanupTaskRepository repository;
-
-  protected void configureDatabase(Properties properties) {
-    properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
-    properties.setProperty(
-        "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
-  }
 
   @BeforeEach
   void setUpRepository() {
-    Properties properties = new Properties();
-    configureDatabase(properties);
-    properties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
-    properties.setProperty("hibernate.show_sql", "false");
-    sessionFactory = new HibernateConfigurator(properties).getSessionFactory();
+    testDatabase = TestDatabases.newDatabase();
+    sessionFactory =
+        testDatabase
+            .openHibernateConfigurator(new ServerProperties(new Properties()))
+            .getSessionFactory();
     repository = new StorageCleanupTaskRepository(sessionFactory);
   }
 
   @AfterEach
   void closeSessionFactory() {
-    sessionFactory.close();
+    testDatabase.close();
   }
 
   @Test

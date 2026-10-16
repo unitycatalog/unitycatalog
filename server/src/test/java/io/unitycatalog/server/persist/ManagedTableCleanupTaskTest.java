@@ -11,8 +11,9 @@ import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
-import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Files;
@@ -35,6 +36,7 @@ class ManagedTableCleanupTaskTest {
   @TempDir Path tempDir;
 
   private SessionFactory sessionFactory;
+  private TestDatabase testDatabase;
   private Repositories repositories;
   private UUID schemaId;
 
@@ -43,11 +45,8 @@ class ManagedTableCleanupTaskTest {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
     ServerProperties serverProperties = new ServerProperties(properties);
-    Properties hibernateProperties =
-        HibernateConfigurator.setupHibernateProperties(serverProperties);
-    hibernateProperties.setProperty(
-        "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
-    sessionFactory = new HibernateConfigurator(hibernateProperties).getSessionFactory();
+    testDatabase = TestDatabases.newDatabase();
+    sessionFactory = testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
     repositories = new Repositories(sessionFactory, serverProperties);
 
     UUID catalogId = UUID.randomUUID();
@@ -72,7 +71,7 @@ class ManagedTableCleanupTaskTest {
 
   @AfterEach
   void tearDown() {
-    sessionFactory.close();
+    testDatabase.close();
   }
 
   @Test
