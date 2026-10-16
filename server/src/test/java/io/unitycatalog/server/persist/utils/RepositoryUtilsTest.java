@@ -2,8 +2,10 @@ package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.RETURNS_SELF;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -11,8 +13,8 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import java.sql.SQLException;
 import java.util.Optional;
 import java.util.UUID;
-import org.hibernate.LockMode;
 import org.hibernate.Session;
+import org.hibernate.query.SelectionQuery;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -39,12 +41,20 @@ public class RepositoryUtilsTest {
     };
   }
 
+  /** Makes the row-lock query that lockTableForCommit runs throw {@code failure}. */
+  @SuppressWarnings("unchecked")
+  private static void lockQueryThrows(Session session, RuntimeException failure) {
+    SelectionQuery<TableInfoDAO> query = mock(SelectionQuery.class, RETURNS_SELF);
+    doThrow(failure).when(query).getSingleResult();
+    when(session.createSelectionQuery(any(String.class), any(Class.class))).thenReturn(query);
+  }
+
   @ParameterizedTest
   @MethodSource("lockAcquisitionFailures")
   public void lockFailureRaisesTheCallerSuppliedError(RuntimeException lockFailure) {
     Session session = mock();
     TableInfoDAO dao = mock();
-    doThrow(lockFailure).when(session).refresh(any(Object.class), any(LockMode.class));
+    lockQueryThrows(session, lockFailure);
 
     // Delta callers ask for COMMIT_STATE_UNKNOWN...
     assertThatThrownBy(
@@ -81,7 +91,7 @@ public class RepositoryUtilsTest {
     Session session = mock();
     TableInfoDAO dao = mock();
     IllegalStateException unexpected = new IllegalStateException("boom");
-    doThrow(unexpected).when(session).refresh(any(Object.class), any(LockMode.class));
+    lockQueryThrows(session, unexpected);
 
     assertThatThrownBy(
             () ->
