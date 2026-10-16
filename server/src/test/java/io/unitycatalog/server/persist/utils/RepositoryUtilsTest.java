@@ -1,5 +1,6 @@
 package io.unitycatalog.server.persist.utils;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.RETURNS_SELF;
@@ -45,7 +46,7 @@ public class RepositoryUtilsTest {
   @SuppressWarnings("unchecked")
   private static void lockQueryThrows(Session session, RuntimeException failure) {
     SelectionQuery<TableInfoDAO> query = mock(SelectionQuery.class, RETURNS_SELF);
-    doThrow(failure).when(query).getSingleResult();
+    doThrow(failure).when(query).getSingleResultOrNull();
     when(session.createSelectionQuery(any(String.class), any(Class.class))).thenReturn(query);
   }
 
@@ -98,5 +99,24 @@ public class RepositoryUtilsTest {
                 RepositoryUtils.lockTableForCommit(
                     session, dao, TABLE_ID, Optional.empty(), ErrorCode.COMMIT_STATE_UNKNOWN))
         .isSameAs(unexpected);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void tableDeletedWhileWaitingIsNotFound() {
+    Session session = mock();
+    TableInfoDAO dao = mock();
+    SelectionQuery<TableInfoDAO> query = mock(SelectionQuery.class, RETURNS_SELF);
+    when(query.getSingleResultOrNull()).thenReturn(null);
+    when(session.createSelectionQuery(any(String.class), any(Class.class))).thenReturn(query);
+
+    assertThatThrownBy(
+            () ->
+                RepositoryUtils.lockTableForCommit(
+                    session, dao, TABLE_ID, Optional.of("c.s.t"), ErrorCode.COMMIT_STATE_UNKNOWN))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.TABLE_NOT_FOUND))
+        .hasMessageContaining("c.s.t");
   }
 }

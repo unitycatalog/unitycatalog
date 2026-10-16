@@ -29,10 +29,11 @@ public class RepositoryUtils {
   private static final Map<String, Class<?>> PROPERTY_TYPE_MAP = new HashMap<>();
 
   /**
-   * Acquires the table row lock shared by the Delta and Iceberg commit paths, so concurrent commits
-   * on the same table serialize. A lock-wait timeout or deadlock victim is reported as {@code
-   * lockContentionError} (rolling back only this transaction) rather than leaking the ORM
-   * exception; the two commit paths pass different codes because the safe client reaction differs:
+   * Acquires the table row lock shared by the Delta and Iceberg commit paths and by table deletion,
+   * so concurrent commits on the same table serialize, and a deletion waits for them. A lock-wait
+   * timeout or deadlock victim is reported as {@code lockContentionError} (rolling back only this
+   * transaction) rather than leaking the ORM exception; the two commit paths pass different codes
+   * because the safe client reaction differs:
    *
    * <ul>
    *   <li><b>Delta</b> passes {@code COMMIT_STATE_UNKNOWN} (500). Failing to acquire the lock does
@@ -52,7 +53,8 @@ public class RepositoryUtils {
    * <p>The row is locked first and read second. Refreshing the entity under the lock would load its
    * columns with an outer join, which PostgreSQL cannot lock in one statement; Hibernate then reads
    * before locking, so a commit that waited for the lock would continue on the state it read before
-   * the other commit landed.
+   * the other commit landed. A table deleted while this waited for the lock is reported as {@link
+   * ErrorCode#TABLE_NOT_FOUND}.
    *
    * @param session the Hibernate session running the commit transaction
    * @param dao the table row to lock; re-read after the lock is held
@@ -67,11 +69,17 @@ public class RepositoryUtils {
       Optional<String> tableFullNameForLogging,
       ErrorCode lockContentionError) {
     try {
-      session
-          .createSelectionQuery("from TableInfoDAO where id = :id", TableInfoDAO.class)
-          .setParameter("id", dao.getId())
-          .setHibernateLockMode(LockMode.PESSIMISTIC_WRITE)
-          .getSingleResult();
+      TableInfoDAO locked =
+          session
+              .createSelectionQuery("from TableInfoDAO where id = :id", TableInfoDAO.class)
+              .setParameter("id", dao.getId())
+              .setHibernateLockMode(LockMode.PESSIMISTIC_WRITE)
+              .getSingleResultOrNull();
+      if (locked == null) {
+        throw new BaseException(
+            ErrorCode.TABLE_NOT_FOUND,
+            "Table not found: " + tableFullNameForLogging.orElseGet(tableId::toString));
+      }
       session.refresh(dao);
     } catch (RuntimeException e) {
       if (!(e instanceof org.hibernate.PessimisticLockException)

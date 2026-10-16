@@ -1351,6 +1351,92 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   }
 
   @Test
+  public void testDropTableRacingCommitsNeverFailsWithServerError()
+      throws ApiException, IOException, InterruptedException, ExecutionException, TimeoutException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+    Schema schema =
+        new Schema(
+            Types.NestedField.required(1, "id", Types.LongType.get()),
+            Types.NestedField.optional(2, "name", Types.StringType.get()));
+    Schema bumpedSchema =
+        new Schema(
+            Types.NestedField.required(1, "id", Types.LongType.get()),
+            Types.NestedField.optional(2, "name", Types.StringType.get()),
+            Types.NestedField.optional(3, "added", Types.StringType.get()));
+    int rounds = 20;
+    int commits = 4;
+    ExecutorService pool = Executors.newFixedThreadPool(commits + 1);
+    try {
+      for (int round = 0; round < rounds; round++) {
+        String tableName = "race_" + round;
+        String location =
+            Files.createTempDirectory(testDirectoryRoot, "iceberg-rest-drop-race")
+                .toUri()
+                .toString();
+        icebergClient.createTable(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            CreateTableRequest.builder()
+                .withName(tableName)
+                .withSchema(schema)
+                .withLocation(location)
+                .build());
+        // Release the commits and the drop together. Each commit rewrites the table's columns;
+        // the drop deletes them. A commit may win (200), lose the compare-and-swap (409), or find
+        // the table already dropped (404); the drop must succeed. A 500 means the two writers
+        // raced on the column rows.
+        CyclicBarrier barrier = new CyclicBarrier(commits + 1);
+        List<Future<String>> commitResults = new ArrayList<>();
+        for (int i = 0; i < commits; i++) {
+          commitResults.add(
+              pool.submit(
+                  () -> {
+                    UpdateTableRequest request =
+                        new UpdateTableRequest(
+                            List.of(new UpdateRequirement.AssertCurrentSchemaID(0)),
+                            List.of(
+                                new MetadataUpdate.AddSchema(bumpedSchema),
+                                new MetadataUpdate.SetCurrentSchema(-1)));
+                    barrier.await();
+                    try {
+                      icebergClient.updateTable(
+                          TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName, request);
+                      return "200";
+                    } catch (ApiException e) {
+                      return e.getCode() + " " + e.getResponseBody();
+                    }
+                  }));
+        }
+        Future<String> dropResult =
+            pool.submit(
+                () -> {
+                  barrier.await();
+                  try {
+                    icebergClient.dropTable(
+                        TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName);
+                    return "204";
+                  } catch (ApiException e) {
+                    return e.getCode() + " " + e.getResponseBody();
+                  }
+                });
+        for (Future<String> result : commitResults) {
+          String commit = result.get(30, TimeUnit.SECONDS);
+          assertThat(commit.substring(0, 3))
+              .as("commit, round " + round + ": " + commit)
+              .isIn("200", "409", "404");
+        }
+        String drop = dropResult.get(30, TimeUnit.SECONDS);
+        assertThat(drop).as("drop, round " + round).isEqualTo("204");
+      }
+    } finally {
+      pool.shutdownNow();
+    }
+  }
+
+  @Test
   public void testLoadCredentials() throws Exception {
     createUniformIcebergTable();
     // The route is served: a table UC serves as Iceberg answers 200 with the spec's response. This
