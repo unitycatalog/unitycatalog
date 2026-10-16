@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Union
+from unittest import mock
 
 import pytest
 import pytest_asyncio
@@ -19,6 +20,7 @@ from unitycatalog.ai.core.client import (
     validate_input_parameter,
     validate_param,
 )
+from unitycatalog.ai.core.executor.common import NO_OUTPUT_MESSAGE
 from unitycatalog.ai.core.executor.local import run_in_sandbox, run_in_sandbox_async
 from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
@@ -36,6 +38,7 @@ from unitycatalog.client import (
     ApiClient,
     CatalogsApi,
     Configuration,
+    FunctionInfo,
     FunctionParameterInfo,
     FunctionParameterInfos,
     FunctionsApi,
@@ -1909,6 +1912,77 @@ async def test_no_output_function_sandbox(uc_client):
         function_name=function_name, parameters={"a": 5, "b": 10}
     )
     assert "The function execution has completed, but no output was produced." in result.value
+
+
+@pytest_asyncio.fixture
+async def offline_uc_client():
+    uc_api_client = ApiClient(configuration=Configuration())
+    client = UnitycatalogFunctionClient(api_client=uc_api_client, execution_mode="local")
+    client.uc.functions_client = mock.AsyncMock(spec=FunctionsApi)
+    yield client
+    await client.close_async()
+
+
+def constant_function_info(return_literal: str, data_type: str) -> FunctionInfo:
+    return FunctionInfo(
+        name="constant_func",
+        catalog_name=CATALOG,
+        schema_name=SCHEMA,
+        full_name=f"{CATALOG}.{SCHEMA}.constant_func",
+        data_type=data_type,
+        full_data_type=data_type,
+        routine_body="EXTERNAL",
+        routine_definition=f"return {return_literal}",
+        external_language="PYTHON",
+    )
+
+
+FALSY_RESULT_CASES = [
+    ("False", "BOOLEAN", False),
+    ("0", "INT", 0),
+    ("0.0", "DOUBLE", 0.0),
+    ("''", "STRING", ""),
+]
+
+
+@pytest.mark.parametrize("return_literal,data_type,expected", FALSY_RESULT_CASES)
+def test_execute_function_preserves_falsy_result(
+    offline_uc_client, return_literal, data_type, expected
+):
+    offline_uc_client.uc.functions_client.get_function.return_value = constant_function_info(
+        return_literal, data_type
+    )
+    result = offline_uc_client.execute_function(f"{CATALOG}.{SCHEMA}.constant_func")
+    assert result.error is None
+    assert result.value == expected
+    assert type(result.value) is type(expected)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("return_literal,data_type,expected", FALSY_RESULT_CASES)
+async def test_execute_function_async_preserves_falsy_result(
+    offline_uc_client, return_literal, data_type, expected
+):
+    offline_uc_client.uc.functions_client.get_function.return_value = constant_function_info(
+        return_literal, data_type
+    )
+    result = await offline_uc_client.execute_function_async(f"{CATALOG}.{SCHEMA}.constant_func")
+    assert result.error is None
+    assert result.value == expected
+    assert type(result.value) is type(expected)
+
+
+@pytest.mark.asyncio
+async def test_execute_function_none_result_returns_no_output_message(offline_uc_client):
+    offline_uc_client.uc.functions_client.get_function.return_value = constant_function_info(
+        "None", "STRING"
+    )
+    result = offline_uc_client.execute_function(f"{CATALOG}.{SCHEMA}.constant_func")
+    async_result = await offline_uc_client.execute_function_async(
+        f"{CATALOG}.{SCHEMA}.constant_func"
+    )
+    assert result.value == NO_OUTPUT_MESSAGE
+    assert async_result.value == NO_OUTPUT_MESSAGE
 
 
 def test_fetch_function_callable(uc_client):
