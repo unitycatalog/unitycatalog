@@ -1,9 +1,12 @@
 package io.unitycatalog.server.exception;
 
+import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.server.ServiceRequestContext;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
+import java.util.regex.Pattern;
 import lombok.SneakyThrows;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.exceptions.BadRequestException;
@@ -31,6 +34,42 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
   public static final IcebergRestExceptionHandler INSTANCE = new IcebergRestExceptionHandler();
 
   private IcebergRestExceptionHandler() {}
+
+  /** A route addressed to one table: load, exists, drop, commit, its credentials and metrics. */
+  private static final Pattern TABLE_ROUTE =
+      Pattern.compile("/v1/catalogs/[^/]+/namespaces/[^/]+/tables/[^/]+(/credentials|/metrics)?$");
+
+  /**
+   * Reports a missing namespace as a missing table on the routes addressed to one table, which is
+   * what the REST spec answers there.
+   *
+   * <p>Iceberg's client relies on that distinction: when {@code loadTable} raises {@code
+   * NoSuchTableException}, it retries the identifier as a metadata table, so {@code
+   * db.orders.snapshots} becomes the {@code snapshots} table of {@code db.orders}. Answering {@code
+   * NoSuchNamespaceException} instead (for the namespace {@code db.orders}) ends that lookup, and
+   * every metadata table ({@code .snapshots}, {@code .files}, {@code .history}, ...) fails with
+   * "Schema not found". It also makes the client's {@code dropTable} throw rather than return
+   * false.
+   *
+   * <p>This is decided here, from the route, rather than in each handler because the schema lookup
+   * can fail before the handler runs: with authorization on, resolving the request's securables
+   * looks the table up first. Listing and creating tables are addressed to the namespace, so they
+   * keep reporting a missing namespace as one.
+   */
+  @Override
+  public HttpResponse handleException(ServiceRequestContext ctx, HttpRequest req, Throwable cause) {
+    BaseException exception = toBaseException(cause);
+    if (exception.getErrorCode() == ErrorCode.SCHEMA_NOT_FOUND
+        && TABLE_ROUTE.matcher(ctx.path()).find()) {
+      String table = ctx.pathParam("namespace") + "." + ctx.pathParam("table");
+      exception =
+          wrapException(
+              ErrorCode.TABLE_NOT_FOUND,
+              "Table does not exist: " + table,
+              new NoSuchTableException("Table does not exist: %s", table));
+    }
+    return createErrorResponse(exception);
+  }
 
   /**
    * Walks the cause chain past BaseException wrappers to find the original exception, so the

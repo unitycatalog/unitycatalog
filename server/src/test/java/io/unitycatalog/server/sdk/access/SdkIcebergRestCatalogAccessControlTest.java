@@ -191,6 +191,14 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
         REGULAR_1, SecurableType.TABLE, CAT + "." + SCHEMA + ".tbl_mod", Privileges.MODIFY);
     r1.loadTable(CAT, SCHEMA, "tbl_mod"); // table MODIFY
 
+    // A metadata-table identifier (schema.tbl_sel.snapshots) arrives as namespace
+    // "schema<0x1F>tbl_sel", which does not exist. With authorization on, the answer is still the
+    // table-level 404 Iceberg's client needs to retry it as the snapshots table of tbl_sel.
+    assertIcebergApiException(
+        () -> admin.loadTable(CAT, SCHEMA + "%1F" + "tbl_sel", "snapshots"),
+        404,
+        "Table does not exist");
+
     // tbl_r1own in SCHEMA, created (hence owned) by regular-1: read via table OWNER.
     r1.loadTable(CAT, SCHEMA, "tbl_r1own"); // table OWNER (creator)
 
