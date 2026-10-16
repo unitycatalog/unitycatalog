@@ -1,6 +1,5 @@
 package io.unitycatalog.server.persist;
 
-import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import io.unitycatalog.server.auth.decorator.KeyMapper;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
@@ -54,7 +53,7 @@ public class Repositories {
     this(sessionFactory, serverProperties, cloudCredentialVendor, UnaryOperator.identity());
   }
 
-  /** Creates repositories with no-op metrics backed by an empty composite registry. */
+  /** Creates repositories with {@link UnityCatalogMetrics#noop() no-op metrics}. */
   public Repositories(
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
@@ -80,8 +79,7 @@ public class Repositories {
       UnaryOperator<FileOperations> fileOperationsDecorator,
       UnityCatalogMetrics metrics) {
     UnityCatalogMetrics resolvedMetrics =
-        Objects.requireNonNullElseGet(
-            metrics, () -> new UnityCatalogMetrics(new CompositeMeterRegistry()));
+        Objects.requireNonNullElseGet(metrics, UnityCatalogMetrics::noop);
     this.sessionFactory = sessionFactory;
     this.externalLocationUtils = new ExternalLocationUtils(sessionFactory);
     CloudCredentialVendor resolvedCloudCredentialVendor =

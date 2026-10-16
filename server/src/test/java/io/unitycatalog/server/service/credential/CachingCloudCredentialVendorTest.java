@@ -31,6 +31,7 @@ import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TestUtils;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -104,11 +105,8 @@ public class CachingCloudCredentialVendorTest {
 
   /** The {@link UcMetric#STORAGE_CREDENTIAL_CACHE_REQUESTS} count for {@code result}. */
   private double requests(String result) {
-    return registry
-        .get(UcMetric.STORAGE_CREDENTIAL_CACHE_REQUESTS.getMetricName())
-        .tag(UcMetricConstants.RESULT, result)
-        .counter()
-        .count();
+    return TestUtils.counterCount(
+        registry, UcMetric.STORAGE_CREDENTIAL_CACHE_REQUESTS, UcMetricConstants.RESULT, result);
   }
 
   /** AWS session credentials as STS returns them; a {@code null} expiry is a static credential. */

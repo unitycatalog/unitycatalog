@@ -135,11 +135,8 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
    * The server cache's {@link UcMetric#STORAGE_CREDENTIAL_CACHE_REQUESTS} count for {@code result}.
    */
   private double cacheRequests(String result) {
-    return cacheMeters
-        .get(UcMetric.STORAGE_CREDENTIAL_CACHE_REQUESTS.getMetricName())
-        .tag(UcMetricConstants.RESULT, result)
-        .counter()
-        .count();
+    return TestUtils.counterCount(
+        cacheMeters, UcMetric.STORAGE_CREDENTIAL_CACHE_REQUESTS, UcMetricConstants.RESULT, result);
   }
 
   private SparkSession createSparkSession() {

@@ -21,6 +21,7 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TestUtils;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
@@ -137,11 +138,8 @@ class RepositoriesTest {
   }
 
   private static double cacheRequests(SimpleMeterRegistry registry, String result) {
-    return registry
-        .get(UcMetric.STORAGE_CREDENTIAL_CACHE_REQUESTS.getMetricName())
-        .tag(UcMetricConstants.RESULT, result)
-        .counter()
-        .count();
+    return TestUtils.counterCount(
+        registry, UcMetric.STORAGE_CREDENTIAL_CACHE_REQUESTS, UcMetricConstants.RESULT, result);
   }
 
   @Test
