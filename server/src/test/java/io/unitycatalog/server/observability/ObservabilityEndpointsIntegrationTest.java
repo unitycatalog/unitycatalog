@@ -209,6 +209,10 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
             "system_cpu_usage",
             "armeria_server_",
             "uc_securable_table_creations_total",
+            // Both series are registered at startup and stay at zero because the cache is disabled
+            // here.
+            "uc_storage_credential_cache_requests_total{result=\"hit\"} 0.0",
+            "uc_storage_credential_cache_requests_total{result=\"miss\"} 0.0",
             "http_server_requests_total");
     assertThat(response.body().lines().filter(line -> line.startsWith("http_server_")).toList())
         .isNotEmpty()

@@ -87,7 +87,7 @@ public class Repositories {
     CloudCredentialVendor resolvedCloudCredentialVendor =
         cloudCredentialVendor != null
             ? cloudCredentialVendor
-            : defaultCloudCredentialVendor(serverProperties);
+            : defaultCloudCredentialVendor(serverProperties, resolvedMetrics);
     this.storageCredentialVendor =
         new StorageCredentialVendor(resolvedCloudCredentialVendor, externalLocationUtils);
     this.fileOperations =
@@ -97,7 +97,7 @@ public class Repositories {
     this.catalogRepository = new CatalogRepository(this, sessionFactory);
     this.schemaRepository = new SchemaRepository(this, sessionFactory);
     this.tableRepository =
-        new TableRepository(this, sessionFactory, serverProperties, resolvedMetrics.getTables());
+        new TableRepository(this, sessionFactory, serverProperties, resolvedMetrics);
     this.stagingTableRepository =
         new StagingTableRepository(this, sessionFactory, serverProperties);
     this.volumeRepository = new VolumeRepository(this, sessionFactory);
@@ -116,9 +116,10 @@ public class Repositories {
     this.keyMapper = new KeyMapper(this);
   }
 
-  static CloudCredentialVendor defaultCloudCredentialVendor(ServerProperties serverProperties) {
+  static CloudCredentialVendor defaultCloudCredentialVendor(
+      ServerProperties serverProperties, UnityCatalogMetrics metrics) {
     return serverProperties.isStorageCredentialCacheEnabled()
-        ? new CachingCloudCredentialVendor(serverProperties)
+        ? new CachingCloudCredentialVendor(serverProperties, metrics)
         : new CloudCredentialVendor(serverProperties);
   }
 }

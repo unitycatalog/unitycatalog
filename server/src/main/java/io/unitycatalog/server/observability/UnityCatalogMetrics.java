@@ -8,9 +8,12 @@ import lombok.Getter;
 @Getter
 public final class UnityCatalogMetrics {
   private final TableMetrics tables;
+  private final StorageCredentialCacheMetrics storageCredentialCache;
 
   /** Registers the domain meters; the caller retains ownership of the registry's lifecycle. */
   public UnityCatalogMetrics(MeterRegistry registry) {
-    tables = new TableMetrics(Objects.requireNonNull(registry, "registry"));
+    Objects.requireNonNull(registry, "registry");
+    tables = new TableMetrics(registry);
+    storageCredentialCache = new StorageCredentialCacheMetrics(registry);
   }
 }
