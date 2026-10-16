@@ -35,3 +35,6 @@
 
 # UI
 /ui-new/ @yili-db @newfront @roeap @tdas
+
+# AI
+/ai/ @tdas @yili-db
