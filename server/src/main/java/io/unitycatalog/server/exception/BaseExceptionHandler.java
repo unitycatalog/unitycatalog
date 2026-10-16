@@ -41,16 +41,21 @@ public abstract class BaseExceptionHandler implements ExceptionHandlerFunction {
 
   /**
    * Logs a 5xx with its cause. This is the one place a failed request is logged, so it is logged
-   * once. The request context is pushed so the line carries the request ID even when the handler
-   * runs after the service has returned.
+   * once. A failure to log never stops the error response from being sent.
    */
   protected static void logIfServerError(
       ServiceRequestContext ctx, HttpRequest req, HttpStatus status, Throwable cause) {
     if (!status.isServerError()) {
       return;
     }
-    try (SafeCloseable ignored = ctx.push()) {
+    // Makes this request's context current for the one log call, so the line carries its ID even
+    // when the handler runs after the service has returned. Unlike push(), replace() does not throw
+    // when another request's context is current, and close() restores whatever was current before.
+    try (SafeCloseable ignored = ctx.replace()) {
       LOGGER.error("{} {} answered {}", req.method(), ctx.path(), status.code(), cause);
+    } catch (RuntimeException loggingError) {
+      // An appender set not to ignore its errors can throw here. Log4j has already reported the
+      // appender's failure on its status logger, and the error response must still be sent.
     }
   }
 
