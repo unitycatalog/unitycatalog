@@ -95,7 +95,7 @@ public class TransactionManager {
         try {
           tx.rollback();
         } catch (RuntimeException rollbackError) {
-          // On a broken connection the rollback fails too. Keep the error that failed the work.
+          // On a broken connection rollback fails too; keep the original error.
           e.addSuppressed(rollbackError);
         }
         // A control-flow signal (e.g. an idempotent-replay short-circuit) is not an error: rethrow

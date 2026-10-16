@@ -132,7 +132,7 @@ class UserRepositoryTest {
     verify(failing, never()).createUser(any());
   }
 
-  /** Bootstrap over {@code users}; the metastore is a mock, since only its ID is read. */
+  /** The metastore is a mock; only its ID is read. */
   private static UnityAccessUtil bootstrap(UserRepository users, UUID metastoreId) {
     MetastoreRepository metastoreRepository = mock(MetastoreRepository.class);
     when(metastoreRepository.getMetastoreId()).thenReturn(metastoreId);
