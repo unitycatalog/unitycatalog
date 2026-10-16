@@ -112,14 +112,20 @@ public class AuthService implements RegisteredService {
    *
    * @param ext Specifies whether the issued token should be set as a cookie.
    * @param form The OAuth 2.0 token exchange request form.
+   * @param request The HTTP request, checked for CSRF protection when issuing a cookie.
    * @return The token exchange response
    */
   @Post("/tokens")
   @com.linecorp.armeria.server.annotation.Blocking
   public HttpResponse grantToken(
       @Param("ext") Optional<TokenEndpointExtensionType> ext,
-      @RequestConverter(ToOAuthTokenExchangeFormConverter.class) OAuthTokenExchangeForm form) {
+      @RequestConverter(ToOAuthTokenExchangeFormConverter.class) OAuthTokenExchangeForm form,
+      HttpRequest request) {
     LOGGER.debug("Got token: {}", form);
+
+    if (ext.orElse(null) == TokenEndpointExtensionType.COOKIE) {
+      AuthDecorator.validateCsrfHeader(request.headers());
+    }
 
     if (GrantType.TOKEN_EXCHANGE != form.getGrantType()) {
       throw new OAuthInvalidRequestException(
