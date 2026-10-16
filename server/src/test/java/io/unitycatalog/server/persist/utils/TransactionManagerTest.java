@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
@@ -15,19 +16,30 @@ import io.unitycatalog.server.exception.TransactionRollbackException;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Date;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
+import org.hibernate.dialect.Dialect;
+import org.hibernate.dialect.H2Dialect;
+import org.hibernate.dialect.PostgreSQLDialect;
+import org.hibernate.engine.jdbc.spi.JdbcServices;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
+import org.hibernate.exception.GenericJDBCException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -115,6 +127,7 @@ public class TransactionManagerTest {
                       errorMessage,
                       false))
           .isInstanceOf(BaseException.class)
+          .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INTERNAL)
           .hasMessageContaining(errorMessage)
           .hasMessageContaining(testException.getMessage());
 
@@ -202,6 +215,67 @@ public class TransactionManagerTest {
       // Verify session was set to read-only
       verify(session).setDefaultReadOnly(true);
     }
+
+    @Test
+    public void testDatabaseErrorWithoutSqlStateIsInternal() {
+      GenericJDBCException databaseError =
+          new GenericJDBCException(
+              "could not execute statement", new SQLException("database error"));
+
+      assertThatThrownBy(
+              () ->
+                  TransactionManager.executeWithTransaction(
+                      sessionFactory,
+                      session -> {
+                        throw databaseError;
+                      },
+                      "Error executing operation",
+                      false))
+          .isInstanceOf(BaseException.class)
+          .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INTERNAL)
+          .hasMessage("Error executing operation: " + databaseError.getMessage());
+      // Without a SQLSTATE there is nothing to look up, so the dialect is not read.
+      verify(sessionFactory, never()).unwrap(any());
+    }
+
+    @ParameterizedTest
+    @MethodSource("io.unitycatalog.server.persist.utils.TransactionManagerTest#databaseErrors")
+    public void testDatabaseErrorCode(
+        Class<? extends Dialect> dialect, String sqlState, ErrorCode expectedErrorCode) {
+      SessionFactoryImplementor sessionFactoryImplementor = mock(SessionFactoryImplementor.class);
+      JdbcServices jdbcServices = mock(JdbcServices.class);
+      when(sessionFactory.unwrap(SessionFactoryImplementor.class))
+          .thenReturn(sessionFactoryImplementor);
+      when(sessionFactoryImplementor.getJdbcServices()).thenReturn(jdbcServices);
+      when(jdbcServices.getDialect()).thenReturn(mock(dialect));
+      GenericJDBCException databaseError =
+          new GenericJDBCException(
+              "could not execute statement", new SQLException("database error", sqlState));
+
+      assertThatThrownBy(
+              () ->
+                  TransactionManager.executeWithTransaction(
+                      sessionFactory,
+                      session -> {
+                        throw databaseError;
+                      },
+                      "Error executing operation",
+                      false))
+          .isInstanceOf(BaseException.class)
+          .hasFieldOrPropertyWithValue("errorCode", expectedErrorCode)
+          .hasMessage("Error executing operation: " + databaseError.getMessage());
+      verify(transaction).rollback();
+    }
+  }
+
+  /**
+   * A listed (database, SQLSTATE) pair gets its error code; every other database error is INTERNAL.
+   */
+  static Stream<Arguments> databaseErrors() {
+    return Stream.of(
+        Arguments.of(PostgreSQLDialect.class, "54000", ErrorCode.INVALID_ARGUMENT),
+        Arguments.of(H2Dialect.class, "54000", ErrorCode.INTERNAL),
+        Arguments.of(PostgreSQLDialect.class, "23505", ErrorCode.INTERNAL));
   }
 
   /**

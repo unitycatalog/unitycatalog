@@ -96,7 +96,7 @@ This guide outlines how to deploy the Unity Catalog server.
 #### Prerequisites
 
 - Install docker.
-- Download JDBC driver for [PostgreSQL](https://jdbc.postgresql.org/download/).
+- The server ships with the PostgreSQL JDBC driver.
 
 #### Start PostgreSQL server
 
@@ -117,8 +117,6 @@ This guide outlines how to deploy the Unity Catalog server.
     hibernate.hikari.maximumPoolSize=20
     hibernate.hikari.minimumIdle=2
     ```
-
-- Modify the `jars/classpath` file and add path to your jdbc driver.
 
 ### Existing deployments and column type changes
 
