@@ -4,6 +4,8 @@ import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
+import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.IOException;
@@ -28,6 +30,10 @@ public abstract class BaseServerTest {
   protected UnityCatalogServer unityCatalogServer;
   protected Properties serverProperties;
   protected HibernateConfigurator hibernateConfigurator;
+
+  /** This test's database on the backend selected by UC_TEST_DATABASE. */
+  protected TestDatabase testDatabase;
+
   protected CloudCredentialVendor cloudCredentialVendor;
 
   // All test data should be written under this directory. It will be cleaned up.
@@ -80,7 +86,7 @@ public abstract class BaseServerTest {
   /**
    * Subclasses can override this to customize the hibernate properties before the session factory
    * is created, e.g. to point the server at an external database such as PostgreSQL via
-   * Testcontainers. Defaults to the H2 in-memory test configuration.
+   * Testcontainers. Defaults to this test's database from {@link TestDatabases}.
    */
   protected void setUpHibernateProperties(Properties hibernateProperties) {}
 
@@ -110,8 +116,8 @@ public abstract class BaseServerTest {
       setUpProperties();
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
       setUpCredentialOperations(initServerProperties);
-      Properties hibernateProperties =
-          HibernateConfigurator.setupHibernateProperties(initServerProperties);
+      testDatabase = TestDatabases.newDatabase();
+      Properties hibernateProperties = testDatabase.hibernateProperties(initServerProperties);
       setUpHibernateProperties(hibernateProperties);
       hibernateConfigurator = new HibernateConfigurator(hibernateProperties);
       UnityCatalogServer.Builder serverBuilder =
@@ -170,11 +176,16 @@ public abstract class BaseServerTest {
       unityCatalogServer.close();
       // Release the factory and pool this harness built and injected in setUp(). setUp() builds
       // a fresh one per test, so leaked factories would otherwise accumulate for the whole JVM run.
-      // In test env hbm2ddl is create-drop, so closing also drops the schema — keep this after the
-      // cleanup queries above.
+      // Closing can drop the schema (H2 uses create-drop), so keep this after the cleanup queries
+      // above.
       hibernateConfigurator.close();
       // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
       unityCatalogServer = null;
+    }
+    // Outside the block above: a failed setUp leaves no server but still holds a database.
+    if (testDatabase != null) {
+      testDatabase.close();
+      testDatabase = null;
     }
   }
 }
