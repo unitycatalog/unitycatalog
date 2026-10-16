@@ -9,6 +9,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import java.sql.DriverManager;
 import java.util.Properties;
 import org.hibernate.cfg.Configuration;
 import org.junit.jupiter.api.Test;
@@ -78,5 +79,21 @@ class TestDatabasesTest {
       assertThatThrownBy(configuration::buildSessionFactory)
           .hasStackTraceContaining("not_a_real_type");
     }
+  }
+
+  @Test
+  void closeShutsDownTheH2Database() throws Exception {
+    assumeTrue(
+        SupportedDatabase.selected() == SupportedDatabase.H2, "checks the H2 release directly");
+    TestDatabase database = TestDatabases.newDatabase();
+    String url = database.jdbcUrl();
+    DriverManager.getConnection(url, "sa", "").close();
+    database.close();
+    assertThatThrownBy(() -> DriverManager.getConnection(url + ";IFEXISTS=TRUE", "sa", "").close())
+        .hasMessageContaining("not found");
+    // Releasing a database that is gone, or was never created, leaves no database behind.
+    database.close();
+    assertThatThrownBy(() -> DriverManager.getConnection(url + ";IFEXISTS=TRUE", "sa", "").close())
+        .hasMessageContaining("not found");
   }
 }

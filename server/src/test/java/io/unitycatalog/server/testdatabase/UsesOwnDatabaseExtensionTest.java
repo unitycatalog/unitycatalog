@@ -2,9 +2,14 @@ package io.unitycatalog.server.testdatabase;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtensionContext;
 
 class UsesOwnDatabaseExtensionTest {
 
@@ -38,6 +43,32 @@ class UsesOwnDatabaseExtensionTest {
 
   @Test
   void noMarkOutsideAnnotatedClasses() {
+    assertThat(UsesOwnDatabaseExtension.currentOwnDatabase()).isEmpty();
+  }
+
+  private static ExtensionContext contextFor(Class<?> testClass, Optional<String> parallel) {
+    ExtensionContext context = mock(ExtensionContext.class);
+    when(context.getConfigurationParameter(anyString())).thenReturn(parallel);
+    doReturn(testClass).when(context).getRequiredTestClass();
+    return context;
+  }
+
+  @Test
+  void markIsSetForTheClassAndClearedAfterIt() {
+    ExtensionContext context = contextFor(WithReason.class, Optional.empty());
+    UsesOwnDatabaseExtension extension = new UsesOwnDatabaseExtension();
+    extension.beforeAll(context);
+    assertThat(UsesOwnDatabaseExtension.currentOwnDatabase())
+        .contains("WithReason: tests something on H2");
+    extension.afterAll(context);
+    assertThat(UsesOwnDatabaseExtension.currentOwnDatabase()).isEmpty();
+  }
+
+  @Test
+  void beforeAllRejectsParallelExecution() {
+    ExtensionContext context = contextFor(WithReason.class, Optional.of("true"));
+    assertThatThrownBy(() -> new UsesOwnDatabaseExtension().beforeAll(context))
+        .isInstanceOf(IllegalStateException.class);
     assertThat(UsesOwnDatabaseExtension.currentOwnDatabase()).isEmpty();
   }
 }

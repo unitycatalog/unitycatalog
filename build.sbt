@@ -661,17 +661,10 @@ lazy val cli = (project in file("examples") / "cli")
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
   )
 
-/*
-  * This project is a combination of the server and client projects, shaded into a single JAR.
-  * It also includes the test classes from the server project.
-  * It is used for the Spark connector project(the client is required as a compile dependency,
-  * and the server(with tests) is required as a test dependency)
-  * This was necessary because Spark 3.5 has a dependency on Jackson 2.15, which conflicts with the Jackson 2.17
- */
 // Service registrations for the test-database safeguards (SelectionCheck, SelectedDatabaseCheck).
 // They live outside server/src/test/resources because the client project shares that directory
-// without the server test classes, and server-shaded discards META-INF, so every project that runs
-// the server test harness adds this directory to its test resources.
+// without the server test classes. server-shaded discards META-INF, so server and the projects that
+// take the harness from server-shaded (spark, hadoop) add this directory; cli gets it via test->test.
 lazy val testDatabaseServicesDirectory = file("server") / "src" / "test" / "resources-test-database"
 
 // Lets projects that take the server test harness from server-shaded run it on PostgreSQL.
@@ -681,6 +674,13 @@ lazy val testDatabaseDependencies = Seq(
   "org.postgresql" % "postgresql" % "42.7.13" % Test,
 )
 
+/*
+  * This project is a combination of the server and client projects, shaded into a single JAR.
+  * It also includes the test classes from the server project.
+  * It is used for the Spark connector project(the client is required as a compile dependency,
+  * and the server(with tests) is required as a test dependency)
+  * This was necessary because Spark 3.5 has a dependency on Jackson 2.15, which conflicts with the Jackson 2.17
+ */
 lazy val serverShaded = (project in file("server-shaded"))
   .dependsOn(server % "compile->compile, test->compile")
   .settings(

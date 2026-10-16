@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.h2.api.ErrorCode;
 
 /**
  * Hands out a fresh {@link TestDatabase} on the database selected by {@value
@@ -31,10 +32,14 @@ public final class TestDatabases {
   }
 
   private static void shutdown(String url) {
-    try (Connection connection = DriverManager.getConnection(url, "sa", "")) {
+    // H2 creates an in-memory database on first connection; IFEXISTS keeps this from creating one
+    // just to shut it down. A test that pointed elsewhere never created it: nothing to release.
+    try (Connection connection = DriverManager.getConnection(url + ";IFEXISTS=TRUE", "sa", "")) {
       connection.createStatement().execute("SHUTDOWN");
     } catch (SQLException e) {
-      throw new IllegalStateException("Could not shut down " + url, e);
+      if (e.getErrorCode() != ErrorCode.DATABASE_NOT_FOUND_WITH_IF_EXISTS_1) {
+        throw new IllegalStateException("Could not shut down " + url, e);
+      }
     }
   }
 }

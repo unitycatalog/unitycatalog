@@ -9,11 +9,11 @@ import org.hibernate.dialect.PostgreSQLDialect;
 
 /**
  * The databases the test suite runs on, selected with {@value #ENV} (unset means {@link #H2}). This
- * enum is the only list: sbt aliases and the CI matrix are checked against it.
+ * enum is the only list; TestDatabaseAliasesTest checks the sbt aliases against it.
  */
 public enum SupportedDatabase {
   H2(null),
-  /** postgres:18-alpine (PostgreSQL 18.6), pinned by digest. */
+  /** postgres:18-alpine, pinned by digest. */
   POSTGRES_18("postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873");
 
   public static final String ENV = "UC_TEST_DATABASE";
@@ -29,7 +29,7 @@ public enum SupportedDatabase {
   }
 
   static SupportedDatabase parse(String value) {
-    if (value == null || value.isEmpty()) {
+    if (value == null) {
       return H2;
     }
     return Arrays.stream(values())

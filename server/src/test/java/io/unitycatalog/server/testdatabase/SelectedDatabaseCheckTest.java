@@ -2,11 +2,16 @@ package io.unitycatalog.server.testdatabase;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.util.Optional;
 import org.hibernate.dialect.DatabaseVersion;
+import org.hibernate.dialect.Dialect;
 import org.hibernate.dialect.H2Dialect;
 import org.hibernate.dialect.PostgreSQLDialect;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.junit.jupiter.api.Test;
 
 class SelectedDatabaseCheckTest {
@@ -40,5 +45,16 @@ class SelectedDatabaseCheckTest {
                 SelectedDatabaseCheck.verify(
                     SupportedDatabase.POSTGRES_18, H2, Optional.of("X: tests H2 itself")))
         .doesNotThrowAnyException();
+  }
+
+  @Test
+  void integrateRejectsSessionFactoryOnAnotherDatabase() {
+    SupportedDatabase selected = SupportedDatabase.selected();
+    Dialect other = selected == SupportedDatabase.H2 ? PG18 : H2;
+    SessionFactoryImplementor factory = mock(SessionFactoryImplementor.class, RETURNS_DEEP_STUBS);
+    when(factory.getJdbcServices().getDialect()).thenReturn(other);
+    assertThatThrownBy(() -> new SelectedDatabaseCheck().integrate(null, null, factory))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageStartingWith("SelectedDatabaseCheck: expected " + selected);
   }
 }
