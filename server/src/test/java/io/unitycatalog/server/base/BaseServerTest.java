@@ -119,7 +119,7 @@ public abstract class BaseServerTest {
       testDatabase = TestDatabases.newDatabase();
       Properties hibernateProperties = testDatabase.hibernateProperties(initServerProperties);
       setUpHibernateProperties(hibernateProperties);
-      hibernateConfigurator = new HibernateConfigurator(hibernateProperties);
+      hibernateConfigurator = testDatabase.openHibernateConfigurator(hibernateProperties);
       UnityCatalogServer.Builder serverBuilder =
           UnityCatalogServer.builder()
               .port(port)
@@ -151,41 +151,40 @@ public abstract class BaseServerTest {
 
   @AfterEach
   public void tearDown() {
-    if (unityCatalogServer != null) {
+    try {
+      if (unityCatalogServer != null) {
 
-      // TODO: Figure out a better way to clear the database
-      SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
-      Session session = sessionFactory.openSession();
-      Transaction tx = session.beginTransaction();
-      session.createMutationQuery("delete from FunctionParameterInfoDAO").executeUpdate();
-      session.createMutationQuery("delete from FunctionInfoDAO").executeUpdate();
-      session.createMutationQuery("delete from VolumeInfoDAO").executeUpdate();
-      session.createMutationQuery("delete from ColumnInfoDAO").executeUpdate();
-      session.createMutationQuery("delete from TableInfoDAO").executeUpdate();
-      session.createMutationQuery("delete from StagingTableDAO").executeUpdate();
-      session.createMutationQuery("delete from SchemaInfoDAO").executeUpdate();
-      session.createMutationQuery("delete from CatalogInfoDAO").executeUpdate();
-      session.createMutationQuery("delete from UserDAO").executeUpdate();
-      session.createMutationQuery("delete from ExternalLocationDAO").executeUpdate();
-      session.createMutationQuery("delete from CredentialDAO").executeUpdate();
-      tx.commit();
-      session.close();
+        // TODO: Figure out a better way to clear the database
+        SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
+        Session session = sessionFactory.openSession();
+        Transaction tx = session.beginTransaction();
+        session.createMutationQuery("delete from FunctionParameterInfoDAO").executeUpdate();
+        session.createMutationQuery("delete from FunctionInfoDAO").executeUpdate();
+        session.createMutationQuery("delete from VolumeInfoDAO").executeUpdate();
+        session.createMutationQuery("delete from ColumnInfoDAO").executeUpdate();
+        session.createMutationQuery("delete from TableInfoDAO").executeUpdate();
+        session.createMutationQuery("delete from StagingTableDAO").executeUpdate();
+        session.createMutationQuery("delete from SchemaInfoDAO").executeUpdate();
+        session.createMutationQuery("delete from CatalogInfoDAO").executeUpdate();
+        session.createMutationQuery("delete from UserDAO").executeUpdate();
+        session.createMutationQuery("delete from ExternalLocationDAO").executeUpdate();
+        session.createMutationQuery("delete from CredentialDAO").executeUpdate();
+        tx.commit();
+        session.close();
 
-      // close() rather than stop() so a server that built its own SessionFactory releases it;
-      // this harness injects one, so the server leaves it open and we close it below.
-      unityCatalogServer.close();
-      // Release the factory and pool this harness built and injected in setUp(). setUp() builds
-      // a fresh one per test, so leaked factories would otherwise accumulate for the whole JVM run.
-      // Closing can drop the schema (H2 uses create-drop), so keep this after the cleanup queries
-      // above.
-      hibernateConfigurator.close();
-      // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
-      unityCatalogServer = null;
-    }
-    // Outside the block above: a failed setUp leaves no server but still holds a database.
-    if (testDatabase != null) {
-      testDatabase.close();
-      testDatabase = null;
+        // close() rather than stop() so a server that built its own SessionFactory releases it;
+        // this harness injects one, so the server leaves it open and we close it below.
+        unityCatalogServer.close();
+        // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
+        unityCatalogServer = null;
+      }
+    } finally {
+      // Closes the configurator from setUp() too, even when setUp() or the cleanup above failed.
+      // Keep this after the cleanup queries: closing can drop the schema (H2 uses create-drop).
+      if (testDatabase != null) {
+        testDatabase.close();
+        testDatabase = null;
+      }
     }
   }
 }

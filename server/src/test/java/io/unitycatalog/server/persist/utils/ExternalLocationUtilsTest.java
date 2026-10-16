@@ -49,7 +49,7 @@ public class ExternalLocationUtilsTest {
         testDatabase.hibernateProperties(new ServerProperties(serverProperties));
     // A nested transaction cannot borrow a second connection while the caller is using this one.
     properties.setProperty("hibernate.connection.pool_size", "1");
-    hibernateConfigurator = new HibernateConfigurator(properties);
+    hibernateConfigurator = testDatabase.openHibernateConfigurator(properties);
     sessionFactory = hibernateConfigurator.getSessionFactory();
     session = sessionFactory.openSession();
     externalLocationUtils = new ExternalLocationUtils(sessionFactory);
@@ -61,7 +61,6 @@ public class ExternalLocationUtilsTest {
       session.getTransaction().rollback();
     }
     session.close();
-    hibernateConfigurator.close();
     testDatabase.close();
   }
 

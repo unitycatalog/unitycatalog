@@ -56,8 +56,12 @@ public final class TestDatabase implements AutoCloseable {
 
   /** A configurator on this database that {@link #close()} closes. */
   public HibernateConfigurator openHibernateConfigurator(ServerProperties serverProperties) {
-    HibernateConfigurator configurator =
-        new HibernateConfigurator(hibernateProperties(serverProperties));
+    return openHibernateConfigurator(hibernateProperties(serverProperties));
+  }
+
+  /** A configurator built from {@code hibernateProperties} that {@link #close()} closes. */
+  public HibernateConfigurator openHibernateConfigurator(Properties hibernateProperties) {
+    HibernateConfigurator configurator = new HibernateConfigurator(hibernateProperties);
     openedConfigurators.add(configurator);
     return configurator;
   }

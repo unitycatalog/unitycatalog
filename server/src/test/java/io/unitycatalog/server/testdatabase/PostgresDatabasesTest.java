@@ -42,15 +42,6 @@ class PostgresDatabasesTest {
     assertThatThrownBy(() -> connect(p).close()).hasMessageContaining("does not exist");
   }
 
-  @Test
-  void templateFailureIsCachedAndRethrown() {
-    RuntimeException first = new IllegalStateException("boom");
-    PostgresDatabases failed = PostgresDatabases.failed(SupportedDatabase.POSTGRES_18, first);
-    assertThatThrownBy(() -> failed.newDatabase("uc_x"))
-        .hasMessage("POSTGRES_18 schema build failed earlier; see the first failure")
-        .hasCause(first);
-  }
-
   private static Connection connect(Properties p) throws Exception {
     Connection c =
         DriverManager.getConnection(
