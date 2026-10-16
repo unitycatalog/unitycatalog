@@ -24,6 +24,7 @@ import com.azure.storage.file.datalake.models.DataLakeStorageException;
 import com.azure.storage.file.datalake.models.ListPathsOptions;
 import com.azure.storage.file.datalake.models.PathItem;
 import io.unitycatalog.server.cleanup.StorageCleanupWorker;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
@@ -379,7 +380,8 @@ class ADLSPrefixOperationsTest {
     properties.set(Property.STORAGE_CLEANUP_RETRY_BACKOFF, "PT30S");
 
     try (StorageCleanupWorker worker =
-        new StorageCleanupWorker(repository, factory, clock, properties)) {
+        new StorageCleanupWorker(
+            repository, factory, clock, properties, UnityCatalogMetrics.noop())) {
       worker.start();
       assertThat(reported.await(5, TimeUnit.SECONDS)).isTrue();
       assertThat(finished.await(5, TimeUnit.SECONDS)).isTrue();

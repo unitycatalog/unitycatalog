@@ -175,7 +175,7 @@ public class UnityCatalogServer implements AutoCloseable {
             CONTROL_PATH,
             unityCatalogServerBuilder.serverProperties);
 
-    UnityCatalogMetrics domainMetrics = null;
+    UnityCatalogMetrics domainMetrics = UnityCatalogMetrics.noop();
     if (unityCatalogServerBuilder.observabilityPort != null) {
       domainMetrics =
           initializeObservability(
@@ -209,7 +209,7 @@ public class UnityCatalogServer implements AutoCloseable {
     if (metrics != null) {
       armeriaServerBuilder.meterRegistry(metrics.registry());
     }
-    initializeCleanup(unityCatalogServerBuilder.serverProperties, repositories);
+    initializeCleanup(unityCatalogServerBuilder.serverProperties, repositories, domainMetrics);
 
     return armeriaServerBuilder.build();
   }
@@ -250,13 +250,17 @@ public class UnityCatalogServer implements AutoCloseable {
     return new UnityCatalogMetrics(meterRegistry);
   }
 
-  private void initializeCleanup(ServerProperties serverProperties, Repositories repositories) {
+  private void initializeCleanup(
+      ServerProperties serverProperties,
+      Repositories repositories,
+      UnityCatalogMetrics domainMetrics) {
     cleanupWorker =
         new StorageCleanupWorker(
             repositories.getStorageCleanupTaskRepository(),
             repositories.getFileOperations(),
             Clock.systemUTC(),
-            serverProperties);
+            serverProperties,
+            domainMetrics);
   }
 
   private UnityCatalogAuthorizer initializeAuthorizer(

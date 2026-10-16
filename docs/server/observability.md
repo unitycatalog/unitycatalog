@@ -102,6 +102,7 @@ Collector, etc.).
 | `http_server_requests_total` | Completed HTTP requests on the API listener, tagged by `hostname_pattern`, `service`, `method`, and `http_status`; includes authentication and authorization rejections |
 | `uc_securable_table_creations_total` | Table securables created after their database transactions commit through UC, Delta, or Iceberg REST, including tables, views, and metric views |
 | `uc_storage_credential_cache_requests_total` | Credential requests to the [storage credential cache](configuration.md#storage-credential-cache), tagged by `result`: `hit` for a credential served from the cache, `miss` for a request the cache could not serve, which vends a new credential; a vend that fails also counts as a miss. Both series are exposed from startup and stay at zero while the cache is disabled |
+| `uc_storage_cleanup_attempts_total` | Attempts by the storage cleanup worker to delete a dropped managed resource's files, tagged by `result` and `resource_type`. `success` means the attempt deleted the files; `failure` means the attempt failed and the task will be retried. `resource_type` is `table`, `volume`, `registered_model`, `model_version`, or `staging_table`. Every series is exposed from startup |
 
 Within the `http_server_*` family, only `http_server_requests_total` is exposed, without a `result`
 tag. HTTP latency, request/response size, timeout, and in-flight metrics are not exposed. JVM,
@@ -145,6 +146,10 @@ uc_securable_table_creations_total 1.0
 
 The storage credential cache hit ratio over five minutes is
 `sum(rate(uc_storage_credential_cache_requests_total{result="hit"}[5m])) / sum(rate(uc_storage_credential_cache_requests_total[5m]))`.
+
+Failed cleanups are retried without limit, so a task that keeps failing keeps raising the failure
+count. To alert on failed cleanups, use
+`sum by (resource_type) (increase(uc_storage_cleanup_attempts_total{result="failure"}[2h])) > 0`.
 
 !!! note "Per-route metrics are lazily populated"
     HTTP request metrics for a given route (`service`/`method` combination) appear in the
