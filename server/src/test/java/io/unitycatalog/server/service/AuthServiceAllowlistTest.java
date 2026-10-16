@@ -87,6 +87,9 @@ public class AuthServiceAllowlistTest {
     @Override
     protected void setUpProperties() {
       super.setUpProperties();
+      testJwksUri = testJwksUri.replace("localhost", "127.0.0.1");
+      serverProperties.setProperty(
+          ServerProperties.Property.ALLOWED_JWKS_URIS.getKey(), testJwksUri);
       serverProperties.setProperty(
           ServerProperties.Property.ALLOWED_ISSUERS.getKey(), "http://localhost:*");
     }
