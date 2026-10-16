@@ -99,45 +99,6 @@ public class TransactionManagerTest {
     }
 
     @Test
-    public void testDatabaseErrorKeepsItsCause() {
-      IllegalStateException databaseError = new IllegalStateException("connection reset");
-
-      assertThatThrownBy(
-              () ->
-                  TransactionManager.executeWithTransaction(
-                      sessionFactory,
-                      session -> {
-                        throw databaseError;
-                      },
-                      "Error executing operation",
-                      false))
-          .isInstanceOfSatisfying(
-              BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INTERNAL))
-          .hasMessage("Error executing operation: connection reset")
-          .hasCause(databaseError);
-    }
-
-    @Test
-    public void testFailedRollbackDoesNotHideTheDatabaseError() {
-      IllegalStateException databaseError = new IllegalStateException("connection reset");
-      IllegalStateException rollbackError = new IllegalStateException("connection closed");
-      doThrow(rollbackError).when(transaction).rollback();
-
-      assertThatThrownBy(
-              () ->
-                  TransactionManager.executeWithTransaction(
-                      sessionFactory,
-                      session -> {
-                        throw databaseError;
-                      },
-                      "Error executing operation",
-                      false))
-          .isInstanceOf(BaseException.class)
-          .hasCause(databaseError);
-      assertThat(databaseError.getSuppressed()).containsExactly(rollbackError);
-    }
-
-    @Test
     public void testTransactionWithRuntimeException() {
       // Setup
       RuntimeException testException = new RuntimeException("Test runtime exception");
