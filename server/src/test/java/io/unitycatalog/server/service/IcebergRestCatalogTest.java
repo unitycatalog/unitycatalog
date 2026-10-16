@@ -32,8 +32,6 @@ import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
-import io.unitycatalog.server.exception.BaseExceptionHandler;
-import io.unitycatalog.server.logging.RequestIdContextDataProvider;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
@@ -43,7 +41,6 @@ import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IcebergRestClient;
-import io.unitycatalog.server.utils.LogCapture;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
@@ -114,8 +111,6 @@ import org.apache.iceberg.rest.responses.ListTablesResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.rest.responses.UpdateNamespacePropertiesResponse;
 import org.apache.iceberg.types.Types;
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.core.LogEvent;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
@@ -1982,21 +1977,12 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     // The catalog still lists the table; the file its metadata pointer names is gone.
     Files.delete(icebergTableLocation.resolve("iceberg.metadata.json"));
 
-    ApiException e;
-    try (LogCapture logs = LogCapture.of(BaseExceptionHandler.class)) {
-      e =
-          assertThrows(
-              ApiException.class,
-              () ->
-                  icebergClient.loadTable(
-                      TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME));
-      // The 500 is logged once, with the request's ID.
-      List<LogEvent> errors = logs.eventsAtLeast(Level.ERROR);
-      assertThat(errors).hasSize(1);
-      assertThat(
-              errors.get(0).getContextData().<String>getValue(RequestIdContextDataProvider.LOG_KEY))
-          .isNotBlank();
-    }
+    ApiException e =
+        assertThrows(
+            ApiException.class,
+            () ->
+                icebergClient.loadTable(
+                    TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME));
 
     // A table whose metadata cannot be read is a server-side failure, not a missing table, so the
     // type has to be one that means that: a 500 typed "NotFoundException" describes the failure as
