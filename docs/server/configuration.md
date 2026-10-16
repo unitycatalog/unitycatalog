@@ -140,6 +140,12 @@ Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is f
 The server logs are located at `etc/logs/server.log`. The log level and log rolling policy can be set in log4j2 config
 file: `etc/conf/server.log4j2.properties`.
 
+Each log line names the host that wrote it. A line written while serving a request also carries an ID the server
+generates for that request, as `request_id=<id>`, so all the lines one request writes can be found together. To add
+the ID to a log format of your own, use `%X{request_id}`.
+
+Every request that fails with a 5xx status is logged once at `ERROR`, with its method, path, status and cause.
+
 ## Authentication and Authorization
 
 Please refer to [Authentication and Authorization](./auth.md) section for more information.
