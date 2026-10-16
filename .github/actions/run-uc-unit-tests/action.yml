@@ -20,6 +20,10 @@ inputs:
       Leave 'false' for published Spark.
     required: false
     default: 'false'
+  test-database:
+    description: SupportedDatabase constant the tests run on (UC_TEST_DATABASE).
+    required: false
+    default: 'H2'
 
 runs:
   using: composite
@@ -69,6 +73,8 @@ runs:
 
     - name: Run tests with coverage
       shell: bash
+      env:
+        UC_TEST_DATABASE: ${{ inputs.test-database }}
       run: |
         if [[ "${{ inputs.validation-mode }}" == "spark-tests" ]]; then
           echo "Running spark connector tests"
@@ -79,6 +85,6 @@ runs:
         fi
 
     - name: Run license check
-      if: inputs.validation-mode == 'all-tests'
+      if: inputs.validation-mode == 'all-tests' && inputs.test-database == 'H2'
       shell: bash
       run: build/sbt -DsparkVersion=${{ inputs.spark-version }} -DdeltaVersion=$DELTA_VERSION licenseCheck
