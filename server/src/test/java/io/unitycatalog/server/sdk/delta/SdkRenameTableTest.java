@@ -164,6 +164,9 @@ public class SdkRenameTableTest extends DeltaBaseTableCRUDTestEnv {
     // UC REST accepts a view that claims the DELTA format; the type check must still reject it.
     DELTA_FORMAT_VIEW("Only MANAGED and EXTERNAL tables can be renamed");
 
+    // Asserted on top of the reason above for DELTA_FORMAT_VIEW.
+    static final String DELTA_FORMAT_VIEW_TYPE = "has type VIEW";
+
     final String expectedMessage;
 
     NonDeltaSource(String expectedMessage) {
@@ -229,6 +232,12 @@ public class SdkRenameTableTest extends DeltaBaseTableCRUDTestEnv {
           () -> rename(source, newName),
           DeltaErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
           kind.expectedMessage);
+    }
+    if (kind == NonDeltaSource.DELTA_FORMAT_VIEW) {
+      TestUtils.assertDeltaApiException(
+          () -> rename(source, "renameUnusedTarget"),
+          DeltaErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
+          NonDeltaSource.DELTA_FORMAT_VIEW_TYPE);
     }
     // The rejected row keeps its name.
     assertThat(tableOperations.getTable(fullName(source)).getName()).isEqualTo(source);

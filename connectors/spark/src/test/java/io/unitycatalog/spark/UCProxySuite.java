@@ -428,7 +428,7 @@ public class UCProxySuite {
     stubRenameSource(viewType, null);
     assertThatThrownBy(() -> proxy.renameTable(RENAME_SOURCE, RENAME_TARGET))
         .isInstanceOf(UnsupportedOperationException.class)
-        .hasMessageContaining("not a table");
+        .hasMessageContaining("has type " + viewType.getValue() + ", not a table");
     verifyRenameNotCalled();
   }
 
@@ -448,7 +448,9 @@ public class UCProxySuite {
     stubRenameSource(tableType, format);
     assertThatThrownBy(() -> proxy.renameTable(RENAME_SOURCE, RENAME_TARGET))
         .isInstanceOf(UnsupportedOperationException.class)
-        .hasMessageContaining("only supported for Delta tables");
+        .hasMessageContaining("only supported for Delta tables")
+        .hasMessageContaining(
+            "has type " + tableType.getValue() + " and format " + format.getValue());
     verifyRenameNotCalled();
   }
 

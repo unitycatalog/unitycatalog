@@ -1325,12 +1325,12 @@ private[spark] class UCProxy(
       .getOrElse(throw new NoSuchTableException(oldIdent))
     if (UCViewTypes.isViewLikeTableType(t.getTableType)) {
       throw new UnsupportedOperationException(
-        s"Cannot rename $fullName with ALTER TABLE: it is a ${t.getTableType}, not a table")
+        s"Cannot rename $fullName with ALTER TABLE: it has type ${t.getTableType}, not a table")
     }
     if (!UCSingleCatalog.isDeltaTable(t)) {
       throw new UnsupportedOperationException(
-        s"Renaming is only supported for Delta tables; $fullName is a " +
-          s"${t.getTableType} ${t.getDataSourceFormat} table")
+        s"Renaming is only supported for Delta tables; $fullName has type " +
+          s"${t.getTableType} and format ${t.getDataSourceFormat}")
     }
     try {
       deltaTablesApi.renameTable(

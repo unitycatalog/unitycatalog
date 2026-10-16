@@ -1295,7 +1295,7 @@ public class TableRepository {
                       + schema
                       + "."
                       + table
-                      + " is a "
+                      + " has type "
                       + tableInfoDAO.getType());
             }
           }
