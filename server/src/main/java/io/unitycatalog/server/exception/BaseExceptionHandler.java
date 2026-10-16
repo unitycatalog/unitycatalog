@@ -3,11 +3,15 @@ package io.unitycatalog.server.exception;
 import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.common.util.SafeCloseable;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Base exception handler that normalizes all exceptions to {@link BaseException} before delegating
@@ -15,16 +19,40 @@ import lombok.Setter;
  */
 public abstract class BaseExceptionHandler implements ExceptionHandlerFunction {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(BaseExceptionHandler.class);
+
   @Setter
   @Getter(AccessLevel.PROTECTED)
   private static volatile boolean includeStackTrace = false;
 
   @Override
   public HttpResponse handleException(ServiceRequestContext ctx, HttpRequest req, Throwable cause) {
-    return createErrorResponse(toBaseException(cause));
+    BaseException exception = toBaseException(cause);
+    logIfServerError(ctx, req, httpStatus(exception), cause);
+    return createErrorResponse(exception);
   }
 
   protected abstract HttpResponse createErrorResponse(BaseException exception);
+
+  /** The status {@link #createErrorResponse} answers {@code exception} with. */
+  protected HttpStatus httpStatus(BaseException exception) {
+    return exception.getErrorCode().getHttpStatus();
+  }
+
+  /**
+   * Logs a 5xx with its cause. This is the one place a failed request is logged, so it is logged
+   * once. The request context is pushed so the line carries the request ID even when the handler
+   * runs after the service has returned.
+   */
+  protected static void logIfServerError(
+      ServiceRequestContext ctx, HttpRequest req, HttpStatus status, Throwable cause) {
+    if (!status.isServerError()) {
+      return;
+    }
+    try (SafeCloseable ignored = ctx.push()) {
+      LOGGER.error("{} {} answered {}", req.method(), ctx.path(), status.code(), cause);
+    }
+  }
 
   /**
    * Wraps a non-BaseException into a BaseException with an empty stack trace. The empty trace

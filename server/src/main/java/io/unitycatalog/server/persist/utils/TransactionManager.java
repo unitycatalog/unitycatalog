@@ -92,7 +92,12 @@ public class TransactionManager {
         tx.commit();
         return result;
       } catch (Exception e) {
-        tx.rollback();
+        try {
+          tx.rollback();
+        } catch (RuntimeException rollbackError) {
+          // On a broken connection the rollback fails too. Keep the error that failed the work.
+          e.addSuppressed(rollbackError);
+        }
         // A control-flow signal (e.g. an idempotent-replay short-circuit) is not an error: rethrow
         // it as-is, without error logging, so the caller can catch its specific type. The rollback
         // above has already undone its work.
@@ -105,7 +110,7 @@ public class TransactionManager {
         }
         ErrorCode errorCode =
             DatabaseErrors.errorCode(sessionFactory, e).orElse(ErrorCode.INTERNAL);
-        throw new BaseException(errorCode, errorMessage + ": " + e.getMessage());
+        throw new BaseException(errorCode, errorMessage + ": " + e.getMessage(), e);
       } finally {
         // Restore original isolation level to avoid polluting connection pool
         if (isolationLevel.isPresent()) {
