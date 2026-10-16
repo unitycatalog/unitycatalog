@@ -1,7 +1,7 @@
 import json
 from typing import Any, Optional, Union
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from litellm.types.utils import ChatCompletionMessageToolCall, Choices, Message
 from unitycatalog.ai.core.client import BaseFunctionClient
@@ -12,12 +12,16 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
 
 
 class ConversationMessage(BaseModel):
+    # Keep fields such as `tool_calls`, `tool_call_id` and `name` so the history can be sent back as-is
+    model_config = ConfigDict(extra="allow")
+
     role: str = Field(
         ..., description="The role of the message sender, e.g., 'user' or 'assistant'."
     )
-    content: str = Field(
-        ...,
-        description="The content of the message, e.g. original user question or an assistant response.",
+    content: Optional[Union[str, list[Any]]] = Field(
+        default=None,
+        description="The content of the message, e.g. original user question or an assistant response. "
+        "It is None for an assistant message that only requests tool calls.",
     )
 
     def to_dict(self) -> dict[str, Any]:

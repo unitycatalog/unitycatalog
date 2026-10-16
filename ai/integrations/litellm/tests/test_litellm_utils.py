@@ -299,6 +299,28 @@ def test_generate_tool_call_messages_multiple_tools(
     assert tool_response_message[2]["content"] == "65 degrees"
 
 
+def test_generate_tool_call_messages_accepts_previous_round_as_history(
+    mock_message_single_tool, mock_message_multiple_tools, mock_client, dummy_history
+):
+    first_round = generate_tool_call_messages(
+        response=mock_message_single_tool,
+        conversation_history=dummy_history,
+        client=mock_client,
+    )
+    second_round = generate_tool_call_messages(
+        response=mock_message_multiple_tools,
+        conversation_history=first_round,
+        client=mock_client,
+    )
+
+    assert second_round[: len(first_round)] == first_round
+    assert [message["tool_call_id"] for message in second_round[len(first_round) + 1 :]] == [
+        "call_HSQTsZTvFfLySGY250051VQz",
+        "call_Ozd6L5vXIuKPlsmomMVPsHFM",
+        "call_MKQQrCiQhKXM6ZWtGTsASIXd",
+    ]
+
+
 def test_generate_tool_call_messages_no_tool_use(
     mock_message_single_tool, mock_client, dummy_history
 ):
