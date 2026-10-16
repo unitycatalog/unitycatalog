@@ -49,6 +49,7 @@ lazy val caffeineVersion = "2.9.3"
 lazy val junitJupiterVersion = "5.13.4"
 // Declared in each test module: the jupiter-interface bridge pulls launcher 1.9, which must match.
 lazy val junitPlatformVersion = "1.13.4"
+lazy val testcontainersVersion = "1.19.8"
 val orgApacheHttpVersion = "4.5.14"
 
 // Latest patch on the Jackson line each Spark version ships, used to compile and test the
@@ -481,10 +482,10 @@ lazy val server = (project in file("server"))
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
 
       // Integration testing
-      "org.testcontainers" % "testcontainers" % "1.19.8" % Test,
-      "org.testcontainers" % "postgresql" % "1.19.8" % Test,
-      "org.testcontainers" % "mysql" % "1.19.8" % Test,
-      "org.testcontainers" % "junit-jupiter" % "1.19.8" % Test,
+      "org.testcontainers" % "testcontainers" % testcontainersVersion % Test,
+      "org.testcontainers" % "postgresql" % testcontainersVersion % Test,
+      "org.testcontainers" % "mysql" % testcontainersVersion % Test,
+      "org.testcontainers" % "junit-jupiter" % testcontainersVersion % Test,
       "org.postgresql" % "postgresql" % "42.7.13" % Test,
       "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
 
@@ -665,8 +666,8 @@ lazy val testDatabaseServicesDirectory = file("server") / "src" / "test" / "reso
 
 // Lets projects that take the server test harness from server-shaded run it on PostgreSQL.
 lazy val testDatabaseDependencies = Seq(
-  "org.testcontainers" % "testcontainers" % "1.19.8" % Test,
-  "org.testcontainers" % "postgresql" % "1.19.8" % Test,
+  "org.testcontainers" % "testcontainers" % testcontainersVersion % Test,
+  "org.testcontainers" % "postgresql" % testcontainersVersion % Test,
   "org.postgresql" % "postgresql" % "42.7.13" % Test,
 )
 
