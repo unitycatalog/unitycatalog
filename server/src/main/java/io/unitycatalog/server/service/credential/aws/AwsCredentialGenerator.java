@@ -3,7 +3,9 @@ package io.unitycatalog.server.service.credential.aws;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -38,20 +40,34 @@ public interface AwsCredentialGenerator {
     private final String accessKeyId;
     private final String secretKey;
     private final String sessionToken;
+    private final Duration ttl;
 
     public StaticAwsCredentialGenerator(S3StorageConfig config) {
+      this(config, null);
+    }
+
+    /**
+     * @param ttl when non-null, stamped as {@link Credentials#expiration()} so clients refresh.
+     *     Does not expire the underlying access key.
+     */
+    public StaticAwsCredentialGenerator(S3StorageConfig config, Duration ttl) {
       this.accessKeyId = config.getAccessKey();
       this.secretKey = config.getSecretKey();
       this.sessionToken = config.getSessionToken();
+      this.ttl = ttl;
     }
 
     @Override
     public Credentials generate(CredentialContext ctx) {
-      return Credentials.builder()
-          .accessKeyId(accessKeyId)
-          .secretAccessKey(secretKey)
-          .sessionToken(sessionToken)
-          .build();
+      Credentials.Builder builder =
+          Credentials.builder()
+              .accessKeyId(accessKeyId)
+              .secretAccessKey(secretKey)
+              .sessionToken(sessionToken);
+      if (ttl != null) {
+        builder.expiration(Instant.now().plus(ttl));
+      }
+      return builder.build();
     }
   }
 
@@ -62,6 +78,7 @@ public interface AwsCredentialGenerator {
     private final String staticAwsRoleArn;
     // Same region the STS client uses; used when the assumed role ARN does not carry a partition.
     private final Region awsRegion;
+    private final boolean includeKmsPermissions;
 
     public StsAwsCredentialGenerator(StsClientBuilder builder, S3StorageConfig config) {
       // Get STS region
@@ -87,9 +104,26 @@ public interface AwsCredentialGenerator {
         credentialsProvider = DefaultCredentialsProvider.create();
       }
 
-      this.stsClient = builder.region(region).credentialsProvider(credentialsProvider).build();
+      StsClientBuilder stsBuilder = builder.region(region).credentialsProvider(credentialsProvider);
+      String stsEndpointUrl = effectiveStsEndpoint(config);
+      if (stsEndpointUrl != null) {
+        stsBuilder.endpointOverride(URI.create(stsEndpointUrl));
+      }
+      this.stsClient = stsBuilder.build();
       this.staticAwsRoleArn = config.getAwsRoleArn();
       this.awsRegion = region;
+      this.includeKmsPermissions =
+          AwsPolicyGenerator.stsSupportsKmsPolicyConditions(stsEndpointUrl);
+    }
+
+    private static String effectiveStsEndpoint(S3StorageConfig config) {
+      if (config.getStsEndpointUrl() != null && !config.getStsEndpointUrl().isEmpty()) {
+        return config.getStsEndpointUrl();
+      }
+      if (config.getEndpointUrl() != null && !config.getEndpointUrl().isEmpty()) {
+        return config.getEndpointUrl();
+      }
+      return null;
     }
 
     @Override
@@ -104,7 +138,7 @@ public interface AwsCredentialGenerator {
 
       String awsPolicy =
           AwsPolicyGenerator.generatePolicy(
-              ctx.getPrivileges(), ctx.getLocations(), roleArn, awsRegion);
+              ctx.getPrivileges(), ctx.getLocations(), roleArn, awsRegion, includeKmsPermissions);
       String roleSessionName = "uc-%s".formatted(UUID.randomUUID());
 
       AssumeRoleRequest.Builder roleRequestBuilder =

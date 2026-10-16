@@ -6,6 +6,7 @@
 | **name** | **String** | The credential name. The name must be unique within the metastore. | [default to null] |
 | **comment** | **String** | Comment associated with the credential. | [optional] [default to null] |
 | **aws\_iam\_role** | [**AwsIamRoleRequest**](AwsIamRoleRequest.md) |  | [optional] [default to null] |
+| **aws\_s3\_access\_key** | [**AwsS3AccessKeyRequest**](AwsS3AccessKeyRequest.md) |  | [optional] [default to null] |
 | **purpose** | [**CredentialPurpose**](CredentialPurpose.md) |  | [optional] [default to null] |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
