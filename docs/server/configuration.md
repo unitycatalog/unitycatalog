@@ -144,7 +144,7 @@ Each log line names the host that wrote it. A line written while serving a reque
 generates for that request, as `request_id=<id>`, so all the lines one request writes can be found together. To add
 the ID to a log format of your own, use `%X{request_id}`.
 
-Every request that fails with a 5xx status is logged once at `ERROR`, with its method, path, status and cause.
+Every request that fails with a 5xx status is logged once at `ERROR`, with its cause and request ID.
 
 ## Authentication and Authorization
 
