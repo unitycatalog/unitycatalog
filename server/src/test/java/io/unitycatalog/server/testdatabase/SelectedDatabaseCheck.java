@@ -56,7 +56,7 @@ public class SelectedDatabaseCheck implements Integrator {
   }
 
   /** How many SessionFactories this JVM has checked; lets a test prove the check is active. */
-  static int checkCount() {
+  public static int checkCount() {
     return CHECKS.get();
   }
 }

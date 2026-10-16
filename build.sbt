@@ -663,6 +663,22 @@ lazy val cli = (project in file("examples") / "cli")
   * and the server(with tests) is required as a test dependency)
   * This was necessary because Spark 3.5 has a dependency on Jackson 2.15, which conflicts with the Jackson 2.17
  */
+// server-shaded discards META-INF, so projects that take the server test harness from it copy the
+// harness's service registrations (test-database safeguards) into their own test resources.
+lazy val serverTestServiceRegistrations = Def.task {
+  val source = (server / Test / resourceDirectory).value / "META-INF" / "services"
+  val target = (Test / resourceManaged).value / "META-INF" / "services"
+  IO.copyDirectory(source, target)
+  (target ** "*").get.filter(_.isFile)
+}
+
+// Lets projects that take the server test harness from server-shaded run it on PostgreSQL.
+lazy val testDatabaseDependencies = Seq(
+  "org.testcontainers" % "testcontainers" % "1.19.8" % Test,
+  "org.testcontainers" % "postgresql" % "1.19.8" % Test,
+  "org.postgresql" % "postgresql" % "42.7.13" % Test,
+)
+
 lazy val serverShaded = (project in file("server-shaded"))
   .dependsOn(server % "compile->compile, test->compile")
   .settings(
@@ -766,6 +782,8 @@ lazy val spark = (project in file("connectors/spark"))
       "org.antlr" % "antlr4" % "4.13.1",
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
+    libraryDependencies ++= testDatabaseDependencies,
+    Test / resourceGenerators += serverTestServiceRegistrations.taskValue,
     // netty-codec-native-quic uses ${packaging.type} in its POM which Ivy (used by sbt-license-report) cannot resolve.
     // Exclude it so Ivy never attempts to fetch it; Coursier (used for normal builds) handles it fine.
     excludeDependencies += ExclusionRule("io.netty", "netty-codec-native-quic"),
@@ -822,6 +840,8 @@ lazy val hadoop = (project in file("connectors/hadoop"))
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
+    libraryDependencies ++= testDatabaseDependencies,
+    Test / resourceGenerators += serverTestServiceRegistrations.taskValue,
   )
 
 lazy val integrationTests = (project in file("integration-tests"))
