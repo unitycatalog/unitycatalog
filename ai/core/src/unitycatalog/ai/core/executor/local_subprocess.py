@@ -49,11 +49,18 @@ def _generate_runner_script(function_source: str, cpu_time_limit: int, memory_li
     function_name = _extract_function_name(function_source)
     function_source = textwrap.dedent(function_source)
     script = f"""
-import sys, base64, cloudpickle, json, traceback, asyncio, resource, os
+import sys, base64, cloudpickle, json, traceback, asyncio, os
+
+try:
+    import resource
+except ImportError:
+    resource = None
 
 {function_source}
 
 def _limit_resources():
+    if resource is None:
+        return
     try:
         resource.setrlimit(resource.RLIMIT_CPU, ({cpu_time_limit}, {cpu_time_limit}))
     except Exception as e:
