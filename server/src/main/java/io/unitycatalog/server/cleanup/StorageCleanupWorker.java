@@ -1,5 +1,7 @@
 package io.unitycatalog.server.cleanup;
 
+import io.unitycatalog.server.observability.StorageCleanupMetrics;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
@@ -39,6 +41,7 @@ public final class StorageCleanupWorker implements AutoCloseable {
   private final Duration attemptTimeout;
   private final Duration initialDelay;
   private final Duration retryBackoff;
+  private final StorageCleanupMetrics metrics;
   private ScheduledExecutorService executor;
 
   /**
@@ -48,12 +51,14 @@ public final class StorageCleanupWorker implements AutoCloseable {
    * @param fileOperations factory for storage operations with fresh credentials
    * @param clock clock used to measure the cleanup attempt's budget
    * @param serverProperties cleanup timing settings, read when the worker is created
+   * @param metrics the domain metrics that count each cleanup attempt by result
    */
   public StorageCleanupWorker(
       StorageCleanupTaskRepository taskRepository,
       FileOperations fileOperations,
       Clock clock,
-      ServerProperties serverProperties) {
+      ServerProperties serverProperties,
+      UnityCatalogMetrics metrics) {
     this.taskRepository = Objects.requireNonNull(taskRepository, "taskRepository");
     this.fileOperations = Objects.requireNonNull(fileOperations, "fileOperations");
     this.clock = Objects.requireNonNull(clock, "clock");
@@ -62,6 +67,7 @@ public final class StorageCleanupWorker implements AutoCloseable {
     this.attemptTimeout = serverProperties.getStorageCleanupAttemptTimeout();
     this.initialDelay = serverProperties.getStorageCleanupInitialDelay();
     this.retryBackoff = serverProperties.getStorageCleanupRetryBackoff();
+    this.metrics = Objects.requireNonNull(metrics, "metrics").getStorageCleanup();
     if (pollInterval.toMillis() <= 0) {
       throw new IllegalArgumentException("Cleanup poll interval must be at least one millisecond");
     }
@@ -143,7 +149,14 @@ public final class StorageCleanupWorker implements AutoCloseable {
         new CooperativeDeadline(clock, clock.instant().plus(attemptTimeout));
     try {
       cleanup(claim, deadline);
-      taskRepository.finish(claim.resourceId(), claim.leaseToken());
+      if (!taskRepository.finish(claim.resourceId(), claim.leaseToken())) {
+        LOGGER.warn(
+            "Storage cleanup deleted {} {} at {} after its lease expired; the task stays queued",
+            claim.resourceType(),
+            claim.resourceId(),
+            claim.storageLocation());
+      }
+      metrics.recordSuccess(claim.resourceType());
     } catch (Exception exception) {
       // Surface the failure to operators: the DB only keeps a sanitized class-name string, so
       // without this a stuck cleanup is invisible. Location/id are the resource's own managed
@@ -154,10 +167,15 @@ public final class StorageCleanupWorker implements AutoCloseable {
           claim.resourceId(),
           claim.storageLocation(),
           exception);
-      taskRepository.reportFailure(
-          claim.resourceId(),
-          claim.leaseToken(),
-          new CleanupFailureReport(safeError(exception), retryBackoff));
+      try {
+        taskRepository.reportFailure(
+            claim.resourceId(),
+            claim.leaseToken(),
+            new CleanupFailureReport(safeError(exception), retryBackoff));
+      } finally {
+        // Count the failure even when reporting it to the database fails.
+        metrics.recordFailure(claim.resourceType());
+      }
     }
     return true;
   }
