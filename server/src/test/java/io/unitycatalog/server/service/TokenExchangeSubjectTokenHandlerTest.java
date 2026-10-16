@@ -17,8 +17,10 @@ import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.utils.LogCapture;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.LogEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -142,8 +144,7 @@ class TokenExchangeSubjectTokenHandlerTest {
       assertThatThrownBy(() -> handler.resolvePrincipalEmail(TokenType.ID_TOKEN, jwt))
           .isInstanceOf(BaseException.class)
           .hasMessage("database unavailable");
-      // The request's error handler logs the failure; logging it here too would log it twice.
-      assertThat(logs.eventsAtLeast(Level.ERROR)).isEmpty();
+      assertLookupFailureLogged(logs, "email " + USER_EMAIL);
     }
   }
 
@@ -152,9 +153,12 @@ class TokenExchangeSubjectTokenHandlerTest {
     DecodedJWT jwt = decode(identityToken(USER_EMAIL, CLIENT_ID));
     when(userRepository.getUserByEmail(USER_EMAIL)).thenThrow(new RuntimeException("db down"));
 
-    assertThatThrownBy(() -> handler.resolvePrincipalEmail(TokenType.ID_TOKEN, jwt))
-        .isInstanceOf(RuntimeException.class)
-        .hasMessage("db down");
+    try (LogCapture logs = LogCapture.of(TokenExchangeSubjectTokenHandler.class)) {
+      assertThatThrownBy(() -> handler.resolvePrincipalEmail(TokenType.ID_TOKEN, jwt))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("db down");
+      assertLookupFailureLogged(logs, "email " + USER_EMAIL);
+    }
   }
 
   @Test
@@ -162,9 +166,25 @@ class TokenExchangeSubjectTokenHandlerTest {
     DecodedJWT jwt = decode(tokenWithAzpAndAud(CLIENT_ID, "https://dev.dev.example.com"));
     when(userRepository.getUserByExternalId(CLIENT_ID)).thenThrow(new RuntimeException("db down"));
 
-    assertThatThrownBy(() -> handler.resolvePrincipalEmail(TokenType.ACCESS_TOKEN, jwt))
-        .isInstanceOf(RuntimeException.class)
-        .hasMessage("db down");
+    try (LogCapture logs = LogCapture.of(TokenExchangeSubjectTokenHandler.class)) {
+      assertThatThrownBy(() -> handler.resolvePrincipalEmail(TokenType.ACCESS_TOKEN, jwt))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("db down");
+      assertLookupFailureLogged(logs, "external id " + CLIENT_ID);
+    }
+  }
+
+  /**
+   * One WARN names the lookup, without the stack trace: the request's error handler logs the
+   * failure with its cause, under the same request ID.
+   */
+  private static void assertLookupFailureLogged(LogCapture logs, String lookup) {
+    List<LogEvent> logged = logs.eventsAtLeast(Level.WARN);
+    assertThat(logged).hasSize(1);
+    assertThat(logged.get(0).getLevel()).isEqualTo(Level.WARN);
+    assertThat(logged.get(0).getMessage().getFormattedMessage())
+        .isEqualTo("Failed to look up user by " + lookup);
+    assertThat(logged.get(0).getThrown()).isNull();
   }
 
   private static User enabledUser(String email) {
