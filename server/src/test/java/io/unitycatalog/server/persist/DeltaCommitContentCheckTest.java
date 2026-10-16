@@ -4,12 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.DeltaCommitRepository.BackfillVerificationRequiredException;
 import io.unitycatalog.server.persist.DeltaCommitRepository.CommitContentCheckRequiredException;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
@@ -19,7 +22,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import org.apache.iceberg.aws.s3.S3FileIO;
+import org.apache.iceberg.io.FileIO;
+import org.apache.iceberg.io.InputFile;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,10 +37,11 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 
 /**
- * Exercises {@link DeltaCommitRepository#verifyContentReplayOrThrowConflict} against a real
- * (in-process, s3mock-backed) {@code S3FileIO}, so the cloud read path -- path construction, {@code
- * newInputFile}/{@code newStream}, and the streamed lockstep comparison -- is covered rather than
- * only the local {@code SimpleLocalFileIO} path the SDK tests use.
+ * Exercises {@link DeltaCommitRepository#verifyContentReplayOrThrowConflict} and {@link
+ * DeltaCommitRepository#requirePublishedCommitFiles} against a real (in-process, s3mock-backed)
+ * {@code S3FileIO}, so the cloud read path -- path construction, {@code newInputFile}/{@code
+ * newStream}/{@code exists}, and the streamed lockstep comparison -- is covered rather than only
+ * the local {@code SimpleLocalFileIO} path the SDK tests use.
  *
  * <p>Like {@code MetadataServiceTest}, {@code getFileIO} is stubbed to return a real {@code
  * S3FileIO}; credential vending itself is not exercised here. One case stubs a {@code
@@ -140,6 +148,119 @@ public class DeltaCommitContentCheckTest {
         .isEqualTo(ErrorCode.COMMIT_VERSION_CONFLICT);
   }
 
+  @Test
+  public void backfillVerificationSeparatesMissingFilesFromStorageFailures() {
+    // Published files for the whole range present: the backfill may proceed.
+    putPublished("tbl_published", 1L, "v1\n");
+    putPublished("tbl_published", 2L, "v2\n");
+    assertThatCode(() -> requirePublishedCommitFiles("tbl_published", 1L, 2L))
+        .doesNotThrowAnyException();
+
+    // A gap in the range (v2 was never published) is a client error: retrying cannot help until
+    // the file is published, and the DB rows must be kept.
+    putPublished("tbl_gap", 1L, "v1\n");
+    putPublished("tbl_gap", 3L, "v3\n");
+    assertThatThrownBy(() -> requirePublishedCommitFiles("tbl_gap", 1L, 3L))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+
+    // Storage itself failed, so existence is undetermined: retriable 500, not a bad request.
+    doThrow(new RuntimeException("credential vend failed")).when(fileOperations).getFileIO(any());
+    assertThatThrownBy(() -> requirePublishedCommitFiles("tbl_published", 1L, 2L))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN);
+
+    // A BaseException from FileIO acquisition (credential / region config) must also fail open to
+    // 500, not pass through as the caller's INVALID_ARGUMENT.
+    doThrow(new BaseException(ErrorCode.INVALID_ARGUMENT, "No S3 region configured for bucket"))
+        .when(fileOperations)
+        .getFileIO(any());
+    assertThatThrownBy(() -> requirePublishedCommitFiles("tbl_published", 1L, 2L))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN);
+  }
+
+  @Test
+  public void backfillVerificationRereadsTheDatabaseBeforeRejectingAMissingFile() {
+    // v2 is gone: another request backfilled through v4 after this one read the range, and log
+    // cleanup removed v2. v3 and v4 are still published.
+    putPublished("tbl_raced", 3L, "v3\n");
+    putPublished("tbl_raced", 4L, "v4\n");
+    DeltaCommitRepository repository = new DeltaCommitRepository(null, null, fileOperations);
+    BackfillVerificationRequiredException range2To4 = required("tbl_raced", 2L, 4L);
+
+    // The database now has the backfill through v4: success, and no purge is attempted.
+    List<Boolean> attempts = new ArrayList<>();
+    assertThat(
+            repository.<String>withPublishedCommitVerification(
+                filesChecked -> {
+                  attempts.add(filesChecked);
+                  if (attempts.size() == 1) {
+                    throw range2To4;
+                  }
+                  return "done";
+                }))
+        .isEqualTo("done");
+    assertThat(attempts).containsExactly(false, false);
+
+    // Another request backfilled only through v2: v3 and v4 are still needed and present.
+    attempts.clear();
+    assertThat(
+            repository.<String>withPublishedCommitVerification(
+                filesChecked -> {
+                  attempts.add(filesChecked);
+                  if (attempts.size() == 1) {
+                    throw range2To4;
+                  }
+                  if (!filesChecked) {
+                    throw required("tbl_raced", 3L, 4L);
+                  }
+                  return "purged";
+                }))
+        .isEqualTo("purged");
+    assertThat(attempts).containsExactly(false, false, true);
+
+    // Nothing else backfilled: v2 is still needed, so the missing file is the caller's error.
+    assertThatThrownBy(
+            () ->
+                repository.<String>withPublishedCommitVerification(
+                    filesChecked -> {
+                      throw range2To4;
+                    }))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+  }
+
+  @Test
+  public void backfillVerificationInclusiveRangeDoesNotOverflowAtMaxValue() {
+    FileIO fileIO = mock();
+    InputFile inputFile = mock();
+    when(inputFile.exists()).thenReturn(true);
+    when(fileIO.newInputFile(anyString())).thenReturn(inputFile);
+    when(fileOperations.getFileIO(any())).thenReturn(fileIO);
+
+    assertThatCode(() -> requirePublishedCommitFiles("tbl_max", Long.MAX_VALUE, Long.MAX_VALUE))
+        .doesNotThrowAnyException();
+  }
+
+  private void requirePublishedCommitFiles(String tableName, long fromVersion, long toVersion) {
+    DeltaCommitRepository.requirePublishedCommitFiles(
+        fileOperations,
+        NormalizedURL.from("s3://" + BUCKET + "/" + tableName),
+        fromVersion,
+        toVersion);
+  }
+
+  private static BackfillVerificationRequiredException required(
+      String tableName, long fromVersion, long toVersion) {
+    return new BackfillVerificationRequiredException(
+        NormalizedURL.from("s3://" + BUCKET + "/" + tableName), fromVersion, toVersion);
+  }
+
   private void runContentCheck(String tableName) {
     DeltaCommitRepository.verifyContentReplayOrThrowConflict(
         fileOperations,
@@ -148,7 +269,11 @@ public class DeltaCommitContentCheckTest {
   }
 
   private void putPublished(String tableName, String content) {
-    put(tableName + "/_delta_log/00000000000000000002.json", content);
+    putPublished(tableName, VERSION, content);
+  }
+
+  private void putPublished(String tableName, long version, String content) {
+    put(String.format("%s/_delta_log/%020d.json", tableName, version), content);
   }
 
   private void putStaged(String tableName, String content) {

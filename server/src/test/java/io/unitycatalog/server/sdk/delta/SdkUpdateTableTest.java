@@ -880,6 +880,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       assertThat(r1.getLatestTableVersion()).isEqualTo(1L);
 
       // Now send v2 commit + backfill of v1 in a single request.
+      writePublishedCommitFile(r1.getMetadata().getLocation(), 1L);
       DeltaLoadTableResponse r2 =
           updateTable(
               h.withEtag(r1.getMetadata().getEtag()),
@@ -1050,6 +1051,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                           .fileSize(1024L)
                           .fileModificationTimestamp(1700000001L)));
       assertThat(r1.getLatestTableVersion()).isEqualTo(1L);
+      writePublishedCommitFile(r1.getMetadata().getLocation(), 1L);
       DeltaLoadTableResponse r2 =
           updateTable(
               h.withEtag(r1.getMetadata().getEtag()),
@@ -1315,15 +1317,17 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                         .fileModificationTimestamp(1700000000L + v));
         cur = cur.withEtag(updateTable(cur, commits[i]).getMetadata().getEtag());
       }
-      // Backfill v2 -> purge v1 and v2 from the DB (leaving [v3]).
+      // Publish v1 and v2 before backfill so purge verification succeeds; then purge leaves [v3].
+      byte[] v1Content = "delta-commit-v1\n".getBytes(StandardCharsets.UTF_8);
+      byte[] v2Content = "delta-commit-v2\n".getBytes(StandardCharsets.UTF_8);
+      writeTableFile(loc, "_delta_log/00000000000000000001.json", v1Content);
+      writeTableFile(loc, "_delta_log/00000000000000000002.json", v2Content);
       DeltaLoadTableResponse afterBackfill =
           updateTable(cur, new DeltaSetLatestBackfilledVersionUpdate().latestPublishedVersion(2L));
       final Handle h3 = cur.withEtag(afterBackfill.getMetadata().getEtag());
 
-      // Publish v2 and stage a byte-identical file: the replay is recognized by content and is an
+      // Stage a byte-identical file for v2: the replay is recognized by content and is an
       // idempotent no-op success (table still at v3).
-      byte[] v2Content = "delta-commit-v2\n".getBytes(StandardCharsets.UTF_8);
-      writeTableFile(loc, "_delta_log/00000000000000000002.json", v2Content);
       writeTableFile(loc, "_delta_log/_staged_commits/00000002.json", v2Content);
       DeltaLoadTableResponse replay = updateTable(h3, commits[1]);
       assertThat(replay.getLatestTableVersion()).isEqualTo(3L);
@@ -1354,6 +1358,14 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           DeltaErrorType.COMMIT_STATE_UNKNOWN_EXCEPTION,
           "retry");
     }
+  }
+
+  /** Write a dummy published {@code _delta_log/<version>.json} under the table location. */
+  private void writePublishedCommitFile(String storageLocation, long version) throws IOException {
+    writeTableFile(
+        storageLocation,
+        String.format("_delta_log/%020d.json", version),
+        ("delta-commit-v" + version + "\n").getBytes(StandardCharsets.UTF_8));
   }
 
   /** Write {@code content} to {@code relativePath} under the table's (file://) storage location. */
