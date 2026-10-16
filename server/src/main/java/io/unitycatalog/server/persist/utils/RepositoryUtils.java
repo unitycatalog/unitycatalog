@@ -50,7 +50,11 @@ public class RepositoryUtils {
    * </ul>
    *
    * @param session the Hibernate session running the commit transaction
-   * @param dao the table row to lock; refreshed under {@code PESSIMISTIC_WRITE}
+   *     <p>The row is locked first and read second. Refreshing the entity under the lock would load
+   *     its columns with an outer join, which PostgreSQL cannot lock in one statement; Hibernate
+   *     then reads before locking, so a commit that waited for the lock would continue on the state
+   *     it read before the other commit landed.
+   * @param dao the table row to lock; re-read after the lock is held
    * @param tableId the table id, used as a fallback in the error message
    * @param tableFullNameForLogging the table's full name for the error message, if known
    * @param lockContentionError the error code to raise when the lock cannot be acquired
@@ -62,7 +66,12 @@ public class RepositoryUtils {
       Optional<String> tableFullNameForLogging,
       ErrorCode lockContentionError) {
     try {
-      session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
+      session
+          .createSelectionQuery("from TableInfoDAO where id = :id", TableInfoDAO.class)
+          .setParameter("id", dao.getId())
+          .setHibernateLockMode(LockMode.PESSIMISTIC_WRITE)
+          .getSingleResult();
+      session.refresh(dao);
     } catch (RuntimeException e) {
       if (!(e instanceof org.hibernate.PessimisticLockException)
           && !(e instanceof org.hibernate.exception.LockAcquisitionException)
