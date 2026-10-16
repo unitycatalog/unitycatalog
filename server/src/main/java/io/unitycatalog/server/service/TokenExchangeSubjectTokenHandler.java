@@ -96,15 +96,19 @@ public class TokenExchangeSubjectTokenHandler {
     return Optional.empty();
   }
 
-  private Optional<User> findEnabledUser(Supplier<User> lookup) {
+  private Optional<User> findEnabledUser(Supplier<User> lookup, String lookupType, String key) {
     final User user;
     try {
       user = lookup.get();
     } catch (BaseException e) {
-      // Any other error fails the request, and the error handler logs it.
       if (e.getErrorCode() == ErrorCode.NOT_FOUND) {
         return Optional.empty();
       }
+      // No stack trace: the request's error handler logs the cause, under the same request ID.
+      LOGGER.warn("Failed to look up user by {} {}", lookupType, key);
+      throw e;
+    } catch (RuntimeException e) {
+      LOGGER.warn("Failed to look up user by {} {}", lookupType, key);
       throw e;
     }
     if (user != null && user.getState() == User.StateEnum.ENABLED && isAssumablePrincipal(user)) {
@@ -128,7 +132,8 @@ public class TokenExchangeSubjectTokenHandler {
   private Optional<String> tryResolvePrincipalEmailForClient(String clientId) {
     LOGGER.debug("Resolving principal for OAuth client id {}", clientId);
     Optional<String> email =
-        findEnabledUser(() -> userRepository.getUserByExternalId(clientId)).map(User::getEmail);
+        findEnabledUser(() -> userRepository.getUserByExternalId(clientId), "external id", clientId)
+            .map(User::getEmail);
     email.ifPresent(
         resolvedEmail ->
             LOGGER.debug("Principal for client {} resolved to {}", clientId, resolvedEmail));
@@ -148,7 +153,8 @@ public class TokenExchangeSubjectTokenHandler {
 
     LOGGER.debug("Trying principal resolution from token claims: {}", subject);
 
-    Optional<User> user = findEnabledUser(() -> userRepository.getUserByEmail(subject));
+    Optional<User> user =
+        findEnabledUser(() -> userRepository.getUserByEmail(subject), "email", subject);
     if (user.isPresent()) {
       LOGGER.debug("Principal {} resolved from token email", subject);
       return user.map(User::getEmail);
