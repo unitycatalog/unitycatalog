@@ -69,9 +69,8 @@ public class ExceptionHandlerLoggingTest {
       LogEvent error = errors.get(0);
       assertThat(error.getLevel()).isEqualTo(Level.ERROR);
       assertThat(error.getThrown()).isSameAs(cause);
-      assertThat(error.getMessage().getFormattedMessage())
-          .contains("POST /api/2.1/unity-catalog/catalogs")
-          .contains("500");
+      // The request ID finds the request; the cause says what went wrong.
+      assertThat(error.getMessage().getFormattedMessage()).isEqualTo("Request failed");
       assertThat(error.getContextData().<String>getValue(RequestIdContextDataProvider.LOG_KEY))
           .isEqualTo(REQUEST_ID.text());
     }
