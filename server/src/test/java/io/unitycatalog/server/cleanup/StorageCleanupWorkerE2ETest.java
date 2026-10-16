@@ -9,6 +9,7 @@ import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.model.VolumeType;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
@@ -268,7 +269,8 @@ class StorageCleanupWorkerE2ETest {
         repositories.getStorageCleanupTaskRepository(),
         repositories.getFileOperations(),
         Clock.systemUTC(),
-        workerProperties());
+        workerProperties(),
+        UnityCatalogMetrics.noop());
   }
 
   /** Stubbed FileOperations that points the cleanup S3FileIO at the s3mock client. */
@@ -285,7 +287,8 @@ class StorageCleanupWorkerE2ETest {
         repositories.getStorageCleanupTaskRepository(),
         fileOperations,
         Clock.systemUTC(),
-        workerProperties());
+        workerProperties(),
+        UnityCatalogMetrics.noop());
   }
 
   private void putObjects(String prefix, String... suffixes) {
