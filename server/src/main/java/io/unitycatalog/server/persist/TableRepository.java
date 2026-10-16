@@ -1255,6 +1255,22 @@ public class TableRepository {
    * schema, and storage location are all unchanged.
    */
   public void renameTable(String catalog, String schema, String table, String newName) {
+    renameTable(catalog, schema, table, newName, /* requireDelta= */ false);
+  }
+
+  /**
+   * {@link #renameTable} for the Delta REST surface: additionally rejects a source that is not a
+   * Delta table (views, Iceberg, parquet, etc.) with {@link ErrorCode#UNSUPPORTED_TABLE_FORMAT}, as
+   * {@link #loadTableForDelta} and {@link #updateTableForDelta} do. The format check runs after the
+   * not-found check and before the no-op and collision checks, in the same transaction as the
+   * rename.
+   */
+  public void renameTableForDelta(String catalog, String schema, String table, String newName) {
+    renameTable(catalog, schema, table, newName, /* requireDelta= */ true);
+  }
+
+  private void renameTable(
+      String catalog, String schema, String table, String newName, boolean requireDelta) {
     ValidationUtils.validateSqlObjectName(newName);
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     TransactionManager.executeWithTransaction(
@@ -1265,6 +1281,9 @@ public class TableRepository {
           TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, table);
           if (tableInfoDAO == null) {
             throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + table);
+          }
+          if (requireDelta) {
+            requireDeltaTable(tableInfoDAO, catalog, schema, table);
           }
           // Do the no-op check after the table lookup. A missing table must still return
           // TABLE_NOT_FOUND rather than succeed as a no-op.

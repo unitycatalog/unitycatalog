@@ -733,6 +733,34 @@ Merge Command
 2       test 2
 ```
 
+Rename Table
+
+=== "Spark SQL"
+
+    ```sql
+    -- Rename a table within its schema
+    ALTER TABLE demo.mytable RENAME TO demo.mytable_renamed;
+
+    -- Check results
+    SHOW TABLES IN demo;
+    ```
+
+=== "PySpark"
+
+    ```python
+    # Rename a table within its schema
+    spark.sql("ALTER TABLE demo.mytable RENAME TO demo.mytable_renamed")
+
+    # Check results
+    spark.sql("SHOW TABLES IN demo").show()
+    ```
+
+!!! note
+    Only Delta tables can be renamed, and only within the same catalog and schema. The rename only
+    changes the table's name in UC: its ID, data, and storage location stay the same. Renaming views
+    or tables in other formats is not supported, and neither is renaming when the catalog sets
+    `deltaRestApi.enabled` to `false`.
+
 Drop Table
 
 === "Spark SQL"

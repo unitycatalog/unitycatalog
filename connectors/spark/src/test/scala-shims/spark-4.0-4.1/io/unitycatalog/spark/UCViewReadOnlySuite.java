@@ -185,7 +185,7 @@ public class UCViewReadOnlySuite {
         .isInstanceOf(IllegalArgumentException.class);
   }
 
-  // -- alterTable / renameTable: unsupported for any table (no view escape hatch) --
+  // -- alterTable: unsupported for any table; renameTable: unsupported for view-like rows --
 
   @Test
   public void testAlterTableUnsupported() {
@@ -194,11 +194,19 @@ public class UCViewReadOnlySuite {
   }
 
   @Test
-  public void testRenameTableUnsupported() {
-    assertThatThrownBy(
-            () ->
-                proxy.renameTable(Identifier.of(NAMESPACE, "mv1"), Identifier.of(NAMESPACE, "mv2")))
-        .isInstanceOf(UnsupportedOperationException.class);
+  public void testRenameTableUnsupportedForViews() throws Exception {
+    // Without a v2 view catalog, ALTER TABLE/VIEW ... RENAME on a view reaches renameTable; it must
+    // not rename the view through the table path.
+    for (TableType viewType : List.of(TableType.VIEW, TableType.METRIC_VIEW)) {
+      when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(false), eq(false)))
+          .thenReturn(new TableInfo().name("mv1").tableType(viewType));
+      assertThatThrownBy(
+              () ->
+                  proxy.renameTable(
+                      Identifier.of(NAMESPACE, "mv1"), Identifier.of(NAMESPACE, "mv2")))
+          .isInstanceOf(UnsupportedOperationException.class)
+          .hasMessageContaining("not a table");
+    }
   }
 
   private static final String PLAIN_VIEW_QUERY = "SELECT 1 AS c";
