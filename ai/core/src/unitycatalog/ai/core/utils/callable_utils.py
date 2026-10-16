@@ -1,6 +1,7 @@
 import ast
 import inspect
 import json
+import re
 import warnings
 from dataclasses import dataclass
 from textwrap import dedent, fill, indent
@@ -714,7 +715,7 @@ def extract_function_metadata(func: Callable[..., Any]) -> FunctionMetadata:
 
     sql_return_type = validate_return_type(func_name, type_hints)
 
-    base_return_type_name = sql_return_type.split("<", 1)[0]
+    base_return_type_name = re.split(r"[<( ]", sql_return_type, maxsplit=1)[0]
 
     docstring = inspect.getdoc(func)
     if not docstring:
@@ -751,7 +752,7 @@ def extract_function_metadata(func: Callable[..., Any]) -> FunctionMetadata:
             error_message = generate_type_hint_error_message(param_name, param_hint, e)
             raise ValueError(error_message) from e
 
-        base_type_name = sql_type.split("<", 1)[0]
+        base_type_name = re.split(r"[<( ]", sql_type, maxsplit=1)[0]
 
         param_comment = docstring_info.params.get(param_name)
         if param_comment:
