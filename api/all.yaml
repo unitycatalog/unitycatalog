@@ -420,6 +420,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TableInfo'
+    put:
+      tags:
+        - Tables
+      operationId: replaceView
+      summary: Replace a view
+      description: >-
+        Atomically replaces the definition and metadata of an existing view (VIEW or METRIC_VIEW)
+        while preserving its ID, owner, creation time, and grants. This is a full replacement: an
+        omitted **comment**, **properties**, or **view_dependencies** is cleared. The **table_type**
+        must match the existing view. This operation does not create a missing view, and fails with
+        FAILED_PRECONDITION if the target is not a view. The caller must be an owner of the view,
+        its parent schema, or its parent catalog.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplaceView'
+      responses:
+        '200':
+          description: The view was successfully replaced.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableInfo'
     delete:
       tags:
         - Tables
@@ -1795,6 +1820,35 @@ components:
         - schema_name
         - table_type
         - columns
+    ReplaceView:
+      type: object
+      description: >-
+        The complete new definition and metadata of an existing view. Fields that are omitted are
+        cleared rather than retained.
+      properties:
+        table_type:
+          $ref: '#/components/schemas/TableType'
+        columns:
+          description: The array of __ColumnInfo__ definitions exposed by the view.
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnInfo'
+        comment:
+          description: User-provided free-form text description. Omit to clear the comment.
+          type: string
+        properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+        view_definition:
+          description: >-
+            Definition text for the view. The format depends on the table type (SQL for views,
+            YAML for metric views).
+          type: string
+        view_dependencies:
+          "$ref": "#/components/schemas/DependencyList"
+      required:
+        - table_type
+        - columns
+        - view_definition
     StagingTableInfo:
       type: object
       properties:

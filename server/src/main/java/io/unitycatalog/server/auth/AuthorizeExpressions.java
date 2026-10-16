@@ -183,6 +183,13 @@ public final class AuthorizeExpressions {
       """;
 
   /**
+   * Authorization policy for replacing a view's definition (UC REST {@code replaceView}). A new
+   * definition changes what every existing {@code SELECT} grantee reads, so it requires ownership
+   * like {@link #DELETE_TABLE} rather than {@code MODIFY}.
+   */
+  public static final String REPLACE_VIEW = DELETE_TABLE;
+
+  /**
    * Authorization policy for renaming a table. Rename requires permission to delete the existing
    * table name as well as permission to create the new name in the same schema.
    */

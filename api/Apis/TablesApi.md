@@ -9,6 +9,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 | [**deleteTable**](TablesApi.md#deleteTable) | **DELETE** /tables/{full_name} | Delete a table |
 | [**getTable**](TablesApi.md#getTable) | **GET** /tables/{full_name} | Get a table |
 | [**listTables**](TablesApi.md#listTables) | **GET** /tables | List tables |
+| [**replaceView**](TablesApi.md#replaceView) | **PUT** /tables/{full_name} | Replace a view |
 
 
 <a name="createStagingTable"></a>
@@ -149,5 +150,33 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: Not defined
+- **Accept**: application/json
+
+<a name="replaceView"></a>
+# **replaceView**
+> TableInfo replaceView(full\_name, ReplaceView)
+
+Replace a view
+
+    Atomically replaces the definition and metadata of an existing view (VIEW or METRIC_VIEW) while preserving its ID, owner, creation time, and grants. This is a full replacement: an omitted **comment**, **properties**, or **view_dependencies** is cleared. The **table_type** must match the existing view. This operation does not create a missing view, and fails with FAILED_PRECONDITION if the target is not a view. The caller must be an owner of the view, its parent schema, or its parent catalog.
+
+### Parameters
+
+|Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String**| Full name of the table. | [default to null] |
+| **ReplaceView** | [**ReplaceView**](../Models/ReplaceView.md)|  | |
+
+### Return type
+
+[**TableInfo**](../Models/TableInfo.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: application/json
 - **Accept**: application/json
 

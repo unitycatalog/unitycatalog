@@ -6,6 +6,7 @@ import io.unitycatalog.server.base.function.FunctionOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.BaseMetricViewCRUDTest;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.base.table.ViewOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.function.SdkFunctionOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
@@ -31,5 +32,10 @@ public class SdkMetricViewCRUDTest extends BaseMetricViewCRUDTest {
   @Override
   protected FunctionOperations createFunctionOperations(ServerConfig config) {
     return new SdkFunctionOperations(TestUtils.createApiClient(config));
+  }
+
+  @Override
+  protected ViewOperations createViewOperations(ServerConfig config) {
+    return new SdkTableOperations(TestUtils.createApiClient(config));
   }
 }
