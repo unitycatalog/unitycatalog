@@ -49,11 +49,12 @@ public class RepositoryUtils {
    *       exploit.
    * </ul>
    *
+   * <p>The row is locked first and read second. Refreshing the entity under the lock would load its
+   * columns with an outer join, which PostgreSQL cannot lock in one statement; Hibernate then reads
+   * before locking, so a commit that waited for the lock would continue on the state it read before
+   * the other commit landed.
+   *
    * @param session the Hibernate session running the commit transaction
-   *     <p>The row is locked first and read second. Refreshing the entity under the lock would load
-   *     its columns with an outer join, which PostgreSQL cannot lock in one statement; Hibernate
-   *     then reads before locking, so a commit that waited for the lock would continue on the state
-   *     it read before the other commit landed.
    * @param dao the table row to lock; re-read after the lock is held
    * @param tableId the table id, used as a fallback in the error message
    * @param tableFullNameForLogging the table's full name for the error message, if known
