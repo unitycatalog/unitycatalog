@@ -77,8 +77,7 @@ final class PostgresDatabases {
 
   TestDatabase newDatabase(String name) {
     if (failure != null) {
-      throw new IllegalStateException(
-          database + " schema build failed earlier; see the first failure", failure);
+      throw new IllegalStateException(failure.getMessage() + " (cached; not retried)", failure);
     }
     execute("CREATE DATABASE " + name + " TEMPLATE " + TEMPLATE);
     return testDatabase(name, "none", () -> execute("DROP DATABASE " + name + " WITH (FORCE)"));

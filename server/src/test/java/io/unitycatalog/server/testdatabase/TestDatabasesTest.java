@@ -69,7 +69,8 @@ class TestDatabasesTest {
 
   @Test
   void failingSchemaStatementStopsTheBuild() {
-    assumeTrue(SupportedDatabase.selected() == SupportedDatabase.H2, "H2 path; PG is Task 6");
+    assumeTrue(
+        SupportedDatabase.selected() == SupportedDatabase.H2, "checks the H2 build directly");
     try (TestDatabase database = TestDatabases.newDatabase()) {
       Properties properties = database.hibernateProperties(testServerProperties());
       Configuration configuration =
