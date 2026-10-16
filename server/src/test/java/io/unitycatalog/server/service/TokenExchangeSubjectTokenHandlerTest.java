@@ -15,8 +15,10 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.utils.LogCapture;
 import java.util.Date;
 import java.util.UUID;
+import org.apache.logging.log4j.Level;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -136,9 +138,13 @@ class TokenExchangeSubjectTokenHandlerTest {
     when(userRepository.getUserByEmail(USER_EMAIL))
         .thenThrow(new BaseException(ErrorCode.INTERNAL, "database unavailable"));
 
-    assertThatThrownBy(() -> handler.resolvePrincipalEmail(TokenType.ID_TOKEN, jwt))
-        .isInstanceOf(BaseException.class)
-        .hasMessage("database unavailable");
+    try (LogCapture logs = LogCapture.of(TokenExchangeSubjectTokenHandler.class)) {
+      assertThatThrownBy(() -> handler.resolvePrincipalEmail(TokenType.ID_TOKEN, jwt))
+          .isInstanceOf(BaseException.class)
+          .hasMessage("database unavailable");
+      // The request's error handler logs the failure; logging it here too would log it twice.
+      assertThat(logs.eventsAtLeast(Level.ERROR)).isEmpty();
+    }
   }
 
   @Test

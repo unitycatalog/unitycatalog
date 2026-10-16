@@ -18,9 +18,14 @@ public class DeltaApiExceptionHandler extends BaseExceptionHandler {
   private DeltaApiExceptionHandler() {}
 
   @Override
+  protected HttpStatus httpStatus(BaseException exception) {
+    return exception.getErrorCode().getDeltaHttpStatus();
+  }
+
+  @Override
   protected HttpResponse createErrorResponse(BaseException exception) {
     ErrorCode errorCode = exception.getErrorCode();
-    HttpStatus status = errorCode.getDeltaHttpStatus();
+    HttpStatus status = httpStatus(exception);
     DeltaErrorModel error =
         new DeltaErrorModel()
             .code(status.code())
