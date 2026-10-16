@@ -2,14 +2,25 @@ package io.unitycatalog.server.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.CreateUser;
+import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.model.UpdateUser;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Properties;
+import java.util.UUID;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -93,5 +104,41 @@ class UserRepositoryTest {
         .satisfies(
             e ->
                 assertThat(((BaseException) e).getErrorCode()).isEqualTo(ErrorCode.ALREADY_EXISTS));
+  }
+
+  @Test
+  void bootstrapCreatesTheAdminWhenTheLookupFindsNone() {
+    UUID metastoreId = UUID.randomUUID();
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+
+    bootstrap(userRepository, metastoreId).initializeAdmin(authorizer);
+
+    var admin = userRepository.getUserByEmail("admin");
+    verify(authorizer)
+        .grantAuthorization(UUID.fromString(admin.getId()), metastoreId, Privileges.OWNER);
+  }
+
+  @Test
+  void bootstrapFailsWhenTheAdminLookupFails() {
+    UserRepository failing = spy(userRepository);
+    BaseException lookupError = new BaseException(ErrorCode.INTERNAL, "Failed to get user");
+    doThrow(lookupError).when(failing).getUserByEmail("admin");
+
+    assertThatThrownBy(
+            () ->
+                bootstrap(failing, UUID.randomUUID())
+                    .initializeAdmin(mock(UnityCatalogAuthorizer.class)))
+        .isSameAs(lookupError);
+    verify(failing, never()).createUser(any());
+  }
+
+  /** Bootstrap over {@code users}; the metastore is a mock, since only its ID is read. */
+  private static UnityAccessUtil bootstrap(UserRepository users, UUID metastoreId) {
+    MetastoreRepository metastoreRepository = mock(MetastoreRepository.class);
+    when(metastoreRepository.getMetastoreId()).thenReturn(metastoreId);
+    Repositories repositories = mock(Repositories.class);
+    when(repositories.getUserRepository()).thenReturn(users);
+    when(repositories.getMetastoreRepository()).thenReturn(metastoreRepository);
+    return new UnityAccessUtil(repositories);
   }
 }
