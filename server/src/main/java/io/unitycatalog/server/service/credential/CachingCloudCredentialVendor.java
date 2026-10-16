@@ -6,6 +6,8 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Expiry;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.observability.StorageCredentialCacheMetrics;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
@@ -33,6 +35,8 @@ import lombok.SneakyThrows;
  * {@code min(vendTime + maxAge, credentialExpiry - expiryMargin)}, where {@code vendTime} is read
  * before the cloud call; a static credential with no expiry is bounded by the max age alone.
  * Callers always receive a copy, so they cannot change a cached credential.
+ *
+ * <p>Each request is recorded as a hit or a miss in {@link StorageCredentialCacheMetrics}.
  */
 public class CachingCloudCredentialVendor extends CloudCredentialVendor {
   /** A cached credential is never served within this time of its expiry. */
@@ -42,9 +46,11 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
   private final long maxAgeMs;
   private final long expiryMarginMs;
   private final Cache<Key, Entry> entries;
+  private final StorageCredentialCacheMetrics cacheMetrics;
 
-  public CachingCloudCredentialVendor(ServerProperties serverProperties) {
-    this(serverProperties, Clock.systemUTC(), DEFAULT_EXPIRY_MARGIN);
+  public CachingCloudCredentialVendor(
+      ServerProperties serverProperties, UnityCatalogMetrics metrics) {
+    this(serverProperties, Clock.systemUTC(), DEFAULT_EXPIRY_MARGIN, metrics);
   }
 
   /**
@@ -52,14 +58,18 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
    * #DEFAULT_EXPIRY_MARGIN}; tests pass a manual clock and a margin shorter than their credentials.
    */
   public CachingCloudCredentialVendor(
-      ServerProperties serverProperties, Clock clock, Duration expiryMargin) {
+      ServerProperties serverProperties,
+      Clock clock,
+      Duration expiryMargin,
+      UnityCatalogMetrics metrics) {
     this(
         new AwsCredentialVendor(serverProperties),
         new AzureCredentialVendor(serverProperties),
         new GcpCredentialVendor(serverProperties),
         serverProperties,
         clock,
-        expiryMargin);
+        expiryMargin,
+        metrics);
   }
 
   /** Vends through the given cloud-specific vendors; unit tests pass mocks. */
@@ -69,11 +79,13 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
       GcpCredentialVendor gcpCredentialVendor,
       ServerProperties serverProperties,
       Clock clock,
-      Duration expiryMargin) {
+      Duration expiryMargin,
+      UnityCatalogMetrics metrics) {
     super(awsCredentialVendor, azureCredentialVendor, gcpCredentialVendor);
     this.clock = Objects.requireNonNull(clock, "clock");
     this.maxAgeMs = serverProperties.getStorageCredentialCacheMaxAge().toMillis();
     this.expiryMarginMs = Objects.requireNonNull(expiryMargin, "expiryMargin").toMillis();
+    this.cacheMetrics = Objects.requireNonNull(metrics, "metrics").getStorageCredentialCache();
     this.entries =
         Caffeine.newBuilder()
             .maximumSize(serverProperties.getStorageCredentialCacheMaxSize())
@@ -91,8 +103,10 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
     // Check the entry's own deadline too: a renewal can overwrite the cache entry while this read
     // is in progress, so Caffeine may judge the old credential by the new entry's deadline.
     if (cached != null && cached.serveUntilMs() > now()) {
+      cacheMetrics.recordHit();
       return copy(cached.credential());
     }
+    cacheMetrics.recordMiss();
     // Read before the call: the cloud checks the binding (for example the AWS trust policy) during
     // the vend, so max age counts from then.
     long vendStartMs = now();

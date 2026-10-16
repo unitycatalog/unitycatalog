@@ -21,6 +21,7 @@ import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.observability.TableMetrics;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
@@ -71,11 +72,11 @@ public class TableRepository {
       Repositories repositories,
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
-      TableMetrics tableMetrics) {
+      UnityCatalogMetrics metrics) {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
     this.serverProperties = serverProperties;
-    this.tableMetrics = Objects.requireNonNull(tableMetrics, "tableMetrics");
+    this.tableMetrics = Objects.requireNonNull(metrics, "metrics").getTables();
   }
 
   /**

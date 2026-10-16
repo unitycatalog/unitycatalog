@@ -9,12 +9,7 @@ public final class TableMetrics {
   private final Counter tableCreationsCounter;
 
   TableMetrics(MeterRegistry registry) {
-    tableCreationsCounter =
-        Counter.builder("uc.securable.table.creations")
-            .description(
-                "Number of table securables created after their database transactions commit,"
-                    + " including tables, views, and metric views")
-            .register(registry);
+    tableCreationsCounter = UcMetric.TABLE_CREATIONS.counter(registry);
   }
 
   /** Records a table after its database transaction has committed successfully. */
