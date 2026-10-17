@@ -903,7 +903,7 @@ def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
 val generate = taskKey[Unit]("generate code from APIs")
 
 // Runs every project's tests on one test database. One alias per SupportedDatabase constant except
-// H2 (the default); TestDatabaseAliasesTest keeps the two lists in sync.
+// H2 (the default).
 def testOnDatabase(database: String): String =
   s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database") ; test"""
 addCommandAlias("testPostgres18", testOnDatabase("POSTGRES_18"))

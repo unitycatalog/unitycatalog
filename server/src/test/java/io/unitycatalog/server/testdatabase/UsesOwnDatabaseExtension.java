@@ -29,7 +29,7 @@ public class UsesOwnDatabaseExtension implements BeforeAllCallback, AfterAllCall
     return Optional.ofNullable(currentOwnDatabase);
   }
 
-  static String reasonFor(Class<?> testClass) {
+  private static String reasonFor(Class<?> testClass) {
     String reason =
         AnnotationSupport.findAnnotation(testClass, UsesOwnDatabase.class)
             .map(UsesOwnDatabase::reason)
@@ -41,7 +41,7 @@ public class UsesOwnDatabaseExtension implements BeforeAllCallback, AfterAllCall
     return testClass.getSimpleName() + ": " + reason;
   }
 
-  static void requireSequential(Optional<String> parallelEnabled) {
+  private static void requireSequential(Optional<String> parallelEnabled) {
     if (parallelEnabled.map(Boolean::parseBoolean).orElse(false)) {
       throw new IllegalStateException(
           "@UsesOwnDatabase assumes one test class at a time per JVM, but "
