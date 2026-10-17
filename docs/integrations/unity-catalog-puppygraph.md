@@ -64,11 +64,12 @@ Spark version:
     ```sh
     ./bin/spark-sql \
       --packages \
-        io.delta:delta-spark_4.0_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.6.0 \
+        io.delta:delta-spark_4.0_2.13:4.4.1,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.7.0 \
       --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
       --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
       --conf spark.sql.catalog.puppygraph=io.unitycatalog.spark.UCSingleCatalog \
-      --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080
+      --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080 \
+      --conf spark.sql.catalog.puppygraph.token=
     ```
 
 === "Spark 4.1.x"
@@ -76,11 +77,12 @@ Spark version:
     ```sh
     ./bin/spark-sql \
       --packages \
-        io.delta:delta-spark_4.1_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.1_2.13:0.6.0 \
+        io.delta:delta-spark_4.1_2.13:4.4.1,io.unitycatalog:unitycatalog-spark_4.1_2.13:0.7.0 \
       --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
       --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
       --conf spark.sql.catalog.puppygraph=io.unitycatalog.spark.UCSingleCatalog \
-      --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080
+      --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080 \
+      --conf spark.sql.catalog.puppygraph.token=
     ```
 
 === "Spark 4.2.x"
@@ -88,11 +90,12 @@ Spark version:
     ```sh
     ./bin/spark-sql \
       --packages \
-        io.delta:delta-spark_4.2_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.2_2.13:0.6.0 \
+        io.delta:delta-spark_4.2_2.13:4.4.1,io.unitycatalog:unitycatalog-spark_4.2_2.13:0.7.0 \
       --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
       --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
       --conf spark.sql.catalog.puppygraph=io.unitycatalog.spark.UCSingleCatalog \
-      --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080
+      --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080 \
+      --conf spark.sql.catalog.puppygraph.token=
     ```
 
 Run the following SQL to insert data into the Delta tables.
