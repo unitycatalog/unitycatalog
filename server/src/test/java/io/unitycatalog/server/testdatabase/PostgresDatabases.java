@@ -8,7 +8,6 @@ import java.util.Properties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * One PostgreSQL container per test JVM. The schema is built once into {@code uc_template}; each
@@ -46,10 +45,7 @@ final class PostgresDatabases {
   private static PostgresDatabases start(SupportedDatabase database) {
     PostgreSQLContainer<?> container;
     try {
-      container =
-          new PostgreSQLContainer<>(
-              DockerImageName.parse(database.image().orElseThrow())
-                  .asCompatibleSubstituteFor("postgres"));
+      container = new PostgreSQLContainer<>(database.image().orElseThrow());
       container.start();
     } catch (RuntimeException e) {
       return failed(

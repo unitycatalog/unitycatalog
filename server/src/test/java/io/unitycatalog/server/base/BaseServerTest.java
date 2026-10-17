@@ -85,8 +85,7 @@ public abstract class BaseServerTest {
 
   /**
    * Subclasses can override this to customize the hibernate properties before the session factory
-   * is created. Defaults to this test's database from {@link TestDatabases}; a subclass that points
-   * the server at another database needs {@code @UsesOwnDatabase}.
+   * is created. Defaults to this test's database from {@link TestDatabases}.
    */
   protected void setUpHibernateProperties(Properties hibernateProperties) {}
 
