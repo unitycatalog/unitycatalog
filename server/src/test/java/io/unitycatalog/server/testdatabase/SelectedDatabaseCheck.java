@@ -1,7 +1,6 @@
 package io.unitycatalog.server.testdatabase;
 
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.hibernate.boot.Metadata;
 import org.hibernate.boot.spi.BootstrapContext;
 import org.hibernate.dialect.Dialect;
@@ -19,12 +18,10 @@ import org.slf4j.LoggerFactory;
 public class SelectedDatabaseCheck implements Integrator {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(SelectedDatabaseCheck.class);
-  private static final AtomicInteger CHECKS = new AtomicInteger();
 
   @Override
   public void integrate(
       Metadata metadata, BootstrapContext bootstrapContext, SessionFactoryImplementor factory) {
-    CHECKS.incrementAndGet();
     verify(
         SupportedDatabase.selected(),
         factory.getJdbcServices().getDialect(),
@@ -35,7 +32,8 @@ public class SelectedDatabaseCheck implements Integrator {
   public void disintegrate(
       SessionFactoryImplementor factory, SessionFactoryServiceRegistry serviceRegistry) {}
 
-  static void verify(SupportedDatabase selected, Dialect dialect, Optional<String> ownDatabase) {
+  private static void verify(
+      SupportedDatabase selected, Dialect dialect, Optional<String> ownDatabase) {
     if (selected.matches(dialect)) {
       return;
     }
@@ -53,10 +51,5 @@ public class SelectedDatabaseCheck implements Integrator {
             + SupportedDatabase.describe(dialect)
             + ". If this test intentionally uses its own database, annotate it with"
             + " @UsesOwnDatabase(reason = \"…\").");
-  }
-
-  /** How many SessionFactories this JVM has checked; lets a test prove the check is active. */
-  public static int checkCount() {
-    return CHECKS.get();
   }
 }

@@ -39,7 +39,7 @@ final class PostgresDatabases {
     return instance;
   }
 
-  static PostgresDatabases failed(SupportedDatabase database, RuntimeException failure) {
+  private static PostgresDatabases failed(SupportedDatabase database, RuntimeException failure) {
     return new PostgresDatabases(database, null, failure);
   }
 

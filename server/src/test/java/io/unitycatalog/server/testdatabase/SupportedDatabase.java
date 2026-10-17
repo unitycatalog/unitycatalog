@@ -9,7 +9,7 @@ import org.hibernate.dialect.PostgreSQLDialect;
 
 /**
  * The databases the test suite runs on, selected with {@value #ENV} (unset means {@link #H2}). This
- * enum is the only list; TestDatabaseAliasesTest checks the sbt aliases against it.
+ * enum is the only list.
  */
 public enum SupportedDatabase {
   H2(null),
@@ -28,7 +28,7 @@ public enum SupportedDatabase {
     return parse(System.getenv(ENV));
   }
 
-  static SupportedDatabase parse(String value) {
+  private static SupportedDatabase parse(String value) {
     if (value == null) {
       return H2;
     }
