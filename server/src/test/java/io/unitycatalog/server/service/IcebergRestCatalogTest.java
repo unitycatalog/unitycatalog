@@ -32,9 +32,11 @@ import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
@@ -1351,89 +1353,58 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   }
 
   @Test
-  public void testDropTableRacingCommitsNeverFailsWithServerError()
-      throws ApiException, IOException, InterruptedException, ExecutionException, TimeoutException {
+  public void testDropTableWaitsForInFlightCommit() throws Exception {
     catalogOperations.createCatalog(
         new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
     schemaOperations.createSchema(
         new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
-    Schema schema =
-        new Schema(
-            Types.NestedField.required(1, "id", Types.LongType.get()),
-            Types.NestedField.optional(2, "name", Types.StringType.get()));
-    Schema bumpedSchema =
-        new Schema(
-            Types.NestedField.required(1, "id", Types.LongType.get()),
-            Types.NestedField.optional(2, "name", Types.StringType.get()),
-            Types.NestedField.optional(3, "added", Types.StringType.get()));
-    int rounds = 20;
-    int commits = 4;
-    ExecutorService pool = Executors.newFixedThreadPool(commits + 1);
-    try {
-      for (int round = 0; round < rounds; round++) {
-        String tableName = "race_" + round;
-        String location =
-            Files.createTempDirectory(testDirectoryRoot, "iceberg-rest-drop-race")
-                .toUri()
-                .toString();
-        icebergClient.createTable(
-            TestUtils.CATALOG_NAME,
-            TestUtils.SCHEMA_NAME,
-            CreateTableRequest.builder()
-                .withName(tableName)
-                .withSchema(schema)
-                .withLocation(location)
-                .build());
-        // Release the commits and the drop together. Each commit rewrites the table's columns;
-        // the drop deletes them. A commit may win (200), lose the compare-and-swap (409), or find
-        // the table already dropped (404); the drop must succeed. A 500 means the two writers
-        // raced on the column rows.
-        CyclicBarrier barrier = new CyclicBarrier(commits + 1);
-        List<Future<String>> commitResults = new ArrayList<>();
-        for (int i = 0; i < commits; i++) {
-          commitResults.add(
-              pool.submit(
-                  () -> {
-                    UpdateTableRequest request =
-                        new UpdateTableRequest(
-                            List.of(new UpdateRequirement.AssertCurrentSchemaID(0)),
-                            List.of(
-                                new MetadataUpdate.AddSchema(bumpedSchema),
-                                new MetadataUpdate.SetCurrentSchema(-1)));
-                    barrier.await();
-                    try {
-                      icebergClient.updateTable(
-                          TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName, request);
-                      return "200";
-                    } catch (ApiException e) {
-                      return e.getCode() + " " + e.getResponseBody();
-                    }
-                  }));
-        }
-        Future<String> dropResult =
-            pool.submit(
-                () -> {
-                  barrier.await();
-                  try {
-                    icebergClient.dropTable(
-                        TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName);
-                    return "204";
-                  } catch (ApiException e) {
-                    return e.getCode() + " " + e.getResponseBody();
-                  }
-                });
-        for (Future<String> result : commitResults) {
-          String commit = result.get(30, TimeUnit.SECONDS);
-          assertThat(commit.substring(0, 3))
-              .as("commit, round " + round + ": " + commit)
-              .isIn("200", "409", "404");
-        }
-        String drop = dropResult.get(30, TimeUnit.SECONDS);
-        assertThat(drop).as("drop, round " + round).isEqualTo("204");
-      }
+    icebergClient.createTable(
+        TestUtils.CATALOG_NAME,
+        TestUtils.SCHEMA_NAME,
+        CreateTableRequest.builder()
+            .withName(TestUtils.TABLE_NAME)
+            .withSchema(
+                new Schema(
+                    Types.NestedField.required(1, "id", Types.LongType.get()),
+                    Types.NestedField.optional(2, "name", Types.StringType.get())))
+            .withLocation(
+                Files.createTempDirectory(testDirectoryRoot, "iceberg-rest-drop")
+                    .toUri()
+                    .toString())
+            .build());
+
+    ExecutorService pool = Executors.newSingleThreadExecutor();
+    try (Session commit = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction tx = commit.beginTransaction();
+      TableInfoDAO table =
+          commit
+              .createQuery("FROM TableInfoDAO WHERE name = :name", TableInfoDAO.class)
+              .setParameter("name", TestUtils.TABLE_NAME)
+              .getSingleResult();
+      // Take the lock an in-flight commit holds, then drop the table from another request.
+      RepositoryUtils.lockTableForCommit(
+          commit, table, table.getId(), Optional.empty(), ErrorCode.UPDATE_REQUIREMENT_CONFLICT);
+      Future<?> drop =
+          pool.submit(
+              () -> {
+                icebergClient.dropTable(
+                    TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
+                return null;
+              });
+      // The drop waits for the lock instead of deleting the column rows under the commit.
+      assertThrows(TimeoutException.class, () -> drop.get(500, TimeUnit.MILLISECONDS));
+      // Rewrite the columns as a commit does, then let the drop through.
+      table.getColumns().clear();
+      commit.flush();
+      tx.commit();
+      drop.get(30, TimeUnit.SECONDS);
     } finally {
       pool.shutdownNow();
     }
+    assertThat(
+            icebergClient.tableExists(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME))
+        .isFalse();
   }
 
   @Test

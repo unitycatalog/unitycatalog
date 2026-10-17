@@ -482,16 +482,14 @@ lazy val server = (project in file("server"))
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
 
       // Integration testing
-      "org.testcontainers" % "testcontainers" % testcontainersVersion % Test,
-      "org.testcontainers" % "postgresql" % testcontainersVersion % Test,
       "org.testcontainers" % "mysql" % testcontainersVersion % Test,
       "org.testcontainers" % "junit-jupiter" % testcontainersVersion % Test,
-      "org.postgresql" % "postgresql" % "42.7.13" % Test,
       "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
 
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
     ),
+    libraryDependencies ++= testDatabaseDependencies,
     // Iceberg 1.11.0 brings its own Jackson version that conflicts with the project's pinned jackson version.
     // Force AWS SDK v2 onto a single release as well (Iceberg and Hadoop otherwise mix 2.24 / 2.27).
     dependencyOverrides ++= Seq(
@@ -657,7 +655,8 @@ lazy val cli = (project in file("examples") / "cli")
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
   )
 
-// Lets projects that take the server test harness from server-shaded run it on PostgreSQL.
+// What the test-database harness needs to run on PostgreSQL: server, and spark and hadoop, which take
+// the harness from server-shaded.
 lazy val testDatabaseDependencies = Seq(
   "org.testcontainers" % "testcontainers" % testcontainersVersion % Test,
   "org.testcontainers" % "postgresql" % testcontainersVersion % Test,

@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.RETURNS_SELF;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -42,12 +41,12 @@ public class RepositoryUtilsTest {
     };
   }
 
-  /** Makes the row-lock query that lockTableForCommit runs throw {@code failure}. */
+  /** The row-lock query that lockTableForCommit runs on {@code session}. */
   @SuppressWarnings("unchecked")
-  private static void lockQueryThrows(Session session, RuntimeException failure) {
+  private static SelectionQuery<TableInfoDAO> lockQuery(Session session) {
     SelectionQuery<TableInfoDAO> query = mock(SelectionQuery.class, RETURNS_SELF);
-    doThrow(failure).when(query).getSingleResultOrNull();
     when(session.createSelectionQuery(any(String.class), any(Class.class))).thenReturn(query);
+    return query;
   }
 
   @ParameterizedTest
@@ -55,7 +54,7 @@ public class RepositoryUtilsTest {
   public void lockFailureRaisesTheCallerSuppliedError(RuntimeException lockFailure) {
     Session session = mock();
     TableInfoDAO dao = mock();
-    lockQueryThrows(session, lockFailure);
+    when(lockQuery(session).getSingleResultOrNull()).thenThrow(lockFailure);
 
     // Delta callers ask for COMMIT_STATE_UNKNOWN...
     assertThatThrownBy(
@@ -92,7 +91,7 @@ public class RepositoryUtilsTest {
     Session session = mock();
     TableInfoDAO dao = mock();
     IllegalStateException unexpected = new IllegalStateException("boom");
-    lockQueryThrows(session, unexpected);
+    when(lockQuery(session).getSingleResultOrNull()).thenThrow(unexpected);
 
     assertThatThrownBy(
             () ->
@@ -102,13 +101,10 @@ public class RepositoryUtilsTest {
   }
 
   @Test
-  @SuppressWarnings("unchecked")
   public void tableDeletedWhileWaitingIsNotFound() {
     Session session = mock();
     TableInfoDAO dao = mock();
-    SelectionQuery<TableInfoDAO> query = mock(SelectionQuery.class, RETURNS_SELF);
-    when(query.getSingleResultOrNull()).thenReturn(null);
-    when(session.createSelectionQuery(any(String.class), any(Class.class))).thenReturn(query);
+    when(lockQuery(session).getSingleResultOrNull()).thenReturn(null);
 
     assertThatThrownBy(
             () ->

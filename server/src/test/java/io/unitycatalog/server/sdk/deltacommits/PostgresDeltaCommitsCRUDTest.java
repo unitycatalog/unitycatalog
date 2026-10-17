@@ -28,7 +28,5 @@ public class PostgresDeltaCommitsCRUDTest extends SdkDeltaCommitsCRUDTest {
     hibernateProperties.setProperty("hibernate.connection.url", POSTGRES.getJdbcUrl());
     hibernateProperties.setProperty("hibernate.connection.username", POSTGRES.getUsername());
     hibernateProperties.setProperty("hibernate.connection.password", POSTGRES.getPassword());
-    // The selected database's settings may skip schema creation (PostgreSQL copies a template).
-    hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
   }
 }
