@@ -531,7 +531,6 @@ lazy val server = (project in file("server"))
       (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
     },
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
-    Test / unmanagedResourceDirectories += (ThisBuild / baseDirectory).value / testDatabaseServicesDirectory.getPath,
     // Include server and control models in the bin package for server
     // This will allow us to have a single maven artifact and not multiple (server, server models, control models)
     Compile / packageBin / mappings ++= (Compile / packageBin / mappings).value ++
@@ -661,12 +660,6 @@ lazy val cli = (project in file("examples") / "cli")
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
   )
 
-// Service registrations for the test-database safeguards (SelectionCheck, SelectedDatabaseCheck).
-// They live outside server/src/test/resources because the client project shares that directory
-// without the server test classes. server-shaded discards META-INF, so server and the projects that
-// take the harness from server-shaded (spark, hadoop) add this directory; cli gets it via test->test.
-lazy val testDatabaseServicesDirectory = file("server") / "src" / "test" / "resources-test-database"
-
 // Lets projects that take the server test harness from server-shaded run it on PostgreSQL.
 lazy val testDatabaseDependencies = Seq(
   "org.testcontainers" % "testcontainers" % testcontainersVersion % Test,
@@ -785,7 +778,6 @@ lazy val spark = (project in file("connectors/spark"))
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
     libraryDependencies ++= testDatabaseDependencies,
-    Test / unmanagedResourceDirectories += (ThisBuild / baseDirectory).value / testDatabaseServicesDirectory.getPath,
     // netty-codec-native-quic uses ${packaging.type} in its POM which Ivy (used by sbt-license-report) cannot resolve.
     // Exclude it so Ivy never attempts to fetch it; Coursier (used for normal builds) handles it fine.
     excludeDependencies += ExclusionRule("io.netty", "netty-codec-native-quic"),
@@ -843,7 +835,6 @@ lazy val hadoop = (project in file("connectors/hadoop"))
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
     libraryDependencies ++= testDatabaseDependencies,
-    Test / unmanagedResourceDirectories += (ThisBuild / baseDirectory).value / testDatabaseServicesDirectory.getPath,
   )
 
 lazy val integrationTests = (project in file("integration-tests"))

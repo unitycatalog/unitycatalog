@@ -6,7 +6,6 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.utils.TransactionManager;
-import io.unitycatalog.server.testdatabase.UsesOwnDatabase;
 import java.util.Properties;
 import java.util.Random;
 import java.util.UUID;
@@ -22,7 +21,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * are injected per-fixture through {@link #setUpHibernateProperties(Properties)} so they never leak
  * to other test classes.
  */
-@UsesOwnDatabase(reason = "runs on its own PostgreSQL container")
 @Testcontainers(disabledWithoutDocker = true)
 public class PostgresDeltaCommitsCRUDTest extends SdkDeltaCommitsCRUDTest {
 

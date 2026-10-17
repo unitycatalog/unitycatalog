@@ -2,12 +2,10 @@ package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.unitycatalog.server.testdatabase.UsesOwnDatabase;
 import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-@UsesOwnDatabase(reason = "tests HibernateConfigurator itself on H2")
 class HibernateConfiguratorTest {
 
   @Test
