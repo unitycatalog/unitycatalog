@@ -17,9 +17,10 @@ import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.FileOperations;
-import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.InterruptiblePrefixOperations;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -67,24 +68,22 @@ class StorageCleanupWorkerE2ETest {
   private final String bucket = "cleanup-e2e-" + UUID.randomUUID();
 
   private SessionFactory sessionFactory;
+  private TestDatabase testDatabase;
   private Repositories repositories;
   private UUID schemaId;
 
   @BeforeEach
   void setUp() {
     ServerProperties serverProperties = testServerProperties();
-    Properties hibernateProperties =
-        HibernateConfigurator.setupHibernateProperties(serverProperties);
-    hibernateProperties.setProperty(
-        "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
-    sessionFactory = new HibernateConfigurator(hibernateProperties).getSessionFactory();
+    testDatabase = TestDatabases.newDatabase();
+    sessionFactory = testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
     repositories = new Repositories(sessionFactory, serverProperties, null);
     schemaId = seedNamespace();
   }
 
   @AfterEach
   void tearDown() {
-    sessionFactory.close();
+    testDatabase.close();
   }
 
   @Test

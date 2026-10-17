@@ -10,10 +10,11 @@ import static org.mockito.Mockito.when;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.FileOperationsImpl;
-import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -22,7 +23,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.UnaryOperator;
 import org.apache.iceberg.io.FileIO;
@@ -37,6 +37,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class RepositoriesTest {
 
   private SessionFactory sessionFactory;
+  private TestDatabase testDatabase;
   private ServerProperties serverProperties;
 
   @BeforeEach
@@ -44,16 +45,13 @@ class RepositoriesTest {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
     serverProperties = new ServerProperties(properties);
-    Properties hibernateProperties =
-        HibernateConfigurator.setupHibernateProperties(serverProperties);
-    hibernateProperties.setProperty(
-        "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
-    sessionFactory = new HibernateConfigurator(hibernateProperties).getSessionFactory();
+    testDatabase = TestDatabases.newDatabase();
+    sessionFactory = testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
   }
 
   @AfterEach
   void tearDown() {
-    sessionFactory.close();
+    testDatabase.close();
   }
 
   @Test

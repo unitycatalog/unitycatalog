@@ -49,6 +49,7 @@ lazy val caffeineVersion = "2.9.3"
 lazy val junitJupiterVersion = "5.13.4"
 // Declared in each test module: the jupiter-interface bridge pulls launcher 1.9, which must match.
 lazy val junitPlatformVersion = "1.13.4"
+lazy val testcontainersVersion = "1.19.8"
 val orgApacheHttpVersion = "4.5.14"
 
 // Latest patch on the Jackson line each Spark version ships, used to compile and test the
@@ -481,16 +482,14 @@ lazy val server = (project in file("server"))
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
 
       // Integration testing
-      "org.testcontainers" % "testcontainers" % "1.19.8" % Test,
-      "org.testcontainers" % "postgresql" % "1.19.8" % Test,
-      "org.testcontainers" % "mysql" % "1.19.8" % Test,
-      "org.testcontainers" % "junit-jupiter" % "1.19.8" % Test,
-      "org.postgresql" % "postgresql" % "42.7.13" % Test,
+      "org.testcontainers" % "mysql" % testcontainersVersion % Test,
+      "org.testcontainers" % "junit-jupiter" % testcontainersVersion % Test,
       "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
 
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
     ),
+    libraryDependencies ++= testDatabaseDependencies,
     // Iceberg 1.11.0 brings its own Jackson version that conflicts with the project's pinned jackson version.
     // Force AWS SDK v2 onto a single release as well (Iceberg and Hadoop otherwise mix 2.24 / 2.27).
     dependencyOverrides ++= Seq(
@@ -656,6 +655,14 @@ lazy val cli = (project in file("examples") / "cli")
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
   )
 
+// What the test-database harness needs to run on PostgreSQL: server, and spark and hadoop, which take
+// the harness from server-shaded.
+lazy val testDatabaseDependencies = Seq(
+  "org.testcontainers" % "testcontainers" % testcontainersVersion % Test,
+  "org.testcontainers" % "postgresql" % testcontainersVersion % Test,
+  "org.postgresql" % "postgresql" % "42.7.13" % Test,
+)
+
 /*
   * This project is a combination of the server and client projects, shaded into a single JAR.
   * It also includes the test classes from the server project.
@@ -766,6 +773,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.antlr" % "antlr4" % "4.13.1",
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
+    libraryDependencies ++= testDatabaseDependencies,
     // netty-codec-native-quic uses ${packaging.type} in its POM which Ivy (used by sbt-license-report) cannot resolve.
     // Exclude it so Ivy never attempts to fetch it; Coursier (used for normal builds) handles it fine.
     excludeDependencies += ExclusionRule("io.netty", "netty-codec-native-quic"),
@@ -822,6 +830,7 @@ lazy val hadoop = (project in file("connectors/hadoop"))
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
+    libraryDependencies ++= testDatabaseDependencies,
   )
 
 lazy val integrationTests = (project in file("integration-tests"))
@@ -879,3 +888,9 @@ def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
 }
 
 val generate = taskKey[Unit]("generate code from APIs")
+
+// Runs every project's tests on one test database. One alias per SupportedDatabase constant except
+// H2 (the default).
+def testOnDatabase(database: String): String =
+  s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database") ; test"""
+addCommandAlias("testPostgres18", testOnDatabase("POSTGRES_18"))

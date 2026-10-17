@@ -1,9 +1,11 @@
 package io.unitycatalog.server.persist.utils;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.RETURNS_SELF;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -11,8 +13,8 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import java.sql.SQLException;
 import java.util.Optional;
 import java.util.UUID;
-import org.hibernate.LockMode;
 import org.hibernate.Session;
+import org.hibernate.query.SelectionQuery;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -39,12 +41,20 @@ public class RepositoryUtilsTest {
     };
   }
 
+  /** The row-lock query that lockTableForCommit runs on {@code session}. */
+  @SuppressWarnings("unchecked")
+  private static SelectionQuery<TableInfoDAO> lockQuery(Session session) {
+    SelectionQuery<TableInfoDAO> query = mock(SelectionQuery.class, RETURNS_SELF);
+    when(session.createSelectionQuery(any(String.class), any(Class.class))).thenReturn(query);
+    return query;
+  }
+
   @ParameterizedTest
   @MethodSource("lockAcquisitionFailures")
   public void lockFailureRaisesTheCallerSuppliedError(RuntimeException lockFailure) {
     Session session = mock();
     TableInfoDAO dao = mock();
-    doThrow(lockFailure).when(session).refresh(any(Object.class), any(LockMode.class));
+    when(lockQuery(session).getSingleResultOrNull()).thenThrow(lockFailure);
 
     // Delta callers ask for COMMIT_STATE_UNKNOWN...
     assertThatThrownBy(
@@ -81,12 +91,28 @@ public class RepositoryUtilsTest {
     Session session = mock();
     TableInfoDAO dao = mock();
     IllegalStateException unexpected = new IllegalStateException("boom");
-    doThrow(unexpected).when(session).refresh(any(Object.class), any(LockMode.class));
+    when(lockQuery(session).getSingleResultOrNull()).thenThrow(unexpected);
 
     assertThatThrownBy(
             () ->
                 RepositoryUtils.lockTableForCommit(
                     session, dao, TABLE_ID, Optional.empty(), ErrorCode.COMMIT_STATE_UNKNOWN))
         .isSameAs(unexpected);
+  }
+
+  @Test
+  public void tableDeletedWhileWaitingIsNotFound() {
+    Session session = mock();
+    TableInfoDAO dao = mock();
+    when(lockQuery(session).getSingleResultOrNull()).thenReturn(null);
+
+    assertThatThrownBy(
+            () ->
+                RepositoryUtils.lockTableForCommit(
+                    session, dao, TABLE_ID, Optional.of("c.s.t"), ErrorCode.COMMIT_STATE_UNKNOWN))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.TABLE_NOT_FOUND))
+        .hasMessageContaining("c.s.t");
   }
 }
