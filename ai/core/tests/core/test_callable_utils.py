@@ -1346,6 +1346,75 @@ $$;
     assert sql_body.strip() == expected_sql.strip()
 
 
+def test_function_with_pep604_optional_types():
+    def func_with_pep604(a: int | None = None, b: str | None = "default") -> str | None:
+        """
+        A function using PEP 604 optional types.
+
+        Args:
+            a: Optional integer.
+            b: Optional string.
+        """
+        return f"{a}-{b}"
+
+    sql_body = generate_sql_function_body(func_with_pep604, "test_catalog", "test_schema")
+
+    expected_sql = """
+CREATE FUNCTION `test_catalog`.`test_schema`.`func_with_pep604`(a LONG DEFAULT NULL COMMENT 'Optional integer.', b STRING DEFAULT 'default' COMMENT 'Optional string.')
+RETURNS STRING
+LANGUAGE PYTHON
+COMMENT 'A function using PEP 604 optional types.'
+AS $$
+    return f"{a}-{b}"
+$$;
+    """
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_pep604_union_param_rejected():
+    def func(a: int | str) -> str:
+        """
+        Takes a union.
+
+        Args:
+            a: An int or a string.
+        """
+        return str(a)
+
+    with pytest.raises(ValueError, match=re.escape("Unsupported type union: int | str")):
+        generate_sql_function_body(func, "test_catalog", "test_schema")
+
+
+def test_pep604_optional_param_with_mismatched_default():
+    def func(a: int | None = "10") -> str:
+        """
+        Takes an optional integer.
+
+        Args:
+            a: An optional integer.
+        """
+        return str(a)
+
+    with pytest.raises(
+        ValueError, match="Default value for parameter 'a' does not match the type hint"
+    ):
+        generate_sql_function_body(func, "test_catalog", "test_schema")
+
+
+def test_pep604_union_return_rejected():
+    def func(a: int) -> int | str:
+        """
+        Returns a union.
+
+        Args:
+            a: An integer.
+        """
+        return a
+
+    with pytest.raises(ValueError, match="Union types are not supported in return types."):
+        generate_sql_function_body(func, "test_catalog", "test_schema")
+
+
 # ---------------------------
 # Tests for Forbidden Default Types
 # ---------------------------
