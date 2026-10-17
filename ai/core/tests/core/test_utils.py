@@ -1,5 +1,6 @@
 import datetime
 import decimal
+import json
 from typing import Dict, List, Optional, Tuple, Union
 
 import pytest
@@ -433,6 +434,37 @@ def test_generate_function_input_params_schema_with_non_ascii_chars():
     )
     pydantic_model = generate_function_input_params_schema(function_info).pydantic_model
     pydantic_model(**{"x": 123})
+
+
+def scalar_param(name: str, type_name: str) -> Dict:
+    return {
+        "name": name,
+        "type_text": type_name.lower(),
+        "type_json": json.dumps(
+            {"name": name, "type": type_name.lower(), "nullable": False, "metadata": {}}
+        ),
+        "type_name": type_name,
+        "position": 0,
+        "parameter_type": "PARAM",
+    }
+
+
+@pytest.mark.parametrize(
+    ("type_names", "strict", "expected_strict"),
+    [
+        (["DATE", "STRING"], True, False),
+        (["STRING", "DATE"], True, False),
+        (["STRING", "LONG"], True, True),
+        ([], True, True),
+        (["STRING"], False, False),
+    ],
+)
+def test_generate_function_input_params_schema_strict(type_names, strict, expected_strict):
+    function_info = generate_function_info(
+        [scalar_param(f"p{i}", type_name) for i, type_name in enumerate(type_names)]
+    )
+    params_schema = generate_function_input_params_schema(function_info, strict=strict)
+    assert params_schema.strict is expected_strict
 
 
 def test_param_info_to_pydantic_type_with_sql_null():
