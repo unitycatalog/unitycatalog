@@ -7,7 +7,11 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.observability.UcMetric;
+import io.unitycatalog.server.observability.UcMetricConstants;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
@@ -17,6 +21,7 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TestUtils;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
@@ -98,10 +103,43 @@ class RepositoriesTest {
     properties.setProperty("server.storage-credential-cache.enabled", String.valueOf(cacheEnabled));
 
     CloudCredentialVendor vendor =
-        Repositories.defaultCloudCredentialVendor(new ServerProperties(properties));
+        Repositories.defaultCloudCredentialVendor(
+            new ServerProperties(properties), new UnityCatalogMetrics(new SimpleMeterRegistry()));
 
     assertThat(vendor.getClass())
         .isEqualTo(cacheEnabled ? CachingCloudCredentialVendor.class : CloudCredentialVendor.class);
+  }
+
+  @Test
+  void defaultCachingVendorRecordsHitsAndMissesInTheServerMetrics() {
+    Properties properties = new Properties();
+    properties.setProperty("server.env", "test");
+    properties.setProperty("server.storage-credential-cache.enabled", "true");
+    // A static per-bucket credential, so the vend needs no cloud call.
+    properties.setProperty("s3.bucketPath.0", "s3://bucket");
+    properties.setProperty("s3.accessKey.0", "AK");
+    properties.setProperty("s3.secretKey.0", "SK");
+    properties.setProperty("s3.sessionToken.0", "TK");
+    SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    Repositories repositories =
+        new Repositories(
+            sessionFactory,
+            new ServerProperties(properties),
+            /* cloudCredentialVendor= */ null,
+            UnaryOperator.identity(),
+            new UnityCatalogMetrics(registry));
+
+    NormalizedURL path = NormalizedURL.from("s3://bucket/table");
+    repositories.getStorageCredentialVendor().vendCredential(path, CredentialContext.READ_ONLY);
+    repositories.getStorageCredentialVendor().vendCredential(path, CredentialContext.READ_ONLY);
+
+    assertThat(cacheRequests(registry, UcMetricConstants.MISS)).isEqualTo(1.0);
+    assertThat(cacheRequests(registry, UcMetricConstants.HIT)).isEqualTo(1.0);
+  }
+
+  private static double cacheRequests(SimpleMeterRegistry registry, String result) {
+    return TestUtils.counterCount(
+        registry, UcMetric.STORAGE_CREDENTIAL_CACHE_REQUESTS, UcMetricConstants.RESULT, result);
   }
 
   @Test

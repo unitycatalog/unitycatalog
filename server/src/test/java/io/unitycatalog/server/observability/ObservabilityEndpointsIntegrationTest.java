@@ -14,6 +14,7 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.delta.DeltaBaseTableCRUDTestEnv;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
@@ -22,6 +23,7 @@ import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
+import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -37,6 +39,7 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
   protected void setUpProperties() {
     super.setUpProperties();
     observabilityEnabled = true;
+    StorageCleanupTestSupport.configureFastCleanup(serverProperties);
     serverProperties.setProperty(Property.ICEBERG_TABLE_ENABLED.getKey(), "true");
   }
 
@@ -64,6 +67,38 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
     for (TableType tableType : List.of(TableType.VIEW, TableType.METRIC_VIEW)) {
       viewLikeRestCountsOnlySuccessfullyPersistedCreates(tableType);
     }
+  }
+
+  @Test
+  public void serverCleanupWorkerRecordsAttemptsInTheServerMetrics() throws Exception {
+    String series = "uc_storage_cleanup_attempts_total{resource_type=\"table\",result=\"success\"}";
+    double before = metricValue(series);
+    createAndVerifyManagedTable();
+
+    tableOperations.deleteTable(TestUtils.TABLE_FULL_NAME);
+
+    long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+    while (metricValue(series) < before + 1.0 && System.nanoTime() < deadline) {
+      Thread.sleep(10);
+    }
+    assertThat(metricValue(series))
+        .as(
+            "table cleanup failures: %s",
+            metricValue(
+                "uc_storage_cleanup_attempts_total{resource_type=\"table\",result=\"failure\"}"))
+        .isEqualTo(before + 1.0);
+  }
+
+  private double metricValue(String series) throws Exception {
+    HttpResponse<String> response = sendRawGet(observabilityServerConfig, "/metrics");
+    assertThat(response.statusCode()).isEqualTo(200);
+    return response
+        .body()
+        .lines()
+        .filter(line -> line.startsWith(series + " "))
+        .mapToDouble(line -> Double.parseDouble(line.substring(series.length() + 1)))
+        .findFirst()
+        .orElseThrow();
   }
 
   @Test
@@ -209,6 +244,14 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
             "system_cpu_usage",
             "armeria_server_",
             "uc_securable_table_creations_total",
+            // Both series are registered at startup and stay at zero because the cache is disabled
+            // here.
+            "uc_storage_credential_cache_requests_total{result=\"hit\"} 0.0",
+            "uc_storage_credential_cache_requests_total{result=\"miss\"} 0.0",
+            // Registered at startup for every result and resource type.
+            "uc_storage_cleanup_attempts_total{resource_type=\"volume\",result=\"failure\"} 0.0",
+            "uc_storage_cleanup_attempts_total{resource_type=\"model_version\",result=\"success\"}"
+                + " 0.0",
             "http_server_requests_total");
     assertThat(response.body().lines().filter(line -> line.startsWith("http_server_")).toList())
         .isNotEmpty()

@@ -12,6 +12,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.unitycatalog.server.observability.UcMetric;
+import io.unitycatalog.server.observability.UcMetricConstants;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
@@ -20,12 +24,14 @@ import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -42,6 +48,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -65,6 +72,7 @@ class StorageCleanupWorkerTest {
   private final SupportsPrefixOperations fileIO = mock(SupportsPrefixOperations.class);
   private final Clock clock = mock(Clock.class);
   private final ServerProperties serverProperties = mock(ServerProperties.class);
+  private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
   private StorageCleanupWorker worker;
 
   @BeforeEach
@@ -73,6 +81,7 @@ class StorageCleanupWorkerTest {
     when(clock.instant()).thenReturn(NOW);
     when(fileOperations.getCleanupFileIO(eq(LOCATION), any())).thenReturn(fileIO);
     when(fileIO.listPrefix(PREFIX)).thenReturn(List.of());
+    when(taskRepository.finish(RESOURCE_ID, LEASE_TOKEN)).thenReturn(true);
     when(serverProperties.getStorageCleanupPollInterval()).thenReturn(INTERVAL);
     when(serverProperties.getStorageCleanupLeaseDuration()).thenReturn(LEASE_DURATION);
     when(serverProperties.getStorageCleanupInitialDelay()).thenReturn(INITIAL_DELAY);
@@ -90,6 +99,107 @@ class StorageCleanupWorkerTest {
     when(taskRepository.claim(LEASE_DURATION, INITIAL_DELAY)).thenReturn(Optional.empty());
     assertThat(worker.runOnce()).isFalse();
     verifyNoInteractions(fileOperations);
+    assertThat(registry.get(UcMetric.STORAGE_CLEANUP_ATTEMPTS.getMetricName()).counters())
+        .allSatisfy(counter -> assertThat(counter.count()).isZero());
+  }
+
+  @Test
+  void registersEveryAttemptSeriesAtStartup() {
+    for (ManagedResourceType type : ManagedResourceType.values()) {
+      assertThat(attempts(UcMetricConstants.SUCCESS, type)).isZero();
+      assertThat(attempts(UcMetricConstants.FAILURE, type)).isZero();
+    }
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "TABLE, table",
+    "VOLUME, volume",
+    "REGISTERED_MODEL, registered_model",
+    "MODEL_VERSION, model_version",
+    "STAGING_TABLE, staging_table"
+  })
+  void countsSuccessfulAttemptByResourceType(ManagedResourceType type, String tagValue) {
+    String location = "s3://bucket/" + type.pathSegment() + "/" + RESOURCE_ID;
+    setClaim(type, location);
+    when(fileOperations.getCleanupFileIO(eq(NormalizedURL.from(location)), any()))
+        .thenReturn(fileIO);
+    when(fileIO.listPrefix(location + "/")).thenReturn(List.of());
+
+    assertThat(worker.runOnce()).isTrue();
+
+    assertThat(attempts(UcMetricConstants.SUCCESS, tagValue)).isEqualTo(1.0);
+    assertThat(attempts(UcMetricConstants.FAILURE, tagValue)).isZero();
+  }
+
+  @Test
+  void countsSuccessWhenLeaseExpiredBeforeFinish() {
+    when(taskRepository.finish(RESOURCE_ID, LEASE_TOKEN)).thenReturn(false);
+
+    assertThat(worker.runOnce()).isTrue();
+
+    verify(taskRepository, never()).reportFailure(any(), any(), any());
+    assertThat(attempts(UcMetricConstants.SUCCESS, ManagedResourceType.TABLE)).isEqualTo(1.0);
+    assertThat(attempts(UcMetricConstants.FAILURE, ManagedResourceType.TABLE)).isZero();
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "TABLE, table",
+    "VOLUME, volume",
+    "REGISTERED_MODEL, registered_model",
+    "MODEL_VERSION, model_version",
+    "STAGING_TABLE, staging_table"
+  })
+  void countsFailedAttemptByResourceType(ManagedResourceType type, String tagValue) {
+    String location = "s3://bucket/" + type.pathSegment() + "/" + RESOURCE_ID;
+    setClaim(type, location);
+    when(fileOperations.getCleanupFileIO(eq(NormalizedURL.from(location)), any()))
+        .thenReturn(fileIO);
+    doThrow(new IllegalStateException("boom")).when(fileIO).deletePrefix(location + "/");
+
+    assertThat(worker.runOnce()).isTrue();
+
+    assertThat(attempts(UcMetricConstants.FAILURE, tagValue)).isEqualTo(1.0);
+    assertThat(attempts(UcMetricConstants.SUCCESS, tagValue)).isZero();
+  }
+
+  @Test
+  void countsFailedAttemptWhenLeaseExpiredBeforeReport() {
+    doThrow(new IllegalStateException("boom")).when(fileIO).deletePrefix(PREFIX);
+    when(taskRepository.reportFailure(any(), any(), any())).thenReturn(false);
+
+    assertThat(worker.runOnce()).isTrue();
+
+    assertThat(attempts(UcMetricConstants.FAILURE, ManagedResourceType.TABLE)).isEqualTo(1.0);
+  }
+
+  @Test
+  void countsAttemptAsFailedWhenFinishFails() {
+    when(taskRepository.finish(RESOURCE_ID, LEASE_TOKEN))
+        .thenThrow(new IllegalStateException("database unavailable"));
+
+    assertThat(worker.runOnce()).isTrue();
+
+    verify(taskRepository)
+        .reportFailure(
+            RESOURCE_ID,
+            LEASE_TOKEN,
+            new CleanupFailureReport(
+                "Storage cleanup failed: IllegalStateException", RETRY_BACKOFF));
+    assertThat(attempts(UcMetricConstants.FAILURE, ManagedResourceType.TABLE)).isEqualTo(1.0);
+    assertThat(attempts(UcMetricConstants.SUCCESS, ManagedResourceType.TABLE)).isZero();
+  }
+
+  @Test
+  void countsFailedAttemptEvenWhenReportingFails() {
+    doThrow(new IllegalStateException("boom")).when(fileIO).deletePrefix(PREFIX);
+    when(taskRepository.reportFailure(any(), any(), any()))
+        .thenThrow(new IllegalStateException("database unavailable"));
+
+    assertThatThrownBy(worker::runOnce).hasMessage("database unavailable");
+
+    assertThat(attempts(UcMetricConstants.FAILURE, ManagedResourceType.TABLE)).isEqualTo(1.0);
   }
 
   @Test
@@ -462,7 +572,22 @@ class StorageCleanupWorkerTest {
 
   private StorageCleanupWorker newWorker(Duration attemptTimeout) {
     when(serverProperties.getStorageCleanupAttemptTimeout()).thenReturn(attemptTimeout);
-    return new StorageCleanupWorker(taskRepository, fileOperations, clock, serverProperties);
+    return new StorageCleanupWorker(
+        taskRepository, fileOperations, clock, serverProperties, new UnityCatalogMetrics(registry));
+  }
+
+  private double attempts(String result, ManagedResourceType type) {
+    return attempts(result, type.name().toLowerCase(Locale.ROOT));
+  }
+
+  private double attempts(String result, String resourceType) {
+    return TestUtils.counterCount(
+        registry,
+        UcMetric.STORAGE_CLEANUP_ATTEMPTS,
+        UcMetricConstants.RESULT,
+        result,
+        UcMetricConstants.RESOURCE_TYPE,
+        resourceType);
   }
 
   private void setClaim(ManagedResourceType type, String location) {
