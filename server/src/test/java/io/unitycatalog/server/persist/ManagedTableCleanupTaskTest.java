@@ -5,24 +5,31 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
-import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.testdatabase.SupportedDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.function.Function;
+import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.Transaction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,19 +42,18 @@ class ManagedTableCleanupTaskTest {
   @TempDir Path tempDir;
 
   private SessionFactory sessionFactory;
+  private TestDatabase testDatabase;
   private Repositories repositories;
+  private ServerProperties serverProperties;
   private UUID schemaId;
 
   @BeforeEach
   void setUp() {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
-    ServerProperties serverProperties = new ServerProperties(properties);
-    Properties hibernateProperties =
-        HibernateConfigurator.setupHibernateProperties(serverProperties);
-    hibernateProperties.setProperty(
-        "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
-    sessionFactory = new HibernateConfigurator(hibernateProperties).getSessionFactory();
+    serverProperties = new ServerProperties(properties);
+    testDatabase = TestDatabases.newDatabase();
+    sessionFactory = testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
     repositories = new Repositories(sessionFactory, serverProperties);
 
     UUID catalogId = UUID.randomUUID();
@@ -72,7 +78,7 @@ class ManagedTableCleanupTaskTest {
 
   @AfterEach
   void tearDown() {
-    sessionFactory.close();
+    testDatabase.close();
   }
 
   @Test
@@ -189,6 +195,44 @@ class ManagedTableCleanupTaskTest {
     // present, and the pre-existing task keeps its original location.
     assertThat(findTable(table.getId())).isNotNull();
     assertThat(findTask(table.getId()).getStorageLocation()).isEqualTo(existingTaskLocation);
+  }
+
+  @Test
+  void dropWaitsForTheTableLockThatCommitsHold() {
+    TableInfoDAO table =
+        createTable(
+            "locked_table",
+            TableType.EXTERNAL,
+            id -> tempDir.resolve("external").resolve(id.toString()).toString());
+    // A second pool on the same database whose connections give up waiting for a lock after 50 ms.
+    Properties impatient = testDatabase.hibernateProperties(serverProperties);
+    impatient.setProperty("hibernate.hbm2ddl.auto", "none");
+    // Set on the URL, not with SET: a PostgreSQL SET is undone when its transaction rolls back.
+    impatient.setProperty(
+        "hibernate.connection.url",
+        testDatabase.jdbcUrl()
+            + switch (SupportedDatabase.selected()) {
+              case H2 -> ";LOCK_TIMEOUT=50";
+              case POSTGRES_18 -> "?options=-c%20lock_timeout%3D50";
+            });
+    TableRepository impatientTables =
+        new Repositories(
+                testDatabase.openHibernateConfigurator(impatient).getSessionFactory(),
+                serverProperties)
+            .getTableRepository();
+
+    try (Session commit = sessionFactory.openSession()) {
+      Transaction tx = commit.beginTransaction();
+      TableInfoDAO locked = commit.get(TableInfoDAO.class, table.getId());
+      RepositoryUtils.lockTableForCommit(
+          commit, locked, locked.getId(), Optional.empty(), ErrorCode.UPDATE_REQUIREMENT_CONFLICT);
+      // While a commit holds the lock, the drop stops at the lock before deleting anything.
+      assertThatThrownBy(() -> impatientTables.deleteTable(CATALOG, SCHEMA, table.getName()))
+          .isInstanceOfSatisfying(
+              BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ABORTED));
+      tx.rollback();
+    }
+    assertThat(findTable(table.getId())).isNotNull();
   }
 
   private TableInfoDAO createTable(

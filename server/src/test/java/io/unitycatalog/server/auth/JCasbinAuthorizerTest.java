@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.sql.Connection;
@@ -19,6 +21,7 @@ import org.junit.jupiter.api.Test;
 public class JCasbinAuthorizerTest {
   private UnityCatalogAuthorizer authenticator;
   private HibernateConfigurator hibernateConfigurator;
+  private TestDatabase testDatabase;
 
   @BeforeEach
   void setUp() throws Exception {
@@ -27,7 +30,8 @@ public class JCasbinAuthorizerTest {
     // Single-instance tests do not need background polling.
     properties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "false");
     ServerProperties serverProperties = new ServerProperties(properties);
-    hibernateConfigurator = new HibernateConfigurator(serverProperties);
+    testDatabase = TestDatabases.newDatabase();
+    hibernateConfigurator = testDatabase.openHibernateConfigurator(serverProperties);
     authenticator = new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
   }
 
@@ -40,7 +44,7 @@ public class JCasbinAuthorizerTest {
         throw new RuntimeException(e);
       }
     }
-    hibernateConfigurator.close();
+    testDatabase.close();
   }
 
   @Test
