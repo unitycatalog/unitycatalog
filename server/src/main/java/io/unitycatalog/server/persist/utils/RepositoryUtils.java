@@ -68,6 +68,7 @@ public class RepositoryUtils {
       UUID tableId,
       Optional<String> tableFullNameForLogging,
       ErrorCode lockContentionError) {
+    String tableName = tableFullNameForLogging.orElseGet(tableId::toString);
     try {
       TableInfoDAO locked =
           session
@@ -76,9 +77,7 @@ public class RepositoryUtils {
               .setHibernateLockMode(LockMode.PESSIMISTIC_WRITE)
               .getSingleResultOrNull();
       if (locked == null) {
-        throw new BaseException(
-            ErrorCode.TABLE_NOT_FOUND,
-            "Table not found: " + tableFullNameForLogging.orElseGet(tableId::toString));
+        throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
       }
       session.refresh(dao);
     } catch (RuntimeException e) {
@@ -89,9 +88,7 @@ public class RepositoryUtils {
       }
       throw new BaseException(
           lockContentionError,
-          "Concurrent commit in progress on table "
-              + tableFullNameForLogging.orElseGet(tableId::toString)
-              + "; retry the request.");
+          "Concurrent commit in progress on table " + tableName + "; retry the request.");
     }
   }
 

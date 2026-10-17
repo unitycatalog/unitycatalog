@@ -118,6 +118,15 @@ public abstract class BaseServerTest {
       testDatabase = TestDatabases.newDatabase();
       Properties hibernateProperties = testDatabase.hibernateProperties(initServerProperties);
       setUpHibernateProperties(hibernateProperties);
+      if (!testDatabase
+          .jdbcUrl()
+          .equals(hibernateProperties.getProperty("hibernate.connection.url"))) {
+        // A subclass pointed the server at its own database, which builds its schema per test as
+        // before; that database's drop step can fail harmlessly (MySQL has no DROP FOREIGN KEY IF
+        // EXISTS).
+        hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
+        hibernateProperties.setProperty("hibernate.hbm2ddl.halt_on_error", "false");
+      }
       hibernateConfigurator = testDatabase.openHibernateConfigurator(hibernateProperties);
       UnityCatalogServer.Builder serverBuilder =
           UnityCatalogServer.builder()
