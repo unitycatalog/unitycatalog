@@ -81,7 +81,10 @@ public class RepositoryUtils {
       }
       session.refresh(dao);
     } catch (RuntimeException e) {
-      if (!(e instanceof org.hibernate.PessimisticLockException)
+      // Session and query calls report a lock failure as its JPA type, wrapping Hibernate's.
+      if (!(e instanceof jakarta.persistence.PessimisticLockException)
+          && !(e instanceof jakarta.persistence.LockTimeoutException)
+          && !(e instanceof org.hibernate.PessimisticLockException)
           && !(e instanceof org.hibernate.exception.LockAcquisitionException)
           && !(e instanceof org.hibernate.exception.LockTimeoutException)) {
         throw e;

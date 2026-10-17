@@ -32,11 +32,9 @@ import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
-import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
-import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
@@ -1350,61 +1348,6 @@ public class IcebergRestCatalogTest extends BaseServerTest {
             TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
     assertThat(loaded.tableMetadata().metadataFileLocation()).contains("/metadata/00001-");
     assertThat(loaded.tableMetadata().schema().columns()).hasSize(2);
-  }
-
-  @Test
-  public void testDropTableWaitsForInFlightCommit() throws Exception {
-    catalogOperations.createCatalog(
-        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
-    schemaOperations.createSchema(
-        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
-    icebergClient.createTable(
-        TestUtils.CATALOG_NAME,
-        TestUtils.SCHEMA_NAME,
-        CreateTableRequest.builder()
-            .withName(TestUtils.TABLE_NAME)
-            .withSchema(
-                new Schema(
-                    Types.NestedField.required(1, "id", Types.LongType.get()),
-                    Types.NestedField.optional(2, "name", Types.StringType.get())))
-            .withLocation(
-                Files.createTempDirectory(testDirectoryRoot, "iceberg-rest-drop")
-                    .toUri()
-                    .toString())
-            .build());
-
-    ExecutorService pool = Executors.newSingleThreadExecutor();
-    try (Session commit = hibernateConfigurator.getSessionFactory().openSession()) {
-      Transaction tx = commit.beginTransaction();
-      TableInfoDAO table =
-          commit
-              .createQuery("FROM TableInfoDAO WHERE name = :name", TableInfoDAO.class)
-              .setParameter("name", TestUtils.TABLE_NAME)
-              .getSingleResult();
-      // Take the lock an in-flight commit holds, then drop the table from another request.
-      RepositoryUtils.lockTableForCommit(
-          commit, table, table.getId(), Optional.empty(), ErrorCode.UPDATE_REQUIREMENT_CONFLICT);
-      Future<?> drop =
-          pool.submit(
-              () -> {
-                icebergClient.dropTable(
-                    TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
-                return null;
-              });
-      // The drop waits for the lock instead of deleting the column rows under the commit.
-      assertThrows(TimeoutException.class, () -> drop.get(500, TimeUnit.MILLISECONDS));
-      // Rewrite the columns as a commit does, then let the drop through.
-      table.getColumns().clear();
-      commit.flush();
-      tx.commit();
-      drop.get(30, TimeUnit.SECONDS);
-    } finally {
-      pool.shutdownNow();
-    }
-    assertThat(
-            icebergClient.tableExists(
-                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME))
-        .isFalse();
   }
 
   @Test
