@@ -7,7 +7,6 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.UpdateUser;
-import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -21,7 +20,6 @@ class UserRepositoryTest {
 
   private static SessionFactory sessionFactory;
   private static UserRepository userRepository;
-  private static HibernateConfigurator hibernateConfigurator;
   private static TestDatabase testDatabase;
 
   @BeforeAll
@@ -29,9 +27,10 @@ class UserRepositoryTest {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
     testDatabase = TestDatabases.newDatabase();
-    hibernateConfigurator =
-        testDatabase.openHibernateConfigurator(new ServerProperties(properties));
-    sessionFactory = hibernateConfigurator.getSessionFactory();
+    sessionFactory =
+        testDatabase
+            .openHibernateConfigurator(new ServerProperties(properties))
+            .getSessionFactory();
     userRepository = new UserRepository(null, sessionFactory);
   }
 

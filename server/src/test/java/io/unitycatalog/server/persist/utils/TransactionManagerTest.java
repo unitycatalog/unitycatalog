@@ -215,15 +215,14 @@ public class TransactionManagerTest {
   public class IsolationLevelWithRealDatabaseTest {
 
     private static SessionFactory realSessionFactory;
-    private static HibernateConfigurator hibernateConfigurator;
     private static TestDatabase testDatabase;
 
     @BeforeAll
     public static void setUp() {
       ServerProperties serverProperties = new ServerProperties(new Properties());
       testDatabase = TestDatabases.newDatabase();
-      hibernateConfigurator = testDatabase.openHibernateConfigurator(serverProperties);
-      realSessionFactory = hibernateConfigurator.getSessionFactory();
+      realSessionFactory =
+          testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
     }
 
     @AfterAll
