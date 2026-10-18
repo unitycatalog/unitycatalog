@@ -19,16 +19,13 @@ class ConversationMessage(BaseModel):
         ..., description="The role of the message sender, e.g., 'user' or 'assistant'."
     )
     content: Optional[Union[str, list[Any]]] = Field(
-        default=None,
+        ...,
         description="The content of the message, e.g. original user question or an assistant response. "
         "It is None for an assistant message that only requests tool calls.",
     )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "role": self.role,
-            "content": self.content,
-        }
+        return self.model_dump()
 
 
 class ToolCallData:

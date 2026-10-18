@@ -12,6 +12,7 @@ from litellm.types.utils import (
 
 from unitycatalog.ai.core.client import BaseFunctionClient
 from unitycatalog.ai.litellm.utils import (
+    ConversationMessage,
     ToolCallData,
     extract_tool_call_data,
     generate_tool_call_messages,
@@ -319,6 +320,39 @@ def test_generate_tool_call_messages_accepts_previous_round_as_history(
         "call_Ozd6L5vXIuKPlsmomMVPsHFM",
         "call_MKQQrCiQhKXM6ZWtGTsASIXd",
     ]
+
+
+@pytest.mark.parametrize(
+    "conversation_history",
+    [
+        [{"content": "no role"}],
+        {"role": "user", "content": 123},
+        {"role": "user"},
+        {"role": "user", "contnet": "typo in the content key"},
+    ],
+)
+def test_generate_tool_call_messages_invalid_history(
+    mock_message_single_tool, mock_client, conversation_history
+):
+    with pytest.raises(ValueError, match="Invalid conversation history format"):
+        generate_tool_call_messages(
+            response=mock_message_single_tool,
+            conversation_history=conversation_history,
+            client=mock_client,
+        )
+
+    mock_client.execute_function.assert_not_called()
+
+
+def test_conversation_message_to_dict_keeps_extra_fields():
+    tool_message = {
+        "role": "tool",
+        "tool_call_id": "call_1aW2jpx0R85gFlOp8cGZv3La",
+        "name": "main.default.get_current_weather",
+        "content": "65 degrees",
+    }
+
+    assert ConversationMessage(**tool_message).to_dict() == tool_message
 
 
 def test_generate_tool_call_messages_no_tool_use(

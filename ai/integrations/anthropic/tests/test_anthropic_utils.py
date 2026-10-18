@@ -213,6 +213,46 @@ def test_generate_tool_call_messages_accepts_previous_round_as_history(mock_clie
     }
 
 
+def test_generate_tool_call_messages_converts_content_block_history_to_dict(
+    mock_message_single_tool, mock_client, dummy_history
+):
+    assistant_history = {
+        "role": "assistant",
+        "content": [TextBlock(text="Let me check the weather.", type="text")],
+    }
+
+    result = generate_tool_call_messages(
+        response=mock_message_single_tool,
+        conversation_history=[dummy_history, assistant_history],
+        client=mock_client,
+    )
+
+    history_block = result[1]["content"][0]
+    assert isinstance(history_block, dict)
+    assert history_block["type"] == "text"
+    assert history_block["text"] == "Let me check the weather."
+
+
+@pytest.mark.parametrize(
+    "conversation_history",
+    [
+        [{"content": "no role"}],
+        {"role": "user", "content": 123},
+    ],
+)
+def test_generate_tool_call_messages_invalid_history(
+    mock_message_single_tool, mock_client, conversation_history
+):
+    with pytest.raises(ValueError, match="Invalid conversation history format"):
+        generate_tool_call_messages(
+            response=mock_message_single_tool,
+            conversation_history=conversation_history,
+            client=mock_client,
+        )
+
+    mock_client.execute_function.assert_not_called()
+
+
 def test_generate_tool_call_messages_no_tool_use(mock_client, dummy_history):
     response = Mock(spec=Message)
     response.stop_reason = "stop"
