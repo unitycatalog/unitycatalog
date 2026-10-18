@@ -20,7 +20,6 @@ from unitycatalog.ai.core.client import (
     validate_input_parameter,
     validate_param,
 )
-from unitycatalog.ai.core.executor.common import NO_OUTPUT_MESSAGE
 from unitycatalog.ai.core.executor.local import run_in_sandbox, run_in_sandbox_async
 from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
@@ -1921,6 +1920,7 @@ async def offline_uc_client():
     client.uc.functions_client = mock.AsyncMock(spec=FunctionsApi)
     yield client
     await client.close_async()
+    await uc_api_client.close()
 
 
 def constant_function_info(return_literal: str, data_type: str) -> FunctionInfo:
@@ -1942,6 +1942,8 @@ FALSY_RESULT_CASES = [
     ("0", "INT", 0),
     ("0.0", "DOUBLE", 0.0),
     ("''", "STRING", ""),
+    ("[]", "ARRAY", []),
+    ("{}", "MAP", {}),
 ]
 
 
@@ -1973,16 +1975,14 @@ async def test_execute_function_async_preserves_falsy_result(
 
 
 @pytest.mark.asyncio
-async def test_execute_function_none_result_returns_no_output_message(offline_uc_client):
+async def test_execute_function_async_local_none_result_returns_no_output_message(
+    offline_uc_client,
+):
     offline_uc_client.uc.functions_client.get_function.return_value = constant_function_info(
         "None", "STRING"
     )
-    result = offline_uc_client.execute_function(f"{CATALOG}.{SCHEMA}.constant_func")
-    async_result = await offline_uc_client.execute_function_async(
-        f"{CATALOG}.{SCHEMA}.constant_func"
-    )
-    assert result.value == NO_OUTPUT_MESSAGE
-    assert async_result.value == NO_OUTPUT_MESSAGE
+    result = await offline_uc_client.execute_function_async(f"{CATALOG}.{SCHEMA}.constant_func")
+    assert "The function execution has completed, but no output was produced." in result.value
 
 
 def test_fetch_function_callable(uc_client):
