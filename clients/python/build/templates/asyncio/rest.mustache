@@ -1,6 +1,8 @@
 {{! Copied from OpenAPI Generator v7.11.0 (python/asyncio/rest.mustache), which creates the aiohttp
     ClientSession lazily on the first request so ApiClient can be constructed outside a running event loop.
-    Delete this override once project/plugins.sbt uses sbt-openapi-generator 7.11.0 or newer. }}
+    Delete this override when upgrading sbt-openapi-generator in project/plugins.sbt to 7.11.0 or newer.
+    That upgrade also needs a fix for the Java native client, which from 7.11.0 (still in 7.26.0) decodes
+    sync responses with the JVM default charset instead of UTF-8. }}
 # coding: utf-8
 
 {{>partial_header}}

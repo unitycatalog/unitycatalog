@@ -315,6 +315,8 @@ lazy val pythonClient = (project in file("clients/python"))
               inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "all.yaml").getAbsolutePath,
               packageName = s"$artifactNamePrefix.client",
               additionalProperties = commonProps,
+              // Overrides python/asyncio/rest.mustache with the v7.11.0 version. See the header of
+              // build/templates/asyncio/rest.mustache for when to remove it.
               templateDir = (baseDirectory.value / "build" / "templates").getAbsolutePath
             ),
             OpenApiSpec(
