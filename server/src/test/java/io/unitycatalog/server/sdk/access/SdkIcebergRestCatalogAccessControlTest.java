@@ -21,6 +21,7 @@ import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.metrics.ImmutableScanReport;
 import org.apache.iceberg.metrics.ScanMetrics;
@@ -197,6 +198,7 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     assertIcebergApiException(
         () -> admin.loadTable(CAT, SCHEMA + "%1F" + "tbl_sel", "snapshots"),
         404,
+        NoSuchTableException.class,
         "Table does not exist");
 
     // tbl_r1own in SCHEMA, created (hence owned) by regular-1: read via table OWNER.
