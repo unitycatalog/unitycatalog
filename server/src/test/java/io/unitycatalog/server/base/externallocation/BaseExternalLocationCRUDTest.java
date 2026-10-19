@@ -205,23 +205,39 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   }
 
   @Test
-  public void testExternalLocationUrlOverlapPrevention() throws ApiException {
-    final String errorMessageCreateWithOverlap =
-        "Cannot accept an external location that duplicates"
-            + " or overlaps with existing external location";
+  public void testExternalLocationRejectsManagedStoragePrefix() throws ApiException {
     ExternalLocationInfo externalLocationInfo = create(EXTERNAL_LOCATION_NAME, testUrl());
 
     for (String url :
         List.of(testUrl() + "/__unitystorage", testUrl() + "/__unitystorage/tables")) {
+      String errorMessage =
+          "Input path '" + url + "' contains managed storage prefix __unitystorage.";
+      assertApiException(
+          () -> create(EXTERNAL_LOCATION_NAME + "_reserved", url),
+          ErrorCode.INVALID_ARGUMENT,
+          errorMessage);
       assertApiException(
           () ->
               externalLocationOperations.updateExternalLocation(
                   EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(url)),
           ErrorCode.INVALID_ARGUMENT,
-          "Input path '" + url + "' contains managed storage prefix __unitystorage.");
+          errorMessage);
       assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME))
           .isEqualTo(externalLocationInfo);
     }
+
+    externalLocationOperations.updateExternalLocation(
+        EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(anotherTestUrl()));
+    assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME).getUrl())
+        .isEqualTo(anotherTestUrl());
+  }
+
+  @Test
+  public void testExternalLocationUrlOverlapPrevention() throws ApiException {
+    final String errorMessageCreateWithOverlap =
+        "Cannot accept an external location that duplicates"
+            + " or overlaps with existing external location";
+    create(EXTERNAL_LOCATION_NAME, testUrl());
 
     // Test 1: Duplicate URL should be rejected
     assertApiException(
@@ -244,8 +260,6 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     // Update the external location to subdir first
     externalLocationOperations.updateExternalLocation(
         EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(testUrl() + "/subpath/deeper"));
-    assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME).getUrl())
-        .isEqualTo(testUrl() + "/subpath/deeper");
 
     // Test 4: Parent URL should be rejected when child exists
     assertApiException(

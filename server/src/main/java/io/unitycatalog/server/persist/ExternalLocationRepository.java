@@ -176,9 +176,9 @@ public class ExternalLocationRepository {
           if (updateExternalLocation.getUrl() != null) {
             NormalizedURL url = NormalizedURL.from(updateExternalLocation.getUrl());
             ExternalLocationUtils.validateNotSameOrUnderManagedStoragePrefix(url);
-            existingLocation.setUrl(url.toString());
             validateUrlNotUsedByAnyExternalLocation(
                 session, url, Optional.of(existingLocation.getId()));
+            existingLocation.setUrl(url.toString());
           }
           if (updateExternalLocation.getComment() != null) {
             existingLocation.setComment(updateExternalLocation.getComment());
