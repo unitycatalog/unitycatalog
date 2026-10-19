@@ -4,6 +4,7 @@ import json
 import warnings
 from dataclasses import dataclass
 from textwrap import dedent, fill, indent
+from types import UnionType
 from typing import (
     Any,
     Callable,
@@ -211,8 +212,8 @@ def validate_type_hint(hint: Any) -> str:
     Returns:
         The corresponding SQL type.
     """
-    if hasattr(hint, "__origin__") and hint.__origin__ is Union:
-        non_none_types = [t for t in hint.__args__ if t is not type(None)]
+    if get_origin(hint) in (Union, UnionType):
+        non_none_types = [t for t in get_args(hint) if t is not type(None)]
         if len(non_none_types) == 1:
             return python_type_to_sql_type(non_none_types[0])
         else:
@@ -333,14 +334,14 @@ def is_valid_default_value(default: Any, type_hint: Any) -> bool:
     args = get_args(type_hint)
 
     if default is None:
-        if origin is Union and type(None) in args:
+        if origin in (Union, UnionType) and type(None) in args:
             return True
         elif type_hint is type(None):
             return True
         else:
             return False
     else:
-        if origin is Union:
+        if origin in (Union, UnionType):
             return any(
                 is_valid_default_value(default, arg) for arg in args if arg is not type(None)
             )
@@ -965,7 +966,7 @@ def validate_return_type(func_name: str, type_hints: dict[str, Any]) -> str:
             base_msg += (
                 " Please define the inner types, e.g., List[int], Tuple[str, int], Dict[str, int]."
             )
-        elif origin is Union or return_type_hint is Union:
+        elif origin in (Union, UnionType) or return_type_hint is Union:
             base_msg += " Union types are not supported in return types."
         elif return_type_hint is Any:
             base_msg += " 'Any' type is not supported. Please specify a concrete return type."
