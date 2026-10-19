@@ -993,19 +993,69 @@ async def test_execute_function_converts_json_arguments(
         ("TIMESTAMP", "timestamp", "not a timestamp"),
         ("TIMESTAMP_NTZ", "timestamp_ntz", "2026-01-11 25:00"),
         ("BINARY", "binary", "not base64!"),
+        ("TIMESTAMP_NTZ", "timestamp_ntz", "2026-01-11T05:00:00Z"),
+        ("TIMESTAMP_NTZ", "timestamp_ntz", "2026-01-11T05:00:00+05:00"),
         ("DECIMAL", "decimal(10,2)", "abc"),
-        ("DECIMAL", "decimal(10,2)", True),
+        ("DECIMAL", "decimal(10,2)", "NaN"),
+        ("DECIMAL", "decimal(10,2)", "sNaN"),
+        ("DECIMAL", "decimal(10,2)", "Infinity"),
+        ("DECIMAL", "decimal(10,2)", float("inf")),
+        ("DECIMAL", "decimal(10,2)", float("nan")),
     ],
 )
 async def test_execute_function_rejects_invalid_json_arguments(
     local_execution_client, type_name, type_text, param_value
 ):
     function_info = repr_arg_function_info(type_name, type_text)
-    with (
-        mock.patch.object(local_execution_client, "get_function", return_value=function_info),
-        pytest.raises(ValueError, match=rf"Parameter x .*{type_name}"),
-    ):
-        local_execution_client.execute_function(function_info.full_name, {"x": param_value})
+    with mock.patch.object(local_execution_client, "get_function", return_value=function_info):
+        with pytest.raises(ValueError, match=rf"Parameter x .*{type_name}, but got invalid value"):
+            local_execution_client.execute_function(function_info.full_name, {"x": param_value})
+        with pytest.raises(ValueError, match=rf"Parameter x .*{type_name}, but got invalid value"):
+            await local_execution_client.execute_function_async(
+                function_info.full_name, {"x": param_value}
+            )
+
+
+@pytest.mark.asyncio
+async def test_execute_function_converts_default_arguments(local_execution_client):
+    def param(name: str, type_name: str, type_text: str, position: int, default=None):
+        return FunctionParameterInfo(
+            name=name,
+            type_name=type_name,
+            type_text=type_text,
+            type_json=f'{{"name":"{name}","type":"{type_text}","nullable":false,"metadata":{{}}}}',
+            position=position,
+            parameter_default=default,
+        )
+
+    function_info = FunctionInfo(
+        name="add_with_defaults",
+        catalog_name=CATALOG,
+        schema_name=SCHEMA,
+        full_name=f"{CATALOG}.{SCHEMA}.add_with_defaults",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                param("a", "DECIMAL", "decimal(10,2)", 0),
+                param("b", "DECIMAL", "decimal(10,2)", 1, "0.5"),
+                param("d", "DATE", "date", 2, "2026-01-11"),
+            ]
+        ),
+        data_type="STRING",
+        full_data_type="STRING",
+        routine_body="EXTERNAL",
+        routine_definition="return repr((a + b, d))",
+        external_language="PYTHON",
+    )
+    expected = repr((decimal.Decimal("2.5"), datetime.date(2026, 1, 11)))
+    with mock.patch.object(local_execution_client, "get_function", return_value=function_info):
+        result = local_execution_client.execute_function(function_info.full_name, {"a": 2})
+        async_result = await local_execution_client.execute_function_async(
+            function_info.full_name, {"a": 2}
+        )
+
+    assert result.error is None
+    assert result.value == expected
+    assert async_result.value == expected
 
 
 @pytest.mark.asyncio
