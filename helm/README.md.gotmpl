@@ -8,7 +8,7 @@ using the [Helm](https://github.com/helm/helm) package manager.
 
 ## Prerequisites
 - Kubernetes 1.20+ cluster
-- Helm 3.1+
+- Helm 3.8+
 
 ## Features
 - Deploys the Unity Catalog server, and the UI with `ui.enabled=true`
@@ -17,11 +17,14 @@ using the [Helm](https://github.com/helm/helm) package manager.
 - Customizable configuration for server and UI using Helm values
 
 ## Installing the Chart
-To install the chart with the release name `unitycatalog`:
+Starting with 0.8.0, each Unity Catalog release publishes this chart to Docker Hub, with the same version as the release.
+To install version 0.8.0 with the release name `unitycatalog`:
 
 ```sh
-helm install unitycatalog .
+helm install unitycatalog oci://registry-1.docker.io/unitycatalog/unitycatalog-chart --version 0.8.0
 ```
+
+Chart version X.Y.Z runs the server image `unitycatalog/unitycatalog:vX.Y.Z` and the UI image `unitycatalog/unitycatalog-ui:vX.Y.Z`.
 
 ## Uninstalling the Chart
 To uninstall the `unitycatalog` chart:
@@ -30,8 +33,8 @@ To uninstall the `unitycatalog` chart:
 helm uninstall unitycatalog
 ```
 
-The command removes all the Kubernetes components associated with the chart and deletes the release.
-If persistent volumes are used, they are not deleted by default. To delete them, you need to manually delete the PVCs.
+The command deletes the release. It keeps the H2 database PersistentVolumeClaim and the token signing key Secret;
+delete both to remove the data.
 
 ## Configuration
 The following table lists the configurable parameters of the Unity Catalog chart and their default values.

@@ -64,16 +64,19 @@ jobs:
           kubectl_version: v1.37.1
 
       - name: Load the images into kind
-        run: kind load docker-image unitycatalog:ci unitycatalog-ui:ci --name chart-testing
-
-      - name: Install the chart and run helm test
+        # package-chart.sh 0.0.0-ci stamps app version v0.0.0-ci, which sets both image tags.
         run: |
-          helm install uc helm --namespace uc --create-namespace --wait --timeout 600s \
+          docker tag unitycatalog:ci unitycatalog:v0.0.0-ci
+          docker tag unitycatalog-ui:ci unitycatalog-ui:v0.0.0-ci
+          kind load docker-image unitycatalog:v0.0.0-ci unitycatalog-ui:v0.0.0-ci --name chart-testing
+
+      - name: Package the chart as a release, install it and run helm test
+        run: |
+          helm/package-chart.sh 0.0.0-ci "$RUNNER_TEMP"
+          helm install uc "$RUNNER_TEMP/unitycatalog-chart-0.0.0-ci.tgz" --namespace uc --create-namespace --wait --timeout 600s \
             --set server.deployment.image.repository=unitycatalog \
-            --set server.deployment.image.tag=ci \
             --set server.deployment.image.pullPolicy=Never \
             --set ui.enabled=true \
             --set ui.deployment.image.repository=unitycatalog-ui \
-            --set ui.deployment.image.tag=ci \
             --set ui.deployment.image.pullPolicy=Never
           helm test uc --namespace uc --logs

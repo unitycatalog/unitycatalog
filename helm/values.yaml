@@ -350,8 +350,8 @@ server:
         repository: alpine
         # -- (string) Pull policy for the render config container
         pullPolicy: IfNotPresent
-        # -- (string) Tag for the render config container
-        tag: latest
+        # -- (string) Tag for the render config container, pinned by digest
+        tag: "3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
 
       # -- (object) Security context for the init container
       # @default -- not set
@@ -542,8 +542,8 @@ server:
       repository: alpine
       # -- (string) Pull policy for the create users job image
       pullPolicy: IfNotPresent
-      # -- (string) Tag for the create users job image
-      tag: latest
+      # -- (string) Tag for the create users job image, pinned by digest
+      tag: "3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
 
     # -- (object) Additional annotations for the create users job
     # @default -- not set
@@ -635,8 +635,8 @@ ui:
         repository: busybox
         # -- (string) Pull policy for the UI init container
         pullPolicy: IfNotPresent
-        # -- (string) Tag for the UI init container
-        tag: latest
+        # -- (string) Tag for the UI init container, pinned by digest
+        tag: "1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e"
 
       # -- (object) Security context for the init container
       # @default -- not set
