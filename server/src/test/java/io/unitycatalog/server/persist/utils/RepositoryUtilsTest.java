@@ -3,6 +3,7 @@ package io.unitycatalog.server.persist.utils;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.RETURNS_SELF;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -13,7 +14,12 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import java.sql.SQLException;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
+import org.hibernate.LockMode;
+import org.hibernate.LockOptions;
 import org.hibernate.Session;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
+import org.hibernate.internal.ExceptionConverterImpl;
 import org.hibernate.query.SelectionQuery;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -24,21 +30,29 @@ public class RepositoryUtilsTest {
   private static final UUID TABLE_ID = UUID.randomUUID();
 
   /**
-   * A failed pessimistic lock acquisition means a concurrent commit is in progress; the caller
-   * decides how that surfaces (Delta as the retryable {@code COMMIT_STATE_UNKNOWN}, Iceberg as an
-   * {@code UPDATE_REQUIREMENT_CONFLICT}), never as a leaked ORM exception. UC bootstraps Hibernate
-   * natively, so the failure arrives as a {@code HibernateException} subtype: {@code
-   * org.hibernate.PessimisticLockException}, or the JDBC-translated {@code
-   * LockAcquisitionException} (deadlock) / {@code LockTimeoutException}. It is never a {@code
-   * jakarta.persistence} exception (those only surface under a JPA bootstrap), so those are not
-   * covered here.
+   * A failed pessimistic lock acquisition means a concurrent commit or deletion holds the lock; the
+   * caller decides how that surfaces (Delta as the retryable {@code COMMIT_STATE_UNKNOWN}, Iceberg
+   * as an {@code UPDATE_REQUIREMENT_CONFLICT}, table deletion as {@code ABORTED}), never as a
+   * leaked ORM exception. The lock query passes the dialect's exception through Hibernate's
+   * exception converter, so each failure here is the converter's output for one dialect exception.
    */
   static RuntimeException[] lockAcquisitionFailures() {
-    return new RuntimeException[] {
-      new org.hibernate.PessimisticLockException("locked", new SQLException("locked"), "sql"),
-      new org.hibernate.exception.LockAcquisitionException("locked", new SQLException("locked")),
-      new org.hibernate.exception.LockTimeoutException("timed out", new SQLException("timed out")),
-    };
+    ExceptionConverterImpl converter =
+        new ExceptionConverterImpl(
+            mock(SharedSessionContractImplementor.class, RETURNS_DEEP_STUBS));
+    LockOptions lockOptions = new LockOptions(LockMode.PESSIMISTIC_WRITE);
+    return Stream.of(
+            // The lock wait failed: PostgreSQL SQLSTATE 55P03, H2 error 50200, or MySQL error 1205.
+            new org.hibernate.PessimisticLockException("locked", new SQLException("locked"), "sql"),
+            // A deadlock victim: PostgreSQL SQLSTATE 40P01, H2 error 40001,
+            // or MySQL SQLSTATE 40001.
+            new org.hibernate.exception.LockAcquisitionException(
+                "locked", new SQLException("locked")),
+            // The lock wait timed out, for example MySQL SQLSTATE 41000.
+            new org.hibernate.exception.LockTimeoutException(
+                "timed out", new SQLException("timed out")))
+        .map(failure -> converter.convert(failure, lockOptions))
+        .toArray(RuntimeException[]::new);
   }
 
   /** The row-lock query that lockTableForCommit runs on {@code session}. */

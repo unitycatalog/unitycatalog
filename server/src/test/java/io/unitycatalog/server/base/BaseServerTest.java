@@ -161,8 +161,6 @@ public abstract class BaseServerTest {
   public void tearDown() {
     try {
       if (unityCatalogServer != null) {
-
-        // TODO: Figure out a better way to clear the database
         SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
         Session session = sessionFactory.openSession();
         Transaction tx = session.beginTransaction();

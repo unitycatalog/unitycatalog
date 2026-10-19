@@ -8,7 +8,7 @@ import java.util.Properties;
 
 /**
  * One test's database on the selected backend. {@link #close()} closes every configurator opened
- * through it, then removes the database.
+ * through it, then removes the database, even if closing one fails.
  */
 public final class TestDatabase implements AutoCloseable {
 
@@ -69,8 +69,20 @@ public final class TestDatabase implements AutoCloseable {
   @Override
   public void close() {
     try {
+      RuntimeException failure = null;
       for (int i = openedConfigurators.size() - 1; i >= 0; i--) {
-        openedConfigurators.get(i).close();
+        try {
+          openedConfigurators.get(i).close();
+        } catch (RuntimeException e) {
+          if (failure == null) {
+            failure = e;
+          } else {
+            failure.addSuppressed(e);
+          }
+        }
+      }
+      if (failure != null) {
+        throw failure;
       }
     } finally {
       openedConfigurators.clear();

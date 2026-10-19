@@ -32,8 +32,8 @@ public class RepositoryUtils {
    * Acquires the table row lock shared by the Delta and Iceberg commit paths and by table deletion,
    * so concurrent commits on the same table serialize, and a deletion waits for them. A lock-wait
    * timeout or deadlock victim is reported as {@code lockContentionError} (rolling back only this
-   * transaction) rather than leaking the ORM exception; the two commit paths pass different codes
-   * because the safe client reaction differs:
+   * transaction) rather than leaking the ORM exception; each caller passes the code whose client
+   * reaction is safe for it:
    *
    * <ul>
    *   <li><b>Delta</b> passes {@code COMMIT_STATE_UNKNOWN} (500). Failing to acquire the lock does
@@ -48,15 +48,17 @@ public class RepositoryUtils {
    *       therefore safe and lets the Iceberg client retry transparently, whereas a 500 would
    *       surface to the user. Iceberg has no server-side deduplication that a resend could
    *       exploit.
+   *   <li><b>Table deletion</b> passes {@code ABORTED}: the table was not deleted, and the request
+   *       can be retried.
    * </ul>
    *
    * <p>The row is locked first and read second. Refreshing the entity under the lock would load its
-   * columns with an outer join, which PostgreSQL cannot lock in one statement; Hibernate then reads
-   * before locking, so a commit that waited for the lock would continue on the state it read before
-   * the other commit landed. A table deleted while this waited for the lock is reported as {@link
-   * ErrorCode#TABLE_NOT_FOUND}.
+   * columns with an outer join, and on PostgreSQL Hibernate locks such a query in a separate
+   * statement after the read, so a commit that waited for the lock would continue on the state it
+   * read before the other commit landed. A table deleted while this waited for the lock is reported
+   * as {@link ErrorCode#TABLE_NOT_FOUND}.
    *
-   * @param session the Hibernate session running the commit transaction
+   * @param session the Hibernate session running the commit or deletion transaction
    * @param dao the table row to lock; re-read after the lock is held
    * @param tableId the table id, used as a fallback in the error message
    * @param tableFullNameForLogging the table's full name for the error message, if known
@@ -81,18 +83,27 @@ public class RepositoryUtils {
       }
       session.refresh(dao);
     } catch (RuntimeException e) {
-      // The lock query reports a lock failure as its JPA type, wrapping Hibernate's.
-      if (!(e instanceof jakarta.persistence.PessimisticLockException)
-          && !(e instanceof jakarta.persistence.LockTimeoutException)
-          && !(e instanceof org.hibernate.PessimisticLockException)
-          && !(e instanceof org.hibernate.exception.LockAcquisitionException)
-          && !(e instanceof org.hibernate.exception.LockTimeoutException)) {
+      // The lock query wraps Hibernate's lock exception in a JPA one, so check the cause as well.
+      // A deadlock victim arrives as OptimisticLockException wrapping LockAcquisitionException.
+      if (!isLockFailure(e) && !isLockFailure(e.getCause())) {
         throw e;
       }
       throw new BaseException(
           lockContentionError,
           "Concurrent commit in progress on table " + tableName + "; retry the request.");
     }
+  }
+
+  /**
+   * Whether {@code failure} reports that a lock was not acquired: a lock-wait failure, a lock
+   * timeout, or a deadlock victim. {@code LockTimeoutException} is a {@code
+   * LockAcquisitionException}.
+   */
+  private static boolean isLockFailure(Throwable failure) {
+    return failure instanceof jakarta.persistence.PessimisticLockException
+        || failure instanceof jakarta.persistence.LockTimeoutException
+        || failure instanceof org.hibernate.PessimisticLockException
+        || failure instanceof org.hibernate.exception.LockAcquisitionException;
   }
 
   static {
