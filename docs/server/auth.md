@@ -110,6 +110,26 @@ values under that pattern can steer JWKS fetches (an SSRF-style surface).
 Use wildcard issuers only where necessary, only for domains you control, and avoid patterns that
 cover internal or sensitive hosts. Prefer exact issuer URLs and `https://` issuers when possible.
 
+### Permission-check migration
+
+`server.authorization.strict-privilege-checks` is a temporary migration setting. It defaults to
+`true` and will be removed in a future release. Permission fixes that use this setting apply the
+corrected rules by default.
+
+The access checks apply only when `server.authorization=enable`.
+
+To keep the previous rules during a migration, set:
+
+```properties
+server.authorization.strict-privilege-checks=false
+```
+
+The setting does not disable authorization. It selects the previous rules for these checks,
+including access that the corrected rules would deny. Use `false` only while updating applications
+and grants. Set it back to `true` when the migration is complete.
+
+Use the same value on every server instance. Restart each instance after changing it.
+
 ### Multiple server instances
 
 Authorization decisions use an in-memory Casbin policy loaded from the shared `casbin_rule` table.

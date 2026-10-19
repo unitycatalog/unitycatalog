@@ -121,6 +121,21 @@ public class ServerPropertiesTest {
   }
 
   @Test
+  public void testStrictPrivilegeChecksSetting() {
+    ServerProperties properties = new ServerProperties();
+    assertThat(properties.isStrictPrivilegeChecksEnabled()).isTrue();
+    properties.set(Property.STRICT_PRIVILEGE_CHECKS_ENABLED, "false");
+    assertThat(properties.isStrictPrivilegeChecksEnabled()).isFalse();
+    properties.set(Property.STRICT_PRIVILEGE_CHECKS_ENABLED, "true");
+    assertThat(properties.isStrictPrivilegeChecksEnabled()).isTrue();
+    testInvalidProperty(
+        Property.STRICT_PRIVILEGE_CHECKS_ENABLED,
+        "yes",
+        "Invalid value 'yes'",
+        "server.authorization.strict-privilege-checks");
+  }
+
+  @Test
   public void testIcebergTableEnabledCheck() {
     ServerProperties serverProperties = new ServerProperties();
     // Iceberg tables are enabled by default, so the check passes without extra configuration.
