@@ -172,15 +172,31 @@ public class DeltaCommitContentCheckTest {
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN);
 
-    // A BaseException from FileIO acquisition (credential / region config) must also fail open to
-    // 500, not pass through as the caller's INVALID_ARGUMENT.
-    doThrow(new BaseException(ErrorCode.INVALID_ARGUMENT, "No S3 region configured for bucket"))
+    // A transient BaseException from FileIO acquisition (e.g. region discovery timed out) is
+    // retriable too.
+    doThrow(new BaseException(ErrorCode.INTERNAL, "Transient failure resolving the region"))
         .when(fileOperations)
         .getFileIO(any());
     assertThatThrownBy(() -> requirePublishedCommitFiles("tbl_published", 1L, 2L))
         .isInstanceOf(BaseException.class)
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN);
+
+    // A permanent one (e.g. the bucket's region cannot be resolved) passes through unchanged, so
+    // the coordinator does not retry a backfill that can never be verified.
+    for (ErrorCode permanent :
+        List.of(
+            ErrorCode.FAILED_PRECONDITION,
+            ErrorCode.PERMISSION_DENIED,
+            ErrorCode.INVALID_ARGUMENT)) {
+      doThrow(new BaseException(permanent, "permanent FileIO failure"))
+          .when(fileOperations)
+          .getFileIO(any());
+      assertThatThrownBy(() -> requirePublishedCommitFiles("tbl_published", 1L, 2L))
+          .isInstanceOf(BaseException.class)
+          .extracting(e -> ((BaseException) e).getErrorCode())
+          .isEqualTo(permanent);
+    }
   }
 
   @Test

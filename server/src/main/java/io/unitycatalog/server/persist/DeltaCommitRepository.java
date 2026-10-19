@@ -34,11 +34,13 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -144,6 +146,14 @@ public class DeltaCommitRepository {
 
   /** Chunk size for the streamed commit-file content comparison in {@link #hasSameFileContent}. */
   private static final int CONTENT_COMPARE_BUFFER_BYTES = 8192;
+
+  /**
+   * {@link BaseException} codes from FileIO acquisition that retrying cannot fix (for example, an
+   * S3 bucket whose region cannot be resolved); see {@link #findMissingPublishedCommitFile}.
+   */
+  private static final Set<ErrorCode> PERMANENT_FILE_IO_ERRORS =
+      EnumSet.of(
+          ErrorCode.FAILED_PRECONDITION, ErrorCode.PERMISSION_DENIED, ErrorCode.INVALID_ARGUMENT);
 
   private final SessionFactory sessionFactory;
   private final ServerProperties serverProperties;
@@ -319,15 +329,22 @@ public class DeltaCommitRepository {
   }
 
   /**
-   * Runs {@code attempt}. When it needs published commit files checked, its transaction has already
-   * rolled back; this HEADs that range with no table lock held, then runs {@code attempt} once more
-   * so it can purge. New commits only append, and backfill only deletes downward, so the HEADed
-   * range still covers whatever the retry purges.
+   * Runs {@code attempt}, and when it asks for published commit files to be checked, HEADs them
+   * with no table lock held:
    *
-   * <p>A missing file is not yet the caller's error: with the lock released, another request may
-   * have backfilled the same range and log cleanup removed the file since. So the database is read
-   * again first. If it no longer needs this range, the attempt goes through as is; otherwise only
-   * what it still needs is HEADed, and a file missing from that is the 400.
+   * <ol>
+   *   <li>Run {@code attempt}. If it needs no check, return its result.
+   *   <li>HEAD the range it asked for. If every file is present, run {@code attempt} with {@code
+   *       filesChecked} set so it can purge.
+   *   <li>Otherwise read the database again by running {@code attempt} unchecked: another request
+   *       may have backfilled the range and log cleanup removed the file. If it no longer needs a
+   *       check, return its result. Else HEAD only what it still needs, reject a missing file with
+   *       {@code INVALID_ARGUMENT}, and run {@code attempt} with {@code filesChecked} set.
+   * </ol>
+   *
+   * <p>So {@code attempt} runs at most three times and a range is HEADed at most twice. New commits
+   * only append and backfill only deletes downward, so a HEADed range still covers whatever the
+   * final attempt purges.
    */
   <T> T withPublishedCommitVerification(Function<Boolean, T> attempt) {
     BackfillVerificationRequiredException required;
@@ -860,8 +877,8 @@ public class DeltaCommitRepository {
    * must not be re-checked).
    *
    * <p>Called before any commit row is written, while the table lock is held. The thrown exception
-   * rolls that transaction back so the HEAD in {@link #requirePublishedCommitFiles} runs with no
-   * lock and no open transaction.
+   * rolls that transaction back so {@link #withPublishedCommitVerification} can HEAD the range with
+   * no lock and no open transaction.
    */
   private static void ensurePublishedRangeVerified(
       TableInfoDAO tableInfoDAO,
@@ -889,10 +906,7 @@ public class DeltaCommitRepository {
    * <p>Called outside the commit transaction, after {@link BackfillVerificationRequiredException}
    * has released the table lock. A definitively absent file means the client reported a backfill
    * that did not complete: {@code INVALID_ARGUMENT} (400), since retrying cannot help until the
-   * file is published. FileIO acquisition, HEAD, and close failures (including {@link
-   * BaseException}s from credential vending) leave existence undetermined and must not be charged
-   * to the caller as a bad request: {@code COMMIT_STATE_UNKNOWN} (500, retriable), matching {@link
-   * #verifyContentReplayOrThrowConflict}. The commit and the purge run only after this returns.
+   * file is published. Storage failures follow {@link #findMissingPublishedCommitFile}.
    */
   static void requirePublishedCommitFiles(
       FileOperations fileOperations,
@@ -913,8 +927,13 @@ public class DeltaCommitRepository {
 
   /**
    * The first published {@code _delta_log/<version>.json} in [{@code fromVersion}, {@code
-   * toVersion}] that does not exist, if any. Storage failures throw {@code COMMIT_STATE_UNKNOWN};
-   * see {@link #requirePublishedCommitFiles}.
+   * toVersion}] that does not exist, if any.
+   *
+   * <p>A {@link BaseException} with a permanent code ({@code FAILED_PRECONDITION}, {@code
+   * PERMISSION_DENIED}, {@code INVALID_ARGUMENT}) from FileIO acquisition, e.g. an unresolvable S3
+   * bucket region, passes through unchanged: retrying cannot help, and nothing has been persisted.
+   * Any other acquisition, HEAD, or close failure leaves existence undetermined and becomes {@code
+   * COMMIT_STATE_UNKNOWN} (500, retriable), matching {@link #verifyContentReplayOrThrowConflict}.
    */
   private static Optional<String> findMissingPublishedCommitFile(
       FileOperations fileOperations,
@@ -924,9 +943,9 @@ public class DeltaCommitRepository {
     if (fromVersion > toVersion) {
       return Optional.empty();
     }
-    // Record a miss inside the FileIO block and return it after, so credential vending, HEAD, and
-    // close failures (which also throw BaseException) are not passed through as a client 400.
-    // v == toVersion is an explicit stop so v++ cannot overflow at MAX_VALUE.
+    // Record a miss inside the FileIO block and return it after, so it is never confused with a
+    // storage failure caught below. v == toVersion is an explicit stop so v++ cannot overflow at
+    // MAX_VALUE.
     String missingPath = null;
     try (FileIO fileIO = fileOperations.getFileIO(tableLocation)) {
       for (long v = fromVersion; ; v++) {
@@ -940,6 +959,9 @@ public class DeltaCommitRepository {
         }
       }
     } catch (Exception e) {
+      if (e instanceof BaseException be && PERMANENT_FILE_IO_ERRORS.contains(be.getErrorCode())) {
+        throw be;
+      }
       throw new BaseException(
           ErrorCode.COMMIT_STATE_UNKNOWN,
           "Could not verify the published commit files under "

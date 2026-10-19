@@ -668,6 +668,33 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   }
 
   @Test
+  public void testCommitWithBackfillRejectsMissingIntermediatePublishedFile() throws Exception {
+    // Commit v1, v2, v3. Publish only v1 and v3 -- leave v2's published file missing.
+    for (long i = 1; i <= 3; i++) {
+      deltaCommitsApi.commit(
+          createCommitObject(tableInfo.getTableId(), i, tableInfo.getStorageLocation()));
+    }
+    writePublishedCommitFiles(1L, 1L);
+    writePublishedCommitFiles(3L, 3L);
+
+    // add-commit(v4) folding in a backfill through v3 is rejected as a whole: v4 is not persisted
+    // and nothing is purged.
+    DeltaCommit commit4 =
+        createCommitObject(tableInfo.getTableId(), 4L, tableInfo.getStorageLocation())
+            .latestBackfilledVersion(3L);
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit4),
+        ErrorCode.INVALID_ARGUMENT,
+        "published commit file is missing");
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 3, /* expectedCommits= */ 3, 2, 1);
+
+    // Once the gap is filled, resending the same request commits v4 and purges through v3.
+    writePublishedCommitFiles(2L, 2L);
+    deltaCommitsApi.commit(commit4);
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 4, /* expectedCommits= */ 4);
+  }
+
+  @Test
   public void testCommitLimit() throws ApiException, IOException {
     // MAX_NUM_COMMITS_PER_TABLE is 10, so we'll try to add 10 commits
     // First add 10 commits - should succeed
