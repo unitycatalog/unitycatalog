@@ -132,6 +132,14 @@ auth:
   #
   allowedIssuers: https://accounts.google.com
 
+  # -- (string) Comma-separated list of exact JWKS URLs allowed on other origins
+  # @default -- https://www.googleapis.com/oauth2/v3/certs
+  # @raw
+  #
+  # Match each provider's discovery URL, including any explicit port. Wildcards are not supported.
+  #
+  allowedJwksUris: https://www.googleapis.com/oauth2/v3/certs
+
   # -- (string) Comma-separated list of expected JWT audience values
   # @default -- not set
   # @raw

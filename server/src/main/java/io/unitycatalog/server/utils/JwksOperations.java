@@ -34,6 +34,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
 import lombok.SneakyThrows;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -42,18 +43,20 @@ import org.slf4j.LoggerFactory;
 /** Loads signing keys from trusted identity providers and reuses providers across requests. */
 public class JwksOperations {
 
-  private final WebClient webClient =
-      WebClient.builder()
-          .followRedirects(RedirectConfig.disabled())
-          .responseTimeoutMode(ResponseTimeoutMode.FROM_START)
-          .responseTimeout(Duration.ofSeconds(5))
-          .maxResponseLength(1024 * 1024)
-          .build();
+  private static final Duration RESPONSE_TIMEOUT = Duration.ofSeconds(5);
+  private static final int MAX_RESPONSE_LENGTH = 1024 * 1024;
+  private static final int MAX_PROVIDERS = 100;
+  private static final int MAX_CACHED_KEYS = 100;
+  private static final Duration CACHE_TTL = Duration.ofHours(1);
+  private static final Duration DISCOVERY_FAILURE_TTL = Duration.ofSeconds(30);
+  private static final int MAX_KEY_MISSES_PER_MINUTE = 10;
+
+  private final WebClient webClient;
   private static final ObjectMapper mapper = new ObjectMapper();
   private final SecurityContext securityContext;
   private final Set<URI> allowedJwksUris;
   private final Cache<String, JwkProvider> providers;
-  private final Cache<String, OAuthInvalidRequestException> discoveryFailures;
+  private final Cache<String, DiscoveryFailure> discoveryFailures;
 
   private static final Logger LOGGER = LoggerFactory.getLogger(JwksOperations.class);
   private static final int MAX_LOGGED_BODY_LENGTH = 500;
@@ -67,25 +70,37 @@ public class JwksOperations {
    * @param allowedJwksUris exact URLs permitted in addition to the issuer's own origin
    */
   public JwksOperations(SecurityContext securityContext, List<String> allowedJwksUris) {
-    this(securityContext, allowedJwksUris, Ticker.systemTicker());
+    this(securityContext, allowedJwksUris, Ticker.systemTicker(), RESPONSE_TIMEOUT);
   }
 
-  JwksOperations(SecurityContext securityContext, List<String> allowedJwksUris, Ticker ticker) {
+  JwksOperations(
+      SecurityContext securityContext,
+      List<String> allowedJwksUris,
+      Ticker ticker,
+      Duration responseTimeout) {
     this.securityContext = securityContext;
+    this.webClient =
+        WebClient.builder()
+            .followRedirects(RedirectConfig.disabled())
+            .responseTimeoutMode(ResponseTimeoutMode.FROM_START)
+            .responseTimeout(responseTimeout)
+            .maxResponseLength(MAX_RESPONSE_LENGTH)
+            .build();
     this.allowedJwksUris =
-        Set.copyOf(allowedJwksUris.stream().map(JwksOperations::httpUri).toList());
+        Set.copyOf(allowedJwksUris.stream().map(JwksOperations::configuredJwksUri).toList());
     // Bound wildcard-issuer cardinality and the lifetime of both discovery metadata and keys.
+    // Run cache maintenance inline so these small caches do not use the common pool.
     this.providers =
         Caffeine.newBuilder()
-            .maximumSize(100)
-            .expireAfterWrite(Duration.ofHours(1))
+            .maximumSize(MAX_PROVIDERS)
+            .expireAfterWrite(CACHE_TTL)
             .ticker(ticker)
             .executor(Runnable::run)
             .build();
     this.discoveryFailures =
         Caffeine.newBuilder()
-            .maximumSize(100)
-            .expireAfterWrite(Duration.ofSeconds(30))
+            .maximumSize(MAX_PROVIDERS)
+            .expireAfterWrite(DISCOVERY_FAILURE_TTL)
             .ticker(ticker)
             .executor(Runnable::run)
             .build();
@@ -154,42 +169,33 @@ public class JwksOperations {
       Path certsFile = securityContext.getCertsFile();
       return new JwkProviderBuilder(certsFile.toUri().toURL()).cached(false).build();
     }
+    // Share discovery for each issuer. A slow load can also delay issuers in the same hash bin.
     return providers.get(issuer, this::fetchJwkProvider);
   }
 
-  @SneakyThrows
   private JwkProvider fetchJwkProvider(String issuer) {
-    OAuthInvalidRequestException failure = discoveryFailures.getIfPresent(issuer);
+    DiscoveryFailure failure = discoveryFailures.getIfPresent(issuer);
     if (failure != null) {
-      throw failure;
+      throw new OAuthInvalidRequestException(failure.errorCode(), failure.message());
     }
+    String issuerUrl = issuer.contains("://") ? issuer : "https://" + issuer;
+    String wellKnownConfigUrl = issuerUrl;
+    if (!wellKnownConfigUrl.endsWith("/")) {
+      wellKnownConfigUrl += "/";
+    }
+    var path = wellKnownConfigUrl + ".well-known/openid-configuration";
     try {
       // Get the JWKS from the OIDC well-known location described here
       // https://openid.net/specs/openid-connect-discovery-1_0-21.html#ProviderConfig
-
-      String issuerUrl = issuer.contains("://") ? issuer : "https://" + issuer;
 
       URI issuerUri = httpUri(issuerUrl);
       if (issuerUri.getRawQuery() != null) {
         throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "Invalid issuer URL");
       }
 
-      String wellKnownConfigUrl = issuerUrl;
-
-      if (!wellKnownConfigUrl.endsWith("/")) {
-        wellKnownConfigUrl += "/";
-      }
-
-      var path = wellKnownConfigUrl + ".well-known/openid-configuration";
       LOGGER.debug("path: {}", path);
 
-      AggregatedHttpResponse httpResponse;
-      try {
-        httpResponse = webClient.get(path).aggregate().join();
-      } catch (CompletionException e) {
-        throw new OAuthInvalidRequestException(
-            ErrorCode.INTERNAL, "Could not get issuer configuration from " + path, e);
-      }
+      AggregatedHttpResponse httpResponse = webClient.get(path).aggregate().join();
       String response = httpResponse.contentUtf8();
 
       // The body is only logged, not returned: callers of token exchange are not yet
@@ -245,15 +251,22 @@ public class JwksOperations {
 
       // Keep the key cache outside the rate limiter so normal logins do not use its budget.
       return new JwkProviderBuilder(jwksUri.toURL())
-          .cached(100, Duration.ofHours(1))
+          .cached(MAX_CACHED_KEYS, CACHE_TTL)
+          .rateLimited(MAX_KEY_MISSES_PER_MINUTE, 1, TimeUnit.MINUTES)
           .httpClient(this::fetchSigningKeys)
           .build();
     } catch (OAuthInvalidRequestException e) {
       // Failed loads also need a cooldown; the provider cache only stores successes.
-      discoveryFailures.put(issuer, e);
+      discoveryFailures.put(issuer, new DiscoveryFailure(e.getErrorCode(), e.getMessage()));
       throw e;
+    } catch (Exception e) {
+      String message = "Could not get issuer configuration from " + path;
+      discoveryFailures.put(issuer, new DiscoveryFailure(ErrorCode.INTERNAL, message));
+      throw new OAuthInvalidRequestException(ErrorCode.INTERNAL, message, e);
     }
   }
+
+  private record DiscoveryFailure(ErrorCode errorCode, String message) {}
 
   private JwksHttpResponse fetchSigningKeys(URL url) throws IOException {
     try {
@@ -284,10 +297,25 @@ public class JwksOperations {
         issuerUri.getScheme().equalsIgnoreCase("https")
             && !jwksUri.getScheme().equalsIgnoreCase("https");
     if (isDowngrade || (!isSameOrigin && !allowedJwksUris.contains(jwksUri))) {
+      LOGGER.warn(
+          "Rejected JWKS URI '{}': HTTPS issuers require HTTPS keys; other origins must be listed"
+              + " in {}",
+          jwksUri,
+          ServerProperties.Property.ALLOWED_JWKS_URIS.getKey());
       throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "JWKS URI is not allowed");
     }
 
     return jwksUri;
+  }
+
+  private static URI configuredJwksUri(String value) {
+    try {
+      return httpUri(value);
+    } catch (OAuthInvalidRequestException e) {
+      throw new IllegalArgumentException(
+          "Invalid " + ServerProperties.Property.ALLOWED_JWKS_URIS.getKey() + " entry: " + value,
+          e);
+    }
   }
 
   /** Rejects URL components that can change the destination or are not sent to the provider. */

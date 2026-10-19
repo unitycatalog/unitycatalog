@@ -14,6 +14,7 @@ server.redirect-port={{ .Values.auth.redirectPort }}
 server.cookie-timeout={{ .Values.auth.cookieTimeout }}
 server.access-token-timeout={{ .Values.auth.accessTokenTimeout }}
 server.allowed-issuers={{ .Values.auth.allowedIssuers }}
+server.allowed-jwks-uris={{ .Values.auth.allowedJwksUris }}
 server.audiences={{ .Values.auth.audiences }}
 {{- end }}
 

@@ -2,6 +2,7 @@ package io.unitycatalog.server.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import com.auth0.jwk.RateLimitReachedException;
 import com.auth0.jwt.JWT;
@@ -60,7 +61,7 @@ class JwksOperationsTest {
   private final AtomicLong elapsedNanos = new AtomicLong();
 
   private final JwksOperations jwksOperations =
-      new JwksOperations(null, List.of(), elapsedNanos::get);
+      new JwksOperations(null, List.of(), elapsedNanos::get, Duration.ofSeconds(1));
 
   @BeforeAll
   static void createSigningKeys() throws Exception {
@@ -246,6 +247,10 @@ class JwksOperationsTest {
             () -> jwksOperations.verifierForIssuerAndKey(issuer, "missing-after-limit", "RS256"))
         .isInstanceOf(OAuthInvalidRequestException.class)
         .hasCauseInstanceOf(RateLimitReachedException.class);
+    respondWithKey("key-2", rotatedSigningKey);
+    assertThatThrownBy(() -> jwksOperations.verifierForIssuerAndKey(issuer, "key-2", "RS256"))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasCauseInstanceOf(RateLimitReachedException.class);
     jwksOperations
         .verifierForIssuerAndKey(issuer, "key-1", "RS256")
         .verify(tokenForKey("key-1", signingKey));
@@ -295,15 +300,18 @@ class JwksOperationsTest {
   void loadJwkProvider_delaysRetriesAfterDiscoveryFailure(
       String body, ErrorCode errorCode, String message) {
     respondWith(200, "application/json", body.formatted(issuer));
-    assertThatThrownBy(() -> jwksOperations.loadJwkProvider(issuer))
-        .isInstanceOf(OAuthInvalidRequestException.class)
+    OAuthInvalidRequestException firstFailure =
+        catchThrowableOfType(
+            () -> jwksOperations.loadJwkProvider(issuer), OAuthInvalidRequestException.class);
+    assertThat(firstFailure)
         .hasMessageContaining(message)
-        .extracting(e -> ((BaseException) e).getErrorCode())
+        .extracting(BaseException::getErrorCode)
         .isEqualTo(errorCode);
     respondWithDiscovery(issuer + "/jwks");
     elapsedNanos.set(Duration.ofSeconds(30).minusNanos(1).toNanos());
     assertThatThrownBy(() -> jwksOperations.loadJwkProvider(issuer))
         .isInstanceOf(OAuthInvalidRequestException.class)
+        .isNotSameAs(firstFailure)
         .hasMessageContaining(message)
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(errorCode);
@@ -334,6 +342,7 @@ class JwksOperationsTest {
             "https://other.example.com/jwks",
             "http://accounts.google.com/jwks",
             "http://keys.example.com/jwks",
+            "https://www.googleapis.com:443/oauth2/v3/certs",
             "https://www.googleapis.com/other")) {
       assertThatThrownBy(() -> operations.jwksUriForIssuer(google, rejected))
           .isInstanceOf(OAuthInvalidRequestException.class)
@@ -367,8 +376,8 @@ class JwksOperationsTest {
           .extracting(e -> ((BaseException) e).getErrorCode())
           .isEqualTo(ErrorCode.ABORTED);
       assertThatThrownBy(() -> new JwksOperations(null, List.of(keysUrl)))
-          .isInstanceOf(OAuthInvalidRequestException.class)
-          .hasMessage("Invalid identity provider URL");
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("Invalid server.allowed-jwks-uris entry: " + keysUrl);
     }
   }
 
@@ -455,6 +464,18 @@ class JwksOperationsTest {
         .hasRootCauseInstanceOf(ResponseTimeoutException.class)
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.INTERNAL);
+    if (isDiscovery) {
+      assertThatThrownBy(() -> jwksOperations.loadJwkProvider(issuer))
+          .isInstanceOf(OAuthInvalidRequestException.class)
+          .hasMessage(
+              "Could not get issuer configuration from "
+                  + issuer
+                  + "/.well-known/openid-configuration")
+          .hasNoCause()
+          .extracting(e -> ((BaseException) e).getErrorCode())
+          .isEqualTo(ErrorCode.INTERNAL);
+      assertThat(discoveryRequests).hasValue(1);
+    }
   }
 
   @Test
