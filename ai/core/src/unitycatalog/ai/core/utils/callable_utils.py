@@ -694,6 +694,11 @@ $$;
     return sql_body
 
 
+def _base_type_name(sql_type: str) -> str:
+    """Returns the base type name, e.g. DECIMAL for DECIMAL(38, 18) and ARRAY for ARRAY<LONG>."""
+    return re.split(r"[<( ]", sql_type, maxsplit=1)[0]
+
+
 def extract_function_metadata(func: Callable[..., Any]) -> FunctionMetadata:
     """
     Extracts metadata from a Python function necessary for SQL function generation.
@@ -715,7 +720,7 @@ def extract_function_metadata(func: Callable[..., Any]) -> FunctionMetadata:
 
     sql_return_type = validate_return_type(func_name, type_hints)
 
-    base_return_type_name = re.split(r"[<( ]", sql_return_type, maxsplit=1)[0]
+    base_return_type_name = _base_type_name(sql_return_type)
 
     docstring = inspect.getdoc(func)
     if not docstring:
@@ -752,7 +757,7 @@ def extract_function_metadata(func: Callable[..., Any]) -> FunctionMetadata:
             error_message = generate_type_hint_error_message(param_name, param_hint, e)
             raise ValueError(error_message) from e
 
-        base_type_name = re.split(r"[<( ]", sql_type, maxsplit=1)[0]
+        base_type_name = _base_type_name(sql_type)
 
         param_comment = docstring_info.params.get(param_name)
         if param_comment:
