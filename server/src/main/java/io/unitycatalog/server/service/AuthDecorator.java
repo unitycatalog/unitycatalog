@@ -90,9 +90,8 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     try {
       user = userRepository.getUserByEmail(subject);
     } catch (BaseException failure) {
-      // A missing user is a denial. Pool exhaustion and other database failures are BaseException
-      // INTERNAL from TransactionManager; mapping those to PERMISSION_DENIED reports a 403 for an
-      // outage.
+      // A missing user is a denial. Anything other than NOT_FOUND is a server failure, not a
+      // denial; let it propagate.
       if (failure.getErrorCode() != ErrorCode.NOT_FOUND) {
         throw failure;
       }

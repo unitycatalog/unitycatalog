@@ -3,8 +3,11 @@ package io.unitycatalog.server;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.linecorp.armeria.client.RequestOptions;
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
+import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.util.BlockingTaskExecutor;
@@ -17,8 +20,10 @@ import java.net.ServerSocket;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -126,6 +131,82 @@ class EventLoopStallTest {
       stopping.join();
 
       assertThat(blockingTaskExecutor.submit(() -> "still active").get()).isEqualTo("still active");
+    } finally {
+      release.countDown();
+      try {
+        server.stop().join();
+      } finally {
+        blockingTaskExecutor.shutdown();
+      }
+    }
+  }
+
+  @Test
+  void requestCancelledWhileQueuedDoesNotRunAuthOrHandler() throws Exception {
+    CountDownLatch entered = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    CountDownLatch fastEntered = new CountDownLatch(1);
+    AtomicInteger fastAuthCalls = new AtomicInteger();
+
+    DecoratingHttpServiceFunction blockingAuth =
+        (delegate, ctx, req) -> {
+          if (req.path().endsWith("/hold")) {
+            entered.countDown();
+            release.await();
+          } else {
+            fastAuthCalls.incrementAndGet();
+          }
+          return delegate.serve(ctx, req);
+        };
+    DecoratingHttpServiceFunction passThrough = (delegate, ctx, req) -> delegate.serve(ctx, req);
+
+    // One thread, held by the first request, so the second waits in the executor queue.
+    BlockingTaskExecutor blockingTaskExecutor =
+        BlockingTaskExecutor.builder().numThreads(1).build();
+    ArmeriaServerBuilder builder =
+        new ArmeriaServerBuilder(
+            findAvailablePort(),
+            "/api/",
+            "/control/",
+            new ServerProperties(new Properties()),
+            blockingTaskExecutor);
+    builder.withSecurityDecorators(passThrough, blockingAuth);
+    builder.annotate("probe", new Probe(fastEntered));
+
+    Server server = builder.build();
+    server.start().join();
+    try {
+      // One client, so every request is a stream on the same connection and the server reads
+      // their frames in order.
+      WebClient client =
+          WebClient.builder("h2c://127.0.0.1:" + server.activeLocalPort())
+              .responseTimeoutMillis(5_000)
+              .build();
+      CompletableFuture<AggregatedHttpResponse> held = client.get("/api/probe/hold").aggregate();
+      assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+
+      // The client gives up while the request is still queued and resets the stream, which
+      // cancels the request on the server.
+      CompletableFuture<AggregatedHttpResponse> queued =
+          client
+              .execute(
+                  HttpRequest.of(HttpMethod.GET, "/api/probe/fast"),
+                  RequestOptions.builder().responseTimeoutMillis(300).build())
+              .aggregate();
+      assertThatThrownBy(() -> queued.get(5, TimeUnit.SECONDS))
+          .isInstanceOf(ExecutionException.class);
+      // Answered on the event loop without the blocking pool, so once it returns the server has
+      // processed the reset sent before it.
+      assertThat(client.get("/unrouted").aggregate().get(5, TimeUnit.SECONDS).status())
+          .isEqualTo(HttpStatus.NOT_FOUND);
+
+      release.countDown();
+      assertThat(held.get(5, TimeUnit.SECONDS).status()).isEqualTo(HttpStatus.OK);
+      // Runs after the queued task on the single thread, so that task has finished.
+      assertThat(blockingTaskExecutor.submit(() -> "drained").get(5, TimeUnit.SECONDS))
+          .isEqualTo("drained");
+      assertThat(fastAuthCalls).hasValue(0);
+      assertThat(fastEntered.getCount()).isEqualTo(1);
     } finally {
       release.countDown();
       try {

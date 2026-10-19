@@ -612,7 +612,10 @@ public class ServerProperties {
     return Duration.parse(get(Property.READINESS_DB_TIMEOUT));
   }
 
-  /** How long stop and close wait for in-flight HTTP and blocking work. Default 5 seconds. */
+  /**
+   * Shared shutdown budget: bounds the graceful HTTP drain in stop, and close's blocking-executor
+   * drain gets what is left. Default 5 seconds.
+   */
   public Duration getShutdownTimeout() {
     return Duration.parse(get(Property.SHUTDOWN_TIMEOUT));
   }

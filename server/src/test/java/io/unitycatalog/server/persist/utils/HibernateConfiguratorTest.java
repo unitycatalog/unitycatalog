@@ -16,7 +16,6 @@ class HibernateConfiguratorTest {
     properties.setProperty("hibernate.hikari.poolName", "unity-catalog-test");
 
     try (HibernateConfigurator configurator = new HibernateConfigurator(properties)) {
-      assertThat(configurator.getConnectionPoolSize()).isEqualTo(3);
       assertThat(configurator.getDataSource().getMaximumPoolSize()).isEqualTo(3);
       assertThat(configurator.getDataSource().getMinimumIdle()).isEqualTo(1);
       assertThat(configurator.getDataSource().getPoolName()).isEqualTo("unity-catalog-test");
@@ -32,14 +31,14 @@ class HibernateConfiguratorTest {
     properties.setProperty("hibernate.connection.pool_size", "4");
 
     try (HibernateConfigurator configurator = new HibernateConfigurator(properties)) {
-      assertThat(configurator.getConnectionPoolSize()).isEqualTo(4);
+      assertThat(configurator.getDataSource().getMaximumPoolSize()).isEqualTo(4);
     }
   }
 
   @Test
   void connectionPoolSizeDefaultsToTwenty() {
     try (HibernateConfigurator configurator = new HibernateConfigurator(h2Properties())) {
-      assertThat(configurator.getConnectionPoolSize()).isEqualTo(20);
+      assertThat(configurator.getDataSource().getMaximumPoolSize()).isEqualTo(20);
     }
   }
 

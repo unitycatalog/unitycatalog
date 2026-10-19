@@ -309,6 +309,12 @@ public class ArmeriaServerBuilder {
       ctx.blockingTaskExecutor()
           .execute(
               () -> {
+                // A request that timed out while queued has already been answered; running auth
+                // and the handler now could commit work the client was told failed.
+                if (ctx.isCancelled()) {
+                  response.completeExceptionally(ctx.cancellationCause());
+                  return;
+                }
                 try {
                   response.complete(blocking.serve(delegate, ctx, req));
                 } catch (Throwable failure) {
