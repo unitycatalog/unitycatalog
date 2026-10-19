@@ -189,7 +189,7 @@ server:
         createPVC: true
 
         # -- (array) Access modes for the file database volume
-        accessModes: [ "ReadWriteOnce" ]
+        accessModes: ["ReadWriteOnce"]
 
         # -- (string) Size of the file database volume
         # @raw
@@ -207,81 +207,81 @@ server:
         storageClassName:
 
     postgresqlConfig:
-        # -- (string) PostgreSQL database host (Required)
-        # @default -- not set
+      # -- (string) PostgreSQL database host (Required)
+      # @default -- not set
+      # @raw
+      #
+      # Example: `mydb.123456789012.us-east-1.rds.amazonaws.com`
+      #
+      host:
+
+      # -- (int) PostgreSQL database port
+      # @default -- 5432
+      port: 5432
+
+      # -- (string) PostgreSQL database name
+      # @default -- ucdb
+      dbName: ucdb
+
+      # -- (string) PostgreSQL username
+      # @default -- postgres
+      username: postgres
+
+      # -- (string) PostgreSQL user password secret name
+      # @default -- not set
+      # @raw
+      #
+      # If not set, connection will be made without a password
+      #
+      passwordSecretName:
+
+      # -- (string) PostgreSQL user password secret key
+      # @default -- password
+      passwordSecretKey: password
+
+      ssl:
+        enabled: false
+        # -- (string) PostgreSQL SSL mode
+        # @default -- verify-full
         # @raw
         #
-        # Example: `mydb.123456789012.us-east-1.rds.amazonaws.com`
+        # [Documentation](https://jdbc.postgresql.org/documentation/ssl/)
         #
-        host:
+        mode: verify-full
 
-        # -- (int) PostgreSQL database port
-        # @default -- 5432
-        port: 5432
-
-        # -- (string) PostgreSQL database name
-        # @default -- ucdb
-        dbName: ucdb
-
-        # -- (string) PostgreSQL username
-        # @default -- postgres
-        username: postgres
-
-        # -- (string) PostgreSQL user password secret name
-        # @default -- not set
-        # @raw
-        #
-        # If not set, connection will be made without a password
-        #
-        passwordSecretName:
-
-        # -- (string) PostgreSQL user password secret key
-        # @default -- password
-        passwordSecretKey: password
-
-        ssl:
-          enabled: false
-          # -- (string) PostgreSQL SSL mode
-          # @default -- verify-full
-          # @raw
-          #
-          # [Documentation](https://jdbc.postgresql.org/documentation/ssl/)
-          #
-          mode: verify-full
-
-          # -- (string) PostgreSQL SSL root certificate
-          # @default -- public root CAs
-          # @raw
-          #
-          # Example:
-          # ```yaml
-          # rootCert: |
-          #   -----BEGIN CERTIFICATE-----
-          #   ...certificate data...
-          #   -----END CERTIFICATE-----
-          # ```
-          #
-          rootCert:
-
-          # -- (string) PostgreSQL SSL root certificate config map name
-          # @default -- not set
-          rootCertConfigMapName:
-
-          # -- (string) PostgreSQL SSL root certificate config map key
-          # @default -- ca.crt
-          rootCertConfigMapKey: ca.crt
-
-        # -- (object) Postgres params
-        # @default -- not set
+        # -- (string) PostgreSQL SSL root certificate
+        # @default -- public root CAs
         # @raw
         #
         # Example:
         # ```yaml
-        # params:
-        #   sslfactory: my.custom.SSLFactory
+        # rootCert: |
+        #   -----BEGIN CERTIFICATE-----
+        #   ...certificate data...
+        #   -----END CERTIFICATE-----
         # ```
         #
-        extraParams:
+        rootCert:
+
+        # -- (string) PostgreSQL SSL root certificate config map name
+        # @default -- not set
+        rootCertConfigMapName:
+
+        # -- (string) PostgreSQL SSL root certificate config map key
+        # @default -- ca.crt
+        rootCertConfigMapKey: ca.crt
+
+      # -- (object) Postgres params
+      # @default -- not set
+      # @raw
+      #
+      # Example:
+      # ```yaml
+      # params:
+      #   sslfactory: my.custom.SSLFactory
+      # ```
+      #
+      extraParams:
 
     # -- (string) Override Hibernate configuration for the server
     # @default -- not set
