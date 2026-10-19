@@ -113,7 +113,7 @@ def test_non_callable_function():
         run_in_sandbox_subprocess(12345, {})
 
 
-def test_runner_script_skips_limits_without_resource_module(monkeypatch):
+def test_runner_script_skips_limits_without_resource_module(monkeypatch, capsys):
     monkeypatch.setitem(sys.modules, "resource", None)
     script = _generate_runner_script(
         inspect.getsource(simple_function), cpu_time_limit=1, memory_limit=1
@@ -123,4 +123,5 @@ def test_runner_script_skips_limits_without_resource_module(monkeypatch):
     exec(script, namespace)
     namespace["_limit_resources"]()
 
+    assert capsys.readouterr().err == ""
     assert namespace["simple_function"](x=1, y=2) == 3

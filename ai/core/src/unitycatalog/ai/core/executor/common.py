@@ -59,5 +59,6 @@ IMPORT_DISALLOWED_MESSAGE_TEMPLATE = (
 SANDBOX_UNSUPPORTED_MESSAGE = (
     "The 'sandbox' execution mode runs functions in a forked subprocess, but the 'fork' start "
     "method is not available on this platform (for example, Windows). "
-    "Set execution_mode='local' in your function client to execute functions in the current process."
+    "Set execution_mode='local' in your function client to execute functions in the current "
+    "process, without sandbox restrictions."
 )
