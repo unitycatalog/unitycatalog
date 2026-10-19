@@ -1,13 +1,13 @@
-# unitycatalog
+# unitycatalog-chart
 
-![Version: 0.0.1-pre.1](https://img.shields.io/badge/Version-0.0.1--pre.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: main](https://img.shields.io/badge/AppVersion-main-informational?style=flat-square)
+![Version: 0.0.0-dev](https://img.shields.io/badge/Version-0.0.0--dev-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: main](https://img.shields.io/badge/AppVersion-main-informational?style=flat-square)
 
 This chart deploys [Unity Catalog](https://github.com/unitycatalog/unitycatalog) on a Kubernetes cluster
 using the [Helm](https://github.com/helm/helm) package manager.
 
 ## Prerequisites
 - Kubernetes 1.20+ cluster
-- Helm 3.1+
+- Helm 3.8+
 
 ## Features
 - Deploys Unity Catalog server and UI
@@ -16,11 +16,14 @@ using the [Helm](https://github.com/helm/helm) package manager.
 - Customizable configuration for server and UI using Helm values
 
 ## Installing the Chart
-To install the chart with the release name `unitycatalog`:
+Starting with 0.8.0, each Unity Catalog release publishes this chart to Docker Hub, with the same version as the release.
+To install version 0.8.0 with the release name `unitycatalog`:
 
 ```sh
-helm install unitycatalog .
+helm install unitycatalog oci://registry-1.docker.io/unitycatalog/unitycatalog-chart --version 0.8.0
 ```
+
+Chart version X.Y.Z runs the server image `unitycatalog/unitycatalog:vX.Y.Z` and the UI image `unitycatalog/unitycatalog-ui:vX.Y.Z`.
 
 ## Uninstalling the Chart
 To uninstall the `unitycatalog` chart:
@@ -29,8 +32,8 @@ To uninstall the `unitycatalog` chart:
 helm uninstall unitycatalog
 ```
 
-The command removes all the Kubernetes components associated with the chart and deletes the release.
-If persistent volumes are used, they are not deleted by default. To delete them, you need to manually delete the PVCs.
+The command deletes the release. It keeps the H2 database PersistentVolumeClaim and the token signing key Secret;
+delete both to remove the data.
 
 ## Configuration
 The following table lists the configurable parameters of the Unity Catalog chart and their default values.
@@ -406,10 +409,10 @@ not set
 			<td>server.createUsersJob.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"latest"
+"3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
 </pre>
 </td>
-			<td>Tag for the create users job image</td>
+			<td>Tag for the create users job image, pinned by digest</td>
 		</tr>
 		<tr>
 			<td>server.createUsersJob.ttlSecondsAfterFinished</td>
@@ -829,10 +832,10 @@ not set
 			<td>server.deployment.initContainer.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"latest"
+"3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
 </pre>
 </td>
-			<td>Tag for the render config container</td>
+			<td>Tag for the render config container, pinned by digest</td>
 		</tr>
 		<tr>
 			<td>server.deployment.initContainer.securityContext</td>
@@ -1400,10 +1403,10 @@ not set
 			<td>ui.deployment.initContainer.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"latest"
+"1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e"
 </pre>
 </td>
-			<td>Tag for the UI init container</td>
+			<td>Tag for the UI init container, pinned by digest</td>
 		</tr>
 		<tr>
 			<td>ui.deployment.initContainer.securityContext</td>
