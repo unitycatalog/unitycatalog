@@ -96,7 +96,8 @@ This guide outlines how to deploy the Unity Catalog server.
 #### Prerequisites
 
 - Install docker.
-- The server ships with the PostgreSQL JDBC driver.
+- The server ships with the PostgreSQL JDBC driver. If you added a PostgreSQL driver to
+  `jars/classpath` before, remove it.
 
 #### Start PostgreSQL server
 
