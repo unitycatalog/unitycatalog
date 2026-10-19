@@ -11,7 +11,7 @@ import org.apache.logging.log4j.core.util.ContextDataProvider;
 public final class RequestContextDataProvider implements ContextDataProvider {
 
   /** The key the request's ID is logged under. */
-  public static final String REQUEST_ID_KEY = "request_id";
+  private static final String REQUEST_ID_KEY = "request_id";
 
   /** One {@code builtIn} per field. Built lazily, so it can't initialize Armeria's Flags early. */
   private static final class Fields {
