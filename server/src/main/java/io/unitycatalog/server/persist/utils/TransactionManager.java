@@ -97,6 +97,11 @@ public class TransactionManager {
         } catch (RuntimeException rollbackError) {
           // On a broken connection rollback fails too; keep the original error.
           e.addSuppressed(rollbackError);
+          // A rollback signal must not report a no-op success when the rollback failed.
+          if (e instanceof TransactionRollbackException) {
+            throw new BaseException(
+                ErrorCode.INTERNAL, errorMessage + ": transaction rollback failed", e);
+          }
         }
         // A control-flow signal (e.g. an idempotent-replay short-circuit) is not an error: rethrow
         // it as-is, without error logging, so the caller can catch its specific type. The rollback
