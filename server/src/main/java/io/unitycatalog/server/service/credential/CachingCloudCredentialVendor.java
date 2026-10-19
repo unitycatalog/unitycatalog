@@ -88,7 +88,9 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
   public TemporaryCredentials vendCredential(CredentialContext context) {
     Key key = Key.of(context);
     Entry cached = entries.getIfPresent(key);
-    if (cached != null) {
+    // Check the entry's own deadline too: a renewal can overwrite the cache entry while this read
+    // is in progress, so Caffeine may judge the old credential by the new entry's deadline.
+    if (cached != null && cached.serveUntilMs() > now()) {
       return copy(cached.credential());
     }
     // Read before the call: the cloud checks the binding (for example the AWS trust policy) during
