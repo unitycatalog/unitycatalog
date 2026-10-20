@@ -58,7 +58,7 @@ This guide outlines how to deploy the Unity Catalog server.
 - Hibernate and Casbin use one HikariCP pool built from those connection properties, so total
     database connections are capped by `hibernate.hikari.maximumPoolSize` (not Hibernate's pool
     plus a separate Casbin connection). Optional pool settings use `hibernate.hikari.*` keys.
-    Autocommit defaults to false so Hibernate can roll back JDBC work. jdbc-adapter 2.7.0 still
+    Autocommit defaults to false so Hibernate can roll back JDBC work. The Casbin JDBC adapter still
     holds one pooled connection for the process lifetime; Casbin enables autocommit on that
     checkout so policy reads do not sit idle-in-transaction.
 
