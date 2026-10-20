@@ -1,10 +1,13 @@
 package io.unitycatalog.server.service.delta;
 
 import io.unitycatalog.server.delta.model.DeltaAddCommitUpdate;
+import io.unitycatalog.server.delta.model.DeltaArrayType;
 import io.unitycatalog.server.delta.model.DeltaAssertEtag;
 import io.unitycatalog.server.delta.model.DeltaAssertTableUUID;
 import io.unitycatalog.server.delta.model.DeltaCommit;
+import io.unitycatalog.server.delta.model.DeltaDataType;
 import io.unitycatalog.server.delta.model.DeltaDomainMetadataUpdates;
+import io.unitycatalog.server.delta.model.DeltaMapType;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DeltaRemoveDomainMetadataUpdate;
 import io.unitycatalog.server.delta.model.DeltaRemovePropertiesUpdate;
@@ -16,6 +19,7 @@ import io.unitycatalog.server.delta.model.DeltaSetProtocolUpdate;
 import io.unitycatalog.server.delta.model.DeltaSetSchemaUpdate;
 import io.unitycatalog.server.delta.model.DeltaSetTableCommentUpdate;
 import io.unitycatalog.server.delta.model.DeltaStructField;
+import io.unitycatalog.server.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableRequirement;
 import io.unitycatalog.server.delta.model.DeltaTableUpdate;
@@ -34,10 +38,12 @@ import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -47,6 +53,8 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.hibernate.Session;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Translates a {@link DeltaUpdateTableRequest} into in-memory mutations on a {@link TableInfoDAO}
@@ -63,6 +71,7 @@ import org.hibernate.Session;
  * loads state once and flushes the diff.
  */
 public final class DeltaUpdateTableMapper {
+  private static final Logger LOGGER = LoggerFactory.getLogger(DeltaUpdateTableMapper.class);
 
   private DeltaUpdateTableMapper() {}
 
@@ -178,6 +187,18 @@ public final class DeltaUpdateTableMapper {
     private Optional<DeltaAddCommitUpdate> addCommit = Optional.empty();
     private Optional<DeltaSetLatestBackfilledVersionUpdate> setLatestBackfilledVersion =
         Optional.empty();
+
+    /** Whether the request carries a {@code set-columns} action. */
+    public boolean hasSetSchema() {
+      return setSchema.isPresent();
+    }
+
+    /** The commit info of the {@code add-commit} action, if it carries a commit block. */
+    public Optional<DeltaCommitInfo> addCommitInfo() {
+      return addCommit
+          .map(DeltaAddCommitUpdate::getCommit)
+          .map(DeltaUpdateTableMapper::toUcCommitInfo);
+    }
 
     /**
      * True if this request carries at least one MANAGED-applicable metadata-changing action
@@ -362,7 +383,15 @@ public final class DeltaUpdateTableMapper {
       CollectedRequest collected,
       ServerProperties serverProperties) {
     CollectedUpdates c = collected.updates();
-    applySchemaAndPartitionColumns(session, dao, c.setSchema, c.setPartitionColumns);
+    // set-columns is validated against the table's stored mode, before this request's property
+    // changes apply. The mode is read only for set-columns, so a stored mode value never blocks
+    // other updates.
+    ColumnMappingMode columnMappingMode =
+        c.setSchema.isPresent()
+            ? ColumnMappingMode.parse(properties.get(TableProperties.COLUMN_MAPPING_MODE))
+            : ColumnMappingMode.NONE;
+    applySchemaAndPartitionColumns(
+        session, dao, c.setSchema, c.setPartitionColumns, columnMappingMode);
     c.setProtocol.ifPresent(u -> applySetProtocol(properties, u.getProtocol()));
     c.setProperties.ifPresent(u -> applySetProperties(properties, u.getUpdates()));
     c.removeProperties.ifPresent(u -> applyRemoveProperties(properties, u.getRemovals()));
@@ -429,12 +458,16 @@ public final class DeltaUpdateTableMapper {
    * <p>Swap semantics rely on the orphanRemoval mapping on {@link TableInfoDAO#getColumns()} to
    * clean up the old rows; the intervening flush ensures the deletes hit the DB before the inserts,
    * so the {@code (table_id, ordinal_position, name)} unique constraint doesn't trip.
+   *
+   * <p>A retained column that drops its active-mode column-mapping key is rejected via {@link
+   * #validateNoCmIdentityStripped} before the swap runs.
    */
   private static void applySchemaAndPartitionColumns(
       Session session,
       TableInfoDAO dao,
       Optional<DeltaSetSchemaUpdate> setSchema,
-      Optional<DeltaSetPartitionColumnsUpdate> setPartition) {
+      Optional<DeltaSetPartitionColumnsUpdate> setPartition,
+      ColumnMappingMode columnMappingMode) {
     if (setSchema.isEmpty() && setPartition.isEmpty()) {
       return;
     }
@@ -452,6 +485,7 @@ public final class DeltaUpdateTableMapper {
             ErrorCode.INVALID_ARGUMENT, "set-columns requires at least one column.");
       }
       ColumnUtils.validateStructType(columns, "columns");
+      validateNoCmIdentityStripped(dao, fields, columnMappingMode);
       newColumns = ColumnUtils.toColumnInfos(fields);
     } else {
       newColumns = ColumnInfoDAO.toList(dao.getColumns());
@@ -469,6 +503,7 @@ public final class DeltaUpdateTableMapper {
       partitionNames = currentPartitionColumnNames(dao);
     }
     ColumnUtils.applyPartitionColumns(newColumns, partitionNames);
+    // Build the new DAO list. Every column receives a fresh UUID.
     List<ColumnInfoDAO> newColumnDAOs = ColumnInfoDAO.fromList(newColumns);
     newColumnDAOs.forEach(
         c -> {
@@ -478,6 +513,188 @@ public final class DeltaUpdateTableMapper {
     dao.getColumns().clear();
     session.flush();
     dao.getColumns().addAll(newColumnDAOs);
+  }
+
+  // ---------------------------------------------------------------------- column-mapping guards
+
+  /**
+   * Rejects a {@code set-columns} where a column present in both the existing schema and the
+   * incoming schema (matched by logical name) has lost the ACTIVE MODE'S column-mapping identity
+   * key. Mode-specific (checks only the active mode's key -- {@code delta.columnMapping.id} for
+   * id-mode, {@code delta.columnMapping.physicalName} for name-mode) and recursive into nested
+   * struct/array/map types.
+   *
+   * <p>A column whose existing schema carries no active-mode CM key is not flagged itself, but its
+   * nested fields are still checked.
+   *
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} naming the offending columns
+   */
+  private static void validateNoCmIdentityStripped(
+      TableInfoDAO dao, List<DeltaStructField> incFields, ColumnMappingMode columnMappingMode) {
+    if (columnMappingMode == ColumnMappingMode.NONE) {
+      return; // no column-mapping key to preserve
+    }
+    String activeCmKey = columnMappingMode.metadataKey();
+    // A stored column that cannot be read has no identity to preserve.
+    List<DeltaStructField> storedFields = readableStoredFields(dao);
+    List<String> stripped = detectStrippedCmKeys(storedFields, incFields, activeCmKey, "");
+    if (!stripped.isEmpty()) {
+      stripped.sort(String::compareTo);
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "set-columns dropped column mapping metadata for column(s): "
+              + String.join(", ", stripped));
+    }
+  }
+
+  /**
+   * The table's stored columns as fields. A stored column that cannot be read (its type JSON is
+   * missing, malformed or parses to nothing) is skipped with a warning, matching how loading a
+   * table tolerates corrupt column data. A field with null metadata gets empty metadata.
+   */
+  static List<DeltaStructField> readableStoredFields(TableInfoDAO dao) {
+    List<DeltaStructField> fields = new ArrayList<>();
+    for (ColumnInfoDAO d : dao.getColumns()) {
+      try {
+        DeltaStructField f = ColumnUtils.toStructField(d.toColumnInfo());
+        if (f == null || f.getName() == null || f.getType() == null) {
+          throw new IllegalStateException("stored type parses to an incomplete field");
+        }
+        if (f.getMetadata() == null) {
+          f.setMetadata(new DeltaStructFieldMetadata());
+        }
+        fields.add(f);
+      } catch (RuntimeException e) {
+        LOGGER.warn(
+            "Skipping column {} of table {}: unreadable stored type",
+            d.getName(),
+            dao.getName(),
+            e);
+      }
+    }
+    return fields;
+  }
+
+  /**
+   * Returns the dotted paths of fields that are retained in {@code incomingFields} (by
+   * case-insensitive logical name) but have lost the {@code activeCmKey} from their metadata.
+   * Recurses into nested struct/array/map types; {@code prefix} is the path of the enclosing field
+   * ("" at top level).
+   */
+  private static List<String> detectStrippedCmKeys(
+      List<DeltaStructField> storedFields,
+      List<DeltaStructField> incomingFields,
+      String activeCmKey,
+      String prefix) {
+    Map<String, DeltaStructField> incomingByLowerName =
+        incomingFields.stream()
+            .collect(
+                Collectors.toMap(f -> f.getName().toLowerCase(Locale.ROOT), Function.identity()));
+    List<String> stripped = new ArrayList<>();
+    for (DeltaStructField stored : storedFields) {
+      DeltaStructField incoming =
+          incomingByLowerName.get(stored.getName().toLowerCase(Locale.ROOT));
+      if (incoming == null) continue; // dropped column, not a strip of an existing one
+      String path = prefix + stored.getName();
+      // Only flag fields that currently have the active CM key.
+      if (hasCmKeyInFieldTopLevel(stored, activeCmKey)
+          && !hasCmKeyInFieldTopLevel(incoming, activeCmKey)) {
+        stripped.add(path);
+      }
+      // Recurse into the retained field's type even when this field has no key of its own.
+      stripped.addAll(
+          detectStrippedCmKeysInTypes(
+              stored.getType(), incoming.getType(), activeCmKey, path + "."));
+    }
+    return stripped;
+  }
+
+  /**
+   * Nested stored fields that can be compared. A nested field with no name or type has no identity
+   * to preserve and is skipped with a warning, like an unreadable top-level stored column.
+   */
+  private static List<DeltaStructField> readableNestedFields(
+      List<DeltaStructField> fields, String prefix) {
+    List<DeltaStructField> readable = new ArrayList<>();
+    for (DeltaStructField f : fields == null ? List.<DeltaStructField>of() : fields) {
+      if (f == null || f.getName() == null || f.getType() == null) {
+        LOGGER.warn("Skipping nested stored field under '{}': missing name or type", prefix);
+      } else {
+        readable.add(f);
+      }
+    }
+    return readable;
+  }
+
+  /** Recurses into nested struct/array/map types for the CM-key-strip check. */
+  private static List<String> detectStrippedCmKeysInTypes(
+      DeltaDataType curType, DeltaDataType incType, String activeCmKey, String prefix) {
+    if (curType instanceof DeltaStructType curStruct
+        && incType instanceof DeltaStructType incStruct) {
+      return detectStrippedCmKeys(
+          readableNestedFields(curStruct.getFields(), prefix),
+          incStruct.getFields() != null ? incStruct.getFields() : List.of(),
+          activeCmKey,
+          prefix);
+    } else if (curType instanceof DeltaArrayType curArr
+        && incType instanceof DeltaArrayType incArr) {
+      return detectStrippedCmKeysInTypes(
+          curArr.getElementType(), incArr.getElementType(), activeCmKey, prefix);
+    } else if (curType instanceof DeltaMapType curMap && incType instanceof DeltaMapType incMap) {
+      List<String> result =
+          new ArrayList<>(
+              detectStrippedCmKeysInTypes(
+                  curMap.getKeyType(), incMap.getKeyType(), activeCmKey, prefix + "key."));
+      result.addAll(
+          detectStrippedCmKeysInTypes(
+              curMap.getValueType(), incMap.getValueType(), activeCmKey, prefix + "value."));
+      return result;
+    }
+    return List.of();
+  }
+
+  /** Returns {@code true} if this specific field's OWN metadata contains {@code cmKey}. */
+  private static boolean hasCmKeyInFieldTopLevel(DeltaStructField field, String cmKey) {
+    DeltaStructFieldMetadata meta = field.getMetadata();
+    return meta != null && meta.get(cmKey) != null;
+  }
+
+  /**
+   * The column-mapping mode of a table, from the {@code delta.columnMapping.mode} property. Carries
+   * the field-metadata key that identifies a column under that mode.
+   */
+  enum ColumnMappingMode {
+    NONE(null),
+    NAME(TableProperties.COLUMN_MAPPING_PHYSICAL_NAME),
+    ID(TableProperties.COLUMN_MAPPING_ID);
+
+    private final String metadataKey;
+
+    ColumnMappingMode(String metadataKey) {
+      this.metadataKey = metadataKey;
+    }
+
+    /** The field-metadata key identifying a column under this mode; {@code null} for NONE. */
+    String metadataKey() {
+      return metadataKey;
+    }
+
+    /**
+     * Parses a raw {@code delta.columnMapping.mode} value; an absent value means NONE.
+     *
+     * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} for any other unknown value
+     */
+    static ColumnMappingMode parse(String rawMode) {
+      if (rawMode == null) {
+        return NONE;
+      }
+      try {
+        return valueOf(rawMode.trim().toUpperCase(Locale.ROOT));
+      } catch (IllegalArgumentException e) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT, "Invalid column mapping mode: " + rawMode);
+      }
+    }
   }
 
   /** Names of the DAO's partition columns, ordered by partition index. */

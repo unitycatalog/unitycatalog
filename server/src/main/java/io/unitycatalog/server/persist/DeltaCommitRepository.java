@@ -358,9 +358,7 @@ public class DeltaCommitRepository {
     } else {
       DeltaCommitDAO firstCommitDAO = firstAndLastCommits.get(0);
       DeltaCommitDAO lastCommitDAO = firstAndLastCommits.get(1);
-      ValidationUtils.checkArgument(
-          firstCommitDAO.getCommitVersion() <= lastCommitDAO.getCommitVersion(),
-          "Inconsistent commit log: first commit version > last commit version.");
+      checkCommitLogConsistent(firstCommitDAO, lastCommitDAO);
       if (commit.getCommitInfo() == null) {
         // latestBackfilledVersion non-null guaranteed upstream (UC REST: validateCommit;
         // Delta update: DeltaUpdateTableMapper checkNotNull).
@@ -1003,6 +1001,45 @@ public class DeltaCommitRepository {
     query.setParameter("tableId", tableId);
     query.setParameter("commitVersion", commitVersion);
     query.executeUpdate();
+  }
+
+  /**
+   * Resolves an {@code add-commit} whose version is already taken, before the request's other
+   * updates are applied. A replay must resolve to its original outcome, and checks that depend on
+   * the table's current state would wrongly reject it, so the request is settled first. Runs the
+   * same checks as {@link #postCommitCore} for a commit with commit info: a recognized replay
+   * throws {@link CommitAlreadyAcceptedException}, a purged version throws {@link
+   * CommitContentCheckRequiredException}, and anything else at a taken version is a conflict.
+   * Returns normally when the version is free, leaving the commit path to validate it.
+   *
+   * <p>The caller must hold the table lock (see {@link RepositoryUtils#lockTableForCommit}).
+   */
+  void throwIfCommitVersionTaken(Session session, TableInfoDAO dao, DeltaCommitInfo commitInfo) {
+    serverProperties.checkManagedTableEnabled();
+    validateCommitInfo(commitInfo);
+    List<DeltaCommitDAO> firstAndLast = getFirstAndLastCommits(session, dao.getId());
+    if (firstAndLast.isEmpty()) {
+      return;
+    }
+    DeltaCommitDAO firstCommitDAO = firstAndLast.get(0);
+    DeltaCommitDAO lastCommitDAO = firstAndLast.get(1);
+    checkCommitLogConsistent(firstCommitDAO, lastCommitDAO);
+    if (commitInfo.getVersion() <= lastCommitDAO.getCommitVersion()) {
+      throw exceptionForAlreadyTakenVersion(
+          session,
+          dao,
+          commitInfo.getVersion(),
+          commitInfo.getFileName(),
+          firstCommitDAO,
+          lastCommitDAO);
+    }
+  }
+
+  private static void checkCommitLogConsistent(
+      DeltaCommitDAO firstCommitDAO, DeltaCommitDAO lastCommitDAO) {
+    ValidationUtils.checkArgument(
+        firstCommitDAO.getCommitVersion() <= lastCommitDAO.getCommitVersion(),
+        "Inconsistent commit log: first commit version > last commit version.");
   }
 
   /**
