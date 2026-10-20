@@ -219,7 +219,8 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
       assertApiException(
           () ->
               externalLocationOperations.updateExternalLocation(
-                  EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(url)),
+                  EXTERNAL_LOCATION_NAME,
+                  new UpdateExternalLocation().newName(NEW_EXTERNAL_LOCATION_NAME).url(url)),
           ErrorCode.INVALID_ARGUMENT,
           errorMessage);
       assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME))
