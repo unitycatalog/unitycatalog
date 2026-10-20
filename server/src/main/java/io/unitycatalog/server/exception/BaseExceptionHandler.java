@@ -15,7 +15,9 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Base exception handler that normalizes all exceptions to {@link BaseException} before delegating
- * to subclass-specific response formatting via {@link #createErrorResponse(BaseException)}.
+ * to subclass-specific response formatting via {@link #createErrorResponse(BaseException)}. It logs
+ * each 5xx once, with its cause; a subclass that answers with a different status overrides {@link
+ * #httpStatus}.
  */
 public abstract class BaseExceptionHandler implements ExceptionHandlerFunction {
 

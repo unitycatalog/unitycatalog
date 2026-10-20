@@ -105,10 +105,10 @@ public class TokenExchangeSubjectTokenHandler {
         return Optional.empty();
       }
       // No stack trace: the error handler logs the cause.
-      LOGGER.warn("Failed to look up user by {} {}", lookupType, key);
+      LOGGER.warn("Failed to look up user by {} {}: {}", lookupType, key, e.getMessage());
       throw e;
     } catch (RuntimeException e) {
-      LOGGER.warn("Failed to look up user by {} {}", lookupType, key);
+      LOGGER.warn("Failed to look up user by {} {}: {}", lookupType, key, e.getMessage());
       throw e;
     }
     if (user != null && user.getState() == User.StateEnum.ENABLED && isAssumablePrincipal(user)) {
