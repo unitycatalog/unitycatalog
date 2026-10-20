@@ -26,7 +26,8 @@ public enum UcMetric {
       UcMetricConstants.UC_STORAGE_CLEANUP,
       UcMetricConstants.ATTEMPTS,
       "Storage cleanup attempts for dropped managed resources that deleted the resource's files"
-          + " (success) or failed and will be retried (failure)");
+          + " (success) or failed to delete them or to save the result, and will be retried"
+          + " (failure)");
 
   private final String metricName;
   private final String description;
