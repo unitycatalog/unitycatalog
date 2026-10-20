@@ -77,6 +77,11 @@ helm upgrade --install unitycatalog oci://registry-1.docker.io/unitycatalog/unit
 
 To upgrade, read the release notes, then run `helm upgrade` with the new `--version`.
 
+If you installed the chart from a source checkout before 0.8.0, set `nameOverride: unitycatalog` in your values.
+The chart is now named `unitycatalog-chart`, which changes the resource names. The override keeps the old names, so
+the release keeps its database volume and signing key. The UI is now off by default, so also set `ui.enabled: true`
+to keep it.
+
 `helm uninstall unitycatalog --namespace unitycatalog` removes the release. It keeps the H2 database
 PersistentVolumeClaim and the token signing key Secret, and a later install with the same release name and
 namespace reuses them. Delete both to remove the data.
