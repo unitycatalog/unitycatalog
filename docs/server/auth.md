@@ -70,10 +70,12 @@ Create UC users with a human-readable `email` for grants and set `externalId` to
 #### Browser cookie authentication
 
 The authentication cookie uses `Secure`, `HttpOnly`, and `SameSite=Strict`.
-Cookie-authenticated requests other than GET, HEAD, and OPTIONS require
-`X-Requested-With: XMLHttpRequest`. Requesting a cookie with `POST /auth/tokens?ext=cookie`
-also requires this header. The UI sends it automatically. Browser requests with this header
-require CORS preflight approval across origins; the server does not enable cross-origin access.
+When authorization is enabled, cookie-authenticated requests other than GET, HEAD, and OPTIONS
+require `X-Requested-With: XMLHttpRequest`. Requesting a cookie with `POST /auth/tokens?ext=cookie`
+also requires this header. A missing or incorrect header returns HTTP 403 `PERMISSION_DENIED`.
+Token exchange is unavailable when authorization is disabled. The UI sends the header automatically.
+Browser requests with this header require CORS preflight approval across origins;
+the server does not enable cross-origin access.
 Clients that use `Authorization: Bearer <token>` do not need this header.
 
 #### Multiple Identity Providers

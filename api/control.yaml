@@ -143,6 +143,13 @@ paths:
           schema:
             $ref: '#/components/schemas/TokenEndpointExtensionType'
           required: false
+        - in: header
+          name: X-Requested-With
+          description: Required with value XMLHttpRequest when ext=cookie.
+          required: false
+          schema:
+            type: string
+            example: XMLHttpRequest
       operationId: getToken
       summary: Get a token using an OAuth2 flow
       description: |
@@ -199,10 +206,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OAuthTokenExchangeInfo'
+        '403':
+          description: Missing or incorrect X-Requested-With header for ext=cookie (PERMISSION_DENIED).
   /auth/logout:
     post:
       tags:
         - OAuth2
+      parameters:
+        - in: header
+          name: X-Requested-With
+          description: |
+            Required with value XMLHttpRequest for cookie authentication when authorization is enabled.
+            Not required when a Bearer token is used.
+          required: false
+          schema:
+            type: string
+            example: XMLHttpRequest
       operationId: logout
       summary: Revoke access token cookie
       description: |
@@ -227,6 +246,8 @@ paths:
       responses:
         '200':
           description: The access token will be revoked.
+        '403':
+          description: Missing or incorrect X-Requested-With header for cookie authentication (PERMISSION_DENIED).
 
 components:
   schemas:

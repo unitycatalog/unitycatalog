@@ -123,7 +123,8 @@ public class AuthService implements RegisteredService {
       HttpRequest request) {
     LOGGER.debug("Got token: {}", form);
 
-    if (ext.orElse(null) == TokenEndpointExtensionType.COOKIE) {
+    boolean isCookie = ext.orElse(null) == TokenEndpointExtensionType.COOKIE;
+    if (isCookie) {
       AuthDecorator.validateCsrfHeader(request.headers());
     }
 
@@ -205,15 +206,11 @@ public class AuthService implements RegisteredService {
 
     // Set token as cookie if ext param is set to cookie
     ResponseHeadersBuilder responseHeaders = ResponseHeaders.builder(HttpStatus.OK);
-    ext.ifPresent(
-        e -> {
-          if (e.equals(TokenEndpointExtensionType.COOKIE)) {
-            Duration cookieTimeout = serverProperties.getEffectiveCookieTimeout();
-            Cookie cookie =
-                createCookie(AuthDecorator.UC_TOKEN_KEY, accessToken, "/", cookieTimeout);
-            responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
-          }
-        });
+    if (isCookie) {
+      Duration cookieTimeout = serverProperties.getEffectiveCookieTimeout();
+      Cookie cookie = createCookie(AuthDecorator.UC_TOKEN_KEY, accessToken, "/", cookieTimeout);
+      responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
+    }
 
     return HttpResponse.ofJson(responseHeaders.build(), tokenExchangeInfo);
   }

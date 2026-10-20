@@ -484,10 +484,13 @@ export interface operations {
   getToken: {
     parameters: {
       query?: {
-        /** @description Specifies the index of the first result. First item is number 1. */
+        /** @description Specifies whether the server will store a token in the user agent's cookie. */
         ext?: components['schemas']['TokenEndpointExtensionType'];
       };
-      header?: never;
+      header?: {
+        /** @description Required with value XMLHttpRequest when ext=cookie. */
+        'X-Requested-With'?: string;
+      };
       path?: never;
       cookie?: never;
     };
@@ -517,12 +520,24 @@ export interface operations {
           'application/json': components['schemas']['OAuthTokenExchangeInfo'];
         };
       };
+      /** @description Missing or incorrect X-Requested-With header for ext=cookie (PERMISSION_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
     };
   };
   logout: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description Required with value XMLHttpRequest for cookie authentication when authorization is enabled.
+         *     Not required when a Bearer token is used.
+         *      */
+        'X-Requested-With'?: string;
+      };
       path?: never;
       cookie?: never;
     };
@@ -534,6 +549,13 @@ export interface operations {
     responses: {
       /** @description The access token will be revoked. */
       200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or incorrect X-Requested-With header for cookie authentication (PERMISSION_DENIED). */
+      403: {
         headers: {
           [name: string]: unknown;
         };
