@@ -11,8 +11,8 @@ import org.hibernate.engine.spi.SessionFactoryImplementor;
 
 /**
  * Database errors that map to a specific {@link ErrorCode}, such as a value above a database limit.
- * Each entry names one database, because databases differ in their limits and in the SQLSTATE they
- * report.
+ * Each entry names one database dialect, and matches its subclasses too, because databases differ
+ * in their limits and in the SQLSTATE they report.
  */
 final class DatabaseErrors {
 
@@ -20,7 +20,8 @@ final class DatabaseErrors {
       Class<? extends Dialect> dialect, String sqlState, ErrorCode errorCode) {}
 
   /**
-   * PostgreSQL's program_limit_exceeded, for example an index entry longer than 2,704 bytes. See
+   * PostgreSQL's program_limit_exceeded, for example an index entry longer than 2,704 bytes. The
+   * whole code is mapped, since each of its cases reports a value over a fixed limit. See
    * https://www.postgresql.org/docs/current/errcodes-appendix.html.
    */
   private static final String POSTGRESQL_PROGRAM_LIMIT_EXCEEDED_ERRCODE = "54000";

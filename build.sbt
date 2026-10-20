@@ -496,6 +496,7 @@ lazy val server = (project in file("server"))
     // Iceberg 1.11.0 brings its own Jackson version that conflicts with the project's pinned jackson version.
     // Force AWS SDK v2 onto a single release as well (Iceberg and Hadoop otherwise mix 2.24 / 2.27).
     dependencyOverrides ++= Seq(
+      // One PostgreSQL driver: jdbc-adapter brings 42.7.2. Keep in step with the direct dependency.
       "org.postgresql" % "postgresql" % postgresqlVersion,
       "software.amazon.awssdk" % "sso" % awsSdkV2Version,
       "software.amazon.awssdk" % "ssooidc" % awsSdkV2Version,
