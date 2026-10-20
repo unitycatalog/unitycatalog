@@ -46,13 +46,16 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import org.apache.iceberg.io.FileIO;
+import org.apache.iceberg.io.FileInfo;
 import org.apache.iceberg.io.InputFile;
+import org.apache.iceberg.io.SupportsPrefixOperations;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.NativeQuery;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 /**
  * Repository for managing Delta commits for managed Delta tables in Unity Catalog.
@@ -148,8 +151,9 @@ public class DeltaCommitRepository {
   private static final int CONTENT_COMPARE_BUFFER_BYTES = 8192;
 
   /**
-   * {@link BaseException} codes from FileIO acquisition that retrying cannot fix (for example, an
-   * S3 bucket whose region cannot be resolved); see {@link #findMissingPublishedCommitFile}.
+   * {@link BaseException} codes from FileIO that retrying cannot fix (for example, an S3 bucket
+   * whose region cannot be resolved, or a local path through a symbolic link); see {@link
+   * #findMissingPublishedCommitFile}.
    */
   private static final Set<ErrorCode> PERMANENT_FILE_IO_ERRORS =
       EnumSet.of(
@@ -930,9 +934,10 @@ public class DeltaCommitRepository {
    * toVersion}] that does not exist, if any.
    *
    * <p>A {@link BaseException} with a permanent code ({@code FAILED_PRECONDITION}, {@code
-   * PERMISSION_DENIED}, {@code INVALID_ARGUMENT}) from FileIO acquisition, e.g. an unresolvable S3
-   * bucket region, passes through unchanged: retrying cannot help, and nothing has been persisted.
-   * Any other acquisition, HEAD, or close failure leaves existence undetermined and becomes {@code
+   * PERMISSION_DENIED}, {@code INVALID_ARGUMENT}) from FileIO, whether from acquisition (e.g. an
+   * unresolvable S3 bucket region) or from a HEAD (e.g. a local path through a symbolic link),
+   * passes through unchanged: retrying cannot help, and nothing has been persisted. Any other
+   * acquisition, HEAD, or close failure leaves existence undetermined and becomes {@code
    * COMMIT_STATE_UNKNOWN} (500, retriable), matching {@link #verifyContentReplayOrThrowConflict}.
    */
   private static Optional<String> findMissingPublishedCommitFile(
@@ -950,7 +955,7 @@ public class DeltaCommitRepository {
     try (FileIO fileIO = fileOperations.getFileIO(tableLocation)) {
       for (long v = fromVersion; ; v++) {
         String path = publishedCommitPath(tableLocation, v);
-        if (!fileIO.newInputFile(path).exists()) {
+        if (!publishedFileExists(fileIO, path)) {
           missingPath = path;
           break;
         }
@@ -972,6 +977,36 @@ public class DeltaCommitRepository {
           e);
     }
     return Optional.ofNullable(missingPath);
+  }
+
+  /**
+   * Whether the published commit file at {@code path} exists.
+   *
+   * <p>S3 answers a HEAD on a missing key with 403 rather than 404 unless the caller may list the
+   * bucket, and the read credentials vended for a table may list only under the table's prefix (a
+   * HEAD carries no {@code s3:prefix}). So a 403 from an S3 HEAD is settled by listing the key
+   * itself, which those credentials may do. A listing failure leaves existence undetermined.
+   */
+  private static boolean publishedFileExists(FileIO fileIO, String path) {
+    try {
+      return fileIO.newInputFile(path).exists();
+    } catch (S3Exception headFailure) {
+      if (headFailure.statusCode() != 403
+          || !(fileIO instanceof SupportsPrefixOperations prefixOps)) {
+        throw headFailure;
+      }
+      try {
+        for (FileInfo file : prefixOps.listPrefix(path)) {
+          if (file.location().equals(path)) {
+            return true;
+          }
+        }
+        return false;
+      } catch (RuntimeException listFailure) {
+        headFailure.addSuppressed(listFailure);
+        throw headFailure;
+      }
+    }
   }
 
   /**

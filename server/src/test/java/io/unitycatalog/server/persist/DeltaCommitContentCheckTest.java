@@ -7,9 +7,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.adobe.testing.s3mock.junit5.S3MockExtension;
+import com.azure.storage.file.datalake.models.DataLakeStorageException;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.DeltaCommitRepository.BackfillVerificationRequiredException;
@@ -26,7 +29,9 @@ import java.util.ArrayList;
 import java.util.List;
 import org.apache.iceberg.aws.s3.S3FileIO;
 import org.apache.iceberg.io.FileIO;
+import org.apache.iceberg.io.FileInfo;
 import org.apache.iceberg.io.InputFile;
+import org.apache.iceberg.io.SupportsPrefixOperations;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +40,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 /**
  * Exercises {@link DeltaCommitRepository#verifyContentReplayOrThrowConflict} and {@link
@@ -261,6 +267,82 @@ public class DeltaCommitContentCheckTest {
 
     assertThatCode(() -> requirePublishedCommitFiles("tbl_max", Long.MAX_VALUE, Long.MAX_VALUE))
         .doesNotThrowAnyException();
+  }
+
+  /** A FileIO that can list by prefix, like the {@code ResolvingFileIO} vended for S3 tables. */
+  private interface PrefixListingFileIO extends FileIO, SupportsPrefixOperations {}
+
+  @Test
+  public void s3HeadForbiddenIsSettledByListingTheKey() {
+    String table = "s3://" + BUCKET + "/tbl_forbidden";
+    String v1 = table + "/_delta_log/00000000000000000001.json";
+    String v2 = table + "/_delta_log/00000000000000000002.json";
+    PrefixListingFileIO fileIO = mock();
+    when(fileOperations.getFileIO(any())).thenReturn(fileIO);
+    InputFile present = mock();
+    when(present.exists()).thenReturn(true);
+    InputFile forbidden = mock();
+    when(forbidden.exists()).thenThrow(s3Error(403));
+    when(fileIO.newInputFile(v1)).thenReturn(present);
+    when(fileIO.newInputFile(v2)).thenReturn(forbidden);
+
+    // The listing omits v2 (only a look-alike key shares its prefix): v2 is missing, a 400.
+    when(fileIO.listPrefix(v2)).thenReturn(List.of(new FileInfo(v2 + ".tmp", 1, 0)));
+    assertThatThrownBy(() -> requirePublishedCommitFiles("tbl_forbidden", 1L, 2L))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            e -> {
+              assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT);
+              assertThat(e.getMessage()).contains(v2);
+            });
+
+    // The listing has v2: present.
+    when(fileIO.listPrefix(v2)).thenReturn(List.of(new FileInfo(v2, 1, 0)));
+    assertThatCode(() -> requirePublishedCommitFiles("tbl_forbidden", 1L, 2L))
+        .doesNotThrowAnyException();
+
+    // The listing itself fails: existence is undetermined, never "missing".
+    when(fileIO.listPrefix(v2)).thenThrow(s3Error(403));
+    assertThatThrownBy(() -> requirePublishedCommitFiles("tbl_forbidden", 1L, 2L))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN);
+  }
+
+  @Test
+  public void headFailureOtherThanS3ForbiddenIsNotSettledByListing() {
+    PrefixListingFileIO fileIO = mock();
+    when(fileOperations.getFileIO(any())).thenReturn(fileIO);
+    InputFile failing = mock();
+    when(fileIO.newInputFile(anyString())).thenReturn(failing);
+
+    // An S3 500 is transient: retriable, and no listing.
+    when(failing.exists()).thenThrow(s3Error(500));
+    assertThatThrownBy(() -> requirePublishedCommitFiles("tbl_s3_500", 1L, 1L))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN);
+
+    // A 403 from ADLS (not an S3Exception) already means denied there: no listing either.
+    DataLakeStorageException adlsForbidden = mock();
+    when(adlsForbidden.getStatusCode()).thenReturn(403);
+    doThrow(adlsForbidden).when(failing).exists();
+    assertThatThrownBy(
+            () ->
+                DeltaCommitRepository.requirePublishedCommitFiles(
+                    fileOperations,
+                    NormalizedURL.from("abfss://container@account.dfs.core.windows.net/tbl"),
+                    1L,
+                    1L))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN);
+
+    verify(fileIO, never()).listPrefix(anyString());
+  }
+
+  private static S3Exception s3Error(int statusCode) {
+    return (S3Exception) S3Exception.builder().statusCode(statusCode).message("s3 error").build();
   }
 
   private void requirePublishedCommitFiles(String tableName, long fromVersion, long toVersion) {
