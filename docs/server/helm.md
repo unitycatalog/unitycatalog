@@ -70,9 +70,10 @@ server:
       passwordSecretKey: password
 ```
 
-With authentication on (`auth.enabled: true`), more than one replica also needs
-`server.authorization.policy-refresh: "true"` under `server.config.extraProperties`, so a grant or revoke made through
-one replica reaches the others. See [Multiple server instances](auth.md#multiple-server-instances).
+With authentication on (`auth.enabled: true`), PostgreSQL also needs `server.authorization.policy-refresh: "true"` under
+`server.config.extraProperties`. Replicas share the database, and even a single replica runs next to its replacement
+during an upgrade, so a grant or revoke made through one server must reach the others. See
+[Multiple server instances](auth.md#multiple-server-instances).
 
 ```sh
 helm upgrade --install unitycatalog oci://registry-1.docker.io/unitycatalog/unitycatalog-chart \
