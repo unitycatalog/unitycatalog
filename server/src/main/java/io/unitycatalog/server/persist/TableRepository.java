@@ -1226,7 +1226,7 @@ public class TableRepository {
     // A commit rewrites the table's columns under this lock; waiting for it keeps the cascade below
     // from deleting column rows the commit is replacing.
     RepositoryUtils.lockTableForCommit(
-        session, tableInfoDAO, tableInfoDAO.getId(), Optional.of(tableName), ErrorCode.ABORTED);
+        session, tableInfoDAO, tableInfoDAO.getId(), Optional.of(tableName), ErrorCode.UNAVAILABLE);
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       repositories
           .getStorageCleanupTaskRepository()

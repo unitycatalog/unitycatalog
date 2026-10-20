@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.RETURNS_SELF;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -32,7 +33,7 @@ public class RepositoryUtilsTest {
   /**
    * A failed pessimistic lock acquisition means a concurrent commit or deletion holds the lock; the
    * caller decides how that surfaces (Delta as the retryable {@code COMMIT_STATE_UNKNOWN}, Iceberg
-   * as an {@code UPDATE_REQUIREMENT_CONFLICT}, table deletion as {@code ABORTED}), never as a
+   * as an {@code UPDATE_REQUIREMENT_CONFLICT}, table deletion as {@code UNAVAILABLE}), never as a
    * leaked ORM exception. The lock query passes the dialect's exception through Hibernate's
    * exception converter, so each failure here is the converter's output for one dialect exception.
    */
@@ -95,6 +96,28 @@ public class RepositoryUtilsTest {
         .isInstanceOf(BaseException.class)
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.UPDATE_REQUIREMENT_CONFLICT);
+  }
+
+  /** The re-read takes the lock too, so its lock failure is reported like the lock query's. */
+  @ParameterizedTest
+  @MethodSource("lockAcquisitionFailures")
+  public void lockFailureOnTheReReadRaisesTheCallerSuppliedError(RuntimeException lockFailure) {
+    Session session = mock();
+    TableInfoDAO dao = mock();
+    when(lockQuery(session).getSingleResultOrNull()).thenReturn(dao);
+    doThrow(lockFailure).when(session).refresh(dao, LockMode.PESSIMISTIC_WRITE);
+
+    assertThatThrownBy(
+            () ->
+                RepositoryUtils.lockTableForCommit(
+                    session,
+                    dao,
+                    TABLE_ID,
+                    Optional.of("cat.sch.tbl"),
+                    ErrorCode.COMMIT_STATE_UNKNOWN))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN));
   }
 
   /**

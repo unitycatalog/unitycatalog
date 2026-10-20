@@ -48,8 +48,9 @@ public class RepositoryUtils {
    *       therefore safe and lets the Iceberg client retry transparently, whereas a 500 would
    *       surface to the user. Iceberg has no server-side deduplication that a resend could
    *       exploit.
-   *   <li><b>Table deletion</b> passes {@code ABORTED}: the table was not deleted, and the request
-   *       can be retried.
+   *   <li><b>Table deletion</b> passes {@code UNAVAILABLE} (503): the table was not deleted, and
+   *       the request can be retried. The Iceberg REST spec lists 503, not 409, for drop table, and
+   *       the Iceberg client reads a 409 on drop as "already exists".
    * </ul>
    *
    * <p>The row is locked first and read second. Refreshing the entity under the lock would load its
@@ -92,7 +93,7 @@ public class RepositoryUtils {
       }
       throw new BaseException(
           lockContentionError,
-          "Concurrent commit in progress on table " + tableName + "; retry the request.");
+          "Concurrent modification in progress on table " + tableName + "; retry the request.");
     }
   }
 
