@@ -24,6 +24,12 @@ public class TransactionManager {
     R execute(Session session) throws Exception;
   }
 
+  /** Restores the connection's isolation level when the transaction ends. */
+  private interface IsolationRestore extends AutoCloseable {
+    @Override
+    void close();
+  }
+
   /**
    * Executes a database operation with transaction management.
    *
@@ -55,6 +61,15 @@ public class TransactionManager {
    *     saved and restored after the transaction to avoid affecting pooled connections.
    * @param <R> the result type
    * @return the result of the operation
+   * @throws BaseException if the operation or the commit fails: a {@link BaseException} is rethrown
+   *     as-is, and any other exception is wrapped with the code from {@link DatabaseErrors}
+   *     ({@code INTERNAL} by default) with it as the cause. A
+   *     failed rollback is added as suppressed to the operation's error; a failed isolation restore
+   *     or session close is added as suppressed to the exception thrown.
+   * @throws TransactionRollbackException rethrown as-is once its rollback succeeds; if the rollback
+   *     fails, it is wrapped as {@code INTERNAL} instead. A failure to set the isolation level or
+   *     begin the transaction, or to restore the isolation level or close the session after a
+   *     commit, is thrown as-is.
    */
   public static <R> R executeWithTransaction(
       SessionFactory sessionFactory,
@@ -86,35 +101,60 @@ public class TransactionManager {
             });
       }
 
-      Transaction tx = session.beginTransaction();
-      try {
-        R result = operation.execute(session);
-        tx.commit();
-        return result;
-      } catch (Exception e) {
-        tx.rollback();
-        // A control-flow signal (e.g. an idempotent-replay short-circuit) is not an error: rethrow
-        // it as-is, without error logging, so the caller can catch its specific type. The rollback
-        // above has already undone its work.
-        if (e instanceof TransactionRollbackException) {
-          throw (TransactionRollbackException) e;
-        }
-        LOGGER.debug(errorMessage, e);
-        if (e instanceof BaseException) {
-          throw (BaseException) e;
-        }
-        ErrorCode errorCode =
-            DatabaseErrors.errorCode(sessionFactory, e).orElse(ErrorCode.INTERNAL);
-        throw new BaseException(errorCode, errorMessage + ": " + e.getMessage(), e);
-      } finally {
-        // Restore original isolation level to avoid polluting connection pool
-        if (isolationLevel.isPresent()) {
-          session.doWork(
-              connection -> {
-                connection.setTransactionIsolation(originalIsolation[0]);
-              });
+      // Restore original isolation level to avoid polluting connection pool. As a resource, a
+      // failed restore is added to the error in flight as suppressed instead of replacing it.
+      IsolationRestore restore =
+          () -> {
+            if (isolationLevel.isPresent()) {
+              session.doWork(
+                  connection -> connection.setTransactionIsolation(originalIsolation[0]));
+            }
+          };
+      try (restore) {
+        Transaction tx = session.beginTransaction();
+        try {
+          R result = operation.execute(session);
+          tx.commit();
+          return result;
+        } catch (Exception e) {
+          throw rollBack(sessionFactory, tx, e, errorMessage);
         }
       }
     }
+  }
+
+  /**
+   * Rolls back {@code tx} after {@code e} and returns the exception to throw: {@code e} itself if
+   * it is a {@link BaseException} or a {@link TransactionRollbackException}, otherwise an error
+   * with the code from {@link DatabaseErrors} ({@code INTERNAL} by default) and {@code e} as the
+   * cause. A failed rollback is added to {@code e} as
+   * suppressed, and turns a {@link TransactionRollbackException} into an {@code INTERNAL} error
+   * with {@code e} as the cause.
+   */
+  private static RuntimeException rollBack(
+      SessionFactory sessionFactory, Transaction tx, Exception e, String errorMessage) {
+    try {
+      tx.rollback();
+    } catch (RuntimeException rollbackError) {
+      e.addSuppressed(rollbackError);
+      // Callers act on a signal as if its work was undone. The rollback failed, so fail as
+      // INTERNAL instead.
+      if (e instanceof TransactionRollbackException) {
+        return new BaseException(
+            ErrorCode.INTERNAL, errorMessage + ": transaction rollback failed", e);
+      }
+    }
+    // A control-flow signal (e.g. an idempotent-replay short-circuit) is not an error: rethrow it
+    // as-is, without error logging, so the caller can catch its specific type. The rollback above
+    // has already undone its work.
+    if (e instanceof TransactionRollbackException signal) {
+      return signal;
+    }
+    LOGGER.debug(errorMessage, e);
+    if (e instanceof BaseException baseException) {
+      return baseException;
+    }
+    ErrorCode errorCode = DatabaseErrors.errorCode(sessionFactory, e).orElse(ErrorCode.INTERNAL);
+    return new BaseException(errorCode, errorMessage + ": " + e.getMessage(), e);
   }
 }
