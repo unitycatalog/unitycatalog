@@ -52,6 +52,13 @@ public class TransactionManager {
   /**
    * Executes a database operation with transaction management and optional custom isolation level.
    *
+   * <p>A failure to set the isolation level or begin the transaction is thrown as-is, as is a
+   * failure to restore the isolation level or close the session after a commit. A failed rollback
+   * is added as suppressed to the operation's error, and a failed isolation restore or session
+   * close to the exception thrown. When that exception is a 4xx or a {@link
+   * TransactionRollbackException}, which the error handler does not log, it is logged as a warning
+   * with these failures.
+   *
    * @param sessionFactory the Hibernate session factory
    * @param operation the database operation to execute
    * @param errorMessage the error message to use if the operation fails
@@ -63,13 +70,9 @@ public class TransactionManager {
    * @return the result of the operation
    * @throws BaseException if the operation or the commit fails: a {@link BaseException} is rethrown
    *     as-is, and any other exception is wrapped with the code from {@link DatabaseErrors}
-   *     ({@code INTERNAL} by default) with it as the cause. A
-   *     failed rollback is added as suppressed to the operation's error; a failed isolation restore
-   *     or session close is added as suppressed to the exception thrown.
+   *     ({@code INTERNAL} by default) with it as the cause.
    * @throws TransactionRollbackException rethrown as-is once its rollback succeeds; if the rollback
-   *     fails, it is wrapped as {@code INTERNAL} instead. A failure to set the isolation level or
-   *     begin the transaction, or to restore the isolation level or close the session after a
-   *     commit, is thrown as-is.
+   *     fails, it is wrapped as {@code INTERNAL} instead.
    */
   public static <R> R executeWithTransaction(
       SessionFactory sessionFactory,
@@ -120,6 +123,23 @@ public class TransactionManager {
           throw rollBack(sessionFactory, tx, e, errorMessage);
         }
       }
+    } catch (RuntimeException e) {
+      warnIfCleanupFailureIsUnlogged(e, errorMessage);
+      throw e;
+    }
+  }
+
+  /**
+   * Logs the rollback, restore or close failures suppressed on {@code e} when nothing else logs
+   * them: the error handler logs only a 5xx, and the caller takes a signal as a normal outcome.
+   */
+  private static void warnIfCleanupFailureIsUnlogged(RuntimeException e, String errorMessage) {
+    boolean unlogged =
+        e instanceof TransactionRollbackException
+            || (e instanceof BaseException baseException
+                && !baseException.getErrorCode().getHttpStatus().isServerError());
+    if (unlogged && e.getSuppressed().length > 0) {
+      LOGGER.warn("{}: cleanup after the transaction failed", errorMessage, e);
     }
   }
 
