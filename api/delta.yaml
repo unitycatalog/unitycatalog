@@ -325,10 +325,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundResponse'
         '429':
-          description: |
-            Too many requests: the table is locked by a concurrent modification, and the drop timed
-            out waiting for it. The client may retry after a delay. Error type will be
-            TooManyRequestsException.
+          description: Too many requests. The client may retry after a delay.
           content:
             application/json:
               schema:
