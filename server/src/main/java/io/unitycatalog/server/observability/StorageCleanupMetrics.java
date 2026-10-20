@@ -8,7 +8,10 @@ import java.util.EnumMap;
 import java.util.Locale;
 import java.util.Map;
 
-/** Metrics for the storage cleanup worker ({@code server.storage-cleanup.*}). */
+/**
+ * Counts the storage cleanup worker's attempts by result and resource type ({@link
+ * UcMetric#STORAGE_CLEANUP_ATTEMPTS}).
+ */
 public final class StorageCleanupMetrics {
   private final Map<ManagedResourceType, Counter> successes =
       new EnumMap<>(ManagedResourceType.class);
