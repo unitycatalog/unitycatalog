@@ -324,6 +324,15 @@ paths:
           $ref: '#/components/responses/ForbiddenResponse'
         '404':
           $ref: '#/components/responses/NotFoundResponse'
+        '429':
+          description: |
+            Too many requests: the table is locked by a concurrent modification, and the drop timed
+            out waiting for it. The client may retry after a delay. Error type will be
+            TooManyRequestsException.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeltaErrorResponse'
     head:
       tags:
         - DeltaTables
