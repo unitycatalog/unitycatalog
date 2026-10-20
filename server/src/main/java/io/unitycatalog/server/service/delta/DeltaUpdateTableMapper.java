@@ -390,8 +390,9 @@ public final class DeltaUpdateTableMapper {
         c.setSchema.isPresent()
             ? ColumnMappingMode.parse(properties.get(TableProperties.COLUMN_MAPPING_MODE))
             : ColumnMappingMode.NONE;
+    // set-columns is applied before set-properties, so the properties here are the stored ones.
     applySchemaAndPartitionColumns(
-        session, dao, c.setSchema, c.setPartitionColumns, columnMappingMode);
+        session, dao, c.setSchema, c.setPartitionColumns, columnMappingMode, properties.asMap());
     c.setProtocol.ifPresent(u -> applySetProtocol(properties, u.getProtocol()));
     c.setProperties.ifPresent(u -> applySetProperties(properties, u.getUpdates()));
     c.removeProperties.ifPresent(u -> applyRemoveProperties(properties, u.getRemovals()));
@@ -467,7 +468,8 @@ public final class DeltaUpdateTableMapper {
       TableInfoDAO dao,
       Optional<DeltaSetSchemaUpdate> setSchema,
       Optional<DeltaSetPartitionColumnsUpdate> setPartition,
-      ColumnMappingMode columnMappingMode) {
+      ColumnMappingMode columnMappingMode,
+      Map<String, String> currentProperties) {
     if (setSchema.isEmpty() && setPartition.isEmpty()) {
       return;
     }
@@ -485,7 +487,7 @@ public final class DeltaUpdateTableMapper {
             ErrorCode.INVALID_ARGUMENT, "set-columns requires at least one column.");
       }
       ColumnUtils.validateStructType(columns, "columns");
-      validateColumnRenameAndDropGuards(dao, fields, columnMappingMode);
+      validateColumnRenameAndDropGuards(dao, fields, columnMappingMode, currentProperties);
       newColumns = ColumnUtils.toColumnInfos(fields);
     } else {
       newColumns = ColumnInfoDAO.toList(dao.getColumns());
@@ -666,11 +668,17 @@ public final class DeltaUpdateTableMapper {
    *   <li>Enabling column mapping (the stored schema has no identity key): every field needs a
    *       physical name, top-level physical names and ids must be usable and unique, and no column
    *       may be renamed in the same request.
-   *   <li>Otherwise at most one top-level column is renamed per request.
+   *   <li>Otherwise at most one top-level column is renamed per request. Delta Kernel checks the
+   *       rest of the change ({@link DeltaSchemaEvolutionValidator}).
    * </ul>
+   *
+   * @param currentProperties the table properties before this request is applied
    */
   private static void validateColumnRenameAndDropGuards(
-      TableInfoDAO dao, List<DeltaStructField> incoming, ColumnMappingMode tableMode) {
+      TableInfoDAO dao,
+      List<DeltaStructField> incoming,
+      ColumnMappingMode tableMode,
+      Map<String, String> currentProperties) {
     ColumnMappingMode mode =
         tableMode == ColumnMappingMode.NONE ? ColumnMappingMode.NAME : tableMode;
     List<DeltaStructField> current = readableStoredFields(dao);
@@ -716,6 +724,14 @@ public final class DeltaUpdateTableMapper {
               + renameList
               + "]. Split them into separate ALTER statements.");
     }
+
+    // Delta Kernel decides the rest: identities, types, nullability and clustering columns. It
+    // reads the whole stored schema, so a stored column with an unreadable type fails the check.
+    DeltaSchemaEvolutionValidator.validate(
+        ColumnInfoDAO.toList(dao.getColumns()),
+        ColumnUtils.toColumnInfos(incoming),
+        currentProperties,
+        !topLevelRenames.isEmpty());
   }
 
   /**

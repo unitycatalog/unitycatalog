@@ -412,6 +412,8 @@ lazy val server = (project in file("server"))
       "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % jacksonVersion,
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
+      // Delta Kernel validates set-columns schema evolution.
+      "io.delta" % "delta-kernel-api" % deltaVersion,
 
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
       "com.github.ben-manes.caffeine" % "caffeine" % caffeineVersion,
@@ -678,6 +680,10 @@ lazy val serverShaded = (project in file("server-shaded"))
       ShadeRule.rename("com.fasterxml.**" -> "shaded.@0").inAll,
       ShadeRule.rename("org.antlr.**" -> "shaded.@0").inAll,
       ShadeRule.rename("io.netty.**" -> "shaded.@0").inAll,
+      // Relocate the bundled Kernel and RoaringBitmap so they cannot clash with the copies that
+      // Spark and Delta put on the connector test classpaths.
+      ShadeRule.rename("io.delta.kernel.**" -> "shaded.@0").inAll,
+      ShadeRule.rename("org.roaringbitmap.**" -> "shaded.@0").inAll,
     ),
     assemblyPackageScala / assembleArtifact := false,
     assembly / fullClasspath := {
