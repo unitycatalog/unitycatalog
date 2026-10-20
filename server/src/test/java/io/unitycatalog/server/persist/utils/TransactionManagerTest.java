@@ -160,6 +160,52 @@ public class TransactionManagerTest {
     }
 
     @Test
+    public void testFailedRollbackKeepsTheOriginalError() {
+      RuntimeException error = new RuntimeException("connection reset");
+      RuntimeException rollbackError = new RuntimeException("rollback failed");
+      doThrow(rollbackError).when(transaction).rollback();
+
+      assertThatThrownBy(
+              () ->
+                  TransactionManager.executeWithTransaction(
+                      sessionFactory,
+                      session -> {
+                        throw error;
+                      },
+                      "Error executing operation",
+                      false))
+          .isInstanceOf(BaseException.class)
+          .cause()
+          .isSameAs(error);
+      assertThat(error.getSuppressed()).containsExactly(rollbackError);
+    }
+
+    @Test
+    public void testFailedRollbackUnderASignalIsAnInternalError() {
+      // The signal promises its work was rolled back, so a failed rollback must not pass for it.
+      class SignalException extends TransactionRollbackException {}
+      SignalException signal = new SignalException();
+      RuntimeException rollbackError = new RuntimeException("rollback failed");
+      doThrow(rollbackError).when(transaction).rollback();
+
+      assertThatThrownBy(
+              () ->
+                  TransactionManager.executeWithTransaction(
+                      sessionFactory,
+                      session -> {
+                        throw signal;
+                      },
+                      "Error executing operation",
+                      false))
+          .isInstanceOfSatisfying(
+              BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INTERNAL))
+          .hasMessage("Error executing operation: transaction rollback failed")
+          .cause()
+          .isSameAs(signal);
+      assertThat(signal.getSuppressed()).containsExactly(rollbackError);
+    }
+
+    @Test
     public void testSessionClosedAfterTransaction() {
       // Execute successful transaction
       TransactionManager.executeWithTransaction(
