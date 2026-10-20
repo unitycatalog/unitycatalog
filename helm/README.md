@@ -1163,6 +1163,45 @@ Example: `s3://bucket/path`
 </td>
 		</tr>
 		<tr>
+			<td>test.image.pullPolicy</td>
+			<td>string</td>
+			<td><pre lang="json">
+"IfNotPresent"
+</pre>
+</td>
+			<td>Pull policy for the `helm test` pod image</td>
+		</tr>
+		<tr>
+			<td>test.image.repository</td>
+			<td>string</td>
+			<td><pre lang="json">
+"busybox"
+</pre>
+</td>
+			<td>Repository for the `helm test` pod image</td>
+		</tr>
+		<tr>
+			<td>test.image.tag</td>
+			<td>string</td>
+			<td><pre lang="json">
+"1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e"
+</pre>
+</td>
+			<td>Tag for the `helm test` pod image, pinned by digest</td>
+		</tr>
+		<tr>
+			<td>test.imagePullSecrets</td>
+			<td>array</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>Image pull secrets for the `helm test` pod
+
+[Kubernetes docs](https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod)
+</td>
+		</tr>
+		<tr>
 			<td>ui.deployment.affinity</td>
 			<td>object</td>
 			<td><pre lang="">
