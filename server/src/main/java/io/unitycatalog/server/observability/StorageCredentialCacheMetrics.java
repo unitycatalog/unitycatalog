@@ -4,7 +4,10 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
 
-/** Metrics for the storage credential cache ({@code server.storage-credential-cache.*}). */
+/**
+ * Counts the storage credential cache's hits and misses ({@link
+ * UcMetric#STORAGE_CREDENTIAL_CACHE_REQUESTS}).
+ */
 public final class StorageCredentialCacheMetrics {
   private final Counter hits;
   private final Counter misses;

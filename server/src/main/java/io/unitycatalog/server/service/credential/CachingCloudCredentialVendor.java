@@ -48,6 +48,7 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
   private final Cache<Key, Entry> entries;
   private final StorageCredentialCacheMetrics cacheMetrics;
 
+  /** Records each request's cache hit or miss in {@code metrics}. */
   public CachingCloudCredentialVendor(
       ServerProperties serverProperties, UnityCatalogMetrics metrics) {
     this(serverProperties, Clock.systemUTC(), DEFAULT_EXPIRY_MARGIN, metrics);
