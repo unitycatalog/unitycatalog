@@ -44,7 +44,7 @@ jobs:
           # helm-docs may only regenerate helm/README.md; any other change under helm/ also fails.
           if [ -n "$(git status --porcelain -- helm)" ]; then
             git status --short -- helm
-            echo "::error::helm-docs changed files under helm/. If only helm/README.md changed, run helm/generate-docs.sh and commit the result."
+            echo "::error::helm-docs changed files under helm/. If only helm/README.md changed, regenerate it with helm-docs v1.14.2 (pre-commit run helm-docs --all-files) and commit the result."
             exit 1
           fi
 
