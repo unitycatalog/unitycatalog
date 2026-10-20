@@ -76,7 +76,12 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
                         .name("param1")
                         .typeName(ColumnTypeName.INT)
                         .typeText("int")
-                        .typeJson("{\"type\":\"int\"}")
+                        // Over 255 chars so the CRUD round trip covers a long type_json
+                        .typeJson(
+                            "{\"name\":\"param1\",\"type\":\"int\",\"nullable\":false,"
+                                + "\"metadata\":{\"comment\":\""
+                                + "x".repeat(300)
+                                + "\"}}")
                         .position(0)));
     CreateFunction createFunction =
         new CreateFunction()
@@ -197,46 +202,5 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
     assertThat(functionOperations.listFunctions(CATALOG_NEW_NAME, SCHEMA_NAME, Optional.empty()))
         .as("Function with ID '%s' exists", functionInfo.getFunctionId())
         .noneSatisfy(f -> assertThat(f.getFunctionId()).isEqualTo(functionInfo.getFunctionId()));
-  }
-
-  @Test
-  public void testFunctionParameterTypeJsonLongerThanDefaultVarchar() throws ApiException {
-    createCommonResources();
-    String typeJson =
-        "{\"name\":\"param1\",\"type\":\"string\",\"nullable\":false,"
-            + "\"metadata\":{\"comment\":\""
-            + "x".repeat(300)
-            + "\"}}";
-    FunctionParameterInfo parameter =
-        new FunctionParameterInfo()
-            .name("param1")
-            .typeName(ColumnTypeName.STRING)
-            .typeText("string")
-            .typeJson(typeJson)
-            .position(0);
-    CreateFunction createFunction =
-        new CreateFunction()
-            .name(FUNCTION_NAME)
-            .catalogName(CATALOG_NAME)
-            .schemaName(SCHEMA_NAME)
-            .parameterStyle(CreateFunction.ParameterStyleEnum.S)
-            .isDeterministic(true)
-            .externalLanguage("python")
-            .dataType(ColumnTypeName.INT)
-            .fullDataType("Integer")
-            .isNullCall(false)
-            .routineBody(CreateFunction.RoutineBodyEnum.EXTERNAL)
-            .routineDefinition("return 1")
-            .securityType(CreateFunction.SecurityTypeEnum.DEFINER)
-            .specificName(FUNCTION_NAME)
-            .sqlDataAccess(CreateFunction.SqlDataAccessEnum.NO_SQL)
-            .inputParams(new FunctionParameterInfos().parameters(List.of(parameter)));
-
-    functionOperations.createFunction(new CreateFunctionRequest().functionInfo(createFunction));
-
-    assertThat(functionOperations.getFunction(FUNCTION_FULL_NAME).getInputParams().getParameters())
-        .singleElement()
-        .extracting(FunctionParameterInfo::getTypeJson)
-        .isEqualTo(typeJson);
   }
 }
