@@ -17,10 +17,10 @@ using the [Helm](https://github.com/helm/helm) package manager.
 
 ## Installing the Chart
 Starting with 0.8.0, each Unity Catalog release publishes this chart to Docker Hub, with the same version as the release.
-To install version 0.8.0 with the release name `unitycatalog`:
+To install release X.Y.Z with the release name `unitycatalog`:
 
 ```sh
-helm install unitycatalog oci://registry-1.docker.io/unitycatalog/unitycatalog-chart --version 0.8.0
+helm install unitycatalog oci://registry-1.docker.io/unitycatalog/unitycatalog-chart --version X.Y.Z
 ```
 
 Chart version X.Y.Z runs the server image `unitycatalog/unitycatalog:vX.Y.Z` and the UI image `unitycatalog/unitycatalog-ui:vX.Y.Z`.
