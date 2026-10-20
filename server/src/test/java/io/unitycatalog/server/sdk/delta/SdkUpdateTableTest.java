@@ -2255,6 +2255,25 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               2,
               fld("a", prim("long"), false, 1, "col-1"),
               fld("b", prim("long"), 2, "col-2"));
+  private static final TableFactory NAME_S =
+      (t, n) ->
+          t.createManaged(
+              n, "name", 2, fld("s", struct(fld("x", prim("long"), 2, "col-x")), 1, "col-s"));
+  private static final TableFactory ID_S =
+      (t, n) ->
+          t.createManaged(
+              n, "id", 2, fld("s", struct(fld("x", prim("long"), 2, "col-x")), 1, "col-s"));
+  private static final TableFactory NAME_S2 =
+      (t, n) ->
+          t.createManaged(
+              n,
+              "name",
+              3,
+              fld(
+                  "s",
+                  struct(fld("x", prim("long"), 2, "col-x"), fld("z", prim("long"), 3, "col-z")),
+                  1,
+                  "col-s"));
 
   @ParameterizedTest(name = "{0}")
   @MethodSource("guardCases")
@@ -2551,6 +2570,167 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 NAME_AB,
                 setColumns(fld("x", prim("long"), 3, "col-3"), fld("y", prim("long"), 4, "col-4")))
             .expectColumns("x", "y"));
+  }
+
+  private static DeltaStructField withTypeChange(DeltaStructField field, String from, String to) {
+    field.getMetadata().put("delta.typeChanges", List.of(Map.of("fromType", from, "toType", to)));
+    return field;
+  }
+
+  /** Makes the stored type of one column unreadable. */
+  private void corruptStoredType(Handle h, String columnName) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction tx = session.beginTransaction();
+      session
+          .createMutationQuery(
+              "update ColumnInfoDAO c set c.typeJson = :json"
+                  + " where c.table.id = :id and c.name = :name")
+          .setParameter("json", "not json")
+          .setParameter("id", h.tableId())
+          .setParameter("name", columnName)
+          .executeUpdate();
+      tx.commit();
+    }
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("kernelCases")
+  public void testKernelValidatesRenames(SchemaCase c) throws Exception {
+    run(c);
+  }
+
+  static Stream<SchemaCase> kernelCases() {
+    return Stream.of(
+        rejected(
+            "K1 rename and type change",
+            "Cannot change the type of existing field",
+            NAME_A,
+            setColumns(fld("b", prim("double"), false, 1, "col-1"))),
+        rejected(
+            "K2 same id, new physical name",
+            "which is different from col-99",
+            NAME_A,
+            setColumns(fld("a", prim("long"), false, 1, "col-99"))),
+        rejected(
+            "K3 nested same id, new physical name",
+            "which is different from col-z",
+            NAME_S,
+            setColumns(fld("s", struct(fld("x", prim("long"), 2, "col-z")), 1, "col-s"))),
+        ok(
+                "K4 same name with a new id is a drop and add",
+                ID_A,
+                setColumns(fld("a", prim("long"), false, 2, "col-1")))
+            .expectColumns("a"),
+        ok(
+                "K5 nested same name with a new id is a drop and add",
+                ID_S,
+                setColumns(fld("s", struct(fld("x", prim("long"), 99, "col-x")), 1, "col-s")))
+            .expectColumns("s"),
+        rejected(
+            "K6 nested rename with a sibling's new physical name",
+            "which is different from col-x2",
+            (t, n) ->
+                t.createManaged(
+                    n,
+                    "name",
+                    3,
+                    fld(
+                        "s",
+                        struct(
+                            fld("inner", prim("long"), 2, "col-in"),
+                            fld("x", prim("long"), 3, "col-x")),
+                        1,
+                        "col-s")),
+            setColumns(
+                fld(
+                    "s",
+                    struct(
+                        fld("renamed_inner", prim("long"), 2, "col-in"),
+                        fld("x", prim("long"), 3, "col-x2")),
+                    1,
+                    "col-s"))),
+        ok(
+                "K7 rename a type-widened column",
+                (t, n) ->
+                    t.createManaged(
+                        n,
+                        "name",
+                        1,
+                        withTypeChange(
+                            fld("a", prim("long"), false, 1, "col-1"), "integer", "long")),
+                setColumns(
+                    withTypeChange(fld("b", prim("long"), false, 1, "col-1"), "integer", "long")))
+            .expectColumns("b"),
+        ok(
+                "K8 widen a type without a rename",
+                (t, n) ->
+                    t.createManaged(n, "name", 1, fld("a", prim("integer"), false, 1, "col-1")),
+                setColumns(
+                    withTypeChange(fld("a", prim("long"), false, 1, "col-1"), "integer", "long")))
+            .expectColumns("a"),
+        ok(
+                "K9 nested rename plus a new field with the old name",
+                (t, n) ->
+                    t.createManaged(
+                        n,
+                        "name",
+                        4,
+                        fld("p", struct(fld("x", prim("long"), 2, "col-x")), 1, "col-p")),
+                setColumns(
+                    fld(
+                        "p",
+                        struct(
+                            fld("y", prim("long"), 2, "col-x"),
+                            fld("x", prim("long"), 5, "col-x2")),
+                        1,
+                        "col-p")))
+            .expectColumns("p"),
+        rejected(
+            "K10 rename next to a stored column with an unreadable type",
+            "the table schema cannot be read",
+            (t, n) -> {
+              Handle h =
+                  t.createManaged(
+                      n,
+                      "name",
+                      2,
+                      fld("a", prim("long"), false, 1, "col-1"),
+                      fld("v", prim("long"), 2, "col-v"));
+              t.corruptStoredType(h, "v");
+              return h;
+            },
+            setColumns(
+                fld("b", prim("long"), false, 1, "col-1"), fld("v", prim("long"), 2, "col-v"))),
+        rejected(
+            "K11 nested rename keeps the id and drops the physical name",
+            "Field y is missing physical name",
+            NAME_S,
+            setColumns(fld("s", struct(fld("y", prim("long"), 2, null)), 1, "col-s"))),
+        rejected(
+            "K12 id mode keeps the id with a new physical name",
+            "which is different from col-new",
+            ID_A,
+            setColumns(fld("a", prim("long"), false, 1, "col-new"))),
+        rejected(
+            "K13 the stored maxColumnId applies, not the request's own set-properties",
+            "fieldId <= maxFieldId",
+            (t, n) ->
+                t.createManaged(
+                    n,
+                    "name",
+                    3,
+                    fld("a", prim("long"), false, 1, "col-1"),
+                    fld("d", prim("long"), 2, "col-d")),
+            setColumns(
+                fld("b", prim("long"), false, 1, "col-1"),
+                fld("d", prim("long"), 2, "col-d"),
+                fld("c", prim("long"), 3, "col-c")),
+            new DeltaSetPropertiesUpdate().updates(Map.of("delta.columnMapping.maxColumnId", "0"))),
+        rejected(
+            "K14 rename with a string column mapping id",
+            "to be of type",
+            NAME_A,
+            setColumns(fld("b", prim("long"), false, "1", "col-1"))));
   }
 
   // -------------------------------------------------------- assertion helpers
