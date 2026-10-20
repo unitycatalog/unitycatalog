@@ -55,8 +55,10 @@ public class RepositoryUtils {
    * <p>The row is locked first and read second. Refreshing the entity under the lock would load its
    * columns with an outer join, and on PostgreSQL Hibernate locks such a query in a separate
    * statement after the read, so a commit that waited for the lock would continue on the state it
-   * read before the other commit landed. A table deleted while this waited for the lock is reported
-   * as {@link ErrorCode#TABLE_NOT_FOUND}.
+   * read before the other commit landed. The re-read is a locking read as well: on MySQL's default
+   * REPEATABLE READ, a plain read returns the snapshot the transaction took at its first read,
+   * which can be from before the other commit. A table deleted while this waited for the lock is
+   * reported as {@link ErrorCode#TABLE_NOT_FOUND}.
    *
    * @param session the Hibernate session running the commit or deletion transaction
    * @param dao the table row to lock; re-read after the lock is held
@@ -81,7 +83,7 @@ public class RepositoryUtils {
       if (locked == null) {
         throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
       }
-      session.refresh(dao);
+      session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
     } catch (RuntimeException e) {
       // The lock query wraps Hibernate's lock exception in a JPA one, so check the cause as well.
       // A deadlock victim arrives as OptimisticLockException wrapping LockAcquisitionException.
