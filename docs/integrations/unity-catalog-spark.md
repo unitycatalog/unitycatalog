@@ -257,11 +257,17 @@ Notice the following packages (`--packages`) and configurations (`--conf`)
 ### [Optional] Running Spark SQL for Cloud Object Stores
 
 If you would like to run this against cloud object storage, use the matching Spark and UC connector artifacts for
-your Spark version. Use the `hadoop-aws` and `hadoop-azure` version that matches the Hadoop bundled with Spark:
-**3.4.1** with Spark 4.0.x, **3.4.2** with Spark 4.1.x, and **3.5.0** with Spark 4.2.x (`hadoop-azure` requires 3.4.1 or
-later; see [issue #1175](https://github.com/unitycatalog/unitycatalog/issues/1175)). For Google Cloud Storage, Spark 4.2.x
-uses Hadoop's own `hadoop-gcp` 3.5.0; Spark 4.0.x and 4.1.x use the Google Cloud Storage connector, since Hadoop 3.4 has
-no GCS module.
+your Spark version, plus the cloud storage module that matches the Hadoop version bundled with Spark:
+
+| Spark version | Bundled Hadoop | AWS S3 | Azure ADLSgen2 | Google Cloud Storage |
+| --- | --- | --- | --- | --- |
+| Apache Spark 4.0.x | 3.4.1 | `org.apache.hadoop:hadoop-aws:3.4.1` | `org.apache.hadoop:hadoop-azure:3.4.1` | `gcs-connector-3.0.2-shaded.jar` |
+| Apache Spark 4.1.x | 3.4.2 | `org.apache.hadoop:hadoop-aws:3.4.2` | `org.apache.hadoop:hadoop-azure:3.4.2` | `gcs-connector-3.0.2-shaded.jar` |
+| Apache Spark 4.2.x | 3.5.0 | `org.apache.hadoop:hadoop-aws:3.5.0` | `org.apache.hadoop:hadoop-azure:3.5.0` | `org.apache.hadoop:hadoop-gcp:3.5.0` |
+
+`hadoop-azure` requires 3.4.1 or later (see [issue #1175](https://github.com/unitycatalog/unitycatalog/issues/1175)).
+Hadoop 3.4 has no GCS module, so Spark 4.0.x and 4.1.x load the Google Cloud Storage connector with `--jars`; Spark 4.2.x
+uses Hadoop's own `hadoop-gcp` with `--packages`.
 
 === "AWS S3 (Spark 4.0.x)"
 

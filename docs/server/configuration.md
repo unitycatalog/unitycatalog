@@ -38,8 +38,8 @@ should see:
 
 !!! note "Server version string"
     `<version>` is the version you are running. Released builds display the release version (for
-    example `v0.5.0`), while builds from the `main` branch append `-SNAPSHOT` (for example
-    `v0.5.0-SNAPSHOT`).
+    example `v0.7.0`), while builds from the `main` branch append `-SNAPSHOT` (for example
+    `v0.8.0-SNAPSHOT`).
 
 The server can be started by issuing the below command from the project root directory:
 
