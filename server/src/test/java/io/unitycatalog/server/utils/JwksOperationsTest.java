@@ -254,7 +254,11 @@ class JwksOperationsTest {
   void verifierForIssuerAndKey_limitsRefreshesWithoutBlockingPublishedKeys(
       boolean shouldExpireProvider) {
     respondWithDiscovery(issuer + "/jwks");
-    respondWithKey("key-1", signingKey);
+    jwksStatus = 200;
+    jwksBody =
+        String.format(
+            "{\"keys\":[%s,%s]}",
+            jwkJson("key-1", signingKey), jwkJson("key-2", rotatedSigningKey));
     String token = tokenForKey("key-1", signingKey);
     if (shouldExpireProvider) {
       jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(token);
@@ -269,6 +273,9 @@ class JwksOperationsTest {
           .isEqualTo(ErrorCode.INTERNAL);
     }
     jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(token);
+    jwksOperations
+        .verifierForIssuerAndKey(issuer, "key-2", "RS256")
+        .verify(tokenForKey("key-2", rotatedSigningKey));
     int expectedRequests = shouldExpireProvider ? 2 : 1;
     assertThat(discoveryRequests).hasValue(expectedRequests);
     assertThat(jwksRequests).hasValue(expectedRequests);
@@ -532,18 +539,21 @@ class JwksOperationsTest {
   }
 
   private void respondWithKey(String keyId, KeyPair keyPair) {
+    jwksStatus = 200;
+    jwksBody = String.format("{\"keys\":[%s]}", jwkJson(keyId, keyPair));
+  }
+
+  private String jwkJson(String keyId, KeyPair keyPair) {
     var key = (RSAPublicKey) keyPair.getPublic();
     byte[] modulus = key.getModulus().toByteArray();
     // RSA generation sets the high bit; BigInteger adds a leading sign byte.
     modulus = Arrays.copyOfRange(modulus, 1, modulus.length);
     Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
-    jwksStatus = 200;
-    jwksBody =
-        String.format(
-            "{\"keys\":[{\"kty\":\"RSA\",\"kid\":\"%s\",\"n\":\"%s\",\"e\":\"%s\"}]}",
-            keyId,
-            encoder.encodeToString(modulus),
-            encoder.encodeToString(key.getPublicExponent().toByteArray()));
+    return String.format(
+        "{\"kty\":\"RSA\",\"kid\":\"%s\",\"n\":\"%s\",\"e\":\"%s\"}",
+        keyId,
+        encoder.encodeToString(modulus),
+        encoder.encodeToString(key.getPublicExponent().toByteArray()));
   }
 
   private String tokenForKey(String keyId, KeyPair keyPair) {
