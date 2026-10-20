@@ -453,8 +453,14 @@ public final class DeltaUpdateTableMapper {
    * swapping the DAO column collection. The spec frames {@code set-columns} and {@code
    * set-partition-columns} as independent actions; the absent action's concern is preserved from
    * the existing DAO so a column-only request can't silently desync the partition list (and vice
-   * versa). If a partition column is missing from the resulting schema, the request is rejected
-   * with {@code partition-columns references unknown column: ...}.
+   * versa). The request is rejected when:
+   *
+   * <ul>
+   *   <li>a partition column named by set-partition-columns is missing from the resulting schema
+   *       ({@code partition-columns references unknown column: ...});
+   *   <li>set-columns drops an existing partition column, or leaves one without its own identity on
+   *       a column-mapped table (see {@link #resolvePartitionColumns}).
+   * </ul>
    *
    * <p>Swap semantics rely on the orphanRemoval mapping on {@link TableInfoDAO#getColumns()} to
    * clean up the old rows; the intervening flush ensures the deletes hit the DB before the inserts,
@@ -494,13 +500,16 @@ public final class DeltaUpdateTableMapper {
       newColumns.forEach(c -> c.setPartitionIndex(null));
     }
     // Source of the partition list: the request when set-partition-columns is present, otherwise
-    // the existing DAO's partition columns (preserved by name across a column-only action).
+    // resolve the existing DAO's partition columns to their names in the new schema, so a renamed
+    // partition column keeps its partition.
     List<String> partitionNames;
     if (setPartition.isPresent()) {
       partitionNames =
           ValidationUtils.checkNotNull(
               setPartition.get().getPartitionColumns(),
               "set-partition-columns requires a partition-columns list.");
+    } else if (setSchema.isPresent()) {
+      partitionNames = resolvePartitionColumns(dao, newColumns, columnMappingMode);
     } else {
       partitionNames = currentPartitionColumnNames(dao);
     }
@@ -996,6 +1005,88 @@ public final class DeltaUpdateTableMapper {
         .sorted(Comparator.comparingInt(ColumnInfo::getPartitionIndex))
         .map(ColumnInfo::getName)
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Resolves the current partition columns to their names in the incoming schema, so a partition
+   * column that is renamed keeps its partition. Columns are matched by the identity Delta reads
+   * them by in the table's stored mode (see {@link #identityKeyOf}), top-level only so a nested
+   * field cannot collide with a partition column's key.
+   *
+   * <p>Per partition column, using the identities stored before this update (a stored column whose
+   * type cannot be read has no identity, see {@link #readableStoredFields}):
+   *
+   * <ul>
+   *   <li>the table has no column mapping, or the incoming schema carries no identity at all:
+   *       matched by logical name;
+   *   <li>the column has a stored identity: matched to the incoming column with the same identity,
+   *       and rejected as dropped if no incoming column carries it, even if another column reuses
+   *       its name;
+   *   <li>the column has no stored identity but other stored columns do: rejected as having no
+   *       column mapping identity, because matching by name could move the partition onto a
+   *       different column that reuses the old name;
+   *   <li>no stored column has an identity: matched by logical name.
+   * </ul>
+   *
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if a partition column is dropped
+   *     or has no identity on a column-mapped table
+   */
+  private static List<String> resolvePartitionColumns(
+      TableInfoDAO dao, List<ColumnInfo> incomingColumns, ColumnMappingMode columnMappingMode) {
+    List<ColumnInfo> curList = ColumnInfoDAO.toList(dao.getColumns());
+    List<ColumnInfo> partitionCols =
+        curList.stream()
+            .filter(c -> c.getPartitionIndex() != null)
+            .sorted(Comparator.comparingInt(ColumnInfo::getPartitionIndex))
+            .collect(Collectors.toList());
+    if (partitionCols.isEmpty()) {
+      return List.of();
+    }
+
+    Map<String, String> incomingNameByLowerName = new HashMap<>();
+    Map<String, String> incomingNameByKey = new HashMap<>();
+    for (ColumnInfo inc : incomingColumns) {
+      incomingNameByLowerName.put(inc.getName().toLowerCase(Locale.ROOT), inc.getName());
+      String key = identityKeyOf(ColumnUtils.toStructField(inc), columnMappingMode);
+      if (key != null) {
+        incomingNameByKey.put(key, inc.getName());
+      }
+    }
+    boolean byName = columnMappingMode == ColumnMappingMode.NONE || incomingNameByKey.isEmpty();
+    Map<String, String> currentKeyByLowerName = new HashMap<>();
+    if (!byName) {
+      for (DeltaStructField cur : readableStoredFields(dao)) {
+        String key = identityKeyOf(cur, columnMappingMode);
+        if (key != null) {
+          currentKeyByLowerName.put(cur.getName().toLowerCase(Locale.ROOT), key);
+        }
+      }
+    }
+
+    List<String> resolved = new ArrayList<>();
+    for (ColumnInfo cur : partitionCols) {
+      String lowerName = cur.getName().toLowerCase(Locale.ROOT);
+      String newName;
+      String key = currentKeyByLowerName.get(lowerName);
+      if (key != null) {
+        newName = incomingNameByKey.get(key);
+      } else if (currentKeyByLowerName.isEmpty()) {
+        newName = incomingNameByLowerName.get(lowerName);
+      } else {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "partition column '"
+                + cur.getName()
+                + "' has no column mapping identity while the table uses column mapping.");
+      }
+      if (newName == null) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "partition column '" + cur.getName() + "' dropped: not in the new schema.");
+      }
+      resolved.add(newName);
+    }
+    return resolved;
   }
 
   private static void applySetDomainMetadata(
