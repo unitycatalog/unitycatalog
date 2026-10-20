@@ -97,10 +97,12 @@ class StorageCleanupWorkerTest {
     when(taskRepository.claim(LEASE_DURATION, INITIAL_DELAY)).thenReturn(Optional.empty());
     assertThat(worker.runOnce()).isFalse();
     verifyNoInteractions(fileOperations);
-    // Every result and resource type is registered at startup.
+    // Every result and resource type is registered at startup, with the documented tag values.
     assertThat(registry.get(UcMetric.STORAGE_CLEANUP_ATTEMPTS.getMetricName()).counters())
         .hasSize(2 * ManagedResourceType.values().length)
-        .allSatisfy(counter -> assertThat(counter.count()).isZero());
+        .allSatisfy(counter -> assertThat(counter.count()).isZero())
+        .extracting(counter -> counter.getId().getTag(UcMetricConstants.RESOURCE_TYPE))
+        .containsOnly("table", "volume", "registered_model", "model_version", "staging_table");
   }
 
   @Test
@@ -126,6 +128,18 @@ class StorageCleanupWorkerTest {
     verify(taskRepository, never()).reportFailure(any(), any(), any());
     assertThat(attempts(UcMetricConstants.SUCCESS, ManagedResourceType.TABLE)).isEqualTo(1.0);
     assertThat(attempts(UcMetricConstants.FAILURE, ManagedResourceType.TABLE)).isZero();
+  }
+
+  @Test
+  void countsFailureWhenFinishFails() {
+    when(taskRepository.finish(RESOURCE_ID, LEASE_TOKEN))
+        .thenThrow(new IllegalStateException("database unavailable"));
+
+    assertThat(worker.runOnce()).isTrue();
+
+    verify(taskRepository).reportFailure(eq(RESOURCE_ID), eq(LEASE_TOKEN), any());
+    assertThat(attempts(UcMetricConstants.FAILURE, ManagedResourceType.TABLE)).isEqualTo(1.0);
+    assertThat(attempts(UcMetricConstants.SUCCESS, ManagedResourceType.TABLE)).isZero();
   }
 
   @Test
