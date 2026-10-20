@@ -346,4 +346,43 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertThat(json.has("detail")).isTrue();
     assertThat(json.get("detail").asText()).contains("already exists");
   }
+
+  @Test
+  public void testScimCreateUserDatabaseFailureIsAServerError() throws Exception {
+    // The database rejects inserting this one email, so the create fails inside its transaction.
+    String failingEmail = "scim-db-failure@test.com";
+    runSql(
+        "ALTER TABLE uc_users ADD CONSTRAINT scim_db_failure CHECK (email <> '"
+            + failingEmail
+            + "')");
+    try {
+      RequestHeaders headers =
+          RequestHeaders.builder()
+              .method(HttpMethod.POST)
+              .path("/api/1.0/unity-control/scim2/Users")
+              .contentType(MediaType.JSON)
+              .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
+              .build();
+      String userJson =
+          "{\"displayName\":\"test\",\"emails\":[{\"value\":\""
+              + failingEmail
+              + "\",\"primary\":true}]}";
+
+      AggregatedHttpResponse response =
+          client.execute(headers, HttpData.ofUtf8(userJson)).aggregate().join();
+
+      assertThat(response.status()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+      JsonNode json = MAPPER.readTree(response.contentUtf8());
+      assertThat(json.get("status").asText()).isEqualTo("500");
+      assertThat(json.get("detail").asText()).startsWith("Failed to create user");
+    } finally {
+      runSql("ALTER TABLE uc_users DROP CONSTRAINT scim_db_failure");
+    }
+  }
+
+  private void runSql(String sql) {
+    hibernateConfigurator
+        .getSessionFactory()
+        .inTransaction(session -> session.createNativeMutationQuery(sql).executeUpdate());
+  }
 }
