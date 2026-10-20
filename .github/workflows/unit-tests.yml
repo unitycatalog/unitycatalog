@@ -20,6 +20,11 @@ permissions:
 #   - true:  the test job restores the Spark Maven cache, builds Spark from the metadata
 #            ref on a miss, saves the cache, then runs tests against it.
 #
+# There is no separate Delta source-build toggle: when delta-version is master-SNAPSHOT the
+# run-uc-unit-tests action builds Delta from source (project/scripts/build_delta.sh), gated on the
+# version string itself. Every published delta-version is resolved directly.
+# Master-SNAPSHOT and source-Spark rows set USE_MAVEN_LOCAL=true for their Maven-local artifacts.
+#
 # The source-built Spark SHA, artifact version, and cache key come from
 # project/spark-versions.json (sourceBuildDefaultRef) via project/scripts/get_spark_version_info.py.
 # Bumping the source-built Spark line is a one-line change there plus the matrix row below.
