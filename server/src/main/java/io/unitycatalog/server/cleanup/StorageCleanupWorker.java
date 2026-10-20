@@ -150,6 +150,8 @@ public final class StorageCleanupWorker implements AutoCloseable {
     try {
       cleanup(claim, deadline);
       taskRepository.finish(claim.resourceId(), claim.leaseToken());
+      // Counted by this attempt's outcome, even when finish() returns false because the lease
+      // expired: the files were deleted, and a later attempt records its own result.
       metrics.recordSuccess(claim.resourceType());
     } catch (Exception exception) {
       // Surface the failure to operators: the DB only keeps a sanitized class-name string, so
