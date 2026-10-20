@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
-import com.auth0.jwk.RateLimitReachedException;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.exceptions.SignatureVerificationException;
@@ -149,7 +148,7 @@ class JwksOperationsTest {
   }
 
   @Test
-  void verifierForIssuerAndKey_reportsKeyAndIssuerWhenSigningKeyFetchIsRejected() {
+  void verifierForIssuerAndKey_reportsFetchFailureAndDelaysRetries() {
     respondWith(
         200,
         "application/json",
@@ -160,6 +159,18 @@ class JwksOperationsTest {
         .hasMessage("Could not get signing key 'key-1' for issuer " + issuer)
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.INTERNAL);
+
+    respondWithKey("key-1", signingKey);
+    assertThatThrownBy(() -> jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256"))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasRootCauseMessage("Signing-key refresh is rate limited");
+    assertThat(jwksRequests).hasValue(1);
+
+    elapsedNanos.set(Duration.ofSeconds(6).toNanos());
+    jwksOperations
+        .verifierForIssuerAndKey(issuer, "key-1", "RS256")
+        .verify(tokenForKey("key-1", signingKey));
+    assertThat(jwksRequests).hasValue(2);
   }
 
   @Test
@@ -206,6 +217,13 @@ class JwksOperationsTest {
 
     respondWithKey("key-2", rotatedSigningKey);
     String rotatedToken = tokenForKey("key-2", rotatedSigningKey);
+    elapsedNanos.set(Duration.ofSeconds(6).minusNanos(1).toNanos());
+    assertThatThrownBy(() -> jwksOperations.verifierForIssuerAndKey(issuer, "key-2", "RS256"))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasRootCauseMessage("Signing-key refresh is rate limited");
+    assertThat(jwksRequests).hasValue(1);
+
+    elapsedNanos.incrementAndGet();
     jwksOperations.verifierForIssuerAndKey(issuer, "key-2", "RS256").verify(rotatedToken);
     assertThat(discoveryRequests).hasValue(1);
     assertThat(jwksRequests).hasValue(2);
@@ -231,35 +249,35 @@ class JwksOperationsTest {
     assertThat(jwksRequests).hasValue(3);
   }
 
-  @Test
-  void verifierForIssuerAndKey_limitsUnknownKeysWithoutBlockingCachedKeys() {
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void verifierForIssuerAndKey_limitsRefreshesWithoutBlockingPublishedKeys(
+      boolean shouldExpireProvider) {
     respondWithDiscovery(issuer + "/jwks");
     respondWithKey("key-1", signingKey);
-    jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256");
-    for (int i = 0; i < 9; i++) {
+    String token = tokenForKey("key-1", signingKey);
+    if (shouldExpireProvider) {
+      jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(token);
+      elapsedNanos.set(Duration.ofHours(1).toNanos());
+    }
+    for (int i = 0; i < 10; i++) {
       String missingKey = "missing-" + i;
       assertThatThrownBy(() -> jwksOperations.verifierForIssuerAndKey(issuer, missingKey, "RS256"))
           .isInstanceOf(OAuthInvalidRequestException.class)
-          .hasMessage("Could not get signing key '" + missingKey + "' for issuer " + issuer);
+          .hasMessage("Could not get signing key '" + missingKey + "' for issuer " + issuer)
+          .extracting(e -> ((BaseException) e).getErrorCode())
+          .isEqualTo(ErrorCode.INTERNAL);
     }
-    int requests = jwksRequests.get();
-    assertThatThrownBy(
-            () -> jwksOperations.verifierForIssuerAndKey(issuer, "missing-after-limit", "RS256"))
-        .isInstanceOf(OAuthInvalidRequestException.class)
-        .hasCauseInstanceOf(RateLimitReachedException.class);
-    respondWithKey("key-2", rotatedSigningKey);
-    assertThatThrownBy(() -> jwksOperations.verifierForIssuerAndKey(issuer, "key-2", "RS256"))
-        .isInstanceOf(OAuthInvalidRequestException.class)
-        .hasCauseInstanceOf(RateLimitReachedException.class);
-    jwksOperations
-        .verifierForIssuerAndKey(issuer, "key-1", "RS256")
-        .verify(tokenForKey("key-1", signingKey));
-    assertThat(discoveryRequests).hasValue(1);
-    assertThat(jwksRequests).hasValue(requests);
+    jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(token);
+    int expectedRequests = shouldExpireProvider ? 2 : 1;
+    assertThat(discoveryRequests).hasValue(expectedRequests);
+    assertThat(jwksRequests).hasValue(expectedRequests);
   }
 
-  @Test
-  void verifierForIssuerAndKey_sharesConcurrentLoads() throws Exception {
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void verifierForIssuerAndKey_sharesConcurrentLoads(boolean shouldRequestUnknownKeys)
+      throws Exception {
     respondWithDiscovery(issuer + "/jwks");
     respondWithKey("key-1", signingKey);
     String token = tokenForKey("key-1", signingKey);
@@ -268,12 +286,21 @@ class JwksOperationsTest {
     try {
       var requests = new ArrayList<Future<?>>();
       for (int i = 0; i < 8; i++) {
+        String keyId = shouldRequestUnknownKeys ? "missing-" + i : "key-1";
         requests.add(
             executor.submit(
                 () -> {
                   start.await();
+                  if (shouldRequestUnknownKeys) {
+                    assertThatThrownBy(
+                            () -> jwksOperations.verifierForIssuerAndKey(issuer, keyId, "RS256"))
+                        .isInstanceOf(OAuthInvalidRequestException.class)
+                        .hasMessage(
+                            "Could not get signing key '" + keyId + "' for issuer " + issuer);
+                    return null;
+                  }
                   return jwksOperations
-                      .verifierForIssuerAndKey(issuer, "key-1", "RS256")
+                      .verifierForIssuerAndKey(issuer, keyId, "RS256")
                       .verify(token);
                 }));
       }
@@ -281,6 +308,7 @@ class JwksOperationsTest {
       for (var request : requests) {
         request.get(10, TimeUnit.SECONDS);
       }
+      jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(token);
       assertThat(discoveryRequests).hasValue(1);
       assertThat(jwksRequests).hasValue(1);
     } finally {

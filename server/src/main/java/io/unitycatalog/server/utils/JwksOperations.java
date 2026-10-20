@@ -6,6 +6,7 @@ import com.auth0.jwk.Jwk;
 import com.auth0.jwk.JwkException;
 import com.auth0.jwk.JwkProvider;
 import com.auth0.jwk.JwkProviderBuilder;
+import com.auth0.jwk.JwksHttpClient;
 import com.auth0.jwk.JwksHttpResponse;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
@@ -34,7 +35,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.TimeUnit;
 import lombok.SneakyThrows;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -49,11 +49,12 @@ public class JwksOperations {
   private static final int MAX_CACHED_KEYS = 100;
   private static final Duration CACHE_TTL = Duration.ofHours(1);
   private static final Duration DISCOVERY_FAILURE_TTL = Duration.ofSeconds(30);
-  private static final int MAX_KEY_MISSES_PER_MINUTE = 10;
+  private static final Duration MIN_KEY_REFRESH_INTERVAL = Duration.ofSeconds(6);
 
   private final WebClient webClient;
   private static final ObjectMapper mapper = new ObjectMapper();
   private final SecurityContext securityContext;
+  private final Ticker ticker;
   private final Set<URI> allowedJwksUris;
   private final Cache<String, JwkProvider> providers;
   private final Cache<String, DiscoveryFailure> discoveryFailures;
@@ -79,6 +80,7 @@ public class JwksOperations {
       Ticker ticker,
       Duration responseTimeout) {
     this.securityContext = securityContext;
+    this.ticker = ticker;
     this.webClient =
         WebClient.builder()
             .followRedirects(RedirectConfig.disabled())
@@ -249,11 +251,10 @@ public class JwksOperations {
 
       URI jwksUri = jwksUriForIssuer(issuerUri, configJwksUri);
 
-      // Keep the key cache outside the rate limiter so normal logins do not use its budget.
       return new JwkProviderBuilder(jwksUri.toURL())
           .cached(MAX_CACHED_KEYS, CACHE_TTL)
-          .rateLimited(MAX_KEY_MISSES_PER_MINUTE, 1, TimeUnit.MINUTES)
-          .httpClient(this::fetchSigningKeys)
+          .rateLimited(false)
+          .httpClient(rateLimitedSigningKeysClient())
           .build();
     } catch (OAuthInvalidRequestException e) {
       // Failed loads also need a cooldown; the provider cache only stores successes.
@@ -267,6 +268,23 @@ public class JwksOperations {
   }
 
   private record DiscoveryFailure(ErrorCode errorCode, String message) {}
+
+  /** Limits HTTP fetches per provider while keeping its full cached key set available. */
+  private JwksHttpClient rateLimitedSigningKeysClient() {
+    return new JwksHttpClient() {
+      private long nextRefreshNanos = ticker.read();
+
+      @Override
+      public synchronized JwksHttpResponse fetch(URL url) throws IOException {
+        long now = ticker.read();
+        if (now - nextRefreshNanos < 0) {
+          throw new IOException("Signing-key refresh is rate limited");
+        }
+        nextRefreshNanos = now + MIN_KEY_REFRESH_INTERVAL.toNanos();
+        return fetchSigningKeys(url);
+      }
+    };
+  }
 
   private JwksHttpResponse fetchSigningKeys(URL url) throws IOException {
     try {
