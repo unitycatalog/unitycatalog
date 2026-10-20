@@ -31,9 +31,10 @@ final class PostgresDatabases {
     this.failure = failure;
   }
 
-  static synchronized PostgresDatabases get(SupportedDatabase database) {
+  /** The container for the selected PostgreSQL database, started on first use. */
+  static synchronized PostgresDatabases get() {
     if (instance == null) {
-      instance = start(database);
+      instance = start(SupportedDatabase.selected());
     }
     return instance;
   }

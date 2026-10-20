@@ -29,5 +29,10 @@ public class MySQLDeltaCommitsCRUDTest extends SdkDeltaCommitsCRUDTest {
     hibernateProperties.setProperty("hibernate.connection.url", MYSQL.getJdbcUrl());
     hibernateProperties.setProperty("hibernate.connection.username", MYSQL.getUsername());
     hibernateProperties.setProperty("hibernate.connection.password", MYSQL.getPassword());
+    // The container is shared by the class's tests; create-drop gives each test a fresh schema.
+    hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
+    // create-drop first drops the schema, and on a fresh MySQL database dropping its foreign keys
+    // fails harmlessly: MySQL has no DROP FOREIGN KEY IF EXISTS.
+    hibernateProperties.setProperty("hibernate.hbm2ddl.halt_on_error", "false");
   }
 }

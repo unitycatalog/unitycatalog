@@ -14,9 +14,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 import lombok.SneakyThrows;
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
-import org.hibernate.Transaction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.io.TempDir;
@@ -85,7 +82,9 @@ public abstract class BaseServerTest {
 
   /**
    * Subclasses can override this to customize the hibernate properties before the session factory
-   * is created. Defaults to this test's database from {@link TestDatabases}.
+   * is created. They start as this test's database from {@link TestDatabases}; a subclass that
+   * points the server at its own database also sets {@code hibernate.hbm2ddl.auto} so each test
+   * gets a fresh schema.
    */
   protected void setUpHibernateProperties(Properties hibernateProperties) {}
 
@@ -118,15 +117,6 @@ public abstract class BaseServerTest {
       testDatabase = TestDatabases.newDatabase();
       Properties hibernateProperties = testDatabase.hibernateProperties(initServerProperties);
       setUpHibernateProperties(hibernateProperties);
-      if (!testDatabase
-          .jdbcUrl()
-          .equals(hibernateProperties.getProperty("hibernate.connection.url"))) {
-        // A subclass pointed the server at its own database, which builds its schema per test as
-        // before; that database's drop step can fail harmlessly (MySQL has no DROP FOREIGN KEY IF
-        // EXISTS).
-        hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
-        hibernateProperties.setProperty("hibernate.hbm2ddl.halt_on_error", "false");
-      }
       hibernateConfigurator = testDatabase.openHibernateConfigurator(hibernateProperties);
       UnityCatalogServer.Builder serverBuilder =
           UnityCatalogServer.builder()
@@ -159,41 +149,22 @@ public abstract class BaseServerTest {
 
   @AfterEach
   public void tearDown() {
+    // No cleanup queries: each test's database is dropped below, or, for a subclass with its own
+    // database, its create-drop schema is dropped when the configurator closes.
     try {
       if (unityCatalogServer != null) {
-        SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
-        Session session = sessionFactory.openSession();
-        Transaction tx = session.beginTransaction();
-        session.createMutationQuery("delete from FunctionParameterInfoDAO").executeUpdate();
-        session.createMutationQuery("delete from FunctionInfoDAO").executeUpdate();
-        session.createMutationQuery("delete from VolumeInfoDAO").executeUpdate();
-        session.createMutationQuery("delete from ColumnInfoDAO").executeUpdate();
-        session.createMutationQuery("delete from TableInfoDAO").executeUpdate();
-        session.createMutationQuery("delete from StagingTableDAO").executeUpdate();
-        session.createMutationQuery("delete from SchemaInfoDAO").executeUpdate();
-        session.createMutationQuery("delete from CatalogInfoDAO").executeUpdate();
-        session.createMutationQuery("delete from UserDAO").executeUpdate();
-        session.createMutationQuery("delete from ExternalLocationDAO").executeUpdate();
-        session.createMutationQuery("delete from CredentialDAO").executeUpdate();
-        tx.commit();
-        session.close();
+        // close() rather than stop() so a server that built its own SessionFactory releases it;
+        // this harness injects one, so the server leaves it open; testDatabase.close() closes it.
+        unityCatalogServer.close();
+        // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
+        unityCatalogServer = null;
       }
     } finally {
-      try {
-        if (unityCatalogServer != null) {
-          // close() rather than stop() so a server that built its own SessionFactory releases it;
-          // this harness injects one, so the server leaves it open; testDatabase.close() closes it.
-          unityCatalogServer.close();
-          // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
-          unityCatalogServer = null;
-        }
-      } finally {
-        // Runs even if setUp() or the cleanup above failed. Closes the configurator and removes the
-        // database, so it must follow unityCatalogServer.close().
-        if (testDatabase != null) {
-          testDatabase.close();
-          testDatabase = null;
-        }
+      // Runs even if setUp() failed. Closes the configurator and removes the database, so it must
+      // follow unityCatalogServer.close().
+      if (testDatabase != null) {
+        testDatabase.close();
+        testDatabase = null;
       }
     }
   }

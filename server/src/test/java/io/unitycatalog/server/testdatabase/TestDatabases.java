@@ -21,7 +21,7 @@ public final class TestDatabases {
     String name = "uc_" + NEXT_ID.incrementAndGet();
     return switch (selected) {
       case H2 -> h2(name);
-      case POSTGRES_18 -> PostgresDatabases.get(selected).newDatabase(name);
+      case POSTGRES_18 -> PostgresDatabases.get().newDatabase(name);
     };
   }
 
