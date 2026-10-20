@@ -13,8 +13,10 @@ release. Chart version X.Y.Z runs the server image `unitycatalog/unitycatalog:vX
 
 ```sh
 helm install unitycatalog oci://registry-1.docker.io/unitycatalog/unitycatalog-chart \
-  --version 0.8.0 --namespace unitycatalog --create-namespace
+  --version X.Y.Z --namespace unitycatalog --create-namespace
 ```
+
+Replace `X.Y.Z` with the Unity Catalog release to install.
 
 With the default values, the chart runs one server, which keeps its H2 database on a persistent volume. Run
 `helm test unitycatalog --namespace unitycatalog` to check that the server responds.
@@ -68,9 +70,13 @@ server:
       passwordSecretKey: password
 ```
 
+With authentication on (`auth.enabled: true`), more than one replica also needs
+`server.authorization.policy-refresh: "true"` under `server.config.extraProperties`, so a grant or revoke made through
+one replica reaches the others. See [Multiple server instances](auth.md#multiple-server-instances).
+
 ```sh
 helm upgrade --install unitycatalog oci://registry-1.docker.io/unitycatalog/unitycatalog-chart \
-  --version 0.8.0 --namespace unitycatalog --values values.yaml
+  --version X.Y.Z --namespace unitycatalog --values values.yaml
 ```
 
 ## Upgrade and uninstall
