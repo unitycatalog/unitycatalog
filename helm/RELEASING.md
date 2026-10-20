@@ -32,12 +32,13 @@ release.
 
 ## Verify
 
-Log out first (`helm registry logout registry-1.docker.io`), so the check also confirms the chart is public. Then check
-that every image the published chart runs exists, including the optional UI:
+Check that every image the published chart runs exists, including the optional UI. The check runs Helm with empty
+credential files, so it fetches the chart logged out and also confirms the chart is public. Helm also uses the
+credentials from `docker login`, so `helm registry logout` alone isn't enough.
 
 ```sh
-images=$(helm template uc oci://registry-1.docker.io/unitycatalog/unitycatalog-chart \
-  --version X.Y.Z --set ui.enabled=true \
+images=$(HELM_REGISTRY_CONFIG="$(mktemp -d)/config.json" DOCKER_CONFIG="$(mktemp -d)" \
+  helm template uc oci://registry-1.docker.io/unitycatalog/unitycatalog-chart --version X.Y.Z --set ui.enabled=true \
   | sed -n 's/^ *image: "\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' | sort -u)
 missing=0
 while read -r image; do
