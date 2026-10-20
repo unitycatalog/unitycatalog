@@ -39,7 +39,7 @@ public abstract class BaseExceptionHandler implements ExceptionHandlerFunction {
     return exception.getErrorCode().getHttpStatus();
   }
 
-  /** Logs a 5xx once, with its cause. A logging failure never stops the error response. */
+  /** Logs a 5xx once, with its cause. */
   protected static void logIfServerError(
       ServiceRequestContext ctx, HttpStatus status, Throwable cause) {
     if (!status.isServerError()) {
@@ -48,8 +48,6 @@ public abstract class BaseExceptionHandler implements ExceptionHandlerFunction {
     // Unlike push(), replace() doesn't throw when another request's context is current.
     try (SafeCloseable ignored = ctx.replace()) {
       LOGGER.error("Request failed", cause);
-    } catch (RuntimeException loggingError) {
-      // A failing appender must not stop the error response.
     }
   }
 
