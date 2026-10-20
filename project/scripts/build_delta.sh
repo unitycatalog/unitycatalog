@@ -72,7 +72,6 @@ cd "$DELTA_DIR"
 # reads the environment variable below to add its Maven-local resolver, which it
 # needs for these UC jars and for source-built Spark artifacts. This variable is
 # read by Delta's launcher, not this checkout's build/sbt.
-# -DunityCatalogVersion pins those coordinates; the autoBuild flag is explicit.
 # publishM2 only (not publishLocal): Delta's ivy.xml lists internal modules
 # (delta-spark-v1, delta-spark-v2) that aren't published separately. The M2 POM
 # filters them via pomPostProcess.

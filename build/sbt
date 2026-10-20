@@ -66,9 +66,11 @@ realpath () {
 )
 }
 
+UC_SBT_TEMP_REPOSITORIES_CONFIG=""
 if [[ -n "$MAVEN_PROXY_URL" ]]; then
   # If MAVEN_PROXY_URL is set, use it (and local) as the sole repository for all dependencies.
   SBT_REPOSITORIES_CONFIG=$(mktemp)
+  UC_SBT_TEMP_REPOSITORIES_CONFIG="$SBT_REPOSITORIES_CONFIG"
   cat > "$SBT_REPOSITORIES_CONFIG" <<EOF
 [repositories]
   local
@@ -81,13 +83,15 @@ else
   SBT_REPOSITORIES_CONFIG="$(dirname "$(realpath "$0")")/sbt-config/repositories"
 fi
 if [[ "${USE_MAVEN_LOCAL:-false}" == "true" ]]; then
-  SBT_REPOSITORIES_WITH_MAVEN_LOCAL=$(mktemp)
-  cp "$SBT_REPOSITORIES_CONFIG" "$SBT_REPOSITORIES_WITH_MAVEN_LOCAL"
+  if [[ -z "${MAVEN_PROXY_URL:-}" ]]; then
+    UC_SBT_TEMP_REPOSITORIES_CONFIG=$(mktemp)
+    cp "$SBT_REPOSITORIES_CONFIG" "$UC_SBT_TEMP_REPOSITORIES_CONFIG"
+    SBT_REPOSITORIES_CONFIG="$UC_SBT_TEMP_REPOSITORIES_CONFIG"
+  fi
   MAVEN_LOCAL_REPO="${MAVEN_LOCAL_REPO:-${HOME}/.m2/repository}"
-  cat >> "$SBT_REPOSITORIES_WITH_MAVEN_LOCAL" <<EOF
+  cat >> "$SBT_REPOSITORIES_CONFIG" <<EOF
   maven-local: file://${MAVEN_LOCAL_REPO}
 EOF
-  SBT_REPOSITORIES_CONFIG="$SBT_REPOSITORIES_WITH_MAVEN_LOCAL"
 fi
 export SBT_OPTS="${SBT_OPTS:-} -Dsbt.override.build.repos=true -Dsbt.repository.config=$SBT_REPOSITORIES_CONFIG"
 
@@ -182,6 +186,9 @@ restoreSttySettings() {
 onExit() {
   if [[ "$saved_stty" != "" ]]; then
     restoreSttySettings
+  fi
+  if [[ -n "$UC_SBT_TEMP_REPOSITORIES_CONFIG" ]]; then
+    rm -f "$UC_SBT_TEMP_REPOSITORIES_CONFIG"
   fi
   exit $exit_status
 }

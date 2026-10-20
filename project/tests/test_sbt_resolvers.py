@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Verify build/sbt's effective Maven local resolver opt-in."""
-
 import os
 import subprocess
 from pathlib import Path
