@@ -4,7 +4,8 @@ Every Unity Catalog release X.Y.Z, patch releases included, publishes the chart 
 the server image `unitycatalog/unitycatalog:vX.Y.Z` and the UI image `unitycatalog/unitycatalog-ui:vX.Y.Z`, so both
 images must be on Docker Hub before the chart is pushed.
 
-Only the release managers, @tdas and @yili-db, can push to the `unitycatalog` Docker Hub organization.
+Only the release managers, @tdas and @yili-db, push to the `unitycatalog` Docker Hub organization, and only they should
+have write access to its repositories.
 
 ## Publish the UI image
 
