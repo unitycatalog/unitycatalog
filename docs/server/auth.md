@@ -27,7 +27,7 @@ To try out authentication and authorization, first configure your preferred exte
 instructions. Ultimately you will have configuration properties to configure:
 
 * `etc/conf/server.properties` to fill in the Identity Provider authorization parameters
-* [Optional] `ui/.env` so the Unity Catalog UI can also use the same `client_id`.  
+* [Optional] `ui/.env` so the [Unity Catalog UI](../usage/ui.md) can also use the same `client_id`.  
 
 !!! note "Unity Catalog UI supported Identity Authentication Providers"
     Currently, the Unity Catalog User Interface supports Google Identity Provider.
