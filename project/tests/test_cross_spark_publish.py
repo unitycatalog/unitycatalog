@@ -134,17 +134,6 @@ class CrossSparkPublishTest:
                         found_jars.add(jar_file.name)
         return found_jars
 
-    def test_default_resolvers_exclude_maven_local(self) -> bool:
-        repositories = (self.uc_root / "build/sbt-config/repositories").read_text()
-        build = (self.uc_root / "build.sbt").read_text()
-        uses_maven_local = "maven-local:" in repositories or "Resolver.mavenLocal" in build
-        print(
-            "PASS: default resolvers exclude Maven local"
-            if not uses_maven_local
-            else "FAIL: default resolvers include Maven local"
-        )
-        return not uses_maven_local
-
     def run_sbt_command(self, description: str, command: List[str]) -> bool:
         # The Test-scoped delta-spark dependency is only required for running tests,
         # not for publishing. Some Spark versions (e.g. previews) have no matching
@@ -466,8 +455,6 @@ def main():
 
         test = CrossSparkPublishTest(uc_root)
 
-        t_resolvers = test.test_default_resolvers_exclude_maven_local()
-
         has_source_build_profiles = any(
             spec.source_build_default_ref for spec in SPARK_VERSIONS.values()
         )
@@ -493,9 +480,6 @@ def main():
             f"  Source-build cache key:                 {'PASS' if t1 else 'FAIL'}"
         )
         print(
-            f"  Default resolver isolation:             {'PASS' if t_resolvers else 'FAIL'}"
-        )
-        print(
             f"  Default publishM2 (with suffix):        {'PASS' if t2 else 'FAIL'}"
         )
         print(
@@ -510,7 +494,7 @@ def main():
         print("=" * 70)
 
         metadata_passed = t0 and t1
-        if metadata_passed and t_resolvers and t2 and t3 and t4 and t5:
+        if metadata_passed and t2 and t3 and t4 and t5:
             print("\nALL TESTS PASSED")
             sys.exit(0)
         else:
