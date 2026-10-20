@@ -35,10 +35,12 @@ def test_api_client_with_retries_creates_and_closes_retry_client_lazily():
     assert rest_client.retry_client is None
 
     async def list_catalogs_then_close():
-        await CatalogsApi(api_client).list_catalogs()
-        assert rest_client.pool_manager is not None
-        assert rest_client.retry_client is not None
-        await api_client.close()
+        try:
+            await CatalogsApi(api_client).list_catalogs()
+            assert rest_client.pool_manager is not None
+            assert rest_client.retry_client is not None
+        finally:
+            await api_client.close()
 
     asyncio.run(list_catalogs_then_close())
     assert rest_client.pool_manager.closed

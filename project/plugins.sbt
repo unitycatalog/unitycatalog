@@ -24,8 +24,8 @@ addSbtPlugin("org.xerial.sbt" % "sbt-sonatype" % "3.11.3")
 
 addSbtPlugin("net.aichler" % "sbt-jupiter-interface" % "0.11.1")
 
-// clients/python/build/templates/asyncio/rest.mustache backports a Python template from 7.11.0. See its
-// header before upgrading this plugin.
+// clients/python/build/templates/asyncio/rest.mustache backports a Python template from 7.11.0. Upgrading
+// this plugin is tracked in https://github.com/unitycatalog/unitycatalog/issues/2026.
 addSbtPlugin("org.openapitools" % "sbt-openapi-generator" % "7.9.0")
 
 addSbtPlugin("com.github.sbt" % "sbt-license-report" % "1.6.1")
