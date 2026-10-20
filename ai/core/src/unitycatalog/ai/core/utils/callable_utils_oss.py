@@ -1,9 +1,10 @@
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Union
 
 from unitycatalog.ai.core.utils.callable_utils import (
     FunctionMetadata,
+    _split_generic_types,
     extract_function_metadata,
     extract_wrapped_functions,
 )
@@ -99,18 +100,6 @@ def generate_wrapped_function_info(
     )
 
 
-def _split_map_types(inner: str) -> Tuple[str, str]:
-    depth = 0
-    for i, char in enumerate(inner):
-        if char in "<(":
-            depth += 1
-        elif char in ">)":
-            depth -= 1
-        elif char == "," and depth == 0:
-            return inner[:i].strip(), inner[i + 1 :].strip()
-    raise ValueError(f"Invalid MAP type: MAP<{inner}>")
-
-
 def _sql_type_to_type_json(sql_type: str) -> Union[str, Dict[str, Any]]:
     """
     Converts a SQL type such as ARRAY<MAP<STRING, LONG>> into the Spark-style type JSON
@@ -129,7 +118,7 @@ def _sql_type_to_type_json(sql_type: str) -> Union[str, Dict[str, Any]]:
             "containsNull": True,
         }
     if sql_type.startswith("MAP<"):
-        key_type, value_type = _split_map_types(sql_type[len("MAP<") : -1])
+        key_type, value_type = _split_generic_types(sql_type[len("MAP<") : -1])
         return {
             "type": "map",
             "keyType": _sql_type_to_type_json(key_type),

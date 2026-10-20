@@ -1024,17 +1024,17 @@ def check_docstring_signature_consistency(
 
 def _split_generic_types(s: str) -> list[str]:
     """
-    Split a generic type string into its components, ignoring commas inside nested generics.
-    For example, "STRING, ARRAY<STRING>, MAP<STRING, INT>" becomes
-    ["STRING", "ARRAY<STRING>", "MAP<STRING, INT>"].
+    Split a generic type string into its components, ignoring commas inside nested generics
+    and type parameters. For example, "STRING, MAP<STRING, INT>, DECIMAL(38, 18)" becomes
+    ["STRING", "MAP<STRING, INT>", "DECIMAL(38, 18)"].
     """
     parts = []
     current_chars = []
     depth = 0
     for ch in s:
-        if ch == "<":
+        if ch in "<(":
             depth += 1
-        elif ch == ">":
+        elif ch in ">)":
             depth -= 1
 
         if ch == "," and depth == 0:
