@@ -30,10 +30,11 @@ import org.slf4j.LoggerFactory;
 /**
  * Simple JWT access-token authorization decorator.
  *
- * <p>This decorator implements simple authorization. It requires an Authorization header in the
- * request with a Bearer token. The token is verified to be from the "internal" issuer and the token
- * signature is checked against the internal issuer key. If all these checks pass, the request is
- * allowed to continue.
+ * <p>This decorator accepts an Authorization header with a Bearer token, or a UC_TOKEN cookie when
+ * no Bearer token is present. Cookie requests other than GET, HEAD, and OPTIONS require
+ * X-Requested-With: XMLHttpRequest. The token is verified to be from the "internal" issuer and the
+ * token signature is checked against the internal issuer key. If all these checks pass, the request
+ * is allowed to continue.
  *
  * <p>The decoded token is also added to the request attributes so it can be referenced by the
  * request if needed.

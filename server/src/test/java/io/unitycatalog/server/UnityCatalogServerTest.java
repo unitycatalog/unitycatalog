@@ -4,7 +4,13 @@ import static io.unitycatalog.server.utils.TestUtils.sendRawGet;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.linecorp.armeria.client.WebClient;
+import com.linecorp.armeria.common.Cookie;
+import com.linecorp.armeria.common.HttpHeaderNames;
+import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.util.BlockingTaskExecutor;
 import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.annotation.Get;
@@ -55,6 +61,42 @@ public class UnityCatalogServerTest extends BaseServerTest {
         assertThat(sendRawGet(serverConfig, path).statusCode()).as(path).isEqualTo(404);
       }
     }
+  }
+
+  @Test
+  public void logoutRequiresCsrfHeaderWhenAuthorizationIsDisabled() {
+    var client = WebClient.of(serverConfig.getServerUrl());
+    var headers =
+        RequestHeaders.builder(HttpMethod.POST, "/api/1.0/unity-control/auth/logout")
+            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=existing-session")
+            .build();
+    for (var rejectedHeaders :
+        List.of(
+            headers,
+            headers.toBuilder().set(HttpHeaderNames.X_REQUESTED_WITH, "fetch").build(),
+            headers.toBuilder().set(HttpHeaderNames.AUTHORIZATION, "Basic credentials").build())) {
+      var response = client.execute(rejectedHeaders).aggregate().join();
+      assertThat(response.status()).isEqualTo(HttpStatus.FORBIDDEN);
+      assertThat(response.contentUtf8())
+          .contains(
+              "PERMISSION_DENIED", "Cookie requests require X-Requested-With: XMLHttpRequest");
+      assertThat(response.headers().get(HttpHeaderNames.SET_COOKIE)).isNull();
+    }
+
+    for (var allowedHeaders :
+        List.of(
+            headers.toBuilder().set(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest").build(),
+            headers.toBuilder().set(HttpHeaderNames.AUTHORIZATION, "Bearer token").build())) {
+      var response = client.execute(allowedHeaders).aggregate().join();
+      assertThat(response.status()).isEqualTo(HttpStatus.OK);
+      var cookie = Cookie.fromSetCookieHeader(response.headers().get(HttpHeaderNames.SET_COOKIE));
+      assertThat(cookie.name()).isEqualTo("UC_TOKEN");
+      assertThat(cookie.maxAge()).isZero();
+    }
+    var response =
+        client.execute(RequestHeaders.of(HttpMethod.POST, headers.path())).aggregate().join();
+    assertThat(response.status()).isEqualTo(HttpStatus.OK);
+    assertThat(response.headers().get(HttpHeaderNames.SET_COOKIE)).isNull();
   }
 
   @Test

@@ -216,7 +216,7 @@ paths:
         - in: header
           name: X-Requested-With
           description: |
-            Required with value XMLHttpRequest for cookie authentication when authorization is enabled.
+            Required with value XMLHttpRequest to clear a cookie, even when authorization is disabled.
             Not required when a Bearer token is used.
           required: false
           schema:
@@ -226,6 +226,8 @@ paths:
       summary: Revoke access token cookie
       description: |
         Revokes the access token cookie.
+        With authorization enabled, all cookie-authenticated requests other than GET, HEAD, and OPTIONS
+        require X-Requested-With: XMLHttpRequest.
       # NOTE:
       # OAS 3.0 allows empty request bodies. In other words:
       #```

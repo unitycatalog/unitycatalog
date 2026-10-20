@@ -118,6 +118,8 @@ export interface paths {
     /**
      * Revoke access token cookie
      * @description Revokes the access token cookie.
+     *     With authorization enabled, all cookie-authenticated requests other than GET, HEAD, and OPTIONS
+     *     require X-Requested-With: XMLHttpRequest.
      *
      */
     post: operations['logout'];
@@ -533,7 +535,7 @@ export interface operations {
     parameters: {
       query?: never;
       header?: {
-        /** @description Required with value XMLHttpRequest for cookie authentication when authorization is enabled.
+        /** @description Required with value XMLHttpRequest to clear a cookie, even when authorization is disabled.
          *     Not required when a Bearer token is used.
          *      */
         'X-Requested-With'?: string;
