@@ -849,6 +849,11 @@ async def test_validate_param_invalid_interval():
         validate_param(param, column_type, param_type_text)
 
 
+@pytest.mark.parametrize("param_type_text", ["interval day to second", "INTERVAL DAY TO SECOND"])
+def test_validate_param_interval_type_text_is_case_insensitive(param_type_text):
+    validate_param(datetime.timedelta(days=1), "INTERVAL", param_type_text)
+
+
 def floating_point_param_infos(type_name: str, type_text: str) -> FunctionParameterInfos:
     return FunctionParameterInfos(
         parameters=[
@@ -1184,6 +1189,77 @@ async def test_create_and_execute_python_function(uc_client):
     assert result.value == "UNITY CATALOG"
 
     uc_client.delete_function(function_name=function_name)
+
+
+def double_amount(amount: decimal.Decimal) -> str:
+    """
+    Doubles an amount.
+
+    Args:
+        amount: the amount
+    """
+    return str(amount * 2)
+
+
+def parse_amount(text: str) -> decimal.Decimal:
+    """
+    Parses an amount.
+
+    Args:
+        text: the amount as text
+    """
+    import decimal
+
+    return decimal.Decimal(text)
+
+
+def shift_time(delta: datetime.timedelta) -> str:
+    """
+    Shifts a fixed time by a duration.
+
+    Args:
+        delta: the duration
+    """
+    import datetime
+
+    return (datetime.datetime(2024, 1, 1) + delta).isoformat()
+
+
+def to_duration(minutes: int) -> datetime.timedelta:
+    """
+    Converts minutes to a duration.
+
+    Args:
+        minutes: the number of minutes
+    """
+    import datetime
+
+    return datetime.timedelta(minutes=minutes)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "func,parameters,expected",
+    [
+        (double_amount, {"amount": decimal.Decimal("1.25")}, "2.50"),
+        (parse_amount, {"text": "3.75"}, decimal.Decimal("3.75")),
+        (shift_time, {"delta": datetime.timedelta(minutes=90)}, "2024-01-01T01:30:00"),
+        (to_duration, {"minutes": 45}, datetime.timedelta(minutes=45)),
+    ],
+    ids=["decimal_param", "decimal_return", "interval_param", "interval_return"],
+)
+async def test_create_and_execute_python_function_with_decimal_and_interval(
+    uc_client, func, parameters, expected
+):
+    function_name = f"{CATALOG}.{SCHEMA}.{func.__name__}"
+    try:
+        uc_client.create_python_function(func=func, catalog=CATALOG, schema=SCHEMA, replace=True)
+        result = uc_client.execute_function(function_name=function_name, parameters=parameters)
+    finally:
+        try_delete_function(uc_client, function_name)
+
+    assert result.error is None
+    assert result.value == expected
 
 
 @pytest.mark.asyncio
