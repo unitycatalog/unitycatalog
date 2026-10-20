@@ -14,6 +14,7 @@ import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.SessionProtocol;
 import com.linecorp.armeria.common.metric.MeterIdPrefixFunction;
 import com.linecorp.armeria.common.util.BlockingTaskExecutor;
+import com.linecorp.armeria.common.util.Exceptions;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.HttpService;
 import com.linecorp.armeria.server.Server;
@@ -46,7 +47,6 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.ParameterizedType;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Wraps Armeria's {@link ServerBuilder} with Unity-Catalog-aware registration. Callers register
@@ -296,8 +296,8 @@ public class ArmeriaServerBuilder {
   /**
    * Runs {@code blocking} on the blocking task executor when invoked from an event loop. Already
    * off the event loop, it runs inline so the access decorator does not take a second pool thread
-   * while the auth decorator still holds one. A failure completes the response exceptionally, which
-   * {@link io.unitycatalog.server.exception.ExceptionHandlingDecorator} renders.
+   * while the auth decorator still holds one. A failure aborts the response, which {@link
+   * io.unitycatalog.server.exception.ExceptionHandlingDecorator} renders.
    */
   private static DecoratingHttpServiceFunction offEventLoop(
       DecoratingHttpServiceFunction blocking) {
@@ -305,23 +305,20 @@ public class ArmeriaServerBuilder {
       if (!ctx.eventLoop().inEventLoop()) {
         return blocking.serve(delegate, ctx, req);
       }
-      CompletableFuture<HttpResponse> response = new CompletableFuture<>();
-      ctx.blockingTaskExecutor()
-          .execute(
-              () -> {
-                // A request that timed out while queued has already been answered; running auth
-                // and the handler now could commit work the client was told failed.
-                if (ctx.isCancelled()) {
-                  response.completeExceptionally(ctx.cancellationCause());
-                  return;
-                }
-                try {
-                  response.complete(blocking.serve(delegate, ctx, req));
-                } catch (Throwable failure) {
-                  response.completeExceptionally(failure);
-                }
-              });
-      return HttpResponse.of(response);
+      return HttpResponse.of(
+          () -> {
+            // A request that timed out while queued has already been answered; running auth and
+            // the handler now could commit work the client was told failed.
+            if (ctx.isCancelled()) {
+              return Exceptions.throwUnsafely(ctx.cancellationCause());
+            }
+            try {
+              return blocking.serve(delegate, ctx, req);
+            } catch (Exception failure) {
+              return Exceptions.throwUnsafely(failure);
+            }
+          },
+          ctx.blockingTaskExecutor());
     };
   }
 
