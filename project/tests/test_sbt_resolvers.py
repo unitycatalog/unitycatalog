@@ -10,33 +10,42 @@ from urllib.parse import urlparse
 
 UC_ROOT = Path(__file__).resolve().parents[2]
 MAVEN_LOCAL = ".m2/repository"
+ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
 def resolver_chains(use_maven_local: bool) -> list[list[str]]:
     env = os.environ.copy()
     env.pop("MAVEN_PROXY_URL", None)
-    env.pop("MAVEN_LOCAL_REPO", None)
     env.pop("USE_MAVEN_LOCAL", None)
     if use_maven_local:
         env["USE_MAVEN_LOCAL"] = "true"
 
+    command = [str(UC_ROOT / "build/sbt"), "-no-colors", "-batch", "show fullResolvers"]
     result = subprocess.run(
-        [str(UC_ROOT / "build/sbt"), "-batch", "show fullResolvers"],
+        command,
         cwd=UC_ROOT,
         env=env,
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
     )
-    output_lines = (result.stdout + result.stderr).splitlines()
+    output = result.stdout + result.stderr
+    diagnostic = (
+        f"Command: {command!r}\n"
+        f"stdout:\n{result.stdout}\n"
+        f"stderr:\n{result.stderr}"
+    )
+    assert result.returncode == 0, f"sbt exited with status {result.returncode}\n{diagnostic}"
+
+    output_lines = ANSI_ESCAPE.sub("", output).splitlines()
     chains = []
     for index, line in enumerate(output_lines[:-1]):
         if not re.fullmatch(r"\[info\] (?:[^/]+ / )?fullResolvers", line):
             continue
         task_result = re.fullmatch(r"\[info\]\s+Vector\((.*)\)", output_lines[index + 1])
-        assert task_result, f"Expected fullResolvers task result after {line!r}"
+        assert task_result, f"Expected fullResolvers task result after {line!r}\n{diagnostic}"
         chains.append(split_resolver_entries(task_result.group(1)))
-    assert chains, "sbt did not print any fullResolvers task results"
+    assert chains, f"sbt did not print any fullResolvers task results\n{diagnostic}"
     return chains
 
 

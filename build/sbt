@@ -88,9 +88,8 @@ if [[ "${USE_MAVEN_LOCAL:-false}" == "true" ]]; then
     cp "$SBT_REPOSITORIES_CONFIG" "$UC_SBT_TEMP_REPOSITORIES_CONFIG"
     SBT_REPOSITORIES_CONFIG="$UC_SBT_TEMP_REPOSITORIES_CONFIG"
   fi
-  MAVEN_LOCAL_REPO="${MAVEN_LOCAL_REPO:-${HOME}/.m2/repository}"
   cat >> "$SBT_REPOSITORIES_CONFIG" <<EOF
-  maven-local: file://${MAVEN_LOCAL_REPO}
+  maven-local: file://${HOME}/.m2/repository
 EOF
 fi
 export SBT_OPTS="${SBT_OPTS:-} -Dsbt.override.build.repos=true -Dsbt.repository.config=$SBT_REPOSITORIES_CONFIG"
