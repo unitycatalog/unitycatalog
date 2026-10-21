@@ -118,7 +118,7 @@ class AuditPermissionIntegrationTest extends SdkAccessControlBaseCRUDTest {
               assertThat(r.getAccess()).isEqualTo(io.unitycatalog.server.model.TableOperation.READ);
               assertThat(r.getUser()).isEqualTo(admin);
             });
-    // The drop clears the table's grants.
+    // The drop commits first (QUEUE_CLEANUP), then clears the table's grants.
     List<AuditRecord> drop =
         records.stream()
             .filter(
@@ -126,7 +126,8 @@ class AuditPermissionIntegrationTest extends SdkAccessControlBaseCRUDTest {
             .toList();
     assertThat(drop)
         .extracting(AuditRecord::getAction)
-        .containsExactly(AuditRecord.Action.CLEAR_RESOURCE_GRANTS);
+        .containsExactly(
+            AuditRecord.Action.QUEUE_CLEANUP, AuditRecord.Action.CLEAR_RESOURCE_GRANTS);
     assertThat(drop).allSatisfy(r -> assertThat(r.getUser()).isEqualTo(admin));
   }
 }

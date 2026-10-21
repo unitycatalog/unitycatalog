@@ -8,6 +8,7 @@ import io.unitycatalog.server.audit.AuditRecord.Purpose;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.model.TableOperation;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.persist.CleanupTaskRepository;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -136,6 +137,7 @@ class AuditorTest {
   void decoratorsForwardEveryDefaultMethod() {
     assertDeclaresDefaults(UnityCatalogAuthorizer.class, AuditingAuthorizer.class);
     assertDeclaresDefaults(StorageCredentialVendor.class, AuditingStorageCredentialVendor.class);
+    assertDeclaresDefaults(CleanupTaskRepository.class, AuditingCleanupTaskRepository.class);
   }
 
   private static void assertDeclaresDefaults(Class<?> api, Class<?> decorator) {

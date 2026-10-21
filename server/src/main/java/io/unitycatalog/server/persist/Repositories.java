@@ -42,7 +42,7 @@ public class Repositories {
   private final ExternalLocationRepository externalLocationRepository;
   private final DeltaCommitRepository deltaCommitRepository;
   private final DependencyRepository dependencyRepository;
-  private final StorageCleanupTaskRepository storageCleanupTaskRepository;
+  private final CleanupTaskRepository storageCleanupTaskRepository;
 
   /** Empty when {@code server.audit.sink} is unset. */
   private final Optional<Auditor> auditor;
@@ -120,7 +120,8 @@ public class Repositories {
     this.deltaCommitRepository =
         new DeltaCommitRepository(sessionFactory, serverProperties, fileOperations);
     this.dependencyRepository = new DependencyRepository();
-    this.storageCleanupTaskRepository = new StorageCleanupTaskRepository(sessionFactory);
+    CleanupTaskRepository cleanupTasks = new StorageCleanupTaskRepository(sessionFactory);
+    this.storageCleanupTaskRepository = auditor.map(a -> a.wrap(cleanupTasks)).orElse(cleanupTasks);
 
     // KeyMapper uses all the repositories above.
     this.keyMapper = new KeyMapper(this);
