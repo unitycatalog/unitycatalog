@@ -33,6 +33,33 @@ helm uninstall unitycatalog
 The command deletes the release. It keeps the H2 database PersistentVolumeClaim and the token signing key Secret;
 delete both to remove the data.
 
+## Audit records
+The server can write one JSON audit record per issued storage credential to
+`/home/unitycatalog/etc/logs/audit.log` (see the server configuration
+docs). The chart's log configuration already has the `audit` logger; turn records on and ship the
+file with the existing extension points:
+
+```yaml
+server:
+  config:
+    extraProperties:
+      server.audit.sink: io.unitycatalog.server.audit.FileAuditSink
+  deployment:
+    extraVolumes:
+      - name: audit-logs
+        emptyDir: {}
+    extraVolumeMounts:
+      - name: audit-logs
+        mountPath: /home/unitycatalog/etc/logs
+    extraContainers:
+      - name: audit-shipper # your log shipper, reading /home/unitycatalog/etc/logs/audit.log
+        image: <your-log-shipper-image>
+        volumeMounts:
+          - name: audit-logs
+            mountPath: /home/unitycatalog/etc/logs
+            readOnly: true
+```
+
 ## Configuration
 The following table lists the configurable parameters of the Unity Catalog chart and their default values.
 

@@ -8,6 +8,7 @@ import com.linecorp.armeria.server.ServerListener;
 import com.linecorp.armeria.server.healthcheck.HealthCheckService;
 import com.linecorp.armeria.server.prometheus.PrometheusExpositionService;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
+import io.unitycatalog.server.audit.Auditor;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -86,6 +87,10 @@ public class UnityCatalogServer implements AutoCloseable {
   /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private UnityCatalogAuthorizer authorizer;
 
+  private Auditor auditor;
+  // With audit on, JVM exit closes the server in order, so the sink closes after serving stops.
+  private Thread auditShutdownHook;
+
   /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private StorageCleanupWorker cleanupWorker;
 
@@ -124,6 +129,10 @@ public class UnityCatalogServer implements AutoCloseable {
               .build();
       this.blockingTaskExecutor = createdBlockingTaskExecutor;
       this.server = initializeServer(unityCatalogServerBuilder);
+      if (auditor != null) {
+        auditShutdownHook = new Thread(this::close, "unitycatalog-audit-shutdown");
+        Runtime.getRuntime().addShutdownHook(auditShutdownHook);
+      }
     } catch (Throwable t) {
       // Construction failed after the SessionFactory was built; close it so a failed boot does
       // not leak its connection pool. Errors matter as much as RuntimeExceptions here: a
@@ -132,6 +141,7 @@ public class UnityCatalogServer implements AutoCloseable {
       closeQuietly(cleanupWorker, t, "the storage cleanup worker");
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, t, "the authorizer");
       closeBlockingTaskExecutor(createdBlockingTaskExecutor, shutdownTimeout, t);
+      closeQuietly(auditor, t, "the audit sink");
       closeOwnedSessionFactory(t);
       throw t;
     }
@@ -251,6 +261,7 @@ public class UnityCatalogServer implements AutoCloseable {
             unityCatalogServerBuilder.cloudCredentialVendor,
             unityCatalogServerBuilder.fileOperationsDecorator,
             domainMetrics);
+    auditor = repositories.getAuditor().orElse(null);
     // Init metastore
     repositories.getMetastoreRepository().initMetastoreIfNeeded();
     // Init authorizer
@@ -519,6 +530,13 @@ public class UnityCatalogServer implements AutoCloseable {
   @Override
   public void close() {
     long deadlineNanos = System.nanoTime() + shutdownTimeout.toNanos();
+    if (auditShutdownHook != null && Thread.currentThread() != auditShutdownHook) {
+      try {
+        Runtime.getRuntime().removeShutdownHook(auditShutdownHook);
+      } catch (IllegalStateException e) {
+        // The JVM is already shutting down and will run the hook.
+      }
+    }
     try {
       stop();
     } finally {
@@ -528,6 +546,7 @@ public class UnityCatalogServer implements AutoCloseable {
       closeQuietly(metrics, null, "the metrics registry");
       closeQuietly(cleanupWorker, null, "the storage cleanup worker");
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, null, "the authorizer");
+      closeQuietly(auditor, null, "the audit sink");
       closeQuietly(
           ownsHibernateConfigurator ? hibernateConfigurator : null, null, "the database pool");
     }

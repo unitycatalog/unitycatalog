@@ -98,12 +98,42 @@ org.hibernate.type.descriptor.sql.BasicBinder=TRACE
 
 {{- define "unitycatalog.server.log4j2ConfigTemplate" -}}
 status=warn
-appenders=console
+appenders=console,auditFile
 
 appender.console.type=Console
 appender.console.name=Console
 appender.console.layout.type=PatternLayout
 appender.console.layout.pattern=%d{HH:mm:ss.SSS} ${hostName} [%t] %-5level %logger{36} %notEmpty{request_id=%X{request_id} }- %msg%n
+
+# Audit records (server.audit.sink=io.unitycatalog.server.audit.FileAuditSink); no file is created
+# until the first record.
+appender.auditFile.type=RollingFile
+appender.auditFile.name=AuditFile
+appender.auditFile.fileName=/home/unitycatalog/etc/logs/audit.log
+appender.auditFile.filePattern=/home/unitycatalog/etc/logs/audit-%d{MM-dd-yyyy-HH-mm-ss}-%i.log.gz
+appender.auditFile.createOnDemand=true
+appender.auditFile.ignoreExceptions=false
+appender.auditFile.layout.type=PatternLayout
+appender.auditFile.layout.pattern=%m%n
+appender.auditFile.policies.type=Policies
+appender.auditFile.policies.time.type=TimeBasedTriggeringPolicy
+appender.auditFile.policies.time.interval=1
+appender.auditFile.policies.size.type=SizeBasedTriggeringPolicy
+appender.auditFile.policies.size.size=10MB
+appender.auditFile.strategy.type=DefaultRolloverStrategy
+appender.auditFile.strategy.max=5
+appender.auditFile.strategy.fileIndex=max
+appender.auditFile.strategy.action.type=Delete
+appender.auditFile.strategy.action.basePath=/home/unitycatalog/etc/logs
+appender.auditFile.strategy.action.condition.type=IfFileName
+appender.auditFile.strategy.action.condition.glob=audit-*.log.gz
+appender.auditFile.strategy.action.ifAny.type=IfAccumulatedFileCount
+appender.auditFile.strategy.action.ifAny.exceeds=5
+
+logger.audit.name=audit
+logger.audit.level=info
+logger.audit.additivity=false
+logger.audit.appenderRef.auditFile.ref=AuditFile
 
 rootLogger.level={{ .Values.server.logLevel }}
 rootLogger.appenderRefs=console

@@ -1,0 +1,25 @@
+package io.unitycatalog.server.audit;
+
+/**
+ * Receives one {@link AuditRecord} per issued storage credential. Configure an implementation with
+ * {@code server.audit.sink}; it needs a public no-arg constructor and must be on the server
+ * classpath.
+ *
+ * <ul>
+ *   <li>{@link #record} is called concurrently from request threads, so implementations must be
+ *       thread-safe.
+ *   <li>{@link #record} runs on the request thread. A sink that sends records to a remote service
+ *       should queue them and send asynchronously, and flush in {@link #close}.
+ *   <li>A failure thrown from {@link #record} or {@link #close} is logged and never fails the
+ *       request or the shutdown.
+ *   <li>Compatibility: {@link AuditRecord} may gain new getters and builder methods; existing ones
+ *       are never removed, renamed or retyped. Its enum fields may gain values, so handle unknown
+ *       values. New methods on this interface are only added as {@code default} methods.
+ * </ul>
+ */
+public interface AuditSink {
+  void record(AuditRecord record);
+
+  /** Called once when the server shuts down. */
+  default void close() {}
+}
