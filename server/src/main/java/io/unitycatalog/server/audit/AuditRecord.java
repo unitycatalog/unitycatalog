@@ -16,7 +16,11 @@ import lombok.Value;
 public class AuditRecord {
   /** What the record records. */
   public enum Action {
-    ISSUE_CREDENTIAL
+    ISSUE_CREDENTIAL,
+    GRANT,
+    REVOKE,
+    CLEAR_RESOURCE_GRANTS,
+    CLEAR_PRINCIPAL_GRANTS
   }
 
   /** Who a credential is issued for. */
@@ -46,6 +50,10 @@ public class AuditRecord {
   Instant expiresAt;
 
   UUID resourceId;
+  UUID principalId;
+
+  /** Privilege in its public spelling, for example {@code USE CATALOG} or {@code OWNER}. */
+  String privilege;
 
   /**
    * Declared so Javadoc, which runs without Lombok, can resolve the builder type; Lombok fills it.

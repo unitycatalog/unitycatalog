@@ -3,8 +3,10 @@ package io.unitycatalog.server.audit;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import io.unitycatalog.server.audit.AuditRecord.Purpose;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.model.TableOperation;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.credential.CredentialContext;
@@ -30,6 +32,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class Auditor implements AutoCloseable {
   static final String CLEANUP_USER = "system:storage-cleanup";
+  static final String BOOTSTRAP_USER = "system:bootstrap";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(Auditor.class);
   private static final long REPORT_INTERVAL_MS = 60_000;
@@ -88,6 +91,11 @@ public final class Auditor implements AutoCloseable {
     return new AuditingStorageCredentialVendor(delegate, this);
   }
 
+  /** Wraps an authorizer so every permission change it makes is recorded. */
+  public UnityCatalogAuthorizer wrap(UnityCatalogAuthorizer delegate) {
+    return new AuditingAuthorizer(delegate, this);
+  }
+
   void recordCredential(
       NormalizedURL path,
       Set<CredentialContext.Privilege> privileges,
@@ -107,6 +115,17 @@ public final class Auditor implements AutoCloseable {
                     credential.getExpirationTime() == null
                         ? null
                         : Instant.ofEpochMilli(credential.getExpirationTime()))
+                .build());
+  }
+
+  void recordPermission(
+      AuditRecord.Action action, UUID principalId, UUID resourceId, Privileges privilege) {
+    emit(
+        () ->
+            base(action, null)
+                .principalId(principalId)
+                .resourceId(resourceId)
+                .privilege(privilege == null ? null : privilege.getValue())
                 .build());
   }
 
@@ -173,7 +192,10 @@ public final class Auditor implements AutoCloseable {
     if (purpose == Purpose.CLEANUP) {
       return CLEANUP_USER;
     }
-    DecodedJWT jwt = ctx == null ? null : ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
+    if (ctx == null) {
+      return BOOTSTRAP_USER;
+    }
+    DecodedJWT jwt = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
     return jwt == null ? null : jwt.getClaim(JwtClaim.SUBJECT.key()).asString();
   }
 

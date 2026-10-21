@@ -87,6 +87,8 @@ public class FileAuditSink implements AuditSink {
     put(m, "access", r.getAccess());
     put(m, "expires_at", r.getExpiresAt() == null ? null : TIME.format(r.getExpiresAt()));
     put(m, "resource_id", r.getResourceId());
+    put(m, "principal_id", r.getPrincipalId());
+    put(m, "privilege", r.getPrivilege());
     try {
       return MAPPER.writeValueAsString(m);
     } catch (JsonProcessingException e) {

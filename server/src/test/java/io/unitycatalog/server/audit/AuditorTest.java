@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.audit.AuditRecord.Purpose;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.model.TableOperation;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.credential.CredentialContext;
@@ -150,6 +151,7 @@ class AuditorTest {
    */
   @Test
   void decoratorsForwardEveryDefaultMethod() {
+    assertDeclaresDefaults(UnityCatalogAuthorizer.class, AuditingAuthorizer.class);
     assertDeclaresDefaults(StorageCredentialVendor.class, AuditingStorageCredentialVendor.class);
   }
 
