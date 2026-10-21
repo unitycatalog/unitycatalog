@@ -20,7 +20,8 @@ public class AuditRecord {
     GRANT,
     REVOKE,
     CLEAR_RESOURCE_GRANTS,
-    CLEAR_PRINCIPAL_GRANTS
+    CLEAR_PRINCIPAL_GRANTS,
+    QUEUE_CLEANUP
   }
 
   /** Who a credential is issued for. */

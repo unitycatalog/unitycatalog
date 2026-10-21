@@ -6,6 +6,7 @@ import io.unitycatalog.server.audit.AuditRecord.Purpose;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.model.TableOperation;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.persist.CleanupTaskRepository;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.service.AuthDecorator;
@@ -13,6 +14,8 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import jakarta.transaction.Status;
+import jakarta.transaction.Synchronization;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.time.Clock;
@@ -23,6 +26,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
+import org.hibernate.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -98,6 +102,11 @@ public final class Auditor implements AutoCloseable {
     return new AuditingAuthorizer(delegate, this);
   }
 
+  /** Wraps the cleanup-task repository so every queued cleanup is recorded after commit. */
+  public CleanupTaskRepository wrap(CleanupTaskRepository delegate) {
+    return new AuditingCleanupTaskRepository(delegate, this);
+  }
+
   void recordCredential(
       NormalizedURL path,
       Set<CredentialContext.Privilege> privileges,
@@ -129,6 +138,43 @@ public final class Auditor implements AutoCloseable {
                 .resourceId(resourceId)
                 .privilege(privilege == null ? null : privilege.getValue())
                 .build());
+  }
+
+  void recordQueueCleanup(UUID resourceId, String location) {
+    emit(
+        () ->
+            base(AuditRecord.Action.QUEUE_CLEANUP, null)
+                .resourceId(resourceId)
+                .location(sanitizeLocation(location))
+                .build());
+  }
+
+  /** Runs {@code action} after the session's transaction commits; never on rollback. */
+  void afterCommit(Session session, Runnable action) {
+    try {
+      session
+          .getTransaction()
+          .registerSynchronization(
+              new Synchronization() {
+                @Override
+                public void beforeCompletion() {}
+
+                @Override
+                public void afterCompletion(int status) {
+                  // Hibernate rethrows from commit() anything thrown here, which would turn a
+                  // committed drop into an error, so everything stays inside the guard.
+                  try {
+                    if (status == Status.STATUS_COMMITTED) {
+                      action.run();
+                    }
+                  } catch (Throwable t) {
+                    reportFailure(t);
+                  }
+                }
+              });
+    } catch (Throwable t) {
+      reportFailure(t);
+    }
   }
 
   /** Returns the resource ID from a cleanup location, which ends in {@code /<segment>/<id>}. */

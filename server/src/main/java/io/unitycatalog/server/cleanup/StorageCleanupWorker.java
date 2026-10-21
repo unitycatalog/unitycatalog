@@ -2,8 +2,8 @@ package io.unitycatalog.server.cleanup;
 
 import io.unitycatalog.server.observability.StorageCleanupMetrics;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
+import io.unitycatalog.server.persist.CleanupTaskRepository;
 import io.unitycatalog.server.persist.ManagedResourceType;
-import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.CleanupFailureReport;
 import io.unitycatalog.server.persist.utils.FileOperations;
@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
 public final class StorageCleanupWorker implements AutoCloseable {
   private static final Logger LOGGER = LoggerFactory.getLogger(StorageCleanupWorker.class);
 
-  private final StorageCleanupTaskRepository taskRepository;
+  private final CleanupTaskRepository taskRepository;
   private final FileOperations fileOperations;
   private final Clock clock;
   private final Duration pollInterval;
@@ -54,7 +54,7 @@ public final class StorageCleanupWorker implements AutoCloseable {
    * @param metrics the domain metrics that count each cleanup attempt by result
    */
   public StorageCleanupWorker(
-      StorageCleanupTaskRepository taskRepository,
+      CleanupTaskRepository taskRepository,
       FileOperations fileOperations,
       Clock clock,
       ServerProperties serverProperties,

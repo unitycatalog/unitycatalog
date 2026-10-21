@@ -20,7 +20,10 @@ import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.Test;
 
-/** Audit records on a cloud (s3) catalog with authorization off: credentials carry no user. */
+/**
+ * Audit records on a cloud (s3) catalog with authorization off: client credentials carry no user,
+ * and a drop records the queued cleanup.
+ */
 class AuditCredentialVendingIntegrationTest extends BaseCRUDTestWithMockCredentials {
   private static final String CLOUD_CATALOG = "uc_audit_cloud";
   private LocalMappingFileOperations mappingFileOperations;
@@ -50,7 +53,7 @@ class AuditCredentialVendingIntegrationTest extends BaseCRUDTestWithMockCredenti
   }
 
   @Test
-  void recordsCredentialsWithoutUser() throws Exception {
+  void recordsClientCredentialsAndQueuedCleanup() throws Exception {
     String root = "s3://" + CONFIGURED_BUCKET + testDirectoryRoot.toAbsolutePath() + "/cloud";
     mappingFileOperations.mapLocation(
         NormalizedURL.from(root), testDirectoryRoot.toAbsolutePath().resolve("cloud"));
@@ -58,6 +61,7 @@ class AuditCredentialVendingIntegrationTest extends BaseCRUDTestWithMockCredenti
     IcebergRestClient iceberg = new IcebergRestClient(serverConfig);
     iceberg.createNamespace(CLOUD_CATALOG, TestUtils.SCHEMA_NAME);
     Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+    // A managed table (no location), so its drop queues a storage cleanup.
     iceberg.createTable(
         CLOUD_CATALOG,
         TestUtils.SCHEMA_NAME,
@@ -72,6 +76,12 @@ class AuditCredentialVendingIntegrationTest extends BaseCRUDTestWithMockCredenti
               assertThat(r.getUser()).isNull(); // authorization off: no user
               assertThat(r.getLocation()).startsWith("s3://");
             });
+
+    iceberg.dropTable(CLOUD_CATALOG, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
+    assertThat(CapturingAuditSink.RECORDS)
+        .filteredOn(r -> r.getAction() == AuditRecord.Action.QUEUE_CLEANUP)
+        .singleElement()
+        .satisfies(r -> assertThat(r.getLocation()).startsWith("s3://"));
   }
 
   @Test

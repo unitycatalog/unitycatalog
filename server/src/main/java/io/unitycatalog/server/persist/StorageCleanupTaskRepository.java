@@ -14,7 +14,7 @@ import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 
 /** Persists cleanup tasks using the database clock for all task timestamps. */
-public class StorageCleanupTaskRepository {
+public class StorageCleanupTaskRepository implements CleanupTaskRepository {
   private final SessionFactory sessionFactory;
 
   public record Claim(
