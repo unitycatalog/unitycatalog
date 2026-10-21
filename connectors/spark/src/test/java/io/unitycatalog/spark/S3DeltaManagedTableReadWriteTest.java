@@ -1,19 +1,6 @@
 package io.unitycatalog.spark;
 
-import static org.mockito.AdditionalAnswers.delegatesTo;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
-import io.unitycatalog.server.persist.utils.FileOperations;
-import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
-import io.unitycatalog.server.utils.NormalizedURL;
-import java.net.URI;
-import java.nio.file.Path;
 import java.util.stream.Stream;
-import org.apache.iceberg.io.FileIO;
 import org.junit.jupiter.params.provider.Arguments;
 
 /**
@@ -38,33 +25,5 @@ public class S3DeltaManagedTableReadWriteTest extends DeltaManagedTableReadWrite
   @Override
   protected String managedStorageCloudScheme() {
     return "s3";
-  }
-
-  @Override
-  protected FileOperations decorateFileOperations(FileOperations fileOperations) {
-    // The emulated S3 filesystem stores every S3 URI at its URI path on local disk. Give
-    // server-side backfill verification the same view so these tests exercise HEADs without
-    // contacting AWS.
-    FileOperations s3MappedFileOperations = mock(FileOperations.class, delegatesTo(fileOperations));
-    doAnswer(invocation -> s3MappedFileIO(invocation.getArgument(0, NormalizedURL.class)))
-        .when(s3MappedFileOperations)
-        .getFileIO(any());
-    return s3MappedFileOperations;
-  }
-
-  /** A FileIO for the table at {@code tableLocation} that reads each S3 URI at its local path. */
-  private static FileIO s3MappedFileIO(NormalizedURL tableLocation) {
-    SimpleLocalFileIO localFileIO = new SimpleLocalFileIO(localPath(tableLocation.toString()));
-    FileIO s3MappedFileIO = mock(FileIO.class);
-    when(s3MappedFileIO.newInputFile(anyString()))
-        .thenAnswer(
-            invocation ->
-                localFileIO.newInputFile(
-                    localPath(invocation.getArgument(0, String.class)).toUri().toString()));
-    return s3MappedFileIO;
-  }
-
-  private static Path localPath(String s3Uri) {
-    return Path.of(URI.create(s3Uri).getPath());
   }
 }
