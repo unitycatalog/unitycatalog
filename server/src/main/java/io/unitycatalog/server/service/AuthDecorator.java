@@ -15,6 +15,7 @@ import com.linecorp.armeria.server.ServiceRequestContext;
 import io.netty.util.AttributeKey;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.AuthorizationException;
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
@@ -88,7 +89,12 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     User user;
     try {
       user = userRepository.getUserByEmail(subject);
-    } catch (Exception e) {
+    } catch (BaseException failure) {
+      // A missing user is a denial. Anything other than NOT_FOUND is a server failure, not a
+      // denial; let it propagate.
+      if (failure.getErrorCode() != ErrorCode.NOT_FOUND) {
+        throw failure;
+      }
       LOGGER.debug("User not found: {}", subject);
       user = null;
     }

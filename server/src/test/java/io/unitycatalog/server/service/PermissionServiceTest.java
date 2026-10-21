@@ -148,6 +148,20 @@ public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
   }
 
   @Test
+  public void tokenForAMissingUserIsDenied() {
+    // A valid internal token for a user that was never created -> the AuthDecorator's user lookup
+    // finds nothing and denies the request, rather than letting it reach the service.
+    GrantsApi missingUserGrantsApi =
+        new GrantsApi(
+            TestUtils.createApiClient(createTestUserServerConfig("missing-user@example.com")));
+    assertApiException(
+        () -> missingUserGrantsApi.get(SecurableType.CATALOG, CATALOG_NAME, null),
+        ErrorCode.PERMISSION_DENIED,
+        "User not allowed: missing-user@example.com");
+    assertHttpRequestMetric("getCatalogAuthorization", 403);
+  }
+
+  @Test
   @SneakyThrows
   public void unknownProtectedEndpointIsRecordedWithAndWithoutAuthentication() {
     String path = "/api/2.1/unity-catalog/does-not-exist";

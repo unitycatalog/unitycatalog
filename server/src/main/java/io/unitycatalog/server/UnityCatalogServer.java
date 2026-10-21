@@ -2,6 +2,7 @@ package io.unitycatalog.server;
 
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 
+import com.linecorp.armeria.common.util.BlockingTaskExecutor;
 import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerListener;
 import com.linecorp.armeria.server.healthcheck.HealthCheckService;
@@ -57,7 +58,9 @@ import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
@@ -72,6 +75,15 @@ public class UnityCatalogServer implements AutoCloseable {
   private final Server server;
   private final SecurityContext securityContext;
   private final HibernateConfigurator hibernateConfigurator;
+  private final BlockingTaskExecutor blockingTaskExecutor;
+
+  /**
+   * Blocking threads, one per JDBC connection. Also the URL transcoder's connection limit, since
+   * HTTP/1.1 carries one request per connection.
+   */
+  private final int blockingThreads;
+
+  private final Duration shutdownTimeout;
 
   /** True when this server built the configurator itself and must therefore close it. */
   private final boolean ownsHibernateConfigurator;
@@ -96,6 +108,7 @@ public class UnityCatalogServer implements AutoCloseable {
 
   private UnityCatalogServer(UnityCatalogServer.Builder unityCatalogServerBuilder) {
     setDefaults(unityCatalogServerBuilder);
+    this.shutdownTimeout = unityCatalogServerBuilder.serverProperties.getShutdownTimeout();
     Path configurationFolder = Path.of("etc", "conf");
     SecurityConfiguration securityConfiguration = new SecurityConfiguration(configurationFolder);
 
@@ -107,7 +120,15 @@ public class UnityCatalogServer implements AutoCloseable {
         ownsHibernateConfigurator
             ? new HibernateConfigurator(unityCatalogServerBuilder.serverProperties)
             : unityCatalogServerBuilder.hibernateConfigurator;
+    this.blockingThreads = hibernateConfigurator.getDataSource().getMaximumPoolSize();
+    BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
+      createdBlockingTaskExecutor =
+          BlockingTaskExecutor.builder()
+              .numThreads(blockingThreads)
+              .threadNamePrefix("unity-catalog-blocking")
+              .build();
+      this.blockingTaskExecutor = createdBlockingTaskExecutor;
       this.server = initializeServer(unityCatalogServerBuilder);
     } catch (Throwable t) {
       // Construction failed after the SessionFactory was built; close it so a failed boot does
@@ -116,8 +137,43 @@ public class UnityCatalogServer implements AutoCloseable {
       closeQuietly(metrics, t, "the metrics registry");
       closeQuietly(cleanupWorker, t, "the storage cleanup worker");
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, t, "the authorizer");
+      closeBlockingTaskExecutor(createdBlockingTaskExecutor, shutdownTimeout, t);
       closeOwnedSessionFactory(t);
       throw t;
+    }
+  }
+
+  /**
+   * Shuts down the server-owned blocking executor and waits up to {@code timeout}. A task still
+   * running after that is left in place and shutdown continues, so a wedged JDBC call cannot hold
+   * the process until the orchestrator kills it.
+   */
+  private static void closeBlockingTaskExecutor(
+      BlockingTaskExecutor executor, Duration timeout, Throwable primaryFailure) {
+    if (executor == null) {
+      return;
+    }
+    boolean interrupted = false;
+    try {
+      executor.shutdown();
+      try {
+        if (!executor.awaitTermination(timeout.toNanos(), TimeUnit.NANOSECONDS)) {
+          LOGGER.warn(
+              "Blocking task executor did not stop within {}; continuing shutdown", timeout);
+        }
+      } catch (InterruptedException ignored) {
+        interrupted = true;
+      }
+    } catch (Throwable closeFailure) {
+      if (primaryFailure != null) {
+        primaryFailure.addSuppressed(closeFailure);
+      } else {
+        LOGGER.warn("Failed to close the blocking task executor", closeFailure);
+      }
+    } finally {
+      if (interrupted) {
+        Thread.currentThread().interrupt();
+      }
     }
   }
 
@@ -168,12 +224,16 @@ public class UnityCatalogServer implements AutoCloseable {
   }
 
   private Server initializeServer(UnityCatalogServer.Builder unityCatalogServerBuilder) {
+    // One blocking thread per JDBC connection, as backpressure. Every annotated handler runs on
+    // this pool, so it also caps concurrent handlers that hold no connection, such as cloud
+    // credential vending.
     ArmeriaServerBuilder armeriaServerBuilder =
         new ArmeriaServerBuilder(
             unityCatalogServerBuilder.port,
             BASE_PATH,
             CONTROL_PATH,
-            unityCatalogServerBuilder.serverProperties);
+            unityCatalogServerBuilder.serverProperties,
+            blockingTaskExecutor);
 
     UnityCatalogMetrics domainMetrics = null;
     if (unityCatalogServerBuilder.observabilityPort != null) {
@@ -404,7 +464,8 @@ public class UnityCatalogServer implements AutoCloseable {
     // before this process reports itself started, and fail rather than serve only the internal
     // port if it cannot bind.
     Vertx vertx = Vertx.vertx();
-    Verticle transcodeVerticle = new URLTranscoderVerticle(clientPort, clientPort + 1);
+    Verticle transcodeVerticle =
+        new URLTranscoderVerticle(clientPort, clientPort + 1, unityCatalogServer.blockingThreads);
     try {
       vertx.deployVerticle(transcodeVerticle).toCompletionStage().toCompletableFuture().join();
     } catch (CompletionException e) {
@@ -441,15 +502,24 @@ public class UnityCatalogServer implements AutoCloseable {
    * Stops the server and closes the Hibernate configurator it created, releasing the Hikari pool,
    * which the Armeria shutdown does not touch and which would otherwise stay open until the JVM
    * exits. A configurator supplied via {@link Builder#hibernateConfigurator} is left open — the
-   * caller owns its lifecycle. Unlike {@link #stop()}, a server that owns its configurator must not
-   * be restarted after this call: the factory and pool are closed, so all persistence operations
-   * would fail. Safe to call more than once and safe to call before {@link #start()}.
+   * caller owns its lifecycle. Unlike {@link #stop()}, the server cannot be restarted after this
+   * call: the blocking executor is shut down, and an owned factory and pool are closed. Safe to
+   * call more than once and safe to call before {@link #start()}.
+   *
+   * <p>The blocking executor is drained before anything else is closed, using the time remaining
+   * from {@code server.shutdown-timeout}, so a handler that outlived {@link #stop()} does not see a
+   * closed authorizer or cleanup worker. This is not a total shutdown deadline: other resource
+   * cleanup and Armeria's final shutdown can add time.
    */
   @Override
   public void close() {
+    long deadlineNanos = System.nanoTime() + shutdownTimeout.toNanos();
     try {
       stop();
     } finally {
+      // Drain first: a handler that outlived stop() may still use the resources closed below.
+      Duration remaining = Duration.ofNanos(Math.max(0, deadlineNanos - System.nanoTime()));
+      closeBlockingTaskExecutor(blockingTaskExecutor, remaining, null);
       closeQuietly(metrics, null, "the metrics registry");
       closeQuietly(cleanupWorker, null, "the storage cleanup worker");
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, null, "the authorizer");
