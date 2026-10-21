@@ -902,6 +902,162 @@ async def test_validate_input_params_rejects_bool_for_floating_point_types(
         )
 
 
+@pytest_asyncio.fixture
+async def local_execution_client():
+    uc_api_client = ApiClient(configuration=Configuration())
+    client = UnitycatalogFunctionClient(api_client=uc_api_client, execution_mode="local")
+    yield client
+    await client.close_async()
+
+
+def repr_arg_function_info(type_name: str, type_text: str) -> FunctionInfo:
+    return FunctionInfo(
+        name="repr_arg",
+        catalog_name=CATALOG,
+        schema_name=SCHEMA,
+        full_name=f"{CATALOG}.{SCHEMA}.repr_arg",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="x",
+                    type_name=type_name,
+                    type_text=type_text,
+                    type_json=f'{{"name":"x","type":"{type_text}","nullable":false,"metadata":{{}}}}',
+                    position=0,
+                )
+            ]
+        ),
+        data_type="STRING",
+        full_data_type="STRING",
+        routine_body="EXTERNAL",
+        routine_definition="return repr(x)",
+        external_language="PYTHON",
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("type_name", "type_text", "param_value", "expected"),
+    [
+        ("DATE", "date", "2026-01-11", datetime.date(2026, 1, 11)),
+        ("TIMESTAMP", "timestamp", "2026-01-11T05:00:00", datetime.datetime(2026, 1, 11, 5)),
+        (
+            "TIMESTAMP",
+            "timestamp",
+            "2026-01-11T05:00:00Z",
+            datetime.datetime(2026, 1, 11, 5, tzinfo=datetime.timezone.utc),
+        ),
+        (
+            "TIMESTAMP_NTZ",
+            "timestamp_ntz",
+            "2026-01-11T05:00:00",
+            datetime.datetime(2026, 1, 11, 5),
+        ),
+        ("BINARY", "binary", "aGVsbG8=", b"hello"),
+        ("DECIMAL", "decimal(10,2)", 19.99, decimal.Decimal("19.99")),
+        ("DECIMAL", "decimal(10,2)", "19.99", decimal.Decimal("19.99")),
+        ("DECIMAL", "decimal(10,2)", 2, decimal.Decimal("2")),
+        ("DATE", "date", datetime.date(2026, 1, 11), datetime.date(2026, 1, 11)),
+        (
+            "TIMESTAMP",
+            "timestamp",
+            datetime.datetime(2026, 1, 11, 5),
+            datetime.datetime(2026, 1, 11, 5),
+        ),
+        ("BINARY", "binary", b"hello", b"hello"),
+        ("DECIMAL", "decimal(10,2)", decimal.Decimal("19.99"), decimal.Decimal("19.99")),
+    ],
+)
+async def test_execute_function_converts_json_arguments(
+    local_execution_client, type_name, type_text, param_value, expected
+):
+    function_info = repr_arg_function_info(type_name, type_text)
+    with mock.patch.object(local_execution_client, "get_function", return_value=function_info):
+        result = local_execution_client.execute_function(
+            function_info.full_name, {"x": param_value}
+        )
+        async_result = await local_execution_client.execute_function_async(
+            function_info.full_name, {"x": param_value}
+        )
+
+    assert result.error is None
+    assert result.value == repr(expected)
+    assert async_result.value == repr(expected)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("type_name", "type_text", "param_value"),
+    [
+        ("DATE", "date", "2026-13-01"),
+        ("TIMESTAMP", "timestamp", "not a timestamp"),
+        ("TIMESTAMP_NTZ", "timestamp_ntz", "2026-01-11 25:00"),
+        ("BINARY", "binary", "not base64!"),
+        ("TIMESTAMP_NTZ", "timestamp_ntz", "2026-01-11T05:00:00Z"),
+        ("TIMESTAMP_NTZ", "timestamp_ntz", "2026-01-11T05:00:00+05:00"),
+        ("DECIMAL", "decimal(10,2)", "abc"),
+        ("DECIMAL", "decimal(10,2)", "NaN"),
+        ("DECIMAL", "decimal(10,2)", "sNaN"),
+        ("DECIMAL", "decimal(10,2)", "Infinity"),
+        ("DECIMAL", "decimal(10,2)", float("inf")),
+        ("DECIMAL", "decimal(10,2)", float("nan")),
+    ],
+)
+async def test_execute_function_rejects_invalid_json_arguments(
+    local_execution_client, type_name, type_text, param_value
+):
+    function_info = repr_arg_function_info(type_name, type_text)
+    with mock.patch.object(local_execution_client, "get_function", return_value=function_info):
+        with pytest.raises(ValueError, match=rf"Parameter x .*{type_name}, but got invalid value"):
+            local_execution_client.execute_function(function_info.full_name, {"x": param_value})
+        with pytest.raises(ValueError, match=rf"Parameter x .*{type_name}, but got invalid value"):
+            await local_execution_client.execute_function_async(
+                function_info.full_name, {"x": param_value}
+            )
+
+
+@pytest.mark.asyncio
+async def test_execute_function_converts_default_arguments(local_execution_client):
+    def param(name: str, type_name: str, type_text: str, position: int, default=None):
+        return FunctionParameterInfo(
+            name=name,
+            type_name=type_name,
+            type_text=type_text,
+            type_json=f'{{"name":"{name}","type":"{type_text}","nullable":false,"metadata":{{}}}}',
+            position=position,
+            parameter_default=default,
+        )
+
+    function_info = FunctionInfo(
+        name="add_with_defaults",
+        catalog_name=CATALOG,
+        schema_name=SCHEMA,
+        full_name=f"{CATALOG}.{SCHEMA}.add_with_defaults",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                param("a", "DECIMAL", "decimal(10,2)", 0),
+                param("b", "DECIMAL", "decimal(10,2)", 1, "0.5"),
+                param("d", "DATE", "date", 2, "2026-01-11"),
+            ]
+        ),
+        data_type="STRING",
+        full_data_type="STRING",
+        routine_body="EXTERNAL",
+        routine_definition="return repr((a + b, d))",
+        external_language="PYTHON",
+    )
+    expected = repr((decimal.Decimal("2.5"), datetime.date(2026, 1, 11)))
+    with mock.patch.object(local_execution_client, "get_function", return_value=function_info):
+        result = local_execution_client.execute_function(function_info.full_name, {"a": 2})
+        async_result = await local_execution_client.execute_function_async(
+            function_info.full_name, {"a": 2}
+        )
+
+    assert result.error is None
+    assert result.value == expected
+    assert async_result.value == expected
+
+
 @pytest.mark.asyncio
 async def test_create_function_long_name(uc_client):
     long_function_name = f"{CATALOG}.{SCHEMA}." + "a" * 256  # Function name exceeds typical limits

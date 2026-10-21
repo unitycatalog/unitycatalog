@@ -179,7 +179,7 @@ class BaseFunctionClient(ABC):
         """
         with self._lock:
             function_info = self.get_function(function_name, **kwargs)
-            parameters = parameters or {}
+            parameters = self._prepare_parameters(function_info, parameters or {})
             self.validate_input_params(function_info.input_params, parameters)
 
             if kwargs.get("enable_retriever_tracing", False) and has_retriever_signature(
@@ -190,6 +190,13 @@ class BaseFunctionClient(ABC):
                 )
 
             return self._execute_uc_function(function_info, parameters, **kwargs)
+
+    def _prepare_parameters(self, function_info: Any, parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Return the arguments to validate and execute the function with. Defaults to the passed
+        parameters unchanged.
+        """
+        return parameters
 
     @abstractmethod
     def _execute_uc_function(

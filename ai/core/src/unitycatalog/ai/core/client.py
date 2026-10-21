@@ -1,5 +1,6 @@
 import asyncio
 import atexit
+import base64
 import datetime
 import decimal
 import logging
@@ -857,23 +858,36 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             )
         validate_param(value, param_info.type_name, param_info.type_text)
 
-    def _prepare_function_and_params(
-        self, function_info: FunctionInfo, parameters: Optional[dict[str, Any]] = None
-    ) -> tuple[Callable[..., Any], dict[str, Any]]:
+    @override
+    def _prepare_parameters(
+        self, function_info: FunctionInfo, parameters: dict[str, Any]
+    ) -> dict[str, Any]:
+        """
+        Applies parameter defaults, then converts every argument from its JSON form with
+        `convert_json_argument`, so the function gets the same type whether the caller passed
+        the argument or it came from the default.
+        """
+        input_params = (function_info.input_params and function_info.input_params.parameters) or []
+        param_types = {param.name: param.type_name for param in input_params}
+        arguments = process_function_parameter_defaults(function_info, parameters)
+        return {
+            name: convert_json_argument(name, value, param_types.get(name))
+            for name, value in arguments.items()
+        }
+
+    def _get_callable(self, function_info: FunctionInfo) -> Callable[..., Any]:
         """
         Extracts or dynamically constructs the function from the FunctionInfo,
-        applies parameter defaults, and caches the function for future calls.
+        and caches the function for future calls.
         """
-        parameters = process_function_parameter_defaults(function_info, parameters)
         if function_info.full_name in self.func_cache:
-            func = self.func_cache[function_info.full_name]
-        else:
-            python_function = get_callable_definition(function_info)
-            namespace = {}
-            exec(python_function, namespace)
-            func = namespace[function_info.name]
-            self.func_cache[function_info.full_name] = func
-        return func, parameters
+            return self.func_cache[function_info.full_name]
+        python_function = get_callable_definition(function_info)
+        namespace = {}
+        exec(python_function, namespace)
+        func = namespace[function_info.name]
+        self.func_cache[function_info.full_name] = func
+        return func
 
     @override
     def _execute_uc_function(
@@ -882,7 +896,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         parameters: Optional[dict[str, Any]] = None,
         **kwargs: Any,
     ) -> FunctionExecutionResult:
-        func, parameters = self._prepare_function_and_params(function_info, parameters)
+        func = self._get_callable(function_info)
         if self.execution_mode == ExecutionMode.LOCAL:
             try:
                 result = func(**parameters)
@@ -916,10 +930,10 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         """
         with self._lock:
             function_info = self.get_function(function_name, **kwargs)
-        parameters = parameters or {}
+        parameters = self._prepare_parameters(function_info, parameters or {})
         self.validate_input_params(function_info.input_params, parameters)
 
-        func, parameters = self._prepare_function_and_params(function_info, parameters)
+        func = self._get_callable(function_info)
         if self.execution_mode == ExecutionMode.LOCAL:
             try:
                 if asyncio.iscoroutinefunction(func):
@@ -1083,6 +1097,51 @@ def validate_input_parameter(
             f"{parameter}, allowed values are {ALLOWED_DATA_TYPES}."
         )
     return parameter
+
+
+def convert_json_argument(name: str, value: Any, column_type: Optional[str]) -> Any:
+    """
+    Convert a JSON value, such as an argument of an LLM tool call, to the python type that a
+    function parameter of the given column type expects. Other values are returned unchanged.
+    DATE and TIMESTAMP strings are parsed as ISO 8601. A TIMESTAMP string with a UTC offset or a
+    trailing "Z" becomes an aware datetime, while a TIMESTAMP_NTZ string must not have an offset.
+    BINARY strings are base64 decoded. DECIMAL numbers or strings become `decimal.Decimal` and
+    must be finite.
+
+    Raises:
+        ValueError: If the value can't be converted, naming the parameter.
+    """
+    try:
+        return _convert_json_value(value, column_type)
+    except (ValueError, decimal.InvalidOperation) as e:
+        raise ValueError(
+            f"Parameter {name} should be of type {column_type}, but got invalid value {value!r}: {e}"
+        ) from e
+
+
+def _convert_json_value(value: Any, column_type: Optional[str]) -> Any:
+    if column_type == "DECIMAL" and isinstance(value, (int, float, str)):
+        if isinstance(value, bool):
+            return value
+        result = decimal.Decimal(str(value))
+        if not result.is_finite():
+            raise ValueError("DECIMAL values must be finite")
+        return result
+    if not isinstance(value, str):
+        return value
+    if column_type == "DATE":
+        return datetime.date.fromisoformat(value)
+    if column_type in ("TIMESTAMP", "TIMESTAMP_NTZ"):
+        # NB: datetime.fromisoformat accepts a trailing "Z" only from Python 3.11
+        result = datetime.datetime.fromisoformat(
+            value[:-1] + "+00:00" if value.endswith("Z") else value
+        )
+        if column_type == "TIMESTAMP_NTZ" and result.tzinfo is not None:
+            raise ValueError("TIMESTAMP_NTZ values must not have a time zone offset")
+        return result
+    if column_type == "BINARY":
+        return base64.b64decode(value, validate=True)
+    return value
 
 
 def validate_param(param: Any, column_type: str, param_type_text: str) -> None:
