@@ -36,39 +36,29 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
 
   /**
    * Reports a missing namespace as a missing table on the routes addressed to one table, which is
-   * what the REST spec answers there.
+   * what the REST spec answers there. Those are the routes that bind a {@code table} path
+   * parameter: load, exists, drop, commit, credentials and metrics.
    *
-   * <p>Iceberg's client relies on that distinction: when {@code loadTable} raises {@code
-   * NoSuchTableException}, it retries the identifier as a metadata table, so {@code
-   * db.orders.snapshots} becomes the {@code snapshots} table of {@code db.orders}. Answering {@code
-   * NoSuchNamespaceException} instead (for the namespace {@code db.orders}) ends that lookup, and
-   * every metadata table ({@code .snapshots}, {@code .files}, {@code .history}, ...) fails with
-   * "Schema not found". It also makes the client's {@code dropTable} throw rather than return
-   * false.
-   *
-   * <p>A request names a table exactly when its route bound a {@code table} path parameter: load,
-   * exists, drop, commit, credentials and metrics. Rename takes its tables from the body, views
-   * bind {@code view}, and listing or creating tables is addressed to the namespace, so those keep
-   * reporting a missing namespace as one. Reading the parameter rather than matching the path means
-   * a new table route is covered without touching this class.
-   *
-   * <p>This is decided here rather than in each handler because the schema lookup can fail before
-   * the handler runs: with authorization on, resolving the request's securables looks the table up
-   * first. The original message is kept so the response still says which namespace was missing.
+   * <p>Iceberg's client retries an identifier as a metadata table ({@code db.orders.snapshots} as
+   * the {@code snapshots} table of {@code db.orders}) only when {@code loadTable} raises {@code
+   * NoSuchTableException}. It is decided here rather than in each handler because, with
+   * authorization on, resolving the request's securables looks the schema up before the handler
+   * runs.
    */
   @Override
   public HttpResponse handleException(ServiceRequestContext ctx, HttpRequest req, Throwable cause) {
     BaseException exception = toBaseException(cause);
     if (exception.getErrorCode() == ErrorCode.SCHEMA_NOT_FOUND && ctx.pathParam("table") != null) {
-      String table = ctx.pathParam("namespace") + "." + ctx.pathParam("table");
-      String message = "Table does not exist: " + table + " (" + exception.getErrorMessage() + ")";
+      String table =
+          ctx.pathParam("namespace").replace('\u001f', '.') + "." + ctx.pathParam("table");
+      String message = "Table does not exist: " + table;
       exception =
           wrapException(
               ErrorCode.TABLE_NOT_FOUND,
               message,
               new NoSuchTableException(exception, "%s", message));
     }
-    return super.handleException(ctx, req, exception);
+    return createErrorResponse(exception);
   }
 
   /**
