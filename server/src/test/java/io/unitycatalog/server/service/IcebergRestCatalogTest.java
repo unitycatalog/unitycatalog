@@ -1394,10 +1394,15 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     // namespace does not exist, and the routes addressed to one table answer as the spec says
     // they do, with NoSuchTableException rather than NoSuchNamespaceException.
     String nestedNamespace = TestUtils.SCHEMA_NAME + "%1F" + TestUtils.TABLE_NAME;
-    assertErrorType(
+    TestUtils.assertIcebergApiException(
         () -> icebergClient.loadTable(TestUtils.CATALOG_NAME, nestedNamespace, "snapshots"),
         404,
-        NoSuchTableException.class);
+        NoSuchTableException.class,
+        "Table does not exist: "
+            + TestUtils.SCHEMA_NAME
+            + "."
+            + TestUtils.TABLE_NAME
+            + ".snapshots");
     assertErrorType(
         () -> icebergClient.loadCredentials(TestUtils.CATALOG_NAME, nestedNamespace, "snapshots"),
         404,
@@ -1406,11 +1411,37 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         () -> icebergClient.dropTable(TestUtils.CATALOG_NAME, nestedNamespace, "snapshots"),
         404,
         NoSuchTableException.class);
-    assertThat(icebergClient.tableExists(TestUtils.CATALOG_NAME, nestedNamespace, "snapshots"))
-        .isFalse();
-    // The namespace routes themselves still report a missing namespace as one.
     assertErrorType(
-        () -> icebergClient.loadNamespace(TestUtils.CATALOG_NAME, nestedNamespace),
+        () ->
+            icebergClient.updateTable(
+                TestUtils.CATALOG_NAME,
+                nestedNamespace,
+                "snapshots",
+                new UpdateTableRequest(
+                    List.of(), List.of(new MetadataUpdate.SetProperties(Map.of("foo", "bar"))))),
+        404,
+        NoSuchTableException.class);
+    assertErrorType(
+        () ->
+            icebergClient.reportMetrics(
+                TestUtils.CATALOG_NAME, nestedNamespace, "snapshots", scanReport()),
+        404,
+        NoSuchTableException.class);
+    // The routes addressed to the namespace still report a missing namespace as one.
+    assertErrorType(
+        () -> icebergClient.listTables(TestUtils.CATALOG_NAME, nestedNamespace),
+        404,
+        NoSuchNamespaceException.class);
+    assertErrorType(
+        () ->
+            icebergClient.createTable(
+                TestUtils.CATALOG_NAME,
+                nestedNamespace,
+                CreateTableRequest.builder()
+                    .withName("snapshots")
+                    .withSchema(
+                        new Schema(Types.NestedField.required(1, "id", Types.LongType.get())))
+                    .build()),
         404,
         NoSuchNamespaceException.class);
 
