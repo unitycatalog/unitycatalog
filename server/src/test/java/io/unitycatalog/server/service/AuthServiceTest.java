@@ -86,7 +86,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   public void testCookieWritesRequireAjaxHeader() throws Exception {
     for (String requestedWith : List.of("", "fetch")) {
       RequestHeadersBuilder headers =
-          RequestHeaders.builder(HttpMethod.POST, LOGOUT_ENDPOINT)
+          RequestHeaders.builder(HttpMethod.POST, "/api/1.0/unity-control/scim2/Users")
               .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken());
       if (!requestedWith.isEmpty()) {
         headers.add(HttpHeaderNames.X_REQUESTED_WITH, requestedWith);

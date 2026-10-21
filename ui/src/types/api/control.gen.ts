@@ -97,6 +97,7 @@ export interface paths {
     /**
      * Get a token using an OAuth2 flow
      * @description Exchanges credentials for a token using the OAuth2 token exchange.
+     *     When ext=cookie, X-Requested-With: XMLHttpRequest is required.
      *
      */
     post: operations['getToken'];
@@ -118,8 +119,6 @@ export interface paths {
     /**
      * Revoke access token cookie
      * @description Revokes the access token cookie.
-     *     With authorization enabled, all cookie-authenticated requests other than GET, HEAD, and OPTIONS
-     *     require X-Requested-With: XMLHttpRequest.
      *
      */
     post: operations['logout'];
@@ -535,7 +534,7 @@ export interface operations {
     parameters: {
       query?: never;
       header?: {
-        /** @description Required with value XMLHttpRequest to clear a cookie, even when authorization is disabled.
+        /** @description Required with value XMLHttpRequest to clear a cookie when authorization is enabled.
          *     Not required when a Bearer token is used.
          *      */
         'X-Requested-With'?: string;

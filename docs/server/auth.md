@@ -70,17 +70,14 @@ Create UC users with a human-readable `email` for grants and set `externalId` to
 #### Browser cookie authentication
 
 The authentication cookie uses `Secure`, `HttpOnly`, and `SameSite=Strict`.
-Requesting a cookie with `POST /auth/tokens?ext=cookie` always requires
-`X-Requested-With: XMLHttpRequest`. Clearing a cookie with `POST /auth/logout` also requires
-this header, even when authorization is disabled, unless a Bearer token is provided.
-When authorization is enabled, all other cookie-authenticated requests except GET, HEAD, and OPTIONS
-require this header. A missing or incorrect header returns HTTP 403 `PERMISSION_DENIED`
-before the cookie token is validated, even if that token is invalid or expired.
-The UI sends the header automatically. Cookie-based scripts must add it to writes or use Bearer tokens.
-Browser requests with this header require CORS preflight approval across origins;
-the server does not enable cross-origin access.
-Clients that use `Authorization: Bearer <token>` for authentication do not need this header.
-Token exchange is unavailable when authorization is disabled.
+Send `X-Requested-With: XMLHttpRequest` when requesting a cookie with
+`POST /auth/tokens?ext=cookie`.
+With authorization enabled, cookie-authenticated requests also need it,
+except GET, HEAD, and OPTIONS. A missing or incorrect header returns HTTP 403 `PERMISSION_DENIED`.
+The UI sends the header automatically. Cookie-based scripts must add it to writes.
+Clients that use `Authorization: Bearer <token>` do not need this header.
+Cross-origin browser requests with this header need CORS preflight approval.
+The server does not enable cross-origin access.
 
 #### Multiple Identity Providers
 

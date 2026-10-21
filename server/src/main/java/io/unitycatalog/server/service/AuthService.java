@@ -245,9 +245,6 @@ public class AuthService implements RegisteredService {
         .findFirst()
         .map(
             authorizationCookie -> {
-              if (!request.headers().get(HttpHeaderNames.AUTHORIZATION, "").startsWith("Bearer ")) {
-                AuthDecorator.validateCsrfHeader(request.headers());
-              }
               Cookie expiredCookie = createCookie(AuthDecorator.UC_TOKEN_KEY, "", "/", "PT0S");
               ResponseHeaders headers =
                   ResponseHeaders.builder()
