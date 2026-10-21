@@ -33,7 +33,7 @@ The command removes all the Kubernetes components associated with the chart and 
 If persistent volumes are used, they are not deleted by default. To delete them, you need to manually delete the PVCs.
 
 ## Audit records
-The server can write one JSON audit record per issued storage credential to
+The server can write one JSON audit record per issued storage credential and permission change to
 `/home/unitycatalog/etc/logs/audit.log` (see the server configuration
 docs). The chart's log configuration already has the `audit` logger; turn records on and ship the
 file with the existing extension points:

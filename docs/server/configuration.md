@@ -137,7 +137,8 @@ Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is f
 
 ### Audit records
 
-The server can write an audit record for each storage credential it issues. Audit records are off by default. Set `server.audit.sink` to turn them on:
+The server can write an audit record for each storage credential it issues and each permission
+change. Audit records are off by default. Set `server.audit.sink` to turn them on:
 
 | Property | Default | Description |
 | --- | --- | --- |
@@ -149,13 +150,16 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 {"time":"2026-10-20T10:02:00.000Z","action":"ISSUE_CREDENTIAL","user":"bob@example.com","request_id":"…","purpose":"CLIENT","location":"s3://bucket/root/tables/7f3a…","access":"READ","expires_at":1792500120000}
 ```
 
-- `action`: `ISSUE_CREDENTIAL`.
+- `action`: `ISSUE_CREDENTIAL`, `GRANT`, `REVOKE`, `CLEAR_RESOURCE_GRANTS` (a dropped object's
+  grants), or `CLEAR_PRINCIPAL_GRANTS` (a deleted user's grants).
 - `user`: the caller's email. It is `system:storage-cleanup` for the background storage cleanup,
-  and absent when authorization is off.
+  `system:bootstrap` for the admin grant made at first start, and absent when authorization is
+  off. Permission changes are recorded only when authorization is on.
 - `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
   itself while handling the request, and `CLEANUP` for the background storage cleanup.
 - `resource_id`: the object's ID. A `CLEANUP` credential carries the ID of the dropped object.
-- `access` is `READ` or `READ_WRITE`. Records never contain credential values, and `location` never contains a query
+- `privilege` uses the API's privilege names (for example `USE CATALOG`), and `access` is `READ` or
+  `READ_WRITE`. Records never contain credential values, and `location` never contains a query
   string or user info.
 
 `FileAuditSink` needs the `audit` logger in `etc/conf/server.log4j2.properties`, with its own

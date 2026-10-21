@@ -340,8 +340,10 @@ public class UnityCatalogServer implements AutoCloseable {
         JCasbinAuthorizer authorizer =
             new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
         try {
-          new UnityAccessUtil(repositories).initializeAdmin(authorizer);
-          return authorizer;
+          UnityCatalogAuthorizer effective =
+              repositories.getAuditor().map(a -> a.wrap(authorizer)).orElse(authorizer);
+          new UnityAccessUtil(repositories).initializeAdmin(effective);
+          return effective;
         } catch (Exception e) {
           authorizer.close();
           throw e;

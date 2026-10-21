@@ -1,9 +1,9 @@
 package io.unitycatalog.server.audit;
 
 /**
- * Receives one {@link AuditRecord} per issued storage credential. Configure an implementation with
- * {@code server.audit.sink}; it needs a public no-arg constructor and must be on the server
- * classpath.
+ * Receives one {@link AuditRecord} per issued storage credential and permission change. Configure
+ * an implementation with {@code server.audit.sink}; it needs a public no-arg constructor and must
+ * be on the server classpath.
  *
  * <ul>
  *   <li>{@link #record} is called concurrently from request threads, so implementations must be
