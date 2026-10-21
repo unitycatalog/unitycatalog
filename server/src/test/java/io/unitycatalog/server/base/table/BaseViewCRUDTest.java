@@ -3,6 +3,7 @@ package io.unitycatalog.server.base.table;
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.Dependency;
 import io.unitycatalog.client.model.DependencyList;
@@ -12,7 +13,9 @@ import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -124,6 +127,35 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
     assertThat(createdWithoutDeps.getTableType()).isEqualTo(TableType.VIEW);
     assertThat(tableOperations.getTable(VIEW_FULL_NAME).getName()).isEqualTo(VIEW_NAME);
     tableOperations.deleteTable(VIEW_FULL_NAME);
+  }
+
+  /**
+   * Column rows are not guaranteed to be stored (and therefore read back) in ordinal_position
+   * order. Clients bind view columns by position, so getTable and listTables must return them
+   * sorted by position regardless of the order they were persisted in.
+   */
+  @Test
+  public void testViewColumnsAreReturnedInPositionOrder() throws Exception {
+    createSourceTable();
+    List<ColumnInfo> reversed = new ArrayList<>(COLUMNS);
+    Collections.reverse(reversed);
+
+    tableOperations.createTable(validViewRequest().columns(reversed));
+
+    List<String> expected = COLUMNS.stream().map(ColumnInfo::getName).toList();
+    assertThat(tableOperations.getTable(VIEW_FULL_NAME).getColumns())
+        .extracting(ColumnInfo::getName)
+        .containsExactlyElementsOf(expected);
+    assertThat(
+            tableOperations
+                .listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, Optional.empty())
+                .stream()
+                .filter(t -> VIEW_NAME.equals(t.getName()))
+                .findFirst()
+                .orElseThrow()
+                .getColumns())
+        .extracting(ColumnInfo::getName)
+        .containsExactlyElementsOf(expected);
   }
 
   /**
