@@ -48,7 +48,7 @@ class OAuthTokenProvider implements TokenProvider {
 
   OAuthTokenProvider() {}
 
-  // Package-private constructor for testing.
+  // Package-private constructor for testing with a custom OAuth scope.
   OAuthTokenProvider(
       String oauthUri,
       String oauthClientId,
@@ -169,8 +169,10 @@ class OAuthTokenProvider implements TokenProvider {
               .POST(HttpRequest.BodyPublishers.ofString(formData))
               .build();
 
+      // Get an IdP token using the client ID and client secret.
       JsonNode jsonNode = requestToken(request);
       if (oauthExchangeUri != null) {
+        // Send the IdP token to UC's exchange endpoint to get a UC token.
         String tokenType =
             URLEncoder.encode(
                 "urn:ietf:params:oauth:token-type:access_token", StandardCharsets.UTF_8);
@@ -193,6 +195,7 @@ class OAuthTokenProvider implements TokenProvider {
         jsonNode = requestToken(exchangeRequest);
       }
 
+      // Cache the UC token after exchange, or the IdP token when exchange is disabled.
       String accessToken = jsonNode.get("access_token").asText();
       long expiresInSeconds = jsonNode.get("expires_in").asLong();
 
