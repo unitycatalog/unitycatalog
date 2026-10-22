@@ -44,6 +44,7 @@ lazy val micrometerVersion = "1.17.0"
 lazy val nettyVersion = "4.2.18.Final"
 lazy val nettyTcnativeVersion = "2.0.84.Final"
 lazy val vertxVersion = "4.5.34"
+lazy val postgresqlVersion = "42.7.14"
 // Keep in step with the Caffeine version iceberg-core depends on (2.9.3 in Iceberg 1.11.0).
 lazy val caffeineVersion = "2.9.3"
 lazy val junitJupiterVersion = "5.13.4"
@@ -465,6 +466,7 @@ lazy val server = (project in file("server"))
       "org.casbin" % "jdbc-adapter" % "2.13.0"
         exclude("com.microsoft.sqlserver", "mssql-jdbc")
         exclude("com.oracle.database.jdbc", "ojdbc6"),
+      "org.postgresql" % "postgresql" % postgresqlVersion,
       "org.springframework" % "spring-expression" % "6.2.19",
       "com.auth0" % "java-jwt" % "4.6.1",
       "com.auth0" % "jwks-rsa" % "0.24.1",
@@ -486,7 +488,6 @@ lazy val server = (project in file("server"))
       "org.testcontainers" % "postgresql" % testcontainersVersion % Test,
       "org.testcontainers" % "mysql" % testcontainersVersion % Test,
       "org.testcontainers" % "junit-jupiter" % testcontainersVersion % Test,
-      "org.postgresql" % "postgresql" % "42.7.13" % Test,
       "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
 
       // CLI dependencies
@@ -495,6 +496,8 @@ lazy val server = (project in file("server"))
     // Iceberg 1.11.0 brings its own Jackson version that conflicts with the project's pinned jackson version.
     // Force AWS SDK v2 onto a single release as well (Iceberg and Hadoop otherwise mix 2.24 / 2.27).
     dependencyOverrides ++= Seq(
+      // One PostgreSQL driver: jdbc-adapter brings 42.7.2. Keep in step with the direct dependency.
+      "org.postgresql" % "postgresql" % postgresqlVersion,
       "software.amazon.awssdk" % "sso" % awsSdkV2Version,
       "software.amazon.awssdk" % "ssooidc" % awsSdkV2Version,
       "software.amazon.awssdk" % "s3" % awsSdkV2Version,
