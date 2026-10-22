@@ -62,8 +62,8 @@ public class TransactionManager {
    * @param <R> the result type
    * @return the result of the operation
    * @throws BaseException if the operation or the commit fails: a {@link BaseException} is rethrown
-   *     as-is, and any other exception is wrapped with the code from {@link DatabaseErrors}
-   *     ({@code INTERNAL} by default) with it as the cause.
+   *     as-is, and any other exception is wrapped with the code from {@link DatabaseErrors} ({@code
+   *     INTERNAL} by default) with it as the cause.
    * @throws TransactionRollbackException rethrown as-is once its rollback succeeds; if the rollback
    *     fails, it is wrapped as {@code INTERNAL} instead.
    */
@@ -128,9 +128,8 @@ public class TransactionManager {
    * Rolls back {@code tx} after {@code e} and returns the exception to throw: {@code e} itself if
    * it is a {@link BaseException} or a {@link TransactionRollbackException}, otherwise an error
    * with the code from {@link DatabaseErrors} ({@code INTERNAL} by default) and {@code e} as the
-   * cause. A failed rollback is added to {@code e} as
-   * suppressed, and turns a {@link TransactionRollbackException} into an {@code INTERNAL} error
-   * with {@code e} as the cause.
+   * cause. A failed rollback is added to {@code e} as suppressed, and turns a {@link
+   * TransactionRollbackException} into an {@code INTERNAL} error with {@code e} as the cause.
    */
   private static RuntimeException rollBack(
       SessionFactory sessionFactory, Transaction tx, Exception e, String errorMessage) {
