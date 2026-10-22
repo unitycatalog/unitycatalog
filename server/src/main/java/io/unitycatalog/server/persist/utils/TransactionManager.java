@@ -78,9 +78,8 @@ public class TransactionManager {
         session.setDefaultReadOnly(true);
       }
 
-      // Set the custom isolation level if specified. Hibernate returns the connection to the pool
-      // when the transaction ends, and Hikari then resets the level, so there is nothing to
-      // restore.
+      // Set the custom isolation level if specified. Hikari resets it when the connection returns
+      // to the pool.
       // IMPORTANT: without autocommit, a pooled connection may carry an open implicit transaction
       // from its prior use. H2's setTransactionIsolation() takes effect for the NEXT transaction,
       // not the current implicit one, so that transaction has to end first or REPEATABLE_READ

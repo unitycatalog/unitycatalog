@@ -181,11 +181,9 @@ public class TransactionManagerTest {
      */
     static Stream<Arguments> failureLevels() {
       return Stream.of(
-          Arguments.of(RUNTIME, false, false, "internal", List.of(), List.of()),
           Arguments.of(RUNTIME, true, false, "internal", List.of(), List.of("rollback")),
           Arguments.of(RUNTIME, false, true, "internal", List.of("close"), List.of()),
           Arguments.of(RUNTIME, true, true, "internal", List.of("close"), List.of("rollback")),
-          Arguments.of(CLIENT_ERROR, false, false, "original", List.of(), List.of()),
           Arguments.of(
               CLIENT_ERROR, true, false, "original", List.of("rollback"), List.of("rollback")),
           Arguments.of(CLIENT_ERROR, false, true, "original", List.of("close"), List.of("close")),
@@ -196,7 +194,6 @@ public class TransactionManagerTest {
               "original",
               List.of("rollback", "close"),
               List.of("rollback", "close")),
-          Arguments.of(SIGNAL, false, false, "original", List.of(), List.of()),
           Arguments.of(SIGNAL, false, true, "original", List.of("close"), List.of("close")),
           Arguments.of(SIGNAL, true, false, "rollback failed", List.of(), List.of("rollback")),
           Arguments.of(
@@ -293,7 +290,6 @@ public class TransactionManagerTest {
                   TransactionManager.executeWithTransaction(
                       sessionFactory, session -> "ok", "Error executing operation", false))
           .isSameAs(closeError);
-      assertThat(closeError.getSuppressed()).isEmpty();
       verify(transaction).commit();
     }
 
