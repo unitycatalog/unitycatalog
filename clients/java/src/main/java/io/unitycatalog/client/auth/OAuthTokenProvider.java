@@ -16,6 +16,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -26,12 +27,16 @@ import java.util.Map;
  * <p>This provider uses the OAuth 2.0 client credentials flow to obtain access tokens. It
  * automatically renews tokens before they expire (default: 30 seconds before expiration). Token
  * requests are retried automatically for resilience against transient network failures.
+ *
+ * <p>When {@code oauth.exchangeUri} is configured, the obtained IdP token is exchanged for a UC
+ * token at that URI. The UC token and its expiration are used for caching and renewal.
  */
 class OAuthTokenProvider implements TokenProvider {
   private static final long DEFAULT_LEAD_RENEWAL_TIME_SECONDS = 30L;
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
   private String oauthUri;
+  private String oauthExchangeUri;
   private String oauthClientId;
   private String oauthClientSecret;
   private String oauthScope;
@@ -43,12 +48,13 @@ class OAuthTokenProvider implements TokenProvider {
 
   OAuthTokenProvider() {}
 
-  // Package-private constructor for testing with a custom OAuth scope.
+  // Package-private constructor for testing.
   OAuthTokenProvider(
       String oauthUri,
       String oauthClientId,
       String oauthClientSecret,
       String oauthScope,
+      String oauthExchangeUri,
       long leadRenewalTimeSeconds,
       ApiClient apiClient,
       Clock clock) {
@@ -67,6 +73,7 @@ class OAuthTokenProvider implements TokenProvider {
     this.oauthClientId = oauthClientId;
     this.oauthClientSecret = oauthClientSecret;
     this.oauthScope = normalizeOAuthScope(oauthScope);
+    this.oauthExchangeUri = oauthExchangeUri;
     this.leadRenewalTimeSeconds = leadRenewalTimeSeconds;
     this.httpClient = apiClient.getHttpClient();
     this.clock = clock;
@@ -101,6 +108,12 @@ class OAuthTokenProvider implements TokenProvider {
     // Optional OAuth scope; defaults to all-apis when unset.
     this.oauthScope = normalizeOAuthScope(configs.get(AuthConfigs.OAUTH_SCOPE));
 
+    this.oauthExchangeUri = configs.get(AuthConfigs.OAUTH_EXCHANGE_URI);
+    Preconditions.checkArgument(
+        oauthExchangeUri == null || !oauthExchangeUri.isBlank(),
+        "Configuration key '%s' must not be empty",
+        AuthConfigs.OAUTH_EXCHANGE_URI);
+
     this.leadRenewalTimeSeconds = DEFAULT_LEAD_RENEWAL_TIME_SECONDS;
     this.httpClient =
         new RetryingApiClient(JitterDelayRetryPolicy.builder().build()).getHttpClient();
@@ -121,12 +134,18 @@ class OAuthTokenProvider implements TokenProvider {
 
   @Override
   public Map<String, String> configs() {
-    return Map.of(
-        AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE,
-        AuthConfigs.OAUTH_URI, oauthUri,
-        AuthConfigs.OAUTH_CLIENT_ID, oauthClientId,
-        AuthConfigs.OAUTH_CLIENT_SECRET, oauthClientSecret,
-        AuthConfigs.OAUTH_SCOPE, oauthScope);
+    Map<String, String> configs =
+        new HashMap<>(
+            Map.of(
+                AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE,
+                AuthConfigs.OAUTH_URI, oauthUri,
+                AuthConfigs.OAUTH_CLIENT_ID, oauthClientId,
+                AuthConfigs.OAUTH_CLIENT_SECRET, oauthClientSecret,
+                AuthConfigs.OAUTH_SCOPE, oauthScope));
+    if (oauthExchangeUri != null) {
+      configs.put(AuthConfigs.OAUTH_EXCHANGE_URI, oauthExchangeUri);
+    }
+    return Map.copyOf(configs);
   }
 
   private TempToken renewToken() {
@@ -150,19 +169,30 @@ class OAuthTokenProvider implements TokenProvider {
               .POST(HttpRequest.BodyPublishers.ofString(formData))
               .build();
 
-      // Send request with retry support
-      HttpResponse<String> response =
-          httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-      if (response.statusCode() != 200) {
-        throw new IOException(
-            String.format(
-                "Failed to fetch OAuth token. HTTP status: %d, Response: %s",
-                response.statusCode(), response.body()));
+      JsonNode jsonNode = requestToken(request);
+      if (oauthExchangeUri != null) {
+        String tokenType =
+            URLEncoder.encode(
+                "urn:ietf:params:oauth:token-type:access_token", StandardCharsets.UTF_8);
+        String exchangeFormData =
+            "grant_type="
+                + URLEncoder.encode(
+                    "urn:ietf:params:oauth:grant-type:token-exchange", StandardCharsets.UTF_8)
+                + "&requested_token_type="
+                + tokenType
+                + "&subject_token_type="
+                + tokenType
+                + "&subject_token="
+                + URLEncoder.encode(jsonNode.get("access_token").asText(), StandardCharsets.UTF_8);
+        HttpRequest exchangeRequest =
+            HttpRequest.newBuilder()
+                .uri(URI.create(oauthExchangeUri))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(exchangeFormData))
+                .build();
+        jsonNode = requestToken(exchangeRequest);
       }
 
-      // Parse JSON response
-      JsonNode jsonNode = OBJECT_MAPPER.readTree(response.body());
       String accessToken = jsonNode.get("access_token").asText();
       long expiresInSeconds = jsonNode.get("expires_in").asLong();
 
@@ -170,6 +200,17 @@ class OAuthTokenProvider implements TokenProvider {
     } catch (Exception e) {
       throw new RuntimeException("Failed to renew OAuth token", e);
     }
+  }
+
+  private JsonNode requestToken(HttpRequest request) throws IOException, InterruptedException {
+    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    if (response.statusCode() != 200) {
+      throw new IOException(
+          String.format(
+              "Failed to fetch OAuth token. HTTP status: %d, Response: %s",
+              response.statusCode(), response.body()));
+    }
+    return OBJECT_MAPPER.readTree(response.body());
   }
 
   private static String normalizeOAuthScope(String oauthScope) {

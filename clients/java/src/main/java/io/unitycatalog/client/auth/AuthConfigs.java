@@ -17,6 +17,7 @@ class AuthConfigs {
   // Configure keys for oauth token provider.
   static final String OAUTH_TYPE_VALUE = "oauth";
   static final String OAUTH_URI = "oauth.uri";
+  static final String OAUTH_EXCHANGE_URI = "oauth.exchangeUri";
   static final String OAUTH_CLIENT_ID = "oauth.clientId";
   static final String OAUTH_CLIENT_SECRET = "oauth.clientSecret";
   static final String OAUTH_SCOPE = "oauth.scope";

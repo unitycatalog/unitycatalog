@@ -426,12 +426,18 @@ Identity Provider expects a different scope, configure it with `oauth.scope`. Th
 configured scope to the Identity Provider's token endpoint; Unity Catalog does not define or
 interpret it. Follow the scope format required by your Identity Provider and resource server.
 
+Set `oauth.exchangeUri` to the full UC token exchange URL when the server requires a UC token.
+The provider first gets an IdP token from `oauth.uri`. It then exchanges that token for a UC token
+and uses the UC token's expiry for renewal. If you omit `oauth.exchangeUri`, the provider returns
+the token from `oauth.uri` directly.
+
 For example, Microsoft Entra ID Java client configuration can include:
 
 ```java
 Map<String, String> configs = Map.of(
     "type", "oauth",
     "oauth.uri", "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token",
+    "oauth.exchangeUri", "https://uc.example.com/api/1.0/unity-control/auth/tokens",
     "oauth.clientId", "<client ID>",
     "oauth.clientSecret", "<client secret>",
     "oauth.scope", "<resource-application-id-uri>/.default");
@@ -442,6 +448,7 @@ Spark catalog configuration uses the same key with the catalog auth prefix:
 ```sh
 --conf "spark.sql.catalog.<catalog_name>.auth.type=oauth" \
 --conf "spark.sql.catalog.<catalog_name>.auth.oauth.uri=https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.exchangeUri=https://uc.example.com/api/1.0/unity-control/auth/tokens" \
 --conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientId=<client ID>" \
 --conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientSecret=<client secret>" \
 --conf "spark.sql.catalog.<catalog_name>.auth.oauth.scope=<resource-application-id-uri>/.default"

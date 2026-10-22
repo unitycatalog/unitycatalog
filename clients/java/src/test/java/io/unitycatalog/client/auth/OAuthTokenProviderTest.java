@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.internal.RetryingApiClient;
 import java.io.IOException;
+import java.net.URLDecoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -18,16 +19,24 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 public class OAuthTokenProviderTest {
 
   private static final String OAUTH_URI = "https://oauth.example.com/token";
+  private static final String EXCHANGE_URI =
+      "https://uc.example.com/api/1.0/unity-control/auth/tokens";
   private static final String CLIENT_ID = "test-client-id";
   private static final String CLIENT_SECRET = "test-client-secret";
   private static final String ACCESS_TOKEN_1 = "access-token-1";
@@ -113,21 +122,136 @@ public class OAuthTokenProviderTest {
         .isEqualTo("application/x-www-form-urlencoded");
   }
 
-  @Test
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
   @SuppressWarnings("unchecked")
-  public void testAccessTokenHandlesHttpError() throws Exception {
+  public void testAccessTokenHandlesHttpError(boolean exchangeEnabled) throws Exception {
     HttpResponse<String> mockResponse = mock(HttpResponse.class);
     when(mockResponse.statusCode()).thenReturn(401);
     when(mockResponse.body()).thenReturn("Unauthorized");
     when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
         .thenReturn(mockResponse);
 
-    OAuthTokenProvider provider = defaultOAuthTokenProvider();
+    OAuthTokenProvider provider =
+        oauthTokenProvider(AuthConfigs.DEFAULT_OAUTH_SCOPE, exchangeEnabled ? EXCHANGE_URI : null);
 
     assertThatThrownBy(provider::accessToken)
         .isInstanceOf(RuntimeException.class)
         .hasMessageContaining("Failed to renew OAuth token")
         .hasCauseInstanceOf(IOException.class);
+    verifyOAuthRequest(1);
+  }
+
+  @Test
+  public void testAccessTokenExchangesIdpToken() throws Exception {
+    String idpToken = "idp+token&scope=extra/segment%";
+    HttpResponse<String> idpResponse = tokenResponse(idpToken, EXPIRES_IN_SECONDS);
+    HttpResponse<String> ucResponse = tokenResponse("uc-token", EXPIRES_IN_SECONDS);
+    when(mockHttpClient.<String>send(any(HttpRequest.class), any()))
+        .thenReturn(idpResponse)
+        .thenReturn(ucResponse);
+    OAuthTokenProvider provider = oauthTokenProvider(AuthConfigs.DEFAULT_OAUTH_SCOPE, EXCHANGE_URI);
+
+    assertThat(provider.accessToken()).isEqualTo("uc-token");
+
+    ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+    verify(mockHttpClient, times(2)).send(requestCaptor.capture(), any());
+    List<HttpRequest> requests = requestCaptor.getAllValues();
+    assertThat(requests.get(0).uri().toString()).isEqualTo(OAUTH_URI);
+    assertThat(requests.get(0).headers().firstValue("Authorization")).isPresent();
+
+    HttpRequest exchangeRequest = requests.get(1);
+    assertThat(exchangeRequest.uri().toString()).isEqualTo(EXCHANGE_URI);
+    assertThat(exchangeRequest.method()).isEqualTo("POST");
+    assertThat(exchangeRequest.headers().firstValue("Content-Type"))
+        .contains("application/x-www-form-urlencoded");
+    assertThat(exchangeRequest.headers().firstValue("Authorization")).isEmpty();
+    assertThat(requestForm(exchangeRequest))
+        .isEqualTo(
+            Map.of(
+                "grant_type", "urn:ietf:params:oauth:grant-type:token-exchange",
+                "requested_token_type", "urn:ietf:params:oauth:token-type:access_token",
+                "subject_token_type", "urn:ietf:params:oauth:token-type:access_token",
+                "subject_token", idpToken));
+  }
+
+  @ParameterizedTest
+  @ValueSource(longs = {10L, 3600L})
+  public void testAccessTokenCachesAndRenewsUsingUcExpiration(long idpExpiresIn) throws Exception {
+    HttpResponse<String> idpResponse = tokenResponse("idp-token", idpExpiresIn);
+    HttpResponse<String> firstUcResponse = tokenResponse("uc-token-1", 60L);
+    HttpResponse<String> secondUcResponse = tokenResponse("uc-token-2", 60L);
+    when(mockHttpClient.<String>send(any(HttpRequest.class), any()))
+        .thenReturn(idpResponse)
+        .thenReturn(firstUcResponse)
+        .thenReturn(idpResponse)
+        .thenReturn(secondUcResponse);
+    OAuthTokenProvider provider = oauthTokenProvider(AuthConfigs.DEFAULT_OAUTH_SCOPE, EXCHANGE_URI);
+
+    assertThat(provider.accessToken()).isEqualTo("uc-token-1");
+    verifyOAuthRequest(2);
+
+    clock.sleep(Duration.ofSeconds(29));
+    assertThat(provider.accessToken()).isEqualTo("uc-token-1");
+    verifyOAuthRequest(2);
+
+    clock.sleep(Duration.ofSeconds(2));
+    assertThat(provider.accessToken()).isEqualTo("uc-token-2");
+    verifyOAuthRequest(4);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testAccessTokenFailsWhenExchangeIsRejectedDuringRenewal() throws Exception {
+    HttpResponse<String> idpResponse = tokenResponse("idp-token", EXPIRES_IN_SECONDS);
+    HttpResponse<String> firstUcResponse = tokenResponse("uc-token-1", 60L);
+    HttpResponse<String> failedResponse = mock(HttpResponse.class);
+    when(failedResponse.statusCode()).thenReturn(401);
+    when(failedResponse.body()).thenReturn("Exchange rejected");
+    HttpResponse<String> secondUcResponse = tokenResponse("uc-token-2", 60L);
+    when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+        .thenReturn(
+            idpResponse,
+            firstUcResponse,
+            idpResponse,
+            failedResponse,
+            idpResponse,
+            secondUcResponse);
+    OAuthTokenProvider provider = oauthTokenProvider(AuthConfigs.DEFAULT_OAUTH_SCOPE, EXCHANGE_URI);
+
+    assertThat(provider.accessToken()).isEqualTo("uc-token-1");
+    clock.sleep(Duration.ofSeconds(31));
+
+    assertThatThrownBy(provider::accessToken)
+        .isInstanceOf(RuntimeException.class)
+        .hasMessage("Failed to renew OAuth token")
+        .hasCauseInstanceOf(IOException.class)
+        .hasRootCauseMessage(
+            "Failed to fetch OAuth token. HTTP status: 401, Response: Exchange rejected");
+    verifyOAuthRequest(4);
+
+    assertThat(provider.accessToken()).isEqualTo("uc-token-2");
+    verifyOAuthRequest(6);
+    assertThat(provider.accessToken()).isEqualTo("uc-token-2");
+    verifyOAuthRequest(6);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"not-json", "{}", "{\"access_token\":\"uc-token\"}"})
+  @SuppressWarnings("unchecked")
+  public void testAccessTokenRejectsInvalidExchangeResponse(String responseBody) throws Exception {
+    HttpResponse<String> idpResponse = tokenResponse("idp-token", EXPIRES_IN_SECONDS);
+    HttpResponse<String> invalidResponse = mock(HttpResponse.class);
+    when(invalidResponse.statusCode()).thenReturn(200);
+    when(invalidResponse.body()).thenReturn(responseBody);
+    when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+        .thenReturn(idpResponse, invalidResponse);
+    OAuthTokenProvider provider = oauthTokenProvider(AuthConfigs.DEFAULT_OAUTH_SCOPE, EXCHANGE_URI);
+
+    assertThatThrownBy(provider::accessToken)
+        .isInstanceOf(RuntimeException.class)
+        .hasMessage("Failed to renew OAuth token");
+    verifyOAuthRequest(2);
   }
 
   @Test
@@ -156,6 +280,7 @@ public class OAuthTokenProviderTest {
                     CLIENT_ID,
                     CLIENT_SECRET,
                     AuthConfigs.DEFAULT_OAUTH_SCOPE,
+                    null,
                     30L,
                     mockRetryingApiClient,
                     clock))
@@ -169,6 +294,7 @@ public class OAuthTokenProviderTest {
                     null,
                     CLIENT_SECRET,
                     AuthConfigs.DEFAULT_OAUTH_SCOPE,
+                    null,
                     30L,
                     mockRetryingApiClient,
                     clock))
@@ -182,6 +308,7 @@ public class OAuthTokenProviderTest {
                     CLIENT_ID,
                     null,
                     AuthConfigs.DEFAULT_OAUTH_SCOPE,
+                    null,
                     30L,
                     mockRetryingApiClient,
                     clock))
@@ -195,6 +322,7 @@ public class OAuthTokenProviderTest {
                     CLIENT_ID,
                     CLIENT_SECRET,
                     AuthConfigs.DEFAULT_OAUTH_SCOPE,
+                    null,
                     -1L,
                     mockRetryingApiClient,
                     clock))
@@ -257,8 +385,28 @@ public class OAuthTokenProviderTest {
   }
 
   private OAuthTokenProvider oauthTokenProvider(String oauthScope) {
+    return oauthTokenProvider(oauthScope, null);
+  }
+
+  private OAuthTokenProvider oauthTokenProvider(String oauthScope, String exchangeUri) {
     return new OAuthTokenProvider(
-        OAUTH_URI, CLIENT_ID, CLIENT_SECRET, oauthScope, 30L, mockRetryingApiClient, clock);
+        OAUTH_URI,
+        CLIENT_ID,
+        CLIENT_SECRET,
+        oauthScope,
+        exchangeUri,
+        30L,
+        mockRetryingApiClient,
+        clock);
+  }
+
+  private static Map<String, String> requestForm(HttpRequest request) throws InterruptedException {
+    return Arrays.stream(requestBody(request).split("&"))
+        .map(parameter -> parameter.split("=", 2))
+        .collect(
+            Collectors.toMap(
+                parameter -> URLDecoder.decode(parameter[0], StandardCharsets.UTF_8),
+                parameter -> URLDecoder.decode(parameter[1], StandardCharsets.UTF_8)));
   }
 
   /** Reads the string body of an HttpRequest built from a BodyPublishers.ofString publisher. */
@@ -294,17 +442,22 @@ public class OAuthTokenProviderTest {
 
   /** Helper method to mock a successful OAuth response. */
   private void mockOAuthResponse(String accessToken, long expiresIn) throws Exception {
+    HttpResponse<String> mockResponse = tokenResponse(accessToken, expiresIn);
+    when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+        .thenReturn(mockResponse);
+  }
+
+  @SuppressWarnings("unchecked")
+  private HttpResponse<String> tokenResponse(String accessToken, long expiresIn) {
     String jsonResponse =
         String.format(
             "{\"access_token\":\"%s\",\"token_type\":\"Bearer\",\"expires_in\":%d}",
             accessToken, expiresIn);
 
-    @SuppressWarnings("unchecked")
     HttpResponse<String> mockResponse = mock(HttpResponse.class);
     when(mockResponse.statusCode()).thenReturn(200);
     when(mockResponse.body()).thenReturn(jsonResponse);
-    when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-        .thenReturn(mockResponse);
+    return mockResponse;
   }
 
   /** Helper method to verify OAuth request was made expected number of times. */

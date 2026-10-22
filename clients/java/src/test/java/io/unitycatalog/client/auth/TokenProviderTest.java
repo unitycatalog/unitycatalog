@@ -7,6 +7,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class TokenProviderTest {
 
@@ -125,6 +127,32 @@ public class TokenProviderTest {
     configs.put(AuthConfigs.OAUTH_SCOPE, "  scope-a  \t scope-b  ");
     assertThat(TokenProvider.create(configs).configs())
         .containsEntry(AuthConfigs.OAUTH_SCOPE, "scope-a scope-b");
+  }
+
+  @Test
+  public void testOAuthExchangeUriIsOptionalAndRoundTrips() {
+    TokenProvider directProvider = TokenProviderUtils.create(OAUTH_URI, CLIENT_ID, CLIENT_SECRET);
+    assertThat(directProvider.configs()).doesNotContainKey("oauth.exchangeUri");
+
+    String exchangeUri = "https://uc.example.com/api/1.0/unity-control/auth/tokens";
+    Map<String, String> configs = new HashMap<>(directProvider.configs());
+    configs.put("oauth.exchangeuri", exchangeUri);
+
+    TokenProvider provider = TokenProvider.create(configs);
+    assertThat(provider.configs()).containsEntry("oauth.exchangeUri", exchangeUri);
+    assertThat(TokenProvider.create(provider.configs()).configs()).isEqualTo(provider.configs());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"", "   ", "\t"})
+  public void testBlankOAuthExchangeUriIsRejected(String exchangeUri) {
+    Map<String, String> configs =
+        new HashMap<>(TokenProviderUtils.create(OAUTH_URI, CLIENT_ID, CLIENT_SECRET).configs());
+    configs.put("oauth.exchangeUri", exchangeUri);
+
+    assertThatThrownBy(() -> TokenProvider.create(configs))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Configuration key 'oauth.exchangeUri' must not be empty");
   }
 
   @Test
