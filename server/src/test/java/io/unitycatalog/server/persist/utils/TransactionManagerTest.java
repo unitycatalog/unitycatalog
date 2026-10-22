@@ -7,12 +7,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -179,7 +177,7 @@ public class TransactionManagerTest {
 
     /**
      * One row per combination of failures after the operation fails. Columns: the operation's
-     * error, whether the rollback fails, whether the isolation restore fails; then what is thrown
+     * error, whether the rollback fails, whether the session close fails; then what is thrown
      * ({@code original}, {@code internal} wrapping it, or {@code rollback failed} wrapping a
      * signal), the failures suppressed on the thrown error, and those suppressed on the original.
      */
@@ -187,26 +185,24 @@ public class TransactionManagerTest {
       return Stream.of(
           Arguments.of(RUNTIME, false, false, "internal", List.of(), List.of()),
           Arguments.of(RUNTIME, true, false, "internal", List.of(), List.of("rollback")),
-          Arguments.of(RUNTIME, false, true, "internal", List.of("restore"), List.of()),
-          Arguments.of(RUNTIME, true, true, "internal", List.of("restore"), List.of("rollback")),
+          Arguments.of(RUNTIME, false, true, "internal", List.of("close"), List.of()),
+          Arguments.of(RUNTIME, true, true, "internal", List.of("close"), List.of("rollback")),
           Arguments.of(CLIENT_ERROR, false, false, "original", List.of(), List.of()),
           Arguments.of(
               CLIENT_ERROR, true, false, "original", List.of("rollback"), List.of("rollback")),
-          Arguments.of(
-              CLIENT_ERROR, false, true, "original", List.of("restore"), List.of("restore")),
+          Arguments.of(CLIENT_ERROR, false, true, "original", List.of("close"), List.of("close")),
           Arguments.of(
               CLIENT_ERROR,
               true,
               true,
               "original",
-              List.of("rollback", "restore"),
-              List.of("rollback", "restore")),
+              List.of("rollback", "close"),
+              List.of("rollback", "close")),
           Arguments.of(SIGNAL, false, false, "original", List.of(), List.of()),
-          // The caller takes the signal as success, so a failed restore after it goes unseen.
-          Arguments.of(SIGNAL, false, true, "original", List.of("restore"), List.of("restore")),
+          Arguments.of(SIGNAL, false, true, "original", List.of("close"), List.of("close")),
           Arguments.of(SIGNAL, true, false, "rollback failed", List.of(), List.of("rollback")),
           Arguments.of(
-              SIGNAL, true, true, "rollback failed", List.of("restore"), List.of("rollback")));
+              SIGNAL, true, true, "rollback failed", List.of("close"), List.of("rollback")));
     }
 
     @ParameterizedTest
@@ -214,7 +210,7 @@ public class TransactionManagerTest {
     public void testFailuresAfterTheOperationAreKeptOnItsError(
         OperationError operationError,
         boolean rollbackFails,
-        boolean restoreFails,
+        boolean closeFails,
         String thrown,
         List<String> suppressedOnThrown,
         List<String> suppressedOnOriginal) {
@@ -227,13 +223,12 @@ public class TransactionManagerTest {
       Map<String, RuntimeException> failures =
           Map.of(
               "rollback", new RuntimeException("rollback failed"),
-              "restore", new RuntimeException("restore failed"));
+              "close", new RuntimeException("close failed"));
       if (rollbackFails) {
         doThrow(failures.get("rollback")).when(transaction).rollback();
       }
-      if (restoreFails) {
-        // The first doWork sets the isolation level; the second restores it.
-        doNothing().doThrow(failures.get("restore")).when(session).doWork(any());
+      if (closeFails) {
+        doThrow(failures.get("close")).when(session).close();
       }
 
       Throwable error =
@@ -245,8 +240,7 @@ public class TransactionManagerTest {
                         throw original;
                       },
                       "Error executing operation",
-                      false,
-                      Optional.of(Connection.TRANSACTION_REPEATABLE_READ)));
+                      false));
 
       switch (thrown) {
         case "original" -> assertThat(error).isSameAs(original);
@@ -276,35 +270,6 @@ public class TransactionManagerTest {
     }
 
     @Test
-    public void testEveryFailureAfterTheOperationIsKeptInOrder() {
-      RuntimeException error = new RuntimeException("connection reset");
-      RuntimeException rollbackError = new RuntimeException("rollback failed");
-      RuntimeException restoreError = new RuntimeException("restore failed");
-      RuntimeException closeError = new RuntimeException("close failed");
-      doThrow(rollbackError).when(transaction).rollback();
-      doNothing().doThrow(restoreError).when(session).doWork(any());
-      doThrow(closeError).when(session).close();
-
-      Throwable thrown =
-          catchThrowable(
-              () ->
-                  TransactionManager.executeWithTransaction(
-                      sessionFactory,
-                      session -> {
-                        throw error;
-                      },
-                      "Error executing operation",
-                      false,
-                      Optional.of(Connection.TRANSACTION_REPEATABLE_READ)));
-
-      // The restore runs before the session closes, so its failure is attached first.
-      assertInternal(thrown, "Error executing operation: connection reset");
-      assertThat(thrown).hasCause(error);
-      assertThat(thrown.getSuppressed()).containsExactly(restoreError, closeError);
-      assertThat(error.getSuppressed()).containsExactly(rollbackError);
-    }
-
-    @Test
     public void testFailedCommitIsRolledBackAndKeptAsTheCause() {
       RuntimeException commitError = new RuntimeException("commit failed");
       doThrow(commitError).when(transaction).commit();
@@ -321,24 +286,6 @@ public class TransactionManagerTest {
     }
 
     @Test
-    public void testFailedIsolationRestoreAfterACommitIsThrown() {
-      RuntimeException restoreError = new RuntimeException("restore failed");
-      doNothing().doThrow(restoreError).when(session).doWork(any());
-
-      assertThatThrownBy(
-              () ->
-                  TransactionManager.executeWithTransaction(
-                      sessionFactory,
-                      session -> "ok",
-                      "Error executing operation",
-                      false,
-                      Optional.of(Connection.TRANSACTION_REPEATABLE_READ)))
-          .isSameAs(restoreError);
-      verify(transaction).commit();
-      verify(transaction, never()).rollback();
-    }
-
-    @Test
     public void testFailedSessionCloseAfterACommitIsThrown() {
       RuntimeException closeError = new RuntimeException("close failed");
       doThrow(closeError).when(session).close();
@@ -349,26 +296,6 @@ public class TransactionManagerTest {
                       sessionFactory, session -> "ok", "Error executing operation", false))
           .isSameAs(closeError);
       assertThat(closeError.getSuppressed()).isEmpty();
-      verify(transaction).commit();
-    }
-
-    @Test
-    public void testFailedRestoreAndCloseAfterACommitKeepTheRestoreError() {
-      RuntimeException restoreError = new RuntimeException("restore failed");
-      RuntimeException closeError = new RuntimeException("close failed");
-      doNothing().doThrow(restoreError).when(session).doWork(any());
-      doThrow(closeError).when(session).close();
-
-      assertThatThrownBy(
-              () ->
-                  TransactionManager.executeWithTransaction(
-                      sessionFactory,
-                      session -> "ok",
-                      "Error executing operation",
-                      false,
-                      Optional.of(Connection.TRANSACTION_REPEATABLE_READ)))
-          .isSameAs(restoreError);
-      assertThat(restoreError.getSuppressed()).containsExactly(closeError);
       verify(transaction).commit();
     }
 
@@ -387,8 +314,6 @@ public class TransactionManagerTest {
                       false,
                       Optional.of(Connection.TRANSACTION_REPEATABLE_READ)))
           .isSameAs(setError);
-      // Only the set ran: no restore after a failed set.
-      verify(session, times(1)).doWork(any());
       verify(session, never()).beginTransaction();
     }
 
