@@ -664,7 +664,7 @@ lazy val cli = (project in file("examples") / "cli")
 lazy val testDatabaseDependencies = Seq(
   "org.testcontainers" % "testcontainers" % testcontainersVersion % Test,
   "org.testcontainers" % "postgresql" % testcontainersVersion % Test,
-  "org.postgresql" % "postgresql" % "42.7.13" % Test,
+  "org.postgresql" % "postgresql" % postgresqlVersion % Test,
 )
 
 /*
