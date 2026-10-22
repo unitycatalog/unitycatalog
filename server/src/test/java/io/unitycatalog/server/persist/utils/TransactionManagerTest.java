@@ -3,9 +3,6 @@ package io.unitycatalog.server.persist.utils;
 import static io.unitycatalog.server.persist.utils.TransactionManagerTest.MockTransactionTest.OperationError.CLIENT_ERROR;
 import static io.unitycatalog.server.persist.utils.TransactionManagerTest.MockTransactionTest.OperationError.RUNTIME;
 import static io.unitycatalog.server.persist.utils.TransactionManagerTest.MockTransactionTest.OperationError.SIGNAL;
-import static io.unitycatalog.server.persist.utils.TransactionManagerTest.MockTransactionTest.Thrown.INTERNAL;
-import static io.unitycatalog.server.persist.utils.TransactionManagerTest.MockTransactionTest.Thrown.ORIGINAL;
-import static io.unitycatalog.server.persist.utils.TransactionManagerTest.MockTransactionTest.Thrown.ROLLBACK_FAILED;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -176,37 +173,31 @@ public class TransactionManagerTest {
       SIGNAL
     }
 
-    /** What is thrown: the operation's own error, or an INTERNAL error wrapping it. */
-    enum Thrown {
-      ORIGINAL,
-      INTERNAL,
-      ROLLBACK_FAILED
-    }
-
     /**
      * One row per combination of failures after the operation fails. Columns: the operation's
      * error, whether the rollback fails, whether the session close fails; then what is thrown
-     * ({@link Thrown}), the failures suppressed on the thrown error, and those suppressed on the
-     * original.
+     * ({@code original}, {@code internal} wrapping it, or {@code rollback failed} wrapping a
+     * signal), the failures suppressed on the thrown error, and those suppressed on the original.
      */
     static Stream<Arguments> failureLevels() {
       return Stream.of(
-          Arguments.of(RUNTIME, true, false, INTERNAL, List.of(), List.of("rollback")),
-          Arguments.of(RUNTIME, false, true, INTERNAL, List.of("close"), List.of()),
-          Arguments.of(RUNTIME, true, true, INTERNAL, List.of("close"), List.of("rollback")),
+          Arguments.of(RUNTIME, true, false, "internal", List.of(), List.of("rollback")),
+          Arguments.of(RUNTIME, false, true, "internal", List.of("close"), List.of()),
+          Arguments.of(RUNTIME, true, true, "internal", List.of("close"), List.of("rollback")),
           Arguments.of(
-              CLIENT_ERROR, true, false, ORIGINAL, List.of("rollback"), List.of("rollback")),
-          Arguments.of(CLIENT_ERROR, false, true, ORIGINAL, List.of("close"), List.of("close")),
+              CLIENT_ERROR, true, false, "original", List.of("rollback"), List.of("rollback")),
+          Arguments.of(CLIENT_ERROR, false, true, "original", List.of("close"), List.of("close")),
           Arguments.of(
               CLIENT_ERROR,
               true,
               true,
-              ORIGINAL,
+              "original",
               List.of("rollback", "close"),
               List.of("rollback", "close")),
-          Arguments.of(SIGNAL, false, true, ORIGINAL, List.of("close"), List.of("close")),
-          Arguments.of(SIGNAL, true, false, ROLLBACK_FAILED, List.of(), List.of("rollback")),
-          Arguments.of(SIGNAL, true, true, ROLLBACK_FAILED, List.of("close"), List.of("rollback")));
+          Arguments.of(SIGNAL, false, true, "original", List.of("close"), List.of("close")),
+          Arguments.of(SIGNAL, true, false, "rollback failed", List.of(), List.of("rollback")),
+          Arguments.of(
+              SIGNAL, true, true, "rollback failed", List.of("close"), List.of("rollback")));
     }
 
     @ParameterizedTest
@@ -215,7 +206,7 @@ public class TransactionManagerTest {
         OperationError operationError,
         boolean rollbackFails,
         boolean closeFails,
-        Thrown thrown,
+        String thrown,
         List<String> suppressedOnThrown,
         List<String> suppressedOnOriginal) {
       Exception original =
@@ -247,10 +238,11 @@ public class TransactionManagerTest {
                       false));
 
       switch (thrown) {
-        case ORIGINAL -> assertThat(error).isSameAs(original);
-        case INTERNAL -> assertInternal(error, "Error executing operation: connection reset");
-        case ROLLBACK_FAILED ->
+        case "original" -> assertThat(error).isSameAs(original);
+        case "internal" -> assertInternal(error, "Error executing operation: connection reset");
+        case "rollback failed" ->
             assertInternal(error, "Error executing operation: transaction rollback failed");
+        default -> throw new IllegalArgumentException(thrown);
       }
       if (error != original) {
         assertThat(error).hasCause(original);
