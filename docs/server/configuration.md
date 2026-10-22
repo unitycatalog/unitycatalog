@@ -135,6 +135,48 @@ The cache is controlled by these keys:
 
 Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is five minutes).
 
+### Audit records
+
+The server can write an audit record for each storage credential it issues and each permission
+change. Audit records are off by default. Set `server.audit.sink` to turn them on:
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `server.audit.sink` | (unset) | The class that receives audit records. `io.unitycatalog.server.audit.FileAuditSink` writes them to `etc/logs/audit.log`. When unset, no records are written. |
+
+Each record is one JSON line. Fields that don't apply to a record are left out:
+
+```json
+{"time":"2026-10-20T10:02:00.000Z","action":"ISSUE_CREDENTIAL","user":"bob@example.com","request_id":"…","purpose":"CLIENT","location":"s3://bucket/root/tables/7f3a…","access":"READ","expires_at":1792500120000}
+```
+
+- `action`: `ISSUE_CREDENTIAL`, `GRANT`, `REVOKE`, `CLEAR_RESOURCE_GRANTS` (a dropped object's
+  grants), or `CLEAR_PRINCIPAL_GRANTS` (a deleted user's grants).
+- `user`: the caller's email. It is `system:storage-cleanup` for the background storage cleanup,
+  `system:bootstrap` for the admin grant made at first start, and absent when authorization is
+  off. Permission changes are recorded only when authorization is on.
+- `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
+  itself while handling the request, and `CLEANUP` for the background storage cleanup.
+- `resource_id`: the object's ID. A `CLEANUP` credential carries the ID of the dropped object.
+- `privilege` uses the API's privilege names (for example `USE CATALOG`), and `access` is `READ` or
+  `READ_WRITE`. Records never contain credential values, and `location` never contains a query
+  string or user info.
+
+`FileAuditSink` needs the `audit` logger in `etc/conf/server.log4j2.properties`, with its own
+appender set to `ignoreExceptions = false`, `additivity = false`, and level `INFO`. The shipped configuration has it. If it is missing,
+for example in a log configuration kept from an older release, the server does not start, so audit
+records never end up in `server.log`. `audit.log` rolls over with the same settings as
+`server.log`, which keep only a few rolled files, so a busy server holds just seconds of audit
+history on disk. Ship `etc/logs/audit.log` continuously to your log or security service to keep
+the records.
+
+To send records somewhere else, set `server.audit.sink` to your own class that implements
+`io.unitycatalog.server.audit.AuditSink` and has a public no-arg constructor. It must be on the
+server classpath, and the server does not start if it can't be loaded. `record` is called
+concurrently on request threads, so it must be thread-safe and should hand records to a queue
+instead of sending them inline. `close` is called once at shutdown. A failure thrown from either
+method is logged in `server.log` and never fails a request.
+
 ## Logging
 
 The server logs are located at `etc/logs/server.log`. The log level and log rolling policy can be set in log4j2 config
