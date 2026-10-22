@@ -13,6 +13,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.DeltaApiExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
@@ -222,8 +223,11 @@ class ManagedTableCleanupTaskTest {
           .isInstanceOfSatisfying(
               BaseException.class,
               e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE));
-      // Iceberg clients retry a 503 on drop table. The Delta API has no 503 error type, so it
-      // answers with its "retry after a delay" type.
+      // UC REST and Iceberg clients retry a 503 on drop table. The Delta API has no 503 error
+      // type, so it answers with its "retry after a delay" type.
+      AggregatedHttpResponse uc = errorResponse(GlobalExceptionHandler.INSTANCE, dropFailure);
+      assertThat(uc.status().code()).isEqualTo(503);
+      assertThat(uc.contentUtf8()).contains("\"error_code\":\"UNAVAILABLE\"");
       AggregatedHttpResponse iceberg =
           errorResponse(IcebergRestExceptionHandler.INSTANCE, dropFailure);
       assertThat(iceberg.status().code()).isEqualTo(503);
