@@ -22,6 +22,9 @@ import org.springframework.expression.spel.support.StandardEvaluationContext;
  * authorization functions to call the configured authorization backend implementation which can be
  * used with SpEL logical operators to define compound authorization rules.
  *
+ * <p>{@code #strict_privilege_checks} is a boolean from server configuration. Request values cannot
+ * override it.
+ *
  * <p>Example:
  *
  * <p>#authorize(#principal, #schema, 'USE SCHEMA') || #authorize(#principal, #table, 'OWNER')
@@ -31,14 +34,16 @@ public class UnityAccessEvaluator {
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityAccessEvaluator.class);
 
   private final UnityCatalogAuthorizer authorizer;
+  private final boolean strictPrivilegeChecks;
   private final ExpressionParser parser;
   private final MethodHandle authorizeHandle;
   private final MethodHandle authorizeAnyHandle;
   private final MethodHandle authorizeAllHandle;
 
-  public UnityAccessEvaluator(UnityCatalogAuthorizer authorizer)
+  public UnityAccessEvaluator(UnityCatalogAuthorizer authorizer, boolean strictPrivilegeChecks)
       throws NoSuchMethodException, IllegalAccessException {
     this.authorizer = authorizer;
+    this.strictPrivilegeChecks = strictPrivilegeChecks;
     this.parser = new SpelExpressionParser();
 
     MethodHandles.Lookup lookup = MethodHandles.lookup();
@@ -120,6 +125,7 @@ public class UnityAccessEvaluator {
 
     resourceIds.forEach((k, v) -> context.setVariable(k.name().toLowerCase(), v));
     nonResourceValues.forEach(context::setVariable);
+    context.setVariable("strict_privilege_checks", strictPrivilegeChecks);
 
     if (eval(expression, context)) {
       return true;

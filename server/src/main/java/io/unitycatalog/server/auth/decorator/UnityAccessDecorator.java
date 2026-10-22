@@ -25,6 +25,7 @@ import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.ArrayList;
@@ -96,10 +97,14 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
   public static final AttributeKey<ResultFilter> RESULT_FILTER_ATTR =
       AttributeKey.valueOf(ResultFilter.class, "RESULT_FILTER");
 
-  public UnityAccessDecorator(UnityCatalogAuthorizer authorizer, Repositories repositories)
+  public UnityAccessDecorator(
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties)
       throws BaseException {
     try {
-      evaluator = new UnityAccessEvaluator(authorizer);
+      evaluator =
+          new UnityAccessEvaluator(authorizer, serverProperties.isStrictPrivilegeChecksEnabled());
     } catch (NoSuchMethodException | IllegalAccessException e) {
       throw new BaseException(ErrorCode.INTERNAL, "Error initializing access evaluator.", e);
     }
