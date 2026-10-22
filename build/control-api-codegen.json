@@ -1,0 +1,5 @@
+{
+  "nameMappings": {
+    "urn:unitycatalog:params:scim:schemas:extension:oidc:2.0:User": "oidcIdentity"
+  }
+}

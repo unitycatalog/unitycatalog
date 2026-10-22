@@ -5,11 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.control.ApiException;
 import io.unitycatalog.control.api.UsersApi;
+import io.unitycatalog.control.model.OidcIdentity;
 import io.unitycatalog.control.model.UserResource;
 import io.unitycatalog.control.model.UserResourceList;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.http.HttpResponse;
+import java.util.Map;
 import java.util.Optional;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
@@ -74,5 +76,44 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     ApiException exception = assertThrows(ApiException.class, request);
     assertThat(exception.getCode()).isEqualTo(403);
     assertThat(exception.getResponseBody()).contains("\"error_code\":\"PERMISSION_DENIED\"");
+  }
+
+  @Test
+  public void testOnlyMetastoreAdminCanSetOidcIdentity() throws Exception {
+    OidcIdentity identity =
+        new OidcIdentity().issuer("https://issuer.example.com").subject("updated-subject");
+    otherUser.oidcIdentity(identity);
+    assertScimPermissionDenied(() -> regularUsersApi.createUser(otherUser));
+    assertScimPermissionDenied(() -> regularUsersApi.updateUser(otherUser.getId(), otherUser));
+    assertThat(usersApi.getUser(otherUser.getId()).getOidcIdentity()).isNull();
+
+    usersApi.updateUser(otherUser.getId(), otherUser);
+    assertThat(usersApi.getUser(otherUser.getId()).getOidcIdentity()).isEqualTo(identity);
+  }
+
+  @Test
+  public void testRejectsInvalidOidcIdentity() throws Exception {
+    Map<String, String> invalidIdentities =
+        Map.of(
+            "{\"issuer\":\"https://issuer.example.com\"}",
+            "Issuer and subject must both be non-blank or both omitted",
+            "{\"issuer\":{},\"subject\":\"subject\"}",
+            "Invalid OIDC identity extension");
+    for (var invalid : invalidIdentities.entrySet()) {
+      String request =
+          """
+          {
+            "displayName": "Invalid mapping",
+            "emails": [{"value": "invalid-mapping@localhost", "primary": true}],
+            "urn:unitycatalog:params:scim:schemas:extension:oidc:2.0:User": %s
+          }
+          """
+              .formatted(invalid.getKey());
+      HttpResponse<String> response =
+          TestUtils.sendRaw(adminConfig, "POST", SCIM_USERS_PATH, Optional.of(request));
+      assertThat(response.statusCode()).isEqualTo(400);
+      assertThat(response.body())
+          .contains("\"error_code\":\"INVALID_ARGUMENT\"", invalid.getValue());
+    }
   }
 }

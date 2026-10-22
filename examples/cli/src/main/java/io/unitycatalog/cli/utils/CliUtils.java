@@ -297,7 +297,7 @@ public class CliUtils {
                       CREATE,
                       new CliOptions(
                           List.of(CliParams.NAME, CliParams.EMAIL),
-                          List.of(CliParams.EXTERNAL_ID)));
+                          List.of(CliParams.EXTERNAL_ID, CliParams.ISSUER, CliParams.SUBJECT)));
                   put(
                       LIST,
                       new CliOptions(
@@ -308,7 +308,12 @@ public class CliUtils {
                       UPDATE,
                       new CliOptions(
                           List.of(CliParams.ID),
-                          List.of(CliParams.NAME, CliParams.EXTERNAL_ID, CliParams.EMAIL)));
+                          List.of(
+                              CliParams.NAME,
+                              CliParams.EXTERNAL_ID,
+                              CliParams.EMAIL,
+                              CliParams.ISSUER,
+                              CliParams.SUBJECT)));
                   put(DELETE, new CliOptions(List.of(CliParams.ID), List.of()));
                 }
               });

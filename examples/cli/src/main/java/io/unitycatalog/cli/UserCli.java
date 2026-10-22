@@ -20,6 +20,7 @@ import io.unitycatalog.control.ApiClient;
 import io.unitycatalog.control.ApiException;
 import io.unitycatalog.control.api.UsersApi;
 import io.unitycatalog.control.model.Email;
+import io.unitycatalog.control.model.OidcIdentity;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.control.model.UserResource;
 import java.text.ParseException;
@@ -75,6 +76,7 @@ public class UserCli {
         new UserResource()
             .displayName(json.getString(CliParams.NAME.getServerParam()))
             .externalId(externalId)
+            .oidcIdentity(oidcIdentityFromOptions(json))
             .emails(emails);
     UserResource user = usersApi.createUser(userResource);
     return objectWriter.writeValueAsString(fromUserResource(user));
@@ -100,7 +102,12 @@ public class UserCli {
 
     String id = json.getString(CliParams.ID.getServerParam());
     UserResource userResource =
-        new UserResource().id(id).displayName(displayName).externalId(externalId).emails(emails);
+        new UserResource()
+            .id(id)
+            .displayName(displayName)
+            .externalId(externalId)
+            .oidcIdentity(oidcIdentityFromOptions(json))
+            .emails(emails);
     UserResource user = usersApi.updateUser(id, userResource);
     return objectWriter.writeValueAsString(fromUserResource(user));
   }
@@ -142,14 +149,26 @@ public class UserCli {
 
   private static User fromUserResource(UserResource userResource) {
 
+    OidcIdentity identity = userResource.getOidcIdentity();
     return new User()
         .id(userResource.getId())
         .name(userResource.getDisplayName())
         .externalId(userResource.getExternalId())
+        .issuer(identity == null ? null : identity.getIssuer())
+        .subject(identity == null ? null : identity.getSubject())
         .email(userResource.getEmails().get(0).getValue())
         .state(userResource.getActive() ? ENABLED : DISABLED)
         .createdAt(fromDateString(userResource.getMeta().getCreated()))
         .updatedAt(fromDateString(userResource.getMeta().getLastModified()));
+  }
+
+  private static OidcIdentity oidcIdentityFromOptions(JSONObject json) {
+    String issuer = json.optString(CliParams.ISSUER.getServerParam(), null);
+    String subject = json.optString(CliParams.SUBJECT.getServerParam(), null);
+    if (issuer == null && subject == null) {
+      return null;
+    }
+    return new OidcIdentity().issuer(issuer).subject(subject);
   }
 
   private static Long fromDateString(String date) {

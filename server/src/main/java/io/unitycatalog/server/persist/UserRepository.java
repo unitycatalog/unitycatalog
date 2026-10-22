@@ -32,12 +32,15 @@ public class UserRepository {
   }
 
   public User createUser(CreateUser createUser) {
+    validateOidcIdentity(createUser.getIssuer(), createUser.getSubject());
     User user =
         new User()
             .id(UUID.randomUUID().toString())
             .name(createUser.getName())
             .email(createUser.getEmail())
             .externalId(createUser.getExternalId())
+            .issuer(createUser.getIssuer())
+            .subject(createUser.getSubject())
             .state(User.StateEnum.ENABLED)
             .createdAt(System.currentTimeMillis());
 
@@ -54,6 +57,7 @@ public class UserRepository {
                 ErrorCode.ALREADY_EXISTS,
                 "User already exists with external id: " + user.getExternalId());
           }
+          checkOidcIdentityAvailable(session, user.getIssuer(), user.getSubject(), null);
           session.persist(UserDAO.from(user));
           return user;
         },
@@ -161,6 +165,55 @@ public class UserRepository {
     return query.uniqueResult();
   }
 
+  /** Returns the user mapped to the exact OIDC issuer and subject. */
+  public User getUserByIssuerAndSubject(String issuer, String subject) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UserDAO userDAO = getUserByIssuerAndSubject(session, issuer, subject);
+          // OIDC identifiers are case-sensitive, even with a case-insensitive database collation.
+          if (userDAO == null
+              || !issuer.equals(userDAO.getIssuer())
+              || !subject.equals(userDAO.getSubject())) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "User not found for issuer and subject");
+          }
+          return userDAO.toUser();
+        },
+        "Failed to get user by issuer and subject",
+        /* readOnly= */ true);
+  }
+
+  private UserDAO getUserByIssuerAndSubject(Session session, String issuer, String subject) {
+    return session
+        .createQuery("FROM UserDAO WHERE issuer = :issuer AND subject = :subject", UserDAO.class)
+        .setParameter("issuer", issuer)
+        .setParameter("subject", subject)
+        .uniqueResult();
+  }
+
+  private static void validateOidcIdentity(String issuer, String subject) {
+    if (issuer == null && subject == null) {
+      return;
+    }
+    if (issuer == null || subject == null || issuer.isBlank() || subject.isBlank()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Issuer and subject must both be non-blank or both omitted");
+    }
+  }
+
+  private void checkOidcIdentityAvailable(
+      Session session, String issuer, String subject, UUID userId) {
+    if (issuer == null) {
+      return;
+    }
+    UserDAO existingUser = getUserByIssuerAndSubject(session, issuer, subject);
+    if (existingUser != null && !existingUser.getId().equals(userId)) {
+      throw new BaseException(
+          ErrorCode.ALREADY_EXISTS,
+          "User already exists with issuer: " + issuer + ", subject: " + subject);
+    }
+  }
+
   public UserDAO getUserByExternalId(Session session, String externalId) {
     Query<UserDAO> query =
         session.createQuery("FROM UserDAO WHERE externalId = :externalId", UserDAO.class);
@@ -170,6 +223,7 @@ public class UserRepository {
   }
 
   public User updateUser(String id, UpdateUser updateUser) {
+    validateOidcIdentity(updateUser.getIssuer(), updateUser.getSubject());
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -196,6 +250,12 @@ public class UserRepository {
                   "User already exists with external id: " + updateUser.getExternalId());
             }
             userDAO.setExternalId(updateUser.getExternalId());
+          }
+          if (updateUser.getIssuer() != null) {
+            checkOidcIdentityAvailable(
+                session, updateUser.getIssuer(), updateUser.getSubject(), userDAO.getId());
+            userDAO.setIssuer(updateUser.getIssuer());
+            userDAO.setSubject(updateUser.getSubject());
           }
           session.merge(userDAO);
           return userDAO.toUser();

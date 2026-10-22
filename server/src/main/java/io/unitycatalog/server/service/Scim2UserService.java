@@ -2,6 +2,7 @@ package io.unitycatalog.server.service;
 
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.utils.Scim2Utils.asUserResource;
+import static io.unitycatalog.server.utils.Scim2Utils.getOidcIdentity;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linecorp.armeria.common.HttpResponse;
@@ -29,6 +30,7 @@ import com.unboundid.scim2.common.types.Meta;
 import com.unboundid.scim2.common.types.UserResource;
 import com.unboundid.scim2.common.utils.FilterEvaluator;
 import com.unboundid.scim2.common.utils.Parser;
+import io.unitycatalog.control.model.OidcIdentity;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -130,6 +132,7 @@ public class Scim2UserService implements ScimService {
       pictureUrl = userResource.getPhotos().get(0).getValue().toString();
     }
     try {
+      OidcIdentity identity = getOidcIdentity(userResource);
       User user =
           userRepository.createUser(
               CreateUser.builder()
@@ -137,11 +140,15 @@ public class Scim2UserService implements ScimService {
                   .email(primaryEmail.getValue())
                   .active(userResource.getActive())
                   .externalId(userResource.getExternalId())
+                  .issuer(identity.getIssuer())
+                  .subject(identity.getSubject())
                   .pictureUrl(pictureUrl)
                   .build());
       return asUserResource(user);
     } catch (BaseException e) {
-      if (e.getErrorCode() == ErrorCode.ALREADY_EXISTS) {
+      if (e.getErrorCode() == ErrorCode.INVALID_ARGUMENT) {
+        throw e;
+      } else if (e.getErrorCode() == ErrorCode.ALREADY_EXISTS) {
         throw new Scim2RuntimeException(new ResourceConflictException(e.getMessage()));
       } else {
         throw new Scim2RuntimeException(new BadRequestException(e.getMessage()));
@@ -169,11 +176,14 @@ public class Scim2UserService implements ScimService {
       throw new Scim2RuntimeException(new ResourceConflictException("User id mismatch."));
     }
 
+    OidcIdentity identity = getOidcIdentity(userResource);
     UpdateUser updateUser =
         UpdateUser.builder()
             .name(userResource.getDisplayName())
             .active(userResource.getActive())
             .externalId(userResource.getExternalId())
+            .issuer(identity.getIssuer())
+            .subject(identity.getSubject())
             .build();
 
     return asUserResource(userRepository.updateUser(id, updateUser));

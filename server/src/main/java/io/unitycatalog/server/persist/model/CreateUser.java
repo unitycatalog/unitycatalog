@@ -10,6 +10,8 @@ public class CreateUser {
   private String name;
   private String email;
   private String externalId;
+  private String issuer;
+  private String subject;
   private Boolean active;
   private String pictureUrl;
 }

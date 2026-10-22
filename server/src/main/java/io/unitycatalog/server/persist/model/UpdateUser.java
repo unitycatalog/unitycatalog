@@ -10,4 +10,6 @@ public class UpdateUser {
   private String name;
   private Boolean active;
   private String externalId;
+  private String issuer;
+  private String subject;
 }

@@ -18,6 +18,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.InvalidKeySpecException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -194,11 +195,15 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     serverConfig.setAuthToken(token);
     // Test creating a user
     List<String> argsAddUser =
-        List.of("user", "create", "--email", "user@localhost", "--name", "Test User");
+        new ArrayList<>(
+            List.of("user", "create", "--email", "user@localhost", "--name", "Test User"));
+    argsAddUser.addAll(List.of("--issuer", testIssuer, "--subject", "created-subject"));
     JsonNode responseJsonInfo = executeCliCommand(serverConfig, argsAddUser);
     assertThat(responseJsonInfo).isNotNull();
     assertThat(responseJsonInfo.get("name").asText()).isEqualTo("Test User");
     assertThat(responseJsonInfo.get("email").asText()).isEqualTo("user@localhost");
+    assertThat(responseJsonInfo.get("issuer").asText()).isEqualTo(testIssuer);
+    assertThat(responseJsonInfo.get("subject").asText()).isEqualTo("created-subject");
 
     String id = responseJsonInfo.get("id").asText();
 
@@ -211,12 +216,23 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
 
     // Test updating a user
     List<String> argsUpdateUser =
-        List.of(
-            "user", "update", "--id", id, "--name", "Test User Updated", "--external_id", "123");
+        new ArrayList<>(
+            List.of(
+                "user",
+                "update",
+                "--id",
+                id,
+                "--name",
+                "Test User Updated",
+                "--external_id",
+                "123"));
+    argsUpdateUser.addAll(List.of("--issuer", testIssuer, "--subject", "updated-subject"));
     responseJsonInfo = executeCliCommand(serverConfig, argsUpdateUser);
     assertThat(responseJsonInfo).isNotNull();
     assertThat(responseJsonInfo.get("name").asText()).isEqualTo("Test User Updated");
     assertThat(responseJsonInfo.get("external_id").asText()).isEqualTo("123");
+    assertThat(responseJsonInfo.get("issuer").asText()).isEqualTo(testIssuer);
+    assertThat(responseJsonInfo.get("subject").asText()).isEqualTo("updated-subject");
 
     // Test getting a user
     List<String> argsGetUser = List.of("user", "get", "--id", id);
@@ -229,6 +245,17 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     responseJsonInfo = executeCliCommand(serverConfig, argsListUsers);
     assertThat(responseJsonInfo).isNotNull();
     assertThat(responseJsonInfo).hasSize(2);
+
+    serverConfig.setAuthToken("");
+    String identityToken =
+        createIdentityToken(
+            "updated-subject", testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
+    JsonNode login =
+        executeCliCommand(
+            serverConfig, List.of("auth", "login", "--identity_token", identityToken));
+    assertThat(JWT.decode(login.get("access_token").asText()).getSubject())
+        .isEqualTo("user@localhost");
+    serverConfig.setAuthToken(token);
 
     // Test deleting a user
     List<String> argsDeleteUser = List.of("user", "delete", "--id", id);

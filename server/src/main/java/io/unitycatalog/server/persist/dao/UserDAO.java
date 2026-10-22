@@ -18,7 +18,10 @@ import lombok.experimental.SuperBuilder;
 @Table(
     name = "uc_users",
     uniqueConstraints = {
-      @UniqueConstraint(name = "uc_users_external_id_key", columnNames = "external_id")
+      @UniqueConstraint(name = "uc_users_external_id_key", columnNames = "external_id"),
+      @UniqueConstraint(
+          name = "uc_users_issuer_subject_key",
+          columnNames = {"issuer", "subject"})
     })
 // Lombok annotations
 @Getter
@@ -33,6 +36,12 @@ public class UserDAO extends IdentifiableDAO {
 
   @Column(name = "external_id")
   private String externalId;
+
+  @Column(name = "issuer")
+  private String issuer;
+
+  @Column(name = "subject")
+  private String subject;
 
   @Column(name = "state")
   private String state;
@@ -52,6 +61,8 @@ public class UserDAO extends IdentifiableDAO {
         .name(user.getName())
         .email(user.getEmail())
         .externalId(user.getExternalId())
+        .issuer(user.getIssuer())
+        .subject(user.getSubject())
         .state(user.getState().name())
         .pictureUrl(user.getPictureUrl())
         .createdAt(new Date(user.getCreatedAt()))
@@ -65,6 +76,8 @@ public class UserDAO extends IdentifiableDAO {
         .name(getName())
         .email(getEmail())
         .externalId(getExternalId())
+        .issuer(getIssuer())
+        .subject(getSubject())
         .state(User.StateEnum.fromValue(getState()))
         .pictureUrl(getPictureUrl())
         .createdAt(getCreatedAt().getTime())

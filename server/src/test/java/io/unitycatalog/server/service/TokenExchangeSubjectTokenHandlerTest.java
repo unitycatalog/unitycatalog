@@ -2,6 +2,7 @@ package io.unitycatalog.server.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -16,10 +17,14 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import io.unitycatalog.server.persist.UserRepository;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -29,6 +34,7 @@ class TokenExchangeSubjectTokenHandlerTest {
   private static final String CLIENT_ID = "6e8bc60c-5e4d-4cd8-93ce-0b7c02b32499";
   private static final String SERVICE_EMAIL = "service@example.com";
   private static final String USER_EMAIL = "human@example.com";
+  private static final String ISSUER = "https://issuer.example.com";
 
   @Mock private UserRepository userRepository;
 
@@ -80,11 +86,67 @@ class TokenExchangeSubjectTokenHandlerTest {
   }
 
   @Test
+  void issuerAndSubjectResolveWithoutEmailAndTakePriorityOverEmail() {
+    when(userRepository.getUserByIssuerAndSubject(ISSUER, "subject"))
+        .thenReturn(enabledUser(USER_EMAIL));
+
+    for (String token :
+        List.of(
+            tokenWithAzpAndAud(CLIENT_ID, "unity-catalog"),
+            identityToken("changed-email@example.com", CLIENT_ID))) {
+      assertThat(handler.resolvePrincipalEmail(TokenType.ID_TOKEN, decode(token)))
+          .isEqualTo(USER_EMAIL);
+    }
+    verify(userRepository, never()).getUserByEmail(anyString());
+    verify(userRepository, never()).getUserByExternalId(anyString());
+  }
+
+  @Test
+  void unknownIssuerAndSubjectFallBackToEmail() {
+    DecodedJWT jwt = decode(identityToken(USER_EMAIL, CLIENT_ID));
+    when(userRepository.getUserByIssuerAndSubject(ISSUER, "subject"))
+        .thenThrow(new BaseException(ErrorCode.NOT_FOUND, "User not found"));
+    when(userRepository.getUserByEmail(USER_EMAIL)).thenReturn(enabledUser(USER_EMAIL));
+
+    assertThat(handler.resolvePrincipalEmail(TokenType.ID_TOKEN, jwt)).isEqualTo(USER_EMAIL);
+  }
+
+  @ParameterizedTest
+  @MethodSource("disallowedMappedUsers")
+  void disallowedIdentityMappingDoesNotFallBackToEmail(User user) {
+    DecodedJWT jwt = decode(identityToken(USER_EMAIL, CLIENT_ID));
+    when(userRepository.getUserByIssuerAndSubject(ISSUER, "subject")).thenReturn(user);
+
+    assertThatThrownBy(() -> handler.resolvePrincipalEmail(TokenType.ID_TOKEN, jwt))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasMessage("User not allowed");
+    verify(userRepository, never()).getUserByEmail(anyString());
+  }
+
+  private static Stream<User> disallowedMappedUsers() {
+    return Stream.of(
+        enabledUser("admin"), new User().email(USER_EMAIL).state(User.StateEnum.DISABLED));
+  }
+
+  @Test
+  void identityLookupFailureDoesNotFallBackToEmail() {
+    DecodedJWT jwt = decode(identityToken(USER_EMAIL, CLIENT_ID));
+    when(userRepository.getUserByIssuerAndSubject(ISSUER, "subject"))
+        .thenThrow(new BaseException(ErrorCode.INTERNAL, "database unavailable"));
+
+    assertThatThrownBy(() -> handler.resolvePrincipalEmail(TokenType.ID_TOKEN, jwt))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("database unavailable");
+    verify(userRepository, never()).getUserByEmail(anyString());
+  }
+
+  @Test
   void accessTokenResolvesViaOauthClientId() {
     DecodedJWT jwt = decode(tokenWithAzpAndAud(CLIENT_ID, "https://dev.dev.example.com"));
     when(userRepository.getUserByExternalId(CLIENT_ID)).thenReturn(enabledUser(SERVICE_EMAIL));
 
     assertThat(handler.resolvePrincipalEmail(TokenType.ACCESS_TOKEN, jwt)).isEqualTo(SERVICE_EMAIL);
+    verify(userRepository, never()).getUserByIssuerAndSubject(anyString(), anyString());
   }
 
   @Test
