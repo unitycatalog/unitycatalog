@@ -8,22 +8,22 @@ package io.unitycatalog.server.observability;
  */
 public final class UcMetricConstants {
   /** Micrometer separates the parts of a meter name with a dot. */
-  public static final String DELIMITER = ".";
+  static final String DELIMITER = ".";
 
-  public static final String UC = "uc";
-  public static final String SECURABLE = "securable";
-  public static final String TABLE = "table";
-  public static final String STORAGE = "storage";
-  public static final String CREDENTIAL = "credential";
-  public static final String CACHE = "cache";
+  static final String UC = "uc";
+  static final String SECURABLE = "securable";
+  static final String TABLE = "table";
+  static final String STORAGE = "storage";
+  static final String CREDENTIAL = "credential";
+  static final String CACHE = "cache";
 
-  public static final String CREATIONS = "creations";
-  public static final String REQUESTS = "requests";
+  static final String CREATIONS = "creations";
+  static final String REQUESTS = "requests";
 
-  public static final String UC_SECURABLE = UC + DELIMITER + SECURABLE;
-  public static final String UC_SECURABLE_TABLE = UC_SECURABLE + DELIMITER + TABLE;
-  public static final String UC_STORAGE = UC + DELIMITER + STORAGE;
-  public static final String UC_STORAGE_CREDENTIAL_CACHE =
+  static final String UC_SECURABLE = UC + DELIMITER + SECURABLE;
+  static final String UC_SECURABLE_TABLE = UC_SECURABLE + DELIMITER + TABLE;
+  static final String UC_STORAGE = UC + DELIMITER + STORAGE;
+  static final String UC_STORAGE_CREDENTIAL_CACHE =
       UC_STORAGE + DELIMITER + CREDENTIAL + DELIMITER + CACHE;
 
   /** Whether a cache served a request ({@link #HIT}) or could not ({@link #MISS}). */
