@@ -136,20 +136,4 @@ public class RepositoryUtilsTest {
                     session, dao, TABLE_ID, Optional.empty(), ErrorCode.COMMIT_STATE_UNKNOWN))
         .isSameAs(unexpected);
   }
-
-  @Test
-  public void tableDeletedWhileWaitingIsNotFound() {
-    Session session = mock();
-    TableInfoDAO dao = mock();
-    when(lockQuery(session).getSingleResultOrNull()).thenReturn(null);
-
-    assertThatThrownBy(
-            () ->
-                RepositoryUtils.lockTableForCommit(
-                    session, dao, TABLE_ID, Optional.of("c.s.t"), ErrorCode.COMMIT_STATE_UNKNOWN))
-        .isInstanceOfSatisfying(
-            BaseException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.TABLE_NOT_FOUND))
-        .hasMessageContaining("c.s.t");
-  }
 }

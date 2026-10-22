@@ -269,6 +269,7 @@ class ManagedTableCleanupTaskTest {
   @Test
   void commitOnATableDroppedAfterItWasReadIsNotFound() {
     TableInfoDAO table = createTableWithColumn("dropped_table");
+    String fullName = CATALOG + "." + SCHEMA + "." + table.getName();
 
     try (Session commit = sessionFactory.openSession()) {
       Transaction tx = commit.beginTransaction();
@@ -282,11 +283,12 @@ class ManagedTableCleanupTaskTest {
                       commit,
                       read,
                       read.getId(),
-                      Optional.empty(),
+                      Optional.of(fullName),
                       ErrorCode.UPDATE_REQUIREMENT_CONFLICT))
           .isInstanceOfSatisfying(
               BaseException.class,
-              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.TABLE_NOT_FOUND));
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.TABLE_NOT_FOUND))
+          .hasMessage("Table not found: " + fullName);
       tx.rollback();
     }
   }
