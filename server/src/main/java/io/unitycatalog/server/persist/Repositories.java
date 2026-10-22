@@ -1,6 +1,7 @@
 package io.unitycatalog.server.persist;
 
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
+import io.unitycatalog.server.audit.Auditor;
 import io.unitycatalog.server.auth.decorator.KeyMapper;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
@@ -9,8 +10,10 @@ import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.service.credential.StorageCredentialVendorImpl;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.UnaryOperator;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
@@ -39,7 +42,10 @@ public class Repositories {
   private final ExternalLocationRepository externalLocationRepository;
   private final DeltaCommitRepository deltaCommitRepository;
   private final DependencyRepository dependencyRepository;
-  private final StorageCleanupTaskRepository storageCleanupTaskRepository;
+  private final CleanupTaskRepository storageCleanupTaskRepository;
+
+  /** Empty when {@code server.audit.sink} is unset. */
+  private final Optional<Auditor> auditor;
 
   private final KeyMapper keyMapper;
 
@@ -88,8 +94,12 @@ public class Repositories {
         cloudCredentialVendor != null
             ? cloudCredentialVendor
             : defaultCloudCredentialVendor(serverProperties);
-    this.storageCredentialVendor =
-        new StorageCredentialVendor(resolvedCloudCredentialVendor, externalLocationUtils);
+    this.auditor = Auditor.fromProperties(serverProperties);
+    // Wrap the vendor before FileOperationsImpl captures it, so the server's own and cleanup vends
+    // are audited too.
+    StorageCredentialVendor vendor =
+        new StorageCredentialVendorImpl(resolvedCloudCredentialVendor, externalLocationUtils);
+    this.storageCredentialVendor = auditor.map(a -> a.wrap(vendor)).orElse(vendor);
     this.fileOperations =
         fileOperationsDecorator.apply(
             new FileOperationsImpl(storageCredentialVendor, serverProperties));
@@ -110,7 +120,8 @@ public class Repositories {
     this.deltaCommitRepository =
         new DeltaCommitRepository(sessionFactory, serverProperties, fileOperations);
     this.dependencyRepository = new DependencyRepository();
-    this.storageCleanupTaskRepository = new StorageCleanupTaskRepository(sessionFactory);
+    CleanupTaskRepository cleanupTasks = new StorageCleanupTaskRepository(sessionFactory);
+    this.storageCleanupTaskRepository = auditor.map(a -> a.wrap(cleanupTasks)).orElse(cleanupTasks);
 
     // KeyMapper uses all the repositories above.
     this.keyMapper = new KeyMapper(this);

@@ -32,6 +32,33 @@ helm uninstall unitycatalog
 The command removes all the Kubernetes components associated with the chart and deletes the release.
 If persistent volumes are used, they are not deleted by default. To delete them, you need to manually delete the PVCs.
 
+## Audit records
+The server can write one JSON audit record per issued storage credential, permission change, and
+queued storage cleanup to `/home/unitycatalog/etc/logs/audit.log` (see the server configuration
+docs). The chart's log configuration already has the `audit` logger; turn records on and ship the
+file with the existing extension points:
+
+```yaml
+server:
+  config:
+    extraProperties:
+      server.audit.sink: io.unitycatalog.server.audit.FileAuditSink
+  deployment:
+    extraVolumes:
+      - name: audit-logs
+        emptyDir: {}
+    extraVolumeMounts:
+      - name: audit-logs
+        mountPath: /home/unitycatalog/etc/logs
+    extraContainers:
+      - name: audit-shipper # your log shipper, reading /home/unitycatalog/etc/logs/audit.log
+        image: <your-log-shipper-image>
+        volumeMounts:
+          - name: audit-logs
+            mountPath: /home/unitycatalog/etc/logs
+            readOnly: true
+```
+
 ## Configuration
 The following table lists the configurable parameters of the Unity Catalog chart and their default values.
 
