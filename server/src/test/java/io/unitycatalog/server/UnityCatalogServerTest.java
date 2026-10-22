@@ -4,9 +4,13 @@ import static io.unitycatalog.server.utils.TestUtils.sendRawGet;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.util.BlockingTaskExecutor;
+import com.linecorp.armeria.common.util.SafeCloseable;
 import com.linecorp.armeria.server.Server;
+import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.prometheus.PrometheusExpositionService;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
@@ -15,6 +19,7 @@ import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.logging.RequestContextDataProvider;
 import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.service.UnityCatalogRestService;
@@ -24,6 +29,8 @@ import java.net.ServerSocket;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.ServiceLoader;
+import org.apache.logging.log4j.core.util.ContextDataProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -55,6 +62,20 @@ public class UnityCatalogServerTest extends BaseServerTest {
         assertThat(sendRawGet(serverConfig, path).statusCode()).as(path).isEqualTo(404);
       }
     }
+  }
+
+  @Test
+  public void logLinesCarryTheRequestId() {
+    // Log4j finds the provider through ServiceLoader, the same lookup as here.
+    assertThat(ServiceLoader.load(ContextDataProvider.class))
+        .anyMatch(RequestContextDataProvider.class::isInstance);
+    RequestContextDataProvider provider = new RequestContextDataProvider();
+    ServiceRequestContext ctx = ServiceRequestContext.of(HttpRequest.of(HttpMethod.GET, "/"));
+    try (SafeCloseable ignored = ctx.push()) {
+      assertThat(provider.supplyContextData())
+          .containsExactly(Map.entry("request_id", ctx.id().text()));
+    }
+    assertThat(provider.supplyContextData()).isEmpty();
   }
 
   @Test
