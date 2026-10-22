@@ -24,12 +24,6 @@ public class TransactionManager {
     R execute(Session session) throws Exception;
   }
 
-  /** Restores the connection's isolation level when the transaction ends. */
-  private interface IsolationRestore extends AutoCloseable {
-    @Override
-    void close();
-  }
-
   /**
    * Executes a database operation with transaction management.
    *
@@ -53,19 +47,18 @@ public class TransactionManager {
    * Executes a database operation with transaction management and optional custom isolation level.
    *
    * <p>A failure to set the isolation level or begin the transaction is thrown as-is, as is a
-   * failure to restore the isolation level or close the session after a commit. A failed rollback
-   * is added as suppressed to the operation's error, and a failed isolation restore or session
-   * close to the exception thrown. When that exception is a 4xx or a {@link
-   * TransactionRollbackException}, which the error handler does not log, it is logged as a warning
-   * with these failures.
+   * failure to close the session after a commit. A failed rollback is added as suppressed to the
+   * operation's error, and a failed session close to the exception thrown. When that exception is a
+   * 4xx or a {@link TransactionRollbackException}, which the error handler does not log, it is
+   * logged as a warning with these failures.
    *
    * @param sessionFactory the Hibernate session factory
    * @param operation the database operation to execute
    * @param errorMessage the error message to use if the operation fails
    * @param readOnly whether the session should be read-only
    * @param isolationLevel optional transaction isolation level (e.g.,
-   *     Connection.TRANSACTION_REPEATABLE_READ). If present, the original isolation level will be
-   *     saved and restored after the transaction to avoid affecting pooled connections.
+   *     Connection.TRANSACTION_REPEATABLE_READ). If present, it applies to this transaction only:
+   *     the pool restores the connection's level when the connection is returned.
    * @param <R> the result type
    * @return the result of the operation
    * @throws BaseException if the operation or the commit fails: a {@link BaseException} is rethrown
@@ -85,43 +78,32 @@ public class TransactionManager {
         session.setDefaultReadOnly(true);
       }
 
-      // Save and set custom isolation level if specified.
+      // Set the custom isolation level if specified. Hibernate returns the connection to the pool
+      // when the transaction ends, and Hikari then resets the level, so there is nothing to
+      // restore.
       // IMPORTANT: without autocommit, a pooled connection may carry an open implicit transaction
       // from its prior use. H2's setTransactionIsolation() takes effect for the NEXT transaction,
       // not the current implicit one, so that transaction has to end first or REPEATABLE_READ
       // reads can see stale data from before the connection was returned to the pool. MySQL and
       // PostgreSQL reject rollback() on an autocommit connection, so only roll back when there is
       // something to end.
-      final int[] originalIsolation = new int[1];
       if (isolationLevel.isPresent()) {
         session.doWork(
             connection -> {
               if (!connection.getAutoCommit()) {
                 connection.rollback();
               }
-              originalIsolation[0] = connection.getTransactionIsolation();
               connection.setTransactionIsolation(isolationLevel.get());
             });
       }
 
-      // Restore original isolation level to avoid polluting connection pool. As a resource, a
-      // failed restore is added to the error in flight as suppressed instead of replacing it.
-      IsolationRestore restore =
-          () -> {
-            if (isolationLevel.isPresent()) {
-              session.doWork(
-                  connection -> connection.setTransactionIsolation(originalIsolation[0]));
-            }
-          };
-      try (restore) {
-        Transaction tx = session.beginTransaction();
-        try {
-          R result = operation.execute(session);
-          tx.commit();
-          return result;
-        } catch (Exception e) {
-          throw rollBack(sessionFactory, tx, e, errorMessage);
-        }
+      Transaction tx = session.beginTransaction();
+      try {
+        R result = operation.execute(session);
+        tx.commit();
+        return result;
+      } catch (Exception e) {
+        throw rollBack(sessionFactory, tx, e, errorMessage);
       }
     } catch (RuntimeException e) {
       warnIfCleanupFailureIsUnlogged(e, errorMessage);
@@ -130,8 +112,8 @@ public class TransactionManager {
   }
 
   /**
-   * Logs the rollback, restore or close failures suppressed on {@code e} when nothing else logs
-   * them: the error handler logs only a 5xx, and the caller takes a signal as a normal outcome.
+   * Logs the rollback or close failures suppressed on {@code e} when nothing else logs them: the
+   * error handler logs only a 5xx, and the caller takes a signal as a normal outcome.
    */
   private static void warnIfCleanupFailureIsUnlogged(RuntimeException e, String errorMessage) {
     boolean unlogged =
