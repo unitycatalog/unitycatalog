@@ -144,7 +144,7 @@ public CatalogInfo addCatalog(CreateCatalog createCatalog) {
 
 Conventions:
 
-- **Read paths pass `readOnly = true`; write paths pass `false`.** A path that needs a specific isolation level passes it explicitly; `TransactionManager` saves and restores the connection's isolation so it does not pollute the pooled connection.
+- **Read paths pass `readOnly = true`; write paths pass `false`.** A path that needs a specific isolation level passes it explicitly; it applies to that transaction only, and Hikari resets it when the connection returns to the pool.
 - **DAOs extend `IdentifiableDAO`** (UUID id plus name), are annotated `@Entity @Table(name = "uc_...")`, use Lombok (`@Getter @Setter @SuperBuilder @NoArgsConstructor @AllArgsConstructor`), and expose static `from(XInfo)` and instance `toXInfo()` converters. Keep business logic out of DAOs.
 - **Backends:** H2 by default (embedded, file-based). MySQL and PostgreSQL are supported for a persistent deployment, configured in `etc/conf/hibernate.properties` (point at your database and add the JDBC driver); see `docs/server/deployment.md`. Hibernate is configured in `persist/utils/HibernateConfigurator`, and tests exercise MySQL and PostgreSQL via Testcontainers. When adding schema, keep any index or column change safe across a server restart on an existing database, and portable across all three backends.
 - **Enforce invariants at the database level** (unique constraints) rather than only in code, where duplicate creation or races are possible.

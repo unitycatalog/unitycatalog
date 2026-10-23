@@ -43,7 +43,8 @@ spec:
             - |-
               apk add --no-cache envsubst openssl curl
               envsubst < /home/unitycatalog/etc/confTemplates/server.properties.template > /home/unitycatalog/etc/conf/server.properties
-              envsubst < /home/unitycatalog/etc/confTemplates/server.log4j2.properties.template > /home/unitycatalog/etc/conf/server.log4j2.properties
+              # Copied, not envsubst-ed: envsubst would blank the Log4j ${hostName} lookup.
+              cp /home/unitycatalog/etc/confTemplates/server.log4j2.properties.template /home/unitycatalog/etc/conf/server.log4j2.properties
               envsubst < /home/unitycatalog/etc/confTemplates/hibernate.properties.template > /home/unitycatalog/etc/conf/hibernate.properties
 
               echo "Generating DER format keys (private_key.der and public_key.der) if they do not exist..."

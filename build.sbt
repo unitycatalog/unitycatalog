@@ -99,6 +99,9 @@ lazy val commonSettings = Seq(
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
+    // Keep the Log4j provider registration that adds request_id to log lines.
+    case PathList("META-INF", "services", "org.apache.logging.log4j.core.util.ContextDataProvider") =>
+      MergeStrategy.concat
     case PathList("META-INF", xs @ _*) => MergeStrategy.discard
     case _ => MergeStrategy.first
   },
