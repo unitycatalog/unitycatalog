@@ -34,22 +34,28 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import org.apache.iceberg.io.FileIO;
+import org.apache.iceberg.io.FileInfo;
 import org.apache.iceberg.io.InputFile;
+import org.apache.iceberg.io.SupportsPrefixOperations;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.NativeQuery;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 /**
  * Repository for managing Delta commits for managed Delta tables in Unity Catalog.
@@ -108,6 +114,18 @@ public class DeltaCommitRepository {
     private final String stagedFileName;
   }
 
+  /**
+   * Thrown when a backfill needs its published commit files checked before any row is purged. Rolls
+   * the current transaction back, releasing the table lock, so the entry point can HEAD the range
+   * outside a transaction and then retry the write. Not a client-facing error.
+   */
+  @AllArgsConstructor
+  static class BackfillVerificationRequiredException extends TransactionRollbackException {
+    private final NormalizedURL tableLocation;
+    private final long fromVersion;
+    private final long toVersion;
+  }
+
   private static final Logger LOGGER = LoggerFactory.getLogger(DeltaCommitRepository.class);
 
   /**
@@ -131,6 +149,15 @@ public class DeltaCommitRepository {
 
   /** Chunk size for the streamed commit-file content comparison in {@link #hasSameFileContent}. */
   private static final int CONTENT_COMPARE_BUFFER_BYTES = 8192;
+
+  /**
+   * {@link BaseException} codes from FileIO that retrying cannot fix (for example, an S3 bucket
+   * whose region cannot be resolved, or a local path through a symbolic link); see {@link
+   * #findMissingPublishedCommitFile}.
+   */
+  private static final Set<ErrorCode> PERMANENT_FILE_IO_ERRORS =
+      EnumSet.of(
+          ErrorCode.FAILED_PRECONDITION, ErrorCode.PERMISSION_DENIED, ErrorCode.INVALID_ARGUMENT);
 
   private final SessionFactory sessionFactory;
   private final ServerProperties serverProperties;
@@ -291,7 +318,11 @@ public class DeltaCommitRepository {
    */
   public void postCommit(DeltaCommit commit) {
     try {
-      postCommitInTransaction(commit);
+      withPublishedCommitVerification(
+          filesChecked -> {
+            postCommitInTransaction(commit, filesChecked);
+            return null;
+          });
     } catch (CommitAlreadyAcceptedException e) {
       // Idempotent replay: the transaction rolled back to a no-op. Report success.
     } catch (CommitContentCheckRequiredException e) {
@@ -301,7 +332,44 @@ public class DeltaCommitRepository {
     }
   }
 
-  private void postCommitInTransaction(DeltaCommit commit) {
+  /**
+   * Runs {@code attempt}, and when it asks for published commit files to be checked, HEADs them
+   * with no table lock held:
+   *
+   * <ol>
+   *   <li>Run {@code attempt}. If it needs no check, return its result.
+   *   <li>HEAD the range it asked for. If every file is present, run {@code attempt} with {@code
+   *       filesChecked} set so it can purge.
+   *   <li>Otherwise read the database again by running {@code attempt} unchecked: another request
+   *       may have backfilled the range and log cleanup removed the file. If it no longer needs a
+   *       check, return its result. Else HEAD only what it still needs, reject a missing file with
+   *       {@code INVALID_ARGUMENT}, and run {@code attempt} with {@code filesChecked} set.
+   * </ol>
+   *
+   * <p>So {@code attempt} runs at most three times and a range is HEADed at most twice. New commits
+   * only append and backfill only deletes downward, so a HEADed range still covers whatever the
+   * final attempt purges.
+   */
+  <T> T withPublishedCommitVerification(Function<Boolean, T> attempt) {
+    BackfillVerificationRequiredException required;
+    try {
+      return attempt.apply(false);
+    } catch (BackfillVerificationRequiredException e) {
+      required = e;
+    }
+    if (findMissingPublishedCommitFile(
+            fileOperations, required.tableLocation, required.fromVersion, required.toVersion)
+        .isPresent()) {
+      try {
+        return attempt.apply(false);
+      } catch (BackfillVerificationRequiredException e) {
+        requirePublishedCommitFiles(fileOperations, e.tableLocation, e.fromVersion, e.toVersion);
+      }
+    }
+    return attempt.apply(true);
+  }
+
+  private void postCommitInTransaction(DeltaCommit commit, boolean filesChecked) {
     serverProperties.checkManagedTableEnabled();
     validateCommit(commit);
     // Extract + shape-validate uniform fields outside the transaction. The subpath check (which
@@ -324,7 +392,7 @@ public class DeltaCommitRepository {
           RepositoryUtils.lockTableForCommit(
               session, tableInfoDAO, tableId, Optional.empty(), ErrorCode.COMMIT_STATE_UNKNOWN);
           validateTableForCommit(session, commit, tableInfoDAO, uniformFields);
-          postCommitCore(session, tableId, tableInfoDAO, commit, uniformFields);
+          postCommitCore(session, tableId, tableInfoDAO, commit, uniformFields, filesChecked);
           return null;
         },
         "Error committing to table: " + commit.getTableId(),
@@ -346,7 +414,8 @@ public class DeltaCommitRepository {
       UUID tableId,
       TableInfoDAO tableInfoDAO,
       DeltaCommit commit,
-      Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields) {
+      Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
+      boolean filesChecked) {
     List<DeltaCommitDAO> firstAndLastCommits = getFirstAndLastCommits(session, tableId);
     if (firstAndLastCommits.isEmpty()) {
       if (commit.getCommitInfo() == null) {
@@ -368,12 +437,21 @@ public class DeltaCommitRepository {
         handleBackfillOnlyCommit(
             session,
             tableId,
+            tableInfoDAO,
             commit.getLatestBackfilledVersion(),
-            firstCommitDAO.getCommitVersion(),
-            lastCommitDAO.getCommitVersion());
+            firstCommitDAO,
+            lastCommitDAO.getCommitVersion(),
+            filesChecked);
       } else {
         handleNormalCommit(
-            session, tableId, tableInfoDAO, commit, uniformFields, firstCommitDAO, lastCommitDAO);
+            session,
+            tableId,
+            tableInfoDAO,
+            commit,
+            uniformFields,
+            firstCommitDAO,
+            lastCommitDAO,
+            filesChecked);
       }
     }
   }
@@ -418,17 +496,22 @@ public class DeltaCommitRepository {
    *
    * @param session the Hibernate session for database operations
    * @param tableId the unique identifier of the table
+   * @param tableInfoDAO the table information data access object
    * @param latestBackfilledVersion the version up to which backfilling has already been performed
-   * @param firstCommitVersion the version number of the first commit currently in the database
+   * @param firstCommitDAO the first commit currently in the database
    * @param lastCommitVersion the version number of the last commit currently in the database
+   * @param filesChecked true on the retry, after the published files for this request were HEADed
    * @throws BaseException if the backfilled version is greater than the last commit version
+   * @throws BackfillVerificationRequiredException if the published files still need a HEAD
    */
   private static void handleBackfillOnlyCommit(
       Session session,
       UUID tableId,
+      TableInfoDAO tableInfoDAO,
       long latestBackfilledVersion,
-      long firstCommitVersion,
-      long lastCommitVersion) {
+      DeltaCommitDAO firstCommitDAO,
+      long lastCommitVersion,
+      boolean filesChecked) {
     if (latestBackfilledVersion > lastCommitVersion) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
@@ -436,11 +519,13 @@ public class DeltaCommitRepository {
               "Should not backfill version %d while the last version committed is %d",
               latestBackfilledVersion, lastCommitVersion));
     }
+    ensurePublishedRangeVerified(
+        tableInfoDAO, firstCommitDAO, latestBackfilledVersion, filesChecked);
     backfillCommits(
         session,
         tableId,
         latestBackfilledVersion,
-        firstCommitVersion,
+        firstCommitDAO,
         lastCommitVersion,
         Optional.empty());
   }
@@ -478,13 +563,15 @@ public class DeltaCommitRepository {
    * @param latestBackfilledVersion the {@code set-latest-backfilled-version} target, if any. Same
    *     value as the Delta wire field {@code latest-published-version}. When paired with {@code
    *     deltaCommitOpt}, the helper runs both in one read of the commit log.
+   * @param filesChecked true on the retry, after the published files for this request were HEADed
    */
   void applyCommitAndBackfillInSession(
       Session session,
       TableInfoDAO dao,
       Optional<DeltaCommitInfo> commitInfoOpt,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
-      Optional<Long> latestBackfilledVersion) {
+      Optional<Long> latestBackfilledVersion,
+      boolean filesChecked) {
     ValidationUtils.checkArgument(
         commitInfoOpt.isPresent() || latestBackfilledVersion.isPresent(),
         "At least one of add-commit or set-latest-backfilled-version is required.");
@@ -506,7 +593,8 @@ public class DeltaCommitRepository {
         new DeltaCommit()
             .commitInfo(commitInfoOpt.orElse(null))
             .latestBackfilledVersion(latestBackfilledVersion.orElse(null)),
-        uniformFields);
+        uniformFields,
+        filesChecked);
   }
 
   /**
@@ -540,8 +628,10 @@ public class DeltaCommitRepository {
    * @param commit the commit request containing version info, optional backfill, and metadata
    * @param firstCommitDAO the first commit already in the database
    * @param lastCommitDAO the last commit already in the database
+   * @param filesChecked true on the retry, after the published files for this request were HEADed
    * @throws CommitAlreadyAcceptedException if this is an idempotent replay of an accepted commit
    * @throws CommitContentCheckRequiredException if a purged version needs a content check
+   * @throws BackfillVerificationRequiredException if the published files still need a HEAD
    * @throws BaseException if the commit version is invalid, already exists, or violates constraints
    */
   private static void handleNormalCommit(
@@ -551,9 +641,9 @@ public class DeltaCommitRepository {
       DeltaCommit commit,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
       DeltaCommitDAO firstCommitDAO,
-      DeltaCommitDAO lastCommitDAO) {
+      DeltaCommitDAO lastCommitDAO,
+      boolean filesChecked) {
     DeltaCommitInfo commitInfo = Objects.requireNonNull(commit.getCommitInfo());
-    long firstCommitVersion = firstCommitDAO.getCommitVersion();
     long lastCommitVersion = lastCommitDAO.getCommitVersion();
     long newCommitVersion = commitInfo.getVersion();
     if (newCommitVersion <= lastCommitVersion) {
@@ -586,6 +676,12 @@ public class DeltaCommitRepository {
     }
     checkCommitLimit(
         tableId, newCommitVersion, latestBackfilledVersion, firstCommitDAO, lastCommitDAO);
+    // HEAD before any persist, so a missing or unreadable file rolls nothing back and does not
+    // hold the table lock. The retry of this method performs the save and the purge.
+    latestBackfilledVersion.ifPresent(
+        latestBackfilled ->
+            ensurePublishedRangeVerified(
+                tableInfoDAO, firstCommitDAO, latestBackfilled, filesChecked));
     saveCommit(session, tableId, commitInfo);
     updateTableFromCommit(session, tableId, tableInfoDAO, commit, uniformFields);
     latestBackfilledVersion.ifPresent(
@@ -594,7 +690,7 @@ public class DeltaCommitRepository {
                 session,
                 tableId,
                 latestBackfilled,
-                firstCommitVersion,
+                firstCommitDAO,
                 lastCommitVersion,
                 Optional.of(newCommitVersion)));
   }
@@ -688,6 +784,9 @@ public class DeltaCommitRepository {
    * most recent commit is always preserved as it serves as an indicator of the current table
    * version.
    *
+   * <p>The published-file check happens before this method, outside the transaction. Callers must
+   * invoke {@link #ensurePublishedRangeVerified} first so a missing file never reaches the purge.
+   *
    * <p>For backfill-only requests (when newCommitVersion is empty), if the backfilled version
    * equals the last commit version, that commit is marked as backfilled rather than deleted.
    *
@@ -697,8 +796,7 @@ public class DeltaCommitRepository {
    * @param session the Hibernate session for database operations
    * @param tableId the unique identifier of the table
    * @param latestBackfilledVersion the version up to which backfilling should be performed
-   * @param firstCommitVersion the version number of the first commit currently in the database with
-   *     the lowest version number
+   * @param firstCommitDAO the first commit currently in the database with the lowest version number
    * @param lastCommitVersion the version number of the last commit currently in the database with
    *     the highest version number
    * @param newCommitVersion optional new commit version being added (empty for backfill-only
@@ -708,13 +806,14 @@ public class DeltaCommitRepository {
       Session session,
       UUID tableId,
       long latestBackfilledVersion,
-      long firstCommitVersion,
+      DeltaCommitDAO firstCommitDAO,
       long lastCommitVersion,
       Optional<Long> newCommitVersion) {
     // These asserts are already validated before calling this function
     assert latestBackfilledVersion <= lastCommitVersion;
     assert newCommitVersion.isEmpty() || newCommitVersion.get() == lastCommitVersion + 1;
 
+    long firstCommitVersion = firstCommitDAO.getCommitVersion();
     if (latestBackfilledVersion < firstCommitVersion) {
       // Backfilling a version that is already backfilled is fine. But no-op.
       return;
@@ -748,6 +847,164 @@ public class DeltaCommitRepository {
             deleteUpTo,
             i,
             numCommitsToDelete);
+      }
+    }
+  }
+
+  /** Absolute path of the table's {@code _delta_log} directory. */
+  static String deltaLogDir(NormalizedURL tableLocation) {
+    return tableLocation + "/_delta_log";
+  }
+
+  /**
+   * Absolute path of the published Delta commit file for {@code version} under {@code
+   * tableLocation}. Locale.ROOT keeps the zero-padded name ASCII-digit regardless of server locale.
+   */
+  static String publishedCommitPath(NormalizedURL tableLocation, long version) {
+    return String.format(Locale.ROOT, "%s/%020d.json", deltaLogDir(tableLocation), version);
+  }
+
+  /**
+   * Absolute path of the staged commit file {@code fileName} under {@code
+   * tableLocation/_delta_log/_staged_commits}.
+   */
+  static String stagedCommitPath(NormalizedURL tableLocation, String fileName) {
+    return String.format(
+        Locale.ROOT, "%s/_staged_commits/%s", deltaLogDir(tableLocation), fileName);
+  }
+
+  /**
+   * Throws {@link BackfillVerificationRequiredException} when this backfill still needs its
+   * published files HEADed. No-op when {@code filesChecked} is set, or when there is nothing new to
+   * check: the requested version is already behind the first retained row, or that row is the
+   * marker for a version that was backfilled earlier (its published JSON may have been removed and
+   * must not be re-checked).
+   *
+   * <p>Called before any commit row is written, while the table lock is held. The thrown exception
+   * rolls that transaction back so {@link #withPublishedCommitVerification} can HEAD the range with
+   * no lock and no open transaction.
+   */
+  private static void ensurePublishedRangeVerified(
+      TableInfoDAO tableInfoDAO,
+      DeltaCommitDAO firstCommitDAO,
+      long latestBackfilledVersion,
+      boolean filesChecked) {
+    if (filesChecked || latestBackfilledVersion < firstCommitDAO.getCommitVersion()) {
+      return;
+    }
+    long firstCommitVersion = firstCommitDAO.getCommitVersion();
+    if (firstCommitDAO.isBackfilledLatestCommit()
+        && latestBackfilledVersion <= firstCommitVersion) {
+      return;
+    }
+    long fromVersion =
+        firstCommitDAO.isBackfilledLatestCommit() ? firstCommitVersion + 1L : firstCommitVersion;
+    throw new BackfillVerificationRequiredException(
+        NormalizedURL.from(tableInfoDAO.getUrl()), fromVersion, latestBackfilledVersion);
+  }
+
+  /**
+   * HEADs each published {@code _delta_log/<version>.json} in [{@code fromVersion}, {@code
+   * toVersion}]. No-op when {@code fromVersion > toVersion}.
+   *
+   * <p>Called outside the commit transaction, after {@link BackfillVerificationRequiredException}
+   * has released the table lock. A definitively absent file means the client reported a backfill
+   * that did not complete: {@code INVALID_ARGUMENT} (400), since retrying cannot help until the
+   * file is published. Storage failures follow {@link #findMissingPublishedCommitFile}.
+   */
+  static void requirePublishedCommitFiles(
+      FileOperations fileOperations,
+      NormalizedURL tableLocation,
+      long fromVersion,
+      long toVersion) {
+    Optional<String> missingPath =
+        findMissingPublishedCommitFile(fileOperations, tableLocation, fromVersion, toVersion);
+    if (missingPath.isPresent()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Cannot backfill through version "
+              + toVersion
+              + ": published commit file is missing: "
+              + missingPath.get());
+    }
+  }
+
+  /**
+   * The first published {@code _delta_log/<version>.json} in [{@code fromVersion}, {@code
+   * toVersion}] that does not exist, if any.
+   *
+   * <p>A {@link BaseException} with a permanent code ({@code FAILED_PRECONDITION}, {@code
+   * PERMISSION_DENIED}, {@code INVALID_ARGUMENT}) from FileIO, whether from acquisition (e.g. an
+   * unresolvable S3 bucket region) or from a HEAD (e.g. a local path through a symbolic link),
+   * passes through unchanged: retrying cannot help, and nothing has been persisted. Any other
+   * acquisition, HEAD, or close failure leaves existence undetermined and becomes {@code
+   * COMMIT_STATE_UNKNOWN} (500, retriable), matching {@link #verifyContentReplayOrThrowConflict}.
+   */
+  private static Optional<String> findMissingPublishedCommitFile(
+      FileOperations fileOperations,
+      NormalizedURL tableLocation,
+      long fromVersion,
+      long toVersion) {
+    if (fromVersion > toVersion) {
+      return Optional.empty();
+    }
+    // Record a miss inside the FileIO block and return it after, so it is never confused with a
+    // storage failure caught below. v == toVersion is an explicit stop so v++ cannot overflow at
+    // MAX_VALUE.
+    String missingPath = null;
+    try (FileIO fileIO = fileOperations.getFileIO(tableLocation)) {
+      for (long v = fromVersion; ; v++) {
+        String path = publishedCommitPath(tableLocation, v);
+        if (!publishedFileExists(fileIO, path)) {
+          missingPath = path;
+          break;
+        }
+        if (v == toVersion) {
+          break;
+        }
+      }
+    } catch (Exception e) {
+      if (e instanceof BaseException be && PERMANENT_FILE_IO_ERRORS.contains(be.getErrorCode())) {
+        throw be;
+      }
+      throw new BaseException(
+          ErrorCode.COMMIT_STATE_UNKNOWN,
+          "Could not verify the published commit files under "
+              + deltaLogDir(tableLocation)
+              + " for backfill through version "
+              + toVersion
+              + "; retry the request.",
+          e);
+    }
+    return Optional.ofNullable(missingPath);
+  }
+
+  /**
+   * Whether the published commit file at {@code path} exists.
+   *
+   * <p>S3 answers a HEAD on a missing key with 403 rather than 404 unless the caller may list the
+   * bucket, and the read credentials vended for a table may list only under the table's prefix (a
+   * HEAD carries no {@code s3:prefix}). So a 403 from an S3 HEAD is settled by listing the key
+   * itself, which those credentials may do. A listing failure leaves existence undetermined.
+   */
+  private static boolean publishedFileExists(FileIO fileIO, String path) {
+    try {
+      return fileIO.newInputFile(path).exists();
+    } catch (S3Exception headFailure) {
+      if (headFailure.statusCode() != 403
+          || !(fileIO instanceof SupportsPrefixOperations prefixOps)) {
+        throw headFailure;
+      }
+      try {
+        for (FileInfo file : prefixOps.listPrefix(path)) {
+          if (file.location().equals(path)) {
+            return true;
+          }
+        }
+        return false;
+      } catch (RuntimeException listFailure) {
+        headFailure.addSuppressed(listFailure);
+        throw headFailure;
       }
     }
   }
@@ -868,12 +1125,8 @@ public class DeltaCommitRepository {
    */
   static void verifyContentReplayOrThrowConflict(
       FileOperations fileOperations, CommitContentCheckRequiredException check) {
-    String logDir = check.tableLocation + "/_delta_log";
-    // Locale.ROOT: the published file name is ASCII digits regardless of the server's locale, so it
-    // matches the actual _delta_log/<v>.json path (some locales render %d with non-ASCII digits).
-    String publishedPath = String.format(Locale.ROOT, "%s/%020d.json", logDir, check.version);
-    String stagedPath =
-        String.format(Locale.ROOT, "%s/_staged_commits/%s", logDir, check.stagedFileName);
+    String publishedPath = publishedCommitPath(check.tableLocation, check.version);
+    String stagedPath = stagedCommitPath(check.tableLocation, check.stagedFileName);
     boolean sameContent;
     // getFileIO can vend credentials (cloud paths) and open resources, so it is acquired inside the
     // guarded block (and closed): a vend or read failure is equally "cannot determine" and must
