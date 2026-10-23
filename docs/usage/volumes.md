@@ -4,6 +4,9 @@ Unity Catalog volumes are good for registering datasets that are non-tabular or 
 
 Unity Catalog volumes are a great option for JSON files, text files, or Lance datasets.
 
+> **See also:** [Managed vs External Volumes](volumes-managed-vs-external.md) — which volume
+> type to choose and what happens to your files on delete.
+
 Here's an example of a schema that contains three volumes:
 
 ![UC Volume list](../assets/images/uc_volume_example.png)
