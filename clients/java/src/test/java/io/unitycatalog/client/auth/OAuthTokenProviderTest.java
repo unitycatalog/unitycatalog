@@ -323,6 +323,13 @@ public class OAuthTokenProviderTest {
       {"https://uc.example.com/", "https://uc.example.com/api/1.0/unity-control/auth/tokens"},
       {"http://uc:8080/prefix", "http://uc:8080/prefix/api/1.0/unity-control/auth/tokens"},
       {"http://uc:8080/prefix//", "http://uc:8080/prefix/api/1.0/unity-control/auth/tokens"},
+      // A query or fragment on the catalog URI is dropped rather than absorbing the path.
+      {"https://uc.example.com?x=1", "https://uc.example.com/api/1.0/unity-control/auth/tokens"},
+      {
+        "https://uc.example.com/prefix/?x=1#f",
+        "https://uc.example.com/prefix/api/1.0/unity-control/auth/tokens"
+      },
+      {"https://uc.example.com#f", "https://uc.example.com/api/1.0/unity-control/auth/tokens"},
     };
     for (String[] c : cases) {
       assertThat(OAuthTokenProvider.tokenExchangeUri(c[0]).toString()).isEqualTo(c[1]);

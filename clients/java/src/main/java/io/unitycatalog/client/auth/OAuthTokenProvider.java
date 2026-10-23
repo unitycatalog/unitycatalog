@@ -236,9 +236,15 @@ class OAuthTokenProvider implements TokenProvider {
     return sendTokenRequest(request, "Failed to exchange OAuth token for a UC token");
   }
 
-  /** Appends the token exchange path to the catalog URI, keeping any path prefix it has. */
+  /**
+   * Appends the token exchange path to the catalog URI's path, keeping any path prefix. Like {@code
+   * ApiClientBuilder}, only the scheme, authority and path are used; a query or fragment is
+   * dropped.
+   */
   static URI tokenExchangeUri(String catalogUri) {
-    return URI.create(catalogUri.replaceAll("/+$", "") + TOKEN_EXCHANGE_PATH);
+    URI uri = URI.create(catalogUri);
+    String path = uri.getRawPath() == null ? "" : uri.getRawPath().replaceAll("/+$", "");
+    return URI.create(uri.getScheme() + "://" + uri.getRawAuthority() + path + TOKEN_EXCHANGE_PATH);
   }
 
   private TempToken sendTokenRequest(HttpRequest request, String errorMessage)
