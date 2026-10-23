@@ -6,6 +6,7 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
@@ -37,7 +38,9 @@ public class TemporaryTableCredentialsService implements UnityCatalogRestService
   }
 
   @Post("")
-  @AuthorizeExpression(AuthorizeExpressions.VEND_TABLE_CREDENTIAL)
+  @AuthorizeExpression(
+      action = AuthorizationAction.GENERATE_TABLE_CREDENTIALS,
+      value = AuthorizeExpressions.VEND_TABLE_CREDENTIAL)
   public HttpResponse generateTemporaryTableCredential(
       @AuthorizeResourceKey(value = TABLE, key = "table_id") @AuthorizeKey(key = "operation")
           GenerateTemporaryTableCredential generateTemporaryTableCredential) {

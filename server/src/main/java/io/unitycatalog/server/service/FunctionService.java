@@ -11,8 +11,10 @@ import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
@@ -51,17 +53,20 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
 
   @Post("")
   @AuthorizeExpression(
-      """
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-          (#authorize(#principal, #schema, OWNER) ||
-            #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_FUNCTION))
-      """)
+      action = AuthorizationAction.CREATE_FUNCTION,
+      value =
+          """
+          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+              (#authorize(#principal, #schema, OWNER) ||
+                #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_FUNCTION))
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createFunction(
       @AuthorizeResourceKeys({
             @AuthorizeResourceKey(value = CATALOG, key = "function_info.catalog_name"),
             @AuthorizeResourceKey(value = SCHEMA, key = "function_info.schema_name")
           })
+          @AuthorizeKey(key = "function_info.name")
           CreateFunctionRequest createFunctionRequest) {
     FunctionInfo functionInfo = functionRepository.createFunction(createFunctionRequest);
 
@@ -75,15 +80,17 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
 
   @Get("")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) &&
-          #authorize(#principal, #catalog, USE_CATALOG)) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorizeAny(#principal, #catalog, USE_CATALOG) &&
-          #authorizeAny(#principal, #function, OWNER, EXECUTE))
-      """)
+      action = AuthorizationAction.LIST_FUNCTIONS,
+      value =
+          """
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #schema, OWNER) &&
+              #authorize(#principal, #catalog, USE_CATALOG)) ||
+          (#authorize(#principal, #schema, USE_SCHEMA) &&
+              #authorizeAny(#principal, #catalog, USE_CATALOG) &&
+              #authorizeAny(#principal, #function, OWNER, EXECUTE))
+          """)
   @ResponseAuthorizeFilter
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listFunctions(
@@ -100,15 +107,17 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
   @Get("/{name}")
   @AuthorizeResourceKey(METASTORE)
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) &&
-          #authorizeAny(#principal, #catalog, USE_CATALOG)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorizeAny(#principal, #function, OWNER, EXECUTE))
-      """)
+      action = AuthorizationAction.GET_FUNCTION,
+      value =
+          """
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #schema, OWNER) &&
+              #authorizeAny(#principal, #catalog, USE_CATALOG)) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+              #authorize(#principal, #schema, USE_SCHEMA) &&
+              #authorizeAny(#principal, #function, OWNER, EXECUTE))
+          """)
   public HttpResponse getFunction(@Param("name") @AuthorizeResourceKey(FUNCTION) String name) {
     return HttpResponse.ofJson(functionRepository.getFunction(name));
   }
@@ -116,13 +125,16 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
   @Delete("/{name}")
   @AuthorizeResourceKey(METASTORE)
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #function, OWNER))
-      """)
+      action = AuthorizationAction.DELETE_FUNCTION,
+      value =
+          """
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+           #authorize(#principal, #schema, OWNER)) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+              #authorize(#principal, #schema, USE_SCHEMA) &&
+              #authorize(#principal, #function, OWNER))
+          """)
   public HttpResponse deleteFunction(
       @Param("name") @AuthorizeResourceKey(FUNCTION) String name,
       @Param("force") Optional<Boolean> force) {

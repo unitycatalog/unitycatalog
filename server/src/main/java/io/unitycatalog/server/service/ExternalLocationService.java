@@ -11,8 +11,10 @@ import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.model.CreateExternalLocation;
@@ -44,14 +46,18 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
 
   @Post("")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      (#authorize(#principal, #metastore, CREATE_EXTERNAL_LOCATION) &&
-       #authorizeAny(#principal, #credential, OWNER, CREATE_EXTERNAL_LOCATION))
-      """)
+      action = AuthorizationAction.CREATE_EXTERNAL_LOCATION,
+      value =
+          """
+          #authorize(#principal, #metastore, OWNER) ||
+          (#authorize(#principal, #metastore, CREATE_EXTERNAL_LOCATION) &&
+           #authorizeAny(#principal, #credential, OWNER, CREATE_EXTERNAL_LOCATION))
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createExternalLocation(
       @AuthorizeResourceKey(value = CREDENTIAL, key = "credential_name")
+          @AuthorizeKey(key = "name")
+          @AuthorizeKey(key = "url")
           CreateExternalLocation createExternalLocation) {
     ExternalLocationInfo externalLocationInfo =
         externalLocationRepository.addExternalLocation(createExternalLocation);
@@ -67,7 +73,9 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
       """;
 
   @Get("")
-  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @AuthorizeExpression(
+      action = AuthorizationAction.LIST_EXTERNAL_LOCATIONS,
+      value = LIST_AND_GET_AUTH_EXPRESSION)
   @ResponseAuthorizeFilter
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listExternalLocations(
@@ -80,7 +88,9 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
   }
 
   @Get("/{name}")
-  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @AuthorizeExpression(
+      action = AuthorizationAction.GET_EXTERNAL_LOCATION,
+      value = LIST_AND_GET_AUTH_EXPRESSION)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getExternalLocation(
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name) {
@@ -89,16 +99,20 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
 
   @Patch("/{name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      (#authorize(#principal, #external_location, OWNER) &&
-       (#credential == null ||
-        #authorizeAny(#principal, #credential, OWNER, CREATE_EXTERNAL_LOCATION)))
-      """)
+      action = AuthorizationAction.UPDATE_EXTERNAL_LOCATION,
+      value =
+          """
+          #authorize(#principal, #metastore, OWNER) ||
+          (#authorize(#principal, #external_location, OWNER) &&
+           (#credential == null ||
+            #authorizeAny(#principal, #credential, OWNER, CREATE_EXTERNAL_LOCATION)))
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateExternalLocation(
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
       @AuthorizeResourceKey(value = CREDENTIAL, key = "credential_name")
+          @AuthorizeKey(key = "new_name")
+          @AuthorizeKey(key = "url")
           UpdateExternalLocation updateRequest) {
     return HttpResponse.ofJson(
         externalLocationRepository.updateExternalLocation(name, updateRequest));
@@ -106,10 +120,12 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
 
   @Delete("/{name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #external_location, OWNER)
-      """)
+      action = AuthorizationAction.DELETE_EXTERNAL_LOCATION,
+      value =
+          """
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #external_location, OWNER)
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteExternalLocation(
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,

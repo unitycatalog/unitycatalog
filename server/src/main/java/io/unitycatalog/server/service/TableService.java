@@ -12,6 +12,7 @@ import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -75,7 +76,10 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
    * @return HTTP response containing the created TableInfo
    */
   @Post("")
-  @AuthorizeExpression(AuthorizeExpressions.CREATE_TABLE)
+  @AuthorizeExpression(
+      action = AuthorizationAction.CREATE_TABLE,
+      value = AuthorizeExpressions.CREATE_TABLE,
+      precondition = AuthorizeExpressions.CREATE_TABLE_PRECONDITION)
   public HttpResponse createTable(
       @AuthorizeResourceKeys({
             @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
@@ -83,6 +87,7 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
             @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_location")
           })
           @AuthorizeKey(key = "table_type")
+          @AuthorizeKey(key = "name")
           CreateTable createTable) {
     assert createTable != null;
     serverProperties.checkDeltaApiOnlyForManagedTable(
@@ -97,7 +102,9 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Get("/{full_name}")
-  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
+  @AuthorizeExpression(
+      action = AuthorizationAction.GET_TABLE,
+      value = AuthorizeExpressions.GET_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getTable(@Param("full_name") @AuthorizeResourceKey(TABLE) String fullName) {
     assert fullName != null;
@@ -107,15 +114,17 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
 
   @Get("")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) &&
-          #authorize(#principal, #catalog, USE_CATALOG)) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
-      """)
+      action = AuthorizationAction.LIST_TABLES,
+      value =
+          """
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #schema, OWNER) &&
+              #authorize(#principal, #catalog, USE_CATALOG)) ||
+          (#authorize(#principal, #schema, USE_SCHEMA) &&
+              #authorize(#principal, #catalog, USE_CATALOG) &&
+              #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
+          """)
   @ResponseAuthorizeFilter
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listTables(
@@ -140,7 +149,9 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Delete("/{full_name}")
-  @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
+  @AuthorizeExpression(
+      action = AuthorizationAction.DELETE_TABLE,
+      value = AuthorizeExpressions.DELETE_TABLE)
   public HttpResponse deleteTable(
       @Param("full_name") @AuthorizeResourceKey(TABLE) String fullName) {
     TableInfoDAO deleted = tableRepository.deleteTable(fullName);

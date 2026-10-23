@@ -34,6 +34,7 @@ nav:
   - Server:
       - Configuration: server/configuration.md
       - Auth: server/auth.md
+      - Open Policy Agent: server/opa.md
       - Users and Privileges: server/users-privileges.md
       - Deployment: server/deployment.md
       - Deploy for AWS: server/aws.md

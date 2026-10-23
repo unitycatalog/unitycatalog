@@ -4,6 +4,8 @@ import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
+import io.unitycatalog.server.auth.AuthorizationRequest;
+import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CredentialInfo;
@@ -62,26 +64,20 @@ import org.slf4j.LoggerFactory;
 public class ResultFilter {
   private static final Logger LOGGER = LoggerFactory.getLogger(ResultFilter.class);
 
-  private final UUID principalId;
-  private final String expression;
+  private final AuthorizeExpression rule;
+  private final AuthorizationRequest request;
   private final UnityAccessEvaluator evaluator;
-  private final Map<SecurableType, UUID> resourceIds;
-  private final Map<String, Object> nonResourceValues;
   private final KeyMapper keyMapper;
   private final AtomicBoolean called;
 
   public ResultFilter(
       UnityAccessEvaluator evaluator,
-      UUID principalId,
-      String expression,
-      Map<SecurableType, UUID> resourceIds,
-      Map<String, Object> nonResourceValues,
+      AuthorizeExpression rule,
+      AuthorizationRequest request,
       KeyMapper keyMapper) {
-    this.principalId = principalId;
-    this.expression = expression;
+    this.rule = rule;
+    this.request = request;
     this.evaluator = evaluator;
-    this.resourceIds = resourceIds;
-    this.nonResourceValues = nonResourceValues;
     this.keyMapper = keyMapper;
     this.called = new AtomicBoolean(false);
   }
@@ -99,8 +95,8 @@ public class ResultFilter {
    *   <li>Removes the item if the expression evaluates to false
    * </ol>
    *
-   * <p>If an error occurs during authorization evaluation for an item, that item is filtered out
-   * (removed from the list) as a security precaution.
+   * <p>A native authorization error filters out the item. An external policy failure fails the
+   * request, so an unavailable policy engine cannot look like a successful empty list.
    *
    * @param securableType The type of resources being filtered (TABLE, VOLUME, FUNCTION, etc.)
    * @param items The list of items to filter in-place. This list is modified by removing
@@ -117,7 +113,7 @@ public class ResultFilter {
     }
 
     LOGGER.debug("Filtering {} items with authorization expression", items.size());
-    if (resourceIds.containsKey(securableType)) {
+    if (request.resources().containsKey(securableType)) {
       // This simply indicates a bug in code.
       throw new RuntimeException("Securable type " + securableType + " is already resolved");
     }
@@ -127,22 +123,18 @@ public class ResultFilter {
     items.removeIf(
         item -> {
           try {
-            // Resolve the item's resource ID and any parent resource IDs to make a complete
-            // collection of all needed resource IDs for this item.
-            Map<SecurableType, UUID> resourceIdsForItem =
-                resolveResourceIdsForItem(securableType, item, resourceIds);
             boolean authorized =
                 evaluator.evaluate(
-                    principalId,
-                    expression,
-                    resourceIdsForItem,
-                    nonResourceValues,
-                    operationStartNanos);
+                    rule, resolveRequestForItem(securableType, item), operationStartNanos);
             if (!authorized) {
               LOGGER.debug("Item filtered out: {}", item.getClass().getSimpleName());
             }
             return !authorized;
-          } catch (Exception e) {
+          } catch (RuntimeException e) {
+            // A failed policy call must fail the list request, rather than look like an empty list.
+            if (evaluator.isExternalAuthorization(rule)) {
+              throw e;
+            }
             LOGGER.warn(
                 "Error evaluating authorization for item, filtering out: {}", e.getMessage());
             return true;
@@ -152,46 +144,52 @@ public class ResultFilter {
     LOGGER.debug("After filtering: {} items remain", items.size());
   }
 
-  private Map<SecurableType, UUID> resolveResourceIdsForItem(
-      SecurableType securableType, Object item, Map<SecurableType, UUID> preResolvedIds) {
-    // First, resolve the item's own resource ID
-    UUID itemId = resolveResourceId(securableType, item);
-    Map<SecurableType, UUID> combined = new HashMap<>(preResolvedIds);
-    combined.put(securableType, itemId);
-    // For REGISTERED_MODEL, resolve catalog and schema if both are not present.
-    if (securableType == REGISTERED_MODEL
-        && !preResolvedIds.containsKey(CATALOG)
-        && !preResolvedIds.containsKey(SCHEMA)) {
+  private AuthorizationRequest resolveRequestForItem(SecurableType securableType, Object item) {
+    Resource resource = resolveResource(securableType, item);
+    Map<SecurableType, UUID> resourceIds = new HashMap<>(request.resources());
+    resourceIds.put(securableType, UUID.fromString(resource.id()));
+    Map<SecurableType, Object> resourceKeys = new HashMap<>(request.resourceKeys());
+    resourceKeys.put(securableType, resource.name());
+    if (securableType == REGISTERED_MODEL) {
       RegisteredModelInfo model = (RegisteredModelInfo) item;
-      combined.putAll(
-          keyMapper.mapResourceKeys(
-              Map.of(CATALOG, model.getCatalogName(), SCHEMA, model.getSchemaName())));
+      resourceKeys.put(CATALOG, model.getCatalogName());
+      resourceKeys.put(SCHEMA, model.getSchemaName());
+      // Models can be listed without catalog/schema filters, so resolve their parents if needed.
+      if (!resourceIds.containsKey(CATALOG) && !resourceIds.containsKey(SCHEMA)) {
+        resourceIds.putAll(
+            keyMapper.mapResourceKeys(
+                Map.of(CATALOG, model.getCatalogName(), SCHEMA, model.getSchemaName())));
+      }
     }
-    // For everything else, the catalog and schema IDs are already included in preResolvedIds
-    // if needed.
-    return combined;
+    return new AuthorizationRequest(
+        request.principal(), request.action(), resourceIds, resourceKeys, request.context());
   }
 
-  private UUID resolveResourceId(SecurableType securableType, Object item) {
-    String id =
-        switch (securableType) {
-          // Table listings may filter over either the API model or the raw DAO (the Iceberg REST
-          // listTables path passes DAOs straight through to avoid materializing a TableInfo).
-          case TABLE ->
-              item instanceof TableInfoDAO dao
-                  ? dao.getId().toString()
-                  : ((TableInfo) item).getTableId();
-          case VOLUME -> ((VolumeInfo) item).getVolumeId();
-          case FUNCTION -> ((FunctionInfo) item).getFunctionId();
-          case REGISTERED_MODEL -> ((RegisteredModelInfo) item).getId();
-          case CATALOG -> ((CatalogInfo) item).getId();
-          case SCHEMA -> ((SchemaInfo) item).getSchemaId();
-          case CREDENTIAL -> ((CredentialInfo) item).getId();
-          case EXTERNAL_LOCATION -> ((ExternalLocationInfo) item).getId();
-          default -> throw new RuntimeException("Unsupported securable type: " + securableType);
-        };
-    return UUID.fromString(id);
+  private Resource resolveResource(SecurableType securableType, Object item) {
+    return switch (securableType) {
+      // Iceberg table listings pass DAOs rather than materializing API models.
+      case TABLE ->
+          item instanceof TableInfoDAO dao
+              ? new Resource(dao.getId().toString(), dao.getName())
+              : new Resource(((TableInfo) item).getTableId(), ((TableInfo) item).getName());
+      case VOLUME -> new Resource(((VolumeInfo) item).getVolumeId(), ((VolumeInfo) item).getName());
+      case FUNCTION ->
+          new Resource(((FunctionInfo) item).getFunctionId(), ((FunctionInfo) item).getName());
+      case REGISTERED_MODEL ->
+          new Resource(
+              ((RegisteredModelInfo) item).getId(), ((RegisteredModelInfo) item).getName());
+      case CATALOG -> new Resource(((CatalogInfo) item).getId(), ((CatalogInfo) item).getName());
+      case SCHEMA -> new Resource(((SchemaInfo) item).getSchemaId(), ((SchemaInfo) item).getName());
+      case CREDENTIAL ->
+          new Resource(((CredentialInfo) item).getId(), ((CredentialInfo) item).getName());
+      case EXTERNAL_LOCATION ->
+          new Resource(
+              ((ExternalLocationInfo) item).getId(), ((ExternalLocationInfo) item).getName());
+      default -> throw new RuntimeException("Unsupported securable type: " + securableType);
+    };
   }
+
+  private record Resource(String id, String name) {}
 
   /**
    * Returns whether the filter has been called.

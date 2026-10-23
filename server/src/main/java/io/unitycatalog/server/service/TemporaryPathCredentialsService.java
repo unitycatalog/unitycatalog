@@ -7,6 +7,7 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
@@ -57,48 +58,56 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
   //  of the parent catalog and schema.
   @Post("")
   @AuthorizeExpression(
-      """
-      #operation == 'PATH_READ' ? (
-        (#table != null &&
-         #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-         #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-         #authorizeAny(#principal, #table, OWNER, SELECT)) ||
-        (#volume != null &&
-         #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-         #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-         #authorizeAny(#principal, #volume, OWNER, READ_VOLUME)) ||
-        (#registered_model != null &&
-         #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-         #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-         #authorizeAny(#principal, #registered_model, OWNER, EXECUTE)) ||
-        (#external_location != null &&
-         #authorizeAny(#principal, #external_location, OWNER, READ_FILES))
-      )
-      : #operation == 'PATH_READ_WRITE' ? (
-        (#table != null &&
-         #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-         #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-         (#authorize(#principal, #table, OWNER) ||
-          #authorizeAll(#principal, #table, SELECT, MODIFY))) ||
-        (#volume != null &&
-         #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-         #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-         #authorize(#principal, #volume, OWNER)) ||
-        (#registered_model != null &&
-         #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-         #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-         #authorize(#principal, #registered_model, OWNER)) ||
-        (#external_location != null &&
-         (#authorize(#principal, #external_location, OWNER) ||
-          #authorizeAll(#principal, #external_location, READ_FILES, WRITE_FILES)))
-      )
-      : #operation == 'PATH_CREATE_TABLE' ? (
-        #no_overlap_with_data_securable &&
-        #external_location != null &&
-        #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE)
-      )
-      : #deny
-      """)
+      action = AuthorizationAction.GENERATE_PATH_CREDENTIALS,
+      precondition =
+          """
+          #operation == 'PATH_CREATE_TABLE'
+            ? (#no_overlap_with_data_securable && #external_location != null)
+            : ((#operation == 'PATH_READ' || #operation == 'PATH_READ_WRITE') &&
+               (#table != null || #volume != null ||
+                #registered_model != null || #external_location != null))
+          """,
+      value =
+          """
+          #operation == 'PATH_READ' ? (
+            (#table != null &&
+             #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+             #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+             #authorizeAny(#principal, #table, OWNER, SELECT)) ||
+            (#volume != null &&
+             #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+             #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+             #authorizeAny(#principal, #volume, OWNER, READ_VOLUME)) ||
+            (#registered_model != null &&
+             #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+             #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+             #authorizeAny(#principal, #registered_model, OWNER, EXECUTE)) ||
+            (#external_location != null &&
+             #authorizeAny(#principal, #external_location, OWNER, READ_FILES))
+          )
+          : #operation == 'PATH_READ_WRITE' ? (
+            (#table != null &&
+             #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+             #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+             (#authorize(#principal, #table, OWNER) ||
+              #authorizeAll(#principal, #table, SELECT, MODIFY))) ||
+            (#volume != null &&
+             #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+             #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+             #authorize(#principal, #volume, OWNER)) ||
+            (#registered_model != null &&
+             #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+             #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+             #authorize(#principal, #registered_model, OWNER)) ||
+            (#external_location != null &&
+             (#authorize(#principal, #external_location, OWNER) ||
+              #authorizeAll(#principal, #external_location, READ_FILES, WRITE_FILES)))
+          )
+          : #operation == 'PATH_CREATE_TABLE' ? (
+            #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE)
+          )
+          : #deny
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse generateTemporaryPathCredential(
       @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "url") @AuthorizeKey(key = "operation")

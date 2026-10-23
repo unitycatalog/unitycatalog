@@ -7,6 +7,7 @@ import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -33,7 +34,9 @@ public class DeltaCommitsService extends AuthorizedService implements UnityCatal
   }
 
   @Post("")
-  @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
+  @AuthorizeExpression(
+      action = AuthorizationAction.COMMIT_TABLE,
+      value = AuthorizeExpressions.UPDATE_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse postCommit(
       @AuthorizeResourceKey(value = TABLE, key = "table_id") DeltaCommit commit) {
@@ -47,11 +50,13 @@ public class DeltaCommitsService extends AuthorizedService implements UnityCatal
 
   @Get("")
   @AuthorizeExpression(
-      """
-        #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-        #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-        #authorizeAny(#principal, #table, OWNER, SELECT)
-      """)
+      action = AuthorizationAction.GET_TABLE_COMMITS,
+      value =
+          """
+            #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+            #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+            #authorizeAny(#principal, #table, OWNER, SELECT)
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getCommits(
       @AuthorizeResourceKey(value = TABLE, key = "table_id") DeltaGetCommits rpc) {

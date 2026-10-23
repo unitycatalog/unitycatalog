@@ -8,6 +8,7 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
@@ -38,13 +39,15 @@ public class TemporaryModelVersionCredentialsService implements UnityCatalogRest
 
   @Post("")
   @AuthorizeExpression(
-      """
-      #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-      (#operation == 'READ_MODEL_VERSION'
-        ? #authorizeAny(#principal, #registered_model, OWNER, EXECUTE)
-        : #authorize(#principal, #registered_model, OWNER))
-      """)
+      action = AuthorizationAction.GENERATE_MODEL_VERSION_CREDENTIALS,
+      value =
+          """
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+          (#operation == 'READ_MODEL_VERSION'
+            ? #authorizeAny(#principal, #registered_model, OWNER, EXECUTE)
+            : #authorize(#principal, #registered_model, OWNER))
+          """)
   public HttpResponse generateTemporaryModelVersionCredentials(
       @AuthorizeResourceKeys({
             @AuthorizeResourceKey(value = CATALOG, key = "catalog_name"),
@@ -52,6 +55,7 @@ public class TemporaryModelVersionCredentialsService implements UnityCatalogRest
             @AuthorizeResourceKey(value = REGISTERED_MODEL, key = "model_name")
           })
           @AuthorizeKey(key = "operation")
+          @AuthorizeKey(key = "version")
           GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredentials) {
 
     long modelVersion = generateTemporaryModelVersionCredentials.getVersion();

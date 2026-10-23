@@ -15,6 +15,7 @@ import com.linecorp.armeria.server.annotation.Head;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.ProducesJson;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -107,7 +108,9 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
 
   @Get("/delta/v1/config")
   @ProducesJson
-  @AuthorizeExpression(AuthorizeExpressions.GET_CATALOG)
+  @AuthorizeExpression(
+      action = AuthorizationAction.GET_CATALOG_CONFIG,
+      value = AuthorizeExpressions.GET_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public DeltaCatalogConfig getConfig(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
@@ -133,7 +136,9 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
 
   @Get("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
   @ProducesJson
-  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
+  @AuthorizeExpression(
+      action = AuthorizationAction.GET_TABLE,
+      value = AuthorizeExpressions.GET_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public DeltaLoadTableResponse loadTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
@@ -143,7 +148,9 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
   }
 
   @Head("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
-  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
+  @AuthorizeExpression(
+      action = AuthorizationAction.TABLE_EXISTS,
+      value = AuthorizeExpressions.GET_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse tableExists(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
@@ -163,7 +170,9 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
    * removed the table.
    */
   @Delete("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
-  @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
+  @AuthorizeExpression(
+      action = AuthorizationAction.DELETE_TABLE,
+      value = AuthorizeExpressions.DELETE_TABLE)
   public HttpResponse deleteTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
@@ -186,11 +195,13 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
    */
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables")
   @ProducesJson
-  @AuthorizeExpression(AuthorizeExpressions.CREATE_STAGING_TABLE)
+  @AuthorizeExpression(
+      action = AuthorizationAction.CREATE_STAGING_TABLE,
+      value = AuthorizeExpressions.CREATE_STAGING_TABLE)
   public DeltaStagingTableResponse createStagingTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
-      DeltaCreateStagingTableRequest request) {
+      @AuthorizeKey(key = "name") DeltaCreateStagingTableRequest request) {
     if (request == null || request.getName() == null || request.getName().isBlank()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Staging table name is required.");
     }
@@ -231,12 +242,16 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
    */
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables")
   @ProducesJson
-  @AuthorizeExpression(AuthorizeExpressions.CREATE_TABLE)
+  @AuthorizeExpression(
+      action = AuthorizationAction.CREATE_TABLE,
+      value = AuthorizeExpressions.CREATE_TABLE,
+      precondition = AuthorizeExpressions.CREATE_TABLE_PRECONDITION)
   public DeltaLoadTableResponse createTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "location")
           @AuthorizeKey(key = "table-type")
+          @AuthorizeKey(key = "name")
           DeltaCreateTableRequest request) {
     DeltaCreateTableMapper.Result mapped =
         DeltaCreateTableMapper.toCreateTable(catalog, schema, request, serverProperties);
@@ -267,7 +282,9 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
    */
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
   @ProducesJson
-  @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
+  @AuthorizeExpression(
+      action = AuthorizationAction.COMMIT_TABLE,
+      value = AuthorizeExpressions.UPDATE_TABLE)
   public DeltaLoadTableResponse updateTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
@@ -283,12 +300,14 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
    * cross-schema moves are not supported per {@code delta.yaml}.
    */
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename")
-  @AuthorizeExpression(AuthorizeExpressions.RENAME_TABLE)
+  @AuthorizeExpression(
+      action = AuthorizationAction.RENAME_TABLE,
+      value = AuthorizeExpressions.RENAME_TABLE)
   public HttpResponse renameTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table,
-      DeltaRenameTableRequest request) {
+      @AuthorizeKey(key = "new-name") DeltaRenameTableRequest request) {
     if (request == null || request.getNewName() == null || request.getNewName().isBlank()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "New table name is required.");
     }
@@ -306,7 +325,9 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
    * caller who can commit to the table can report metrics for it.
    */
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics")
-  @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
+  @AuthorizeExpression(
+      action = AuthorizationAction.REPORT_TABLE_COMMIT_METRICS,
+      value = AuthorizeExpressions.UPDATE_TABLE)
   public HttpResponse reportMetrics(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
@@ -336,7 +357,9 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
    */
   @Get("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials")
   @ProducesJson
-  @AuthorizeExpression(AuthorizeExpressions.VEND_TABLE_CREDENTIAL)
+  @AuthorizeExpression(
+      action = AuthorizationAction.GENERATE_TABLE_CREDENTIALS,
+      value = AuthorizeExpressions.VEND_TABLE_CREDENTIAL)
   public DeltaCredentialsResponse getTableCredentials(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
@@ -355,7 +378,9 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
    */
   @Get("/delta/v1/staging-tables/{table_id}/credentials")
   @ProducesJson
-  @AuthorizeExpression("#authorize(#principal, #table, OWNER)")
+  @AuthorizeExpression(
+      action = AuthorizationAction.GENERATE_STAGING_TABLE_CREDENTIALS,
+      value = "#authorize(#principal, #table, OWNER)")
   public DeltaCredentialsResponse getStagingTableCredentials(
       @Param("table_id") @AuthorizeResourceKey(TABLE) String tableId) {
     NormalizedURL storageLocation =

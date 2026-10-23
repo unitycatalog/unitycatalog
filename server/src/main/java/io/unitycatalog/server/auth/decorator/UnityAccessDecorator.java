@@ -14,6 +14,9 @@ import com.linecorp.armeria.server.HttpService;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.AnnotatedService;
 import io.netty.util.AttributeKey;
+import io.unitycatalog.server.auth.AuthorizationProvider;
+import io.unitycatalog.server.auth.AuthorizationRequest;
+import io.unitycatalog.server.auth.AuthorizationRequest.Principal;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
@@ -25,6 +28,7 @@ import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
@@ -45,8 +49,8 @@ import org.slf4j.LoggerFactory;
  * control rules. This decorator is used in conjunction with following 3 annotations to define
  * authorization rules and identify requests parameters for objects to authorize with:
  *
- * <p>1. {@code @AuthorizeExpression} - This defines a Spring Expression Language expression to
- * evaluate to make an authorization decision.
+ * <p>1. {@code @AuthorizeExpression} - This defines local preconditions, native permission rules,
+ * and the operation sent to an external authorization provider.
  *
  * <p>2. {@code @AuthorizeResourceKey} - This annotation maps a request value to a unity catalog
  * resource (catalog, schema, table, etc.) for the authorization context. The source is chosen by
@@ -97,14 +101,20 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
   public static final AttributeKey<ResultFilter> RESULT_FILTER_ATTR =
       AttributeKey.valueOf(ResultFilter.class, "RESULT_FILTER");
 
+  /** Resolved request context for subsequent credential-scope decisions within the same request. */
+  public static final AttributeKey<AuthorizationRequest> AUTHORIZATION_REQUEST =
+      AttributeKey.valueOf(UnityAccessDecorator.class, "AUTHORIZATION_REQUEST");
+
   public UnityAccessDecorator(
       UnityCatalogAuthorizer authorizer,
       Repositories repositories,
-      ServerProperties serverProperties)
+      ServerProperties serverProperties,
+      Optional<AuthorizationProvider> externalProvider)
       throws BaseException {
     try {
       evaluator =
-          new UnityAccessEvaluator(authorizer, serverProperties.isStrictPrivilegeChecksEnabled());
+          new UnityAccessEvaluator(
+              authorizer, serverProperties.isStrictPrivilegeChecksEnabled(), externalProvider);
     } catch (NoSuchMethodException | IllegalAccessException e) {
       throw new BaseException(ErrorCode.INTERNAL, "Error initializing access evaluator.", e);
     }
@@ -123,19 +133,20 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
 
     // Find the authorization parameters to use for this service method.
-    String expression = findAuthorizeExpression(method);
+    AuthorizeExpression rule = findAuthorizeExpression(method);
     List<AuthorizeKeyLocator> locators = findAuthorizeKeys(method);
 
     // Check for response filtering annotation
     Optional<ResponseAuthorizeFilter> filterAnnotation =
         Optional.ofNullable(method.getAnnotation(ResponseAuthorizeFilter.class));
 
-    if (expression == null) {
+    if (rule == null) {
       throw new RuntimeException("No authorization expression found.");
     }
-    UUID principal = userRepository.findPrincipalId();
+    Principal principal =
+        new Principal(userRepository.findPrincipalId(), IdentityUtils.findPrincipalEmailAddress());
     return authorizeByRequest(
-        delegate, ctx, method, req, principal, locators, expression, filterAnnotation);
+        delegate, ctx, method, req, principal, locators, rule, filterAnnotation);
   }
 
   private HttpResponse authorizeByRequest(
@@ -143,9 +154,9 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       ServiceRequestContext ctx,
       Method method,
       HttpRequest req,
-      UUID principal,
+      Principal principal,
       List<AuthorizeKeyLocator> locators,
-      String expression,
+      AuthorizeExpression rule,
       Optional<ResponseAuthorizeFilter> filterAnnotation)
       throws Exception {
     //
@@ -191,14 +202,16 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
     EvaluationAction evaluateAction =
         filterAnnotation
-            .<EvaluationAction>map(x -> new ResultFilterAction(ctx, method))
-            .orElseGet(() -> new RequestEvaluationAction(method));
+            .<EvaluationAction>map(x -> new ResultFilterAction(ctx, method, rule))
+            .orElseGet(() -> new RequestEvaluationAction(method, rule));
 
     if (payloadLocators.isEmpty()) {
       // All keys are already available, so authorize now.
       Map<SecurableType, UUID> resourceIds =
           mapResourceKeys(conditionalResourceLocators, resourceKeys, nonResourceValues);
-      evaluateAction.runBeforeRequest(principal, expression, resourceIds, nonResourceValues);
+      evaluateAction.runBeforeRequest(
+          new AuthorizationRequest(
+              principal, rule.action(), resourceIds, resourceKeys, nonResourceValues));
       // The method may still bind a body (e.g. updateCatalog authorizes on the "name" path param),
       // so the gate converter still runs and needs to be told the check is done.
       ctx.setAttr(PAYLOAD_AUTHORIZER, PayloadAuthorizer.NO_BODY_CHECK_REQUIRED);
@@ -218,7 +231,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
                   resourceKeys,
                   nonResourceValues,
                   principal,
-                  expression,
+                  rule,
                   evaluateAction));
     }
 
@@ -241,10 +254,12 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
    */
   private abstract class EvaluationAction {
     private final Method method;
+    protected final AuthorizeExpression rule;
     private final AtomicBoolean beforeRequestRan = new AtomicBoolean(false);
 
-    EvaluationAction(Method method) {
+    EvaluationAction(Method method, AuthorizeExpression rule) {
       this.method = method;
+      this.rule = rule;
     }
 
     /**
@@ -252,12 +267,9 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
      * check ran, which {@link #runAfterRequest} verifies. The flag is set only once {@code
      * beforeRequest} returns, so a denial leaves it unset.
      */
-    final void runBeforeRequest(
-        UUID principal,
-        String expression,
-        Map<SecurableType, UUID> resourceIds,
-        Map<String, Object> nonResourceValues) {
-      beforeRequest(principal, expression, resourceIds, nonResourceValues);
+    final void runBeforeRequest(AuthorizationRequest request) {
+      beforeRequest(request);
+      ServiceRequestContext.current().setAttr(AUTHORIZATION_REQUEST, request);
       beforeRequestRan.set(true);
     }
 
@@ -265,11 +277,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
      * Evaluates access, throwing a {@link BaseException} to deny. Implemented by subclasses;
      * callers use {@link #runBeforeRequest} instead so the check is recorded.
      */
-    protected abstract void beforeRequest(
-        UUID principal,
-        String expression,
-        Map<SecurableType, UUID> resourceIds,
-        Map<String, Object> nonResourceValues);
+    protected abstract void beforeRequest(AuthorizationRequest request);
 
     /** The annotated method being guarded, for use in subclass log messages. */
     protected final Method method() {
@@ -328,17 +336,13 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
   private class RequestEvaluationAction extends EvaluationAction {
 
-    RequestEvaluationAction(Method method) {
-      super(method);
+    RequestEvaluationAction(Method method, AuthorizeExpression rule) {
+      super(method, rule);
     }
 
     @Override
-    protected void beforeRequest(
-        UUID principal,
-        String expression,
-        Map<SecurableType, UUID> resourceIds,
-        Map<String, Object> nonResourceValues) {
-      if (!evaluator.evaluate(principal, expression, resourceIds, nonResourceValues)) {
+    protected void beforeRequest(AuthorizationRequest request) {
+      if (!evaluator.evaluate(rule, request)) {
         throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
       }
     }
@@ -356,20 +360,14 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     private final ServiceRequestContext ctx;
     private volatile ResultFilter resultFilter = null;
 
-    ResultFilterAction(ServiceRequestContext ctx, Method method) {
-      super(method);
+    ResultFilterAction(ServiceRequestContext ctx, Method method, AuthorizeExpression rule) {
+      super(method, rule);
       this.ctx = ctx;
     }
 
     @Override
-    protected void beforeRequest(
-        UUID principal,
-        String expression,
-        Map<SecurableType, UUID> resourceIds,
-        Map<String, Object> nonResourceValues) {
-      resultFilter =
-          new ResultFilter(
-              evaluator, principal, expression, resourceIds, nonResourceValues, keyMapper);
+    protected void beforeRequest(AuthorizationRequest request) {
+      resultFilter = new ResultFilter(evaluator, rule, request, keyMapper);
       ctx.setAttr(RESULT_FILTER_ATTR, resultFilter);
     }
 
@@ -400,10 +398,12 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       Map<String, Object> nonResourceValues) {
     // Drop conditionally-skipped resource keys first, so a key that does not apply to this request
     // shape is never resolved (and cannot fail resolving).
-    applyConditionalSkips(conditionalLocators, resourceKeys, nonResourceValues);
-    Map<SecurableType, UUID> resourceIds = keyMapper.mapResourceKeys(resourceKeys);
+    // Retain raw keys for OPA even when the target does not exist yet (e.g. a staged create).
+    Map<SecurableType, Object> activeResourceKeys = new HashMap<>(resourceKeys);
+    applyConditionalSkips(conditionalLocators, activeResourceKeys, nonResourceValues);
+    Map<SecurableType, UUID> resourceIds = keyMapper.mapResourceKeys(activeResourceKeys);
 
-    if (resourceKeys.containsKey(SecurableType.EXTERNAL_LOCATION)) {
+    if (activeResourceKeys.containsKey(SecurableType.EXTERNAL_LOCATION)) {
       // KeyMapper will try to map a path of EXTERNAL_LOCATION to any data securable if the path
       // belongs to it, instead of just the external location. This new variable is introduced so
       // that auth expression can easily check if the input path overlaps with any data securable.
@@ -413,7 +413,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       nonResourceValues.put("no_overlap_with_data_securable", noOverlapWithDataSecurable);
     }
 
-    if (!resourceIds.keySet().containsAll(resourceKeys.keySet())) {
+    if (!resourceIds.keySet().containsAll(activeResourceKeys.keySet())) {
       LOGGER.warn("Some resource keys have unresolved ids.");
     }
 
@@ -421,14 +421,14 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     return resourceIds;
   }
 
-  private static String findAuthorizeExpression(Method method) {
+  private static AuthorizeExpression findAuthorizeExpression(Method method) {
     // TODO: Cache this by method
 
     AuthorizeExpression annotation = method.getAnnotation(AuthorizeExpression.class);
 
     if (annotation != null) {
       LOGGER.debug("authorize expression = {}", annotation.value());
-      return annotation.value();
+      return annotation;
     } else {
       LOGGER.debug("authorize = (none found)");
       return null;
@@ -497,8 +497,8 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       List<AuthorizeKeyLocator> conditionalLocators,
       Map<SecurableType, Object> resourceKeys,
       Map<String, Object> nonResourceValues,
-      UUID principal,
-      String expression,
+      Principal principal,
+      AuthorizeExpression rule,
       EvaluationAction evaluateAction) {
     // A null body (e.g. the JSON literal "null") carries no authorization keys, so fail closed
     // rather than NPE below.
@@ -526,7 +526,9 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
     Map<SecurableType, UUID> resourceIds =
         mapResourceKeys(conditionalLocators, resourceKeys, nonResourceValues);
-    evaluateAction.runBeforeRequest(principal, expression, resourceIds, nonResourceValues);
+    evaluateAction.runBeforeRequest(
+        new AuthorizationRequest(
+            principal, rule.action(), resourceIds, resourceKeys, nonResourceValues));
   }
 
   /**

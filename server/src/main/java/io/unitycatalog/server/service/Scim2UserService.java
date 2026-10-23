@@ -30,9 +30,12 @@ import com.unboundid.scim2.common.types.UserResource;
 import com.unboundid.scim2.common.utils.FilterEvaluator;
 import com.unboundid.scim2.common.utils.Parser;
 import io.unitycatalog.control.model.User;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.auth.decorator.AuthorizeValueExtractor;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.Scim2RuntimeException;
@@ -73,7 +76,9 @@ public class Scim2UserService implements ScimService {
   @Get("")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(
+      action = AuthorizationAction.LIST_USERS,
+      value = "#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public ListResponse<UserResource> getScimUsers(
       @Param("filter") Optional<String> filter,
@@ -112,18 +117,14 @@ public class Scim2UserService implements ScimService {
   @Post("")
   @Produces("application/scim+json")
   @StatusCode(201)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(
+      action = AuthorizationAction.CREATE_USER,
+      value = "#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
-  public UserResource createScimUser(UserResource userResource) {
-    // Get primary email address
-    Email primaryEmail =
-        userResource.getEmails().stream()
-            .filter(Email::getPrimary)
-            .findFirst()
-            .orElseThrow(
-                () ->
-                    new Scim2RuntimeException(
-                        new PreconditionFailedException("User does not have a primary email.")));
+  public UserResource createScimUser(
+      @AuthorizeKey(key = "email", extractor = PrimaryEmailExtractor.class)
+          UserResource userResource) {
+    String email = getPrimaryEmail(userResource);
 
     String pictureUrl = "";
     if (userResource.getPhotos() != null && !userResource.getPhotos().isEmpty()) {
@@ -134,7 +135,7 @@ public class Scim2UserService implements ScimService {
           userRepository.createUser(
               CreateUser.builder()
                   .name(userResource.getDisplayName())
-                  .email(primaryEmail.getValue())
+                  .email(email)
                   .active(userResource.getActive())
                   .externalId(userResource.getExternalId())
                   .pictureUrl(pictureUrl)
@@ -149,21 +150,44 @@ public class Scim2UserService implements ScimService {
     }
   }
 
+  private static String getPrimaryEmail(UserResource userResource) {
+    return userResource.getEmails().stream()
+        .filter(Email::getPrimary)
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new Scim2RuntimeException(
+                    new PreconditionFailedException("User does not have a primary email.")))
+        .getValue();
+  }
+
+  /** Exposes the identity UC persists, which can differ from the request's userName. */
+  public static class PrimaryEmailExtractor implements AuthorizeValueExtractor {
+    @Override
+    public String extract(Object body) {
+      return getPrimaryEmail((UserResource) body);
+    }
+  }
+
   @Get("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(
+      action = AuthorizationAction.GET_USER,
+      value = "#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
-  public UserResource getUser(@Param("id") String id) {
+  public UserResource getUser(@Param("id") @AuthorizeKey String id) {
     return asUserResource(userRepository.getUser(id));
   }
 
   @Put("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(
+      action = AuthorizationAction.UPDATE_USER,
+      value = "#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
-  public UserResource updateUser(@Param("id") String id, UserResource userResource) {
+  public UserResource updateUser(@Param("id") @AuthorizeKey String id, UserResource userResource) {
     UserResource user = asUserResource(userRepository.getUser(id));
     if (!id.equals(userResource.getId())) {
       throw new Scim2RuntimeException(new ResourceConflictException("User id mismatch."));
@@ -180,9 +204,11 @@ public class Scim2UserService implements ScimService {
   }
 
   @Delete("/{id}")
-  @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(
+      action = AuthorizationAction.DELETE_USER,
+      value = "#authorizeAny(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
-  public HttpResponse deleteUser(@Param("id") String id) {
+  public HttpResponse deleteUser(@Param("id") @AuthorizeKey String id) {
     User user = userRepository.getUser(id);
     authorizer.clearAuthorizationsForPrincipal(
         UUID.fromString(Objects.requireNonNull(user.getId())));
@@ -191,9 +217,11 @@ public class Scim2UserService implements ScimService {
   }
 
   @Patch("/{id}")
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(
+      action = AuthorizationAction.UPDATE_USER,
+      value = "#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
-  public HttpResponse patchUser(@Param("id") String id, PatchRequest patchRequest) {
+  public HttpResponse patchUser(@Param("id") @AuthorizeKey String id, PatchRequest patchRequest) {
     return patchRequest.getOperations().stream()
         .filter(
             op ->

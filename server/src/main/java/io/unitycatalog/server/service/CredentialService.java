@@ -10,8 +10,10 @@ import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.model.CreateCredentialRequest;
@@ -55,9 +57,13 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
 
   @Post("")
   // NOTE: service credential and CREATE_SERVICE_CREDENTIAL are not supported.
-  @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER, CREATE_STORAGE_CREDENTIAL)")
+  @AuthorizeExpression(
+      action = AuthorizationAction.CREATE_CREDENTIAL,
+      value = "#authorizeAny(#principal, #metastore, OWNER, CREATE_STORAGE_CREDENTIAL)")
   @AuthorizeResourceKey(METASTORE)
-  public HttpResponse createCredential(CreateCredentialRequest createCredentialRequest) {
+  public HttpResponse createCredential(
+      @AuthorizeKey(key = "name") @AuthorizeKey(key = "purpose")
+          CreateCredentialRequest createCredentialRequest) {
     CredentialInfo credentialInfo = credentialRepository.addCredential(createCredentialRequest);
     initializeBasicAuthorization(credentialInfo.getId());
     return HttpResponse.ofJson(credentialInfo);
@@ -70,7 +76,9 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
       """;
 
   @Get("")
-  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @AuthorizeExpression(
+      action = AuthorizationAction.LIST_CREDENTIALS,
+      value = LIST_AND_GET_AUTH_EXPRESSION)
   @ResponseAuthorizeFilter
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listCredentials(
@@ -83,7 +91,9 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
   }
 
   @Get("/{name}")
-  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @AuthorizeExpression(
+      action = AuthorizationAction.GET_CREDENTIAL,
+      value = LIST_AND_GET_AUTH_EXPRESSION)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getCredential(@Param("name") @AuthorizeResourceKey(CREDENTIAL) String name) {
     return HttpResponse.ofJson(credentialRepository.getCredential(name));
@@ -91,23 +101,27 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
 
   @Patch("/{name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #credential, OWNER)
-      """)
+      action = AuthorizationAction.UPDATE_CREDENTIAL,
+      value =
+          """
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #credential, OWNER)
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCredential(
       @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name,
-      UpdateCredentialRequest updateRequest) {
+      @AuthorizeKey(key = "new_name") UpdateCredentialRequest updateRequest) {
     return HttpResponse.ofJson(credentialRepository.updateCredential(name, updateRequest));
   }
 
   @Delete("/{name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #credential, OWNER)
-      """)
+      action = AuthorizationAction.DELETE_CREDENTIAL,
+      value =
+          """
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #credential, OWNER)
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteCredential(
       @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name,

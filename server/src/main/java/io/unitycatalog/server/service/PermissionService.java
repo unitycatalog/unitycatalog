@@ -15,6 +15,7 @@ import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
 import io.unitycatalog.control.model.User;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -39,6 +40,7 @@ import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -61,8 +63,12 @@ public class PermissionService implements UnityCatalogRestService {
   private final ModelRepository modelRepository;
   private final ExternalLocationRepository externalLocationRepository;
   private final CredentialRepository credentialRepository;
+  private final boolean opaAuthorizationEnabled;
 
-  public PermissionService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
+  public PermissionService(
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties) {
     this.authorizer = authorizer;
     this.metastoreRepository = repositories.getMetastoreRepository();
     this.userRepository = repositories.getUserRepository();
@@ -74,6 +80,7 @@ public class PermissionService implements UnityCatalogRestService {
     this.modelRepository = repositories.getModelRepository();
     this.externalLocationRepository = repositories.getExternalLocationRepository();
     this.credentialRepository = repositories.getCredentialRepository();
+    this.opaAuthorizationEnabled = serverProperties.isOpaAuthorizationEnabled();
   }
 
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
@@ -132,6 +139,7 @@ public class PermissionService implements UnityCatalogRestService {
   }
 
   private HttpResponse getAuthorization(SecurableType securableType, String name) {
+    checkNativePermissionsEnabled();
 
     // Only show permissions for the authenticated identity unless they are the owner
     // or if the authenticated identity is the owner of the parent resource(s)
@@ -180,7 +188,9 @@ public class PermissionService implements UnityCatalogRestService {
 
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
   @Patch("/metastore/{name}")
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(
+      action = AuthorizationAction.UPDATE_METASTORE_PERMISSIONS,
+      value = "#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateMetastoreAuthorization(
       @Param("name") String name, UpdatePermissions request) {
@@ -189,7 +199,9 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/catalog/{name}")
   @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #catalog, OWNER)")
+      action = AuthorizationAction.UPDATE_CATALOG_PERMISSIONS,
+      value =
+          "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #catalog, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCatalogAuthorization(
       @Param("name") @AuthorizeResourceKey(CATALOG) String name, UpdatePermissions request) {
@@ -198,11 +210,13 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/schema/{name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG))
-      """)
+      action = AuthorizationAction.UPDATE_SCHEMA_PERMISSIONS,
+      value =
+          """
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG))
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateSchemaAuthorization(
       @Param("name") @AuthorizeResourceKey(SCHEMA) String name, UpdatePermissions request) {
@@ -211,14 +225,17 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/table/{name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #table, OWNER))
-      """)
+      action = AuthorizationAction.UPDATE_TABLE_PERMISSIONS,
+      value =
+          """
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+           #authorize(#principal, #schema, OWNER)) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+              #authorize(#principal, #schema, USE_SCHEMA) &&
+              #authorize(#principal, #table, OWNER))
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateTableAuthorization(
       @Param("name") @AuthorizeResourceKey(TABLE) String name, UpdatePermissions request) {
@@ -227,14 +244,17 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/function/{name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #function, OWNER))
-      """)
+      action = AuthorizationAction.UPDATE_FUNCTION_PERMISSIONS,
+      value =
+          """
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+           #authorize(#principal, #schema, OWNER)) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+              #authorize(#principal, #schema, USE_SCHEMA) &&
+              #authorize(#principal, #function, OWNER))
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateFunctionAuthorization(
       @Param("name") @AuthorizeResourceKey(FUNCTION) String name, UpdatePermissions request) {
@@ -243,14 +263,17 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/volume/{name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #volume, OWNER))
-      """)
+      action = AuthorizationAction.UPDATE_VOLUME_PERMISSIONS,
+      value =
+          """
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+           #authorize(#principal, #schema, OWNER)) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+              #authorize(#principal, #schema, USE_SCHEMA) &&
+              #authorize(#principal, #volume, OWNER))
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateVolumeAuthorization(
       @Param("name") @AuthorizeResourceKey(VOLUME) String name, UpdatePermissions request) {
@@ -259,14 +282,17 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/registered_model/{name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #registered_model, OWNER))
-      """)
+      action = AuthorizationAction.UPDATE_REGISTERED_MODEL_PERMISSIONS,
+      value =
+          """
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+           #authorize(#principal, #schema, OWNER)) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+              #authorize(#principal, #schema, USE_SCHEMA) &&
+              #authorize(#principal, #registered_model, OWNER))
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateRegisteredModelAuthorization(
       @Param("name") @AuthorizeResourceKey(REGISTERED_MODEL) String name,
@@ -276,8 +302,10 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/external_location/{name}")
   @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #external_location,"
-          + " OWNER)")
+      action = AuthorizationAction.UPDATE_EXTERNAL_LOCATION_PERMISSIONS,
+      value =
+          "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #external_location,"
+              + " OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateExternalLocationAuthorization(
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
@@ -287,7 +315,9 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/credential/{name}")
   @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #credential, OWNER)")
+      action = AuthorizationAction.UPDATE_CREDENTIAL_PERMISSIONS,
+      value =
+          "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #credential, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCredentialAuthorization(
       @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name, UpdatePermissions request) {
@@ -296,6 +326,7 @@ public class PermissionService implements UnityCatalogRestService {
 
   private HttpResponse updateAuthorization(
       SecurableType securableType, String name, UpdatePermissions request) {
+    checkNativePermissionsEnabled();
     UUID resourceId = getResourceId(securableType, name);
     List<PermissionsChange> changes = request.getChanges();
     Set<UUID> principalIds = new HashSet<>();
@@ -344,6 +375,14 @@ public class PermissionService implements UnityCatalogRestService {
             .collect(Collectors.toList());
 
     return HttpResponse.ofJson(new PermissionsList().privilegeAssignments(privilegeAssignments));
+  }
+
+  private void checkNativePermissionsEnabled() {
+    if (opaAuthorizationEnabled) {
+      throw new BaseException(
+          ErrorCode.UNIMPLEMENTED,
+          "UC grants are unavailable in OPA mode. Manage permissions in your OPA policy.");
+    }
   }
 
   private UUID getResourceId(SecurableType securableType, String name) {

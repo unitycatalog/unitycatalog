@@ -9,7 +9,9 @@ import com.linecorp.armeria.server.healthcheck.HealthCheckService;
 import com.linecorp.armeria.server.prometheus.PrometheusExpositionService;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
+import io.unitycatalog.server.auth.AuthorizationProvider;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
+import io.unitycatalog.server.auth.OpaAuthorizationProvider;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
@@ -59,6 +61,7 @@ import io.vertx.core.Vertx;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
@@ -256,14 +259,27 @@ public class UnityCatalogServer implements AutoCloseable {
     authorizer =
         initializeAuthorizer(
             unityCatalogServerBuilder.serverProperties, hibernateConfigurator, repositories);
+    Optional<AuthorizationProvider> externalProvider =
+        unityCatalogServerBuilder.serverProperties.isOpaAuthorizationEnabled()
+            ? Optional.of(new OpaAuthorizationProvider(unityCatalogServerBuilder.serverProperties))
+            : Optional.empty();
     // Configure error response stack traces
     BaseExceptionHandler.setIncludeStackTrace(
         unityCatalogServerBuilder.serverProperties.isIncludeStackTraceInError());
     // Init services
-    addApiServices(armeriaServerBuilder, unityCatalogServerBuilder, authorizer, repositories);
+    addApiServices(
+        armeriaServerBuilder,
+        unityCatalogServerBuilder,
+        authorizer,
+        repositories,
+        externalProvider);
     // Init security decorators
     addSecurityDecorators(
-        armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
+        armeriaServerBuilder,
+        unityCatalogServerBuilder.serverProperties,
+        authorizer,
+        repositories,
+        externalProvider);
     // Armeria runs decorators in reverse registration order. Register metrics last so it wraps
     // authentication and authorization and records rejected requests as well.
     if (metrics != null) {
@@ -348,7 +364,8 @@ public class UnityCatalogServer implements AutoCloseable {
       ArmeriaServerBuilder armeriaServerBuilder,
       UnityCatalogServer.Builder unityCatalogServerBuilder,
       UnityCatalogAuthorizer authorizer,
-      Repositories repositories) {
+      Repositories repositories,
+      Optional<AuthorizationProvider> externalProvider) {
     LOGGER.info("Adding Unity Catalog API services...");
     ServerProperties serverProperties = unityCatalogServerBuilder.serverProperties;
     // The credential/file-IO chain is built and owned by Repositories (so repositories can read
@@ -365,7 +382,7 @@ public class UnityCatalogServer implements AutoCloseable {
         .annotate("auth", new AuthService(securityContext, serverProperties, repositories))
         .annotate("scim2/Users", new Scim2UserService(authorizer, repositories))
         .annotate("scim2/Me", new Scim2SelfService(authorizer, repositories))
-        .annotate("permissions", new PermissionService(authorizer, repositories))
+        .annotate("permissions", new PermissionService(authorizer, repositories, serverProperties))
         .annotate("catalogs", new CatalogService(authorizer, repositories, serverProperties))
         .annotate("schemas", schemaService)
         .annotate("volumes", new VolumeService(authorizer, repositories, serverProperties))
@@ -396,7 +413,12 @@ public class UnityCatalogServer implements AutoCloseable {
             "external-locations",
             new ExternalLocationService(authorizer, repositories, serverProperties));
     addIcebergApiServices(
-        armeriaServerBuilder, authorizer, repositories, fileOperations, serverProperties);
+        armeriaServerBuilder,
+        authorizer,
+        repositories,
+        fileOperations,
+        serverProperties,
+        externalProvider);
     addDeltaApiServices(
         armeriaServerBuilder, authorizer, repositories, serverProperties, storageCredentialVendor);
   }
@@ -406,7 +428,8 @@ public class UnityCatalogServer implements AutoCloseable {
       UnityCatalogAuthorizer authorizer,
       Repositories repositories,
       FileOperations fileOperations,
-      ServerProperties serverProperties) {
+      ServerProperties serverProperties,
+      Optional<AuthorizationProvider> externalProvider) {
     LOGGER.info("Adding Iceberg services...");
 
     // Add support for Iceberg REST APIs
@@ -416,7 +439,12 @@ public class UnityCatalogServer implements AutoCloseable {
     armeriaServerBuilder.annotate(
         ArmeriaServerBuilder.ICEBERG_RELATIVE_PATH,
         new IcebergRestCatalogService(
-            authorizer, tableConfigService, metadataService, repositories, serverProperties));
+            authorizer,
+            tableConfigService,
+            metadataService,
+            repositories,
+            serverProperties,
+            externalProvider));
   }
 
   private void addDeltaApiServices(
@@ -435,12 +463,13 @@ public class UnityCatalogServer implements AutoCloseable {
       ArmeriaServerBuilder armeriaServerBuilder,
       ServerProperties serverProperties,
       UnityCatalogAuthorizer authorizer,
-      Repositories repositories) {
+      Repositories repositories,
+      Optional<AuthorizationProvider> externalProvider) {
     // TODO: eventually might want to make this secure-by-default.
     if (serverProperties.isAuthorizationEnabled()) {
       LOGGER.info("Enabling security decorators...");
       armeriaServerBuilder.withSecurityDecorators(
-          new UnityAccessDecorator(authorizer, repositories, serverProperties),
+          new UnityAccessDecorator(authorizer, repositories, serverProperties, externalProvider),
           new AuthDecorator(securityContext, repositories));
     }
   }
