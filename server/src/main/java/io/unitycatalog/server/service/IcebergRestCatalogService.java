@@ -361,7 +361,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
   @ProducesJson
-  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
+  @AuthorizeExpression(AuthorizeExpressions.VEND_ICEBERG_TABLE_CREDENTIAL)
   @AuthorizeResourceKey(METASTORE)
   public HttpResult<LoadTableResponse> loadTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
@@ -410,7 +410,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/credentials")
   @ProducesJson
-  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
+  @AuthorizeExpression(AuthorizeExpressions.VEND_ICEBERG_TABLE_CREDENTIAL)
   @AuthorizeResourceKey(METASTORE)
   public LoadCredentialsResponse loadCredentials(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
@@ -903,7 +903,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     IcebergTablePage page;
     do {
       page = tableRepository.listIcebergTables(catalog, namespace, cursor, pageOf);
-      // Drop tables the caller can't read, per-table, matching loadTable and UC REST listTables.
+      // Filter each table with GET_TABLE, as UC REST listTables does.
       List<TableInfoDAO> tables = new ArrayList<>(page.tableDaos());
       applyResponseFilter(TABLE, tables);
       tables.forEach(
