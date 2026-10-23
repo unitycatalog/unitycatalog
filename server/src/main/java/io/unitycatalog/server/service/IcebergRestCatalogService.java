@@ -29,6 +29,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
+import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
@@ -145,6 +146,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
           Endpoint.V1_DELETE_TABLE,
           Endpoint.V1_RENAME_TABLE);
 
+  private final UnityAccessEvaluator accessEvaluator;
   private final TableConfigService tableConfigService;
   private final MetadataService metadataService;
   private final CatalogRepository catalogRepository;
@@ -165,6 +167,12 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       Repositories repositories,
       ServerProperties serverProperties) {
     super(authorizer, repositories, serverProperties);
+    try {
+      this.accessEvaluator =
+          new UnityAccessEvaluator(authorizer, serverProperties.isStrictPrivilegeChecksEnabled());
+    } catch (NoSuchMethodException | IllegalAccessException e) {
+      throw new BaseException(ErrorCode.INTERNAL, "Error initializing access evaluator.", e);
+    }
     this.tableConfigService = tableConfigService;
     this.metadataService = metadataService;
     this.catalogRepository = repositories.getCatalogRepository();
@@ -361,7 +369,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
   @ProducesJson
-  @AuthorizeExpression(AuthorizeExpressions.VEND_ICEBERG_TABLE_CREDENTIAL)
+  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public HttpResult<LoadTableResponse> loadTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
@@ -375,10 +383,11 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
     }
     boolean refsOnly = refsOnly(snapshots);
+    boolean includeCredentials = canLoadCredentials(state.tableId());
 
     // A caller holding this tag already has what this request would return, so answer it without
     // reading the metadata file at all.
-    String etag = metadataETag(state.metadataLocation(), refsOnly);
+    String etag = metadataETag(state.metadataLocation(), refsOnly, includeCredentials);
     if (holdsETag(ifNoneMatch, etag)) {
       return HttpResult.of(ResponseHeaders.of(HttpStatus.NOT_MODIFIED, HttpHeaderNames.ETAG, etag));
     }
@@ -395,10 +404,12 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
               .build();
     }
     Map<String, String> config =
-        tableConfigService.getTableConfig(
-            tableLocation,
-            getLoadCredentialPrivileges(state),
-            credentialsEndpoint(catalog, namespace, table));
+        includeCredentials
+            ? tableConfigService.getTableConfig(
+                tableLocation,
+                getLoadCredentialPrivileges(state),
+                credentialsEndpoint(catalog, namespace, table))
+            : Map.of();
 
     return HttpResult.of(
         ResponseHeaders.builder(HttpStatus.OK)
@@ -453,11 +464,22 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
             PREFIX_BASE, catalog, RESTUtil.encodeString(namespace), RESTUtil.encodeString(table));
   }
 
+  private boolean canLoadCredentials(UUID tableId) {
+    if (!serverProperties.isAuthorizationEnabled()
+        || !serverProperties.isStrictPrivilegeChecksEnabled()) {
+      return true;
+    }
+    return accessEvaluator.evaluate(
+        userRepository.findPrincipalId(),
+        AuthorizeExpressions.VEND_TABLE_CREDENTIAL,
+        keyMapper.mapResourceKeys(Map.of(TABLE, tableId.toString())),
+        Map.of("operation", "READ"));
+  }
+
   /**
    * Storage-credential scope for {@link #loadTable}: non-native (UniForm) tables are read-only;
    * native tables get READ_WRITE for table {@code OWNER} or {@code SELECT}+{@code MODIFY}, else
-   * READ. Done imperatively because the endpoint's {@code @AuthorizeExpression} only yields a read
-   * pass/fail. (Auth off: principal is null but {@code AllowingAuthorizer} grants all.)
+   * READ. (Auth off: principal is null but {@code AllowingAuthorizer} grants all.)
    */
   Set<CredentialContext.Privilege> getLoadCredentialPrivileges(
       TableRepository.IcebergTableState state) {
@@ -943,12 +965,17 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
    * Names the version of the metadata this endpoint would return for the given snapshots mode. The
    * pointer is hashed rather than returned as-is so the tag does not hand callers a storage
    * location, and the mode is part of it because {@code refs} and {@code all} return different
-   * bodies for the same version. The tag is weak: it identifies the metadata version, not a
-   * byte-for-byte body.
+   * bodies for the same version. Credential access is included because grants can change the
+   * response without a metadata update. The tag is weak: it does not identify a byte-for-byte body.
    */
-  private static String metadataETag(String metadataLocation, boolean refsOnly) {
+  private static String metadataETag(
+      String metadataLocation, boolean refsOnly, boolean includeCredentials) {
     String version =
-        metadataLocation + "\n" + modeName(refsOnly ? SnapshotMode.REFS : SnapshotMode.ALL);
+        metadataLocation
+            + "\n"
+            + modeName(refsOnly ? SnapshotMode.REFS : SnapshotMode.ALL)
+            + "\n"
+            + includeCredentials;
     return "W/\"" + Hashing.sha256().hashString(version, StandardCharsets.UTF_8) + "\"";
   }
 
