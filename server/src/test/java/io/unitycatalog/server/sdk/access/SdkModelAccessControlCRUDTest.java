@@ -8,13 +8,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.ModelVersionsApi;
 import io.unitycatalog.client.api.RegisteredModelsApi;
+import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.model.CreateModelVersion;
 import io.unitycatalog.client.model.CreateRegisteredModel;
+import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.FinalizeModelVersion;
 import io.unitycatalog.client.model.ModelVersionInfo;
+import io.unitycatalog.client.model.PermissionsChange;
+import io.unitycatalog.client.model.Privilege;
 import io.unitycatalog.client.model.RegisteredModelInfo;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.UpdateModelVersion;
+import io.unitycatalog.client.model.UpdatePermissions;
 import io.unitycatalog.client.model.UpdateRegisteredModel;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -23,6 +28,8 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 /**
  * SDK-based access control tests for Registered Model and Model Version CRUD operations.
@@ -43,6 +50,155 @@ import org.junit.jupiter.api.Test;
  * </ul>
  */
 public class SdkModelAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest {
+
+  @ParameterizedTest
+  @CsvSource({
+    "REGISTERED_MODEL, true, true, , , true, false",
+    "REGISTERED_MODEL, true, true, SCHEMA, CREATE_MODEL, true, true",
+    "REGISTERED_MODEL, true, true, CATALOG, CREATE_MODEL, true, true",
+    "REGISTERED_MODEL, true, true, SCHEMA, CREATE_FUNCTION, true, true",
+    "REGISTERED_MODEL, true, true, CATALOG, CREATE_FUNCTION, true, true",
+    "REGISTERED_MODEL, false, true, SCHEMA, CREATE_MODEL, false, false",
+    "REGISTERED_MODEL, true, false, SCHEMA, CREATE_MODEL, false, false",
+    "SCHEMA, true, false, , , true, true",
+    "SCHEMA, false, false, , , false, false",
+    "CATALOG, false, false, , , true, false",
+    "CATALOG, false, false, SCHEMA, CREATE_MODEL, true, false",
+    "CATALOG, false, true, SCHEMA, CREATE_MODEL, true, true",
+    "METASTORE, false, false, , , false, false",
+    "METASTORE, true, true, SCHEMA, CREATE_MODEL, false, false",
+    ", true, true, SCHEMA, CREATE_MODEL, false, false"
+  })
+  @SneakyThrows
+  public void testModelRenamePermissions(
+      SecurableType ownerType,
+      boolean useCatalog,
+      boolean useSchema,
+      SecurableType createGrantType,
+      Privileges createPrivilege,
+      boolean canComment,
+      boolean canRename) {
+    createCommonTestUsers();
+    setupCommonCatalogAndSchema();
+    SchemasApi schemaCreatorApi =
+        new SchemasApi(TestUtils.createApiClient(createTestUserServerConfig(PRINCIPAL_2)));
+    grantPermissions(
+        PRINCIPAL_2,
+        SecurableType.CATALOG,
+        "cat_pr1",
+        Privileges.USE_CATALOG,
+        Privileges.CREATE_SCHEMA);
+    schemaCreatorApi.createSchema(new CreateSchema().name("sch_rename").catalogName("cat_pr1"));
+    RegisteredModelsApi modelOwnerApi =
+        new RegisteredModelsApi(TestUtils.createApiClient(createTestUserServerConfig(REGULAR_1)));
+    RegisteredModelsApi observerApi = new RegisteredModelsApi(adminApiClient);
+    grantPermissions(REGULAR_1, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    grantPermissions(
+        REGULAR_1,
+        SecurableType.SCHEMA,
+        "cat_pr1.sch_rename",
+        Privileges.USE_SCHEMA,
+        Privileges.CREATE_MODEL);
+    RegisteredModelInfo original =
+        modelOwnerApi.createRegisteredModel(
+            new CreateRegisteredModel()
+                .name("model")
+                .catalogName("cat_pr1")
+                .schemaName("sch_rename"));
+    grantsApi.update(
+        SecurableType.CATALOG,
+        "cat_pr1",
+        new UpdatePermissions()
+            .changes(
+                List.of(
+                    new PermissionsChange()
+                        .principal(PRINCIPAL_1)
+                        .remove(List.of(Privilege.USE_CATALOG)),
+                    new PermissionsChange()
+                        .principal(PRINCIPAL_2)
+                        .remove(List.of(Privilege.USE_CATALOG, Privilege.CREATE_SCHEMA)),
+                    new PermissionsChange()
+                        .principal(REGULAR_1)
+                        .remove(List.of(Privilege.USE_CATALOG)))));
+    grantsApi.update(
+        SecurableType.SCHEMA,
+        "cat_pr1.sch_rename",
+        new UpdatePermissions()
+            .changes(
+                List.of(
+                    new PermissionsChange()
+                        .principal(REGULAR_1)
+                        .remove(List.of(Privilege.USE_SCHEMA, Privilege.CREATE_MODEL)))));
+    String fullName = "cat_pr1.sch_rename.model";
+    String principal =
+        ownerType == null
+            ? REGULAR_2
+            : switch (ownerType) {
+              case METASTORE -> "admin";
+              case CATALOG -> PRINCIPAL_1;
+              case SCHEMA -> PRINCIPAL_2;
+              default -> REGULAR_1;
+            };
+    RegisteredModelsApi callerApi =
+        ownerType == SecurableType.METASTORE
+            ? new RegisteredModelsApi(adminApiClient)
+            : new RegisteredModelsApi(
+                TestUtils.createApiClient(createTestUserServerConfig(principal)));
+    if (useCatalog) {
+      grantPermissions(principal, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    }
+    if (useSchema) {
+      grantPermissions(
+          principal, SecurableType.SCHEMA, "cat_pr1.sch_rename", Privileges.USE_SCHEMA);
+    }
+    if (createGrantType != null) {
+      grantPermissions(
+          principal,
+          createGrantType,
+          createGrantType == SecurableType.CATALOG ? "cat_pr1" : "cat_pr1.sch_rename",
+          createPrivilege);
+    }
+
+    UpdateRegisteredModel commentOnly = new UpdateRegisteredModel().comment("comment");
+    if (canComment) {
+      callerApi.updateRegisteredModel(fullName, commentOnly);
+      assertThat(observerApi.getRegisteredModel(fullName).getComment()).isEqualTo("comment");
+    } else {
+      assertPermissionDenied(() -> callerApi.updateRegisteredModel(fullName, commentOnly));
+      assertThat(observerApi.getRegisteredModel(fullName).getComment())
+          .isEqualTo(original.getComment());
+    }
+
+    UpdateRegisteredModel sameName = new UpdateRegisteredModel().newName("model");
+    if (canRename) {
+      assertApiException(
+          () -> callerApi.updateRegisteredModel(fullName, sameName),
+          ErrorCode.ALREADY_EXISTS,
+          "Registered model already exists");
+    } else {
+      assertPermissionDenied(() -> callerApi.updateRegisteredModel(fullName, sameName));
+    }
+
+    for (String comment : new String[] {null, "renamed comment"}) {
+      UpdateRegisteredModel rename =
+          new UpdateRegisteredModel().newName("renamed").comment(comment);
+      if (canRename) {
+        callerApi.updateRegisteredModel(fullName, rename);
+        RegisteredModelInfo renamed = observerApi.getRegisteredModel("cat_pr1.sch_rename.renamed");
+        assertThat(renamed.getId()).isEqualTo(original.getId());
+        assertThat(renamed.getName()).isEqualTo("renamed");
+        assertThat(renamed.getComment()).isEqualTo(comment == null ? "comment" : comment);
+        callerApi.updateRegisteredModel(
+            "cat_pr1.sch_rename.renamed", new UpdateRegisteredModel().newName("model"));
+      } else {
+        assertPermissionDenied(() -> callerApi.updateRegisteredModel(fullName, rename));
+        RegisteredModelInfo unchanged = observerApi.getRegisteredModel(fullName);
+        assertThat(unchanged.getName()).isEqualTo("model");
+        assertThat(unchanged.getComment())
+            .isEqualTo(canComment ? "comment" : original.getComment());
+      }
+    }
+  }
 
   @Test
   @SneakyThrows

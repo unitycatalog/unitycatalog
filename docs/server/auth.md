@@ -167,6 +167,8 @@ The setting covers:
   and existence checks across the UC REST, Delta, and Iceberg REST APIs. Existing usage and
   ownership rules still apply.
 - Volume rename: Also require permission to create volumes in the containing schema.
+- [Model rename](#model-rename-permissions): Also require permission to create models
+  in the containing schema.
 
 The access checks apply only when `server.authorization=enable`.
 Grant validation also applies when authorization is disabled.
@@ -234,6 +236,17 @@ saving its grants or revokes.
 After an upgrade, existing grants stay in place. The server does not remove invalid grants
 automatically. You can still remove them through the permissions API. Update grant scripts
 to use the correct object types before adding or reapplying grants.
+
+### Model Rename Permissions
+
+Renaming a registered model requires permission to update it and to create models in its schema.
+Model owners need `USE CATALOG` on the catalog and `USE SCHEMA` on the schema. They also need
+`CREATE MODEL` or `CREATE FUNCTION` on the schema. Schema ownership replaces the schema grants.
+Catalog ownership replaces `USE CATALOG`, but does not replace permission to create models in a
+schema owned by someone else. Creation grants on the catalog also apply to its schemas.
+
+Comment-only updates keep the existing update checks. A request that includes a new name uses
+the rename checks, even if the name is unchanged.
 
 ### Restart the UC Server
 
