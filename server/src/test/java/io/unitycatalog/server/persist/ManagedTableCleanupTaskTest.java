@@ -223,8 +223,7 @@ class ManagedTableCleanupTaskTest {
           .isInstanceOfSatisfying(
               BaseException.class,
               e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE));
-      // UC REST and Iceberg clients retry a 503 on drop table. The Delta API has no 503 error
-      // type, so it answers with its "retry after a delay" type.
+      // A drop that times out on the lock is a 503 on every API, which clients retry.
       AggregatedHttpResponse uc = errorResponse(GlobalExceptionHandler.INSTANCE, dropFailure);
       assertThat(uc.status().code()).isEqualTo(503);
       assertThat(uc.contentUtf8()).contains("\"error_code\":\"UNAVAILABLE\"");
@@ -233,8 +232,8 @@ class ManagedTableCleanupTaskTest {
       assertThat(iceberg.status().code()).isEqualTo(503);
       assertThat(iceberg.contentUtf8()).contains("\"type\":\"ServiceUnavailableException\"");
       AggregatedHttpResponse delta = errorResponse(DeltaApiExceptionHandler.INSTANCE, dropFailure);
-      assertThat(delta.status().code()).isEqualTo(429);
-      assertThat(delta.contentUtf8()).contains("TooManyRequestsException");
+      assertThat(delta.status().code()).isEqualTo(503);
+      assertThat(delta.contentUtf8()).contains("ServiceUnavailableException");
       tx.rollback();
     }
     assertThat(findTable(table.getId())).isNotNull();

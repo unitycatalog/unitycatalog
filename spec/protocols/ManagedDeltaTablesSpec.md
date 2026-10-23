@@ -1247,6 +1247,7 @@ The per-endpoint Errors tables list only endpoint-specific errors. In addition, 
 - `NotAuthorizedException` (401) when the bearer token is missing or invalid.
 - `PermissionDeniedException` (403) when the caller lacks the required privileges; endpoint tables name the specific privileges where they matter.
 - `TooManyRequestsException` (429) when the server throttles the client.
+- `ServiceUnavailableException` (503) when the server is temporarily unable to serve the request; the client may retry after a delay.
 - `InternalServerErrorException` (500) and other 5xx errors on server failures.
 
 Field Name | Data Type | Description | Optional/Required
