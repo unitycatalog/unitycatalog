@@ -5,6 +5,7 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.mockito.Mockito.mockStatic;
 
 import io.delta.tables.DeltaTable;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
@@ -15,6 +16,9 @@ import io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
+import io.unitycatalog.server.observability.UcMetric;
+import io.unitycatalog.server.observability.UcMetricConstants;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
@@ -83,6 +87,9 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
   private SparkSession session;
   private SdkSchemaOperations schemaOperations;
 
+  /** The server cache's meters when the cache is enabled. */
+  private SimpleMeterRegistry cacheMeters;
+
   @Override
   protected CatalogOperations createCatalogOperations(ServerConfig config) {
     return new SdkCatalogOperations(createApiClient(config));
@@ -114,12 +121,22 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
   @Override
   protected void setUpCredentialOperations(ServerProperties serverProperties) {
     if (cacheEnabled) {
+      cacheMeters = new SimpleMeterRegistry();
       cloudCredentialVendor =
           new CachingCloudCredentialVendor(
               serverProperties,
               TestUtils.clockOf(() -> testClock().now()),
-              /* expiryMargin= */ Duration.ofSeconds(1));
+              /* expiryMargin= */ Duration.ofSeconds(1),
+              new UnityCatalogMetrics(cacheMeters));
     }
+  }
+
+  /**
+   * The server cache's {@link UcMetric#STORAGE_CREDENTIAL_CACHE_REQUESTS} count for {@code result}.
+   */
+  private double cacheRequests(String result) {
+    return TestUtils.counterCount(
+        cacheMeters, UcMetric.STORAGE_CREDENTIAL_CACHE_REQUESTS, UcMetricConstants.RESULT, result);
   }
 
   private SparkSession createSparkSession() {
@@ -354,21 +371,27 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
     try (FetchRecorder fetches = new FetchRecorder(fs)) {
       advanceToNextCredentialWindow();
       resetVendCount();
+      double hitsBefore = cacheRequests(UcMetricConstants.HIT);
+      double missesBefore = cacheRequests(UcMetricConstants.MISS);
 
       fs.getFileStatus(new Path(location));
       assertFetchesAndVends(fetches, 1, 1);
+      assertThat(cacheRequests(UcMetricConstants.MISS)).isEqualTo(missesBefore + 1);
 
-      // The connector renews and asks UC again (fetch #2), but the vend count stays at 1: the
-      // server answered from its cache. The vend count is the proof; the equality only confirms
-      // the connector got the window's credential back, which a re-vend would also produce.
+      // The connector renews and asks UC again (fetch #2), but the vend count stays at 1 and the
+      // server records a cache hit: the server answered from its cache. The equality only
+      // confirms the connector got the window's credential back.
       testClock().sleep(Duration.ofSeconds(21));
       fs.getFileStatus(new Path(location));
       assertFetchesAndVends(fetches, 2, 1);
+      assertThat(cacheRequests(UcMetricConstants.HIT)).isEqualTo(hitsBefore + 1);
       assertThat(fetches.fetch(1)).isEqualTo(fetches.fetch(0));
 
       testClock().sleep(Duration.ofSeconds(10));
       fs.getFileStatus(new Path(location));
       assertFetchesAndVends(fetches, 3, 2);
+      assertThat(cacheRequests(UcMetricConstants.MISS)).isEqualTo(missesBefore + 2);
+      assertThat(cacheRequests(UcMetricConstants.HIT)).isEqualTo(hitsBefore + 1);
       assertThat(fetches.fetch(2)).isNotEqualTo(fetches.fetch(0));
     }
   }

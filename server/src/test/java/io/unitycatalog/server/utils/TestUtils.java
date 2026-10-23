@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiClientBuilder;
 import io.unitycatalog.client.ApiException;
@@ -15,6 +17,7 @@ import io.unitycatalog.client.delta.model.DeltaErrorType;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.observability.UcMetric;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -26,6 +29,7 @@ import java.time.Instant;
 import java.time.InstantSource;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -534,6 +538,17 @@ public class TestUtils {
     List<String> httpRequestMetrics =
         scrape.lines().filter(line -> line.startsWith("http_server_requests_total")).toList();
     assertThat(httpRequestMetrics).contains(expected);
+  }
+
+  /**
+   * The count of the one {@code metric} counter with the given tag key/value pairs. Fails unless
+   * exactly one counter matches, so a renamed meter or tag, or tags too loose to pick one series,
+   * fails the test instead of reading another value.
+   */
+  public static double counterCount(MeterRegistry registry, UcMetric metric, String... tags) {
+    Collection<Counter> matches = registry.get(metric.getMetricName()).tags(tags).counters();
+    assertThat(matches).as("counters %s %s", metric, Arrays.toString(tags)).hasSize(1);
+    return matches.iterator().next().count();
   }
 
   /** Convenience wrapper over {@link #sendRaw} for GET probes with an optional body. */
