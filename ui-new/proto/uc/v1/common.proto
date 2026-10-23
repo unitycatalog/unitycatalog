@@ -1,0 +1,199 @@
+syntax = "proto3";
+
+package uc.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+// CatalogRef identifies a catalog by its UC name.
+message CatalogRef {
+  string name = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 255
+    pattern: "^[A-Za-z0-9_@-]+$"
+  }];
+}
+
+// SchemaRef identifies a schema by its catalog and schema names.
+message SchemaRef {
+  string catalog_name = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 255
+    pattern: "^[A-Za-z0-9_@-]+$"
+  }];
+  string name = 2 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 255
+    pattern: "^[A-Za-z0-9_@-]+$"
+  }];
+}
+
+// SchemaObjectRef identifies a three-level object under a schema.
+message SchemaObjectRef {
+  string catalog_name = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 255
+    pattern: "^[A-Za-z0-9_@-]+$"
+  }];
+  string schema_name = 2 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 255
+    pattern: "^[A-Za-z0-9_@-]+$"
+  }];
+  string name = 3 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 255
+    pattern: "^[A-Za-z0-9_@-]+$"
+  }];
+}
+
+// ModelVersionRef identifies one version of a registered model.
+message ModelVersionRef {
+  SchemaObjectRef model = 1 [(buf.validate.field).required = true];
+  int64 version = 2 [(buf.validate.field).int64.gt = 0];
+}
+
+// PageRequest carries an optional UC page size and opaque continuation token.
+// Individual list requests further constrain max_results to their UC endpoint.
+message PageRequest {
+  optional int32 max_results = 1 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 10000
+  }];
+  string page_token = 2 [(buf.validate.field).string.max_len = 8192];
+}
+
+// PageResponse carries the opaque token for the next page, when one exists.
+message PageResponse {
+  string next_page_token = 1 [(buf.validate.field).string.max_len = 8192];
+}
+
+// ExternalStorageLocation contains a normalized non-root UC storage path.
+message ExternalStorageLocation {
+  string value = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 8192
+    pattern: "^(?:(?:s3|gs|abfss?)://[^/?#%]+/(?:[^./?#%][^/?#%]*|\\.[^./?#%][^/?#%]*|\\.\\.[^/?#%]+)(?:/(?:[^./?#%][^/?#%]*|\\.[^./?#%][^/?#%]*|\\.\\.[^/?#%]+))*/?|file:/+.+|(?:/|[^:/]+/).*)$"
+    uri_ref: true
+  }];
+}
+
+// Properties wraps UC securable properties so update requests retain presence.
+message Properties {
+  map<string, string> values = 1 [(buf.validate.field).map = {
+    max_pairs: 1024
+    keys: {
+      string: {
+        min_len: 1
+        max_len: 255
+      }
+    }
+    values: {
+      string: {max_len: 65536}
+    }
+  }];
+}
+
+// AuditInfo contains ownership and audit metadata returned by UC.
+message AuditInfo {
+  string owner = 1;
+  google.protobuf.Timestamp created_at = 2;
+  string created_by = 3;
+  google.protobuf.Timestamp updated_at = 4;
+  string updated_by = 5;
+}
+
+// ColumnTypeName is the UC logical type name for a table column or function value.
+enum ColumnTypeName {
+  COLUMN_TYPE_NAME_UNSPECIFIED = 0;
+  COLUMN_TYPE_NAME_BOOLEAN = 1;
+  COLUMN_TYPE_NAME_BYTE = 2;
+  COLUMN_TYPE_NAME_SHORT = 3;
+  COLUMN_TYPE_NAME_INT = 4;
+  COLUMN_TYPE_NAME_LONG = 5;
+  COLUMN_TYPE_NAME_FLOAT = 6;
+  COLUMN_TYPE_NAME_DOUBLE = 7;
+  COLUMN_TYPE_NAME_DATE = 8;
+  COLUMN_TYPE_NAME_TIMESTAMP = 9;
+  COLUMN_TYPE_NAME_TIMESTAMP_NTZ = 10;
+  COLUMN_TYPE_NAME_STRING = 11;
+  COLUMN_TYPE_NAME_BINARY = 12;
+  COLUMN_TYPE_NAME_DECIMAL = 13;
+  COLUMN_TYPE_NAME_INTERVAL = 14;
+  COLUMN_TYPE_NAME_ARRAY = 15;
+  COLUMN_TYPE_NAME_STRUCT = 16;
+  COLUMN_TYPE_NAME_MAP = 17;
+  COLUMN_TYPE_NAME_VARIANT = 18;
+  COLUMN_TYPE_NAME_CHAR = 19;
+  COLUMN_TYPE_NAME_NULL = 20;
+  COLUMN_TYPE_NAME_USER_DEFINED_TYPE = 21;
+  COLUMN_TYPE_NAME_TABLE_TYPE = 22;
+}
+
+// ColumnInfo is the UI-facing shape of a UC table column.
+message ColumnInfo {
+  string name = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 255
+  }];
+  optional string type_text = 2 [(buf.validate.field).string.max_len = 65536];
+  optional string type_json = 3 [(buf.validate.field).string.max_len = 1048576];
+  ColumnTypeName type_name = 4 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: 0
+  }];
+  optional int32 type_precision = 5 [(buf.validate.field).int32.gte = 0];
+  optional int32 type_scale = 6 [(buf.validate.field).int32.gte = 0];
+  optional string type_interval_type = 7 [(buf.validate.field).string.max_len = 255];
+  optional int32 position = 8 [(buf.validate.field).int32.gte = 0];
+  optional string comment = 9 [(buf.validate.field).string.max_len = 65536];
+  optional bool nullable = 10;
+  optional int32 partition_index = 11 [(buf.validate.field).int32.gte = 0];
+}
+
+// ColumnInput contains the scalar column fields supplied by the UI.
+//
+// Branch 2 assigns positions from list order and derives canonical type_text
+// and type_json values. Complex column creation is intentionally not exposed.
+message ColumnInput {
+  string name = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 255
+  }];
+  ColumnTypeName type_name = 2 [(buf.validate.field).enum = {
+    defined_only: true
+    in: 1
+    in: 2
+    in: 3
+    in: 4
+    in: 5
+    in: 6
+    in: 7
+    in: 8
+    in: 9
+    in: 10
+    in: 11
+    in: 12
+    in: 18
+  }];
+  optional string comment = 3 [(buf.validate.field).string.max_len = 65536];
+  optional bool nullable = 4;
+}
+
+// Dependency identifies one table or function referenced by a view.
+message Dependency {
+  oneof target {
+    option (buf.validate.oneof).required = true;
+
+    string table_full_name = 1 [(buf.validate.field).string = {
+      min_len: 5
+      max_len: 767
+      pattern: "^[A-Za-z0-9_@-]{1,255}\\.[A-Za-z0-9_@-]{1,255}\\.[A-Za-z0-9_@-]{1,255}$"
+    }];
+    string function_full_name = 2 [(buf.validate.field).string = {
+      min_len: 5
+      max_len: 767
+      pattern: "^[A-Za-z0-9_@-]{1,255}\\.[A-Za-z0-9_@-]{1,255}\\.[A-Za-z0-9_@-]{1,255}$"
+    }];
+  }
+}

@@ -1,0 +1,126 @@
+syntax = "proto3";
+
+package uc.v1;
+
+import "buf/validate/validate.proto";
+import "uc/v1/common.proto";
+
+// VolumeType is the storage management mode of a UC volume.
+enum VolumeType {
+  VOLUME_TYPE_UNSPECIFIED = 0;
+  VOLUME_TYPE_MANAGED = 1;
+  VOLUME_TYPE_EXTERNAL = 2;
+}
+
+// VolumeSummary contains the fields needed to render a volume list.
+message VolumeSummary {
+  string catalog_name = 1;
+  string schema_name = 2;
+  string name = 3;
+  string full_name = 4;
+  VolumeType volume_type = 5;
+  string comment = 6;
+  AuditInfo audit = 7;
+}
+
+// VolumeInfo contains the complete volume details exposed by the UI.
+message VolumeInfo {
+  string catalog_name = 1;
+  string schema_name = 2;
+  string name = 3;
+  string full_name = 4;
+  VolumeType volume_type = 5;
+  string storage_location = 6;
+  string comment = 7;
+  AuditInfo audit = 8;
+  string id = 9;
+}
+
+// ListVolumesRequest lists volumes in a schema.
+message ListVolumesRequest {
+  SchemaRef schema = 1 [(buf.validate.field).required = true];
+  PageRequest page = 2;
+}
+
+// ListVolumesResponse contains one page of volumes.
+message ListVolumesResponse {
+  repeated VolumeSummary volumes = 1;
+  PageResponse page = 2;
+}
+
+// GetVolumeRequest selects a volume.
+message GetVolumeRequest {
+  SchemaObjectRef volume = 1 [(buf.validate.field).required = true];
+}
+
+// GetVolumeResponse contains complete volume details.
+message GetVolumeResponse {
+  VolumeInfo volume = 1 [(buf.validate.field).required = true];
+}
+
+// CreateVolumeRequest contains the user-editable fields for a new volume.
+message CreateVolumeRequest {
+  option (buf.validate.message).cel = {
+    id: "create_volume.storage"
+    message: "storage_location is required for external volumes and forbidden for managed volumes"
+    expression: "(this.volume_type == 1 && !has(this.storage_location)) || (this.volume_type == 2 && has(this.storage_location))"
+  };
+
+  SchemaObjectRef volume = 1 [(buf.validate.field).required = true];
+  VolumeType volume_type = 2 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: 0
+  }];
+  optional string comment = 3 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 65536
+  }];
+  ExternalStorageLocation storage_location = 4;
+}
+
+// CreateVolumeResponse contains the newly created volume.
+message CreateVolumeResponse {
+  VolumeInfo volume = 1 [(buf.validate.field).required = true];
+}
+
+// UpdateVolumeRequest updates a volume name or comment.
+message UpdateVolumeRequest {
+  option (buf.validate.message).cel = {
+    id: "update_volume.changes"
+    message: "at least one volume field must be updated"
+    expression: "has(this.comment) || has(this.new_name)"
+  };
+
+  SchemaObjectRef volume = 1 [(buf.validate.field).required = true];
+  optional string comment = 2 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 65536
+  }];
+  optional string new_name = 3 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 255
+    pattern: "^[A-Za-z0-9_@-]+$"
+  }];
+}
+
+// UpdateVolumeResponse contains the updated volume.
+message UpdateVolumeResponse {
+  VolumeInfo volume = 1 [(buf.validate.field).required = true];
+}
+
+// DeleteVolumeRequest deletes a volume.
+message DeleteVolumeRequest {
+  SchemaObjectRef volume = 1 [(buf.validate.field).required = true];
+}
+
+// DeleteVolumeResponse acknowledges a successful volume deletion.
+message DeleteVolumeResponse {}
+
+// VolumeService provides the UI-facing volume operations.
+service VolumeService {
+  rpc ListVolumes(ListVolumesRequest) returns (ListVolumesResponse);
+  rpc GetVolume(GetVolumeRequest) returns (GetVolumeResponse);
+  rpc CreateVolume(CreateVolumeRequest) returns (CreateVolumeResponse);
+  rpc UpdateVolume(UpdateVolumeRequest) returns (UpdateVolumeResponse);
+  rpc DeleteVolume(DeleteVolumeRequest) returns (DeleteVolumeResponse);
+}
