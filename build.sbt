@@ -41,9 +41,9 @@ lazy val awsSdkV2Version = "2.54.18"
 lazy val armeriaVersion = "1.41.1"
 // Keep in lockstep with Armeria's Micrometer line.
 lazy val micrometerVersion = "1.17.0"
-lazy val nettyVersion = "4.2.18.Final"
+lazy val nettyVersion = "4.2.19.Final"
 lazy val nettyTcnativeVersion = "2.0.84.Final"
-lazy val vertxVersion = "4.5.34"
+lazy val vertxVersion = "5.2.2"
 lazy val postgresqlVersion = "42.7.14"
 // Keep in step with the Caffeine version iceberg-core depends on (2.9.3 in Iceberg 1.11.0).
 lazy val caffeineVersion = "2.9.3"
@@ -454,7 +454,6 @@ lazy val server = (project in file("server"))
       // apache5-client instead, so declare apache-client explicitly
       "software.amazon.awssdk" % "apache-client" % awsSdkV2Version,
       "io.vertx" % "vertx-core" % vertxVersion,
-      "io.vertx" % "vertx-web" % vertxVersion,
       "io.vertx" % "vertx-web-client" % vertxVersion,
 
       // Hadoop dependencies for ExternalLocationUtils
