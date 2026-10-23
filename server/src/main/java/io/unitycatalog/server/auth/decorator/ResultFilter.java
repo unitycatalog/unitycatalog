@@ -123,27 +123,9 @@ public class ResultFilter {
     items.removeIf(
         item -> {
           try {
-            // Resolve the item's resource ID and any parent resource IDs to make a complete
-            // collection of all needed resource IDs for this item.
-            Map<SecurableType, UUID> resourceIdsForItem =
-                resolveResourceIdsForItem(securableType, item, request.resources());
-            Map<SecurableType, Object> keysForItem = new HashMap<>(request.resourceKeys());
-            keysForItem.put(securableType, resolveResourceName(securableType, item));
-            if (securableType == REGISTERED_MODEL) {
-              RegisteredModelInfo model = (RegisteredModelInfo) item;
-              keysForItem.put(CATALOG, model.getCatalogName());
-              keysForItem.put(SCHEMA, model.getSchemaName());
-            }
             boolean authorized =
                 evaluator.evaluate(
-                    rule,
-                    new AuthorizationRequest(
-                        request.principal(),
-                        request.action(),
-                        resourceIdsForItem,
-                        keysForItem,
-                        request.context()),
-                    operationStartNanos);
+                    rule, resolveRequestForItem(securableType, item), operationStartNanos);
             if (!authorized) {
               LOGGER.debug("Item filtered out: {}", item.getClass().getSimpleName());
             }
@@ -162,60 +144,52 @@ public class ResultFilter {
     LOGGER.debug("After filtering: {} items remain", items.size());
   }
 
-  private Map<SecurableType, UUID> resolveResourceIdsForItem(
-      SecurableType securableType, Object item, Map<SecurableType, UUID> preResolvedIds) {
-    // First, resolve the item's own resource ID
-    UUID itemId = resolveResourceId(securableType, item);
-    Map<SecurableType, UUID> combined = new HashMap<>(preResolvedIds);
-    combined.put(securableType, itemId);
-    // For REGISTERED_MODEL, resolve catalog and schema if both are not present.
-    if (securableType == REGISTERED_MODEL
-        && !preResolvedIds.containsKey(CATALOG)
-        && !preResolvedIds.containsKey(SCHEMA)) {
+  private AuthorizationRequest resolveRequestForItem(SecurableType securableType, Object item) {
+    Resource resource = resolveResource(securableType, item);
+    Map<SecurableType, UUID> resourceIds = new HashMap<>(request.resources());
+    resourceIds.put(securableType, UUID.fromString(resource.id()));
+    Map<SecurableType, Object> resourceKeys = new HashMap<>(request.resourceKeys());
+    resourceKeys.put(securableType, resource.name());
+    if (securableType == REGISTERED_MODEL) {
       RegisteredModelInfo model = (RegisteredModelInfo) item;
-      combined.putAll(
-          keyMapper.mapResourceKeys(
-              Map.of(CATALOG, model.getCatalogName(), SCHEMA, model.getSchemaName())));
+      resourceKeys.put(CATALOG, model.getCatalogName());
+      resourceKeys.put(SCHEMA, model.getSchemaName());
+      // Models can be listed without catalog/schema filters, so resolve their parents if needed.
+      if (!resourceIds.containsKey(CATALOG) && !resourceIds.containsKey(SCHEMA)) {
+        resourceIds.putAll(
+            keyMapper.mapResourceKeys(
+                Map.of(CATALOG, model.getCatalogName(), SCHEMA, model.getSchemaName())));
+      }
     }
-    // For everything else, the catalog and schema IDs are already included in preResolvedIds
-    // if needed.
-    return combined;
+    return new AuthorizationRequest(
+        request.principal(), request.action(), resourceIds, resourceKeys, request.context());
   }
 
-  private UUID resolveResourceId(SecurableType securableType, Object item) {
-    String id =
-        switch (securableType) {
-          // Table listings may filter over either the API model or the raw DAO (the Iceberg REST
-          // listTables path passes DAOs straight through to avoid materializing a TableInfo).
-          case TABLE ->
-              item instanceof TableInfoDAO dao
-                  ? dao.getId().toString()
-                  : ((TableInfo) item).getTableId();
-          case VOLUME -> ((VolumeInfo) item).getVolumeId();
-          case FUNCTION -> ((FunctionInfo) item).getFunctionId();
-          case REGISTERED_MODEL -> ((RegisteredModelInfo) item).getId();
-          case CATALOG -> ((CatalogInfo) item).getId();
-          case SCHEMA -> ((SchemaInfo) item).getSchemaId();
-          case CREDENTIAL -> ((CredentialInfo) item).getId();
-          case EXTERNAL_LOCATION -> ((ExternalLocationInfo) item).getId();
-          default -> throw new RuntimeException("Unsupported securable type: " + securableType);
-        };
-    return UUID.fromString(id);
-  }
-
-  private String resolveResourceName(SecurableType securableType, Object item) {
+  private Resource resolveResource(SecurableType securableType, Object item) {
     return switch (securableType) {
-      case TABLE -> item instanceof TableInfoDAO dao ? dao.getName() : ((TableInfo) item).getName();
-      case VOLUME -> ((VolumeInfo) item).getName();
-      case FUNCTION -> ((FunctionInfo) item).getName();
-      case REGISTERED_MODEL -> ((RegisteredModelInfo) item).getName();
-      case CATALOG -> ((CatalogInfo) item).getName();
-      case SCHEMA -> ((SchemaInfo) item).getName();
-      case CREDENTIAL -> ((CredentialInfo) item).getName();
-      case EXTERNAL_LOCATION -> ((ExternalLocationInfo) item).getName();
+      // Iceberg table listings pass DAOs rather than materializing API models.
+      case TABLE ->
+          item instanceof TableInfoDAO dao
+              ? new Resource(dao.getId().toString(), dao.getName())
+              : new Resource(((TableInfo) item).getTableId(), ((TableInfo) item).getName());
+      case VOLUME -> new Resource(((VolumeInfo) item).getVolumeId(), ((VolumeInfo) item).getName());
+      case FUNCTION ->
+          new Resource(((FunctionInfo) item).getFunctionId(), ((FunctionInfo) item).getName());
+      case REGISTERED_MODEL ->
+          new Resource(
+              ((RegisteredModelInfo) item).getId(), ((RegisteredModelInfo) item).getName());
+      case CATALOG -> new Resource(((CatalogInfo) item).getId(), ((CatalogInfo) item).getName());
+      case SCHEMA -> new Resource(((SchemaInfo) item).getSchemaId(), ((SchemaInfo) item).getName());
+      case CREDENTIAL ->
+          new Resource(((CredentialInfo) item).getId(), ((CredentialInfo) item).getName());
+      case EXTERNAL_LOCATION ->
+          new Resource(
+              ((ExternalLocationInfo) item).getId(), ((ExternalLocationInfo) item).getName());
       default -> throw new RuntimeException("Unsupported securable type: " + securableType);
     };
   }
+
+  private record Resource(String id, String name) {}
 
   /**
    * Returns whether the filter has been called.
