@@ -7,7 +7,11 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.observability.UcMetric;
+import io.unitycatalog.server.observability.UcMetricConstants;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
@@ -17,6 +21,7 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TestUtils;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
@@ -96,12 +101,31 @@ class RepositoriesTest {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
     properties.setProperty("server.storage-credential-cache.enabled", String.valueOf(cacheEnabled));
+    // A static per-bucket credential, so the vend needs no cloud call.
+    properties.setProperty("s3.bucketPath.0", "s3://bucket");
+    properties.setProperty("s3.accessKey.0", "AK");
+    properties.setProperty("s3.secretKey.0", "SK");
+    properties.setProperty("s3.sessionToken.0", "TK");
+    SimpleMeterRegistry registry = new SimpleMeterRegistry();
 
     CloudCredentialVendor vendor =
-        Repositories.defaultCloudCredentialVendor(new ServerProperties(properties));
+        Repositories.defaultCloudCredentialVendor(
+            new ServerProperties(properties), new UnityCatalogMetrics(registry));
+    vendor.vendCredential(
+        CredentialContext.create(
+            NormalizedURL.from("s3://bucket/table"),
+            Set.of(CredentialContext.Privilege.SELECT),
+            Optional.empty()));
 
     assertThat(vendor.getClass())
         .isEqualTo(cacheEnabled ? CachingCloudCredentialVendor.class : CloudCredentialVendor.class);
+    // The cache records into the metrics it was given.
+    assertThat(cacheRequests(registry, UcMetricConstants.MISS)).isEqualTo(cacheEnabled ? 1.0 : 0.0);
+  }
+
+  private static double cacheRequests(SimpleMeterRegistry registry, String result) {
+    return TestUtils.counterCount(
+        registry, UcMetric.STORAGE_CREDENTIAL_CACHE_REQUESTS, UcMetricConstants.RESULT, result);
   }
 
   @Test

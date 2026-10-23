@@ -1,6 +1,5 @@
 package io.unitycatalog.server.persist;
 
-import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import io.unitycatalog.server.auth.decorator.KeyMapper;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
@@ -54,7 +53,7 @@ public class Repositories {
     this(sessionFactory, serverProperties, cloudCredentialVendor, UnaryOperator.identity());
   }
 
-  /** Creates repositories with no-op metrics backed by an empty composite registry. */
+  /** Creates repositories with {@link UnityCatalogMetrics#noop() no-op metrics}. */
   public Repositories(
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
@@ -80,14 +79,13 @@ public class Repositories {
       UnaryOperator<FileOperations> fileOperationsDecorator,
       UnityCatalogMetrics metrics) {
     UnityCatalogMetrics resolvedMetrics =
-        Objects.requireNonNullElseGet(
-            metrics, () -> new UnityCatalogMetrics(new CompositeMeterRegistry()));
+        Objects.requireNonNullElseGet(metrics, UnityCatalogMetrics::noop);
     this.sessionFactory = sessionFactory;
     this.externalLocationUtils = new ExternalLocationUtils(sessionFactory);
     CloudCredentialVendor resolvedCloudCredentialVendor =
         cloudCredentialVendor != null
             ? cloudCredentialVendor
-            : defaultCloudCredentialVendor(serverProperties);
+            : defaultCloudCredentialVendor(serverProperties, resolvedMetrics);
     this.storageCredentialVendor =
         new StorageCredentialVendor(resolvedCloudCredentialVendor, externalLocationUtils);
     this.fileOperations =
@@ -97,7 +95,7 @@ public class Repositories {
     this.catalogRepository = new CatalogRepository(this, sessionFactory);
     this.schemaRepository = new SchemaRepository(this, sessionFactory);
     this.tableRepository =
-        new TableRepository(this, sessionFactory, serverProperties, resolvedMetrics.getTables());
+        new TableRepository(this, sessionFactory, serverProperties, resolvedMetrics);
     this.stagingTableRepository =
         new StagingTableRepository(this, sessionFactory, serverProperties);
     this.volumeRepository = new VolumeRepository(this, sessionFactory);
@@ -116,9 +114,10 @@ public class Repositories {
     this.keyMapper = new KeyMapper(this);
   }
 
-  static CloudCredentialVendor defaultCloudCredentialVendor(ServerProperties serverProperties) {
+  static CloudCredentialVendor defaultCloudCredentialVendor(
+      ServerProperties serverProperties, UnityCatalogMetrics metrics) {
     return serverProperties.isStorageCredentialCacheEnabled()
-        ? new CachingCloudCredentialVendor(serverProperties)
+        ? new CachingCloudCredentialVendor(serverProperties, metrics)
         : new CloudCredentialVendor(serverProperties);
   }
 }
