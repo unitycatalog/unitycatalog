@@ -30,12 +30,29 @@ public class TokenExchangeSubjectTokenHandler {
    * Returns the UC principal email for the issued access token.
    *
    * <p>The subject token must already be issuer-, signature-, and audience-validated. {@code
-   * id_token} subjects resolve only from {@code email} (or {@code sub}); OAuth client id ({@code
-   * azp} / {@code client_id}) is not used, because that claim identifies the application, not the
-   * human. For {@code access_token} subjects without an {@code email} claim, {@code externalId} is
-   * tried before {@code sub}.
+   * id_token} subjects first resolve by the stored issuer and subject, then by {@code email} (or
+   * legacy email-valued {@code sub}); OAuth client id ({@code azp} / {@code client_id}) is not
+   * used, because that claim identifies the application, not the human. For {@code access_token}
+   * subjects without an {@code email} claim, {@code externalId} is tried before {@code sub}.
    */
   public String resolvePrincipalEmail(TokenType subjectTokenType, DecodedJWT decodedJWT) {
+    if (subjectTokenType == TokenType.ID_TOKEN) {
+      Optional<User> mappedUser =
+          findUser(
+              () ->
+                  userRepository.getUserByIssuerAndSubject(
+                      decodedJWT.getIssuer(), decodedJWT.getSubject()),
+              "issuer and subject",
+              decodedJWT.getSubject());
+      if (mappedUser.isPresent()) {
+        User user = mappedUser.get();
+        if (user.getState() != User.StateEnum.ENABLED || !isAssumablePrincipal(user)) {
+          throw new OAuthInvalidRequestException(ErrorCode.INVALID_ARGUMENT, "User not allowed");
+        }
+        return user.getEmail();
+      }
+    }
+
     PrincipalResolutionOrder order;
     if (subjectTokenType == TokenType.ACCESS_TOKEN) {
       order =
@@ -96,7 +113,7 @@ public class TokenExchangeSubjectTokenHandler {
     return Optional.empty();
   }
 
-  private Optional<User> findEnabledUser(Supplier<User> lookup, String lookupType, String key) {
+  private Optional<User> findUser(Supplier<User> lookup, String lookupType, String key) {
     final User user;
     try {
       user = lookup.get();
@@ -110,10 +127,12 @@ public class TokenExchangeSubjectTokenHandler {
       LOGGER.error("Failed to look up user by {} {}", lookupType, key, e);
       throw e;
     }
-    if (user != null && user.getState() == User.StateEnum.ENABLED && isAssumablePrincipal(user)) {
-      return Optional.of(user);
-    }
-    return Optional.empty();
+    return Optional.ofNullable(user);
+  }
+
+  private Optional<User> findEnabledUser(Supplier<User> lookup, String lookupType, String key) {
+    return findUser(lookup, lookupType, key)
+        .filter(user -> user.getState() == User.StateEnum.ENABLED && isAssumablePrincipal(user));
   }
 
   /**

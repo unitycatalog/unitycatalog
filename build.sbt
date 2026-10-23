@@ -188,6 +188,7 @@ lazy val controlApi = (project in file("target/control/java"))
 
     // OpenAPI generation specs
     openApiInputSpec := (file(".") / "api" / "control.yaml").toString,
+    openApiConfigFile := (file("build") / "control-api-codegen.json").toString,
     openApiGeneratorName := "java",
     openApiOutputDir := (file("target") / "control" / "java").toString,
     openApiApiPackage := s"$orgName.control.api",
@@ -596,6 +597,7 @@ lazy val controlModels = (project in file("server") / "target" / "controlmodels"
     ),
     // OpenAPI generation configs for generating model codes from the spec
     openApiInputSpec := (file(".") / "api" / "control.yaml").toString,
+    openApiConfigFile := (file("build") / "control-api-codegen.json").toString,
     openApiGeneratorName := "java",
     openApiOutputDir := (file("server") / "target" / "controlmodels").toString,
     openApiValidateSpec := SettingEnabled,

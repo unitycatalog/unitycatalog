@@ -65,6 +65,8 @@ public enum CliParams {
   PRIVILEGE("privilege", "The privilege to grant or revoke", "privilege"),
   ID("id", "The unique id of the user", "id"),
   EXTERNAL_ID("external_id", "The identity provider's id for the user", "externalId"),
+  ISSUER("issuer", "The OIDC issuer (iss), supplied together with --subject", "issuer"),
+  SUBJECT("subject", "The OIDC subject (sub), supplied together with --issuer", "subject"),
   EMAIL("email", "The email address for the user", "email"),
   FILTER("filter", "Query by which the results have to be filtered", "filter"),
   START_INDEX(

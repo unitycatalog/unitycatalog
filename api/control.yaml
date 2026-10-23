@@ -244,6 +244,12 @@ components:
         external_id:
           description: The external identifier of the user.
           type: string
+        issuer:
+          description: The OIDC token issuer. Must be supplied together with subject.
+          type: string
+        subject:
+          description: The OIDC token subject (sub). Must be supplied together with issuer.
+          type: string
         state:
           description: The state of the account.
           type: string
@@ -316,6 +322,8 @@ components:
         externalId:
           description: The SCIM external id.
           type: string
+        'urn:unitycatalog:params:scim:schemas:extension:oidc:2.0:User':
+          $ref: '#/components/schemas/OidcIdentity'
         emails:
           description: E-mail addresses for the user.
           type: array
@@ -341,6 +349,19 @@ components:
               value:
                 description: The url of the user's photo.
                 type: string
+    OidcIdentity:
+      description: An optional OIDC identity for a UC user. Issuer and subject must be supplied together.
+      type: object
+      required:
+        - issuer
+        - subject
+      properties:
+        issuer:
+          description: The exact issuer (iss) from the ID token.
+          type: string
+        subject:
+          description: The exact subject (sub) from the ID token, unique within the issuer.
+          type: string
     Email:
       description: SCIM email for a user.
       type: object
