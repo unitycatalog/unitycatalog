@@ -1,0 +1,41 @@
+{{- $checkServer := and .Values.server.enabled (not .Values.auth.enabled) }}
+{{- $checkProxy := and $checkServer .Values.ui.enabled (eq (include "unitycatalog.ui.proxyApiRequests" .) "true") }}
+{{- if or $checkServer .Values.ui.enabled }}
+{{- $server := printf "http://%s:%v" (include "unitycatalog.server.fullname" .) .Values.server.service.port }}
+{{- $ui := printf "http://%s:%v" (include "unitycatalog.ui.fullname" .) .Values.ui.service.port }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ printf "%s-test-connection" (include "unitycatalog.fullname" .) | quote }}
+  labels: {{- include "unitycatalog.commonLabels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  restartPolicy: Never
+  {{- with .Values.test.imagePullSecrets }}
+  imagePullSecrets: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  containers:
+    - name: test-connection
+      image: "{{ .Values.test.image.repository }}:{{ .Values.test.image.tag }}"
+      imagePullPolicy: {{ .Values.test.image.pullPolicy }}
+      command: ["sh", "-c"]
+      args:
+        - |
+          check() {
+            {{- if $checkServer }}
+            wget -q -O - --header "Accept: application/json" "{{ $server }}/api/2.1/unity-catalog/catalogs" | grep -q '"catalogs"' || { echo "Server API check failed"; return 1; }
+            {{- end }}
+            {{- if .Values.ui.enabled }}
+            # In proxy mode the UI dev server rejects Service hostnames, so send Host: localhost as a port-forwarded browser does.
+            wget -q -O - --header "Host: localhost" "{{ $ui }}/" | grep -q "<title>Unity Catalog" || { echo "UI page check failed"; return 1; }
+            {{- end }}
+            {{- if $checkProxy }}
+            # The UI proxies /api to the server.
+            wget -q -O - --header "Host: localhost" --header "Accept: application/json" "{{ $ui }}/api/2.1/unity-catalog/catalogs" | grep -q '"catalogs"' || { echo "UI /api proxy check failed"; return 1; }
+            {{- end }}
+          }
+          for i in $(seq 1 30); do check && exit 0; sleep 5; done
+          exit 1
+{{- end }}
