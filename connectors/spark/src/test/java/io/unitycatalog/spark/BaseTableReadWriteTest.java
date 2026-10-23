@@ -16,6 +16,7 @@ import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
+import io.unitycatalog.spark.utils.OptionsUtil;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -30,11 +31,14 @@ import lombok.experimental.Accessors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.sql.AnalysisException;
 import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.StructType;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledIf;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -249,6 +253,14 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
 
   protected final boolean testingIceberg() {
     return tableFormat().equalsIgnoreCase("ICEBERG");
+  }
+
+  protected final boolean testingDeltaOrIceberg() {
+    return testingDelta() || testingIceberg();
+  }
+
+  protected final boolean testingExternalDelta() {
+    return testingDelta() && !isManagedTable();
   }
 
   protected abstract boolean isManagedTable();
@@ -557,6 +569,110 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       sql("DROP TABLE IF EXISTS %s.%s.pagination_table_2", catalog, SCHEMA_NAME);
       sql("DROP TABLE IF EXISTS %s.%s.pagination_table_3", catalog, SCHEMA_NAME);
     }
+  }
+
+  /**
+   * ALTER TABLE ... RENAME TO renames a Delta table in place through the UC Delta REST rename
+   * endpoint: same table id and data under the new name.
+   */
+  @Test
+  @EnabledIf("testingDelta")
+  public void testRenameDeltaTable() throws ApiException {
+    session = createSparkSessionWithCatalogs(sessionCatalogNames().toArray(new String[0]));
+    initializeSessionForTableTests();
+    for (String catalogName : supportedCatalogNames()) {
+      String source = setupTable(catalogName, "rename_src");
+      sql("INSERT INTO %s SELECT 1, 'a'", source);
+      String tableId = tableOperations.getTable(source).getTableId();
+
+      String target = qualifiedTableName(catalogName, "rename_dst");
+      sql("ALTER TABLE %s RENAME TO %s", source, target);
+      assertThat(session.catalog().tableExists(source)).isFalse();
+      assertTableId(target, tableId);
+      validateRows(sql("SELECT * FROM %s", target), Pair.of(1, "a"));
+      sql("INSERT INTO %s SELECT 2, 'b'", target);
+      validateRows(sql("SELECT * FROM %s ORDER BY i", target), Pair.of(1, "a"), Pair.of(2, "b"));
+
+      // A schema-qualified target renames within the same schema too.
+      String target2 = qualifiedTableName(catalogName, "rename_dst2");
+      sql("ALTER TABLE %s RENAME TO %s.rename_dst2", target, SCHEMA_NAME);
+      assertTableId(target2, tableId);
+
+      // The target name is taken.
+      String other = setupTable(catalogName, "rename_other");
+      assertThatThrownBy(() -> sql("ALTER TABLE %s RENAME TO %s", target2, other))
+          .isInstanceOf(TableAlreadyExistsException.class);
+      // Moving to another schema is not supported.
+      assertThatThrownBy(
+              () -> sql("ALTER TABLE %s RENAME TO %s.other_schema.rename_x", target2, catalogName))
+          .isInstanceOf(UnsupportedOperationException.class)
+          .hasMessageContaining("another catalog or schema");
+      assertTableId(target2, tableId);
+
+      sql("DROP TABLE %s", target2);
+      sql("DROP TABLE %s", other);
+    }
+  }
+
+  /**
+   * ALTER TABLE ... RENAME TO only supports Delta tables. Iceberg tables are served by Iceberg's
+   * own REST catalog, not this connector, so they are out of scope here.
+   */
+  @Test
+  @DisabledIf("testingDeltaOrIceberg")
+  public void testRenameNonDeltaTableIsRejected() {
+    session = createSparkSessionWithCatalogs(sessionCatalogNames().toArray(new String[0]));
+    initializeSessionForTableTests();
+    for (String catalogName : supportedCatalogNames()) {
+      String source = setupTable(catalogName, "rename_src");
+      assertThatThrownBy(
+              () ->
+                  sql(
+                      "ALTER TABLE %s RENAME TO %s",
+                      source, qualifiedTableName(catalogName, "rename_dst")))
+          .isInstanceOf(UnsupportedOperationException.class)
+          .hasMessageContaining("only supported for Delta tables");
+      assertThat(session.catalog().tableExists(source)).isTrue();
+      sql("DROP TABLE %s", source);
+    }
+  }
+
+  /**
+   * With the Delta REST API disabled for the catalog, rename is unavailable. External tables only:
+   * a managed Delta table cannot even be resolved with the Delta REST API off, as the server serves
+   * managed Delta commits through that API only.
+   */
+  @Test
+  @EnabledIf("testingExternalDelta")
+  public void testRenameTableWithDeltaRestApiDisabled() throws ApiException {
+    session = createSparkSessionWithCatalogs(sessionCatalogNames().toArray(new String[0]));
+    initializeSessionForTableTests();
+    for (String catalogName : supportedCatalogNames()) {
+      String source = setupTable(catalogName, "rename_src");
+      String tableId = tableOperations.getTable(source).getTableId();
+      SparkSession original = session;
+      session = session.newSession();
+      try {
+        session
+            .conf()
+            .set("spark.sql.catalog." + catalogName + "." + OptionsUtil.DELTA_API_ENABLED, "false");
+        assertThatThrownBy(
+                () ->
+                    sql(
+                        "ALTER TABLE %s RENAME TO %s",
+                        source, qualifiedTableName(catalogName, "rename_dst")))
+            .isInstanceOf(UnsupportedOperationException.class)
+            .hasMessageContaining("Delta REST API, which is disabled");
+      } finally {
+        session = original;
+      }
+      assertTableId(source, tableId);
+      sql("DROP TABLE %s", source);
+    }
+  }
+
+  private void assertTableId(String fullTableName, String expectedTableId) throws ApiException {
+    assertThat(tableOperations.getTable(fullTableName).getTableId()).isEqualTo(expectedTableId);
   }
 
   /**

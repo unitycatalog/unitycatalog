@@ -7,6 +7,7 @@ import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Parameter;
@@ -41,6 +42,7 @@ final class UCProxyTestFixture {
 
   final TablesApi mockTablesApi = mock(TablesApi.class);
   final SchemasApi mockSchemasApi = mock(SchemasApi.class);
+  final DeltaTablesApi mockDeltaTablesApi = mock(DeltaTablesApi.class);
 
   // Held as a bare Object so this fixture never names a Spark-4.2-only catalog type; the 4.2 view
   // suite casts it to RelationCatalog / ViewCatalog itself.
@@ -48,7 +50,10 @@ final class UCProxyTestFixture {
   TableCatalog proxy;
   SupportsNamespaces proxyNs;
 
-  /** Builds the proxy, initializes it, and injects the mock {@code schemasApi}. */
+  /**
+   * Builds the proxy, initializes it, and injects the mock {@code schemasApi} and {@code
+   * deltaTablesApi}.
+   */
   UCProxyTestFixture build() throws Exception {
     ApiClient mockApiClient = mock(ApiClient.class);
     TokenProvider mockTokenProvider = mock(TokenProvider.class);
@@ -83,10 +88,13 @@ final class UCProxyTestFixture {
     proxy = (TableCatalog) proxyObj;
     proxy.initialize(CATALOG_NAME, new CaseInsensitiveStringMap(Collections.emptyMap()));
 
-    // Inject mock schemasApi (initialize() creates a real one from apiClient).
+    // Inject mock schemasApi / deltaTablesApi (initialize() creates real ones from apiClient).
     Field schemasField = proxyClass.getDeclaredField("schemasApi");
     schemasField.setAccessible(true);
     schemasField.set(proxyObj, mockSchemasApi);
+    Field deltaTablesField = proxyClass.getDeclaredField("deltaTablesApi");
+    deltaTablesField.setAccessible(true);
+    deltaTablesField.set(proxyObj, mockDeltaTablesApi);
 
     proxyNs = (SupportsNamespaces) proxyObj;
     return this;
