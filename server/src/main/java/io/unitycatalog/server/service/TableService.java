@@ -87,6 +87,7 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
             @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_location")
           })
           @AuthorizeKey(key = "table_type")
+          @AuthorizeKey(key = "name")
           CreateTable createTable) {
     assert createTable != null;
     serverProperties.checkDeltaApiOnlyForManagedTable(

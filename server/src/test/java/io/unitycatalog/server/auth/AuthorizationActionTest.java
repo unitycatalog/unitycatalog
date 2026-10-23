@@ -42,6 +42,7 @@ public class AuthorizationActionTest {
         if (annotation == null) {
           continue;
         }
+        assertThat(annotation.precondition()).as("%s", method).doesNotContain("#authorize");
         if (annotation.value().trim().equals("#principal != null")) {
           assertThat(annotation.action())
               .as("%s", method)
@@ -71,10 +72,7 @@ public class AuthorizationActionTest {
         DeltaApiService.class,
         "getTableCredentials",
         AuthorizationAction.GENERATE_TABLE_CREDENTIALS);
-    assertAction(
-        IcebergRestCatalogService.class,
-        "loadCredentials",
-        AuthorizationAction.GENERATE_TABLE_CREDENTIALS);
+    assertAction(IcebergRestCatalogService.class, "loadCredentials", AuthorizationAction.GET_TABLE);
   }
 
   @Test
@@ -83,6 +81,8 @@ public class AuthorizationActionTest {
     assertAction(IcebergRestCatalogService.class, "listTables", AuthorizationAction.LIST_TABLES);
     assertAction(
         IcebergRestCatalogService.class, "reportMetrics", AuthorizationAction.REPORT_TABLE_METRICS);
+    assertAction(
+        DeltaApiService.class, "reportMetrics", AuthorizationAction.REPORT_TABLE_COMMIT_METRICS);
   }
 
   private static void assertAction(

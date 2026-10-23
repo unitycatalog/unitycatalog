@@ -93,6 +93,28 @@ public class ServerProperties {
     }
   }
 
+  /** An HTTP policy endpoint must not carry credentials in its URL. */
+  private static class PolicyUrlValidator implements PropertyValidator {
+    @Override
+    public void validate(String key, String value) {
+      try {
+        URI uri = new URI(value);
+        if (("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+            && uri.getHost() != null
+            && uri.getUserInfo() == null
+            && uri.getFragment() == null
+            && (uri.getPort() == -1 || (uri.getPort() > 0 && uri.getPort() <= 65535))) {
+          return;
+        }
+      } catch (URISyntaxException e) {
+        // Keep the configured value out of errors, including embedded credentials.
+      }
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          key + " must be an HTTP(S) URL without user info or a fragment");
+    }
+  }
+
   /**
    * Validator for storage path properties that can be either URLs or file paths. This is more
    * lenient than UrlValidator as it accepts both proper URLs (e.g., file:///tmp/path) and plain
@@ -240,6 +262,12 @@ public class ServerProperties {
     SERVER_ENV("server.env", "dev", new EnumValidator(true, "dev", "prod", "test")),
     AUTHORIZATION_ENABLED(
         "server.authorization", "disable", new EnumValidator(true, "enable", "disable")),
+    AUTHORIZATION_PROVIDER(
+        "server.authorization.provider", "native", new EnumValidator(true, "native", "opa")),
+    OPA_POLICY_URL("server.authorization.opa.policy-url", new PolicyUrlValidator()),
+    OPA_RESPONSE_TIMEOUT(
+        "server.authorization.opa.response-timeout", "PT2S", POSITIVE_DURATION_VALIDATOR),
+    OPA_BEARER_TOKEN("server.authorization.opa.bearer-token"),
     STRICT_PRIVILEGE_CHECKS_ENABLED(
         "server.authorization.strict-privilege-checks", "true", BOOLEAN_VALIDATOR),
     POLICY_REFRESH_ENABLED("server.authorization.policy-refresh", "false", BOOLEAN_VALIDATOR),
@@ -354,7 +382,25 @@ public class ServerProperties {
       property.validator.validate(property.key, value);
     }
     validateAuthAllowlistConfiguration();
+    validateOpaConfiguration();
     validateStorageCleanupConfiguration();
+  }
+
+  private void validateOpaConfiguration() {
+    if (!isOpaAuthorizationEnabled()) {
+      return;
+    }
+    if (!isAuthorizationEnabled()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "server.authorization must be enabled when server.authorization.provider is opa");
+    }
+    String policyUrl = get(Property.OPA_POLICY_URL);
+    if (policyUrl == null || policyUrl.isBlank()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "server.authorization.opa.policy-url is required when using OPA");
+    }
   }
 
   private void validateStorageCleanupConfiguration() {
@@ -553,6 +599,14 @@ public class ServerProperties {
 
   public boolean isAuthorizationEnabled() {
     return isTrueOrEnable(get(Property.AUTHORIZATION_ENABLED));
+  }
+
+  public boolean isOpaAuthorizationEnabled() {
+    return "opa".equalsIgnoreCase(get(Property.AUTHORIZATION_PROVIDER));
+  }
+
+  public Duration getOpaResponseTimeout() {
+    return Duration.parse(get(Property.OPA_RESPONSE_TIMEOUT));
   }
 
   /** Whether permission checks use the stricter rules instead of the previous rules. */

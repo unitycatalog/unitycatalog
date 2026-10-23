@@ -10,6 +10,7 @@ import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.model.CreateStagingTable;
@@ -50,6 +51,7 @@ public class StagingTableService extends AuthorizedService implements UnityCatal
             @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
             @AuthorizeResourceKey(value = CATALOG, key = "catalog_name")
           })
+          @AuthorizeKey(key = "name")
           CreateStagingTable createStagingTable) {
     assert createStagingTable != null;
     // A staging table can only ever finalize into a MANAGED Delta table, so the

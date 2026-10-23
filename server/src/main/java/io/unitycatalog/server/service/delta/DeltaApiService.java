@@ -201,7 +201,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
   public DeltaStagingTableResponse createStagingTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
-      DeltaCreateStagingTableRequest request) {
+      @AuthorizeKey(key = "name") DeltaCreateStagingTableRequest request) {
     if (request == null || request.getName() == null || request.getName().isBlank()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Staging table name is required.");
     }
@@ -251,6 +251,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "location")
           @AuthorizeKey(key = "table-type")
+          @AuthorizeKey(key = "name")
           DeltaCreateTableRequest request) {
     DeltaCreateTableMapper.Result mapped =
         DeltaCreateTableMapper.toCreateTable(catalog, schema, request, serverProperties);
@@ -306,7 +307,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table,
-      DeltaRenameTableRequest request) {
+      @AuthorizeKey(key = "new-name") DeltaRenameTableRequest request) {
     if (request == null || request.getNewName() == null || request.getNewName().isBlank()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "New table name is required.");
     }
@@ -325,7 +326,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
    */
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics")
   @AuthorizeExpression(
-      action = AuthorizationAction.REPORT_TABLE_METRICS,
+      action = AuthorizationAction.REPORT_TABLE_COMMIT_METRICS,
       value = AuthorizeExpressions.UPDATE_TABLE)
   public HttpResponse reportMetrics(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,

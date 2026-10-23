@@ -8,10 +8,20 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpRequest;
+import com.linecorp.armeria.server.ServiceRequestContext;
+import io.unitycatalog.server.auth.AuthorizationAction;
+import io.unitycatalog.server.auth.AuthorizationProvider;
+import io.unitycatalog.server.auth.AuthorizationRequest;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.model.DataSourceFormat;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
@@ -24,6 +34,7 @@ import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
 import org.apache.iceberg.exceptions.NoSuchTableException;
@@ -58,7 +69,8 @@ public class IcebergRestCatalogServiceTest {
             tableConfigService,
             mock(MetadataService.class),
             repositories,
-            serverProperties);
+            serverProperties,
+            Optional.empty());
   }
 
   @Test
@@ -107,6 +119,50 @@ public class IcebergRestCatalogServiceTest {
                     "s3://bucket/table/metadata.json",
                     "s3://bucket/table")))
         .isEqualTo(READ_ONLY);
+  }
+
+  @Test
+  public void opaCannotWidenUniformCredentialsOrUseNativeGrants() {
+    AuthorizationProvider provider = mock();
+    when(provider.authorize(any())).thenReturn(true);
+    service =
+        new IcebergRestCatalogService(
+            authorizer,
+            tableConfigService,
+            mock(MetadataService.class),
+            repositories,
+            serverProperties,
+            Optional.of(provider));
+    UUID tableId = UUID.randomUUID();
+    AuthorizationRequest request =
+        new AuthorizationRequest(
+            new AuthorizationRequest.Principal(UUID.randomUUID(), "reader@example.com"),
+            AuthorizationAction.GET_TABLE,
+            Map.of(SecurableType.TABLE, tableId),
+            Map.of(),
+            Map.of());
+    ServiceRequestContext context = ServiceRequestContext.of(HttpRequest.of(HttpMethod.GET, "/"));
+    context.setAttr(UnityAccessDecorator.AUTHORIZATION_REQUEST, request);
+    try (var ignored = context.push()) {
+      assertThat(
+              service.getLoadCredentialPrivileges(
+                  new TableRepository.IcebergTableState(
+                      tableId,
+                      DataSourceFormat.DELTA,
+                      "s3://bucket/table/metadata.json",
+                      "s3://bucket/table")))
+          .isEqualTo(READ_ONLY);
+    }
+    verify(provider)
+        .authorize(
+            new AuthorizationRequest(
+                request.principal(),
+                AuthorizationAction.GENERATE_TABLE_CREDENTIALS,
+                request.resources(),
+                request.resourceKeys(),
+                Map.of("operation", "READ")));
+    verifyNoMoreInteractions(provider);
+    verifyNoInteractions(authorizer);
   }
 
   @Test

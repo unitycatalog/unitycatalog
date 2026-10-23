@@ -99,6 +99,7 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
             @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_location")
           })
           @AuthorizeKey(key = "volume_type")
+          @AuthorizeKey(key = "name")
           CreateVolumeRequestContent createVolumeRequest) {
     // Throw error if catalog/schema does not exist
     VolumeInfo volumeInfo = volumeRepository.createVolume(createVolumeRequest);
@@ -164,7 +165,7 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateVolume(
       @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName,
-      UpdateVolumeRequestContent updateVolumeRequest) {
+      @AuthorizeKey(key = "new_name") UpdateVolumeRequestContent updateVolumeRequest) {
     return HttpResponse.ofJson(volumeRepository.updateVolume(fullName, updateVolumeRequest));
   }
 

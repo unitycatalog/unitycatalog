@@ -55,6 +55,7 @@ public class TemporaryModelVersionCredentialsService implements UnityCatalogRest
             @AuthorizeResourceKey(value = REGISTERED_MODEL, key = "model_name")
           })
           @AuthorizeKey(key = "operation")
+          @AuthorizeKey(key = "version")
           GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredentials) {
 
     long modelVersion = generateTemporaryModelVersionCredentials.getVersion();

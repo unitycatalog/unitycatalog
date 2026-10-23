@@ -33,6 +33,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -90,7 +91,8 @@ public class UnityCatalogServerTest extends BaseServerTest {
                       PrometheusExpositionService.of(metrics.registry().getPrometheusRegistry()))
                   .annotate("unfiltered", new UnfilteredResponseService())
                   .withSecurityDecorators(
-                      new UnityAccessDecorator(new AllowingAuthorizer(), repositories, properties),
+                      new UnityAccessDecorator(
+                          new AllowingAuthorizer(), repositories, properties, Optional.empty()),
                       (delegate, ctx, req) -> delegate.serve(ctx, req))
                   .meterRegistry(metrics.registry())
                   .build()) {
@@ -145,7 +147,8 @@ public class UnityCatalogServerTest extends BaseServerTest {
           new ArmeriaServerBuilder(apiPort, "/api/", "/control/", properties, blockingTaskExecutor)
               .annotate("preconditions", service)
               .withSecurityDecorators(
-                  new UnityAccessDecorator(new AllowingAuthorizer(), repositories, properties),
+                  new UnityAccessDecorator(
+                      new AllowingAuthorizer(), repositories, properties, Optional.empty()),
                   (delegate, ctx, req) -> delegate.serve(ctx, req))
               .build()) {
         server.start().join();

@@ -14,6 +14,7 @@ import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
@@ -65,6 +66,7 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
             @AuthorizeResourceKey(value = CATALOG, key = "function_info.catalog_name"),
             @AuthorizeResourceKey(value = SCHEMA, key = "function_info.schema_name")
           })
+          @AuthorizeKey(key = "function_info.name")
           CreateFunctionRequest createFunctionRequest) {
     FunctionInfo functionInfo = functionRepository.createFunction(createFunctionRequest);
 

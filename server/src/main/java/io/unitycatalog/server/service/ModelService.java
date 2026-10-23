@@ -15,6 +15,7 @@ import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
@@ -75,6 +76,7 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
             @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
             @AuthorizeResourceKey(value = CATALOG, key = "catalog_name")
           })
+          @AuthorizeKey(key = "name")
           CreateRegisteredModel createRegisteredModel) {
     assert createRegisteredModel != null;
     RegisteredModelInfo createRegisteredModelResponse =
@@ -144,7 +146,7 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateRegisteredModel(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullName,
-      UpdateRegisteredModel updateRegisteredModel) {
+      @AuthorizeKey(key = "new_name") UpdateRegisteredModel updateRegisteredModel) {
     assert updateRegisteredModel != null;
     RegisteredModelInfo updateRegisteredModelResponse =
         modelRepository.updateRegisteredModel(fullName, updateRegisteredModel);
@@ -244,7 +246,7 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getModelVersion(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullName,
-      @Param("version") Long version) {
+      @Param("version") @AuthorizeKey Long version) {
     assert fullName != null && version != null;
     ModelVersionInfo modelVersionInfo = modelRepository.getModelVersion(fullName, version);
     return HttpResponse.ofJson(modelVersionInfo);
@@ -265,7 +267,7 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateModelVersion(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullName,
-      @Param("version") Long version,
+      @Param("version") @AuthorizeKey Long version,
       UpdateModelVersion updateModelVersion) {
     assert updateModelVersion != null;
     ModelVersionInfo updateModelVersionResponse =
@@ -288,7 +290,7 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteModelVersion(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullName,
-      @Param("version") Long version) {
+      @Param("version") @AuthorizeKey Long version) {
     modelRepository.deleteModelVersion(fullName, version);
     return HttpResponse.of(HttpStatus.OK);
   }
@@ -308,7 +310,7 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse finalizeModelVersion(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullName,
-      @Param("version") Long version,
+      @Param("version") @AuthorizeKey Long version,
       FinalizeModelVersion finalizeModelVersion) {
     assert finalizeModelVersion != null;
     // Authorization is evaluated against the URL model version, but the mutation targets the one

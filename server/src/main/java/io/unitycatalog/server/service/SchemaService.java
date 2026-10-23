@@ -79,6 +79,7 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
             @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_root")
           })
           @AuthorizeKey(key = "storage_root")
+          @AuthorizeKey(key = "name")
           CreateSchema createSchema) {
     SchemaInfo schemaInfo = schemaRepository.createSchema(createSchema);
 
@@ -120,7 +121,7 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateSchema(
       @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,
-      UpdateSchema updateSchema) {
+      @AuthorizeKey(key = "new_name") UpdateSchema updateSchema) {
     return HttpResponse.ofJson(schemaRepository.updateSchema(fullName, updateSchema));
   }
 

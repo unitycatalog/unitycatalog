@@ -14,6 +14,7 @@ import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.model.CreateExternalLocation;
@@ -55,6 +56,8 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createExternalLocation(
       @AuthorizeResourceKey(value = CREDENTIAL, key = "credential_name")
+          @AuthorizeKey(key = "name")
+          @AuthorizeKey(key = "url")
           CreateExternalLocation createExternalLocation) {
     ExternalLocationInfo externalLocationInfo =
         externalLocationRepository.addExternalLocation(createExternalLocation);
@@ -108,6 +111,8 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
   public HttpResponse updateExternalLocation(
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
       @AuthorizeResourceKey(value = CREDENTIAL, key = "credential_name")
+          @AuthorizeKey(key = "new_name")
+          @AuthorizeKey(key = "url")
           UpdateExternalLocation updateRequest) {
     return HttpResponse.ofJson(
         externalLocationRepository.updateExternalLocation(name, updateRequest));

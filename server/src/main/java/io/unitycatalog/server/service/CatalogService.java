@@ -75,6 +75,7 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
   public HttpResponse createCatalog(
       @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_root")
           @AuthorizeKey(key = "storage_root")
+          @AuthorizeKey(key = "name")
           CreateCatalog createCatalog) {
     CatalogInfo catalogInfo = catalogRepository.addCatalog(createCatalog);
     initializeBasicAuthorization(catalogInfo.getId());
@@ -114,7 +115,8 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
           """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCatalog(
-      @Param("name") @AuthorizeResourceKey(CATALOG) String name, UpdateCatalog updateCatalog) {
+      @Param("name") @AuthorizeResourceKey(CATALOG) String name,
+      @AuthorizeKey(key = "new_name") UpdateCatalog updateCatalog) {
     return HttpResponse.ofJson(catalogRepository.updateCatalog(name, updateCatalog));
   }
 

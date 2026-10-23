@@ -13,6 +13,7 @@ import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.model.CreateCredentialRequest;
@@ -60,7 +61,9 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
       action = AuthorizationAction.CREATE_CREDENTIAL,
       value = "#authorizeAny(#principal, #metastore, OWNER, CREATE_STORAGE_CREDENTIAL)")
   @AuthorizeResourceKey(METASTORE)
-  public HttpResponse createCredential(CreateCredentialRequest createCredentialRequest) {
+  public HttpResponse createCredential(
+      @AuthorizeKey(key = "name") @AuthorizeKey(key = "purpose")
+          CreateCredentialRequest createCredentialRequest) {
     CredentialInfo credentialInfo = credentialRepository.addCredential(createCredentialRequest);
     initializeBasicAuthorization(credentialInfo.getId());
     return HttpResponse.ofJson(credentialInfo);
@@ -107,7 +110,7 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCredential(
       @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name,
-      UpdateCredentialRequest updateRequest) {
+      @AuthorizeKey(key = "new_name") UpdateCredentialRequest updateRequest) {
     return HttpResponse.ofJson(credentialRepository.updateCredential(name, updateRequest));
   }
 

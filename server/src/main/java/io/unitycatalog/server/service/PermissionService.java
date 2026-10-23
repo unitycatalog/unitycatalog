@@ -40,6 +40,7 @@ import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -62,8 +63,12 @@ public class PermissionService implements UnityCatalogRestService {
   private final ModelRepository modelRepository;
   private final ExternalLocationRepository externalLocationRepository;
   private final CredentialRepository credentialRepository;
+  private final boolean opaAuthorizationEnabled;
 
-  public PermissionService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
+  public PermissionService(
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties) {
     this.authorizer = authorizer;
     this.metastoreRepository = repositories.getMetastoreRepository();
     this.userRepository = repositories.getUserRepository();
@@ -75,6 +80,7 @@ public class PermissionService implements UnityCatalogRestService {
     this.modelRepository = repositories.getModelRepository();
     this.externalLocationRepository = repositories.getExternalLocationRepository();
     this.credentialRepository = repositories.getCredentialRepository();
+    this.opaAuthorizationEnabled = serverProperties.isOpaAuthorizationEnabled();
   }
 
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
@@ -133,6 +139,7 @@ public class PermissionService implements UnityCatalogRestService {
   }
 
   private HttpResponse getAuthorization(SecurableType securableType, String name) {
+    checkNativePermissionsEnabled();
 
     // Only show permissions for the authenticated identity unless they are the owner
     // or if the authenticated identity is the owner of the parent resource(s)
@@ -319,6 +326,7 @@ public class PermissionService implements UnityCatalogRestService {
 
   private HttpResponse updateAuthorization(
       SecurableType securableType, String name, UpdatePermissions request) {
+    checkNativePermissionsEnabled();
     UUID resourceId = getResourceId(securableType, name);
     List<PermissionsChange> changes = request.getChanges();
     Set<UUID> principalIds = new HashSet<>();
@@ -367,6 +375,14 @@ public class PermissionService implements UnityCatalogRestService {
             .collect(Collectors.toList());
 
     return HttpResponse.ofJson(new PermissionsList().privilegeAssignments(privilegeAssignments));
+  }
+
+  private void checkNativePermissionsEnabled() {
+    if (opaAuthorizationEnabled) {
+      throw new BaseException(
+          ErrorCode.UNIMPLEMENTED,
+          "UC grants are unavailable in OPA mode. Manage permissions in your OPA policy.");
+    }
   }
 
   private UUID getResourceId(SecurableType securableType, String name) {

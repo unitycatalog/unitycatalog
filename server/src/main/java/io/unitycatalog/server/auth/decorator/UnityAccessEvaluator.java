@@ -1,12 +1,17 @@
 package io.unitycatalog.server.auth.decorator;
 
+import io.unitycatalog.server.auth.AuthorizationAction;
+import io.unitycatalog.server.auth.AuthorizationProvider;
+import io.unitycatalog.server.auth.AuthorizationRequest;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +40,7 @@ public class UnityAccessEvaluator {
 
   private final UnityCatalogAuthorizer authorizer;
   private final boolean strictPrivilegeChecks;
+  private final Optional<AuthorizationProvider> externalProvider;
   private final ExpressionParser parser;
   private final MethodHandle authorizeHandle;
   private final MethodHandle authorizeAnyHandle;
@@ -42,8 +48,17 @@ public class UnityAccessEvaluator {
 
   public UnityAccessEvaluator(UnityCatalogAuthorizer authorizer, boolean strictPrivilegeChecks)
       throws NoSuchMethodException, IllegalAccessException {
+    this(authorizer, strictPrivilegeChecks, Optional.empty());
+  }
+
+  public UnityAccessEvaluator(
+      UnityCatalogAuthorizer authorizer,
+      boolean strictPrivilegeChecks,
+      Optional<AuthorizationProvider> externalProvider)
+      throws NoSuchMethodException, IllegalAccessException {
     this.authorizer = authorizer;
     this.strictPrivilegeChecks = strictPrivilegeChecks;
+    this.externalProvider = externalProvider;
     this.parser = new SpelExpressionParser();
 
     MethodHandles.Lookup lookup = MethodHandles.lookup();
@@ -58,6 +73,32 @@ public class UnityAccessEvaluator {
     mt = MethodType.methodType(boolean.class, Object[].class);
     mh = lookup.findVirtual(this.getClass(), "authorizeAll", mt);
     authorizeAllHandle = mh.bindTo(this);
+  }
+
+  /** Evaluates UC preconditions before delegating the operation's permission decision. */
+  public boolean evaluate(AuthorizeExpression rule, AuthorizationRequest request) {
+    return evaluate(rule, request, System.nanoTime());
+  }
+
+  public boolean evaluate(
+      AuthorizeExpression rule, AuthorizationRequest request, long operationStartNanos) {
+    UUID principal = request.principal().id();
+    if (isExternalAuthorization(rule)) {
+      return principal != null
+          && eval(
+              rule.precondition(), createContext(principal, request.resources(), request.context()))
+          && externalProvider.get().authorize(request);
+    }
+    return evaluate(
+        principal,
+        "(" + rule.precondition() + ") && (" + rule.value() + ")",
+        request.resources(),
+        request.context(),
+        operationStartNanos);
+  }
+
+  boolean isExternalAuthorization(AuthorizeExpression rule) {
+    return externalProvider.isPresent() && rule.action() != AuthorizationAction.UNSPECIFIED;
   }
 
   protected boolean authorizeAny(Object... parameters) {
@@ -112,20 +153,7 @@ public class UnityAccessEvaluator {
       Map<SecurableType, UUID> resourceIds,
       Map<String, Object> nonResourceValues,
       long operationStartNanos) {
-
-    StandardEvaluationContext context = new StandardEvaluationContext(Privileges.class);
-
-    context.registerFunction("authorize", authorizeHandle);
-    context.registerFunction("authorizeAny", authorizeAnyHandle);
-    context.registerFunction("authorizeAll", authorizeAllHandle);
-
-    context.setVariable("deny", Boolean.FALSE);
-    context.setVariable("permit", Boolean.TRUE);
-    context.setVariable("principal", principal);
-
-    resourceIds.forEach((k, v) -> context.setVariable(k.name().toLowerCase(), v));
-    nonResourceValues.forEach(context::setVariable);
-    context.setVariable("strict_privilege_checks", strictPrivilegeChecks);
+    StandardEvaluationContext context = createContext(principal, resourceIds, nonResourceValues);
 
     if (eval(expression, context)) {
       return true;
@@ -146,6 +174,21 @@ public class UnityAccessEvaluator {
       LOGGER.debug("Access allowed after refreshing authorizations for principal {}", principal);
     }
     return allowedAfterRefresh;
+  }
+
+  private StandardEvaluationContext createContext(
+      UUID principal, Map<SecurableType, UUID> resourceIds, Map<String, Object> nonResourceValues) {
+    StandardEvaluationContext context = new StandardEvaluationContext(Privileges.class);
+    context.registerFunction("authorize", authorizeHandle);
+    context.registerFunction("authorizeAny", authorizeAnyHandle);
+    context.registerFunction("authorizeAll", authorizeAllHandle);
+    context.setVariable("deny", Boolean.FALSE);
+    context.setVariable("permit", Boolean.TRUE);
+    context.setVariable("principal", principal);
+    resourceIds.forEach((k, v) -> context.setVariable(k.name().toLowerCase(), v));
+    nonResourceValues.forEach(context::setVariable);
+    context.setVariable("strict_privilege_checks", strictPrivilegeChecks);
+    return context;
   }
 
   private boolean eval(String expression, StandardEvaluationContext context) {

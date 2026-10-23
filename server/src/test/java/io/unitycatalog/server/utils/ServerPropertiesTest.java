@@ -13,6 +13,44 @@ import org.junit.jupiter.api.Test;
 
 public class ServerPropertiesTest {
 
+  @Test
+  public void testOpaConfiguration() {
+    assertThat(new ServerProperties().isOpaAuthorizationEnabled()).isFalse();
+    Properties properties = new Properties();
+    properties.setProperty(Property.AUTHORIZATION_PROVIDER.getKey(), "opa");
+    assertThatThrownBy(() -> new ServerProperties(properties))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("server.authorization must be enabled");
+    properties.setProperty(Property.AUTHORIZATION_ENABLED.getKey(), "enable");
+    assertThatThrownBy(() -> new ServerProperties(properties))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("server.authorization.opa.policy-url is required");
+    properties.setProperty(
+        Property.OPA_POLICY_URL.getKey(), "http://localhost:8181/v1/data/uc/allow");
+    ServerProperties configuration = new ServerProperties(properties);
+    assertThat(configuration.isOpaAuthorizationEnabled()).isTrue();
+    assertThat(configuration.getOpaResponseTimeout()).isEqualTo(Duration.ofSeconds(2));
+
+    testValidProperty(Property.OPA_POLICY_URL, "https://opa.example.com/v1/data/uc/allow");
+    for (String value :
+        new String[] {
+          "file:///policy",
+          "ftp://example.com/policy",
+          "http:/policy",
+          "https://user:secret@example.com/policy",
+          "http://localhost:8181/policy#fragment",
+          "http://localhost:70000/policy",
+          "http://bad host/policy"
+        }) {
+      testInvalidProperty(Property.OPA_POLICY_URL, value, "must be an HTTP(S) URL");
+    }
+    for (String timeout : new String[] {"PT0S", "-PT1S", "PT0.000001S", "invalid"}) {
+      testInvalidProperty(
+          Property.OPA_RESPONSE_TIMEOUT, timeout, Property.OPA_RESPONSE_TIMEOUT.getKey());
+    }
+    testInvalidProperty(Property.AUTHORIZATION_PROVIDER, "unknown", "Allowed values");
+  }
+
   private void testValidProperty(Property property, String value) {
     Properties props = new Properties();
     props.setProperty(property.getKey(), value);
