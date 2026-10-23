@@ -16,6 +16,8 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -40,6 +42,8 @@ class OAuthTokenProvider implements TokenProvider {
   private static final long DEFAULT_LEAD_RENEWAL_TIME_SECONDS = 30L;
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
   private static final String TOKEN_EXCHANGE_PATH = "/api/1.0/unity-control/auth/tokens";
+  private static final String TOKEN_EXCHANGE_GRANT_TYPE =
+      "urn:ietf:params:oauth:grant-type:token-exchange";
   private static final String ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 
   private String oauthUri;
@@ -168,22 +172,17 @@ class OAuthTokenProvider implements TokenProvider {
 
   @Override
   public Map<String, String> configs() {
-    if (!shouldExchangeForUcToken()) {
-      return Map.of(
-          AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE,
-          AuthConfigs.OAUTH_URI, oauthUri,
-          AuthConfigs.OAUTH_CLIENT_ID, oauthClientId,
-          AuthConfigs.OAUTH_CLIENT_SECRET, oauthClientSecret,
-          AuthConfigs.OAUTH_SCOPE, oauthScope);
+    Map<String, String> configs = new HashMap<>();
+    configs.put(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE);
+    configs.put(AuthConfigs.OAUTH_URI, oauthUri);
+    configs.put(AuthConfigs.OAUTH_CLIENT_ID, oauthClientId);
+    configs.put(AuthConfigs.OAUTH_CLIENT_SECRET, oauthClientSecret);
+    configs.put(AuthConfigs.OAUTH_SCOPE, oauthScope);
+    if (shouldExchangeForUcToken()) {
+      configs.put(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN, "true");
+      configs.put(AuthConfigs.UC_URI, ucUri);
     }
-    return Map.of(
-        AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE,
-        AuthConfigs.OAUTH_URI, oauthUri,
-        AuthConfigs.OAUTH_CLIENT_ID, oauthClientId,
-        AuthConfigs.OAUTH_CLIENT_SECRET, oauthClientSecret,
-        AuthConfigs.OAUTH_SCOPE, oauthScope,
-        AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN, "true",
-        AuthConfigs.UC_URI, ucUri);
+    return Collections.unmodifiableMap(configs);
   }
 
   private TempToken renewToken() {
@@ -226,8 +225,7 @@ class OAuthTokenProvider implements TokenProvider {
       throws IOException, InterruptedException {
     String formData =
         "grant_type="
-            + URLEncoder.encode(
-                "urn:ietf:params:oauth:grant-type:token-exchange", StandardCharsets.UTF_8)
+            + URLEncoder.encode(TOKEN_EXCHANGE_GRANT_TYPE, StandardCharsets.UTF_8)
             + "&requested_token_type="
             + URLEncoder.encode(ACCESS_TOKEN_TYPE, StandardCharsets.UTF_8)
             + "&subject_token_type="
