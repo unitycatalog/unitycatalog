@@ -15,11 +15,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.auth.oauth2.AccessToken;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.observability.UcMetric;
+import io.unitycatalog.server.observability.UcMetricConstants;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
@@ -27,6 +31,7 @@ import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TestUtils;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -64,6 +69,8 @@ public class CachingCloudCredentialVendorTest {
   private AzureCredentialVendor azure;
   private GcpCredentialVendor gcp;
   private Clock clock;
+  private SimpleMeterRegistry registry;
+  private UnityCatalogMetrics metrics;
 
   @BeforeEach
   void setUp() {
@@ -72,6 +79,8 @@ public class CachingCloudCredentialVendorTest {
     gcp = mock(GcpCredentialVendor.class);
     clock = mock(Clock.class);
     tick(T0);
+    registry = new SimpleMeterRegistry();
+    metrics = new UnityCatalogMetrics(registry);
   }
 
   private void tick(long epochMs) {
@@ -90,7 +99,14 @@ public class CachingCloudCredentialVendorTest {
         gcp,
         new ServerProperties(p),
         clock,
-        CachingCloudCredentialVendor.DEFAULT_EXPIRY_MARGIN);
+        CachingCloudCredentialVendor.DEFAULT_EXPIRY_MARGIN,
+        metrics);
+  }
+
+  /** The {@link UcMetric#STORAGE_CREDENTIAL_CACHE_REQUESTS} count for {@code result}. */
+  private double requests(String result) {
+    return TestUtils.counterCount(
+        registry, UcMetric.STORAGE_CREDENTIAL_CACHE_REQUESTS, UcMetricConstants.RESULT, result);
   }
 
   /** AWS session credentials as STS returns them; a {@code null} expiry is a static credential. */
@@ -155,6 +171,9 @@ public class CachingCloudCredentialVendorTest {
   void secondCallForSameBindingIsServedFromTheCache() {
     when(aws.vendAwsCredentials(any())).thenReturn(awsCreds("AK", T0 + ONE_HOUR_MS));
     CachingCloudCredentialVendor cache = cache();
+    // Both series are exposed before the first request.
+    assertEquals(0.0, requests(UcMetricConstants.HIT));
+    assertEquals(0.0, requests(UcMetricConstants.MISS));
 
     cache.vendCredential(ctx("arn:role/A"));
     TemporaryCredentials hit = cache.vendCredential(ctx("arn:role/A"));
@@ -162,6 +181,8 @@ public class CachingCloudCredentialVendorTest {
     // The hit equals the vended AWS credential exactly, with no other cloud's fields added.
     assertEquals(creds("AK", T0 + ONE_HOUR_MS), hit);
     verify(aws, times(1)).vendAwsCredentials(any());
+    assertEquals(1.0, requests(UcMetricConstants.MISS));
+    assertEquals(1.0, requests(UcMetricConstants.HIT));
   }
 
   static Stream<Arguments> changedBindings() {
@@ -217,6 +238,8 @@ public class CachingCloudCredentialVendorTest {
     assertEquals(first, cache.vendCredential(original));
     assertEquals(second, cache.vendCredential(updated));
     assertEquals(2, vends());
+    assertEquals(2.0, requests(UcMetricConstants.MISS));
+    assertEquals(2.0, requests(UcMetricConstants.HIT));
   }
 
   @ParameterizedTest
@@ -257,6 +280,9 @@ public class CachingCloudCredentialVendorTest {
     tick(T0 + 62_000L); // the replacement is served without a third vend
     assertEquals("AK_NEW", accessKey(cache.vendCredential(ctx("arn:role/A"))));
     verify(aws, times(2)).vendAwsCredentials(any());
+    // The renewal inside the margin counts as a miss; serving the old credential would count a hit.
+    assertEquals(2.0, requests(UcMetricConstants.MISS));
+    assertEquals(2.0, requests(UcMetricConstants.HIT));
   }
 
   @ParameterizedTest(
@@ -339,7 +365,13 @@ public class CachingCloudCredentialVendorTest {
     when(aws.vendAwsCredentials(any())).thenReturn(awsCreds("AK", T0 + 120_000L));
     CachingCloudCredentialVendor cache =
         new CachingCloudCredentialVendor(
-            aws, azure, gcp, new ServerProperties(new Properties()), clock, Duration.ofSeconds(10));
+            aws,
+            azure,
+            gcp,
+            new ServerProperties(new Properties()),
+            clock,
+            Duration.ofSeconds(10),
+            metrics);
 
     cache.vendCredential(ctx("arn:role/A"));
     tick(T0 + 109_999L);
@@ -428,6 +460,9 @@ public class CachingCloudCredentialVendorTest {
     assertEquals("AK", accessKey(cache.vendCredential(ctx("arn:role/A"))));
 
     verify(aws, times(2)).vendAwsCredentials(any());
+    // A failed vend still counts as a miss.
+    assertEquals(2.0, requests(UcMetricConstants.MISS));
+    assertEquals(1.0, requests(UcMetricConstants.HIT));
   }
 
   @Test
@@ -549,6 +584,7 @@ public class CachingCloudCredentialVendorTest {
       pool.shutdownNow();
     }
     verify(aws, times(callers)).vendAwsCredentials(any());
+    assertEquals(callers, requests(UcMetricConstants.MISS));
   }
 
   @Test
@@ -570,6 +606,7 @@ public class CachingCloudCredentialVendorTest {
           }
         });
     verify(aws, times(1)).vendAwsCredentials(any());
+    assertEquals(8 * 200, requests(UcMetricConstants.HIT));
   }
 
   @Test
