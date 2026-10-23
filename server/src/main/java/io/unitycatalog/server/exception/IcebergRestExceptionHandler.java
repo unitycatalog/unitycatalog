@@ -1,8 +1,10 @@
 package io.unitycatalog.server.exception;
 
+import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.server.ServiceRequestContext;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import lombok.SneakyThrows;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
@@ -31,6 +33,33 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
   public static final IcebergRestExceptionHandler INSTANCE = new IcebergRestExceptionHandler();
 
   private IcebergRestExceptionHandler() {}
+
+  /**
+   * Reports a missing namespace as a missing table on the routes addressed to one table, which is
+   * what the REST spec answers there. Those are the routes that bind a {@code table} path
+   * parameter: load, exists, drop, commit, credentials and metrics.
+   *
+   * <p>Iceberg's client retries an identifier as a metadata table ({@code db.orders.snapshots} as
+   * the {@code snapshots} table of {@code db.orders}) only when {@code loadTable} raises {@code
+   * NoSuchTableException}. It is decided here rather than in each handler because, with
+   * authorization on, resolving the request's securables looks the schema up before the handler
+   * runs.
+   */
+  @Override
+  public HttpResponse handleException(ServiceRequestContext ctx, HttpRequest req, Throwable cause) {
+    BaseException exception = toBaseException(cause);
+    if (exception.getErrorCode() == ErrorCode.SCHEMA_NOT_FOUND && ctx.pathParam("table") != null) {
+      String table =
+          ctx.pathParam("namespace").replace('\u001f', '.') + "." + ctx.pathParam("table");
+      String message = "Table does not exist: " + table;
+      exception =
+          wrapException(
+              ErrorCode.TABLE_NOT_FOUND,
+              message,
+              new NoSuchTableException(exception, "%s", message));
+    }
+    return createErrorResponse(exception);
+  }
 
   /**
    * Walks the cause chain past BaseException wrappers to find the original exception, so the

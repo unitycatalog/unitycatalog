@@ -176,7 +176,7 @@ public class TestUtils {
   }
 
   public static void assertIcebergApiException(Executable executable, int expectedStatus) {
-    assertIcebergApiExceptionImpl(executable, expectedStatus, Optional.empty());
+    assertIcebergApiExceptionImpl(executable, expectedStatus, Optional.empty(), Optional.empty());
   }
 
   /**
@@ -185,7 +185,22 @@ public class TestUtils {
    */
   public static void assertIcebergApiException(
       Executable executable, int expectedStatus, String containsMessage) {
-    assertIcebergApiExceptionImpl(executable, expectedStatus, Optional.of(containsMessage));
+    assertIcebergApiExceptionImpl(
+        executable, expectedStatus, Optional.empty(), Optional.of(containsMessage));
+  }
+
+  /**
+   * As {@link #assertIcebergApiException(Executable, int, String)}, additionally asserting the
+   * Iceberg error type names {@code expectedType}, which is what Iceberg's client reads to tell one
+   * 404 from another.
+   */
+  public static void assertIcebergApiException(
+      Executable executable,
+      int expectedStatus,
+      Class<? extends Exception> expectedType,
+      String containsMessage) {
+    assertIcebergApiExceptionImpl(
+        executable, expectedStatus, Optional.of(expectedType), Optional.of(containsMessage));
   }
 
   /**
@@ -198,13 +213,21 @@ public class TestUtils {
    * {@code containsMessage}).
    */
   private static void assertIcebergApiExceptionImpl(
-      Executable executable, int expectedStatus, Optional<String> containsMessage) {
+      Executable executable,
+      int expectedStatus,
+      Optional<Class<? extends Exception>> expectedType,
+      Optional<String> containsMessage) {
     ApiException ex = assertThrows(ApiException.class, executable);
     assertThat(ex.getCode()).isEqualTo(expectedStatus);
     ErrorResponse error = parseIcebergErrorBody(ex.getResponseBody());
     assertThat(error.code())
         .as("Iceberg ErrorResponse code in: %s", ex.getResponseBody())
         .isEqualTo(expectedStatus);
+    expectedType.ifPresent(
+        t ->
+            assertThat(error.type())
+                .as("Iceberg error type in: %s", ex.getResponseBody())
+                .isEqualTo(t.getSimpleName()));
     containsMessage.ifPresent(
         m ->
             assertThat(error.message())
