@@ -5,6 +5,7 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.BaseViewCRUDTest;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.base.table.ViewOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
@@ -23,6 +24,11 @@ public class SdkViewCRUDTest extends BaseViewCRUDTest {
 
   @Override
   protected TableOperations createTableOperations(ServerConfig config) {
+    return new SdkTableOperations(TestUtils.createApiClient(config));
+  }
+
+  @Override
+  protected ViewOperations createViewOperations(ServerConfig config) {
     return new SdkTableOperations(TestUtils.createApiClient(config));
   }
 }

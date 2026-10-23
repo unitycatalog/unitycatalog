@@ -3,6 +3,7 @@ package io.unitycatalog.server.sdk.access;
 import static io.unitycatalog.server.utils.TestUtils.assertApiExceptionStatusOnly;
 import static io.unitycatalog.server.utils.TestUtils.assertDeltaPermissionDenied;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
+import static io.unitycatalog.server.utils.TestUtils.assertSameIdentity;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
@@ -24,9 +25,13 @@ import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.PermissionsChange;
+import io.unitycatalog.client.model.Privilege;
+import io.unitycatalog.client.model.ReplaceView;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.UpdatePermissions;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
@@ -50,6 +55,75 @@ import org.junit.jupiter.api.Test;
  * </ul>
  */
 public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest {
+
+  @Test
+  @SneakyThrows
+  public void testReplaceViewRequiresOwnership() {
+    createCommonTestUsers();
+    setupCommonCatalogAndSchema();
+
+    TablesApi principal1TablesApi =
+        new TablesApi(TestUtils.createApiClient(createTestUserServerConfig(PRINCIPAL_1)));
+    TablesApi regular1TablesApi =
+        new TablesApi(TestUtils.createApiClient(createTestUserServerConfig(REGULAR_1)));
+    grantPermissions(REGULAR_1, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    grantPermissions(
+        REGULAR_1,
+        SecurableType.SCHEMA,
+        "cat_pr1.sch_pr1",
+        Privileges.USE_SCHEMA,
+        Privileges.CREATE_TABLE);
+    ReplaceView replace =
+        new ReplaceView()
+            .tableType(TableType.VIEW)
+            .columns(TEST_COLUMNS)
+            .viewDefinition("SELECT 2 AS id");
+
+    // MODIFY is not enough: a new definition changes what every SELECT grantee reads.
+    String principal1View = "cat_pr1.sch_pr1.principal1_view";
+    TableInfo created = principal1TablesApi.createTable(viewRequest("principal1_view"));
+    grantPermissions(
+        REGULAR_1, SecurableType.TABLE, principal1View, Privileges.SELECT, Privileges.MODIFY);
+    assertPermissionDenied(() -> regular1TablesApi.replaceView(principal1View, replace));
+    assertThat(getTable(principal1TablesApi, principal1View)).isEqualTo(created);
+
+    // REGULAR_1 owns only its own view (not the catalog or schema): the view-owner tier applies.
+    String regular1View = "cat_pr1.sch_pr1.regular1_view";
+    TableInfo regular1Created = regular1TablesApi.createTable(viewRequest("regular1_view"));
+    TableInfo replacedByViewOwner = regular1TablesApi.replaceView(regular1View, replace);
+    assertSameIdentity(regular1Created, replacedByViewOwner);
+    assertThat(replacedByViewOwner.getUpdatedBy()).isEqualTo(REGULAR_1);
+
+    // PRINCIPAL_1 owns the catalog and schema but not REGULAR_1's view: a parent owner may replace
+    // it. Identity, owner, and grants are preserved.
+    grantPermissions(PRINCIPAL_2, SecurableType.TABLE, regular1View, Privileges.SELECT);
+    var grantsBefore = grantsApi.get(SecurableType.TABLE, regular1View, null);
+    TableInfo replacedByCatalogOwner = principal1TablesApi.replaceView(regular1View, replace);
+    assertSameIdentity(regular1Created, replacedByCatalogOwner);
+    assertThat(replacedByCatalogOwner.getUpdatedBy()).isEqualTo(PRINCIPAL_1);
+    assertThat(grantsApi.get(SecurableType.TABLE, regular1View, null)).isEqualTo(grantsBefore);
+
+    // The view owner still needs USE_SCHEMA on the parent schema.
+    PermissionsChange revokeUseSchema =
+        new PermissionsChange()
+            .principal(REGULAR_1)
+            .remove(List.of(Privilege.fromValue(Privileges.USE_SCHEMA.getValue())));
+    grantsApi.update(
+        SecurableType.SCHEMA,
+        "cat_pr1.sch_pr1",
+        new UpdatePermissions().changes(List.of(revokeUseSchema)));
+    assertPermissionDenied(() -> regular1TablesApi.replaceView(regular1View, replace));
+  }
+
+  private static CreateTable viewRequest(String name) {
+    return new CreateTable()
+        .name(name)
+        .catalogName("cat_pr1")
+        .schemaName("sch_pr1")
+        .columns(TEST_COLUMNS)
+        .tableType(TableType.VIEW)
+        .viewDefinition("SELECT 1 AS id");
+  }
 
   @Test
   @SneakyThrows

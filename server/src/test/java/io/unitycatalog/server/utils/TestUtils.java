@@ -14,6 +14,7 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.delta.DeltaApiException;
 import io.unitycatalog.client.delta.model.DeltaErrorType;
+import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -101,6 +102,17 @@ public class TestUtils {
         .tokenProvider(TokenProvider.create(Map.of("type", "static", "token", token)))
         .retryPolicy(JitterDelayRetryPolicy.builder().maxAttempts(1).build())
         .build();
+  }
+
+  /**
+   * Asserts that a replaced table or view kept the identity of the original: ID, owner, and
+   * creation metadata.
+   */
+  public static void assertSameIdentity(TableInfo before, TableInfo after) {
+    assertThat(after)
+        .usingRecursiveComparison()
+        .comparingOnlyFields("tableId", "owner", "createdAt", "createdBy")
+        .isEqualTo(before);
   }
 
   /**

@@ -2,12 +2,18 @@ package io.unitycatalog.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static io.unitycatalog.server.utils.TestUtils.assertSameIdentity;
+import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.TableInfo;
 import java.io.File;
 import java.util.List;
 import org.apache.spark.sql.Row;
+import org.apache.spark.sql.RowFactory;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -115,6 +121,35 @@ public class MetricViewE2ETest extends BaseSparkIntegrationTest {
     assertThat(rows.get(0).getLong(1)).isEqualTo(3L);
     assertThat(rows.get(1).getString(0)).isEqualTo("us");
     assertThat(rows.get(1).getLong(1)).isEqualTo(3L);
+
+    // CREATE OR REPLACE swaps the definition in place: same view identity, new measure, and
+    // queries see the new aggregation (eu=max(3)=3, us=max(1,2)=2).
+    TablesApi tablesApi = new TablesApi(createApiClient(serverConfig));
+    TableInfo before = tablesApi.getTable(tbl("mv_e2e"), true, true);
+    sql(
+        "CREATE OR REPLACE VIEW %s WITH METRICS LANGUAGE YAML AS $$\n"
+            + "version: \"0.1\"\n"
+            + "source: %s\n"
+            + "dimensions:\n"
+            + "  - name: region\n"
+            + "    expr: region\n"
+            + "measures:\n"
+            + "  - name: cnt_max\n"
+            + "    expr: max(cnt)\n"
+            + "$$",
+        tbl("mv_e2e"), tbl("events"));
+    TableInfo after = tablesApi.getTable(tbl("mv_e2e"), true, true);
+    assertSameIdentity(before, after);
+    assertThat(after.getViewDefinition()).contains("max(cnt)").doesNotContain("sum(cnt)");
+    assertThat(after.getColumns())
+        .extracting(ColumnInfo::getName)
+        .containsExactly("region", "cnt_max");
+    List<Row> replacedRows =
+        sql(
+            "SELECT region, measure(cnt_max) FROM %s GROUP BY region ORDER BY region",
+            tbl("mv_e2e"));
+    assertThat(replacedRows)
+        .containsExactly(RowFactory.create("eu", 3), RowFactory.create("us", 2));
 
     // ALTER VIEW ... RENAME TO delegates to UCSingleCatalogViewSupport.renameView ->
     // ucProxy.renameView, which is unsupported today, so the rename fails with a clear

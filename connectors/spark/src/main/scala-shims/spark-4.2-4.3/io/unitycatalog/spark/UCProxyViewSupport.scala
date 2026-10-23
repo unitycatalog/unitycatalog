@@ -4,6 +4,8 @@ import java.util
 
 import scala.collection.JavaConverters._
 
+import com.fasterxml.jackson.core.JsonProcessingException
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.unitycatalog.client.ApiException
 import io.unitycatalog.client.model.{
   ColumnInfo,
@@ -11,6 +13,7 @@ import io.unitycatalog.client.model.{
   CreateTable,
   Dependency => UCDependency,
   DependencyList => UCDependencyList,
+  ReplaceView,
   TableDependency => UCTableDependency,
   TableInfo => UCTableInfo,
   TableType
@@ -48,6 +51,8 @@ import org.apache.spark.sql.types.DataType
  * helper methods.
  */
 trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
+
+  private lazy val errorMapper = new ObjectMapper()
 
   override def listViews(namespace: Array[String]): Array[Identifier] = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
@@ -125,6 +130,44 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
   }
 
   override def createView(ident: Identifier, view: View): View = {
+    val ct = buildCreateViewRequest(ident, view)
+    try {
+      tablesApi.createTable(ct)
+    } catch {
+      case e: ApiException if isTableAlreadyExists(e) =>
+        throw new ViewAlreadyExistsException(ident)
+    }
+    loadView(ident)
+  }
+
+  /**
+   * Replaces the view in place, preserving its ID, owner, and grants. `CREATE OR REPLACE VIEW` uses
+   * Spark's default `createOrReplaceView` (replace, then create on `NoSuchViewException`), so a
+   * non-view at `ident` must surface as `NoSuchViewException` too; the follow-up `createView` then
+   * fails as already-exists and Spark reports its "cannot replace a table with a view" error.
+   */
+  override def replaceView(ident: Identifier, view: View): View = {
+    val create = buildCreateViewRequest(ident, view)
+    val request = new ReplaceView()
+      .tableType(create.getTableType)
+      .columns(create.getColumns)
+      .comment(create.getComment)
+      .properties(create.getProperties)
+      .viewDefinition(create.getViewDefinition)
+      .viewDependencies(create.getViewDependencies)
+    try {
+      toView(
+        tablesApi.replaceView(UCSingleCatalog.fullTableNameForApi(this.name, ident), request))
+    } catch {
+      case e: ApiException if isMissingOrNotAView(e) => throw new NoSuchViewException(ident)
+    }
+  }
+
+  private def isMissingOrNotAView(e: ApiException): Boolean =
+    (e.getCode == 404 && hasErrorCode(e, "TABLE_NOT_FOUND")) ||
+      (e.getCode == 400 && hasErrorCode(e, "FAILED_PRECONDITION"))
+
+  private def buildCreateViewRequest(ident: Identifier, view: View): CreateTable = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val properties: util.Map[String, String] = view.properties()
     // A plain `CREATE VIEW` may omit PROP_TABLE_TYPE; treat that as a regular VIEW.
@@ -181,19 +224,23 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
         view.currentNamespace())
     }
     ct.setProperties(propertiesToServer)
+    ct
+  }
 
-    try {
-      tablesApi.createTable(ct)
-    } catch {
-      case e: ApiException if e.getCode == 409 =>
-        throw new ViewAlreadyExistsException(ident)
+  private def isTableAlreadyExists(e: ApiException): Boolean =
+    e.getCode == 409 ||
+      (e.getCode == 400 && hasErrorCode(e, "TABLE_ALREADY_EXISTS"))
+
+  private def hasErrorCode(e: ApiException, code: String): Boolean =
+    Option(e.getResponseBody).exists { body =>
+      try {
+        Option(errorMapper.readTree(body)).exists(_.path("error_code").asText() == code)
+      } catch {
+        case parseError: JsonProcessingException =>
+          logDebug("Cannot parse server error response; preserving the API exception", parseError)
+          false
+      }
     }
-    loadView(ident)
-  }
-
-  override def replaceView(ident: Identifier, view: View): View = {
-    throw new UnsupportedOperationException("Replacing a view is not supported yet")
-  }
 
   override def dropView(ident: Identifier): Boolean = {
     val t = getUCTableLike(ident) match {
