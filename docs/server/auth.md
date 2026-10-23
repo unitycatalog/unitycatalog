@@ -116,6 +116,11 @@ cover internal or sensitive hosts. Prefer exact issuer URLs and `https://` issue
 `true` and will be removed in a future release. Permission fixes that use this setting apply the
 corrected rules by default.
 
+The setting covers:
+
+- [Volume rename](#volume-rename-permissions): Also require permission to create volumes
+  in the containing schema.
+
 The access checks apply only when `server.authorization=enable`.
 
 To keep the previous rules during a migration, set:
@@ -153,6 +158,17 @@ Optional tuning:
 Revocations propagate on the poll interval. A stale deny can trigger one `max(id)` probe
 before returning 403. Concurrent denials and list-filter items share a probe that started after the
 request.
+
+### Volume Rename Permissions
+
+Renaming a volume requires permission to update it and to create volumes in its schema.
+Volume owners need `USE CATALOG` on the catalog, plus `USE SCHEMA` and `CREATE VOLUME` on the schema.
+Schema ownership replaces the two schema grants. Catalog ownership replaces `USE CATALOG`, but does
+not replace permission to create volumes in a schema owned by someone else. A `CREATE VOLUME` grant
+on the catalog also applies to its schemas.
+
+Comment-only updates keep the existing update checks. A request that includes a new name uses
+the rename checks, even if the name is unchanged.
 
 ### Restart the UC Server
 
