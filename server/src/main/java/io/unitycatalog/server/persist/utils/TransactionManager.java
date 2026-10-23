@@ -112,14 +112,18 @@ public class TransactionManager {
 
   /**
    * Logs the rollback or close failures suppressed on {@code e} when nothing else logs them: the
-   * error handler logs only a 5xx, and the caller takes a signal as a normal outcome.
+   * error handler logs only a 5xx, and the caller takes a signal as a normal outcome. A wrapped
+   * database error carries its rollback failure on the cause, so the cause is checked too.
    */
   private static void warnIfCleanupFailureIsUnlogged(RuntimeException e, String errorMessage) {
     boolean unlogged =
         e instanceof TransactionRollbackException
             || (e instanceof BaseException baseException
                 && !baseException.getErrorCode().getHttpStatus().isServerError());
-    if (unlogged && e.getSuppressed().length > 0) {
+    Throwable cause = e.getCause();
+    boolean hasCleanupFailure =
+        e.getSuppressed().length > 0 || (cause != null && cause.getSuppressed().length > 0);
+    if (unlogged && hasCleanupFailure) {
       LOGGER.warn("{}: cleanup after the transaction failed", errorMessage, e);
     }
   }
