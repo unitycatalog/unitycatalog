@@ -15,6 +15,7 @@ import io.unitycatalog.server.delta.model.DeltaRowTrackingDomainMetadata;
 import io.unitycatalog.server.delta.model.DeltaSetDomainMetadataUpdate;
 import io.unitycatalog.server.delta.model.DeltaSetPropertiesUpdate;
 import io.unitycatalog.server.delta.model.DeltaSetProtocolUpdate;
+import io.unitycatalog.server.delta.model.DeltaSetTableCommentUpdate;
 import io.unitycatalog.server.delta.model.DeltaTableRequirement;
 import io.unitycatalog.server.delta.model.DeltaTableUpdate;
 import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
@@ -382,6 +383,23 @@ public class DeltaUpdateTableMapperTest {
                 .updates()
                 .changesTableMetadata())
         .isTrue();
+  }
+
+  // ---------- stored column-mapping mode ----------
+
+  @Test
+  public void invalidStoredColumnMappingModeIsIgnoredWithoutSetColumns() {
+    // The mode is only read for set-columns, so a comment update on such a table still applies.
+    assertThatCode(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    managedDao(),
+                    propsFrom(Map.of(TableProperties.COLUMN_MAPPING_MODE, "foo")),
+                    collectUpdatesRequest(
+                        new DeltaSetTableCommentUpdate().comment("c").action("set-table-comment")),
+                    new ServerProperties()))
+        .doesNotThrowAnyException();
   }
 
   // --- fixtures ---

@@ -93,6 +93,13 @@ public final class DeltaConsts {
     public static final String ROW_TRACKING_MATERIALIZED_ROW_COMMIT_VERSION_COLUMN_NAME =
         "delta.rowTracking.materializedRowCommitVersionColumnName";
     public static final String COLUMN_MAPPING_MODE = "delta.columnMapping.mode";
+
+    /** Field metadata key carrying a column's id under {@code id} column mapping. */
+    public static final String COLUMN_MAPPING_ID = "delta.columnMapping.id";
+
+    /** Field metadata key carrying a column's physical name under {@code name} mapping. */
+    public static final String COLUMN_MAPPING_PHYSICAL_NAME = "delta.columnMapping.physicalName";
+
     public static final String COLUMN_MAPPING_MAX_COLUMN_ID = "delta.columnMapping.maxColumnId";
     public static final String PARQUET_COMPRESSION_CODEC = "delta.parquet.compression.codec";
     public static final String CHECKPOINT_WRITE_STATS_AS_STRUCT =
