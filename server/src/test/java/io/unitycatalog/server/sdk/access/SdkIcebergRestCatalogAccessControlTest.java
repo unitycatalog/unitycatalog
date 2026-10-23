@@ -180,8 +180,7 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     createTable(r1, SCHEMA_P2, "tbl_p2_r1");
     p2.loadTable(CAT, SCHEMA_P2, "tbl_p2_r1"); // schema OWNER + catalog USE_CATALOG
 
-    // tbl_sel / tbl_mod in SCHEMA (owned by principal-1): regular-1 reads each via its granted
-    // table privilege (with USE_CATALOG + USE_SCHEMA).
+    // SELECT permits metadata access; MODIFY alone does not, even with both usage permissions.
     createTable(p1, SCHEMA, "tbl_sel");
     grantPermissions(
         REGULAR_1, SecurableType.TABLE, CAT + "." + SCHEMA + ".tbl_sel", Privileges.SELECT);
@@ -190,7 +189,8 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     createTable(p1, SCHEMA, "tbl_mod");
     grantPermissions(
         REGULAR_1, SecurableType.TABLE, CAT + "." + SCHEMA + ".tbl_mod", Privileges.MODIFY);
-    r1.loadTable(CAT, SCHEMA, "tbl_mod"); // table MODIFY
+    assertDenied(() -> r1.loadTable(CAT, SCHEMA, "tbl_mod"));
+    assertApiExceptionStatusOnly(() -> r1.tableExists(CAT, SCHEMA, "tbl_mod"), 403);
 
     // A metadata-table identifier (schema.tbl_sel.snapshots) arrives as namespace
     // "schema<0x1F>tbl_sel", which does not exist. With authorization on, the answer is still the
@@ -209,13 +209,14 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     p1.loadCredentials(CAT, SCHEMA, "tbl_none"); // catalog OWNER
     r1.loadCredentials(CAT, SCHEMA, "tbl_sel"); // table SELECT (+ USE_CATALOG + USE_SCHEMA)
     assertDenied(() -> r1.loadCredentials(CAT, SCHEMA, "tbl_none")); // no table privilege -> 403
+    assertDenied(() -> r1.loadCredentials(CAT, SCHEMA, "tbl_mod")); // MODIFY without SELECT
 
     // ===== listTables filter (GET_TABLE) =====
-    // regular-1 sees only tables it has a table privilege on; tbl_none is filtered out
+    // regular-1 sees only tables it owns or has SELECT on; MODIFY alone does not qualify
     // (USE_CATALOG + USE_SCHEMA don't satisfy GET_TABLE per table).
     assertThat(tables(r1, SCHEMA))
-        .contains("tbl_sel", "tbl_mod", "tbl_r1own")
-        .doesNotContain("tbl_none");
+        .contains("tbl_sel", "tbl_r1own")
+        .doesNotContain("tbl_none", "tbl_mod");
     // catalog owner passes GET_TABLE for every table, so nothing is filtered out.
     assertThat(tables(p1, SCHEMA)).contains("tbl_sel", "tbl_mod", "tbl_none", "tbl_r1own");
     // Paged, as for listNamespaces: tbl_none's page comes back empty and the listing goes on.

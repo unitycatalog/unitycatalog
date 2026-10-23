@@ -21,11 +21,11 @@ public final class AuthorizeExpressions {
   private AuthorizeExpressions() {}
 
   /**
-   * Authorization policy for reading table metadata (UC REST {@code GET /tables/{name}}, UC Delta
-   * API, and the Iceberg REST {@code loadTable}). Metastore admin and catalog owner pass
-   * unconditionally; schema owner passes with catalog {@code USE_CATALOG}; regular callers need
-   * {@code USE_SCHEMA} + {@code USE_CATALOG} plus any of {@code OWNER} / {@code SELECT} / {@code
-   * MODIFY} on the table itself.
+   * Authorization policy for reading table metadata and filtering table listings. Metastore admin
+   * and catalog owner pass unconditionally; schema owner passes with catalog {@code USE_CATALOG};
+   * regular callers need {@code USE_SCHEMA} + {@code USE_CATALOG} plus {@code OWNER} or {@code
+   * SELECT} on the table. With strict privilege checks disabled, {@code MODIFY} also permits
+   * metadata access.
    */
   public static final String GET_TABLE =
       """
@@ -34,7 +34,8 @@ public final class AuthorizeExpressions {
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
       (#authorize(#principal, #catalog, USE_CATALOG) &&
           #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
+          (#authorizeAny(#principal, #table, OWNER, SELECT) ||
+              (!#strict_privilege_checks && #authorize(#principal, #table, MODIFY))))
       """;
 
   /**
