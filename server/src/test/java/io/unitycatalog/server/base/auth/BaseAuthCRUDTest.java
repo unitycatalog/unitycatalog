@@ -177,6 +177,23 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
         String.format(
             "{\"displayName\":\"Test User\",\"emails\":[{\"value\":\"%s\",\"primary\":true}]}",
             email);
+    createUser(userJson);
+  }
+
+  /**
+   * Creates an ENABLED user whose {@code externalId} is an OAuth client ID, as used to resolve
+   * service principals on token exchange.
+   */
+  protected void createEnabledUser(String email, String externalId) {
+    String userJson =
+        String.format(
+            "{\"displayName\":\"Test User\",\"externalId\":\"%s\","
+                + "\"emails\":[{\"value\":\"%s\",\"primary\":true}]}",
+            externalId, email);
+    createUser(userJson);
+  }
+
+  private void createUser(String userJson) {
     RequestHeaders headers =
         RequestHeaders.builder()
             .method(HttpMethod.POST)

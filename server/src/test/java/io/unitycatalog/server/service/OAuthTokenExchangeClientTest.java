@@ -4,13 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.auth0.jwt.JWT;
-import com.linecorp.armeria.client.WebClient;
-import com.linecorp.armeria.common.AggregatedHttpResponse;
-import com.linecorp.armeria.common.HttpData;
-import com.linecorp.armeria.common.HttpHeaderNames;
-import com.linecorp.armeria.common.HttpMethod;
-import com.linecorp.armeria.common.MediaType;
-import com.linecorp.armeria.common.RequestHeaders;
 import com.sun.net.httpserver.HttpServer;
 import io.unitycatalog.client.ApiClientBuilder;
 import io.unitycatalog.client.ApiException;
@@ -44,7 +37,7 @@ public class OAuthTokenExchangeClientTest extends BaseAuthCRUDTest {
   @Override
   public void setUp() {
     super.setUp();
-    createServiceUser();
+    createEnabledUser(SERVICE_EMAIL, OAUTH_CLIENT_ID);
     startIdpTokenServer();
   }
 
@@ -127,27 +120,5 @@ public class OAuthTokenExchangeClientTest extends BaseAuthCRUDTest {
         });
     idpTokenServer.start();
     idpTokenUri = "http://localhost:" + idpTokenServer.getAddress().getPort() + "/token";
-  }
-
-  private void createServiceUser() {
-    String userJson =
-        String.format(
-            "{\"displayName\":\"Service principal\",\"externalId\":\"%s\","
-                + "\"emails\":[{\"value\":\"%s\",\"primary\":true}]}",
-            OAUTH_CLIENT_ID, SERVICE_EMAIL);
-    RequestHeaders headers =
-        RequestHeaders.builder()
-            .method(HttpMethod.POST)
-            .path("/api/1.0/unity-control/scim2/Users")
-            .contentType(MediaType.JSON)
-            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
-            .build();
-    AggregatedHttpResponse response =
-        WebClient.builder(serverConfig.getServerUrl())
-            .build()
-            .execute(headers, HttpData.ofUtf8(userJson))
-            .aggregate()
-            .join();
-    assertThat(response.status().code()).isEqualTo(201);
   }
 }
