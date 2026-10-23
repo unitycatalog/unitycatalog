@@ -10,7 +10,7 @@ using the [Helm](https://github.com/helm/helm) package manager.
 - Helm 3.1+
 
 ## Features
-- Deploys Unity Catalog server and UI
+- Deploys the Unity Catalog server, and the UI with `ui.enabled=true`
 - Supports OAuth authentication
 - Supports file H2DB and PostgreSQL as a database
 - Customizable configuration for server and UI using Helm values
@@ -51,6 +51,18 @@ The following table lists the configurable parameters of the Unity Catalog chart
 	</thead>
 	<tbody>
 		<tr>
+			<td>auth.accessTokenTimeout</td>
+			<td>string</td>
+			<td><pre lang="">
+PT24H
+</pre>
+</td>
+			<td>UC access token lifetime for token exchange
+
+Example: `PT24H` (24 hours), `P7D` (7 days)
+</td>
+		</tr>
+		<tr>
 			<td>auth.allowedIssuers</td>
 			<td>string</td>
 			<td><pre lang="">
@@ -60,6 +72,9 @@ https://accounts.google.com
 			<td>Comma-separated list of allowed token issuers
 
 When authorization is enabled, tokens will only be accepted from issuers in this list.
+Supports exact match or wildcard patterns with * (single DNS label per wildcard).
+Cannot be "*" alone. Wildcard issuers are evaluated before signature verification;
+see docs/server/auth.md.
 
 Example for Google: `https://accounts.google.com`
 Example for Microsoft Entra ID: `https://login.microsoftonline.com/{tenant-id}/v2.0`
@@ -74,9 +89,9 @@ not set
 </td>
 			<td>Comma-separated list of expected JWT audience values
 
-When authorization is enabled, tokens must contain one of these audience values.
-This ensures tokens are intended for this Unity Catalog instance.
-Typically your application's client ID or API identifier.
+When authorization is enabled, tokens must contain an aud value matching one of these entries.
+Supports exact match or wildcard patterns with * (same rules as allowedIssuers).
+Use "*" alone to disable audience validation (issuer and user checks still apply).
 </td>
 		</tr>
 		<tr>
@@ -115,18 +130,6 @@ Client secret must contain the following keys:
 			<td>OAuth cookie timeout
 
 Example: `P5D` (5 days)
-</td>
-		</tr>
-		<tr>
-			<td>auth.accessTokenTimeout</td>
-			<td>string</td>
-			<td><pre lang="json">
-"PT24H"
-</pre>
-</td>
-			<td>UC access token lifetime for token exchange
-
-Example: `PT24H` (24 hours), `P7D` (7 days)
 </td>
 		</tr>
 		<tr>
@@ -1160,6 +1163,45 @@ Example: `s3://bucket/path`
 </td>
 		</tr>
 		<tr>
+			<td>test.image.pullPolicy</td>
+			<td>string</td>
+			<td><pre lang="json">
+"IfNotPresent"
+</pre>
+</td>
+			<td>Pull policy for the `helm test` pod image</td>
+		</tr>
+		<tr>
+			<td>test.image.repository</td>
+			<td>string</td>
+			<td><pre lang="json">
+"busybox"
+</pre>
+</td>
+			<td>Repository for the `helm test` pod image</td>
+		</tr>
+		<tr>
+			<td>test.image.tag</td>
+			<td>string</td>
+			<td><pre lang="json">
+"1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e"
+</pre>
+</td>
+			<td>Tag for the `helm test` pod image, pinned by digest</td>
+		</tr>
+		<tr>
+			<td>test.imagePullSecrets</td>
+			<td>array</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>Image pull secrets for the `helm test` pod
+
+[Kubernetes docs](https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod)
+</td>
+		</tr>
+		<tr>
 			<td>ui.deployment.affinity</td>
 			<td>object</td>
 			<td><pre lang="">
@@ -1493,7 +1535,7 @@ not set
 			<td>ui.enabled</td>
 			<td>bool</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 			<td>Enable the UI</td>
