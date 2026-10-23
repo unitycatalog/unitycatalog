@@ -116,6 +116,22 @@ public class AuthConfigUtilsTest {
   }
 
   @Test
+  public void testCatalogUriIsPassedToTokenProvider() {
+    Map<String, String> configs =
+        normalizeConfigs(
+            "uri", "https://uc.example.com",
+            "auth.type", "oauth",
+            "auth.oauth.uri", "https://auth.example.com",
+            "auth.oauth.clientId", "client-id",
+            "auth.oauth.clientSecret", "client-secret",
+            "auth.oauth.exchangeForUcToken", "true");
+    assertThat(configs).containsEntry("catalogUri", "https://uc.example.com");
+    assertThat(TokenProvider.create(configs).configs())
+        .containsEntry("catalogUri", "https://uc.example.com")
+        .containsEntry("oauth.exchangeForUcToken", "true");
+  }
+
+  @Test
   public void testConflictingTokens() {
     assertThatThrownBy(() -> normalizeConfigs("token", "legacy", "auth.token", "new"))
         .isInstanceOf(IllegalArgumentException.class)

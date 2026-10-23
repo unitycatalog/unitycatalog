@@ -1,6 +1,7 @@
 package io.unitycatalog.spark.auth;
 
 import io.unitycatalog.client.internal.Preconditions;
+import io.unitycatalog.spark.utils.OptionsUtil;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
@@ -10,6 +11,7 @@ public class AuthConfigUtils {
   private static final String TYPE = "type";
   private static final String STATIC_TYPE = "static";
   private static final String STATIC_TOKEN = "token";
+  private static final String CATALOG_URI = "catalogUri";
 
   private AuthConfigUtils() {}
 
@@ -39,6 +41,13 @@ public class AuthConfigUtils {
 
       newConfigs.put(TYPE, STATIC_TYPE);
       newConfigs.put(STATIC_TOKEN, token);
+    }
+
+    // Token providers that call the UC server themselves (e.g. the OAuth token exchange) need the
+    // catalog URI, which is a catalog option rather than an 'auth.' one.
+    String uri = configs.get(OptionsUtil.URI);
+    if (uri != null) {
+      newConfigs.putIfAbsent(CATALOG_URI, uri);
     }
 
     return new CaseInsensitiveStringMap(newConfigs);

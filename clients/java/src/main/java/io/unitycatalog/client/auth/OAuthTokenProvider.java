@@ -16,6 +16,8 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -26,15 +28,26 @@ import java.util.Map;
  * <p>This provider uses the OAuth 2.0 client credentials flow to obtain access tokens. It
  * automatically renews tokens before they expire (default: 30 seconds before expiration). Token
  * requests are retried automatically for resilience against transient network failures.
+ *
+ * <p>When {@code oauth.exchangeForUcToken} is {@code true}, the OAuth token is not sent to Unity
+ * Catalog directly. It is exchanged (RFC 8693) at the server's {@code auth/tokens} endpoint,
+ * derived from {@code catalogUri}, and the UC-issued token is cached and renewed instead. This is
+ * required by Unity Catalog servers that only accept their own tokens on API calls.
  */
 class OAuthTokenProvider implements TokenProvider {
   private static final long DEFAULT_LEAD_RENEWAL_TIME_SECONDS = 30L;
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+  private static final String TOKEN_EXCHANGE_PATH = "/api/1.0/unity-control/auth/tokens";
+  private static final String TOKEN_EXCHANGE_GRANT_TYPE =
+      "urn:ietf:params:oauth:grant-type:token-exchange";
+  private static final String ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 
   private String oauthUri;
   private String oauthClientId;
   private String oauthClientSecret;
   private String oauthScope;
+  // Set only when the OAuth token is exchanged for a UC token.
+  private String catalogUri;
   private long leadRenewalTimeSeconds;
   private HttpClient httpClient;
   private Clock clock;
@@ -49,6 +62,27 @@ class OAuthTokenProvider implements TokenProvider {
       String oauthClientId,
       String oauthClientSecret,
       String oauthScope,
+      long leadRenewalTimeSeconds,
+      ApiClient apiClient,
+      Clock clock) {
+    this(
+        oauthUri,
+        oauthClientId,
+        oauthClientSecret,
+        oauthScope,
+        /* catalogUri= */ null,
+        leadRenewalTimeSeconds,
+        apiClient,
+        clock);
+  }
+
+  // Package-private constructor for testing; a non-null catalogUri enables the UC token exchange.
+  OAuthTokenProvider(
+      String oauthUri,
+      String oauthClientId,
+      String oauthClientSecret,
+      String oauthScope,
+      String catalogUri,
       long leadRenewalTimeSeconds,
       ApiClient apiClient,
       Clock clock) {
@@ -67,6 +101,7 @@ class OAuthTokenProvider implements TokenProvider {
     this.oauthClientId = oauthClientId;
     this.oauthClientSecret = oauthClientSecret;
     this.oauthScope = normalizeOAuthScope(oauthScope);
+    this.catalogUri = catalogUri;
     this.leadRenewalTimeSeconds = leadRenewalTimeSeconds;
     this.httpClient = apiClient.getHttpClient();
     this.clock = clock;
@@ -101,6 +136,17 @@ class OAuthTokenProvider implements TokenProvider {
     // Optional OAuth scope; defaults to all-apis when unset.
     this.oauthScope = normalizeOAuthScope(configs.get(AuthConfigs.OAUTH_SCOPE));
 
+    // Optional exchange of the OAuth token for a UC token; needs the catalog URI to reach UC.
+    if (Boolean.parseBoolean(configs.get(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN))) {
+      String catalogUri = configs.get(AuthConfigs.CATALOG_URI);
+      Preconditions.checkArgument(
+          catalogUri != null && !catalogUri.isEmpty(),
+          "Configuration key '%s' is missing or empty, it is required when '%s' is true",
+          AuthConfigs.CATALOG_URI,
+          AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN);
+      this.catalogUri = catalogUri;
+    }
+
     this.leadRenewalTimeSeconds = DEFAULT_LEAD_RENEWAL_TIME_SECONDS;
     this.httpClient =
         new RetryingApiClient(JitterDelayRetryPolicy.builder().build()).getHttpClient();
@@ -121,55 +167,103 @@ class OAuthTokenProvider implements TokenProvider {
 
   @Override
   public Map<String, String> configs() {
-    return Map.of(
-        AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE,
-        AuthConfigs.OAUTH_URI, oauthUri,
-        AuthConfigs.OAUTH_CLIENT_ID, oauthClientId,
-        AuthConfigs.OAUTH_CLIENT_SECRET, oauthClientSecret,
-        AuthConfigs.OAUTH_SCOPE, oauthScope);
+    Map<String, String> configs = new HashMap<>();
+    configs.put(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE);
+    configs.put(AuthConfigs.OAUTH_URI, oauthUri);
+    configs.put(AuthConfigs.OAUTH_CLIENT_ID, oauthClientId);
+    configs.put(AuthConfigs.OAUTH_CLIENT_SECRET, oauthClientSecret);
+    configs.put(AuthConfigs.OAUTH_SCOPE, oauthScope);
+    if (shouldExchangeForUcToken()) {
+      configs.put(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN, "true");
+      configs.put(AuthConfigs.CATALOG_URI, catalogUri);
+    }
+    return Collections.unmodifiableMap(configs);
   }
 
   private TempToken renewToken() {
     try {
-      // Prepare Basic authentication header
-      String credentials = String.format("%s:%s", oauthClientId, oauthClientSecret);
-      String encodedCredentials =
-          Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
-
-      // Prepare form data
-      String formData =
-          "grant_type=client_credentials&scope="
-              + URLEncoder.encode(oauthScope, StandardCharsets.UTF_8);
-
-      // Build HTTP request
-      HttpRequest request =
-          HttpRequest.newBuilder()
-              .uri(URI.create(oauthUri))
-              .header("Authorization", "Basic " + encodedCredentials)
-              .header("Content-Type", "application/x-www-form-urlencoded")
-              .POST(HttpRequest.BodyPublishers.ofString(formData))
-              .build();
-
-      // Send request with retry support
-      HttpResponse<String> response =
-          httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-      if (response.statusCode() != 200) {
-        throw new IOException(
-            String.format(
-                "Failed to fetch OAuth token. HTTP status: %d, Response: %s",
-                response.statusCode(), response.body()));
-      }
-
-      // Parse JSON response
-      JsonNode jsonNode = OBJECT_MAPPER.readTree(response.body());
-      String accessToken = jsonNode.get("access_token").asText();
-      long expiresInSeconds = jsonNode.get("expires_in").asLong();
-
-      return new TempToken(accessToken, clock.now().plusSeconds(expiresInSeconds));
+      TempToken oauthToken = fetchOAuthToken();
+      return shouldExchangeForUcToken() ? exchangeOAuthToken(oauthToken.token()) : oauthToken;
     } catch (Exception e) {
       throw new RuntimeException("Failed to renew OAuth token", e);
     }
+  }
+
+  private boolean shouldExchangeForUcToken() {
+    return catalogUri != null;
+  }
+
+  private TempToken fetchOAuthToken() throws IOException, InterruptedException {
+    // Prepare Basic authentication header
+    String credentials = String.format("%s:%s", oauthClientId, oauthClientSecret);
+    String encodedCredentials =
+        Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
+
+    // Prepare form data
+    String formData =
+        "grant_type=client_credentials&scope="
+            + URLEncoder.encode(oauthScope, StandardCharsets.UTF_8);
+
+    HttpRequest request =
+        HttpRequest.newBuilder()
+            .uri(URI.create(oauthUri))
+            .header("Authorization", "Basic " + encodedCredentials)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .POST(HttpRequest.BodyPublishers.ofString(formData))
+            .build();
+    return sendTokenRequest(request, "Failed to fetch OAuth token");
+  }
+
+  /** Exchanges the OAuth token for a UC-issued token at the UC server (RFC 8693). */
+  private TempToken exchangeOAuthToken(String subjectToken)
+      throws IOException, InterruptedException {
+    String formData =
+        "grant_type="
+            + URLEncoder.encode(TOKEN_EXCHANGE_GRANT_TYPE, StandardCharsets.UTF_8)
+            + "&requested_token_type="
+            + URLEncoder.encode(ACCESS_TOKEN_TYPE, StandardCharsets.UTF_8)
+            + "&subject_token_type="
+            + URLEncoder.encode(ACCESS_TOKEN_TYPE, StandardCharsets.UTF_8)
+            + "&subject_token="
+            + URLEncoder.encode(subjectToken, StandardCharsets.UTF_8);
+
+    HttpRequest request =
+        HttpRequest.newBuilder()
+            .uri(tokenExchangeUri(catalogUri))
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .POST(HttpRequest.BodyPublishers.ofString(formData))
+            .build();
+    return sendTokenRequest(request, "Failed to exchange OAuth token for a UC token");
+  }
+
+  /**
+   * Appends the token exchange path to the catalog URI's path, keeping any path prefix. Like {@code
+   * ApiClientBuilder}, only the scheme, authority and path are used; a query or fragment is
+   * dropped.
+   */
+  static URI tokenExchangeUri(String catalogUri) {
+    URI uri = URI.create(catalogUri);
+    String path = uri.getRawPath() == null ? "" : uri.getRawPath().replaceAll("/+$", "");
+    return URI.create(uri.getScheme() + "://" + uri.getRawAuthority() + path + TOKEN_EXCHANGE_PATH);
+  }
+
+  private TempToken sendTokenRequest(HttpRequest request, String errorMessage)
+      throws IOException, InterruptedException {
+    // Send request with retry support
+    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+    if (response.statusCode() != 200) {
+      throw new IOException(
+          String.format(
+              "%s. HTTP status: %d, Response: %s",
+              errorMessage, response.statusCode(), response.body()));
+    }
+
+    JsonNode jsonNode = OBJECT_MAPPER.readTree(response.body());
+    String accessToken = jsonNode.get("access_token").asText();
+    long expiresInSeconds = jsonNode.get("expires_in").asLong();
+
+    return new TempToken(accessToken, clock.now().plusSeconds(expiresInSeconds));
   }
 
   private static String normalizeOAuthScope(String oauthScope) {
