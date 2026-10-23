@@ -577,6 +577,41 @@ Map<String, String> configs = Map.of(
 --conf "spark.sql.catalog.<catalog_name>.auth.oauth.scope="
 ```
 
+### Exchanging the OAuth token for a Unity Catalog token
+
+By default the OAuth token provider sends the Identity Provider's token to Unity Catalog as is.
+The Unity Catalog server only accepts tokens it issued itself on API calls, so against a Unity
+Catalog server with authorization enabled, set `oauth.exchangeForUcToken=true`. The provider then
+exchanges the Identity Provider's token at the server's token exchange endpoint
+(`<uri>/api/1.0/unity-control/auth/tokens`, see
+[Programmatic exchange](#programmatic-exchange-service-principals)) and caches and renews the
+Unity Catalog token instead. The server must allow the token's issuer and audience, and the OAuth
+client ID must map to a Unity Catalog user's `externalId`.
+
+The exchange endpoint is derived from the catalog URI. Spark passes the catalog `uri` option to the
+token provider automatically:
+
+```sh
+--conf "spark.sql.catalog.<catalog_name>.uri=https://uc.example.com" \
+--conf "spark.sql.catalog.<catalog_name>.auth.type=oauth" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.uri=<identity provider token endpoint>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientId=<client ID>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientSecret=<client secret>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.exchangeForUcToken=true"
+```
+
+Java clients set the catalog URI with the `uri` key:
+
+```java
+Map<String, String> configs = Map.of(
+    "type", "oauth",
+    "uri", "https://uc.example.com",
+    "oauth.uri", "<identity provider token endpoint>",
+    "oauth.clientId", "<client ID>",
+    "oauth.clientSecret", "<client secret>",
+    "oauth.exchangeForUcToken", "true");
+```
+
 ## Using Google Identity with Unity Catalog UI
 
 We previously configured Google as the Identity Provider and configured UC Server settings for CLI access. However, we
