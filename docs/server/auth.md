@@ -67,6 +67,18 @@ Service integrations exchange an upstream OAuth access token on `POST /auth/toke
 
 Create UC users with a human-readable `email` for grants and set `externalId` to the OAuth client id for programmatic exchange. The issued UC access token always uses the resolved user's `email`.
 
+#### Browser cookie authentication
+
+The authentication cookie uses `Secure`, `HttpOnly`, and `SameSite=Strict`.
+Send `X-Requested-With: XMLHttpRequest` when requesting a cookie with
+`POST /auth/tokens?ext=cookie`.
+With authorization enabled, cookie-authenticated requests also need it,
+except GET, HEAD, and OPTIONS. A missing or incorrect header returns HTTP 403 `PERMISSION_DENIED`.
+The UI sends the header automatically. Cookie-based scripts must add it to writes.
+Clients that use `Authorization: Bearer <token>` do not need this header.
+Cross-origin browser requests with this header need CORS preflight approval.
+The server does not enable cross-origin access.
+
 #### Multiple Identity Providers
 
 You can configure multiple issuers and audiences by separating them with commas:

@@ -181,6 +181,7 @@ public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
             .method(HttpMethod.POST)
             .path(SCIM_USERS_PATH)
             .contentType(MediaType.JSON)
+            .add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest")
             .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
             .build();
     AggregatedHttpResponse response =
