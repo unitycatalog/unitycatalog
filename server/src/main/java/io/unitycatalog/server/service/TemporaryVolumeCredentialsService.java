@@ -6,6 +6,7 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
@@ -34,13 +35,15 @@ public class TemporaryVolumeCredentialsService implements UnityCatalogRestServic
 
   @Post("")
   @AuthorizeExpression(
-      """
-      #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-      (#operation == 'READ_VOLUME'
-        ? #authorizeAny(#principal, #volume, OWNER, READ_VOLUME)
-        : #authorize(#principal, #volume, OWNER))
-      """)
+      action = AuthorizationAction.GENERATE_VOLUME_CREDENTIALS,
+      value =
+          """
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+          (#operation == 'READ_VOLUME'
+            ? #authorizeAny(#principal, #volume, OWNER, READ_VOLUME)
+            : #authorize(#principal, #volume, OWNER))
+          """)
   public HttpResponse generateTemporaryVolumeCredential(
       @AuthorizeResourceKey(value = VOLUME, key = "volume_id") @AuthorizeKey(key = "operation")
           GenerateTemporaryVolumeCredential generateTemporaryVolumeCredential) {

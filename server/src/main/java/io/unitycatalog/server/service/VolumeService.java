@@ -13,6 +13,7 @@ import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
@@ -81,15 +82,16 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
    */
   @Post("")
   @AuthorizeExpression(
-      """
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-      (#authorize(#principal, #schema, OWNER) ||
-        #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_VOLUME)) &&
-      (#volume_type != 'EXTERNAL' ||
-        (#no_overlap_with_data_securable &&
-          (#external_location == null ||
-           #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_VOLUME))))
-      """)
+      action = AuthorizationAction.CREATE_VOLUME,
+      precondition = "#volume_type != 'EXTERNAL' || #no_overlap_with_data_securable",
+      value =
+          """
+          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+          (#authorize(#principal, #schema, OWNER) ||
+            #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_VOLUME)) &&
+          (#volume_type != 'EXTERNAL' || #external_location == null ||
+           #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_VOLUME))
+          """)
   public HttpResponse createVolume(
       @AuthorizeResourceKeys({
             @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
@@ -119,7 +121,9 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
       """;
 
   @Get("")
-  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @AuthorizeExpression(
+      action = AuthorizationAction.LIST_VOLUMES,
+      value = LIST_AND_GET_AUTH_EXPRESSION)
   @ResponseAuthorizeFilter
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listVolumes(
@@ -135,7 +139,9 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
   }
 
   @Get("/{full_name}")
-  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @AuthorizeExpression(
+      action = AuthorizationAction.GET_VOLUME,
+      value = LIST_AND_GET_AUTH_EXPRESSION)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getVolume(
       @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName,
@@ -145,13 +151,16 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
 
   @Patch("/{full_name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #volume, OWNER))
-      """)
+      action = AuthorizationAction.UPDATE_VOLUME,
+      value =
+          """
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+           #authorize(#principal, #schema, OWNER)) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+              #authorize(#principal, #schema, USE_SCHEMA) &&
+              #authorize(#principal, #volume, OWNER))
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateVolume(
       @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName,
@@ -161,13 +170,16 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
 
   @Delete("/{full_name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #volume, OWNER))
-      """)
+      action = AuthorizationAction.DELETE_VOLUME,
+      value =
+          """
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+           #authorize(#principal, #schema, OWNER)) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+              #authorize(#principal, #schema, USE_SCHEMA) &&
+              #authorize(#principal, #volume, OWNER))
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteVolume(
       @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName) {

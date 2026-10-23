@@ -30,6 +30,7 @@ import com.unboundid.scim2.common.types.UserResource;
 import com.unboundid.scim2.common.utils.FilterEvaluator;
 import com.unboundid.scim2.common.utils.Parser;
 import io.unitycatalog.control.model.User;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
@@ -73,7 +74,9 @@ public class Scim2UserService implements ScimService {
   @Get("")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(
+      action = AuthorizationAction.LIST_USERS,
+      value = "#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public ListResponse<UserResource> getScimUsers(
       @Param("filter") Optional<String> filter,
@@ -112,7 +115,9 @@ public class Scim2UserService implements ScimService {
   @Post("")
   @Produces("application/scim+json")
   @StatusCode(201)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(
+      action = AuthorizationAction.CREATE_USER,
+      value = "#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public UserResource createScimUser(UserResource userResource) {
     // Get primary email address
@@ -152,7 +157,9 @@ public class Scim2UserService implements ScimService {
   @Get("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(
+      action = AuthorizationAction.GET_USER,
+      value = "#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public UserResource getUser(@Param("id") String id) {
     return asUserResource(userRepository.getUser(id));
@@ -161,7 +168,9 @@ public class Scim2UserService implements ScimService {
   @Put("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(
+      action = AuthorizationAction.UPDATE_USER,
+      value = "#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public UserResource updateUser(@Param("id") String id, UserResource userResource) {
     UserResource user = asUserResource(userRepository.getUser(id));
@@ -180,7 +189,9 @@ public class Scim2UserService implements ScimService {
   }
 
   @Delete("/{id}")
-  @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(
+      action = AuthorizationAction.DELETE_USER,
+      value = "#authorizeAny(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteUser(@Param("id") String id) {
     User user = userRepository.getUser(id);
@@ -191,7 +202,9 @@ public class Scim2UserService implements ScimService {
   }
 
   @Patch("/{id}")
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(
+      action = AuthorizationAction.UPDATE_USER,
+      value = "#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse patchUser(@Param("id") String id, PatchRequest patchRequest) {
     return patchRequest.getOperations().stream()

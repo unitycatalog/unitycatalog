@@ -12,6 +12,7 @@ import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -67,7 +68,10 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
    * location (rather than tables etc.) owns the path.
    */
   @Post("")
-  @AuthorizeExpression(AuthorizeExpressions.CREATE_SCHEMA_WITH_STORAGE_ROOT)
+  @AuthorizeExpression(
+      action = AuthorizationAction.CREATE_SCHEMA,
+      value = AuthorizeExpressions.CREATE_SCHEMA_WITH_STORAGE_ROOT,
+      precondition = AuthorizeExpressions.STORAGE_ROOT_PRECONDITION)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createSchema(
       @AuthorizeResourceKeys({
@@ -85,7 +89,9 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
   }
 
   @Get("")
-  @AuthorizeExpression(AuthorizeExpressions.GET_SCHEMA)
+  @AuthorizeExpression(
+      action = AuthorizationAction.LIST_SCHEMAS,
+      value = AuthorizeExpressions.GET_SCHEMA)
   @ResponseAuthorizeFilter
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listSchemas(
@@ -99,14 +105,18 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
   }
 
   @Get("/{full_name}")
-  @AuthorizeExpression(AuthorizeExpressions.GET_SCHEMA)
+  @AuthorizeExpression(
+      action = AuthorizationAction.GET_SCHEMA,
+      value = AuthorizeExpressions.GET_SCHEMA)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getSchema(@Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName) {
     return HttpResponse.ofJson(schemaRepository.getSchema(fullName));
   }
 
   @Patch("/{full_name}")
-  @AuthorizeExpression(AuthorizeExpressions.UPDATE_SCHEMA)
+  @AuthorizeExpression(
+      action = AuthorizationAction.UPDATE_SCHEMA,
+      value = AuthorizeExpressions.UPDATE_SCHEMA)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateSchema(
       @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,
@@ -115,7 +125,9 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
   }
 
   @Delete("/{full_name}")
-  @AuthorizeExpression(AuthorizeExpressions.DELETE_SCHEMA)
+  @AuthorizeExpression(
+      action = AuthorizationAction.DELETE_SCHEMA,
+      value = AuthorizeExpressions.DELETE_SCHEMA)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteSchema(
       @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,
