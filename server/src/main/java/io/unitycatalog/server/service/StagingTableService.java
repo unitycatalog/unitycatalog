@@ -6,6 +6,7 @@ import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -40,7 +41,9 @@ public class StagingTableService extends AuthorizedService implements UnityCatal
       """;
 
   @Post("")
-  @AuthorizeExpression(AuthorizeExpressions.CREATE_STAGING_TABLE)
+  @AuthorizeExpression(
+      action = AuthorizationAction.CREATE_STAGING_TABLE,
+      value = AuthorizeExpressions.CREATE_STAGING_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createStagingTable(
       @AuthorizeResourceKeys({

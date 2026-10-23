@@ -11,6 +11,7 @@ import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -62,6 +63,7 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
    */
   @Post("")
   @AuthorizeExpression(
+      action = AuthorizationAction.CREATE_CATALOG,
       precondition = AuthorizeExpressions.STORAGE_ROOT_PRECONDITION,
       value =
           """
@@ -80,7 +82,9 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
   }
 
   @Get("")
-  @AuthorizeExpression(AuthorizeExpressions.GET_CATALOG)
+  @AuthorizeExpression(
+      action = AuthorizationAction.LIST_CATALOGS,
+      value = AuthorizeExpressions.GET_CATALOG)
   @ResponseAuthorizeFilter
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listCatalogs(
@@ -93,7 +97,9 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
   }
 
   @Get("/{name}")
-  @AuthorizeExpression(AuthorizeExpressions.GET_CATALOG)
+  @AuthorizeExpression(
+      action = AuthorizationAction.GET_CATALOG,
+      value = AuthorizeExpressions.GET_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getCatalog(@Param("name") @AuthorizeResourceKey(CATALOG) String name) {
     return HttpResponse.ofJson(catalogRepository.getCatalog(name));
@@ -101,9 +107,11 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
 
   @Patch("/{name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #catalog, OWNER)
-      """)
+      action = AuthorizationAction.UPDATE_CATALOG,
+      value =
+          """
+          #authorize(#principal, #catalog, OWNER)
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCatalog(
       @Param("name") @AuthorizeResourceKey(CATALOG) String name, UpdateCatalog updateCatalog) {
@@ -112,10 +120,12 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
 
   @Delete("/{name}")
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER)
-      """)
+      action = AuthorizationAction.DELETE_CATALOG,
+      value =
+          """
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER)
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteCatalog(
       @Param("name") @AuthorizeResourceKey(CATALOG) String name,

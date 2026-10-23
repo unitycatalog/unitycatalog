@@ -1,5 +1,6 @@
 package io.unitycatalog.server.auth.annotation;
 
+import io.unitycatalog.server.auth.AuthorizationAction;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -37,6 +38,9 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 public @interface AuthorizeExpression {
   String value() default "#deny";
+
+  /** Operation described by this annotation, independently of the native permission expression. */
+  AuthorizationAction action() default AuthorizationAction.UNSPECIFIED;
 
   /** Local request conditions that must pass before the permission expression is evaluated. */
   String precondition() default "#permit";

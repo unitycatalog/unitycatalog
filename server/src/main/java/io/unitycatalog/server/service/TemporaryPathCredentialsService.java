@@ -7,6 +7,7 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizationAction;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
@@ -57,6 +58,7 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
   //  of the parent catalog and schema.
   @Post("")
   @AuthorizeExpression(
+      action = AuthorizationAction.GENERATE_PATH_CREDENTIALS,
       precondition =
           """
           #operation == 'PATH_CREATE_TABLE'
