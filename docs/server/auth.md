@@ -116,6 +116,11 @@ cover internal or sensitive hosts. Prefer exact issuer URLs and `https://` issue
 `true` and will be removed in a future release. Permission fixes that use this setting apply the
 corrected rules by default.
 
+The setting covers:
+
+- [Model rename](#model-rename-permissions): Also require permission to create models
+  in the containing schema.
+
 The access checks apply only when `server.authorization=enable`.
 
 To keep the previous rules during a migration, set:
@@ -153,6 +158,17 @@ Optional tuning:
 Revocations propagate on the poll interval. A stale deny can trigger one `max(id)` probe
 before returning 403. Concurrent denials and list-filter items share a probe that started after the
 request.
+
+### Model Rename Permissions
+
+Renaming a registered model requires permission to update it and to create models in its schema.
+Model owners need `USE CATALOG` on the catalog and `USE SCHEMA` on the schema. They also need
+`CREATE MODEL` or `CREATE FUNCTION` on the schema. Schema ownership replaces the schema grants.
+Catalog ownership replaces `USE CATALOG`, but does not replace permission to create models in a
+schema owned by someone else. Creation grants on the catalog also apply to its schemas.
+
+Comment-only updates keep the existing update checks. A request that includes a new name uses
+the rename checks, even if the name is unchanged.
 
 ### Restart the UC Server
 
