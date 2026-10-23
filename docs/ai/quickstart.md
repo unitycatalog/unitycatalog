@@ -156,7 +156,7 @@ be defined for use in LangChain.
 ``` python
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_community.chat_models.databricks import ChatDatabricks
+from databricks_langchain import ChatDatabricks
 
 # Initialize the LLM
 llm = ChatDatabricks(endpoint="databricks-meta-llama-3-1-70b-instruct")
