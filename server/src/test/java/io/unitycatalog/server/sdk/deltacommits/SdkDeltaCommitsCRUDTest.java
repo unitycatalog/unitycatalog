@@ -43,6 +43,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -112,6 +113,56 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         .tableId(tableInfo.getTableId())
         .tableUri(tableInfo.getStorageLocation())
         .latestBackfilledVersion(latestBackfilledVersion);
+  }
+
+  /**
+   * Tables that predate {@code delta_latest_backfilled_version} carry no watermark, and their
+   * backfilled rows were deleted rather than retained. The watermark has to be reconstructed from
+   * that layout, or every already-backfilled version would look unbackfilled again and immediately
+   * exhaust the per-table commit limit.
+   */
+  @Test
+  public void testWatermarkDerivedForTablePredatingTheColumn() throws Exception {
+    UUID tableId = UUID.fromString(tableInfo.getTableId());
+    String loc = tableInfo.getStorageLocation();
+
+    // Partially backfilled: rows [v2, v3] with nothing flagged, so the watermark is the oldest
+    // remaining version minus one.
+    for (long v = 1; v <= 3; v++) {
+      deltaCommitsApi.commit(createCommitObject(tableInfo.getTableId(), v, loc));
+    }
+    rewriteAsLegacyTable(tableId, Optional.of(1L));
+    DeltaCommit commit2 = createCommitObject(tableInfo.getTableId(), 2L, loc);
+    DeltaCommit commit3 = createCommitObject(tableInfo.getTableId(), 3L, loc);
+    verifyDeltaGetCommitsResponse(
+        getAllCommits(tableInfo.getTableId(), loc, 0L, Optional.empty()),
+        /* expectedLatestTableVersion= */ 3,
+        /* expectedCommits= */ commit3,
+        commit2);
+
+    // The next commit persists the derived watermark, and v1 stays out of the live window: a
+    // backfill verification that reached back to v1 would fail, since only v2 is published here.
+    writePublishedCommitFiles(2L, 2L);
+    DeltaCommit commit4 =
+        createCommitObject(tableInfo.getTableId(), 4L, loc).latestBackfilledVersion(2L);
+    deltaCommitsApi.commit(commit4);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ 4, /* expectedCommits= */ commit4, commit3);
+    verifyTableInfoDAO(dao -> assertEquals(2L, dao.getDeltaLatestBackfilledVersion()));
+
+    // Fully backfilled: the old layout left a single flagged row, which names the watermark
+    // outright.
+    writePublishedCommitFiles(3L, 4L);
+    deltaCommitsApi.commit(createBackfillOnlyCommitObject(4L));
+    rewriteAsLegacyTable(tableId, Optional.of(4L));
+    verifyDeltaGetCommitsResponse(
+        getAllCommits(tableInfo.getTableId(), loc, 0L, Optional.empty()),
+        /* expectedLatestTableVersion= */ 4);
+
+    DeltaCommit commit5 = createCommitObject(tableInfo.getTableId(), 5L, loc);
+    deltaCommitsApi.commit(commit5);
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 5, /* expectedCommits= */ commit5);
+    verifyTableInfoDAO(dao -> assertEquals(4L, dao.getDeltaLatestBackfilledVersion()));
   }
 
   private List<DeltaCommitDAO> getCommitDAOs(UUID tableId) {
@@ -331,17 +382,29 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(4L));
     verifyDeltaCommits(/* expectedLatestTableVersion= */ 4);
 
-    // The latest backfilled version (v4) is retained as a marker row that keeps its file name (it
-    // is flagged, not purged), so an identical replay of that commit is still recognized as an
-    // idempotent no-op success rather than a conflict.
+    // Backfill no longer removes rows, so a retry at a backfilled version is still answered from
+    // the file name recorded for it. No staged or published file is read, which is what keeps a
+    // retrying writer from stalling: backfill is exactly what removes its staged file.
     deltaCommitsApi.commit(commit4);
     verifyDeltaCommits(/* expectedLatestTableVersion= */ 4);
+    deltaCommitsApi.commit(commit2);
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 4);
 
-    // Replay of a backfilled-and-purged version (v1/v2/v3 are purged; only the v4 marker remains)
-    // can no longer be matched by file name, so it is settled by comparing the incoming staged file
-    // against the published _delta_log/<v>.json.
+    DeltaCommit commit2OtherWriter =
+        createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation());
+    commit2OtherWriter.getCommitInfo().setFileName("other_writer_" + UUID.randomUUID());
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit2OtherWriter),
+        ErrorCode.COMMIT_VERSION_CONFLICT,
+        "Commit version already accepted.");
+
+    // A version whose row has aged out of the retention window (or predates retention) has no
+    // recorded file name left, so it falls back to comparing the staged file against the published
+    // _delta_log/<v>.json.
     String loc = tableInfo.getStorageLocation();
-    // Publish v2 and stage a byte-identical file -> replay recognized by content: idempotent no-op.
+    UUID tableId = UUID.fromString(tableInfo.getTableId());
+    deleteCommitRow(tableId, 2L);
+    // Byte-identical staged file -> replay recognized by content: idempotent no-op.
     byte[] v2Content = "delta-commit-v2\n".getBytes(StandardCharsets.UTF_8);
     writeTableFile(loc, "_delta_log/00000000000000000002.json", v2Content);
     writeTableFile(loc, "_delta_log/_staged_commits/file2", v2Content);
@@ -356,10 +419,10 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         ErrorCode.COMMIT_VERSION_CONFLICT,
         "Commit version already accepted.");
 
-    // v3 is purged too. Its published _delta_log/<v>.json is absent here (in normal operation a
-    // backfilled version has one; a missing file models log truncation, deletion, or a transient
-    // storage read error). The content check cannot read it, so the outcome is unknown and surfaces
-    // as a retriable 500 rather than a false conflict.
+    // v3's row is gone too, and its staged file was cleaned up after backfill, so the content
+    // check cannot read one side. The outcome is undetermined and surfaces as a retriable 500
+    // rather than a false conflict.
+    deleteCommitRow(tableId, 3L);
     assertApiException(
         () -> deltaCommitsApi.commit(commit3), ErrorCode.COMMIT_STATE_UNKNOWN, "retry");
 
@@ -424,6 +487,145 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     Path path = Path.of(URI.create(storageLocation + "/" + relativePath));
     Files.createDirectories(path.getParent());
     Files.write(path, content);
+  }
+
+  /**
+   * Rewrites the table into the shape it would have had before {@code
+   * delta_latest_backfilled_version} existed: the watermark unset, backfilled rows deleted rather
+   * than retained, and the newest backfilled one flagged if it is still the table's last commit.
+   *
+   * @param backfilledThrough the version the old layout had backfilled through, or empty for a
+   *     table that had never backfilled
+   */
+  private void rewriteAsLegacyTable(UUID tableId, Optional<Long> backfilledThrough) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      session.beginTransaction();
+      TableInfoDAO dao = session.get(TableInfoDAO.class, tableId);
+      dao.setDeltaLatestBackfilledVersion(null);
+      session.merge(dao);
+      backfilledThrough.ifPresent(
+          through -> {
+            Long last =
+                session
+                    .createQuery(
+                        "SELECT MAX(commitVersion) FROM DeltaCommitDAO WHERE tableId = :tableId",
+                        Long.class)
+                    .setParameter("tableId", tableId)
+                    .uniqueResult();
+            // The old layout kept the last commit even when backfilled, flagged, so the table
+            // always had a record of its current version.
+            long deleteThrough = Math.min(through, last - 1L);
+            session
+                .createMutationQuery(
+                    "DELETE FROM DeltaCommitDAO"
+                        + " WHERE tableId = :tableId AND commitVersion <= :deleteThrough")
+                .setParameter("tableId", tableId)
+                .setParameter("deleteThrough", deleteThrough)
+                .executeUpdate();
+            if (through.equals(last)) {
+              session
+                  .createMutationQuery(
+                      "UPDATE DeltaCommitDAO SET isBackfilledLatestCommit = true"
+                          + " WHERE tableId = :tableId AND commitVersion = :version")
+                  .setParameter("tableId", tableId)
+                  .setParameter("version", through)
+                  .executeUpdate();
+            }
+          });
+      session.getTransaction().commit();
+    }
+  }
+
+  /**
+   * The version exactly {@code NUM_BACKFILLED_COMMITS_RETAINED} (1000) behind the watermark stays.
+   * The next older version is deleted. {@code latest - 1000} is inside the window, so it must not
+   * be used as a {@code DELETE <=} bound, and that subtraction must not run while {@code latest} is
+   * still within the window.
+   */
+  @Test
+  public void testRetentionKeepsTheVersionExactlyAtTheWindowBoundary() throws Exception {
+    final long retention = 1000L;
+    UUID tableId = UUID.fromString(tableInfo.getTableId());
+    String loc = tableInfo.getStorageLocation();
+
+    deltaCommitsApi.commit(createCommitObject(tableInfo.getTableId(), 1L, loc));
+    deleteAllCommitRows(tableId);
+    insertCommitRow(tableId, 0L);
+    insertCommitRow(tableId, 1L);
+    insertCommitRow(tableId, retention);
+    setWatermark(tableId, retention - 1L);
+
+    writePublishedCommitFiles(retention, retention);
+    deltaCommitsApi.commit(createBackfillOnlyCommitObject(retention));
+    // latest == retention, so version 0 is exactly 1000 behind and every row is still inside the
+    // window. Pruning here would require a negative bound.
+    assertEquals(List.of(retention, 1L, 0L), commitVersions(tableId));
+
+    insertCommitRow(tableId, retention + 1L);
+    writePublishedCommitFiles(retention + 1L, retention + 1L);
+    deltaCommitsApi.commit(createBackfillOnlyCommitObject(retention + 1L));
+    // latest == 1001. Version 0 is 1001 behind and is deleted. Version 1 is exactly 1000 behind.
+    assertEquals(List.of(retention + 1L, retention, 1L), commitVersions(tableId));
+  }
+
+  /**
+   * Drops the commit row for {@code version}, standing in for a version that has aged out of the
+   * retention window or was backfilled before rows were retained at all.
+   */
+  private void deleteCommitRow(UUID tableId, long version) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      session.beginTransaction();
+      session
+          .createMutationQuery(
+              "DELETE FROM DeltaCommitDAO WHERE tableId = :tableId AND commitVersion = :version")
+          .setParameter("tableId", tableId)
+          .setParameter("version", version)
+          .executeUpdate();
+      session.getTransaction().commit();
+    }
+  }
+
+  private void deleteAllCommitRows(UUID tableId) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      session.beginTransaction();
+      session
+          .createMutationQuery("DELETE FROM DeltaCommitDAO WHERE tableId = :tableId")
+          .setParameter("tableId", tableId)
+          .executeUpdate();
+      session.getTransaction().commit();
+    }
+  }
+
+  private void insertCommitRow(UUID tableId, long version) {
+    Date timestamp = new Date(1700000000000L + version);
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      session.beginTransaction();
+      session.persist(
+          DeltaCommitDAO.builder()
+              .tableId(tableId)
+              .commitVersion(version)
+              .commitFilename("file" + version)
+              .commitFilesize(100L)
+              .commitFileModificationTimestamp(timestamp)
+              .commitTimestamp(timestamp)
+              .isBackfilledLatestCommit(false)
+              .build());
+      session.getTransaction().commit();
+    }
+  }
+
+  private void setWatermark(UUID tableId, long version) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      session.beginTransaction();
+      TableInfoDAO dao = session.get(TableInfoDAO.class, tableId);
+      dao.setDeltaLatestBackfilledVersion(version);
+      session.merge(dao);
+      session.getTransaction().commit();
+    }
+  }
+
+  private List<Long> commitVersions(UUID tableId) {
+    return getCommitDAOs(tableId).stream().map(DeltaCommitDAO::getCommitVersion).toList();
   }
 
   private void checkCommitInvalidParameter(
