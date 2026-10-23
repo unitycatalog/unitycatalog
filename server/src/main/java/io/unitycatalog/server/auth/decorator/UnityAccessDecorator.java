@@ -428,7 +428,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
     if (annotation != null) {
       LOGGER.debug("authorize expression = {}", annotation.value());
-      return annotation.value();
+      return "(" + annotation.precondition() + ") && (" + annotation.value() + ")";
     } else {
       LOGGER.debug("authorize = (none found)");
       return null;

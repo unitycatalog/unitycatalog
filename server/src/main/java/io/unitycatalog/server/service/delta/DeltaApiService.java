@@ -231,7 +231,9 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
    */
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables")
   @ProducesJson
-  @AuthorizeExpression(AuthorizeExpressions.CREATE_TABLE)
+  @AuthorizeExpression(
+      value = AuthorizeExpressions.CREATE_TABLE,
+      precondition = AuthorizeExpressions.CREATE_TABLE_PRECONDITION)
   public DeltaLoadTableResponse createTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,

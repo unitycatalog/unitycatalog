@@ -71,10 +71,17 @@ public final class AuthorizeExpressions {
       #authorizeAll(#principal, #catalog, USE_CATALOG, CREATE_SCHEMA)
       """;
 
+  /** Storage-root validation shared by catalog and schema creation. */
+  public static final String STORAGE_ROOT_PRECONDITION =
+      """
+      #storage_root == null ||
+        (#no_overlap_with_data_securable && #external_location != null)
+      """;
+
   /**
    * UC REST create-schema policy: the {@link #CREATE_SCHEMA} catalog tier plus, when a {@code
    * storage_root} is supplied, {@code OWNER}/{@code CREATE_MANAGED_STORAGE} on the covering
-   * (non-overlapping) external location. Mirrors the createCatalog storage-root gate.
+   * external location. Used with {@link #STORAGE_ROOT_PRECONDITION}.
    */
   public static final String CREATE_SCHEMA_WITH_STORAGE_ROOT =
       "("
@@ -82,9 +89,7 @@ public final class AuthorizeExpressions {
           + """
           ) &&
           (#storage_root == null ||
-           (#no_overlap_with_data_securable &&
-            #external_location != null &&
-            #authorizeAny(#principal, #external_location, OWNER, CREATE_MANAGED_STORAGE)))
+           #authorizeAny(#principal, #external_location, OWNER, CREATE_MANAGED_STORAGE))
           """;
 
   /**
@@ -122,7 +127,7 @@ public final class AuthorizeExpressions {
    * createTable}). Catalog {@code USE_CATALOG}/{@code OWNER} plus either schema {@code OWNER} or
    * schema {@code USE_SCHEMA}+{@code CREATE_TABLE}. For EXTERNAL tables, the caller additionally
    * needs {@code OWNER}/{@code CREATE_EXTERNAL_TABLE} on the external location (if one resolves)
-   * and the storage path must not overlap a data securable.
+   * and {@link #CREATE_TABLE_PRECONDITION} validates the storage path.
    *
    * <p>The {@code #table_type} SpEL variable is {@code 'MANAGED'} or {@code 'EXTERNAL'}, supplied
    * by the calling endpoint: a payload field for Delta ({@code @AuthorizeKey(key = "table-type")}),
@@ -134,11 +139,13 @@ public final class AuthorizeExpressions {
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
       (#authorize(#principal, #schema, OWNER) ||
         #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE)) &&
-      (#table_type != 'EXTERNAL' ||
-        (#no_overlap_with_data_securable &&
-          (#external_location == null ||
-           #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE))))
+      (#table_type != 'EXTERNAL' || #external_location == null ||
+       #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE))
       """;
+
+  /** External table creation must not overlap an existing data securable. */
+  public static final String CREATE_TABLE_PRECONDITION =
+      "#table_type != 'EXTERNAL' || #no_overlap_with_data_securable";
 
   /**
    * Authorization policy for updating / committing to a table (UC REST {@code
@@ -167,6 +174,10 @@ public final class AuthorizeExpressions {
    */
   public static final String UPDATE_ICEBERG_TABLE =
       "#staged_create ? (" + CREATE_TABLE + ") : (" + UPDATE_TABLE + ")";
+
+  /** Apply table-creation storage validation only when committing a staged create. */
+  public static final String UPDATE_ICEBERG_TABLE_PRECONDITION =
+      "#staged_create ? (" + CREATE_TABLE_PRECONDITION + ") : #permit";
 
   /**
    * Authorization policy for deleting a table, shared by the UC REST, UC Delta API, and Iceberg

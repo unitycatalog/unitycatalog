@@ -477,7 +477,9 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables")
   @ProducesJson
-  @AuthorizeExpression(AuthorizeExpressions.CREATE_TABLE)
+  @AuthorizeExpression(
+      value = AuthorizeExpressions.CREATE_TABLE,
+      precondition = AuthorizeExpressions.CREATE_TABLE_PRECONDITION)
   @AuthorizeResourceKey(METASTORE)
   public LoadTableResponse createTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
@@ -601,7 +603,9 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
   @ProducesJson
-  @AuthorizeExpression(AuthorizeExpressions.UPDATE_ICEBERG_TABLE)
+  @AuthorizeExpression(
+      value = AuthorizeExpressions.UPDATE_ICEBERG_TABLE,
+      precondition = AuthorizeExpressions.UPDATE_ICEBERG_TABLE_PRECONDITION)
   @AuthorizeResourceKey(METASTORE)
   public LoadTableResponse updateTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,

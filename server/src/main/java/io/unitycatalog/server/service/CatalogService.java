@@ -62,13 +62,13 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
    */
   @Post("")
   @AuthorizeExpression(
-      """
-        #authorizeAny(#principal, #metastore, OWNER, CREATE_CATALOG) &&
-        (#storage_root == null ||
-         (#no_overlap_with_data_securable &&
-          #external_location != null &&
-          #authorizeAny(#principal, #external_location, OWNER, CREATE_MANAGED_STORAGE)))
-      """)
+      precondition = AuthorizeExpressions.STORAGE_ROOT_PRECONDITION,
+      value =
+          """
+            #authorizeAny(#principal, #metastore, OWNER, CREATE_CATALOG) &&
+            (#storage_root == null ||
+             #authorizeAny(#principal, #external_location, OWNER, CREATE_MANAGED_STORAGE))
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createCatalog(
       @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_root")

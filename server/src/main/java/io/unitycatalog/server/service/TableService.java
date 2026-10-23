@@ -75,7 +75,9 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
    * @return HTTP response containing the created TableInfo
    */
   @Post("")
-  @AuthorizeExpression(AuthorizeExpressions.CREATE_TABLE)
+  @AuthorizeExpression(
+      value = AuthorizeExpressions.CREATE_TABLE,
+      precondition = AuthorizeExpressions.CREATE_TABLE_PRECONDITION)
   public HttpResponse createTable(
       @AuthorizeResourceKeys({
             @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
