@@ -151,6 +151,8 @@ The setting covers:
   Existing invalid grants can still be removed.
 - [Iceberg credentials](#table-credential-permissions): returning credentials from `loadTable`
   or `loadCredentials` requires `USE CATALOG`, `USE SCHEMA`, and `SELECT`, or ownership at each level.
+- [Table details](#table-metadata-permissions): `MODIFY` no longer substitutes for `SELECT`
+  when getting table details or listing tables. Existing usage and ownership rules still apply.
 
 The access checks apply only when `server.authorization=enable`.
 Grant validation also applies when authorization is disabled.
@@ -166,6 +168,20 @@ including access that the corrected rules would deny. Use `false` only while upd
 and grants. Set it back to `true` when the migration is complete.
 
 Use the same value on every server instance. Restart each instance after changing it.
+
+### Table metadata permissions
+
+With authorization enabled, a user who is not an owner or metastore administrator needs
+`USE CATALOG`, `USE SCHEMA`, and `SELECT` to get table details. Table listings use the same rule.
+`MODIFY` without `SELECT` no longer gives access to table details or makes a table appear in a
+listing. Grant `SELECT` only if the user should also be able to read the table.
+
+The existing ownership rules still apply. Metastore administrators and catalog owners can get
+table details without other grants. Schema owners also need `USE CATALOG`. Table owners need
+both `USE CATALOG` and `USE SCHEMA`.
+
+The UC and Delta credential APIs still check read and write permissions separately. Table writes
+still need table ownership or both `SELECT` and `MODIFY`, plus catalog and schema access.
 
 ### Multiple server instances
 
