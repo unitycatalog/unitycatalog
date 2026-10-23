@@ -1,5 +1,6 @@
 package io.unitycatalog.server.sdk.access;
 
+import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -7,17 +8,23 @@ import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.VolumesApi;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateVolumeRequestContent;
+import io.unitycatalog.client.model.PermissionsChange;
+import io.unitycatalog.client.model.Privilege;
 import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.SecurableType;
+import io.unitycatalog.client.model.UpdatePermissions;
 import io.unitycatalog.client.model.UpdateVolumeRequestContent;
 import io.unitycatalog.client.model.VolumeInfo;
 import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 /**
  * SDK-based access control tests for Volume CRUD operations.
@@ -33,6 +40,152 @@ import org.junit.jupiter.api.Test;
  * </ul>
  */
 public class SdkVolumeAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest {
+
+  @ParameterizedTest
+  @CsvSource({
+    "VOLUME, true, true, , true, false",
+    "VOLUME, true, true, SCHEMA, true, true",
+    "VOLUME, true, true, CATALOG, true, true",
+    "VOLUME, false, true, SCHEMA, false, false",
+    "VOLUME, true, false, SCHEMA, false, false",
+    "SCHEMA, true, false, , true, true",
+    "SCHEMA, false, false, , false, false",
+    "CATALOG, false, false, , true, false",
+    "CATALOG, false, false, SCHEMA, true, false",
+    "CATALOG, false, true, SCHEMA, true, true",
+    "METASTORE, false, false, , false, false",
+    "METASTORE, true, true, SCHEMA, false, false",
+    ", true, true, SCHEMA, false, false"
+  })
+  @SneakyThrows
+  public void testVolumeRenamePermissions(
+      SecurableType ownerType,
+      boolean useCatalog,
+      boolean useSchema,
+      SecurableType createGrantType,
+      boolean canComment,
+      boolean canRename) {
+    createCommonTestUsers();
+    setupCommonCatalogAndSchema();
+    SchemasApi schemaCreatorApi =
+        new SchemasApi(TestUtils.createApiClient(createTestUserServerConfig(PRINCIPAL_2)));
+    grantPermissions(
+        PRINCIPAL_2,
+        SecurableType.CATALOG,
+        "cat_pr1",
+        Privileges.USE_CATALOG,
+        Privileges.CREATE_SCHEMA);
+    schemaCreatorApi.createSchema(new CreateSchema().name("sch_rename").catalogName("cat_pr1"));
+    VolumesApi volumeOwnerApi =
+        new VolumesApi(TestUtils.createApiClient(createTestUserServerConfig(REGULAR_1)));
+    VolumesApi observerApi = new VolumesApi(adminApiClient);
+    grantPermissions(REGULAR_1, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    grantPermissions(
+        REGULAR_1,
+        SecurableType.SCHEMA,
+        "cat_pr1.sch_rename",
+        Privileges.USE_SCHEMA,
+        Privileges.CREATE_VOLUME);
+    VolumeInfo original =
+        volumeOwnerApi.createVolume(
+            new CreateVolumeRequestContent()
+                .name("volume")
+                .catalogName("cat_pr1")
+                .schemaName("sch_rename")
+                .volumeType(VolumeType.EXTERNAL)
+                .storageLocation(testDirectoryRoot.resolve("volume").toString()));
+    grantsApi.update(
+        SecurableType.CATALOG,
+        "cat_pr1",
+        new UpdatePermissions()
+            .changes(
+                List.of(
+                    new PermissionsChange()
+                        .principal(PRINCIPAL_1)
+                        .remove(List.of(Privilege.USE_CATALOG)),
+                    new PermissionsChange()
+                        .principal(PRINCIPAL_2)
+                        .remove(List.of(Privilege.USE_CATALOG, Privilege.CREATE_SCHEMA)),
+                    new PermissionsChange()
+                        .principal(REGULAR_1)
+                        .remove(List.of(Privilege.USE_CATALOG)))));
+    grantsApi.update(
+        SecurableType.SCHEMA,
+        "cat_pr1.sch_rename",
+        new UpdatePermissions()
+            .changes(
+                List.of(
+                    new PermissionsChange()
+                        .principal(REGULAR_1)
+                        .remove(List.of(Privilege.USE_SCHEMA, Privilege.CREATE_VOLUME)))));
+    String fullName = "cat_pr1.sch_rename.volume";
+    String principal =
+        ownerType == null
+            ? REGULAR_2
+            : switch (ownerType) {
+              case METASTORE -> "admin";
+              case CATALOG -> PRINCIPAL_1;
+              case SCHEMA -> PRINCIPAL_2;
+              default -> REGULAR_1;
+            };
+    VolumesApi callerApi =
+        ownerType == SecurableType.METASTORE
+            ? new VolumesApi(adminApiClient)
+            : new VolumesApi(TestUtils.createApiClient(createTestUserServerConfig(principal)));
+    if (useCatalog) {
+      grantPermissions(principal, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    }
+    if (useSchema) {
+      grantPermissions(
+          principal, SecurableType.SCHEMA, "cat_pr1.sch_rename", Privileges.USE_SCHEMA);
+    }
+    if (createGrantType != null) {
+      grantPermissions(
+          principal,
+          createGrantType,
+          createGrantType == SecurableType.CATALOG ? "cat_pr1" : "cat_pr1.sch_rename",
+          Privileges.CREATE_VOLUME);
+    }
+
+    UpdateVolumeRequestContent commentOnly = new UpdateVolumeRequestContent().comment("comment");
+    if (canComment) {
+      callerApi.updateVolume(fullName, commentOnly);
+      assertThat(observerApi.getVolume(fullName).getComment()).isEqualTo("comment");
+    } else {
+      assertPermissionDenied(() -> callerApi.updateVolume(fullName, commentOnly));
+      assertThat(observerApi.getVolume(fullName).getComment()).isEqualTo(original.getComment());
+    }
+
+    UpdateVolumeRequestContent sameName = new UpdateVolumeRequestContent().newName("volume");
+    if (canRename) {
+      assertApiException(
+          () -> callerApi.updateVolume(fullName, sameName),
+          ErrorCode.RESOURCE_ALREADY_EXISTS,
+          "Volume already exists");
+    } else {
+      assertPermissionDenied(() -> callerApi.updateVolume(fullName, sameName));
+    }
+
+    for (String comment : new String[] {null, "renamed comment"}) {
+      UpdateVolumeRequestContent rename =
+          new UpdateVolumeRequestContent().newName("renamed").comment(comment);
+      if (canRename) {
+        callerApi.updateVolume(fullName, rename);
+        VolumeInfo renamed = observerApi.getVolume("cat_pr1.sch_rename.renamed");
+        assertThat(renamed.getVolumeId()).isEqualTo(original.getVolumeId());
+        assertThat(renamed.getName()).isEqualTo("renamed");
+        assertThat(renamed.getComment()).isEqualTo(comment == null ? "comment" : comment);
+        callerApi.updateVolume(
+            "cat_pr1.sch_rename.renamed", new UpdateVolumeRequestContent().newName("volume"));
+      } else {
+        assertPermissionDenied(() -> callerApi.updateVolume(fullName, rename));
+        VolumeInfo unchanged = observerApi.getVolume(fullName);
+        assertThat(unchanged.getName()).isEqualTo("volume");
+        assertThat(unchanged.getComment())
+            .isEqualTo(canComment ? "comment" : original.getComment());
+      }
+    }
+  }
 
   @Test
   @SneakyThrows
