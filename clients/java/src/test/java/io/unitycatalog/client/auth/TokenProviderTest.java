@@ -98,12 +98,12 @@ public class TokenProviderTest {
     configs.put(AuthConfigs.OAUTH_URI, OAUTH_URI);
     configs.put(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID);
     configs.put(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
-    configs.put(AuthConfigs.UC_URI, "https://uc.example.com");
+    configs.put(AuthConfigs.CATALOG_URI, "https://uc.example.com");
 
     // Without the flag the catalog URI is ignored and configs() is unchanged.
     assertThat(TokenProvider.create(configs).configs())
         .hasSize(5)
-        .doesNotContainKeys(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN, AuthConfigs.UC_URI);
+        .doesNotContainKeys(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN, AuthConfigs.CATALOG_URI);
 
     // With the flag, configs() carries it and the catalog URI, so executors rebuild the same
     // provider.
@@ -112,14 +112,14 @@ public class TokenProviderTest {
     assertThat(exchangeConfigs)
         .hasSize(7)
         .containsEntry(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN, "true")
-        .containsEntry(AuthConfigs.UC_URI, "https://uc.example.com");
+        .containsEntry(AuthConfigs.CATALOG_URI, "https://uc.example.com");
     assertThat(TokenProvider.create(exchangeConfigs).configs()).isEqualTo(exchangeConfigs);
 
     // The flag requires the catalog URI.
-    configs.remove(AuthConfigs.UC_URI);
+    configs.remove(AuthConfigs.CATALOG_URI);
     assertThatThrownBy(() -> TokenProvider.create(configs))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Configuration key 'uri' is missing or empty")
+        .hasMessageContaining("Configuration key 'catalogUri' is missing or empty")
         .hasMessageContaining("'oauth.exchangeForUcToken' is true");
   }
 

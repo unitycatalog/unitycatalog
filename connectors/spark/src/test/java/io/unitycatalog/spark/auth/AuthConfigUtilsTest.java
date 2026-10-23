@@ -125,9 +125,9 @@ public class AuthConfigUtilsTest {
             "auth.oauth.clientId", "client-id",
             "auth.oauth.clientSecret", "client-secret",
             "auth.oauth.exchangeForUcToken", "true");
-    assertThat(configs).containsEntry("uri", "https://uc.example.com");
+    assertThat(configs).containsEntry("catalogUri", "https://uc.example.com");
     assertThat(TokenProvider.create(configs).configs())
-        .containsEntry("uri", "https://uc.example.com")
+        .containsEntry("catalogUri", "https://uc.example.com")
         .containsEntry("oauth.exchangeForUcToken", "true");
   }
 

@@ -33,7 +33,7 @@ public class OAuthTokenProviderTest {
   private static final String ACCESS_TOKEN_1 = "access-token-1";
   private static final String ACCESS_TOKEN_2 = "access-token-2";
   private static final long EXPIRES_IN_SECONDS = 3600L;
-  private static final String UC_URI = "https://uc.example.com/prefix/";
+  private static final String CATALOG_URI = "https://uc.example.com/prefix/";
   private static final String UC_TOKEN_EXCHANGE_URI =
       "https://uc.example.com/prefix/api/1.0/unity-control/auth/tokens";
   private static final String UC_TOKEN_1 = "uc-token-1";
@@ -335,7 +335,7 @@ public class OAuthTokenProviderTest {
         CLIENT_ID,
         CLIENT_SECRET,
         AuthConfigs.DEFAULT_OAUTH_SCOPE,
-        UC_URI,
+        CATALOG_URI,
         30L,
         mockRetryingApiClient,
         clock);
