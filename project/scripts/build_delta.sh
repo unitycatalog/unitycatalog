@@ -68,14 +68,14 @@ if [[ -n "${SPARK_ARTIFACT_VERSION:-}" ]]; then
 fi
 cd "$DELTA_DIR"
 
-# UC jars are already in ~/.m2 from the workflow's pre-Delta publishM2 step.
-# -DunityCatalogVersion makes Delta resolve them directly; the autoBuild flag
-# is a safety net (redundant when -DunityCatalogVersion is set, but explicit).
+# The workflow's pre-Delta publishM2 step puts UC jars in ~/.m2. Delta's build/sbt
+# reads the environment variable below to add its Maven-local resolver, which it
+# needs for these UC jars and for source-built Spark artifacts. This variable is
+# read by Delta's launcher, not this checkout's build/sbt.
 # publishM2 only (not publishLocal): Delta's ivy.xml lists internal modules
 # (delta-spark-v1, delta-spark-v2) that aren't published separately. The M2 POM
-# filters them via pomPostProcess. UC's build/sbt forces maven-local in the
-# resolver chain, so ~/.m2 artifacts are found.
-USE_MAVEN_LOCAL_FOR_SOURCE_SPARK="${SPARK_ARTIFACT_VERSION:+true}" \
+# filters them via pomPostProcess.
+USE_MAVEN_LOCAL_FOR_SOURCE_SPARK=true \
 build/sbt -DsparkVersion="$SPARK_VERSION" \
   "${SPARK_COMMIT_ARGS[@]}" \
   -Ddelta.autoBuildPinnedUnityCatalog=false \

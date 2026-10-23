@@ -28,5 +28,8 @@ jobs:
           distribution: 'zulu'
           cache: 'sbt'
 
+      - name: Verify sbt Maven local opt-in
+        run: python3 project/tests/test_sbt_resolvers.py
+
       - name: Run cross-Spark build test
         run: python3 project/tests/test_cross_spark_publish.py
