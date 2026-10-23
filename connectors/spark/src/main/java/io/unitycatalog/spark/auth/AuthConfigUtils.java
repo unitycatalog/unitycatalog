@@ -11,6 +11,7 @@ public class AuthConfigUtils {
   private static final String TYPE = "type";
   private static final String STATIC_TYPE = "static";
   private static final String STATIC_TOKEN = "token";
+  private static final String CATALOG_URI = "catalogUri";
 
   private AuthConfigUtils() {}
 
@@ -46,7 +47,7 @@ public class AuthConfigUtils {
     // catalog URI, which is a catalog option rather than an 'auth.' one.
     String uri = configs.get(OptionsUtil.URI);
     if (uri != null) {
-      newConfigs.putIfAbsent(OptionsUtil.URI, uri);
+      newConfigs.putIfAbsent(CATALOG_URI, uri);
     }
 
     return new CaseInsensitiveStringMap(newConfigs);

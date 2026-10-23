@@ -35,8 +35,8 @@ import java.util.Map;
  *
  * <p>When {@code oauth.exchangeForUcToken} is {@code true}, the OAuth token is not sent to Unity
  * Catalog directly. It is exchanged (RFC 8693) at the server's {@code auth/tokens} endpoint,
- * derived from the catalog {@code uri}, and the UC-issued token is cached and renewed instead. This
- * is required by Unity Catalog servers that only accept their own tokens on API calls.
+ * derived from {@code catalogUri}, and the UC-issued token is cached and renewed instead. This is
+ * required by Unity Catalog servers that only accept their own tokens on API calls.
  */
 class OAuthTokenProvider implements TokenProvider {
   private static final long DEFAULT_LEAD_RENEWAL_TIME_SECONDS = 30L;
@@ -52,7 +52,7 @@ class OAuthTokenProvider implements TokenProvider {
   // Empty when the request carries no scope.
   private String oauthScope;
   // Set only when the OAuth token is exchanged for a UC token.
-  private String ucUri;
+  private String catalogUri;
   private long leadRenewalTimeSeconds;
   private HttpClient httpClient;
   private Clock clock;
@@ -75,19 +75,19 @@ class OAuthTokenProvider implements TokenProvider {
         oauthClientId,
         oauthClientSecret,
         oauthScope,
-        /* ucUri= */ null,
+        /* catalogUri= */ null,
         leadRenewalTimeSeconds,
         apiClient,
         clock);
   }
 
-  // Package-private constructor for testing; a non-null ucUri enables the UC token exchange.
+  // Package-private constructor for testing; a non-null catalogUri enables the UC token exchange.
   OAuthTokenProvider(
       String oauthUri,
       String oauthClientId,
       String oauthClientSecret,
       String oauthScope,
-      String ucUri,
+      String catalogUri,
       long leadRenewalTimeSeconds,
       ApiClient apiClient,
       Clock clock) {
@@ -106,7 +106,7 @@ class OAuthTokenProvider implements TokenProvider {
     this.oauthClientId = oauthClientId;
     this.oauthClientSecret = oauthClientSecret;
     this.oauthScope = normalizeOAuthScope(oauthScope);
-    this.ucUri = ucUri;
+    this.catalogUri = catalogUri;
     this.leadRenewalTimeSeconds = leadRenewalTimeSeconds;
     this.httpClient = apiClient.getHttpClient();
     this.clock = clock;
@@ -143,13 +143,13 @@ class OAuthTokenProvider implements TokenProvider {
 
     // Optional exchange of the OAuth token for a UC token; needs the catalog URI to reach UC.
     if (Boolean.parseBoolean(configs.get(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN))) {
-      String ucUri = configs.get(AuthConfigs.UC_URI);
+      String catalogUri = configs.get(AuthConfigs.CATALOG_URI);
       Preconditions.checkArgument(
-          ucUri != null && !ucUri.isEmpty(),
+          catalogUri != null && !catalogUri.isEmpty(),
           "Configuration key '%s' is missing or empty, it is required when '%s' is true",
-          AuthConfigs.UC_URI,
+          AuthConfigs.CATALOG_URI,
           AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN);
-      this.ucUri = ucUri;
+      this.catalogUri = catalogUri;
     }
 
     this.leadRenewalTimeSeconds = DEFAULT_LEAD_RENEWAL_TIME_SECONDS;
@@ -180,7 +180,7 @@ class OAuthTokenProvider implements TokenProvider {
     configs.put(AuthConfigs.OAUTH_SCOPE, oauthScope);
     if (shouldExchangeForUcToken()) {
       configs.put(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN, "true");
-      configs.put(AuthConfigs.UC_URI, ucUri);
+      configs.put(AuthConfigs.CATALOG_URI, catalogUri);
     }
     return Collections.unmodifiableMap(configs);
   }
@@ -195,7 +195,7 @@ class OAuthTokenProvider implements TokenProvider {
   }
 
   private boolean shouldExchangeForUcToken() {
-    return ucUri != null;
+    return catalogUri != null;
   }
 
   private TempToken fetchOAuthToken() throws IOException, InterruptedException {
@@ -235,7 +235,7 @@ class OAuthTokenProvider implements TokenProvider {
 
     HttpRequest request =
         HttpRequest.newBuilder()
-            .uri(tokenExchangeUri(ucUri))
+            .uri(tokenExchangeUri(catalogUri))
             .header("Content-Type", "application/x-www-form-urlencoded")
             .POST(HttpRequest.BodyPublishers.ofString(formData))
             .build();
@@ -243,8 +243,8 @@ class OAuthTokenProvider implements TokenProvider {
   }
 
   /** Appends the token exchange path to the catalog URI, keeping any path prefix it has. */
-  static URI tokenExchangeUri(String ucUri) {
-    return URI.create(ucUri.replaceAll("/+$", "") + TOKEN_EXCHANGE_PATH);
+  static URI tokenExchangeUri(String catalogUri) {
+    return URI.create(catalogUri.replaceAll("/+$", "") + TOKEN_EXCHANGE_PATH);
   }
 
   private TempToken sendTokenRequest(HttpRequest request, String errorMessage)

@@ -71,7 +71,7 @@ public class OAuthTokenExchangeClientTest extends BaseAuthCRUDTest {
   private Map<String, String> oauthConfigs(boolean exchangeForUcToken) {
     Map<String, String> configs = new HashMap<>();
     configs.put("type", "oauth");
-    configs.put("uri", serverConfig.getServerUrl());
+    configs.put("catalogUri", serverConfig.getServerUrl());
     configs.put("oauth.uri", idpTokenUri);
     configs.put("oauth.clientId", OAUTH_CLIENT_ID);
     configs.put("oauth.clientSecret", "client-secret");

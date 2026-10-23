@@ -25,5 +25,5 @@ class AuthConfigs {
   // exchange endpoint, which is derived from the catalog URI.
   static final String OAUTH_EXCHANGE_FOR_UC_TOKEN = "oauth.exchangeForUcToken";
   // The Unity Catalog server URI. Set by the connectors from the catalog URI.
-  static final String UC_URI = "uri";
+  static final String CATALOG_URI = "catalogUri";
 }
