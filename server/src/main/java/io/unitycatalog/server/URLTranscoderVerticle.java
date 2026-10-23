@@ -6,6 +6,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.http.PoolOptions;
 import io.vertx.ext.web.client.HttpRequest;
 import io.vertx.ext.web.client.WebClient;
 import io.vertx.ext.web.client.WebClientOptions;
@@ -40,7 +41,8 @@ class URLTranscoderVerticle extends AbstractVerticle {
   public void start(Promise<Void> startPromise) {
     HttpServer server = vertx.createHttpServer();
     WebClient client =
-        WebClient.create(vertx, new WebClientOptions().setMaxPoolSize(backendPoolSize));
+        WebClient.create(
+            vertx, new WebClientOptions(), new PoolOptions().setHttp1MaxSize(backendPoolSize));
 
     server.requestHandler(
         transcodeRequest -> {
@@ -76,15 +78,16 @@ class URLTranscoderVerticle extends AbstractVerticle {
 
     // The port is bound asynchronously, so the deployment is only complete once it is listening:
     // callers are told the server is ready when this verticle is deployed.
-    server.listen(
-        transcodePort,
-        ar -> {
-          if (ar.succeeded()) {
-            LOGGER.info("URL transcoder started on port {}", transcodePort);
-            startPromise.complete();
-          } else {
-            startPromise.fail(ar.cause());
-          }
-        });
+    server
+        .listen(transcodePort)
+        .onComplete(
+            ar -> {
+              if (ar.succeeded()) {
+                LOGGER.info("URL transcoder started on port {}", transcodePort);
+                startPromise.complete();
+              } else {
+                startPromise.fail(ar.cause());
+              }
+            });
   }
 }

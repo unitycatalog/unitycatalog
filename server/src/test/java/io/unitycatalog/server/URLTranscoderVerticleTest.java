@@ -7,6 +7,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.http.PoolOptions;
 import io.vertx.ext.web.client.HttpResponse;
 import io.vertx.ext.web.client.WebClient;
 import io.vertx.ext.web.client.WebClientOptions;
@@ -151,7 +152,8 @@ public class URLTranscoderVerticleTest {
         .toCompletableFuture()
         .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
-    WebClient caller = WebClient.create(vertx, new WebClientOptions().setMaxPoolSize(sent));
+    WebClient caller =
+        WebClient.create(vertx, new WebClientOptions(), new PoolOptions().setHttp1MaxSize(sent));
     List<CompletableFuture<HttpResponse<Buffer>>> calls = new ArrayList<>();
     try {
       for (int i = 0; i < sent; i++) {
