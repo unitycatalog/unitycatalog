@@ -35,7 +35,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -48,6 +47,10 @@ class CredPropsRoundTripTest {
 
   // Distinct from the default expiry so dropped expiration properties fail the round trip.
   private static final long EXPIRATION_MILLIS = Long.MAX_VALUE - 1;
+
+  private static final String TABLE_ID = "tid-1";
+  private static final UCCredentialHadoopConfs.TableOperation TABLE_OPERATION =
+      UCCredentialHadoopConfs.TableOperation.READ_WRITE;
 
   private enum Cloud {
     AWS(
@@ -85,13 +88,17 @@ class CredPropsRoundTripTest {
     }
 
     GenericCredential credential(String id, String prefix) {
+      return credential(id, prefix, EXPIRATION_MILLIS);
+    }
+
+    GenericCredential credential(String id, String prefix, Long expirationMillis) {
       switch (this) {
         case AWS:
-          return new AwsCredential(id + "-ak", id + "-sk", id + "-st", EXPIRATION_MILLIS, prefix);
+          return new AwsCredential(id + "-ak", id + "-sk", id + "-st", expirationMillis, prefix);
         case AZURE:
-          return new AzureCredential(id + "-sas", EXPIRATION_MILLIS, prefix);
+          return new AzureCredential(id + "-sas", expirationMillis, prefix);
         case GCS:
-          return new GcsCredential(id + "-oauth", EXPIRATION_MILLIS, prefix);
+          return new GcsCredential(id + "-oauth", expirationMillis, prefix);
         default:
           throw new IllegalStateException("Unhandled cloud: " + this);
       }
@@ -113,6 +120,38 @@ class CredPropsRoundTripTest {
           throw new IllegalStateException("Unhandled cloud: " + this);
       }
     }
+
+    void assertResolvedCreds(
+        GenericCredentialProvider provider, GenericCredential expected, String expectedPrefix) {
+      // Exercise the Hadoop-facing API before inspecting the cached credential.
+      switch (this) {
+        case AWS:
+          AwsCredential aws = (AwsCredential) expected;
+          AwsSessionCredentials resolved =
+              (AwsSessionCredentials) ((AwsVendedTokenProvider) provider).resolveCredentials();
+          assertThat(resolved.accessKeyId()).isEqualTo(aws.accessKeyId());
+          assertThat(resolved.secretAccessKey()).isEqualTo(aws.secretAccessKey());
+          assertThat(resolved.sessionToken()).isEqualTo(aws.sessionToken());
+          break;
+        case AZURE:
+          assertThat(
+                  ((AbfsVendedTokenProvider) provider)
+                      .getSASToken("account", "container", "path", "operation"))
+              .isEqualTo(((AzureCredential) expected).sasToken());
+          break;
+        case GCS:
+          AccessToken token = ((GcsVendedTokenProvider) provider).getAccessToken();
+          assertThat(token.getToken()).isEqualTo(((GcsCredential) expected).oauthToken());
+          assertThat(token.getExpirationTime().toEpochMilli())
+              .isEqualTo(expected.expirationTimeMillis());
+          break;
+        default:
+          throw new IllegalStateException("Unhandled cloud: " + this);
+      }
+      GenericCredential credential = provider.accessCredentials();
+      assertThat(credential.prefix()).isEqualTo(expectedPrefix);
+      assertThat(credential.expirationTimeMillis()).isEqualTo(expected.expirationTimeMillis());
+    }
   }
 
   @BeforeEach
@@ -132,11 +171,11 @@ class CredPropsRoundTripTest {
     Configuration delegateConf =
         getDelegateFileSystemConf(
             new URI(cloud.location() + "/part-0.parquet"), createTableCredProps(cloud));
-    assertResolvedCreds(cloud.provider(delegateConf), credential, cloud.location());
+    cloud.assertResolvedCreds(cloud.provider(delegateConf), credential, cloud.location());
 
     // The seeded single credential renews once it enters the renewal lead window.
     GenericCredential renewed = cloud.credential("renewed", cloud.location());
-    assertProviderRenews(cloud, delegateConf, credential, renewed, renewed);
+    assertProviderRenews(cloud, delegateConf, "initial", /* isSeeded= */ true, renewed, renewed);
   }
 
   @ParameterizedTest
@@ -156,7 +195,9 @@ class CredPropsRoundTripTest {
 
     TableCredId expectedCredId =
         new TableCredId(
-            delegateConf.get(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY), "tid-1", "READ_WRITE");
+            delegateConf.get(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY),
+            TABLE_ID,
+            TABLE_OPERATION.name());
     expectedCredId
         .props()
         .forEach((key, value) -> assertThat(delegateConf.get(key)).isEqualTo(value));
@@ -166,14 +207,15 @@ class CredPropsRoundTripTest {
     try (MockedStatic<GenericCredentialFetcher> mockedFetcher =
         mockStatic(GenericCredentialFetcher.class)) {
       mockedFetcher.when(() -> GenericCredentialFetcher.create(delegateConf)).thenReturn(fetcher);
-      assertResolvedCreds(cloud.provider(delegateConf), child, cloud.location());
+      cloud.assertResolvedCreds(cloud.provider(delegateConf), child, cloud.location());
     }
 
     // The selected child credential re-fetches and re-selects when it enters the renewal window.
     // Vend a non-covering sibling plus the covering child so the provider re-selects on renewal.
     GenericCredential sibling = cloud.credential("sibling", cloud.root + "/uncovered-sibling");
     GenericCredential renewedChild = cloud.credential("child2", cloud.location());
-    assertProviderRenews(cloud, delegateConf, child, renewedChild, sibling, renewedChild);
+    assertProviderRenews(
+        cloud, delegateConf, "child", /* isSeeded= */ false, renewedChild, sibling, renewedChild);
   }
 
   @ParameterizedTest
@@ -187,28 +229,43 @@ class CredPropsRoundTripTest {
         getDelegateFileSystemConf(
             new URI(cloud.root.replace("://", "://other-") + "/uncovered/part-0.parquet"),
             createTableCredProps(cloud));
-    assertResolvedCreds(
-        cloud.provider(delegateConf),
-        credential,
-        credentialPrefix == null || credentialPrefix.isEmpty() ? null : credentialPrefix);
+    cloud.assertResolvedCreds(
+        cloud.provider(delegateConf), credential, normalizePrefix(credentialPrefix));
 
     // A single vended credential renews without selection, regardless of prefix coverage.
     GenericCredential renewed = cloud.credential("renewed", credentialPrefix);
-    assertProviderRenews(cloud, delegateConf, credential, renewed, renewed);
+    assertProviderRenews(cloud, delegateConf, "initial", /* isSeeded= */ true, renewed, renewed);
   }
 
-  @Test
-  void awsCredentialWithoutExpirationRoundTrips() throws Exception {
-    AwsCredential credential = new AwsCredential("ak", "sk", "st", null, Cloud.AWS.location());
+  @ParameterizedTest
+  @EnumSource(Cloud.class)
+  void credentialWithoutExpirationRoundTrips(Cloud cloud) throws Exception {
+    GenericCredential credential = cloud.credential("initial", cloud.location(), null);
     mockFetcher(credential);
     Configuration delegateConf =
         getDelegateFileSystemConf(
-            new URI(Cloud.AWS.location() + "/part-0.parquet"), createTableCredProps(Cloud.AWS));
-    assertThat(delegateConf.get(Cloud.AWS.expirationKey)).isNull();
-    assertResolvedCreds(
-        Cloud.AWS.provider(delegateConf),
-        withExpiration(credential, Long.MAX_VALUE),
-        credential.prefix());
+            new URI(cloud.location() + "/part-0.parquet"), createTableCredProps(cloud));
+    // The encoder cache setting is not propagated to the decoded provider configuration.
+    delegateConf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
+    assertThat(delegateConf.get(cloud.expirationKey)).isNull();
+    cloud.initialCredentialKeys.forEach(key -> assertThat(delegateConf.get(key)).isNotNull());
+
+    GenericCredential fetched = cloud.credential("fetched", cloud.location());
+    GenericCredentialFetcher fetcher = mock(GenericCredentialFetcher.class);
+    when(fetcher.createCredentials()).thenReturn(List.of(fetched));
+    try (MockedStatic<GenericCredentialFetcher> mockedFetcher =
+        mockStatic(GenericCredentialFetcher.class)) {
+      mockedFetcher.when(() -> GenericCredentialFetcher.create(delegateConf)).thenReturn(fetcher);
+      GenericCredentialProvider provider = cloud.provider(delegateConf);
+      verify(fetcher, times(0)).createCredentials();
+      // Azure requires a SAS expiry to seed the provider; AWS and GCS default to no expiry.
+      GenericCredential expected =
+          cloud == Cloud.AZURE
+              ? fetched
+              : cloud.credential("initial", cloud.location(), Long.MAX_VALUE);
+      cloud.assertResolvedCreds(provider, expected, cloud.location());
+      verify(fetcher, times(cloud == Cloud.AZURE ? 1 : 0)).createCredentials();
+    }
   }
 
   private static Stream<Arguments> cloudsAndPrefixes() {
@@ -235,7 +292,8 @@ class CredPropsRoundTripTest {
   private static void assertProviderRenews(
       Cloud cloud,
       Configuration delegateConf,
-      GenericCredential original,
+      String originalId,
+      boolean isSeeded,
       GenericCredential expected,
       GenericCredential... vendedCredentials)
       throws Exception {
@@ -250,11 +308,13 @@ class CredPropsRoundTripTest {
       conf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1_000L);
       long expirationMillis = clock.now().toEpochMilli() + 2_000L;
       conf.setLong(cloud.expirationKey, expirationMillis);
-      GenericCredential initial = withExpiration(original, expirationMillis);
-      boolean seeded = cloud.initialCredentialKeys.stream().allMatch(key -> conf.get(key) != null);
+      GenericCredential initial = cloud.credential(originalId, expected.prefix(), expirationMillis);
+      cloud.initialCredentialKeys.forEach(
+          key ->
+              assertThat(conf.get(key) != null).as("seeded property %s", key).isEqualTo(isSeeded));
 
       GenericCredentialFetcher fetcher = mock(GenericCredentialFetcher.class);
-      if (seeded) {
+      if (isSeeded) {
         when(fetcher.createCredentials()).thenReturn(List.of(vendedCredentials));
       } else {
         when(fetcher.createCredentials()).thenReturn(List.of(initial), List.of(vendedCredentials));
@@ -265,65 +325,21 @@ class CredPropsRoundTripTest {
         mockedFetcher.when(() -> GenericCredentialFetcher.create(conf)).thenReturn(fetcher);
         GenericCredentialProvider provider = cloud.provider(conf);
 
-        String initialPrefix = initial.prefix();
-        assertResolvedCreds(
-            provider,
-            initial,
-            initialPrefix == null || initialPrefix.isEmpty() ? null : initialPrefix);
-        verify(fetcher, times(seeded ? 0 : 1)).createCredentials();
+        cloud.assertResolvedCreds(provider, initial, normalizePrefix(initial.prefix()));
+        verify(fetcher, times(isSeeded ? 0 : 1)).createCredentials();
 
         // Enter the renewal lead window while the original credential is still unexpired.
         clock.sleep(Duration.ofMillis(1_500L));
-        assertResolvedCreds(provider, expected, expected.prefix());
-        verify(fetcher, times(seeded ? 1 : 2)).createCredentials();
+        cloud.assertResolvedCreds(provider, expected, expected.prefix());
+        verify(fetcher, times(isSeeded ? 1 : 2)).createCredentials();
       }
     } finally {
       Clock.removeManualClock(clockName);
     }
   }
 
-  private static GenericCredential withExpiration(
-      GenericCredential credential, long expirationMillis) {
-    if (credential instanceof AwsCredential) {
-      AwsCredential aws = (AwsCredential) credential;
-      return new AwsCredential(
-          aws.accessKeyId(),
-          aws.secretAccessKey(),
-          aws.sessionToken(),
-          expirationMillis,
-          aws.prefix());
-    } else if (credential instanceof AzureCredential) {
-      return new AzureCredential(
-          ((AzureCredential) credential).sasToken(), expirationMillis, credential.prefix());
-    } else {
-      return new GcsCredential(
-          ((GcsCredential) credential).oauthToken(), expirationMillis, credential.prefix());
-    }
-  }
-
-  private static void assertResolvedCreds(
-      GenericCredentialProvider provider, GenericCredential expected, String expectedPrefix) {
-    assertThat(provider.accessCredentials().prefix()).isEqualTo(expectedPrefix);
-    assertThat(provider.accessCredentials().expirationTimeMillis())
-        .isEqualTo(expected.expirationTimeMillis());
-    if (expected instanceof AwsCredential) {
-      AwsCredential aws = (AwsCredential) expected;
-      AwsSessionCredentials resolved =
-          (AwsSessionCredentials) ((AwsVendedTokenProvider) provider).resolveCredentials();
-      assertThat(resolved.accessKeyId()).isEqualTo(aws.accessKeyId());
-      assertThat(resolved.secretAccessKey()).isEqualTo(aws.secretAccessKey());
-      assertThat(resolved.sessionToken()).isEqualTo(aws.sessionToken());
-    } else if (expected instanceof AzureCredential) {
-      assertThat(
-              ((AbfsVendedTokenProvider) provider)
-                  .getSASToken("account", "container", "path", "operation"))
-          .isEqualTo(((AzureCredential) expected).sasToken());
-    } else {
-      AccessToken resolved = ((GcsVendedTokenProvider) provider).getAccessToken();
-      assertThat(resolved.getToken()).isEqualTo(((GcsCredential) expected).oauthToken());
-      assertThat(resolved.getExpirationTime().toEpochMilli())
-          .isEqualTo(expected.expirationTimeMillis());
-    }
+  private static String normalizePrefix(String prefix) {
+    return prefix == null || prefix.isEmpty() ? null : prefix;
   }
 
   /** Runs the real encoder for a renewable table request against the current fetcher. */
@@ -341,8 +357,8 @@ class CredPropsRoundTripTest {
             /* apiClient= */ null,
             "http://uc",
             TokenProvider.create(Map.of("type", "static", "token", "tok")),
-            "tid-1",
-            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
+            TABLE_ID,
+            TABLE_OPERATION,
             Map.of());
 
     Configuration conf = new Configuration(false);
