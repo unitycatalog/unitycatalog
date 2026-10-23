@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.linecorp.armeria.common.util.BlockingTaskExecutor;
 import com.linecorp.armeria.server.Server;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.net.URI;
 import java.util.Properties;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -82,5 +83,12 @@ public class ArmeriaServerBuilderTest {
     assertThatThrownBy(() -> newBuilder(9001).observabilityPort(configuredPort))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("between 1 and 65535");
+  }
+
+  @Test
+  public void rejectsAForwardedPrefixInsideTheUnityCatalogApi() {
+    assertThatThrownBy(() -> newBuilder(8080).forward("/api/shares/", URI.create("http://x")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("overlaps");
   }
 }

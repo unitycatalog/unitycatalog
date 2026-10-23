@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpRequest;
 import com.linecorp.armeria.common.Http1HeaderNaming;
 import com.linecorp.armeria.common.HttpResponse;
@@ -45,6 +46,7 @@ import io.unitycatalog.server.service.delta.DeltaApiService;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.ParameterizedType;
+import java.net.URI;
 import java.util.List;
 import java.util.Objects;
 
@@ -234,6 +236,27 @@ public class ArmeriaServerBuilder {
     // rendering as 500 -- it did not wrap this port-based virtual host's route decorators. This
     // instance carries no dialect: it finds the per-service one for the matched route.
     apiVirtualHost.decorator(GlobalExceptionHandlingDecorator::new);
+    return this;
+  }
+
+  /**
+   * Serves {@code pathPrefix} on the API port by forwarding each request, path and query unchanged,
+   * to {@code target}. This lets a component that runs its own listener, such as an embedded
+   * sharing server bound to loopback, be reached through the one public port. Forwarded requests
+   * skip UC's authentication and authorization decorators, so the target must authenticate them.
+   */
+  ArmeriaServerBuilder forward(String pathPrefix, URI target) {
+    if (pathPrefix.startsWith(basePath) || pathPrefix.startsWith(controlPath)) {
+      throw new IllegalArgumentException(
+          "Forwarded path prefix overlaps the Unity Catalog API: " + pathPrefix);
+    }
+    WebClient client = WebClient.of(target);
+    apiVirtualHost.serviceUnder(
+        pathPrefix,
+        (ctx, req) ->
+            // Drop the client's Host so the target sees its own address, as a reverse proxy would.
+            client.execute(
+                req.withHeaders(req.headers().toBuilder().authority(target.getAuthority()))));
     return this;
   }
 
