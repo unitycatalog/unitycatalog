@@ -54,9 +54,12 @@ import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
+import java.net.URI;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
@@ -252,6 +255,7 @@ public class UnityCatalogServer implements AutoCloseable {
         unityCatalogServerBuilder.serverProperties.isIncludeStackTraceInError());
     // Init services
     addApiServices(armeriaServerBuilder, unityCatalogServerBuilder, authorizer, repositories);
+    unityCatalogServerBuilder.forwards.forEach(armeriaServerBuilder::forward);
     // Init security decorators
     addSecurityDecorators(
         armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
@@ -532,6 +536,7 @@ public class UnityCatalogServer implements AutoCloseable {
     private HibernateConfigurator hibernateConfigurator;
     private CloudCredentialVendor cloudCredentialVendor;
     private UnaryOperator<FileOperations> fileOperationsDecorator = UnaryOperator.identity();
+    private final Map<String, URI> forwards = new LinkedHashMap<>();
 
     private Builder() {}
 
@@ -580,6 +585,16 @@ public class UnityCatalogServer implements AutoCloseable {
         UnaryOperator<FileOperations> fileOperationsDecorator) {
       this.fileOperationsDecorator =
           fileOperationsDecorator != null ? fileOperationsDecorator : UnaryOperator.identity();
+      return this;
+    }
+
+    /**
+     * Serves {@code pathPrefix} on the API port by forwarding to {@code target}, so a component on
+     * its own loopback listener is reached through the one public port. The target must be
+     * listening by the time requests arrive, and must authenticate them itself.
+     */
+    public UnityCatalogServer.Builder forward(String pathPrefix, URI target) {
+      forwards.put(pathPrefix, target);
       return this;
     }
 
