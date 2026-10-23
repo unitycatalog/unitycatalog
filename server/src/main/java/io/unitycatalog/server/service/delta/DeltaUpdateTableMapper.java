@@ -1,10 +1,13 @@
 package io.unitycatalog.server.service.delta;
 
 import io.unitycatalog.server.delta.model.DeltaAddCommitUpdate;
+import io.unitycatalog.server.delta.model.DeltaArrayType;
 import io.unitycatalog.server.delta.model.DeltaAssertEtag;
 import io.unitycatalog.server.delta.model.DeltaAssertTableUUID;
 import io.unitycatalog.server.delta.model.DeltaCommit;
+import io.unitycatalog.server.delta.model.DeltaDataType;
 import io.unitycatalog.server.delta.model.DeltaDomainMetadataUpdates;
+import io.unitycatalog.server.delta.model.DeltaMapType;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DeltaRemoveDomainMetadataUpdate;
 import io.unitycatalog.server.delta.model.DeltaRemovePropertiesUpdate;
@@ -16,6 +19,7 @@ import io.unitycatalog.server.delta.model.DeltaSetProtocolUpdate;
 import io.unitycatalog.server.delta.model.DeltaSetSchemaUpdate;
 import io.unitycatalog.server.delta.model.DeltaSetTableCommentUpdate;
 import io.unitycatalog.server.delta.model.DeltaStructField;
+import io.unitycatalog.server.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableRequirement;
 import io.unitycatalog.server.delta.model.DeltaTableUpdate;
@@ -34,10 +38,12 @@ import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -47,6 +53,8 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.hibernate.Session;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Translates a {@link DeltaUpdateTableRequest} into in-memory mutations on a {@link TableInfoDAO}
@@ -63,6 +71,7 @@ import org.hibernate.Session;
  * loads state once and flushes the diff.
  */
 public final class DeltaUpdateTableMapper {
+  private static final Logger LOGGER = LoggerFactory.getLogger(DeltaUpdateTableMapper.class);
 
   private DeltaUpdateTableMapper() {}
 
@@ -178,6 +187,18 @@ public final class DeltaUpdateTableMapper {
     private Optional<DeltaAddCommitUpdate> addCommit = Optional.empty();
     private Optional<DeltaSetLatestBackfilledVersionUpdate> setLatestBackfilledVersion =
         Optional.empty();
+
+    /** Whether the request carries a {@code set-columns} action. */
+    public boolean hasSetSchema() {
+      return setSchema.isPresent();
+    }
+
+    /** The commit info of the {@code add-commit} action, if it carries a commit block. */
+    public Optional<DeltaCommitInfo> addCommitInfo() {
+      return addCommit
+          .map(DeltaAddCommitUpdate::getCommit)
+          .map(DeltaUpdateTableMapper::toUcCommitInfo);
+    }
 
     /**
      * True if this request carries at least one MANAGED-applicable metadata-changing action
@@ -362,7 +383,16 @@ public final class DeltaUpdateTableMapper {
       CollectedRequest collected,
       ServerProperties serverProperties) {
     CollectedUpdates c = collected.updates();
-    applySchemaAndPartitionColumns(session, dao, c.setSchema, c.setPartitionColumns);
+    // set-columns is validated against the table's stored mode, before this request's property
+    // changes apply. The mode is read only for set-columns, so a stored mode value never blocks
+    // other updates.
+    ColumnMappingMode columnMappingMode =
+        c.setSchema.isPresent()
+            ? ColumnMappingMode.parse(properties.get(TableProperties.COLUMN_MAPPING_MODE))
+            : ColumnMappingMode.NONE;
+    // set-columns is applied before set-properties, so the properties here are the stored ones.
+    applySchemaAndPartitionColumns(
+        session, dao, c.setSchema, c.setPartitionColumns, columnMappingMode, properties.asMap());
     c.setProtocol.ifPresent(u -> applySetProtocol(properties, u.getProtocol()));
     c.setProperties.ifPresent(u -> applySetProperties(properties, u.getUpdates()));
     c.removeProperties.ifPresent(u -> applyRemoveProperties(properties, u.getRemovals()));
@@ -423,18 +453,29 @@ public final class DeltaUpdateTableMapper {
    * swapping the DAO column collection. The spec frames {@code set-columns} and {@code
    * set-partition-columns} as independent actions; the absent action's concern is preserved from
    * the existing DAO so a column-only request can't silently desync the partition list (and vice
-   * versa). If a partition column is missing from the resulting schema, the request is rejected
-   * with {@code partition-columns references unknown column: ...}.
+   * versa). The request is rejected when:
+   *
+   * <ul>
+   *   <li>a partition column named by set-partition-columns is missing from the resulting schema
+   *       ({@code partition-columns references unknown column: ...});
+   *   <li>set-columns drops an existing partition column, or leaves one without its own identity on
+   *       a column-mapped table (see {@link #resolvePartitionColumns}).
+   * </ul>
    *
    * <p>Swap semantics rely on the orphanRemoval mapping on {@link TableInfoDAO#getColumns()} to
    * clean up the old rows; the intervening flush ensures the deletes hit the DB before the inserts,
    * so the {@code (table_id, ordinal_position, name)} unique constraint doesn't trip.
+   *
+   * <p>The column-mapping checks in {@link #validateColumnRenameAndDropGuards} run on the request's
+   * fields before the swap.
    */
   private static void applySchemaAndPartitionColumns(
       Session session,
       TableInfoDAO dao,
       Optional<DeltaSetSchemaUpdate> setSchema,
-      Optional<DeltaSetPartitionColumnsUpdate> setPartition) {
+      Optional<DeltaSetPartitionColumnsUpdate> setPartition,
+      ColumnMappingMode columnMappingMode,
+      Map<String, String> currentProperties) {
     if (setSchema.isEmpty() && setPartition.isEmpty()) {
       return;
     }
@@ -452,23 +493,28 @@ public final class DeltaUpdateTableMapper {
             ErrorCode.INVALID_ARGUMENT, "set-columns requires at least one column.");
       }
       ColumnUtils.validateStructType(columns, "columns");
+      validateColumnRenameAndDropGuards(dao, fields, columnMappingMode, currentProperties);
       newColumns = ColumnUtils.toColumnInfos(fields);
     } else {
       newColumns = ColumnInfoDAO.toList(dao.getColumns());
       newColumns.forEach(c -> c.setPartitionIndex(null));
     }
     // Source of the partition list: the request when set-partition-columns is present, otherwise
-    // the existing DAO's partition columns (preserved by name across a column-only action).
+    // resolve the existing DAO's partition columns to their names in the new schema, so a renamed
+    // partition column keeps its partition.
     List<String> partitionNames;
     if (setPartition.isPresent()) {
       partitionNames =
           ValidationUtils.checkNotNull(
               setPartition.get().getPartitionColumns(),
               "set-partition-columns requires a partition-columns list.");
+    } else if (setSchema.isPresent()) {
+      partitionNames = resolvePartitionColumns(dao, newColumns, columnMappingMode);
     } else {
       partitionNames = currentPartitionColumnNames(dao);
     }
     ColumnUtils.applyPartitionColumns(newColumns, partitionNames);
+    // Build the new DAO list. Every column receives a fresh UUID.
     List<ColumnInfoDAO> newColumnDAOs = ColumnInfoDAO.fromList(newColumns);
     newColumnDAOs.forEach(
         c -> {
@@ -480,6 +526,478 @@ public final class DeltaUpdateTableMapper {
     dao.getColumns().addAll(newColumnDAOs);
   }
 
+  // ---------------------------------------------------------------------- column-mapping guards
+
+  /**
+   * Rejects a {@code set-columns} where a column present in both the existing schema and the
+   * incoming schema (matched by logical name) has lost the ACTIVE MODE'S column-mapping identity
+   * key. Mode-specific (checks only the active mode's key -- {@code delta.columnMapping.id} for
+   * id-mode, {@code delta.columnMapping.physicalName} for name-mode) and recursive into nested
+   * struct/array/map types.
+   *
+   * <p>A column whose existing schema carries no active-mode CM key is not flagged itself, but its
+   * nested fields are still checked.
+   *
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} naming the offending columns
+   */
+  private static void validateNoCmIdentityStripped(
+      List<DeltaStructField> curFields,
+      List<DeltaStructField> incFields,
+      ColumnMappingMode columnMappingMode) {
+    String activeCmKey = columnMappingMode.metadataKey();
+    List<String> stripped = detectStrippedCmKeys(curFields, incFields, activeCmKey, "");
+    if (!stripped.isEmpty()) {
+      stripped.sort(String::compareTo);
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "set-columns dropped column mapping metadata for column(s): "
+              + String.join(", ", stripped));
+    }
+  }
+
+  /**
+   * The table's stored columns as fields. A stored column that cannot be read (its type JSON is
+   * missing, malformed or parses to nothing) is skipped with a warning, matching how loading a
+   * table tolerates corrupt column data. A field with null metadata gets empty metadata.
+   */
+  static List<DeltaStructField> readableStoredFields(TableInfoDAO dao) {
+    List<DeltaStructField> fields = new ArrayList<>();
+    for (ColumnInfoDAO d : dao.getColumns()) {
+      try {
+        DeltaStructField f = ColumnUtils.toStructField(d.toColumnInfo());
+        if (f == null || f.getName() == null || f.getType() == null) {
+          throw new IllegalStateException("stored type parses to an incomplete field");
+        }
+        if (f.getMetadata() == null) {
+          f.setMetadata(new DeltaStructFieldMetadata());
+        }
+        fields.add(f);
+      } catch (RuntimeException e) {
+        LOGGER.warn(
+            "Skipping column {} of table {}: unreadable stored type",
+            d.getName(),
+            dao.getName(),
+            e);
+      }
+    }
+    return fields;
+  }
+
+  /**
+   * Returns the dotted paths of fields that are retained in {@code incomingFields} (by
+   * case-insensitive logical name) but have lost the {@code activeCmKey} from their metadata.
+   * Recurses into nested struct/array/map types; {@code prefix} is the path of the enclosing field
+   * ("" at top level).
+   */
+  private static List<String> detectStrippedCmKeys(
+      List<DeltaStructField> storedFields,
+      List<DeltaStructField> incomingFields,
+      String activeCmKey,
+      String prefix) {
+    Map<String, DeltaStructField> incomingByLowerName =
+        incomingFields.stream()
+            .collect(
+                Collectors.toMap(f -> f.getName().toLowerCase(Locale.ROOT), Function.identity()));
+    List<String> stripped = new ArrayList<>();
+    for (DeltaStructField stored : storedFields) {
+      DeltaStructField incoming =
+          incomingByLowerName.get(stored.getName().toLowerCase(Locale.ROOT));
+      if (incoming == null) continue; // dropped column, not a strip of an existing one
+      String path = prefix + stored.getName();
+      // Only flag fields that currently have the active CM key.
+      if (hasCmKeyInFieldTopLevel(stored, activeCmKey)
+          && !hasCmKeyInFieldTopLevel(incoming, activeCmKey)) {
+        stripped.add(path);
+      }
+      // Recurse into the retained field's type even when this field has no key of its own.
+      stripped.addAll(
+          detectStrippedCmKeysInTypes(
+              stored.getType(), incoming.getType(), activeCmKey, path + "."));
+    }
+    return stripped;
+  }
+
+  /**
+   * Nested stored fields that can be compared. A nested field with no name or type has no identity
+   * to preserve and is skipped with a warning, like an unreadable top-level stored column.
+   */
+  private static List<DeltaStructField> readableNestedFields(
+      List<DeltaStructField> fields, String prefix) {
+    List<DeltaStructField> readable = new ArrayList<>();
+    for (DeltaStructField f : fields == null ? List.<DeltaStructField>of() : fields) {
+      if (f == null || f.getName() == null || f.getType() == null) {
+        LOGGER.warn("Skipping nested stored field under '{}': missing name or type", prefix);
+      } else {
+        readable.add(f);
+      }
+    }
+    return readable;
+  }
+
+  /** Recurses into nested struct/array/map types for the CM-key-strip check. */
+  private static List<String> detectStrippedCmKeysInTypes(
+      DeltaDataType curType, DeltaDataType incType, String activeCmKey, String prefix) {
+    if (curType instanceof DeltaStructType curStruct
+        && incType instanceof DeltaStructType incStruct) {
+      return detectStrippedCmKeys(
+          readableNestedFields(curStruct.getFields(), prefix),
+          incStruct.getFields() != null ? incStruct.getFields() : List.of(),
+          activeCmKey,
+          prefix);
+    } else if (curType instanceof DeltaArrayType curArr
+        && incType instanceof DeltaArrayType incArr) {
+      return detectStrippedCmKeysInTypes(
+          curArr.getElementType(), incArr.getElementType(), activeCmKey, prefix);
+    } else if (curType instanceof DeltaMapType curMap && incType instanceof DeltaMapType incMap) {
+      List<String> result =
+          new ArrayList<>(
+              detectStrippedCmKeysInTypes(
+                  curMap.getKeyType(), incMap.getKeyType(), activeCmKey, prefix + "key."));
+      result.addAll(
+          detectStrippedCmKeysInTypes(
+              curMap.getValueType(), incMap.getValueType(), activeCmKey, prefix + "value."));
+      return result;
+    }
+    return List.of();
+  }
+
+  /**
+   * Checks a {@code set-columns} against the table's stored column-mapping mode. Columns are
+   * matched by the mode's identity key: the column mapping id in id mode, the physical name
+   * otherwise. A table without column mapping can only be upgraded to name mode, and the upgrade
+   * keeps each column's name as its physical name, so its columns are matched by physical name.
+   *
+   * <ul>
+   *   <li>A retained field keeps the identity key it has, and a schema that has identity keys keeps
+   *       them.
+   *   <li>A top-level identity value that is present must be usable. In name mode, top-level
+   *       physical names are unique ignoring case. In id mode, ids are unique across the schema.
+   *   <li>A request without identity keys has no rename to find: a missing name is a drop and an
+   *       add, as when a table is replaced.
+   *   <li>Enabling column mapping (the stored schema has no identity key): every field needs a
+   *       physical name, top-level physical names and ids must be usable and unique, and no column
+   *       may be renamed in the same request.
+   *   <li>Otherwise at most one top-level column is renamed per request. Delta Kernel checks the
+   *       rest of the change ({@link DeltaSchemaEvolutionValidator}).
+   * </ul>
+   *
+   * @param currentProperties the table properties before this request is applied
+   */
+  private static void validateColumnRenameAndDropGuards(
+      TableInfoDAO dao,
+      List<DeltaStructField> incoming,
+      ColumnMappingMode tableMode,
+      Map<String, String> currentProperties) {
+    ColumnMappingMode mode =
+        tableMode == ColumnMappingMode.NONE ? ColumnMappingMode.NAME : tableMode;
+    List<DeltaStructField> current = readableStoredFields(dao);
+    boolean currentHasKeys = carriesKey(current, mode.metadataKey());
+    boolean incomingHasKeys = carriesKey(incoming, mode.metadataKey());
+    if (currentHasKeys) {
+      validateNoCmIdentityStripped(current, incoming, mode);
+      if (!incomingHasKeys) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "set-columns dropped column mapping metadata; removing column mapping is not"
+                + " supported.");
+      }
+    }
+    if (tableMode != ColumnMappingMode.NONE) {
+      rejectMalformedTopLevelIdentities(incoming, tableMode.metadataKey());
+      if (tableMode == ColumnMappingMode.NAME) {
+        rejectDuplicateTopLevelPhysicalNames(incoming);
+      }
+    }
+    if (mode == ColumnMappingMode.ID) {
+      rejectDuplicateIds(incoming);
+    }
+    if (!incomingHasKeys) {
+      return; // no identity to find a rename by: a missing name is a drop and an add
+    }
+    if (!currentHasKeys) {
+      validateEnablingColumnMapping(current, incoming);
+      return;
+    }
+    List<TopLevelRename> topLevelRenames = detectTopLevelRenames(current, incoming, mode);
+    if (topLevelRenames.size() > 1) {
+      String renameList =
+          topLevelRenames.stream()
+              .map(r -> r.oldLogicalName() + "->" + r.newLogicalName())
+              .sorted()
+              .collect(Collectors.joining(", "));
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Only a single top-level column rename is supported per request; this request renames "
+              + topLevelRenames.size()
+              + " columns ["
+              + renameList
+              + "]. Split them into separate ALTER statements.");
+    }
+
+    // Delta Kernel decides the rest: identities, types, nullability and clustering columns. It
+    // reads the whole stored schema, so a stored column with an unreadable type fails the check.
+    DeltaSchemaEvolutionValidator.validate(
+        ColumnInfoDAO.toList(dao.getColumns()),
+        ColumnUtils.toColumnInfos(incoming),
+        currentProperties,
+        !topLevelRenames.isEmpty());
+  }
+
+  /**
+   * Checks a request that enables column mapping. A field without a physical name could hide a
+   * rename, and a rename has to be its own request after column mapping is enabled.
+   */
+  private static void validateEnablingColumnMapping(
+      List<DeltaStructField> current, List<DeltaStructField> incoming) {
+    if (allFields(incoming).stream()
+        .anyMatch(
+            f ->
+                !isUsableIdentity(
+                    f.getMetadata().get(TableProperties.COLUMN_MAPPING_PHYSICAL_NAME),
+                    TableProperties.COLUMN_MAPPING_PHYSICAL_NAME))) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "set-columns: enabling column mapping requires a physical column name for every column"
+              + " and nested field; this request omits one, so a rename cannot be safely ruled"
+              + " out.");
+    }
+    rejectDuplicateTopLevelPhysicalNames(incoming);
+    rejectMalformedTopLevelIdentities(incoming, TableProperties.COLUMN_MAPPING_ID);
+    rejectDuplicateIds(incoming);
+    if (renamesWhileEnabling(current, incoming)) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "set-columns: renaming a column while enabling column mapping is not supported in a"
+              + " single request. Enable column mapping in a separate statement, then rename the"
+              + " column.");
+    }
+  }
+
+  /** True when some field, at any depth, carries {@code key} in its metadata. */
+  private static boolean carriesKey(List<DeltaStructField> fields, String key) {
+    return allFields(fields).stream()
+        .anyMatch(f -> f.getMetadata() != null && f.getMetadata().containsKey(key));
+  }
+
+  /**
+   * A usable identity value is a non-empty string; a column mapping id may also be a JSON number.
+   */
+  private static boolean isUsableIdentity(Object value, String key) {
+    return (key.equals(TableProperties.COLUMN_MAPPING_ID) && value instanceof Number)
+        || (value instanceof String s && !s.isEmpty());
+  }
+
+  /** Rejects top-level columns that carry {@code key} with an unusable value. */
+  private static void rejectMalformedTopLevelIdentities(
+      List<DeltaStructField> incoming, String key) {
+    List<String> malformed =
+        incoming.stream()
+            .filter(
+                f ->
+                    f.getMetadata().containsKey(key)
+                        && !isUsableIdentity(f.getMetadata().get(key), key))
+            .map(DeltaStructField::getName)
+            .collect(Collectors.toList());
+    if (!malformed.isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "set-columns has column(s) "
+              + malformed
+              + " with malformed column mapping identity metadata.");
+    }
+  }
+
+  /**
+   * Rejects a physical name shared by two top-level columns, ignoring case. The identity maps that
+   * rename detection and partition preservation build would collapse them.
+   */
+  private static void rejectDuplicateTopLevelPhysicalNames(List<DeltaStructField> incoming) {
+    Set<String> seen = new HashSet<>();
+    for (DeltaStructField f : incoming) {
+      if (f.getMetadata().get(TableProperties.COLUMN_MAPPING_PHYSICAL_NAME) instanceof String phys
+          && !seen.add(phys.toLowerCase(Locale.ROOT))) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "Duplicate column mapping physicalName '"
+                + phys
+                + "' on top-level columns in incoming schema; each top-level column must"
+                + " have a unique physical name.");
+      }
+    }
+  }
+
+  /** Rejects a column mapping id, compared as text, that two fields at any depth share. */
+  private static void rejectDuplicateIds(List<DeltaStructField> incoming) {
+    Set<String> seen = new HashSet<>();
+    for (DeltaStructField f : allFields(incoming)) {
+      if (f.getMetadata().containsKey(TableProperties.COLUMN_MAPPING_ID)) {
+        String id = String.valueOf(f.getMetadata().get(TableProperties.COLUMN_MAPPING_ID));
+        if (!seen.add(id)) {
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              "Duplicate column mapping id '" + id + "' in incoming schema.");
+        }
+      }
+    }
+  }
+
+  /**
+   * True when an incoming field's physical name names a stored field of the same parent while its
+   * own name differs. Enabling column mapping keeps each stored name as its physical name, so such
+   * a field is a renamed stored field. Every incoming field has a physical name here.
+   */
+  private static boolean renamesWhileEnabling(
+      List<DeltaStructField> current, List<DeltaStructField> incoming) {
+    Map<String, DeltaStructField> currentByName =
+        current.stream()
+            .collect(
+                Collectors.toMap(
+                    f -> f.getName().toLowerCase(Locale.ROOT), Function.identity(), (x, y) -> x));
+    for (DeltaStructField inc : incoming) {
+      String phys = (String) inc.getMetadata().get(TableProperties.COLUMN_MAPPING_PHYSICAL_NAME);
+      DeltaStructField cur = currentByName.get(phys.toLowerCase(Locale.ROOT));
+      if (cur != null
+          && (!cur.getName().equalsIgnoreCase(inc.getName())
+              || typeRenamesWhileEnabling(cur.getType(), inc.getType()))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean typeRenamesWhileEnabling(DeltaDataType current, DeltaDataType incoming) {
+    if (current instanceof DeltaStructType cur && incoming instanceof DeltaStructType inc) {
+      return cur.getFields() != null
+          && inc.getFields() != null
+          && renamesWhileEnabling(cur.getFields(), inc.getFields());
+    } else if (current instanceof DeltaArrayType cur && incoming instanceof DeltaArrayType inc) {
+      return typeRenamesWhileEnabling(cur.getElementType(), inc.getElementType());
+    } else if (current instanceof DeltaMapType cur && incoming instanceof DeltaMapType inc) {
+      return typeRenamesWhileEnabling(cur.getKeyType(), inc.getKeyType())
+          || typeRenamesWhileEnabling(cur.getValueType(), inc.getValueType());
+    }
+    return false;
+  }
+
+  /** Every field at every depth, each before the fields nested in it. */
+  private static List<DeltaStructField> allFields(List<DeltaStructField> fields) {
+    List<DeltaStructField> all = new ArrayList<>();
+    for (DeltaStructField f : fields) {
+      all.add(f);
+      all.addAll(allFields(nestedFields(f.getType())));
+    }
+    return all;
+  }
+
+  /** The struct fields directly under {@code type}, looking through array elements and maps. */
+  private static List<DeltaStructField> nestedFields(DeltaDataType type) {
+    if (type instanceof DeltaStructType struct) {
+      return struct.getFields() != null ? struct.getFields() : List.of();
+    } else if (type instanceof DeltaArrayType array) {
+      return nestedFields(array.getElementType());
+    } else if (type instanceof DeltaMapType map) {
+      List<DeltaStructField> fields = new ArrayList<>(nestedFields(map.getKeyType()));
+      fields.addAll(nestedFields(map.getValueType()));
+      return fields;
+    }
+    return List.of();
+  }
+
+  /**
+   * The column-mapping identity Delta reads a field by in {@code mode}: its id as text in id mode,
+   * its physical name (case-insensitive) otherwise. Null when the field does not carry it.
+   */
+  private static String identityKeyOf(DeltaStructField field, ColumnMappingMode mode) {
+    DeltaStructFieldMetadata meta = field.getMetadata();
+    if (mode == ColumnMappingMode.ID) {
+      Object id = meta.get(TableProperties.COLUMN_MAPPING_ID);
+      return id == null ? null : id.toString();
+    }
+    return meta.get(TableProperties.COLUMN_MAPPING_PHYSICAL_NAME) instanceof String s
+        ? s.toLowerCase(Locale.ROOT)
+        : null;
+  }
+
+  /**
+   * Represents a detected top-level column rename: the column's CM identity key stayed the same
+   * (physicalName in name-mode, {@code delta.columnMapping.id} in id-mode) while its logical name
+   * changed.
+   */
+  private record TopLevelRename(String oldLogicalName, String newLogicalName) {}
+
+  /**
+   * Detects top-level column renames by matching current and incoming columns on the key Delta
+   * reads them by in the table's mode (see {@link #identityKeyOf}). Only top-level columns are
+   * compared; nested struct-field renames ride inside the column's {@code type_json} and are not
+   * surfaced here. A column without its key is skipped.
+   *
+   * <p>Case-insensitive name comparison: a change from "A" to "a" is not considered a rename.
+   */
+  private static List<TopLevelRename> detectTopLevelRenames(
+      List<DeltaStructField> current, List<DeltaStructField> incoming, ColumnMappingMode mode) {
+    Map<String, String> incomingByKey = new HashMap<>();
+    for (DeltaStructField f : incoming) {
+      String key = identityKeyOf(f, mode);
+      if (key != null) {
+        incomingByKey.put(key, f.getName());
+      }
+    }
+    List<TopLevelRename> renames = new ArrayList<>();
+    for (DeltaStructField f : current) {
+      // A stored column without its key looks up null, which no incoming column has.
+      String newName = incomingByKey.get(identityKeyOf(f, mode));
+      // equalsIgnoreCase: case-only changes ("A"→"a") are not renames.
+      if (newName != null && !newName.equalsIgnoreCase(f.getName())) {
+        renames.add(new TopLevelRename(f.getName(), newName));
+      }
+    }
+    return renames;
+  }
+
+  /** Returns {@code true} if this specific field's OWN metadata contains {@code cmKey}. */
+  private static boolean hasCmKeyInFieldTopLevel(DeltaStructField field, String cmKey) {
+    DeltaStructFieldMetadata meta = field.getMetadata();
+    return meta != null && meta.get(cmKey) != null;
+  }
+
+  /**
+   * The column-mapping mode of a table, from the {@code delta.columnMapping.mode} property. Carries
+   * the field-metadata key that identifies a column under that mode.
+   */
+  enum ColumnMappingMode {
+    NONE(null),
+    NAME(TableProperties.COLUMN_MAPPING_PHYSICAL_NAME),
+    ID(TableProperties.COLUMN_MAPPING_ID);
+
+    private final String metadataKey;
+
+    ColumnMappingMode(String metadataKey) {
+      this.metadataKey = metadataKey;
+    }
+
+    /** The field-metadata key identifying a column under this mode; {@code null} for NONE. */
+    String metadataKey() {
+      return metadataKey;
+    }
+
+    /**
+     * Parses a raw {@code delta.columnMapping.mode} value; an absent value means NONE.
+     *
+     * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} for any other unknown value
+     */
+    static ColumnMappingMode parse(String rawMode) {
+      if (rawMode == null) {
+        return NONE;
+      }
+      try {
+        return valueOf(rawMode.trim().toUpperCase(Locale.ROOT));
+      } catch (IllegalArgumentException e) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT, "Invalid column mapping mode: " + rawMode);
+      }
+    }
+  }
+
   /** Names of the DAO's partition columns, ordered by partition index. */
   private static List<String> currentPartitionColumnNames(TableInfoDAO dao) {
     return ColumnInfoDAO.toList(dao.getColumns()).stream()
@@ -487,6 +1005,88 @@ public final class DeltaUpdateTableMapper {
         .sorted(Comparator.comparingInt(ColumnInfo::getPartitionIndex))
         .map(ColumnInfo::getName)
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Resolves the current partition columns to their names in the incoming schema, so a partition
+   * column that is renamed keeps its partition. Columns are matched by the identity Delta reads
+   * them by in the table's stored mode (see {@link #identityKeyOf}), top-level only so a nested
+   * field cannot collide with a partition column's key.
+   *
+   * <p>Per partition column, using the identities stored before this update (a stored column whose
+   * type cannot be read has no identity, see {@link #readableStoredFields}):
+   *
+   * <ul>
+   *   <li>the table has no column mapping, or the incoming schema carries no identity at all:
+   *       matched by logical name;
+   *   <li>the column has a stored identity: matched to the incoming column with the same identity,
+   *       and rejected as dropped if no incoming column carries it, even if another column reuses
+   *       its name;
+   *   <li>the column has no stored identity but other stored columns do: rejected as having no
+   *       column mapping identity, because matching by name could move the partition onto a
+   *       different column that reuses the old name;
+   *   <li>no stored column has an identity: matched by logical name.
+   * </ul>
+   *
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if a partition column is dropped
+   *     or has no identity on a column-mapped table
+   */
+  private static List<String> resolvePartitionColumns(
+      TableInfoDAO dao, List<ColumnInfo> incomingColumns, ColumnMappingMode columnMappingMode) {
+    List<ColumnInfo> curList = ColumnInfoDAO.toList(dao.getColumns());
+    List<ColumnInfo> partitionCols =
+        curList.stream()
+            .filter(c -> c.getPartitionIndex() != null)
+            .sorted(Comparator.comparingInt(ColumnInfo::getPartitionIndex))
+            .collect(Collectors.toList());
+    if (partitionCols.isEmpty()) {
+      return List.of();
+    }
+
+    Map<String, String> incomingNameByLowerName = new HashMap<>();
+    Map<String, String> incomingNameByKey = new HashMap<>();
+    for (ColumnInfo inc : incomingColumns) {
+      incomingNameByLowerName.put(inc.getName().toLowerCase(Locale.ROOT), inc.getName());
+      String key = identityKeyOf(ColumnUtils.toStructField(inc), columnMappingMode);
+      if (key != null) {
+        incomingNameByKey.put(key, inc.getName());
+      }
+    }
+    boolean byName = columnMappingMode == ColumnMappingMode.NONE || incomingNameByKey.isEmpty();
+    Map<String, String> currentKeyByLowerName = new HashMap<>();
+    if (!byName) {
+      for (DeltaStructField cur : readableStoredFields(dao)) {
+        String key = identityKeyOf(cur, columnMappingMode);
+        if (key != null) {
+          currentKeyByLowerName.put(cur.getName().toLowerCase(Locale.ROOT), key);
+        }
+      }
+    }
+
+    List<String> resolved = new ArrayList<>();
+    for (ColumnInfo cur : partitionCols) {
+      String lowerName = cur.getName().toLowerCase(Locale.ROOT);
+      String newName;
+      String key = currentKeyByLowerName.get(lowerName);
+      if (key != null) {
+        newName = incomingNameByKey.get(key);
+      } else if (currentKeyByLowerName.isEmpty()) {
+        newName = incomingNameByLowerName.get(lowerName);
+      } else {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "partition column '"
+                + cur.getName()
+                + "' has no column mapping identity while the table uses column mapping.");
+      }
+      if (newName == null) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "partition column '" + cur.getName() + "' dropped: not in the new schema.");
+      }
+      resolved.add(newName);
+    }
+    return resolved;
   }
 
   private static void applySetDomainMetadata(
