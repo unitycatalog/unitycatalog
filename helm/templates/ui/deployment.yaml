@@ -108,7 +108,7 @@ spec:
               jq '.proxy = null' package.json > temp.json
               {{- end }}
               mv temp.json package.json
-              yarn start
+              bun run start
           env:
           {{- if .Values.auth.enabled }}
             - name: REACT_APP_GOOGLE_AUTH_ENABLED
