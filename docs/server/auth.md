@@ -116,7 +116,13 @@ cover internal or sensitive hosts. Prefer exact issuer URLs and `https://` issue
 `true` and will be removed in a future release. Permission fixes that use this setting apply the
 corrected rules by default.
 
+The setting covers:
+
+- [Grant validation](#valid-privilege-grants): Reject new grants on the wrong object type.
+  Existing invalid grants can still be removed.
+
 The access checks apply only when `server.authorization=enable`.
+Grant validation also applies when authorization is disabled.
 
 To keep the previous rules during a migration, set:
 
@@ -153,6 +159,34 @@ Optional tuning:
 Revocations propagate on the poll interval. A stale deny can trigger one `max(id)` probe
 before returning 403. Concurrent denials and list-filter items share a probe that started after the
 request.
+
+### Valid privilege grants
+
+Each privilege can be granted only on the object types below. Catalog and schema grants still
+apply to their matching child objects. For example, catalog `SELECT` applies to the tables in
+that catalog.
+
+Grant validation also runs when `server.authorization=disable`.
+
+| Privilege | Object types |
+| --- | --- |
+| `CREATE CATALOG`, `CREATE STORAGE CREDENTIAL` | Metastore |
+| `USE CATALOG`, `CREATE SCHEMA` | Catalog |
+| `USE SCHEMA`, `CREATE TABLE`, `CREATE FUNCTION`, `CREATE VOLUME`, `CREATE MODEL` | Catalog, schema |
+| `SELECT`, `MODIFY` | Catalog, schema, table |
+| `EXECUTE` | Catalog, schema, function, registered model |
+| `READ VOLUME` | Catalog, schema, volume |
+| `CREATE EXTERNAL LOCATION` | Metastore, storage credential |
+| `READ FILES`, `WRITE FILES`, `CREATE EXTERNAL TABLE` | External location, storage credential |
+| `CREATE EXTERNAL VOLUME`, `CREATE MANAGED STORAGE` | External location |
+
+For example, `USE CATALOG` on a schema is invalid. Grant it on the containing catalog instead.
+If any addition is invalid, the server rejects the full request with `INVALID_ARGUMENT` before
+saving its grants or revokes.
+
+After an upgrade, existing grants stay in place. The server does not remove invalid grants
+automatically. You can still remove them through the permissions API. Update grant scripts
+to use the correct object types before adding or reapplying grants.
 
 ### Restart the UC Server
 

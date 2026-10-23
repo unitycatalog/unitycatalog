@@ -365,7 +365,7 @@ public class UnityCatalogServer implements AutoCloseable {
         .annotate("auth", new AuthService(securityContext, serverProperties, repositories))
         .annotate("scim2/Users", new Scim2UserService(authorizer, repositories))
         .annotate("scim2/Me", new Scim2SelfService(authorizer, repositories))
-        .annotate("permissions", new PermissionService(authorizer, repositories))
+        .annotate("permissions", new PermissionService(authorizer, repositories, serverProperties))
         .annotate("catalogs", new CatalogService(authorizer, repositories, serverProperties))
         .annotate("schemas", schemaService)
         .annotate("volumes", new VolumeService(authorizer, repositories, serverProperties))

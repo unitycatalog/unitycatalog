@@ -39,6 +39,7 @@ import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +52,7 @@ import java.util.stream.Collectors;
 public class PermissionService implements UnityCatalogRestService {
 
   private final UnityCatalogAuthorizer authorizer;
+  private final boolean strictPrivilegeChecks;
   private final MetastoreRepository metastoreRepository;
   private final UserRepository userRepository;
   private final CatalogRepository catalogRepository;
@@ -62,8 +64,12 @@ public class PermissionService implements UnityCatalogRestService {
   private final ExternalLocationRepository externalLocationRepository;
   private final CredentialRepository credentialRepository;
 
-  public PermissionService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
+  public PermissionService(
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties) {
     this.authorizer = authorizer;
+    this.strictPrivilegeChecks = serverProperties.isStrictPrivilegeChecksEnabled();
     this.metastoreRepository = repositories.getMetastoreRepository();
     this.userRepository = repositories.getUserRepository();
     this.catalogRepository = repositories.getCatalogRepository();
@@ -298,6 +304,9 @@ public class PermissionService implements UnityCatalogRestService {
       SecurableType securableType, String name, UpdatePermissions request) {
     UUID resourceId = getResourceId(securableType, name);
     List<PermissionsChange> changes = request.getChanges();
+    if (strictPrivilegeChecks) {
+      validateAddedPrivileges(securableType, changes);
+    }
     Set<UUID> principalIds = new HashSet<>();
     changes.forEach(
         change -> {
@@ -344,6 +353,37 @@ public class PermissionService implements UnityCatalogRestService {
             .collect(Collectors.toList());
 
     return HttpResponse.ofJson(new PermissionsList().privilegeAssignments(privilegeAssignments));
+  }
+
+  /** Validates additions only, so grants saved on invalid object types can still be removed. */
+  static void validateAddedPrivileges(
+      SecurableType securableType, List<PermissionsChange> changes) {
+    for (PermissionsChange change : changes) {
+      for (Privilege privilege : change.getAdd()) {
+        Set<SecurableType> validTypes =
+            switch (privilege) {
+              case CREATE_CATALOG, CREATE_STORAGE_CREDENTIAL -> Set.of(METASTORE);
+              case USE_CATALOG, CREATE_SCHEMA -> Set.of(CATALOG);
+              case USE_SCHEMA, CREATE_TABLE, CREATE_FUNCTION, CREATE_VOLUME, CREATE_MODEL ->
+                  Set.of(CATALOG, SCHEMA);
+              case SELECT, MODIFY -> Set.of(CATALOG, SCHEMA, TABLE);
+              case EXECUTE -> Set.of(CATALOG, SCHEMA, FUNCTION, REGISTERED_MODEL);
+              case READ_VOLUME -> Set.of(CATALOG, SCHEMA, VOLUME);
+              case CREATE_EXTERNAL_LOCATION -> Set.of(METASTORE, CREDENTIAL);
+              case READ_FILES, WRITE_FILES, CREATE_EXTERNAL_TABLE ->
+                  Set.of(EXTERNAL_LOCATION, CREDENTIAL);
+              case CREATE_EXTERNAL_VOLUME, CREATE_MANAGED_STORAGE -> Set.of(EXTERNAL_LOCATION);
+            };
+        if (!validTypes.contains(securableType)) {
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              "Privilege "
+                  + privilege.getValue()
+                  + " cannot be granted on "
+                  + securableType.getValue());
+        }
+      }
+    }
   }
 
   private UUID getResourceId(SecurableType securableType, String name) {
