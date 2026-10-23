@@ -211,7 +211,7 @@ public final class AuthorizeExpressions {
               #authorizeAll(#principal, #table, SELECT, MODIFY)))
       """;
 
-  /** Iceberg loadTable and loadCredentials use the read rule, or GET_TABLE during migration. */
+  /** Iceberg loadCredentials uses the read rule, or GET_TABLE during migration. */
   // TODO(#2024): Reuse VEND_TABLE_CREDENTIAL with a fixed READ operation after removing the flag.
   public static final String VEND_ICEBERG_TABLE_CREDENTIAL =
       """
