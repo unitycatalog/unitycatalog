@@ -149,6 +149,8 @@ The setting covers:
 
 - [Grant validation](#valid-privilege-grants): Reject new grants on the wrong object type.
   Existing invalid grants can still be removed.
+- [Iceberg credentials](#table-credential-permissions): `loadTable` and `loadCredentials`
+  require `USE CATALOG`, `USE SCHEMA`, and `SELECT`, or ownership at each level.
 
 The access checks apply only when `server.authorization=enable`.
 Grant validation also applies when authorization is disabled.
@@ -417,6 +419,27 @@ ATTACH 'unity' AS unity (TYPE UC_CATALOG);
 SHOW ALL TABLES;
 SELECT * from unity.default.numbers;
 ```
+
+## Table credential permissions
+
+With authorization enabled, Unity Catalog and Delta credential requests for existing tables
+require the permissions below. Iceberg uses the same read checks for `loadTable` and
+`loadCredentials`.
+
+| Object | Required to read |
+| --- | --- |
+| Containing catalog | `USE CATALOG` or catalog ownership |
+| Containing schema | `USE SCHEMA` or schema ownership |
+| Table | `SELECT` or table ownership |
+
+The caller must meet all three rows. `SELECT` inherited from a catalog or schema is valid.
+Metastore administration, parent ownership, or `MODIFY` alone does not meet these requirements.
+Read/write credentials also require `MODIFY` or table ownership. Iceberg credentials for UniForm
+tables remain read-only.
+
+Iceberg `loadTable` returns both metadata and credentials. Both `loadTable` and
+`loadCredentials` reject the whole request if the caller lacks read access. Metadata access
+alone is not sufficient. Table listings and `tableExists` keep their existing permission checks.
 
 ## Spark and Java client authentication types
 
