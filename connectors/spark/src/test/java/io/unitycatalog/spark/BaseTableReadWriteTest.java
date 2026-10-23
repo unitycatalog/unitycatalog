@@ -28,6 +28,7 @@ import lombok.Setter;
 import lombok.With;
 import lombok.experimental.Accessors;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.spark.sql.AnalysisException;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.StructType;
@@ -507,8 +508,12 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     }
     // Dropping a malformed multi-level table identifier is rejected.
     if (testingIceberg()) {
-      // The namespace a.b does not exist as a UC schema, so the drop is rejected before the table.
-      assertIcebergSchemaNotFound(() -> sql("DROP TABLE %s.a.b.c", CATALOG_NAME));
+      // The namespace a.b does not exist as a UC schema. A route addressed to one table reports
+      // that as a missing table (so metadata tables resolve), which Iceberg's client turns into
+      // dropTable returning false, and Spark reports the identifier as not found.
+      assertThatThrownBy(() -> sql("DROP TABLE %s.a.b.c", CATALOG_NAME))
+          .isInstanceOf(AnalysisException.class)
+          .hasMessageContaining("TABLE_OR_VIEW_NOT_FOUND");
     } else {
       // Delta < 4.3.0 forwards the 4-part identifier to UC, which rejects it server-side with
       // ApiException("Nested namespaces are not supported"). Delta >= 4.3.0 ships

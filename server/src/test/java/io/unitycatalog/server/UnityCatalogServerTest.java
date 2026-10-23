@@ -80,7 +80,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
                       PrometheusExpositionService.of(metrics.registry().getPrometheusRegistry()))
                   .annotate("unfiltered", new UnfilteredResponseService())
                   .withSecurityDecorators(
-                      new UnityAccessDecorator(new AllowingAuthorizer(), repositories),
+                      new UnityAccessDecorator(new AllowingAuthorizer(), repositories, properties),
                       (delegate, ctx, req) -> delegate.serve(ctx, req))
                   .meterRegistry(metrics.registry())
                   .build()) {

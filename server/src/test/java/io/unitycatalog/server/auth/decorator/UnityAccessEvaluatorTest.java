@@ -22,7 +22,7 @@ class UnityAccessEvaluatorTest {
   @Test
   void evaluateSkipsRefreshWhenExpressionAllows() throws Exception {
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
-    UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer);
+    UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer, true);
 
     assertThat(
             evaluator.evaluate(
@@ -35,7 +35,7 @@ class UnityAccessEvaluatorTest {
   void evaluateKeepsDenyWhenRefreshReturnsFalse() throws Exception {
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
     when(authorizer.refreshAuthorizations(anyLong())).thenReturn(false);
-    UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer);
+    UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer, true);
 
     assertThat(
             evaluator.evaluate(
@@ -49,7 +49,7 @@ class UnityAccessEvaluatorTest {
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
     when(authorizer.refreshAuthorizations(anyLong()))
         .thenThrow(new RuntimeException("reload failed"));
-    UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer);
+    UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer, true);
 
     assertThat(
             evaluator.evaluate(
@@ -68,7 +68,7 @@ class UnityAccessEvaluatorTest {
         .thenReturn(false, true);
     when(authorizer.refreshAuthorizations(anyLong())).thenReturn(true);
 
-    UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer);
+    UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer, true);
 
     assertThat(
             evaluator.evaluate(
@@ -79,5 +79,20 @@ class UnityAccessEvaluatorTest {
         .isTrue();
     verify(authorizer, times(1)).refreshAuthorizations(anyLong());
     verify(authorizer, times(2)).authorize(eq(principal), eq(catalog), eq(Privileges.OWNER));
+  }
+
+  @Test
+  void evaluateUsesServerPrivilegeChecksSetting() throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    for (boolean strictPrivilegeChecks : new boolean[] {true, false}) {
+      UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer, strictPrivilegeChecks);
+      assertThat(
+              evaluator.evaluate(
+                  UUID.randomUUID(),
+                  "#strict_privilege_checks",
+                  Map.of(),
+                  Map.of("strict_privilege_checks", !strictPrivilegeChecks)))
+          .isEqualTo(strictPrivilegeChecks);
+    }
   }
 }

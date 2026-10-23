@@ -880,6 +880,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       assertThat(r1.getLatestTableVersion()).isEqualTo(1L);
 
       // Now send v2 commit + backfill of v1 in a single request.
+      writePublishedCommitFile(r1.getMetadata().getLocation(), 1L);
       DeltaLoadTableResponse r2 =
           updateTable(
               h.withEtag(r1.getMetadata().getEtag()),
@@ -898,6 +899,67 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       assertThat(r2.getCommits().get(0).getVersion()).isEqualTo(2L);
       // The combined commit+backfill request is still data-only: updated-time must not advance.
       assertThat(r2.getMetadata().getUpdatedTime()).isEqualTo(r1.getMetadata().getUpdatedTime());
+    }
+
+    // -------- add-commit + backfill over an unpublished intermediate version is rejected --------
+    // The whole request fails before anything is persisted: the commit, the purge, and the other
+    // updates in the request are all left undone, and the etag is unchanged.
+    {
+      Handle h = createDeltaManaged("tbl_commit_backfill_gap", Map.of());
+      Handle cur = h;
+      for (long v = 1; v <= 3; v++) {
+        DeltaLoadTableResponse r =
+            updateTable(
+                cur,
+                new DeltaAddCommitUpdate()
+                    .commit(
+                        new DeltaCommit()
+                            .version(v)
+                            .timestamp(1700000000L + v)
+                            .fileName(String.format("%08d.json", v))
+                            .fileSize(1024L)
+                            .fileModificationTimestamp(1700000000L + v)));
+        cur = cur.withEtag(r.getMetadata().getEtag());
+      }
+      final Handle h3 = cur;
+      DeltaLoadTableResponse before =
+          deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name());
+      String loc = before.getMetadata().getLocation();
+      // Publish v1 and v3 only; v2 is missing from the middle of the backfill range.
+      writePublishedCommitFile(loc, 1L);
+      writePublishedCommitFile(loc, 3L);
+
+      DeltaTableUpdate[] commitV4AndBackfillV3 = {
+        new DeltaAddCommitUpdate()
+            .commit(
+                new DeltaCommit()
+                    .version(4L)
+                    .timestamp(1700000004L)
+                    .fileName("00000004.json")
+                    .fileSize(1024L)
+                    .fileModificationTimestamp(1700000004L)),
+        new DeltaSetPropertiesUpdate().updates(Map.of("k", "v")),
+        new DeltaSetLatestBackfilledVersionUpdate().latestPublishedVersion(3L)
+      };
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h3, commitV4AndBackfillV3),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "published commit file is missing");
+      DeltaLoadTableResponse afterReject =
+          deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name());
+      assertThat(afterReject.getLatestTableVersion()).isEqualTo(3L);
+      assertThat(afterReject.getCommits()).hasSize(3);
+      assertThat(afterReject.getMetadata().getEtag()).isEqualTo(before.getMetadata().getEtag());
+      assertThat(afterReject.getMetadata().getProperties()).doesNotContainKey("k");
+
+      // Once v2 is published, resending the same request commits v4, applies the property, and
+      // purges through v3.
+      writePublishedCommitFile(loc, 2L);
+      DeltaLoadTableResponse accepted = updateTable(h3, commitV4AndBackfillV3);
+      assertThat(accepted.getLatestTableVersion()).isEqualTo(4L);
+      assertThat(accepted.getCommits()).hasSize(1);
+      assertThat(accepted.getCommits().get(0).getVersion()).isEqualTo(4L);
+      assertThat(accepted.getMetadata().getProperties()).containsEntry("k", "v");
     }
 
     // -------- MANAGED add-commit + metadata change stamps lastUpdateVersion/timestamp --------
@@ -1050,6 +1112,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                           .fileSize(1024L)
                           .fileModificationTimestamp(1700000001L)));
       assertThat(r1.getLatestTableVersion()).isEqualTo(1L);
+      writePublishedCommitFile(r1.getMetadata().getLocation(), 1L);
       DeltaLoadTableResponse r2 =
           updateTable(
               h.withEtag(r1.getMetadata().getEtag()),
@@ -1315,15 +1378,17 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                         .fileModificationTimestamp(1700000000L + v));
         cur = cur.withEtag(updateTable(cur, commits[i]).getMetadata().getEtag());
       }
-      // Backfill v2 -> purge v1 and v2 from the DB (leaving [v3]).
+      // Publish v1 and v2 before backfill so purge verification succeeds; then purge leaves [v3].
+      byte[] v1Content = "delta-commit-v1\n".getBytes(StandardCharsets.UTF_8);
+      byte[] v2Content = "delta-commit-v2\n".getBytes(StandardCharsets.UTF_8);
+      writeTableFile(loc, "_delta_log/00000000000000000001.json", v1Content);
+      writeTableFile(loc, "_delta_log/00000000000000000002.json", v2Content);
       DeltaLoadTableResponse afterBackfill =
           updateTable(cur, new DeltaSetLatestBackfilledVersionUpdate().latestPublishedVersion(2L));
       final Handle h3 = cur.withEtag(afterBackfill.getMetadata().getEtag());
 
-      // Publish v2 and stage a byte-identical file: the replay is recognized by content and is an
+      // Stage a byte-identical file for v2: the replay is recognized by content and is an
       // idempotent no-op success (table still at v3).
-      byte[] v2Content = "delta-commit-v2\n".getBytes(StandardCharsets.UTF_8);
-      writeTableFile(loc, "_delta_log/00000000000000000002.json", v2Content);
       writeTableFile(loc, "_delta_log/_staged_commits/00000002.json", v2Content);
       DeltaLoadTableResponse replay = updateTable(h3, commits[1]);
       assertThat(replay.getLatestTableVersion()).isEqualTo(3L);
@@ -1354,6 +1419,14 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           DeltaErrorType.COMMIT_STATE_UNKNOWN_EXCEPTION,
           "retry");
     }
+  }
+
+  /** Write a dummy published {@code _delta_log/<version>.json} under the table location. */
+  private void writePublishedCommitFile(String storageLocation, long version) throws IOException {
+    writeTableFile(
+        storageLocation,
+        String.format("_delta_log/%020d.json", version),
+        ("delta-commit-v" + version + "\n").getBytes(StandardCharsets.UTF_8));
   }
 
   /** Write {@code content} to {@code relativePath} under the table's (file://) storage location. */

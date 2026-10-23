@@ -46,7 +46,7 @@ public class FunctionParameterInfoDAO extends IdentifiableDAO {
   @Column(name = "type_text", nullable = false)
   private String typeText;
 
-  @Column(name = "type_json")
+  @Column(name = "type_json", length = 16777215)
   private String typeJson;
 
   @Column(name = "type_name", nullable = false)

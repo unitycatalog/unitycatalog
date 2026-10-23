@@ -240,6 +240,8 @@ public class ServerProperties {
     SERVER_ENV("server.env", "dev", new EnumValidator(true, "dev", "prod", "test")),
     AUTHORIZATION_ENABLED(
         "server.authorization", "disable", new EnumValidator(true, "enable", "disable")),
+    STRICT_PRIVILEGE_CHECKS_ENABLED(
+        "server.authorization.strict-privilege-checks", "true", BOOLEAN_VALIDATOR),
     POLICY_REFRESH_ENABLED("server.authorization.policy-refresh", "false", BOOLEAN_VALIDATOR),
     POLICY_REFRESH_INTERVAL(
         "server.authorization.policy-refresh-interval", "PT1M", DURATION_VALIDATOR),
@@ -551,6 +553,11 @@ public class ServerProperties {
 
   public boolean isAuthorizationEnabled() {
     return isTrueOrEnable(get(Property.AUTHORIZATION_ENABLED));
+  }
+
+  /** Whether permission checks use the stricter rules instead of the previous rules. */
+  public boolean isStrictPrivilegeChecksEnabled() {
+    return isTrueOrEnable(get(Property.STRICT_PRIVILEGE_CHECKS_ENABLED));
   }
 
   /** Whether cross-instance policy refresh is enabled (poll and deny-path reload). */
