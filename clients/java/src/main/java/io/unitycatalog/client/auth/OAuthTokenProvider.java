@@ -47,7 +47,7 @@ class OAuthTokenProvider implements TokenProvider {
   private String oauthClientSecret;
   // Empty when the request carries no scope.
   private String oauthScope;
-  private boolean shouldExchangeForUcToken;
+  // Set only when the OAuth token is exchanged for a UC token.
   private String ucUri;
   private long leadRenewalTimeSeconds;
   private HttpClient httpClient;
@@ -102,7 +102,6 @@ class OAuthTokenProvider implements TokenProvider {
     this.oauthClientId = oauthClientId;
     this.oauthClientSecret = oauthClientSecret;
     this.oauthScope = normalizeOAuthScope(oauthScope);
-    this.shouldExchangeForUcToken = ucUri != null;
     this.ucUri = ucUri;
     this.leadRenewalTimeSeconds = leadRenewalTimeSeconds;
     this.httpClient = apiClient.getHttpClient();
@@ -139,9 +138,7 @@ class OAuthTokenProvider implements TokenProvider {
     this.oauthScope = normalizeOAuthScope(configs.get(AuthConfigs.OAUTH_SCOPE));
 
     // Optional exchange of the OAuth token for a UC token; needs the catalog URI to reach UC.
-    this.shouldExchangeForUcToken =
-        Boolean.parseBoolean(configs.get(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN));
-    if (shouldExchangeForUcToken) {
+    if (Boolean.parseBoolean(configs.get(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN))) {
       String ucUri = configs.get(AuthConfigs.UC_URI);
       Preconditions.checkArgument(
           ucUri != null && !ucUri.isEmpty(),
@@ -171,7 +168,7 @@ class OAuthTokenProvider implements TokenProvider {
 
   @Override
   public Map<String, String> configs() {
-    if (!shouldExchangeForUcToken) {
+    if (!shouldExchangeForUcToken()) {
       return Map.of(
           AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE,
           AuthConfigs.OAUTH_URI, oauthUri,
@@ -192,10 +189,14 @@ class OAuthTokenProvider implements TokenProvider {
   private TempToken renewToken() {
     try {
       TempToken oauthToken = fetchOAuthToken();
-      return shouldExchangeForUcToken ? exchangeOAuthToken(oauthToken.token()) : oauthToken;
+      return shouldExchangeForUcToken() ? exchangeOAuthToken(oauthToken.token()) : oauthToken;
     } catch (Exception e) {
       throw new RuntimeException("Failed to renew OAuth token", e);
     }
+  }
+
+  private boolean shouldExchangeForUcToken() {
+    return ucUri != null;
   }
 
   private TempToken fetchOAuthToken() throws IOException, InterruptedException {
