@@ -306,14 +306,37 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
   }
 
   @Test
-  public void testAlterTableRenameColumnIsRejectedFromSql() {
+  public void testAlterTableRenameColumnTopLevel() {
+    // The connector delegates RENAME COLUMN to Delta's DeltaCatalog for execution.
+    // This test exercises the same-session path (SELECT reads the Delta-log schema). Cross-session
+    // identity preservation requires additional server-side Delta integration and is tested
+    // separately.
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     ensureSparkCatalogSchemaExists();
     String fullTableName =
         setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+    sql("INSERT INTO %s VALUES (1, 'before')", fullTableName);
+    sql("ALTER TABLE %s RENAME COLUMN s TO full_name", fullTableName);
+    validateRows(
+        sql("SELECT i, full_name FROM %s ORDER BY i", fullTableName), Pair.of(1, "before"));
+    assertThatThrownBy(() -> sql("SELECT s FROM %s", fullTableName)).hasMessageContaining("s");
+  }
 
-    assertThatThrownBy(() -> sql("ALTER TABLE %s RENAME COLUMN i TO renamed_i", fullTableName))
-        .hasMessageContaining("ALTER TABLE RENAME COLUMN");
+  @Test
+  public void testAlterTableRenameNestedStructField() {
+    // The connector delegates RENAME COLUMN for nested struct fields to Delta's DeltaCatalog.
+    // This test exercises the same-session path only. Cross-session identity preservation for
+    // nested fields requires additional server-side Delta integration and is tested separately.
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String t =
+        setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+    sql("ALTER TABLE %s ADD COLUMNS (info STRUCT<first: STRING, last: STRING>)", t);
+    sql("INSERT INTO %s VALUES (1, 'x', named_struct('first','f','last','l'))", t);
+    sql("ALTER TABLE %s RENAME COLUMN info.first TO given", t);
+    List<Row> rows = sql("SELECT info.given FROM %s", t);
+    assertThat(rows).hasSize(1);
+    assertThat(rows.get(0).getString(0)).isEqualTo("f");
   }
 
   @Test
