@@ -910,7 +910,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             raise NotImplementedError(
                 f"Execution mode {self.execution_mode} is not supported for function execution."
             )
-        if not result:
+        if result is None:
             result = NO_OUTPUT_MESSAGE
         return FunctionExecutionResult(format="SCALAR", value=result)
 
@@ -951,7 +951,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             raise NotImplementedError(
                 f"Execution mode {self.execution_mode} is not supported for function execution."
             )
-        if not result:
+        if result is None:
             result = NO_OUTPUT_MESSAGE
         return FunctionExecutionResult(format="SCALAR", value=result)
 
