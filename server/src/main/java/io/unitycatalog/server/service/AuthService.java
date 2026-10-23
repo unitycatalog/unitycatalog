@@ -69,7 +69,8 @@ public class AuthService implements RegisteredService {
       ServerProperties serverProperties,
       Repositories repositories) {
     this.securityContext = securityContext;
-    this.jwksOperations = new JwksOperations(securityContext);
+    this.jwksOperations =
+        new JwksOperations(securityContext, serverProperties.getAllowedJwksUris());
     this.serverProperties = serverProperties;
     this.tokenExchangeSubjectTokenHandler =
         new TokenExchangeSubjectTokenHandler(repositories.getUserRepository());
