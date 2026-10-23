@@ -67,7 +67,9 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
    * location (rather than tables etc.) owns the path.
    */
   @Post("")
-  @AuthorizeExpression(AuthorizeExpressions.CREATE_SCHEMA_WITH_STORAGE_ROOT)
+  @AuthorizeExpression(
+      value = AuthorizeExpressions.CREATE_SCHEMA_WITH_STORAGE_ROOT,
+      precondition = AuthorizeExpressions.STORAGE_ROOT_PRECONDITION)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createSchema(
       @AuthorizeResourceKeys({

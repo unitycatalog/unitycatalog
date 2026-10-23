@@ -37,4 +37,7 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 public @interface AuthorizeExpression {
   String value() default "#deny";
+
+  /** Local request conditions that must pass before the permission expression is evaluated. */
+  String precondition() default "#permit";
 }

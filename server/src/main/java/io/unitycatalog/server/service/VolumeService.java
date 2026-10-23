@@ -81,15 +81,15 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
    */
   @Post("")
   @AuthorizeExpression(
-      """
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-      (#authorize(#principal, #schema, OWNER) ||
-        #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_VOLUME)) &&
-      (#volume_type != 'EXTERNAL' ||
-        (#no_overlap_with_data_securable &&
-          (#external_location == null ||
-           #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_VOLUME))))
-      """)
+      precondition = "#volume_type != 'EXTERNAL' || #no_overlap_with_data_securable",
+      value =
+          """
+          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+          (#authorize(#principal, #schema, OWNER) ||
+            #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_VOLUME)) &&
+          (#volume_type != 'EXTERNAL' || #external_location == null ||
+           #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_VOLUME))
+          """)
   public HttpResponse createVolume(
       @AuthorizeResourceKeys({
             @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
