@@ -1235,6 +1235,10 @@ public class TableRepository {
     if (tableInfoDAO == null) {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
     }
+    // A commit rewrites the table's columns under this lock; waiting for it keeps the cascade below
+    // from deleting column rows the commit is replacing.
+    RepositoryUtils.lockTableForCommit(
+        session, tableInfoDAO, tableInfoDAO.getId(), Optional.of(tableName), ErrorCode.UNAVAILABLE);
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       repositories
           .getStorageCleanupTaskRepository()

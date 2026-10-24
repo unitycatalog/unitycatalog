@@ -19,6 +19,7 @@ import org.apache.iceberg.exceptions.NotAuthorizedException;
 import org.apache.iceberg.exceptions.NotFoundException;
 import org.apache.iceberg.exceptions.RESTException;
 import org.apache.iceberg.exceptions.ServiceFailureException;
+import org.apache.iceberg.exceptions.ServiceUnavailableException;
 import org.apache.iceberg.exceptions.UnprocessableEntityException;
 import org.apache.iceberg.rest.responses.ErrorResponse;
 
@@ -132,6 +133,7 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
       // COMMIT_STATE_UNKNOWN is intentionally mapped to ServiceFailureException as it's the Delta's
       // semantic, not the Iceberg CommitStateUnknownException.
       case INTERNAL, DATA_LOSS, COMMIT_STATE_UNKNOWN -> ServiceFailureException.class;
+      case UNAVAILABLE -> ServiceUnavailableException.class;
       case RESOURCE_EXHAUSTED -> RESTException.class;
     };
   }

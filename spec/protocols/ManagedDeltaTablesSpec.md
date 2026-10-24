@@ -1248,6 +1248,7 @@ The per-endpoint Errors tables list only endpoint-specific errors. In addition, 
 - `PermissionDeniedException` (403) when the caller lacks the required privileges; endpoint tables name the specific privileges where they matter.
 - `TooManyRequestsException` (429) when the server throttles the client.
 - `InternalServerErrorException` (500) and other 5xx errors on server failures.
+- `ServiceUnavailableException` (503) when the server is temporarily unable to serve the request; the client may retry after a delay.
 
 Field Name | Data Type | Description | Optional/Required
 -|-|-|-
