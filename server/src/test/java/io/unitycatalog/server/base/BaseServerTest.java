@@ -80,14 +80,6 @@ public abstract class BaseServerTest {
     return fileOperations;
   }
 
-  /**
-   * Subclasses can override this to customize the hibernate properties before the session factory
-   * is created. They start as this test's database from {@link TestDatabases}; a subclass that
-   * points the server at its own database also sets {@code hibernate.hbm2ddl.auto} so each test
-   * gets a fresh schema.
-   */
-  protected void setUpHibernateProperties(Properties hibernateProperties) {}
-
   @SneakyThrows
   @BeforeEach
   public void setUp() {
@@ -116,7 +108,6 @@ public abstract class BaseServerTest {
       setUpCredentialOperations(initServerProperties);
       testDatabase = TestDatabases.newDatabase();
       Properties hibernateProperties = testDatabase.hibernateProperties(initServerProperties);
-      setUpHibernateProperties(hibernateProperties);
       hibernateConfigurator = testDatabase.openHibernateConfigurator(hibernateProperties);
       UnityCatalogServer.Builder serverBuilder =
           UnityCatalogServer.builder()
@@ -149,8 +140,7 @@ public abstract class BaseServerTest {
 
   @AfterEach
   public void tearDown() {
-    // No cleanup queries: each test's database is dropped below, or, for a subclass with its own
-    // database, its create-drop schema is dropped when the configurator closes.
+    // No cleanup queries: each test's database is dropped below.
     try {
       if (unityCatalogServer != null) {
         // close() rather than stop() so a server that built its own SessionFactory releases it;
