@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.fail;
 
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.time.Duration;
@@ -32,23 +32,18 @@ public class JCasbinAuthorizerMultiInstanceTest {
   private static final String TEST_REFRESH_INTERVAL = "PT0.05S";
 
   private HibernateConfigurator hibernateConfigurator;
-  private TestDatabase testDatabase;
+  @TempDatabase private TestDatabase testDatabase;
   private final List<JCasbinAuthorizer> replicas = new ArrayList<>();
 
   @BeforeEach
   void setUp() {
-    Properties properties = new Properties();
-    properties.setProperty(Property.SERVER_ENV.getKey(), "test");
-    testDatabase = TestDatabases.newDatabase();
-    hibernateConfigurator =
-        testDatabase.openHibernateConfigurator(new ServerProperties(properties));
+    hibernateConfigurator = testDatabase.hibernateConfigurator();
   }
 
   @AfterEach
   void tearDown() {
     replicas.forEach(JCasbinAuthorizer::close);
     replicas.clear();
-    testDatabase.close();
   }
 
   private ServerProperties properties(boolean refreshEnabled, String interval) {

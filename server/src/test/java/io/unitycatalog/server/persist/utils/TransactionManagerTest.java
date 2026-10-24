@@ -17,14 +17,12 @@ import io.unitycatalog.server.exception.TransactionRollbackException;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.testdatabase.SupportedDatabase;
+import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import io.unitycatalog.server.testdatabase.TestDatabases;
-import io.unitycatalog.server.utils.ServerProperties;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Date;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.Random;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -37,7 +35,6 @@ import org.hibernate.dialect.PostgreSQLDialect;
 import org.hibernate.engine.jdbc.spi.JdbcServices;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.exception.GenericJDBCException;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -293,19 +290,11 @@ public class TransactionManagerTest {
   public class IsolationLevelWithRealDatabaseTest {
 
     private static SessionFactory realSessionFactory;
-    private static TestDatabase testDatabase;
+    @TempDatabase private static TestDatabase testDatabase;
 
     @BeforeAll
     public static void setUp() {
-      ServerProperties serverProperties = new ServerProperties(new Properties());
-      testDatabase = TestDatabases.newDatabase();
-      realSessionFactory =
-          testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
-    }
-
-    @AfterAll
-    public static void tearDown() {
-      testDatabase.close();
+      realSessionFactory = testDatabase.sessionFactory();
     }
 
     @Test
