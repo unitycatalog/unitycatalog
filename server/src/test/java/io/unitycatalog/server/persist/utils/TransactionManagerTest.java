@@ -455,6 +455,12 @@ public class TransactionManagerTest {
           testDatabase.openHibernateConfigurator(hibernateProperties).getSessionFactory();
     }
 
+    /**
+     * A transaction runs at the isolation level its caller asks for, and the pooled connection goes
+     * back to its default afterwards, so the level never leaks into the next transaction. The test
+     * asks for a level other than the database's default: asking for the default would pass even if
+     * nothing were restored.
+     */
     @Test
     public void testIsolationLevelIsSetAndRestored() {
       final int[] isolationDuringTx = new int[1];
