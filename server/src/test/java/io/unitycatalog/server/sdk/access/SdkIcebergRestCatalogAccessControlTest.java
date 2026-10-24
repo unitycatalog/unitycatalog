@@ -1,10 +1,11 @@
 package io.unitycatalog.server.sdk.access;
 
+import static io.unitycatalog.server.service.credential.CredentialContext.READ_WRITE;
 import static io.unitycatalog.server.utils.TestUtils.assertApiExceptionStatusOnly;
 import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.spy;
 
 import com.linecorp.armeria.client.WebClient;
@@ -62,12 +63,20 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
   private static final String CREATOR_ONLY = "creator-only@localhost";
   private static final Map<String, String> CREDENTIAL_CONFIG =
       Map.of(S3FileIOProperties.ACCESS_KEY_ID, "test-key");
+  private static final Map<String, String> READ_WRITE_CREDENTIAL_CONFIG =
+      Map.of(S3FileIOProperties.ACCESS_KEY_ID, "test-write-key");
 
   @Override
   protected FileOperations decorateFileOperations(FileOperations fileOperations) {
     FileOperations operations = spy(fileOperations);
     // Keep metadata files local and make successful credential responses visible.
-    doReturn(CREDENTIAL_CONFIG).when(operations).getFileIOConfig(any(), any(), any());
+    doAnswer(
+            invocation ->
+                READ_WRITE.equals(invocation.getArgument(1))
+                    ? READ_WRITE_CREDENTIAL_CONFIG
+                    : CREDENTIAL_CONFIG)
+        .when(operations)
+        .getFileIOConfig(any(), any(), any());
     return operations;
   }
 
@@ -208,24 +217,28 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
         conditionalClient.get(tablePath).aggregate().join().headers().get(HttpHeaderNames.ETAG);
     assertThat(metadataETag).isNotNull();
 
-    grantPermissions(
-        PRINCIPAL_1, SecurableType.TABLE, CAT + "." + SCHEMA_P2 + ".tbl_p2", Privileges.SELECT);
-    // A new read grant must return credentials even when the metadata has not changed.
-    AggregatedHttpResponse withCredentials =
-        conditionalClient
-            .execute(
-                RequestHeaders.of(
-                    HttpMethod.GET, tablePath, HttpHeaderNames.IF_NONE_MATCH, metadataETag))
-            .aggregate()
-            .join();
-    assertThat(withCredentials.status().code()).isEqualTo(200);
-    assertThat(withCredentials.headers().get(HttpHeaderNames.ETAG))
-        .isNotNull()
-        .isNotEqualTo(metadataETag);
-    assertThat(p1.loadTable(CAT, SCHEMA_P2, "tbl_p2").config()).isEqualTo(CREDENTIAL_CONFIG);
-    assertThat(p1.loadCredentials(CAT, SCHEMA_P2, "tbl_p2").credentials())
-        .singleElement()
-        .satisfies(credential -> assertThat(credential.config()).isEqualTo(CREDENTIAL_CONFIG));
+    // Each grant must update the response: metadata-only, then read-only, then read/write.
+    for (Privileges privilege : List.of(Privileges.SELECT, Privileges.MODIFY)) {
+      grantPermissions(
+          PRINCIPAL_1, SecurableType.TABLE, CAT + "." + SCHEMA_P2 + ".tbl_p2", privilege);
+      AggregatedHttpResponse withCredentials =
+          conditionalClient
+              .execute(
+                  RequestHeaders.of(
+                      HttpMethod.GET, tablePath, HttpHeaderNames.IF_NONE_MATCH, metadataETag))
+              .aggregate()
+              .join();
+      assertThat(withCredentials.status().code()).as("grant=%s", privilege).isEqualTo(200);
+      String credentialETag = withCredentials.headers().get(HttpHeaderNames.ETAG);
+      assertThat(credentialETag).isNotNull().isNotEqualTo(metadataETag);
+      Map<String, String> expectedConfig =
+          privilege == Privileges.SELECT ? CREDENTIAL_CONFIG : READ_WRITE_CREDENTIAL_CONFIG;
+      assertThat(p1.loadTable(CAT, SCHEMA_P2, "tbl_p2").config()).isEqualTo(expectedConfig);
+      assertThat(p1.loadCredentials(CAT, SCHEMA_P2, "tbl_p2").credentials())
+          .singleElement()
+          .satisfies(credential -> assertThat(credential.config()).isEqualTo(expectedConfig));
+      metadataETag = credentialETag;
+    }
 
     // Schema ownership satisfies the schema tier, not the table tier.
     grantPermissions(REGULAR_1, SecurableType.SCHEMA, CAT + "." + SCHEMA_P2, Privileges.USE_SCHEMA);
