@@ -1,6 +1,5 @@
 package io.unitycatalog.server.testdatabase;
 
-import io.unitycatalog.server.utils.ServerProperties;
 import jakarta.persistence.Table;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -86,7 +85,7 @@ abstract class TemplateDatabases {
     // Closing releases every connection: PostgreSQL refuses to copy a template that is in use.
     List<String> mappedTables;
     try (TestDatabase template = testDatabase(TEMPLATE, "create-only", () -> {})) {
-      Properties create = template.hibernateProperties(new ServerProperties(new Properties()));
+      Properties create = template.hibernateProperties();
       configureTemplate(create);
       mappedTables =
           template
