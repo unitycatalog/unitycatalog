@@ -5,8 +5,8 @@ import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
+import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.IOException;
@@ -33,7 +33,7 @@ public abstract class BaseServerTest {
   protected HibernateConfigurator hibernateConfigurator;
 
   /** This test's database on the backend selected by UC_TEST_DATABASE. */
-  protected TestDatabase testDatabase;
+  @TempDatabase protected TestDatabase testDatabase;
 
   protected CloudCredentialVendor cloudCredentialVendor;
 
@@ -103,9 +103,7 @@ public abstract class BaseServerTest {
       setUpProperties();
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
       setUpCredentialOperations(initServerProperties);
-      testDatabase = TestDatabases.newDatabase();
-      Properties hibernateProperties = testDatabase.hibernateProperties(initServerProperties);
-      hibernateConfigurator = testDatabase.openHibernateConfigurator(hibernateProperties);
+      hibernateConfigurator = testDatabase.hibernateConfigurator();
       startServerOnFreePorts(initServerProperties);
     }
   }
@@ -161,22 +159,13 @@ public abstract class BaseServerTest {
 
   @AfterEach
   public void tearDown() {
-    // No cleanup queries: each test's database is dropped below.
-    try {
-      if (unityCatalogServer != null) {
-        // close() rather than stop() so a server that built its own SessionFactory releases it;
-        // this harness injects one, so the server leaves it open; testDatabase.close() closes it.
-        unityCatalogServer.close();
-        // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
-        unityCatalogServer = null;
-      }
-    } finally {
-      // Runs even if setUp() failed. Closes the configurator and removes the database, so it must
-      // follow unityCatalogServer.close().
-      if (testDatabase != null) {
-        testDatabase.close();
-        testDatabase = null;
-      }
+    // The server closes here; its database is dropped afterwards (see TempDatabase).
+    if (unityCatalogServer != null) {
+      // close() rather than stop() so a server that built its own SessionFactory releases it;
+      // this harness injects one, so the server leaves it open.
+      unityCatalogServer.close();
+      // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
+      unityCatalogServer = null;
     }
   }
 }

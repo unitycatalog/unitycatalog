@@ -20,9 +20,8 @@ import io.unitycatalog.server.exception.TransactionRollbackException;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.testdatabase.SupportedDatabase;
+import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import io.unitycatalog.server.testdatabase.TestDatabases;
-import io.unitycatalog.server.utils.ServerProperties;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Date;
@@ -42,7 +41,6 @@ import org.hibernate.dialect.PostgreSQLDialect;
 import org.hibernate.engine.jdbc.spi.JdbcServices;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.exception.GenericJDBCException;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -446,22 +444,15 @@ public class TransactionManagerTest {
   public class IsolationLevelWithRealDatabaseTest {
 
     private static SessionFactory realSessionFactory;
-    private static TestDatabase testDatabase;
+    @TempDatabase private static TestDatabase testDatabase;
 
     @BeforeAll
     public static void setUp() {
-      testDatabase = TestDatabases.newDatabase();
-      Properties hibernateProperties =
-          testDatabase.hibernateProperties(new ServerProperties(new Properties()));
+      Properties hibernateProperties = testDatabase.hibernateProperties();
       // One pooled connection, so each transaction reuses the connection the previous one used.
       hibernateProperties.setProperty("hibernate.hikari.maximumPoolSize", "1");
       realSessionFactory =
           testDatabase.openHibernateConfigurator(hibernateProperties).getSessionFactory();
-    }
-
-    @AfterAll
-    public static void tearDown() {
-      testDatabase.close();
     }
 
     @Test
@@ -586,20 +577,11 @@ public class TransactionManagerTest {
   public class DatabaseErrorWithRealDatabaseTest {
 
     private static SessionFactory realSessionFactory;
-    private static TestDatabase testDatabase;
+    @TempDatabase private static TestDatabase testDatabase;
 
     @BeforeAll
     public static void setUp() {
-      testDatabase = TestDatabases.newDatabase();
-      realSessionFactory =
-          testDatabase
-              .openHibernateConfigurator(new ServerProperties(new Properties()))
-              .getSessionFactory();
-    }
-
-    @AfterAll
-    public static void tearDown() {
-      testDatabase.close();
+      realSessionFactory = testDatabase.sessionFactory();
     }
 
     /**
