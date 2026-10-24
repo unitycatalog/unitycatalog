@@ -28,7 +28,7 @@ public class UcMigrateTest {
     assertThat(out())
         .contains("State: UNVERSIONED_UC")
         .contains("Current version: none")
-        .contains("Latest version: 2")
+        .contains("Latest version: " + latestVersion())
         .contains("2  widen function param type json")
         .doesNotContain("1  baseline 0 7");
   }
@@ -39,7 +39,10 @@ public class UcMigrateTest {
 
     assertThat(run("migrate")).isZero();
 
-    assertThat(out()).contains("Schema version 1 -> 2 (1 step)");
+    String latest = latestVersion();
+    assertThat(out())
+        .contains(
+            "Schema version 1 -> " + latest + " (" + (Integer.parseInt(latest) - 1) + " steps)");
   }
 
   @Test
@@ -60,6 +63,10 @@ public class UcMigrateTest {
         db.hibernateProperties(),
         new PrintStream(out, true, StandardCharsets.UTF_8),
         new PrintStream(err, true, StandardCharsets.UTF_8));
+  }
+
+  private String latestVersion() {
+    return new Migrator(db.dataSource(), db.kind()).latestVersion();
   }
 
   private String out() {

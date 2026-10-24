@@ -1,0 +1,2 @@
+-- Text already compares case-sensitively here; the MySQL step of this version converts
+-- databases that ignore case.

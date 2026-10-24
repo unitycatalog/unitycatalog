@@ -87,7 +87,9 @@ This guide outlines how to deploy the Unity Catalog server.
     CREATE DATABASE ucdb CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
     ```
 
-  The server logs a warning at startup if the database or its tables use a case-insensitive collation.
+  A database created with a case-insensitive collation is converted, with its tables, when the
+  schema is set up or upgraded (`bin/uc-migrate migrate`, or the server's first start on an empty
+  database). The server logs a warning at startup if the database or its tables still use one.
 
 - Modify the `etc/conf/hibernate.properties` file with your MySQL connection details:
 
