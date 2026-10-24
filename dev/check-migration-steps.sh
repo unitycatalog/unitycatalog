@@ -20,18 +20,21 @@ if [[ $# -lt 1 || $# -gt 2 ]]; then
 fi
 base_branch=${2:-}
 
-steps_dir=server/src/main/resources/db/migration
+sql_steps=server/src/main/resources/db/migration
+java_steps=server/src/main/java/io/unitycatalog/server/migrate/steps
 
 if ! merge_base=$(git merge-base "$1" HEAD); then
   echo "No merge base between $1 and HEAD; fetch more history." >&2
   exit 2
 fi
 
-changed=$(git diff --diff-filter=MDR --name-status "$merge_base" HEAD -- "$steps_dir")
+# The package's package-info.java is documentation, not a step.
+changed=$(git diff --diff-filter=MDR --name-status "$merge_base" HEAD -- \
+  "$sql_steps" "$java_steps" ":(exclude)$java_steps/package-info.java")
 if [[ -n "$changed" ]]; then
   echo "These merged migration steps changed since $1:" >&2
   echo "$changed" >&2
-  echo "Merged steps can't change; add a new step under $steps_dir/<db>/ instead." >&2
+  echo "Merged steps can't change; add a new step under $sql_steps/<db>/ or $java_steps/ instead." >&2
   exit 1
 fi
 echo "No merged migration step changed since $1."

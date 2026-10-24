@@ -34,9 +34,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Upgrades Unity Catalog's database schema with the steps of {@code db/migration/<database>}: sets
- * up an empty database, adopts one of the baseline release (recording version 1 as the baseline)
- * and applies the pending steps. Each {@link #migrate()} runs under a {@link RunLock}, from
+ * Upgrades Unity Catalog's database schema with the SQL steps of {@code db/migration/<database>}
+ * and the Java steps of {@code io.unitycatalog.server.migrate.steps}, which share one sequence of
+ * versions: sets up an empty database, adopts one of the baseline release (recording version 1 as
+ * the baseline) and applies the pending steps. Each {@link #migrate()} runs under a {@link RunLock}, from
  * classifying the database to the last step.
  */
 public final class SchemaMigrator implements AutoCloseable {
@@ -106,6 +107,9 @@ public final class SchemaMigrator implements AutoCloseable {
   private static final Logger LOGGER = LoggerFactory.getLogger(SchemaMigrator.class);
   private static final String HISTORY_TABLE = "uc_schema_history";
 
+  /** The Java steps ({@link DataStep}s), for every database. */
+  private static final String JAVA_STEPS = "classpath:io/unitycatalog/server/migrate/steps";
+
   /**
    * The release whose schema is version 1. A database without schema history from it is adopted as
    * version 1; one from an earlier release has to be started on a {@value} server once first.
@@ -145,6 +149,7 @@ public final class SchemaMigrator implements AutoCloseable {
     this.kind = kind;
     List<String> locations = new ArrayList<>();
     locations.add("classpath:db/migration/" + kind.folder());
+    locations.add(JAVA_STEPS);
     locations.addAll(extraLocations);
     this.locations = locations.toArray(String[]::new);
     this.ownedPool = ownedPool;

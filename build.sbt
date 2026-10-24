@@ -403,7 +403,10 @@ lazy val server = (project in file("server"))
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
     Compile / compile / javacOptions ++= Seq(
       "-processor",
-      "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
+      "lombok.launch.AnnotationProcessorHider$AnnotationProcessor",
+      // Compiles package-info.java even without annotations, so the Java migration step package
+      // (io.unitycatalog.server.migrate.steps) exists on the classpath before it holds a step.
+      "-Xpkginfo:always"
     ) ++ javacRelease17,
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % armeriaVersion,
