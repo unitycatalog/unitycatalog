@@ -19,8 +19,8 @@ import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.InterruptiblePrefixOperations;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -34,7 +34,6 @@ import java.util.Properties;
 import java.util.UUID;
 import org.apache.iceberg.aws.s3.S3FileIO;
 import org.hibernate.SessionFactory;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -68,22 +67,16 @@ class StorageCleanupWorkerE2ETest {
   private final String bucket = "cleanup-e2e-" + UUID.randomUUID();
 
   private SessionFactory sessionFactory;
-  private TestDatabase testDatabase;
+  @TempDatabase private TestDatabase testDatabase;
   private Repositories repositories;
   private UUID schemaId;
 
   @BeforeEach
   void setUp() {
     ServerProperties serverProperties = testServerProperties();
-    testDatabase = TestDatabases.newDatabase();
-    sessionFactory = testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
+    sessionFactory = testDatabase.sessionFactory();
     repositories = new Repositories(sessionFactory, serverProperties, null);
     schemaId = seedNamespace();
-  }
-
-  @AfterEach
-  void tearDown() {
-    testDatabase.close();
   }
 
   @Test
