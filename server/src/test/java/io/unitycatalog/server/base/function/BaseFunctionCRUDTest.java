@@ -59,6 +59,15 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
     assertThat(functionInfo.getFunctionId()).isNotNull();
   }
 
+  private static FunctionParameterInfo functionParameter(String name, int position) {
+    return new FunctionParameterInfo()
+        .name(name)
+        .typeName(ColumnTypeName.INT)
+        .typeText("int")
+        .typeJson("{\"type\":\"int\"}")
+        .position(position);
+  }
+
   @Test
   public void testFunctionCRUD() throws ApiException {
     assertThatThrownBy(() -> functionOperations.getFunction(FUNCTION_FULL_NAME))
@@ -82,7 +91,11 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
                                 + "\"metadata\":{\"comment\":\""
                                 + "x".repeat(300)
                                 + "\"}}")
-                        .position(0)));
+                        .position(0),
+                    // Names out of alphabetical order, to check parameters come back by position
+                    functionParameter("zeta", 1),
+                    functionParameter("beta", 2),
+                    functionParameter("gamma", 3)));
     CreateFunction createFunction =
         new CreateFunction()
             .name(FUNCTION_NAME)
