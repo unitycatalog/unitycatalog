@@ -28,8 +28,9 @@ final class MySqlDatabases extends TemplateDatabases {
   /** The container for the selected MySQL database, started on first use. */
   static synchronized MySqlDatabases get() {
     if (instance == null) {
-      instance = new MySqlDatabases(SupportedDatabase.selected());
-      instance.start();
+      MySqlDatabases created = new MySqlDatabases(SupportedDatabase.selected());
+      created.start();
+      instance = created;
     }
     return instance;
   }
@@ -78,7 +79,7 @@ final class MySqlDatabases extends TemplateDatabases {
   }
 
   @Override
-  void templateBuilt() {
+  void templateBuilt(List<String> mappedTables) {
     templateDdl = new ArrayList<>();
     try (Connection connection = connect(TEMPLATE);
         Statement statement = connection.createStatement()) {
@@ -87,6 +88,12 @@ final class MySqlDatabases extends TemplateDatabases {
         while (rs.next()) {
           tables.add(rs.getString(1));
         }
+      }
+      // halt_on_error=false hides any failed DDL, so check every mapped table was created.
+      List<String> missing = new ArrayList<>(mappedTables);
+      missing.removeAll(tables);
+      if (!missing.isEmpty()) {
+        throw new IllegalStateException("The MySQL template schema lacks tables " + missing);
       }
       for (String table : tables) {
         try (ResultSet rs = statement.executeQuery("SHOW CREATE TABLE `" + table + "`")) {
