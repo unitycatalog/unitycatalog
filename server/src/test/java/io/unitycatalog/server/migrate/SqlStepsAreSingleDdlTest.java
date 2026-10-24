@@ -24,9 +24,9 @@ public class SqlStepsAreSingleDdlTest {
   /** Steps that hold more than one statement, with the reason. */
   private static final Map<String, String> EXEMPT =
       Map.of(
-          "h2/V1__baseline_0_7.sql", "the 0.7 baseline: the whole schema at once",
-          "postgresql/V1__baseline_0_7.sql", "the 0.7 baseline: the whole schema at once",
-          "mysql/V1__baseline_0_7.sql", "the 0.7 baseline: the whole schema at once",
+          "h2/V1__baseline_0_7.sql", "the baseline: the whole schema at once",
+          "postgresql/V1__baseline_0_7.sql", "the baseline: the whole schema at once",
+          "mysql/V1__baseline_0_7.sql", "the baseline: the whole schema at once",
           "mysql/V3__case_sensitive_text.sql", "converts every table; safe to repeat");
 
   private static final List<String> DDL = List.of("CREATE", "ALTER", "DROP", "RENAME");

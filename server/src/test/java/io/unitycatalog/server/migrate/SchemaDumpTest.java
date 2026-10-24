@@ -26,7 +26,7 @@ public class SchemaDumpTest {
 
   @Test
   void migratedSchemaMatchesTheRecordedDump() throws IOException {
-    try (Migrator migrator = new Migrator(db.dataSource(), db.kind())) {
+    try (SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind())) {
       migrator.migrate();
     }
     String actual = SchemaSnapshot.of(db.dataSource()).render();

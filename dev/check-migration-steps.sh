@@ -4,7 +4,8 @@
 # Databases already ran those steps, so a change to the schema must be a new step.
 #
 # Usage: dev/check-migration-steps.sh <base-ref>
-# Needs the history back to the merge base of <base-ref> and HEAD (CI: fetch-depth: 0).
+# Needs the history back to the merge base of <base-ref> and HEAD (CI passes HEAD^1, the merge
+# commit's first parent, so fetch-depth: 2 is enough).
 
 set -euo pipefail
 
@@ -16,7 +17,7 @@ fi
 steps_dir=server/src/main/resources/db/migration
 
 if ! merge_base=$(git merge-base "$1" HEAD); then
-  echo "No merge base between $1 and HEAD; fetch the full history (fetch-depth: 0)." >&2
+  echo "No merge base between $1 and HEAD; fetch more history." >&2
   exit 2
 fi
 

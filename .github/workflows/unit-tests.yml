@@ -119,7 +119,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          # The check diffs against the merge base with the pull request's base branch.
-          fetch-depth: 0
+          # HEAD^1, the first parent of the merge commit, is the code this change starts from.
+          fetch-depth: 2
       - name: Check merged migration steps
-        run: dev/check-migration-steps.sh ${{ github.event.pull_request.base.sha }}
+        run: dev/check-migration-steps.sh "$(git rev-parse HEAD^1)"
