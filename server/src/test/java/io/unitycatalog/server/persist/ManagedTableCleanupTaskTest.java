@@ -2,19 +2,10 @@ package io.unitycatalog.server.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.catchThrowable;
 
-import com.linecorp.armeria.common.AggregatedHttpResponse;
-import com.linecorp.armeria.common.HttpMethod;
-import com.linecorp.armeria.common.HttpRequest;
-import com.linecorp.armeria.server.ServiceRequestContext;
 import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.exception.BaseException;
-import io.unitycatalog.server.exception.BaseExceptionHandler;
-import io.unitycatalog.server.exception.DeltaApiExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
-import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
@@ -215,37 +206,16 @@ class ManagedTableCleanupTaskTest {
     try (Session commit = sessionFactory.openSession()) {
       Transaction tx = commit.beginTransaction();
       lockAndReplaceColumns(commit, table);
-      // The drop stops at the table lock. A drop that deleted the columns before taking the lock
+      // The drop stops at the table lock and fails as UNAVAILABLE, which every API reports as a
+      // retriable 503 (see ErrorCodeTest). A drop that deleted the columns before taking the lock
       // would block on the column rows this commit replaced and fail as INTERNAL instead.
-      Throwable dropFailure =
-          catchThrowable(() -> impatientTables.deleteTable(CATALOG, SCHEMA, table.getName()));
-      assertThat(dropFailure)
+      assertThatThrownBy(() -> impatientTables.deleteTable(CATALOG, SCHEMA, table.getName()))
           .isInstanceOfSatisfying(
               BaseException.class,
               e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE));
-      // A drop that times out on the lock is a 503 on every API, which clients retry.
-      AggregatedHttpResponse uc = errorResponse(GlobalExceptionHandler.INSTANCE, dropFailure);
-      assertThat(uc.status().code()).isEqualTo(503);
-      assertThat(uc.contentUtf8()).contains("\"error_code\":\"UNAVAILABLE\"");
-      AggregatedHttpResponse iceberg =
-          errorResponse(IcebergRestExceptionHandler.INSTANCE, dropFailure);
-      assertThat(iceberg.status().code()).isEqualTo(503);
-      assertThat(iceberg.contentUtf8()).contains("\"type\":\"ServiceUnavailableException\"");
-      AggregatedHttpResponse delta = errorResponse(DeltaApiExceptionHandler.INSTANCE, dropFailure);
-      assertThat(delta.status().code()).isEqualTo(503);
-      assertThat(delta.contentUtf8()).contains("ServiceUnavailableException");
       tx.rollback();
     }
     assertThat(findTable(table.getId())).isNotNull();
-  }
-
-  private static AggregatedHttpResponse errorResponse(
-      BaseExceptionHandler handler, Throwable error) {
-    HttpRequest request = HttpRequest.of(HttpMethod.DELETE, "/");
-    return handler
-        .handleException(ServiceRequestContext.of(request), request, error)
-        .aggregate()
-        .join();
   }
 
   @Test
