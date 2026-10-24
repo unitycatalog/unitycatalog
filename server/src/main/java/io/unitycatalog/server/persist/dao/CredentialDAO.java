@@ -6,6 +6,8 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsIamRoleRequest;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
+import io.unitycatalog.server.model.AwsS3AccessKeyRequest;
+import io.unitycatalog.server.model.AwsS3AccessKeyResponse;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.CredentialPurpose;
@@ -50,7 +52,8 @@ public class CredentialDAO extends IdentifiableDAO {
 
   public enum CredentialType {
     AWS_IAM_ROLE,
-    // Add other types as necessary
+    /** Static S3 access key id; secret is resolved from server configuration at vend time. */
+    S3_ACCESS_KEY,
   }
 
   @Column(name = "credential_type", nullable = false)
@@ -101,10 +104,18 @@ public class CredentialDAO extends IdentifiableDAO {
             .updatedAt(now)
             .updatedBy(callerId)
             .build();
-    if (createRequest.getAwsIamRole() != null) {
+    boolean hasIamRole = createRequest.getAwsIamRole() != null;
+    boolean hasS3AccessKey = createRequest.getAwsS3AccessKey() != null;
+    if (hasIamRole == hasS3AccessKey) {
+      // Requests are already rejected by CredentialRepository, so this only guards direct callers
+      // from building a DAO with no credential payload or with two of them.
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Specify exactly one of aws_iam_role or aws_s3_access_key");
+    }
+    if (hasIamRole) {
       dao.setAwsIamRole(createRequest.getAwsIamRole());
     } else {
-      throw new IllegalArgumentException("Unknown credential type");
+      dao.setAwsS3AccessKey(createRequest.getAwsS3AccessKey());
     }
     return dao;
   }
@@ -127,9 +138,15 @@ public class CredentialDAO extends IdentifiableDAO {
         masterAwsIamRoleArn.ifPresent(awsIamRole::setUnityCatalogIamArn);
         credentialInfo.setAwsIamRole(awsIamRole);
         break;
+      case S3_ACCESS_KEY:
+        // Only the access key id is stored/returned; secrets live in server configuration.
+        credentialInfo.setAwsS3AccessKey(parseCredential(AwsS3AccessKeyResponse.class));
+        break;
       // TODO: support Azure and GCP.
       default:
-        throw new IllegalArgumentException("Unknown credential type: " + credentialType);
+        // Reachable only if a CredentialType is added without extending this switch.
+        throw new BaseException(
+            ErrorCode.FAILED_PRECONDITION, "Unsupported credential type: " + credentialType);
     }
     return credentialInfo;
   }
@@ -148,13 +165,19 @@ public class CredentialDAO extends IdentifiableDAO {
     try {
       return objectMapper.readValue(credential, clazz);
     } catch (JsonProcessingException e) {
-      throw new IllegalArgumentException(
-          "Failed to parse credential of " + clazz.getSimpleName(), e);
+      // The stored payload does not match its credential_type discriminator: a server-side data
+      // problem, not something the caller can fix.
+      throw new BaseException(
+          ErrorCode.INTERNAL, "Failed to parse credential of " + clazz.getSimpleName(), e);
     }
   }
 
   public void setAwsIamRole(AwsIamRoleRequest awsIamRole) {
     setCredential(CredentialType.AWS_IAM_ROLE, fromAwsIamRoleRequest(awsIamRole));
+  }
+
+  public void setAwsS3AccessKey(AwsS3AccessKeyRequest awsS3AccessKey) {
+    setCredential(CredentialType.S3_ACCESS_KEY, fromAwsS3AccessKeyRequest(awsS3AccessKey));
   }
 
   private <T> void setCredential(CredentialType type, T inputCredential) {
@@ -174,7 +197,16 @@ public class CredentialDAO extends IdentifiableDAO {
         .externalId(UUID.randomUUID().toString());
   }
 
+  private static AwsS3AccessKeyResponse fromAwsS3AccessKeyRequest(
+      AwsS3AccessKeyRequest awsS3AccessKeyRequest) {
+    return new AwsS3AccessKeyResponse().accessKeyId(awsS3AccessKeyRequest.getAccessKeyId());
+  }
+
   public AwsIamRoleResponse getAwsIamRoleResponse() {
     return parseCredential(CredentialType.AWS_IAM_ROLE, AwsIamRoleResponse.class);
+  }
+
+  public AwsS3AccessKeyResponse getAwsS3AccessKeyResponse() {
+    return parseCredential(CredentialType.S3_ACCESS_KEY, AwsS3AccessKeyResponse.class);
   }
 }
