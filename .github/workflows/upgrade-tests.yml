@@ -1,0 +1,80 @@
+name: Upgrade Tests
+
+# Databases written by older servers upgrade and keep their data: every UpgradePath on every
+# test database (tests tagged "upgrades", which the unit tests leave out). Runs only when a
+# change touches the schema, its migration code or the upgrade test kit.
+on:
+  pull_request:
+    branches: [ "main", "branch-*" ]
+    paths:
+      - "server/src/main/resources/db/migration/**"
+      - "server/src/main/java/io/unitycatalog/server/migrate/**"
+      - "server/src/main/java/io/unitycatalog/server/persist/dao/**"
+      - "server/src/test/java/io/unitycatalog/server/migrate/**"
+      - ".github/workflows/upgrade-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  base-jar:
+    runs-on: ubuntu-latest
+    name: Build the base server jar
+    outputs:
+      base-sha: ${{ steps.base.outputs.sha }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 2
+      # The first parent of the merge commit is the code this PR starts from. base_ref would
+      # drift when main moves on.
+      - name: Check out the base commit
+        id: base
+        run: |
+          git checkout HEAD^1
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Prepare the environment
+        uses: ./.github/actions/prepare-spark-env
+        with:
+          spark-version: "4.0.0"
+      - name: Build the base server jar
+        run: build/sbt -J-Xmx2G serverShaded/assembly
+      - name: Upload the base server jar
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: base-server-jar
+          path: server-shaded/target/unitycatalog-server-shaded-assembly-*.jar
+          retention-days: 1
+          if-no-files-found: error
+
+  upgrade-tests:
+    needs: base-jar
+    runs-on: ubuntu-latest
+    name: Upgrade tests (${{ matrix.test-database }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - test-database: "H2"
+            alias: "testUpgrades"
+          - test-database: "POSTGRES_18"
+            alias: "testUpgradesPostgres18"
+          - test-database: "MYSQL_8"
+            alias: "testUpgradesMySQL8"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Prepare the environment
+        uses: ./.github/actions/prepare-spark-env
+        with:
+          spark-version: "4.0.0"
+      - name: Download the base server jar
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: base-server-jar
+          path: ${{ runner.temp }}/base-jar
+      - name: Run upgrade tests
+        env:
+          UC_TEST_BASE_REF: ${{ needs.base-jar.outputs.base-sha }}
+        run: |
+          export UC_TEST_BASE_JAR="$(ls "${{ runner.temp }}"/base-jar/unitycatalog-server-shaded-assembly-*.jar)"
+          build/sbt -J-Xmx2G ${{ matrix.alias }}

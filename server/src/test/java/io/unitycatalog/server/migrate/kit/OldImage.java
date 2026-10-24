@@ -19,7 +19,7 @@ import java.util.stream.Stream;
  */
 public final class OldImage {
 
-  /** A prebuilt base jar (CI restores main's from its cache), used instead of building one. */
+  /** A prebuilt base jar, used instead of building one. */
   public static final String BASE_JAR_ENV = "UC_TEST_BASE_JAR";
 
   // The published release images on Docker Hub, pinned by digest: one constant per release.
