@@ -383,11 +383,11 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
     }
     boolean refsOnly = refsOnly(snapshots);
-    boolean includeCredentials = canLoadCredentials(state.tableId());
+    Set<CredentialContext.Privilege> credentialPrivileges = getLoadCredentialPrivileges(state);
 
     // A caller holding this tag already has what this request would return, so answer it without
     // reading the metadata file at all.
-    String etag = metadataETag(state.metadataLocation(), refsOnly, includeCredentials);
+    String etag = metadataETag(state.metadataLocation(), refsOnly, credentialPrivileges);
     if (holdsETag(ifNoneMatch, etag)) {
       return HttpResult.of(ResponseHeaders.of(HttpStatus.NOT_MODIFIED, HttpHeaderNames.ETAG, etag));
     }
@@ -404,12 +404,12 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
               .build();
     }
     Map<String, String> config =
-        includeCredentials
-            ? tableConfigService.getTableConfig(
+        credentialPrivileges.isEmpty()
+            ? Map.of()
+            : tableConfigService.getTableConfig(
                 tableLocation,
-                getLoadCredentialPrivileges(state),
-                credentialsEndpoint(catalog, namespace, table))
-            : Map.of();
+                credentialPrivileges,
+                credentialsEndpoint(catalog, namespace, table));
 
     return HttpResult.of(
         ResponseHeaders.builder(HttpStatus.OK)
@@ -433,14 +433,14 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
     }
 
+    Set<CredentialContext.Privilege> credentialPrivileges = getLoadCredentialPrivileges(state);
+    if (credentialPrivileges.isEmpty()) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+    }
     NormalizedURL tableLocation = NormalizedURL.from(state.storageLocation());
     Map<String, String> config =
         tableConfigService.getTableConfig(
-            tableLocation,
-            // Deliberately the same derivation loadTable uses, so renewing a credential can never
-            // widen what the first one granted.
-            getLoadCredentialPrivileges(state),
-            credentialsEndpoint(catalog, namespace, table));
+            tableLocation, credentialPrivileges, credentialsEndpoint(catalog, namespace, table));
     if (config.isEmpty()) {
       // A local (file://) table vends nothing. The response is a list, so answer an empty one:
       // Iceberg's own Credential type rejects an empty config.
@@ -464,29 +464,27 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
             PREFIX_BASE, catalog, RESTUtil.encodeString(namespace), RESTUtil.encodeString(table));
   }
 
-  private boolean canLoadCredentials(UUID tableId) {
-    if (!serverProperties.isAuthorizationEnabled()
-        || !serverProperties.isStrictPrivilegeChecksEnabled()) {
-      return true;
-    }
-    return accessEvaluator.evaluate(
-        userRepository.findPrincipalId(),
-        AuthorizeExpressions.VEND_TABLE_CREDENTIAL,
-        keyMapper.mapResourceKeys(Map.of(TABLE, tableId.toString())),
-        Map.of("operation", "READ"));
-  }
-
   /**
-   * Storage-credential scope for {@link #loadTable}: non-native (UniForm) tables are read-only;
-   * native tables get READ_WRITE for table {@code OWNER} or {@code SELECT}+{@code MODIFY}, else
-   * READ. (Auth off: principal is null but {@code AllowingAuthorizer} grants all.)
+   * Credential permissions for {@link #loadTable} and {@link #loadCredentials}. Failed strict read
+   * checks return an empty set. Non-native (UniForm) tables are read-only; native tables get
+   * READ_WRITE for table {@code OWNER} or {@code SELECT}+{@code MODIFY}, else READ. (Auth off:
+   * principal is null but {@code AllowingAuthorizer} grants all.)
    */
   Set<CredentialContext.Privilege> getLoadCredentialPrivileges(
       TableRepository.IcebergTableState state) {
+    UUID principalId = userRepository.findPrincipalId();
+    if (serverProperties.isAuthorizationEnabled()
+        && serverProperties.isStrictPrivilegeChecksEnabled()
+        && !accessEvaluator.evaluate(
+            principalId,
+            AuthorizeExpressions.VEND_TABLE_CREDENTIAL,
+            keyMapper.mapResourceKeys(Map.of(TABLE, state.tableId().toString())),
+            Map.of("operation", "READ"))) {
+      return Set.of();
+    }
     if (state.dataSourceFormat() != DataSourceFormat.ICEBERG) {
       return READ_ONLY;
     }
-    UUID principalId = userRepository.findPrincipalId();
     // No need to check principalId==null:
     // 1. with auth off: AllowingAuthorizer allows READ_WRITE anyway even if it's null
     // 2. with auth on and principalId==null: It should have failed earlier before hitting here.
@@ -965,17 +963,19 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
    * Names the version of the metadata this endpoint would return for the given snapshots mode. The
    * pointer is hashed rather than returned as-is so the tag does not hand callers a storage
    * location, and the mode is part of it because {@code refs} and {@code all} return different
-   * bodies for the same version. Credential access is included because grants can change the
+   * bodies for the same version. Credential permissions are included because grants can change the
    * response without a metadata update. The tag is weak: it does not identify a byte-for-byte body.
    */
   private static String metadataETag(
-      String metadataLocation, boolean refsOnly, boolean includeCredentials) {
+      String metadataLocation,
+      boolean refsOnly,
+      Set<CredentialContext.Privilege> credentialPrivileges) {
     String version =
         metadataLocation
             + "\n"
             + modeName(refsOnly ? SnapshotMode.REFS : SnapshotMode.ALL)
             + "\n"
-            + includeCredentials;
+            + credentialPrivileges.stream().sorted().toList();
     return "W/\"" + Hashing.sha256().hashString(version, StandardCharsets.UTF_8) + "\"";
   }
 
