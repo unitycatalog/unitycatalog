@@ -14,6 +14,8 @@ from typing_extensions import override
 from unitycatalog.ai.core.base import BaseFunctionClient, FunctionExecutionResult
 from unitycatalog.ai.core.executor.local import (
     NO_OUTPUT_MESSAGE,
+    SANDBOX_UNSUPPORTED_MESSAGE,
+    is_sandbox_supported,
     run_in_sandbox,
     run_in_sandbox_async,
 )
@@ -381,6 +383,10 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         self.uc = UnitycatalogClient(api_client)
         self.execution_mode = ExecutionMode.validate(execution_mode)
+        if self.execution_mode == ExecutionMode.SANDBOX and not is_sandbox_supported():
+            # Function calls still return SANDBOX_UNSUPPORTED_MESSAGE as their result, which in
+            # toolkit setups only reaches the LLM, so also tell the developer at construction.
+            _logger.warning(SANDBOX_UNSUPPORTED_MESSAGE)
         self.func_cache = {}
         super().__init__()
 

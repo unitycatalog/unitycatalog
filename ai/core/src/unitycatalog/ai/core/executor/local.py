@@ -111,6 +111,11 @@ def _sandboxed_wrapper(
         q.put((False, tb))
 
 
+def is_sandbox_supported() -> bool:
+    """Returns whether the 'fork' start method that the sandbox executor needs is available."""
+    return "fork" in multiprocessing.get_all_start_methods()
+
+
 async def run_in_sandbox_async(
     func: Callable[..., Any], params: dict[str, Any]
 ) -> tuple[bool, Any]:
@@ -128,7 +133,7 @@ async def run_in_sandbox_async(
         A tuple (success, result). If success is False, result contains a descriptive
         error message or the error stack trace.
     """
-    if "fork" not in multiprocessing.get_all_start_methods():
+    if not is_sandbox_supported():
         return False, SANDBOX_UNSUPPORTED_MESSAGE
 
     cpu_time_limit = EXECUTOR_MAX_CPU_TIME_LIMIT.get()

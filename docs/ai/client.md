@@ -677,6 +677,10 @@ In addition, callables executed within the sandbox environment do not have acces
 If your function requires access to these modules or needs to have access to the local operating system's file store, use the `"local"` mode of
 execution instead.
 
+The sandbox runs callables in a forked subprocess, so it needs the `fork` multiprocessing start method, which is not available on Windows.
+On such a platform, the client logs a warning when it is created in `"sandbox"` mode, and each function call returns a message that points
+to the `"local"` mode in place of the function's result.
+
 #### Local Mode
 
 When creating an instance of a `UnitycatalogFunctionClient` you can specify the `execution_mode` as `"local"` to run your function in the main
