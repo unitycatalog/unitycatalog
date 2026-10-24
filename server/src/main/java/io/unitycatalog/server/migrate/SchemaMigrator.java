@@ -108,7 +108,7 @@ public final class SchemaMigrator implements AutoCloseable {
   private static final String HISTORY_TABLE = "uc_schema_history";
 
   /** The Java steps ({@link DataStep}s), for every database. */
-  private static final String JAVA_STEPS = "classpath:io/unitycatalog/server/migrate/steps";
+  static final String JAVA_STEPS = "classpath:io/unitycatalog/server/migrate/steps";
 
   /**
    * The release whose schema is version 1. A database without schema history from it is adopted as

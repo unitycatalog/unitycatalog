@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>By default the whole step runs in one transaction. A step on a table that may be large returns
  * true from {@link #batched()} and calls {@link #updateInBatches} from {@link #apply}: each batch
- * is committed, so a rerun after a failure continues where the last one stopped.
+ * is committed, so once the failed run is repaired, a rerun continues where the last one stopped.
  */
 public abstract class DataStep extends BaseJavaMigration {
 
@@ -45,7 +45,8 @@ public abstract class DataStep extends BaseJavaMigration {
    * Runs {@code sql} until it changes no row, committing after each run, and returns the rows
    * changed in total. {@code sql} is an {@code UPDATE} with one {@code ?}, the batch size, that
    * changes at most that many rows and only rows not yet changed (for example {@code WHERE id IN
-   * (SELECT id FROM t WHERE c IS NULL LIMIT ?)}); the SQL for that differs between databases.
+   * (SELECT id FROM t WHERE c IS NULL LIMIT ?)}); the SQL for that differs between databases. A
+   * changed row must no longer match: a new value that can be NULL in that example never stops.
    */
   protected final long updateInBatches(Connection connection, String sql, int batchSize)
       throws SQLException {

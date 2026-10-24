@@ -96,7 +96,8 @@ public class DataStepTest {
     }
     assertThat(filledRows()).isEqualTo(2);
 
-    // H2 and MySQL record the failed step, which a rerun refuses until Flyway's repair removes it.
+    // Every database records the failed step (it ran outside a transaction), which a rerun refuses
+    // until Flyway's repair removes it.
     flyway(IN_BATCHES).repair();
     assertThat(migrate(IN_BATCHES)).isEqualTo(new MigrationOutcome("2000", "2001", 1));
     assertThat(filledRows()).isEqualTo(ROWS);
@@ -113,6 +114,7 @@ public class DataStepTest {
   private Flyway flyway(String... steps) {
     List<String> locations = locations(steps);
     locations.add(0, "classpath:db/migration/" + db.kind().folder());
+    locations.add(1, Migrator.JAVA_STEPS);
     return Flyway.configure()
         .dataSource(db.dataSource())
         .locations(locations.toArray(String[]::new))
