@@ -12,6 +12,13 @@ serves requests. It sets up an empty database, adopts a database without schema 
 the baseline release) and applies the steps that are not applied yet. It refuses to start on a
 database it cannot upgrade and tells you what to do (see [Messages](#messages)).
 
+## The baseline release
+
+The first baseline release is 0.7.0: schema version 1 is its schema, and a 0.7.0 database without
+schema history is adopted as version 1. A database from an earlier release must be upgraded to
+0.7.0 first: start a 0.7.0 server on it once, stop it, then start this release. This holds until a
+later release migrates older schemas too.
+
 ## Schema versions
 
 | Version | Change |
@@ -64,6 +71,10 @@ the same database.
 ## Messages
 
 Messages that the server prints when it refuses to start, and what to do.
+
+`The database is from a release before 0.7.0 (missing tables: <tables>). Start a 0.7.0 server on it once, then start this release.`
+: The database has no schema history and lacks tables of the baseline release. Follow
+  [The baseline release](#the-baseline-release).
 
 `The schema is newer than this release (version <n>, this release ends at <m>). Run the newer release.`
 : The database was upgraded by a newer release than the one you ran. Run the newer release again.

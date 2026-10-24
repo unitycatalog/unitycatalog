@@ -20,9 +20,9 @@ public class BaselineMatchesEntitiesTest {
   void stepsBuildTheEntitySchema() {
     new SchemaMigrator(fromSteps.dataSource(), fromSteps.kind()).migrate();
     Properties create = fromEntities.hibernateProperties();
-    // "update", as 0.7 ran on every install: unlike "create", it names the unique constraints.
+    // "update", as the baseline release ran: unlike "create", it names the unique constraints.
     create.setProperty("hibernate.hbm2ddl.auto", "update");
-    // MySQL rejects one index of the entities (key too long); the 0.7 schema never had it.
+    // MySQL rejects one index of the entities (key too long); the baseline schema never had it.
     create.setProperty("hibernate.hbm2ddl.halt_on_error", "false");
     fromEntities.openHibernateConfigurator(create); // the entities build the second
     assertThat(SchemaSnapshot.of(fromSteps.dataSource()))

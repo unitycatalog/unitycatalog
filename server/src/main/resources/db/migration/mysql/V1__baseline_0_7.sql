@@ -289,7 +289,7 @@
 
     -- Left out on purpose: idx_staging_location on uc_staging_tables (staging_location) exceeds
     -- MySQL's 3072-byte key limit (varchar(2048), utf8mb4), so Hibernate's create script failed on
-    -- it and 0.7 databases on MySQL never had it.
+    -- it and databases of the baseline release on MySQL never had it.
 
     create index uc_storage_cleanup_tasks_deleted_idx 
        on uc_storage_cleanup_tasks (deleted_at);

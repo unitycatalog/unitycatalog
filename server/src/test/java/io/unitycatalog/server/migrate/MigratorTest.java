@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
+import io.unitycatalog.server.migrate.kit.SchemaSnapshot;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.io.IOException;
@@ -71,9 +72,21 @@ public class MigratorTest {
   }
 
   @Test
+  void refusesADatabaseFromBeforeTheBaselineRelease() {
+    create07Schema(db);
+    execute(db, "DROP TABLE uc_storage_cleanup_tasks");
+    SchemaSnapshot before = SchemaSnapshot.of(db.dataSource());
+
+    assertThatThrownBy(new SchemaMigrator(db.dataSource(), db.kind())::migrate)
+        .hasMessageContaining("before " + SchemaMigrator.BASELINE_RELEASE)
+        .hasMessageContaining("missing tables: uc_storage_cleanup_tasks)");
+    assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(before);
+  }
+
+  @Test
   void makesTextComparisonsCaseSensitive() throws SQLException {
     if (db.kind() == DatabaseKind.MYSQL) {
-      // A 0.7 install on MySQL's default collation, which ignores case.
+      // A baseline-release install on MySQL's default collation, which ignores case.
       execute(db, "ALTER DATABASE CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci");
     }
     create07Schema(db);
@@ -193,7 +206,7 @@ public class MigratorTest {
     return Integer.parseInt(migrator.latestVersion());
   }
 
-  /** Builds a 0.7 database: that release's schema without Flyway's history. */
+  /** Builds a database of the baseline release: its schema without Flyway's history. */
   static void create07Schema(TestDatabase db) {
     String path = "db/migration/" + db.kind().folder() + "/V1__baseline_0_7.sql";
     String sql;

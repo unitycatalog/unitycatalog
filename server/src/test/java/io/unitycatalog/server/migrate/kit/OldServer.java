@@ -153,7 +153,7 @@ public final class OldServer {
         "hibernate.connection.url=" + url,
         "hibernate.connection.username=" + test.getProperty("hibernate.connection.username"),
         "hibernate.connection.password=" + test.getProperty("hibernate.connection.password"),
-        // What every release up to 0.7 shipped in etc/conf/hibernate.properties.
+        // What every published release shipped in etc/conf/hibernate.properties.
         "hibernate.hbm2ddl.auto=update",
         "hibernate.archive.autodetection=class",
         "");

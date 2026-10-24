@@ -3,6 +3,10 @@ package io.unitycatalog.server.migrate;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -14,9 +18,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
@@ -28,9 +35,9 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Upgrades Unity Catalog's database schema with the steps of {@code db/migration/<database>}: sets
- * up an empty database, adopts a 0.7 one (recording version 1 as the baseline) and applies the
- * pending steps. Each {@link #migrate()} runs under a {@link RunLock}, from classifying the
- * database to the last step.
+ * up an empty database, adopts one of the baseline release (recording version 1 as the baseline)
+ * and applies the pending steps. Each {@link #migrate()} runs under a {@link RunLock}, from
+ * classifying the database to the last step.
  */
 public final class SchemaMigrator implements AutoCloseable {
 
@@ -53,7 +60,7 @@ public final class SchemaMigrator implements AutoCloseable {
     PENDING,
     /** A step newer than this build is applied: the database belongs to a newer release. */
     AHEAD,
-    /** Unity Catalog's tables without Flyway's history: a database from 0.7. */
+    /** Unity Catalog's tables without Flyway's history: a database of the baseline release. */
     UNVERSIONED_UC,
     /** Tables, but none of Unity Catalog's. */
     NOT_UC,
@@ -94,8 +101,20 @@ public final class SchemaMigrator implements AutoCloseable {
   private static final Logger LOGGER = LoggerFactory.getLogger(SchemaMigrator.class);
   private static final String HISTORY_TABLE = "flyway_schema_history";
 
-  /** The version of the 0.7 schema, which Flyway records when it adopts a 0.7 database. */
-  private static final String BASELINE_0_7 = "1";
+  /**
+   * The release whose schema is version 1. A database without schema history from it is adopted as
+   * version 1; one from an earlier release has to be started on this release once first.
+   */
+  public static final String BASELINE_RELEASE = "0.7.0";
+
+  /** The schema version of {@link #BASELINE_RELEASE}, which Flyway records when it adopts one. */
+  private static final String BASELINE_VERSION = "1";
+
+  /** The step that creates the schema of {@link #BASELINE_RELEASE}. */
+  private static final String BASELINE_STEP = "V1__baseline_0_7.sql";
+
+  private static final Pattern CREATE_TABLE =
+      Pattern.compile("create\\s+table\\s+(\\w+)", Pattern.CASE_INSENSITIVE);
 
   private final DataSource dataSource;
   private final DatabaseKind kind;
@@ -157,7 +176,8 @@ public final class SchemaMigrator implements AutoCloseable {
       configuration
           .baselineOnMigrate(true)
           .baselineVersion(baselineVersion)
-          .baselineDescription("0".equals(baselineVersion) ? "empty" : "baseline 0.7");
+          .baselineDescription(
+              "0".equals(baselineVersion) ? "empty" : "baseline " + BASELINE_RELEASE);
     }
     return configuration.load();
   }
@@ -244,12 +264,15 @@ public final class SchemaMigrator implements AutoCloseable {
     if (refusal != null) {
       throw new IllegalStateException(refusal);
     }
-    String from = state == SchemaState.UNVERSIONED_UC ? BASELINE_0_7 : currentVersion();
+    if (state == SchemaState.UNVERSIONED_UC) {
+      requireBaselineTables();
+    }
+    String from = state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : currentVersion();
     // EMPTY (also with only casbin_rule): baseline at 0 so V1 runs; UNVERSIONED_UC: baseline at 1.
     String baseline =
         state == SchemaState.EMPTY
             ? "0"
-            : state == SchemaState.UNVERSIONED_UC ? BASELINE_0_7 : null;
+            : state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : null;
     int applied = flyway(baseline).migrate().migrationsExecuted;
     return new MigrationOutcome(from, currentVersion(), applied);
   }
@@ -271,6 +294,39 @@ public final class SchemaMigrator implements AutoCloseable {
       case FAILED -> "A migration step failed in an earlier run. See docs/server/upgrades.md.";
       default -> null;
     };
+  }
+
+  /**
+   * Refuses a database without schema history that lacks a table the baseline step creates: one
+   * from a release before {@value #BASELINE_RELEASE}, which this release does not migrate.
+   */
+  private void requireBaselineTables() {
+    Set<String> missing = new TreeSet<>();
+    Matcher matcher = CREATE_TABLE.matcher(baselineStep());
+    while (matcher.find()) {
+      missing.add(matcher.group(1).toLowerCase(Locale.ROOT));
+    }
+    missing.removeAll(tableNamesLowerCase());
+    missing.remove("casbin_rule"); // Casbin's adapter creates it on its own
+    if (!missing.isEmpty()) {
+      throw new IllegalStateException(
+          "The database is from a release before "
+              + BASELINE_RELEASE
+              + " (missing tables: "
+              + String.join(", ", missing)
+              + "). Start a "
+              + BASELINE_RELEASE
+              + " server on it once, then start this release.");
+    }
+  }
+
+  private String baselineStep() {
+    String path = "db/migration/" + kind.folder() + "/" + BASELINE_STEP;
+    try (InputStream in = SchemaMigrator.class.getClassLoader().getResourceAsStream(path)) {
+      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
   }
 
   private Set<String> tableNamesLowerCase() {
