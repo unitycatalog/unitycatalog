@@ -9,16 +9,19 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 import org.flywaydb.core.api.MigrationInfo;
 import org.junit.jupiter.api.Test;
 
@@ -44,7 +47,7 @@ public class MigratorTest {
     Migrator migrator = new Migrator(db.dataSource(), db.kind());
     assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
 
-    assertThat(migrator.migrate().applied()).isEqualTo(2);
+    assertThat(migrator.migrate().applied()).isEqualTo(releaseSteps(migrator));
     assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
   }
 
@@ -56,11 +59,32 @@ public class MigratorTest {
 
     MigrationOutcome outcome = migrator.migrate();
 
-    assertThat(outcome).isEqualTo(new MigrationOutcome("1", "2", 1));
+    String latest = migrator.latestVersion();
+    assertThat(outcome).isEqualTo(new MigrationOutcome("1", latest, releaseSteps(migrator) - 1));
     MigrationInfo baseline = migrator.applied().get(0);
     assertThat(baseline.getType().isBaseline()).isTrue();
     assertThat(baseline.getVersion().getVersion()).isEqualTo("1");
     assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+  }
+
+  @Test
+  void makesTextComparisonsCaseSensitive() throws SQLException {
+    if (db.kind() == DatabaseKind.MYSQL) {
+      // A 0.7 install on MySQL's default collation, which ignores case.
+      execute(db, "ALTER DATABASE CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci");
+    }
+    create07Schema(db);
+    try (Connection connection = db.dataSource().getConnection();
+        PreparedStatement insert =
+            connection.prepareStatement("INSERT INTO uc_catalogs (id, name) VALUES (?, 'Sales')")) {
+      insert.setObject(1, db.kind() == DatabaseKind.MYSQL ? new byte[16] : new UUID(0, 1));
+      insert.executeUpdate();
+    }
+
+    new Migrator(db.dataSource(), db.kind()).migrate();
+
+    assertThat(catalogsNamed(db, "sales")).isZero();
+    assertThat(catalogsNamed(db, "Sales")).isOne();
   }
 
   @Test
@@ -99,7 +123,7 @@ public class MigratorTest {
         ("INSERT INTO %1$sflyway_schema_history%1$s (%1$sinstalled_rank%1$s, %1$sversion%1$s,"
                 + " %1$sdescription%1$s, %1$stype%1$s, %1$sscript%1$s, %1$sinstalled_by%1$s,"
                 + " %1$sexecution_time%1$s, %1$ssuccess%1$s)"
-                + " VALUES (3, '3', 'broken', 'SQL', 'V3__broken.sql', 'test', 0, false)")
+                + " VALUES (1000, '1000', 'broken', 'SQL', 'V1000__broken.sql', 'test', 0, false)")
             .formatted(q));
 
     assertThat(migrator.state()).isEqualTo(SchemaState.FAILED);
@@ -128,10 +152,20 @@ public class MigratorTest {
     }
 
     // The second run waits for the first, then finds the schema current.
+    Migrator migrator = new Migrator(db.dataSource(), db.kind());
+    String latest = migrator.latestVersion();
+    int steps = releaseSteps(migrator);
     assertThat(outcomes)
         .containsExactlyInAnyOrder(
-            new MigrationOutcome(null, "2", 2), new MigrationOutcome("2", "2", 0));
-    assertThat(historyVersions(db)).containsExactly("1", "2");
+            new MigrationOutcome(null, latest, steps), new MigrationOutcome(latest, latest, 0));
+    assertThat(historyVersions(db))
+        .containsExactlyElementsOf(
+            IntStream.rangeClosed(1, steps).mapToObj(String::valueOf).toList());
+  }
+
+  /** The number of steps in this release: they are numbered 1, 2, 3 and so on. */
+  static int releaseSteps(Migrator migrator) {
+    return Integer.parseInt(migrator.latestVersion());
   }
 
   /** Builds a 0.7 database: that release's schema without Flyway's history. */
@@ -147,6 +181,18 @@ public class MigratorTest {
     for (String statement : withoutComments.split(";")) {
       if (!statement.isBlank()) {
         execute(db, statement);
+      }
+    }
+  }
+
+  private static int catalogsNamed(TestDatabase db, String name) throws SQLException {
+    try (Connection connection = db.dataSource().getConnection();
+        PreparedStatement query =
+            connection.prepareStatement("SELECT COUNT(*) FROM uc_catalogs WHERE name = ?")) {
+      query.setString(1, name);
+      try (ResultSet rs = query.executeQuery()) {
+        rs.next();
+        return rs.getInt(1);
       }
     }
   }

@@ -9,7 +9,7 @@ import org.flywaydb.core.api.migration.Context;
  * A test-only step that stays running until {@link #release()} so a test can start a second server
  * while the first is still setting up the schema. Does nothing to the database.
  */
-public class V3__Slow_test_step extends BaseJavaMigration {
+public class V1000__Slow_test_step extends BaseJavaMigration {
 
   private static volatile CountDownLatch started = new CountDownLatch(1);
   private static volatile CountDownLatch released = new CountDownLatch(1);

@@ -83,6 +83,8 @@ public class HibernateConfigurator implements AutoCloseable {
   /**
    * Storage paths and names are case-sensitive, but MySQL's default collation is not. Warns when
    * the database, or a table in it, compares text case-insensitively (a {@code _ci} collation).
+   * Flyway's history table is left out: it keeps the collation the database had when Flyway first
+   * ran, and holds no names or paths.
    */
   private void warnIfMySqlIsCaseInsensitive(Properties properties) {
     if (!properties.getProperty("hibernate.connection.url", "").startsWith("jdbc:mysql:")) {
@@ -94,7 +96,8 @@ public class HibernateConfigurator implements AutoCloseable {
             statement.executeQuery(
                 "SELECT @@collation_database UNION "
                     + "SELECT TABLE_COLLATION FROM information_schema.TABLES "
-                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_COLLATION IS NOT NULL")) {
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_COLLATION IS NOT NULL "
+                    + "AND TABLE_NAME <> 'flyway_schema_history'")) {
       Set<String> caseInsensitive = new TreeSet<>();
       while (collations.next()) {
         if (collations.getString(1).endsWith("_ci")) {
