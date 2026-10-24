@@ -121,7 +121,10 @@ lazy val commonSettings = Seq(
       targetDir = packageFile.getParentFile,
       // Also include the jar being built (packageFile) in the classpath
       // This is specifically required by the server project since the server and control models are provided dependencies
-      classpath = (Runtime / dependencyClasspath).value :+ Attributed.blank(packageFile)
+      // The jar replaces the project's own class directory: with both, Flyway finds every
+      // migration step twice.
+      classpath = (Runtime / dependencyClasspath).value
+        .filterNot(_.data == (Compile / classDirectory).value) :+ Attributed.blank(packageFile)
     )
     packageFile
   },
