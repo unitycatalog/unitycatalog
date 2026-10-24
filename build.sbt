@@ -665,6 +665,8 @@ lazy val testDatabaseDependencies = Seq(
   "org.testcontainers" % "testcontainers" % testcontainersVersion % Test,
   "org.testcontainers" % "postgresql" % testcontainersVersion % Test,
   "org.postgresql" % "postgresql" % postgresqlVersion % Test,
+  "org.testcontainers" % "mysql" % testcontainersVersion % Test,
+  "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
 )
 
 /*
@@ -898,3 +900,4 @@ val generate = taskKey[Unit]("generate code from APIs")
 def testOnDatabase(database: String): String =
   s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database") ; test"""
 addCommandAlias("testPostgres18", testOnDatabase("POSTGRES_18"))
+addCommandAlias("testMySQL8", testOnDatabase("MYSQL_8"))

@@ -43,6 +43,7 @@ jobs:
     #   "All tests (Spark 4.0.0, Delta 4.3.1)"
     #   "[Non Blocking] Spark tests (Spark 4.2.0, Delta master-SNAPSHOT)"
     #   "All tests (Spark 4.0.0, Delta 4.3.1, POSTGRES_18)"
+    #   "All tests (Spark 4.0.0, Delta 4.3.1, MYSQL_8)"
     name: >-
       ${{ matrix.non-blocking && '[Non Blocking]' || '' }}
       ${{ matrix.validation-mode == 'spark-tests' && 'Spark tests' || 'All tests' }}
@@ -64,6 +65,13 @@ jobs:
             # Primary combo on PostgreSQL 18: every test project runs on PostgreSQL.
             validation-mode: "all-tests"
             test-database: "POSTGRES_18"
+            non-blocking: false
+            spark-source-build: false
+          - spark-version: "4.0.0"
+            delta-version: "4.3.1"
+            # Primary combo on MySQL 8.4: every test project runs on MySQL.
+            validation-mode: "all-tests"
+            test-database: "MYSQL_8"
             non-blocking: false
             spark-source-build: false
           - spark-version: "4.1.0"

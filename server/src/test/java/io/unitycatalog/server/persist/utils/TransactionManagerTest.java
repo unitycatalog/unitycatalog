@@ -312,6 +312,19 @@ public class TransactionManagerTest {
     public void testIsolationLevelIsSetAndRestored() {
       final int[] isolationDuringTx = new int[1];
       final int[] isolationAfter = new int[1];
+      final int[] defaultIsolation = new int[1];
+
+      // The database's default isolation level (READ_COMMITTED on H2 and PostgreSQL,
+      // REPEATABLE_READ on MySQL)
+      TransactionManager.executeWithTransaction(
+          realSessionFactory,
+          session -> {
+            session.doWork(
+                connection -> defaultIsolation[0] = connection.getTransactionIsolation());
+            return null;
+          },
+          "test",
+          true);
 
       // Run a transaction with REPEATABLE_READ
       TransactionManager.executeWithTransaction(
@@ -338,8 +351,8 @@ public class TransactionManagerTest {
           "test",
           true);
 
-      // Original isolation level should have been restored (H2 default is READ_COMMITTED)
-      assertThat(isolationAfter[0]).isEqualTo(Connection.TRANSACTION_READ_COMMITTED);
+      // Original isolation level should have been restored
+      assertThat(isolationAfter[0]).isEqualTo(defaultIsolation[0]);
     }
 
     @Test

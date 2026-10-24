@@ -307,6 +307,7 @@ class ManagedTableCleanupTaskTest {
             + switch (SupportedDatabase.selected()) {
               case H2 -> ";LOCK_TIMEOUT=50";
               case POSTGRES_18 -> "?options=-c%20lock_timeout%3D50";
+              case MYSQL_8 -> "?sessionVariables=innodb_lock_wait_timeout=1";
             });
     return new Repositories(
         testDatabase.openHibernateConfigurator(impatient).getSessionFactory(), serverProperties);
