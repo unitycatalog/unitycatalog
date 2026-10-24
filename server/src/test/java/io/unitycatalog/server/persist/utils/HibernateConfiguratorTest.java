@@ -2,6 +2,7 @@ package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -70,6 +71,9 @@ class HibernateConfiguratorTest {
     properties.setProperty("hibernate.hbm2ddl.auto", "update");
 
     assertThat(HibernateConfigurator.withSchemaUpdatesOff(properties))
+        .containsEntry("hibernate.hbm2ddl.auto", "none");
+    assertThat(
+            HibernateConfigurator.setupHibernateProperties(new ServerProperties(new Properties())))
         .containsEntry("hibernate.hbm2ddl.auto", "none");
   }
 

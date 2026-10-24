@@ -3,6 +3,7 @@ package io.unitycatalog.server.migrate;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.server.migrate.kit.TestServer;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.io.IOException;
@@ -74,6 +75,10 @@ public class MigratorTest {
       execute(db, "ALTER DATABASE CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci");
     }
     create07Schema(db);
+    // The authorization rules table, shaped like Casbin's adapter creates it.
+    execute(
+        db, "CREATE TABLE casbin_rule (id INT PRIMARY KEY, ptype VARCHAR(255), v0 VARCHAR(255))");
+    execute(db, "INSERT INTO casbin_rule (id, ptype, v0) VALUES (1, 'p', 'Alice')");
     try (Connection connection = db.dataSource().getConnection();
         PreparedStatement insert =
             connection.prepareStatement("INSERT INTO uc_catalogs (id, name) VALUES (?, 'Sales')")) {
@@ -83,8 +88,26 @@ public class MigratorTest {
 
     new Migrator(db.dataSource(), db.kind()).migrate();
 
-    assertThat(catalogsNamed(db, "sales")).isZero();
-    assertThat(catalogsNamed(db, "Sales")).isOne();
+    assertThat(rowsWhere(db, "uc_catalogs", "name", "sales")).isZero();
+    assertThat(rowsWhere(db, "uc_catalogs", "name", "Sales")).isOne();
+    assertThat(rowsWhere(db, "casbin_rule", "v0", "alice")).isZero();
+    assertThat(rowsWhere(db, "casbin_rule", "v0", "Alice")).isOne();
+  }
+
+  @Test
+  void upgradesAVersionedDatabase() {
+    String latest = new Migrator(db.dataSource(), db.kind()).migrate().to();
+    List<String> nextRelease = List.of("classpath:db/test-steps/ahead");
+    assertThatThrownBy(() -> TestServer.start(db, nextRelease))
+        .hasMessageContaining("schema is at version " + latest)
+        .hasMessageContaining("bin/uc-migrate migrate");
+    Migrator migrator = new Migrator(db.dataSource(), db.kind(), nextRelease);
+    assertThat(migrator.state()).isEqualTo(SchemaState.PENDING);
+    assertThat(migrator.pending().stream().map(m -> m.getVersion().getVersion()))
+        .containsExactly("1000");
+
+    assertThat(migrator.migrate()).isEqualTo(new MigrationOutcome(latest, "1000", 1));
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
   }
 
   @Test
@@ -185,11 +208,13 @@ public class MigratorTest {
     }
   }
 
-  private static int catalogsNamed(TestDatabase db, String name) throws SQLException {
+  private static int rowsWhere(TestDatabase db, String table, String column, String value)
+      throws SQLException {
     try (Connection connection = db.dataSource().getConnection();
         PreparedStatement query =
-            connection.prepareStatement("SELECT COUNT(*) FROM uc_catalogs WHERE name = ?")) {
-      query.setString(1, name);
+            connection.prepareStatement(
+                "SELECT COUNT(*) FROM " + table + " WHERE " + column + " = ?")) {
+      query.setString(1, value);
       try (ResultSet rs = query.executeQuery()) {
         rs.next();
         return rs.getInt(1);
@@ -197,7 +222,7 @@ public class MigratorTest {
     }
   }
 
-  /** The versions in Flyway's history (its own marker rows have none). */
+  /** The versions in Flyway's history (rows without a version left out). */
   private static List<String> historyVersions(TestDatabase db) throws SQLException {
     String q = quote(db);
     List<String> versions = new ArrayList<>();

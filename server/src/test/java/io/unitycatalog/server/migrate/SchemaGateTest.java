@@ -74,6 +74,6 @@ public class SchemaGateTest {
   void refusesASchemaNewerThanThisRelease() {
     new Migrator(db.dataSource(), db.kind(), List.of("classpath:db/test-steps/ahead")).migrate();
 
-    assertThatThrownBy(() -> TestServer.start(db)).hasMessageContaining("newer than this release");
+    assertThatThrownBy(() -> TestServer.start(db)).hasMessageContaining("this release ends at");
   }
 }

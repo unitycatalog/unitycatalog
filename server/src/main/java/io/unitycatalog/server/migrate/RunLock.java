@@ -14,8 +14,8 @@ import javax.sql.DataSource;
  * at the same time. Flyway's own lock is released between steps, so it isn't enough.
  *
  * <ul>
- *   <li>PostgreSQL: {@code pg_advisory_lock} and MySQL: {@code GET_LOCK}, held on one dedicated
- *       connection until {@link #close()}.
+ *   <li>PostgreSQL: {@code pg_advisory_lock} and MySQL: {@code GET_LOCK} on a name derived from the
+ *       database's, held on one dedicated connection until {@link #close()}.
  *   <li>H2: an embedded H2 file database is opened by one process, so a lock inside this JVM, keyed
  *       by the database, is enough.
  * </ul>
@@ -25,7 +25,12 @@ public final class RunLock implements AutoCloseable {
   /** Any fixed key; Flyway's own advisory lock uses a different one. */
   private static final long POSTGRES_KEY = 0x75635f6d69677261L; // "uc_migra"
 
-  private static final String MYSQL_NAME = "uc_migrate";
+  /**
+   * The lock name, as SQL. MySQL's locks are global to the server, so the name includes the
+   * database; SHA1 keeps it within MySQL's 64-character limit.
+   */
+  private static final String MYSQL_NAME = "CONCAT('uc_migrate.', SHA1(DATABASE()))";
+
   private static final ConcurrentMap<String, ReentrantLock> H2_LOCKS = new ConcurrentHashMap<>();
 
   private final DatabaseKind kind;
@@ -53,12 +58,12 @@ public final class RunLock implements AutoCloseable {
         String sql =
             kind == DatabaseKind.POSTGRESQL
                 ? "SELECT pg_advisory_lock(" + POSTGRES_KEY + ")"
-                : "SELECT GET_LOCK('" + MYSQL_NAME + "', -1)";
+                : "SELECT GET_LOCK(" + MYSQL_NAME + ", -1)";
         try (Statement statement = connection.createStatement();
             ResultSet rs = statement.executeQuery(sql)) {
           rs.next();
           if (kind == DatabaseKind.MYSQL && rs.getInt(1) != 1) {
-            throw new IllegalStateException("MySQL did not grant the lock " + MYSQL_NAME);
+            throw new IllegalStateException("MySQL did not grant the schema migration lock");
           }
         }
         return new RunLock(kind, connection, null);
@@ -91,7 +96,7 @@ public final class RunLock implements AutoCloseable {
     String sql =
         kind == DatabaseKind.POSTGRESQL
             ? "SELECT pg_advisory_unlock(" + POSTGRES_KEY + ")"
-            : "SELECT RELEASE_LOCK('" + MYSQL_NAME + "')";
+            : "SELECT RELEASE_LOCK(" + MYSQL_NAME + ")";
     try (Connection c = connection;
         Statement statement = c.createStatement()) {
       statement.execute(sql);

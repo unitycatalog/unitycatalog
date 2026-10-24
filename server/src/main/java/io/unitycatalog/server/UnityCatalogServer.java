@@ -161,15 +161,15 @@ public class UnityCatalogServer implements AutoCloseable {
       if (state == SchemaState.CURRENT) {
         return;
       }
-      if (state == SchemaState.AHEAD) {
-        throw new IllegalStateException(
-            "The schema is newer than this release. Run the newer release.");
+      String refusal = migrator.refusal(state);
+      if (refusal != null) {
+        throw new IllegalStateException(refusal);
       }
       String current = migrator.currentVersion();
       throw new IllegalStateException(
           "The database "
               + (current == null
-                  ? "has no schema version (a database from 0.7 or earlier)"
+                  ? "has no schema version (a database from 0.7)"
                   : "schema is at version " + current)
               + "; this release needs version "
               + migrator.latestVersion()

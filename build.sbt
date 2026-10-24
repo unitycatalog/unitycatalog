@@ -99,6 +99,8 @@ lazy val commonSettings = Seq(
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
+    // Merged, not dropped: Flyway finds its database support through these ServiceLoader files.
+    case PathList("META-INF", "services", _*) => MergeStrategy.filterDistinctLines
     case PathList("META-INF", xs @ _*) => MergeStrategy.discard
     case _ => MergeStrategy.first
   },

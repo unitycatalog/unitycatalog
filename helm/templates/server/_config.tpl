@@ -88,7 +88,6 @@ hibernate.connection.password=${DB_PASSWORD}
 {{ fail "Unsupported database type. Supported types are: file, postgresql." }}
 {{- end }}
 
-hibernate.hbm2ddl.auto=update
 hibernate.show_sql=false
 hibernate.archive.autodetection=class
 hibernate.use_sql_comments=true
