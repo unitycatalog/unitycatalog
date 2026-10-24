@@ -110,3 +110,16 @@ jobs:
           validation-mode: ${{ matrix.validation-mode }}
           test-database: ${{ matrix.test-database || 'H2' }}
           use-spark-source-cache: ${{ matrix.spark-source-build }}
+
+  # Databases already ran the merged schema steps, so a pull request may only add steps.
+  migration-steps:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    name: Merged migration steps unchanged
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # The check diffs against the merge base with the pull request's base branch.
+          fetch-depth: 0
+      - name: Check merged migration steps
+        run: dev/check-migration-steps.sh ${{ github.event.pull_request.base.sha }}
