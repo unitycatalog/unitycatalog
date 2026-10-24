@@ -28,7 +28,7 @@
         type_json text not null,
         type_text oid not null,
         primary key (id),
-        unique (table_id, ordinal_position, name)
+        constraint UKacw3qyt0a4xgqxpuo0i2ee12x unique (table_id, ordinal_position, name)
     );
 
     create table uc_credentials (
@@ -56,7 +56,7 @@
         table_id uuid not null,
         commit_filename varchar(255) not null,
         primary key (id),
-        unique (table_id, commit_version)
+        constraint UKj7f8drl3byq8f2999frq9w2cv unique (table_id, commit_version)
     );
 
     create table uc_dependencies (
@@ -156,7 +156,7 @@
         property_key varchar(255) not null,
         property_value text not null,
         primary key (id),
-        unique (entity_id, entity_type, property_key)
+        constraint UKknh5y40jwdrv7qixutbl6c96r unique (entity_id, entity_type, property_key)
     );
 
     create table uc_registered_models (

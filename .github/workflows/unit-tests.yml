@@ -109,3 +109,36 @@ jobs:
           validation-mode: ${{ matrix.validation-mode }}
           test-database: ${{ matrix.test-database || 'H2' }}
           use-spark-source-cache: ${{ matrix.spark-source-build }}
+
+  # Databases written by older servers upgrade and keep their data: every UpgradePath on every
+  # test database (tests tagged "upgrades", which the jobs above leave out).
+  upgrade-tests:
+    runs-on: ubuntu-latest
+    name: Upgrade tests (${{ matrix.test-database }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - test-database: "H2"
+            alias: "testUpgrades"
+          - test-database: "POSTGRES_18"
+            alias: "testUpgradesPostgres18"
+          - test-database: "MYSQL_8"
+            alias: "testUpgradesMySQL8"
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # UpgradePath.BASE builds the server from the base commit with git archive.
+          fetch-depth: 0
+      - name: Set up JDK 17
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          java-version: '17'
+          distribution: 'zulu'
+          cache: 'sbt'
+      - name: Run upgrade tests
+        env:
+          # The commit this pull request starts from; unset on pushes, where BASE is origin/main.
+          UC_TEST_BASE_REF: ${{ github.event.pull_request.base.sha }}
+        run: build/sbt -J-Xmx2G ${{ matrix.alias }}
