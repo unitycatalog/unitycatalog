@@ -106,7 +106,7 @@ lazy val commonSettings = Seq(
   },
 
   // Test configs
-  // Tests tagged "upgrades" run old servers (release images, base jar); testUpgrades* runs them.
+  // Tests tagged "upgrades" run old servers (release and base jars); testUpgrades* runs them.
   Test / testOptions  := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q"), Tests.Argument(jupiter, "--exclude-tags=upgrades"), Tests.Filter(name => !(name startsWith s"$orgName.server.base"))),
   // The coverage run (jacoco, in CI) has its own test options.
   Jacoco / testOptions += Tests.Argument(jupiter, "--exclude-tags=upgrades"),
@@ -920,8 +920,9 @@ lazy val jupiter = TestFramework("net.aichler.jupiter.api.JupiterFramework")
 lazy val Jacoco = config("jacoco")
 
 // Runs only the upgrade tests (tag "upgrades") on one test database. UC_TEST_UPGRADE_PATHS picks
-// the paths, UC_TEST_BASE_REF the git ref UpgradePath.BASE's server jar is built from, and
-// UC_TEST_BASE_JAR a prebuilt jar to use instead.
+// the paths, UC_TEST_BASE_REF the git ref UpgradePath.BASE's server jar is built from,
+// UC_TEST_RELEASE_CHAIN the release tags of UpgradePath.RELEASE_CHAIN, and UC_TEST_JAR_DIR a
+// directory of prebuilt <commit sha>.jar server jars to use instead of building them.
 def testUpgradesOn(database: String): String =
   s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database")""" +
     """ ; set server / Test / testOptions := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q"), Tests.Argument(TestFramework("net.aichler.jupiter.api.JupiterFramework"), "--include-tags=upgrades"))""" +

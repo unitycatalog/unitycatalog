@@ -13,8 +13,8 @@ import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
 
 /**
- * Databases real servers wrote, on every {@link UpgradePath}, upgrade on the current server's start
- * and keep their data.
+ * Databases real servers wrote, on every {@link UpgradePath}, keep their data on every later server
+ * of the path and upgrade on the current server's start.
  */
 public class RealUpgradeTest {
 
@@ -24,11 +24,15 @@ public class RealUpgradeTest {
   @AcrossUpgradePaths
   void upgradesAndKeepsTheData(UpgradePath path) {
     OldServer.run(path.images.get(0), db, DataSet::write);
-    path.images.stream().skip(1).forEach(image -> OldServer.run(image, db, api -> {}));
+    path.images.stream()
+        .skip(1)
+        .forEach(
+            image ->
+                OldServer.run(image, db, api -> DataSet.assertReadBack(api, image.toString())));
 
     try (TestServer server = TestServer.start(db)) {
       assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(freshInstallSnapshot());
-      DataSet.assertReadBack(server.apiClient());
+      DataSet.assertReadBack(server.apiClient(), "the current server");
     }
   }
 

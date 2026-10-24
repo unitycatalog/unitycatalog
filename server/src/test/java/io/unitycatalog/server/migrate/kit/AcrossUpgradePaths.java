@@ -11,8 +11,8 @@ import org.junit.jupiter.params.provider.ArgumentsSource;
 
 /**
  * Runs a test once per {@link UpgradePath} on the selected test database. Tagged {@code upgrades}:
- * it runs old servers (released images in Docker, and the base commit's server jar), so it stays
- * out of the default test run ({@code build/sbt testUpgrades} runs it).
+ * it runs old servers (the server jars of the base commit and of releases), so it stays out of the
+ * default test run ({@code build/sbt testUpgrades} runs it).
  */
 @Target(METHOD)
 @Retention(RUNTIME)
