@@ -27,7 +27,13 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Properties;
+import java.util.Set;
+import java.util.TreeSet;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
@@ -70,6 +76,41 @@ public class HibernateConfigurator implements AutoCloseable {
     } catch (Throwable t) {
       dataSource.close();
       throw t;
+    }
+    warnIfMySqlIsCaseInsensitive(hibernateProperties);
+  }
+
+  /**
+   * Storage paths and names are case-sensitive, but MySQL's default collation is not. Warns when
+   * the database, or a table in it, compares text case-insensitively (a {@code _ci} collation).
+   */
+  private void warnIfMySqlIsCaseInsensitive(Properties properties) {
+    if (!properties.getProperty("hibernate.connection.url", "").startsWith("jdbc:mysql:")) {
+      return;
+    }
+    try (Connection connection = dataSource.getConnection();
+        Statement statement = connection.createStatement();
+        ResultSet collations =
+            statement.executeQuery(
+                "SELECT @@collation_database UNION "
+                    + "SELECT TABLE_COLLATION FROM information_schema.TABLES "
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_COLLATION IS NOT NULL")) {
+      Set<String> caseInsensitive = new TreeSet<>();
+      while (collations.next()) {
+        if (collations.getString(1).endsWith("_ci")) {
+          caseInsensitive.add(collations.getString(1));
+        }
+      }
+      if (!caseInsensitive.isEmpty()) {
+        LOGGER.warn(
+            "The MySQL database compares text case-insensitively (collation {}), so storage paths"
+                + " and names that differ only in case are treated as the same. Create the"
+                + " database with COLLATE utf8mb4_0900_bin; see the MySQL section of"
+                + " docs/server/deployment.md.",
+            caseInsensitive);
+      }
+    } catch (SQLException e) {
+      LOGGER.debug("Could not check the MySQL collation", e);
     }
   }
 
