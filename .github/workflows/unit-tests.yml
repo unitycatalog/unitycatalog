@@ -110,9 +110,22 @@ jobs:
           validation-mode: ${{ matrix.validation-mode }}
           test-database: ${{ matrix.test-database || 'H2' }}
           use-spark-source-cache: ${{ matrix.spark-source-build }}
+      # The upgrade tests of later pull requests run this commit's server jar (UpgradePath.BASE).
+      - name: Keep the server jar for upgrade tests
+        if: github.event_name == 'push' && matrix.validation-mode == 'all-tests' && !matrix.test-database
+        run: |
+          mkdir -p ~/.cache/uc-upgrade-base
+          cp server-shaded/target/unitycatalog-server-shaded-assembly-*.jar ~/.cache/uc-upgrade-base/base.jar
+      - name: Save the server jar for upgrade tests
+        if: github.event_name == 'push' && matrix.validation-mode == 'all-tests' && !matrix.test-database
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/uc-upgrade-base/base.jar
+          key: uc-base-${{ github.sha }}
 
   # Databases written by older servers upgrade and keep their data: every UpgradePath on every
-  # test database (tests tagged "upgrades", which the jobs above leave out).
+  # test database (tests tagged "upgrades", which the jobs above leave out). Runs only when a
+  # change touches the schema, its migration code or the upgrade test kit.
   upgrade-tests:
     runs-on: ubuntu-latest
     name: Upgrade tests (${{ matrix.test-database }})
@@ -130,16 +143,41 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          # UpgradePath.BASE builds the server from the base commit with git archive.
-          fetch-depth: 0
-      - name: Set up JDK 17
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+          # HEAD^1, the first parent of the merge commit, is the code this change starts from.
+          fetch-depth: 2
+      - name: Check for schema changes
+        id: changes
+        run: |
+          if git diff --name-only HEAD^1 HEAD | grep -qE \
+              '^(server/src/main/resources/db/migration/|server/src/main/java/io/unitycatalog/server/migrate/|server/src/main/java/io/unitycatalog/server/persist/dao/|server/src/test/java/io/unitycatalog/server/migrate/kit/|\.github/workflows/unit-tests\.yml$)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "base=$(git rev-parse HEAD^1)" >> "$GITHUB_OUTPUT"
+          else
+            echo "No schema-related changes; skipping the upgrade tests."
+          fi
+      - name: Prepare the environment
+        if: steps.changes.outputs.run == 'true'
+        uses: ./.github/actions/prepare-spark-env
         with:
-          java-version: '17'
-          distribution: 'zulu'
-          cache: 'sbt'
+          spark-version: "4.0.0"
+      - name: Restore the base server jar
+        if: steps.changes.outputs.run == 'true'
+        id: base-jar
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/uc-upgrade-base/base.jar
+          key: uc-base-${{ steps.changes.outputs.base }}
+          # Else the newest saved main jar; with none, the test builds the jar from the base commit.
+          restore-keys: uc-base-
       - name: Run upgrade tests
+        if: steps.changes.outputs.run == 'true'
         env:
-          # The commit this pull request starts from; unset on pushes, where BASE is origin/main.
-          UC_TEST_BASE_REF: ${{ github.event.pull_request.base.sha }}
-        run: build/sbt -J-Xmx2G ${{ matrix.alias }}
+          UC_TEST_BASE_REF: ${{ steps.changes.outputs.base }}
+        run: |
+          if [[ -n "${{ steps.base-jar.outputs.cache-matched-key }}" ]]; then
+            echo "Base server jar from cache entry ${{ steps.base-jar.outputs.cache-matched-key }}"
+            export UC_TEST_BASE_JAR=~/.cache/uc-upgrade-base/base.jar
+          else
+            echo "No cached base server jar; the test builds it from ${UC_TEST_BASE_REF}"
+          fi
+          build/sbt -J-Xmx2G ${{ matrix.alias }}

@@ -6,19 +6,27 @@ import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.BindException;
+import java.net.ServerSocket;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.Testcontainers;
@@ -34,13 +42,15 @@ import org.testcontainers.utility.MountableFile;
 /**
  * Runs an {@link OldImage} on a {@link TestDatabase} the way an operator runs that release: its own
  * {@code etc/conf} files pointed at the database, Hibernate auto-update as the release shipped it,
- * and authorization on. Every image runs the same way:
+ * and authorization on.
  *
  * <ul>
- *   <li>H2: the database file is copied into the container and back out after the server stops (the
- *       image runs as a non-root user, so no bind mount).
- *   <li>PostgreSQL and MySQL: the server reaches the test database's container through the host.
- *   <li>MySQL: images bundle no MySQL driver; the test's driver jar is copied in and appended to
+ *   <li>A server jar runs as a child process in a temporary directory holding its {@code etc/conf},
+ *       on the test database itself; for MySQL the test's driver jar is added to its classpath.
+ *   <li>An image runs in a container. H2: the database file is copied into the container and back
+ *       out after the server stops (the image runs as a non-root user, so no bind mount).
+ *       PostgreSQL and MySQL: the server reaches the test database's container through the host.
+ *       MySQL: images bundle no MySQL driver; the test's driver jar is copied in and appended to
  *       the server's classpath file.
  * </ul>
  */
@@ -62,6 +72,10 @@ public final class OldServer {
    * client authenticated as the server's admin, then stops the server.
    */
   public static void run(OldImage image, TestDatabase db, Consumer<ApiClient> callback) {
+    if (image.isJar()) {
+      runJar(image, db, callback);
+      return;
+    }
     String imageName = image.name();
     DatabaseKind kind = db.kind();
     try (GenericContainer<?> container = new GenericContainer<>(DockerImageName.parse(imageName))) {
@@ -71,7 +85,12 @@ public final class OldServer {
           .withCopyToContainer(
               Transferable.of(serverProperties()), HOME + "/etc/conf/server.properties")
           .withCopyToContainer(
-              Transferable.of(hibernateProperties(db, kind)),
+              Transferable.of(
+                  hibernateProperties(
+                      db,
+                      kind == DatabaseKind.H2
+                          ? "jdbc:h2:file:./etc/db/upgrade-test;DB_CLOSE_DELAY=-1"
+                          : throughHost(db.jdbcUrl()))),
               HOME + "/etc/conf/hibernate.properties")
           .waitingFor(
               Wait.forHttp("/api/2.1/unity-catalog/catalogs")
@@ -110,6 +129,101 @@ public final class OldServer {
     }
   }
 
+  /** Runs the server jar {@code image} as a child process; see {@link #run}. */
+  private static void runJar(OldImage image, TestDatabase db, Consumer<ApiClient> callback) {
+    try {
+      Path home = Files.createTempDirectory("uc-old-server");
+      try {
+        Path conf = Files.createDirectories(home.resolve("etc/conf"));
+        Files.writeString(conf.resolve("server.properties"), serverProperties());
+        Files.writeString(
+            conf.resolve("hibernate.properties"), hibernateProperties(db, db.jdbcUrl()));
+        // The shaded jar leaves out Vert.x's version file, which the server reads at start; the
+        // test's own Vert.x jar, after it, supplies the file.
+        String classpath =
+            image.name()
+                + File.pathSeparator
+                + jarOf(io.vertx.core.Vertx.class)
+                + (db.kind() == DatabaseKind.MYSQL
+                    ? File.pathSeparator + jarOf(com.mysql.cj.jdbc.Driver.class)
+                    : "");
+        int port = freePortPair();
+        Process process =
+            new ProcessBuilder(
+                    Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                    "-cp",
+                    classpath,
+                    "io.unitycatalog.server.UnityCatalogServer",
+                    "-p",
+                    String.valueOf(port))
+                .directory(home.toFile())
+                .inheritIO()
+                .start();
+        try {
+          URI uri = URI.create("http://localhost:" + port);
+          awaitServing(process, uri);
+          callback.accept(apiClient(uri, Files.readString(conf.resolve("token.txt")).trim()));
+        } finally {
+          // SIGTERM, so the server closes the database cleanly.
+          process.destroy();
+          if (!process.waitFor(2, TimeUnit.MINUTES)) {
+            process.destroyForcibly().waitFor();
+          }
+          LOGGER.info("{} stopped with exit code {}", image, process.exitValue());
+        }
+      } finally {
+        delete(home);
+      }
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException(e);
+    }
+  }
+
+  /** Waits until the server answers below 500, as the container's wait strategy does. */
+  private static void awaitServing(Process process, URI uri) throws InterruptedException {
+    HttpClient client = HttpClient.newHttpClient();
+    HttpRequest request =
+        HttpRequest.newBuilder(uri.resolve("/api/2.1/unity-catalog/catalogs")).build();
+    long deadline = System.nanoTime() + Duration.ofMinutes(3).toNanos();
+    while (System.nanoTime() < deadline) {
+      if (!process.isAlive()) {
+        throw new IllegalStateException("The old server exited with code " + process.exitValue());
+      }
+      try {
+        if (client.send(request, HttpResponse.BodyHandlers.discarding()).statusCode() < 500) {
+          return;
+        }
+      } catch (IOException e) {
+        // Not listening yet.
+      }
+      Thread.sleep(500);
+    }
+    throw new IllegalStateException("The old server did not start within 3 minutes");
+  }
+
+  /** A port whose next port is free too: the server listens on both. */
+  private static int freePortPair() throws IOException {
+    while (true) {
+      try (ServerSocket first = new ServerSocket(0);
+          ServerSocket second = new ServerSocket(first.getLocalPort() + 1)) {
+        return first.getLocalPort();
+      } catch (BindException | IllegalArgumentException e) {
+        // The next port is taken; try another pair.
+      }
+    }
+  }
+
+  private static void delete(Path root) {
+    try (Stream<Path> paths = Files.walk(root)) {
+      paths.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+    } catch (IOException e) {
+      // A leftover temp directory is harmless.
+    }
+  }
+
   /**
    * Stops the server with SIGTERM so it closes the database cleanly. The start script runs Java
    * without {@code exec}, so the signal goes to the Java process, not the container's first one.
@@ -139,13 +253,9 @@ public final class OldServer {
         "");
   }
 
-  /** The connection settings of {@code db}, as the server inside the container reaches it. */
-  private static String hibernateProperties(TestDatabase db, DatabaseKind kind) {
+  /** The connection settings of {@code db}, as the old server reaches it at {@code url}. */
+  private static String hibernateProperties(TestDatabase db, String url) {
     Properties test = db.hibernateProperties();
-    String url =
-        kind == DatabaseKind.H2
-            ? "jdbc:h2:file:./etc/db/upgrade-test;DB_CLOSE_DELAY=-1"
-            : throughHost(db.jdbcUrl());
     return String.join(
         "\n",
         "hibernate.connection.driver_class="
@@ -176,13 +286,13 @@ public final class OldServer {
   }
 
   private static Path mysqlDriver() {
+    return jarOf(com.mysql.cj.jdbc.Driver.class);
+  }
+
+  /** The jar on this test's classpath that holds {@code type}. */
+  private static Path jarOf(Class<?> type) {
     try {
-      return Path.of(
-          com.mysql.cj.jdbc.Driver.class
-              .getProtectionDomain()
-              .getCodeSource()
-              .getLocation()
-              .toURI());
+      return Path.of(type.getProtectionDomain().getCodeSource().getLocation().toURI());
     } catch (URISyntaxException e) {
       throw new IllegalStateException(e);
     }
