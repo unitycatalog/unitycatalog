@@ -5,6 +5,7 @@ import static io.unitycatalog.server.migrate.MigratorTest.quote;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
 import io.unitycatalog.server.migrate.teststeps.batched.V2001__Fill_upper_name_in_batches;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
@@ -106,7 +107,8 @@ public class DataStepTest {
 
   /** Migrates with the release steps, the table step and the given steps. */
   private MigrationOutcome migrate(String... steps) {
-    try (Migrator migrator = new Migrator(db.dataSource(), db.kind(), locations(steps))) {
+    try (SchemaMigrator migrator =
+        new SchemaMigrator(db.dataSource(), db.kind(), locations(steps))) {
       return migrator.migrate();
     }
   }
@@ -114,7 +116,7 @@ public class DataStepTest {
   private Flyway flyway(String... steps) {
     List<String> locations = locations(steps);
     locations.add(0, "classpath:db/migration/" + db.kind().folder());
-    locations.add(1, Migrator.JAVA_STEPS);
+    locations.add(1, SchemaMigrator.JAVA_STEPS);
     return Flyway.configure()
         .dataSource(db.dataSource())
         .locations(locations.toArray(String[]::new))

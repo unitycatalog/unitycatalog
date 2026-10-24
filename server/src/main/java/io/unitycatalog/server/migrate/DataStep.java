@@ -1,5 +1,6 @@
 package io.unitycatalog.server.migrate;
 
+import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;

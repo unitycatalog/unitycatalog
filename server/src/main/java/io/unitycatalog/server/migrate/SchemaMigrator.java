@@ -37,8 +37,8 @@ import org.slf4j.LoggerFactory;
  * Upgrades Unity Catalog's database schema with the SQL steps of {@code db/migration/<database>}
  * and the Java steps of {@code io.unitycatalog.server.migrate.steps}, which share one sequence of
  * versions: sets up an empty database, adopts one of the baseline release (recording version 1 as
- * the baseline) and applies the pending steps. Each {@link #migrate()} runs under a {@link RunLock}, from
- * classifying the database to the last step.
+ * the baseline) and applies the pending steps. Each {@link #migrate()} runs under a {@link
+ * RunLock}, from classifying the database to the last step.
  */
 public final class SchemaMigrator implements AutoCloseable {
 
