@@ -4,38 +4,155 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.google.cloud.hadoop.util.AccessTokenProvider.AccessToken;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.CredPropsUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
+import io.unitycatalog.hadoop.internal.auth.AbfsVendedTokenProvider;
 import io.unitycatalog.hadoop.internal.auth.AwsCredential;
 import io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider;
+import io.unitycatalog.hadoop.internal.auth.AzureCredential;
+import io.unitycatalog.hadoop.internal.auth.GcsCredential;
+import io.unitycatalog.hadoop.internal.auth.GcsVendedTokenProvider;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
+import io.unitycatalog.hadoop.internal.auth.GenericCredentialProvider;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
 import java.net.URI;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.NullAndEmptySource;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.MockedStatic;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 
 /** Round-trip tests for credential properties produced and consumed during filesystem setup. */
 class CredPropsRoundTripTest {
 
-  private static final String LOCATION = "s3://bucket/table";
+  // Distinct from the default expiry so dropped expiration properties fail the round trip.
+  private static final long EXPIRATION_MILLIS = Long.MAX_VALUE - 1;
+
+  private static final String TABLE_ID = "tid-1";
+  private static final UCCredentialHadoopConfs.TableOperation TABLE_OPERATION =
+      UCCredentialHadoopConfs.TableOperation.READ_WRITE;
+
+  private enum Cloud {
+    AWS(
+        "s3",
+        "s3://bucket",
+        UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME,
+        UCHadoopConfConstants.S3A_INIT_ACCESS_KEY,
+        UCHadoopConfConstants.S3A_INIT_SECRET_KEY,
+        UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN),
+    AZURE(
+        "abfss",
+        "abfss://container@account.dfs.core.windows.net",
+        UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME,
+        UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN),
+    GCS(
+        "gs",
+        "gs://bucket",
+        UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME,
+        UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN);
+
+    final String scheme;
+    final String root;
+    final String expirationKey;
+    final List<String> initialCredentialKeys;
+
+    Cloud(String scheme, String root, String expirationKey, String... initialCredentialKeys) {
+      this.scheme = scheme;
+      this.root = root;
+      this.expirationKey = expirationKey;
+      this.initialCredentialKeys = Arrays.asList(initialCredentialKeys);
+    }
+
+    String location() {
+      return root + "/table";
+    }
+
+    GenericCredential credential(String id, String prefix) {
+      return credential(id, prefix, EXPIRATION_MILLIS);
+    }
+
+    GenericCredential credential(String id, String prefix, Long expirationMillis) {
+      switch (this) {
+        case AWS:
+          return new AwsCredential(id + "-ak", id + "-sk", id + "-st", expirationMillis, prefix);
+        case AZURE:
+          return new AzureCredential(id + "-sas", expirationMillis, prefix);
+        case GCS:
+          return new GcsCredential(id + "-oauth", expirationMillis, prefix);
+        default:
+          throw new IllegalStateException("Unhandled cloud: " + this);
+      }
+    }
+
+    GenericCredentialProvider provider(Configuration conf) {
+      switch (this) {
+        case AWS:
+          return new AwsVendedTokenProvider(conf);
+        case AZURE:
+          AbfsVendedTokenProvider azure = new AbfsVendedTokenProvider();
+          azure.initialize(conf, "account.dfs.core.windows.net");
+          return azure;
+        case GCS:
+          GcsVendedTokenProvider gcs = new GcsVendedTokenProvider();
+          gcs.setConf(conf);
+          return gcs;
+        default:
+          throw new IllegalStateException("Unhandled cloud: " + this);
+      }
+    }
+
+    void assertResolvedCreds(
+        GenericCredentialProvider provider, GenericCredential expected, String expectedPrefix) {
+      // Exercise the Hadoop-facing API before inspecting the cached credential.
+      switch (this) {
+        case AWS:
+          AwsCredential aws = (AwsCredential) expected;
+          AwsSessionCredentials resolved =
+              (AwsSessionCredentials) ((AwsVendedTokenProvider) provider).resolveCredentials();
+          assertThat(resolved.accessKeyId()).isEqualTo(aws.accessKeyId());
+          assertThat(resolved.secretAccessKey()).isEqualTo(aws.secretAccessKey());
+          assertThat(resolved.sessionToken()).isEqualTo(aws.sessionToken());
+          break;
+        case AZURE:
+          assertThat(
+                  ((AbfsVendedTokenProvider) provider)
+                      .getSASToken("account", "container", "path", "operation"))
+              .isEqualTo(((AzureCredential) expected).sasToken());
+          break;
+        case GCS:
+          AccessToken token = ((GcsVendedTokenProvider) provider).getAccessToken();
+          assertThat(token.getToken()).isEqualTo(((GcsCredential) expected).oauthToken());
+          assertThat(token.getExpirationTime().toEpochMilli())
+              .isEqualTo(expected.expirationTimeMillis());
+          break;
+        default:
+          throw new IllegalStateException("Unhandled cloud: " + this);
+      }
+      GenericCredential credential = provider.accessCredentials();
+      assertThat(credential.prefix()).isEqualTo(expectedPrefix);
+      assertThat(credential.expirationTimeMillis()).isEqualTo(expected.expirationTimeMillis());
+    }
+  }
 
   @BeforeEach
   @AfterEach
@@ -44,159 +161,141 @@ class CredPropsRoundTripTest {
     CredScopedFileSystem.clearCacheForTesting();
   }
 
-  @Test
-  void singleCredentialRoundTripsThroughCredScopedFileSystemAndProvider() throws Exception {
-    AwsCredential credential =
-        new AwsCredential("access-key", "secret-key", "session-token", null, LOCATION);
-    CredPropsUtil.genericCredFetcherFactory = (apiClient, credId) -> () -> List.of(credential);
+  @ParameterizedTest
+  @EnumSource(Cloud.class)
+  void singleCredentialRoundTripsThroughCredScopedFileSystemAndProvider(Cloud cloud)
+      throws Exception {
+    GenericCredential credential = cloud.credential("initial", cloud.location());
+    mockFetcher(credential);
 
-    Configuration initialConf = new Configuration(false);
-    initialConf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
-    initialConf.set("fs.s3.impl", RawLocalFileSystem.class.getName());
-    Map<String, String> props =
-        CredPropsUtil.createTableCredProps(
-            /* renewCredEnabled= */ true,
-            /* credScopedFsEnabled= */ true,
-            initialConf,
-            "s3",
-            /* apiClient= */ null,
-            "http://uc",
-            TokenProvider.create(Map.of("type", "static", "token", "token")),
-            "table-id",
-            UCCredentialHadoopConfs.TableOperation.READ,
-            Map.of());
-
-    Configuration confWithCreds = new Configuration(false);
-    props.forEach(confWithCreds::set);
-    CredScopedFileSystem fs = new CredScopedFileSystem();
-    fs.initialize(new URI(LOCATION + "/part-0.parquet"), confWithCreds);
-
-    Configuration delegateConf = fs.getDelegate().getConf();
-    AwsVendedTokenProvider provider = new AwsVendedTokenProvider(delegateConf);
-    AwsSessionCredentials resolved = (AwsSessionCredentials) provider.resolveCredentials();
-
-    assertThat(provider.accessCredentials().prefix()).isEqualTo(LOCATION);
-    assertThat(resolved.accessKeyId()).isEqualTo("access-key");
-    assertThat(resolved.secretAccessKey()).isEqualTo("secret-key");
-    assertThat(resolved.sessionToken()).isEqualTo("session-token");
+    Configuration delegateConf =
+        getDelegateFileSystemConf(
+            new URI(cloud.location() + "/part-0.parquet"), createTableCredProps(cloud));
+    cloud.assertResolvedCreds(cloud.provider(delegateConf), credential, cloud.location());
 
     // The seeded single credential renews once it enters the renewal lead window.
-    AwsCredential renewed =
-        new AwsCredential("renewed-ak", "renewed-sk", "renewed-st", null, LOCATION);
-    assertProviderRenews(delegateConf, renewed, renewed);
+    GenericCredential renewed = cloud.credential("renewed", cloud.location());
+    assertProviderRenews(cloud, delegateConf, "initial", /* isSeeded= */ true, renewed, renewed);
   }
 
-  @Test
-  void multipleCredentialPrefixesRoundTripThroughCredScopedFileSystem() throws Exception {
-    AwsCredential parent =
-        new AwsCredential("parent-ak", "parent-sk", "parent-st", null, "s3://bucket");
-    AwsCredential child = new AwsCredential("child-ak", "child-sk", "child-st", null, LOCATION);
-    CredPropsUtil.genericCredFetcherFactory = (apiClient, credId) -> () -> List.of(parent, child);
+  @ParameterizedTest
+  @EnumSource(Cloud.class)
+  void multipleCredentialPrefixesRoundTripThroughCredScopedFileSystem(Cloud cloud)
+      throws Exception {
+    GenericCredential parent = cloud.credential("parent", cloud.root);
+    GenericCredential child = cloud.credential("child", cloud.location());
+    mockFetcher(parent, child);
 
-    Configuration initialConf = new Configuration(false);
-    initialConf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
-    initialConf.set("fs.s3.impl", RawLocalFileSystem.class.getName());
-    Map<String, String> props =
-        CredPropsUtil.createTableCredProps(
-            /* renewCredEnabled= */ true,
-            /* credScopedFsEnabled= */ true,
-            initialConf,
-            "s3",
-            /* apiClient= */ null,
-            "http://uc",
-            TokenProvider.create(Map.of("type", "static", "token", "token")),
-            "table-id",
-            UCCredentialHadoopConfs.TableOperation.READ,
-            Map.of());
-
-    Configuration confWithCreds = new Configuration(false);
-    props.forEach(confWithCreds::set);
-
-    CredScopedFileSystem fs = new CredScopedFileSystem();
-    fs.initialize(new URI(LOCATION + "/part-0.parquet"), confWithCreds);
-
-    Configuration delegateConf = fs.getDelegate().getConf();
+    Configuration delegateConf =
+        getDelegateFileSystemConf(
+            new URI(cloud.location() + "/part-0.parquet"), createTableCredProps(cloud));
     assertThat(delegateConf.get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY))
-        .isEqualTo(LOCATION);
-    assertThat(delegateConf.get(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY)).isNull();
-    assertThat(delegateConf.get(UCHadoopConfConstants.S3A_INIT_SECRET_KEY)).isNull();
-    assertThat(delegateConf.get(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN)).isNull();
+        .isEqualTo(cloud.location());
+    cloud.initialCredentialKeys.forEach(key -> assertThat(delegateConf.get(key)).isNull());
 
     TableCredId expectedCredId =
         new TableCredId(
-            delegateConf.get(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY), "table-id", "READ");
+            delegateConf.get(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY),
+            TABLE_ID,
+            TABLE_OPERATION.name());
     expectedCredId
         .props()
         .forEach((key, value) -> assertThat(delegateConf.get(key)).isEqualTo(value));
 
     GenericCredentialFetcher fetcher = mock(GenericCredentialFetcher.class);
     when(fetcher.createCredentials()).thenReturn(List.of(parent, child));
-
     try (MockedStatic<GenericCredentialFetcher> mockedFetcher =
         mockStatic(GenericCredentialFetcher.class)) {
       mockedFetcher.when(() -> GenericCredentialFetcher.create(delegateConf)).thenReturn(fetcher);
-
-      AwsVendedTokenProvider provider = new AwsVendedTokenProvider(delegateConf);
-      AwsSessionCredentials resolved = (AwsSessionCredentials) provider.resolveCredentials();
-
-      assertThat(provider.accessCredentials().prefix()).isEqualTo(LOCATION);
-      assertThat(resolved.accessKeyId()).isEqualTo("child-ak");
-      assertThat(resolved.secretAccessKey()).isEqualTo("child-sk");
-      assertThat(resolved.sessionToken()).isEqualTo("child-st");
+      cloud.assertResolvedCreds(cloud.provider(delegateConf), child, cloud.location());
     }
 
     // The selected child credential re-fetches and re-selects when it enters the renewal window.
     // Vend a non-covering sibling plus the covering child so the provider re-selects on renewal.
-    AwsCredential sibling =
-        new AwsCredential("sibling-ak", "sibling-sk", "sibling-st", null, "s3://uncovered-sibling");
-    AwsCredential renewedChild =
-        new AwsCredential("child2-ak", "child2-sk", "child2-st", null, LOCATION);
-    assertProviderRenews(delegateConf, renewedChild, sibling, renewedChild);
+    GenericCredential sibling = cloud.credential("sibling", cloud.root + "/uncovered-sibling");
+    GenericCredential renewedChild = cloud.credential("child2", cloud.location());
+    assertProviderRenews(
+        cloud, delegateConf, "child", /* isSeeded= */ false, renewedChild, sibling, renewedChild);
   }
 
   @ParameterizedTest
-  @NullAndEmptySource
-  @ValueSource(strings = LOCATION)
-  void singleVendedCredentialRoundTripsWithoutRequiringUriCoverage(String credentialPrefix)
-      throws Exception {
-    AwsCredential credential =
-        new AwsCredential("access-key", "secret-key", "session-token", null, credentialPrefix);
+  @MethodSource("cloudsAndPrefixes")
+  void singleVendedCredentialRoundTripsWithoutRequiringUriCoverage(
+      Cloud cloud, String credentialPrefix) throws Exception {
+    GenericCredential credential = cloud.credential("initial", credentialPrefix);
     mockFetcher(credential);
-
-    Configuration confWithCreds = createTableCredProps();
 
     Configuration delegateConf =
         getDelegateFileSystemConf(
-            new URI("s3://totally-different-bucket/uncovered/part-0.parquet"), confWithCreds);
-
-    AwsVendedTokenProvider provider = new AwsVendedTokenProvider(delegateConf);
-    assertResolvedCreds(
-        provider,
-        credential,
-        credentialPrefix == null || credentialPrefix.isEmpty() ? null : credentialPrefix);
+            new URI(cloud.root.replace("://", "://other-") + "/uncovered/part-0.parquet"),
+            createTableCredProps(cloud));
+    cloud.assertResolvedCreds(
+        cloud.provider(delegateConf), credential, normalizePrefix(credentialPrefix));
 
     // A single vended credential renews without selection, regardless of prefix coverage.
-    AwsCredential renewed =
-        new AwsCredential("renewed-ak", "renewed-sk", "renewed-st", null, credentialPrefix);
-    assertProviderRenews(delegateConf, renewed, renewed);
+    GenericCredential renewed = cloud.credential("renewed", credentialPrefix);
+    assertProviderRenews(cloud, delegateConf, "initial", /* isSeeded= */ true, renewed, renewed);
   }
 
-  @Test
-  void multiCredentialRequiresCoveringPrefix() throws Exception {
-    mockFetcher(
-        new AwsCredential("ak-a", "sk-a", "st-a", null, "s3://bucket/a"),
-        new AwsCredential("ak-b", "sk-b", "st-b", null, "s3://bucket/b"));
-    Configuration conf = createTableCredProps();
+  @ParameterizedTest
+  @EnumSource(Cloud.class)
+  void credentialWithoutExpirationRoundTrips(Cloud cloud) throws Exception {
+    GenericCredential credential = cloud.credential("initial", cloud.location(), null);
+    mockFetcher(credential);
+    Configuration delegateConf =
+        getDelegateFileSystemConf(
+            new URI(cloud.location() + "/part-0.parquet"), createTableCredProps(cloud));
+    // The encoder cache setting is not propagated to the decoded provider configuration.
+    delegateConf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
+    assertThat(delegateConf.get(cloud.expirationKey)).isNull();
+    cloud.initialCredentialKeys.forEach(key -> assertThat(delegateConf.get(key)).isNotNull());
+
+    GenericCredential fetched = cloud.credential("fetched", cloud.location());
+    GenericCredentialFetcher fetcher = mock(GenericCredentialFetcher.class);
+    when(fetcher.createCredentials()).thenReturn(List.of(fetched));
+    try (MockedStatic<GenericCredentialFetcher> mockedFetcher =
+        mockStatic(GenericCredentialFetcher.class)) {
+      mockedFetcher.when(() -> GenericCredentialFetcher.create(delegateConf)).thenReturn(fetcher);
+      GenericCredentialProvider provider = cloud.provider(delegateConf);
+      verify(fetcher, times(0)).createCredentials();
+      // Azure requires a SAS expiry to seed the provider; AWS and GCS default to no expiry.
+      GenericCredential expected =
+          cloud == Cloud.AZURE
+              ? fetched
+              : cloud.credential("initial", cloud.location(), Long.MAX_VALUE);
+      cloud.assertResolvedCreds(provider, expected, cloud.location());
+      verify(fetcher, times(cloud == Cloud.AZURE ? 1 : 0)).createCredentials();
+    }
+  }
+
+  private static Stream<Arguments> cloudsAndPrefixes() {
+    return Arrays.stream(Cloud.values())
+        .flatMap(
+            cloud ->
+                Stream.of(null, "", cloud.location()).map(prefix -> Arguments.of(cloud, prefix)));
+  }
+
+  @ParameterizedTest
+  @EnumSource(Cloud.class)
+  void multiCredentialRequiresCoveringPrefix(Cloud cloud) throws Exception {
+    mockFetcher(cloud.credential("a", cloud.root + "/a"), cloud.credential("b", cloud.root + "/b"));
+    Configuration conf = createTableCredProps(cloud);
 
     assertThatThrownBy(
-            () -> getDelegateFileSystemConf(new URI("s3://bucket/uncovered/part-0.parquet"), conf))
+            () ->
+                getDelegateFileSystemConf(new URI(cloud.root + "/uncovered/part-0.parquet"), conf))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("No credential covers storage location");
   }
 
   /** Performs a renewal to ensure the provider supplies the correct credential. */
   private static void assertProviderRenews(
-      Configuration delegateConf, AwsCredential expected, GenericCredential... vendedCredentials)
+      Cloud cloud,
+      Configuration delegateConf,
+      String originalId,
+      boolean isSeeded,
+      GenericCredential expected,
+      GenericCredential... vendedCredentials)
       throws Exception {
     String clockName = UUID.randomUUID().toString();
     Clock clock = Clock.getManualClock(clockName);
@@ -207,54 +306,59 @@ class CredPropsRoundTripTest {
       conf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
       conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
       conf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1_000L);
-      // Expire any seeded initial credential so the first access must renew from the fetcher.
-      conf.setLong(
-          UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME, clock.now().toEpochMilli() + 500L);
+      long expirationMillis = clock.now().toEpochMilli() + 2_000L;
+      conf.setLong(cloud.expirationKey, expirationMillis);
+      GenericCredential initial = cloud.credential(originalId, expected.prefix(), expirationMillis);
+      cloud.initialCredentialKeys.forEach(
+          key ->
+              assertThat(conf.get(key) != null).as("seeded property %s", key).isEqualTo(isSeeded));
 
       GenericCredentialFetcher fetcher = mock(GenericCredentialFetcher.class);
-      when(fetcher.createCredentials()).thenReturn(List.of(vendedCredentials));
+      if (isSeeded) {
+        when(fetcher.createCredentials()).thenReturn(List.of(vendedCredentials));
+      } else {
+        when(fetcher.createCredentials()).thenReturn(List.of(initial), List.of(vendedCredentials));
+      }
 
       try (MockedStatic<GenericCredentialFetcher> mockedFetcher =
           mockStatic(GenericCredentialFetcher.class)) {
         mockedFetcher.when(() -> GenericCredentialFetcher.create(conf)).thenReturn(fetcher);
-        AwsVendedTokenProvider provider = new AwsVendedTokenProvider(conf);
+        GenericCredentialProvider provider = cloud.provider(conf);
 
-        // Advance past the seeded credential's expiry so the next access renews from the fetcher.
-        clock.sleep(Duration.ofMillis(1_000L));
-        assertResolvedCreds(provider, expected, expected.prefix());
+        cloud.assertResolvedCreds(provider, initial, normalizePrefix(initial.prefix()));
+        verify(fetcher, times(isSeeded ? 0 : 1)).createCredentials();
+
+        // Enter the renewal lead window while the original credential is still unexpired.
+        clock.sleep(Duration.ofMillis(1_500L));
+        cloud.assertResolvedCreds(provider, expected, expected.prefix());
+        verify(fetcher, times(isSeeded ? 1 : 2)).createCredentials();
       }
     } finally {
       Clock.removeManualClock(clockName);
     }
   }
 
-  private static void assertResolvedCreds(
-      AwsVendedTokenProvider provider, AwsCredential expected, String expectedPrefix) {
-    AwsSessionCredentials resolved = (AwsSessionCredentials) provider.resolveCredentials();
-
-    assertThat(provider.accessCredentials().prefix()).isEqualTo(expectedPrefix);
-    assertThat(resolved.accessKeyId()).isEqualTo(expected.accessKeyId());
-    assertThat(resolved.secretAccessKey()).isEqualTo(expected.secretAccessKey());
-    assertThat(resolved.sessionToken()).isEqualTo(expected.sessionToken());
+  private static String normalizePrefix(String prefix) {
+    return prefix == null || prefix.isEmpty() ? null : prefix;
   }
 
   /** Runs the real encoder for a renewable table request against the current fetcher. */
-  private static Configuration createTableCredProps() throws Exception {
+  private static Configuration createTableCredProps(Cloud cloud) throws Exception {
     Configuration encoderConf = new Configuration(false);
     // Disable the credential cache so each test uses a fresh fetcher.
     encoderConf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
-    encoderConf.set("fs.s3.impl", RawLocalFileSystem.class.getName());
+    encoderConf.set("fs." + cloud.scheme + ".impl", RawLocalFileSystem.class.getName());
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             /* renewCredEnabled= */ true,
             /* credScopedFsEnabled= */ true,
             encoderConf,
-            "s3",
+            cloud.scheme,
             /* apiClient= */ null,
             "http://uc",
             TokenProvider.create(Map.of("type", "static", "token", "tok")),
-            "tid-1",
-            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
+            TABLE_ID,
+            TABLE_OPERATION,
             Map.of());
 
     Configuration conf = new Configuration(false);
