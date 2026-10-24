@@ -40,8 +40,14 @@ final class MySqlDatabases extends TemplateDatabases {
     // The root user may create and drop databases; the default test user may not.
     return new MySQLContainer<>(image)
         .withUsername("root")
+        // Test-only speed settings (data is thrown away):
         .withCommand(
-            "--innodb-flush-log-at-trx-commit=0", "--skip-log-bin", "--innodb-doublewrite=OFF");
+            // Flush the redo log about once a second instead of at every commit.
+            "--innodb-flush-log-at-trx-commit=0",
+            // No binary log (no replication or point-in-time recovery needed).
+            "--skip-log-bin",
+            // No doublewrite buffer (it only guards against torn pages on a crash).
+            "--innodb-doublewrite=OFF");
   }
 
   @Override

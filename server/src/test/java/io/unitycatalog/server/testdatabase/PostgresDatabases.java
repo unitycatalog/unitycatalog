@@ -25,12 +25,16 @@ final class PostgresDatabases extends TemplateDatabases {
   @Override
   JdbcDatabaseContainer<?> newContainer(String image) {
     return new PostgreSQLContainer<>(image)
+        // Test-only speed settings (data is thrown away):
         .withCommand(
             "postgres",
+            // Do not wait for writes to reach the disk.
             "-c",
             "fsync=off",
+            // Report a commit before its WAL record is on disk.
             "-c",
             "synchronous_commit=off",
+            // No full page images in the WAL (they only guard against torn pages on a crash).
             "-c",
             "full_page_writes=off");
   }
