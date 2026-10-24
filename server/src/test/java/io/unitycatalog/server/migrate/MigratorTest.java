@@ -283,7 +283,7 @@ public class MigratorTest {
   }
 
   /** Flyway creates its history table with quoted lower-case names. */
-  private static String quote(TestDatabase db) {
+  static String quote(TestDatabase db) {
     try (Connection connection = db.dataSource().getConnection()) {
       return connection.getMetaData().getIdentifierQuoteString();
     } catch (SQLException e) {
