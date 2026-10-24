@@ -15,8 +15,9 @@ final class PostgresDatabases extends TemplateDatabases {
   /** The container for the selected PostgreSQL database, started on first use. */
   static synchronized PostgresDatabases get() {
     if (instance == null) {
-      instance = new PostgresDatabases(SupportedDatabase.selected());
-      instance.start();
+      PostgresDatabases created = new PostgresDatabases(SupportedDatabase.selected());
+      created.start();
+      instance = created;
     }
     return instance;
   }

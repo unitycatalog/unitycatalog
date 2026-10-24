@@ -484,9 +484,7 @@ lazy val server = (project in file("server"))
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
 
       // Integration testing
-      "org.testcontainers" % "mysql" % testcontainersVersion % Test,
       "org.testcontainers" % "junit-jupiter" % testcontainersVersion % Test,
-      "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
 
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
