@@ -2,6 +2,7 @@ package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -14,14 +15,15 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.TransactionRollbackException;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
+import io.unitycatalog.server.persist.dao.StagingTableDAO;
+import io.unitycatalog.server.testdatabase.SupportedDatabase;
+import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import io.unitycatalog.server.testdatabase.TestDatabases;
-import io.unitycatalog.server.utils.ServerProperties;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Date;
 import java.util.Optional;
-import java.util.Properties;
+import java.util.Random;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.hibernate.Session;
@@ -33,7 +35,6 @@ import org.hibernate.dialect.PostgreSQLDialect;
 import org.hibernate.engine.jdbc.spi.JdbcServices;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.exception.GenericJDBCException;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -289,27 +290,38 @@ public class TransactionManagerTest {
   public class IsolationLevelWithRealDatabaseTest {
 
     private static SessionFactory realSessionFactory;
-    private static TestDatabase testDatabase;
+    @TempDatabase private static TestDatabase testDatabase;
 
     @BeforeAll
     public static void setUp() {
-      ServerProperties serverProperties = new ServerProperties(new Properties());
-      testDatabase = TestDatabases.newDatabase();
-      realSessionFactory =
-          testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
-    }
-
-    @AfterAll
-    public static void tearDown() {
-      testDatabase.close();
+      realSessionFactory = testDatabase.sessionFactory();
     }
 
     @Test
     public void testIsolationLevelIsSetAndRestored() {
       final int[] isolationDuringTx = new int[1];
       final int[] isolationAfter = new int[1];
+      final int[] defaultIsolation = new int[1];
 
-      // Run a transaction with REPEATABLE_READ
+      // The database's default isolation level (READ_COMMITTED on H2 and PostgreSQL,
+      // REPEATABLE_READ on MySQL)
+      TransactionManager.executeWithTransaction(
+          realSessionFactory,
+          session -> {
+            session.doWork(
+                connection -> defaultIsolation[0] = connection.getTransactionIsolation());
+            return null;
+          },
+          "test",
+          true);
+
+      // Request a level other than the default, or "restored" cannot be told from "never changed"
+      int requested =
+          defaultIsolation[0] == Connection.TRANSACTION_REPEATABLE_READ
+              ? Connection.TRANSACTION_SERIALIZABLE
+              : Connection.TRANSACTION_REPEATABLE_READ;
+
+      // Run a transaction with the requested level
       TransactionManager.executeWithTransaction(
           realSessionFactory,
           session -> {
@@ -319,10 +331,10 @@ public class TransactionManagerTest {
           },
           "test",
           true,
-          Optional.of(Connection.TRANSACTION_REPEATABLE_READ));
+          Optional.of(requested));
 
-      // Check the isolation level was set to REPEATABLE_READ during the transaction
-      assertThat(isolationDuringTx[0]).isEqualTo(Connection.TRANSACTION_REPEATABLE_READ);
+      // Check the requested isolation level was set during the transaction
+      assertThat(isolationDuringTx[0]).isEqualTo(requested);
 
       // Run another transaction without custom isolation to verify restore
       TransactionManager.executeWithTransaction(
@@ -334,8 +346,8 @@ public class TransactionManagerTest {
           "test",
           true);
 
-      // Original isolation level should have been restored (H2 default is READ_COMMITTED)
-      assertThat(isolationAfter[0]).isEqualTo(Connection.TRANSACTION_READ_COMMITTED);
+      // Original isolation level should have been restored
+      assertThat(isolationAfter[0]).isEqualTo(defaultIsolation[0]);
     }
 
     @Test
@@ -387,6 +399,49 @@ public class TransactionManagerTest {
 
       // Must see version 2 — not a stale snapshot showing only version 1
       assertThat(maxVersion).isEqualTo(2L);
+    }
+
+    /**
+     * PostgreSQL limits a btree index entry to 2,704 bytes. A longer staging location fails the
+     * insert into idx_staging_location, which the request caused, so it is INVALID_ARGUMENT.
+     */
+    @Test
+    public void testValueOverIndexLimitIsInvalidArgument() {
+      assumeTrue(SupportedDatabase.selected() == SupportedDatabase.POSTGRES_18);
+      StagingTableDAO stagingTableDAO = new StagingTableDAO();
+      stagingTableDAO.setDefaultFields();
+      stagingTableDAO.setId(UUID.randomUUID());
+      stagingTableDAO.setName("staging_table");
+      // 1,917 characters and 3,817 bytes: fits varchar(2048) but not an index entry.
+      stagingTableDAO.setStagingLocation("s3://test-bucket/" + randomTwoByteCharacters(1900));
+
+      assertThatThrownBy(
+              () ->
+                  TransactionManager.executeWithTransaction(
+                      realSessionFactory,
+                      session -> {
+                        session.persist(stagingTableDAO);
+                        return null;
+                      },
+                      "Error creating staging table",
+                      /* readOnly= */ false))
+          .isInstanceOf(BaseException.class)
+          .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_ARGUMENT)
+          .hasMessageContaining("index row size");
+    }
+
+    /**
+     * Returns random letters that each take 2 bytes in UTF-8. They are random because PostgreSQL
+     * compresses an index entry before it checks the size.
+     */
+    private static String randomTwoByteCharacters(int count) {
+      // Latin Extended-A, Latin Extended-B and IPA Extensions: U+0100 to U+02AF.
+      Random random = new Random(/* seed= */ 0);
+      StringBuilder characters = new StringBuilder();
+      for (int i = 0; i < count; i++) {
+        characters.append((char) (0x0100 + random.nextInt(0x02B0 - 0x0100)));
+      }
+      return characters.toString();
     }
 
     private DeltaCommitDAO buildCommitDAO(UUID tableId, long version) {

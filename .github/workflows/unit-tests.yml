@@ -42,10 +42,12 @@ jobs:
     # Build a human-readable job name from the matrix entry, e.g.:
     #   "All tests (Spark 4.0.0, Delta 4.3.1)"
     #   "[Non Blocking] Spark tests (Spark 4.2.0, Delta master-SNAPSHOT)"
+    #   "All tests (Spark 4.0.0, Delta 4.3.1, POSTGRES_18)"
+    #   "All tests (Spark 4.0.0, Delta 4.3.1, MYSQL_8)"
     name: >-
       ${{ matrix.non-blocking && '[Non Blocking]' || '' }}
       ${{ matrix.validation-mode == 'spark-tests' && 'Spark tests' || 'All tests' }}
-      (Spark ${{ matrix.spark-version }}${{ matrix.delta-version != '' && format(', Delta {0}', matrix.delta-version) || '' }})
+      (Spark ${{ matrix.spark-version }}${{ matrix.delta-version != '' && format(', Delta {0}', matrix.delta-version) || '' }}${{ matrix.test-database && format(', {0}', matrix.test-database) || '' }})
     continue-on-error: ${{ matrix.non-blocking || false }}
     strategy:
       fail-fast: false
@@ -56,6 +58,20 @@ jobs:
             # Primary combo: runs ALL tests (unit, spark, license). Other combos run only
             # spark connector tests since unit/license checks don't depend on Spark/Delta.
             validation-mode: "all-tests"
+            non-blocking: false
+            spark-source-build: false
+          - spark-version: "4.0.0"
+            delta-version: "4.3.1"
+            # Primary combo on PostgreSQL 18: every test project runs on PostgreSQL.
+            validation-mode: "all-tests"
+            test-database: "POSTGRES_18"
+            non-blocking: false
+            spark-source-build: false
+          - spark-version: "4.0.0"
+            delta-version: "4.3.1"
+            # Primary combo on MySQL 8.4: every test project runs on MySQL.
+            validation-mode: "all-tests"
+            test-database: "MYSQL_8"
             non-blocking: false
             spark-source-build: false
           - spark-version: "4.1.0"
@@ -91,4 +107,5 @@ jobs:
           spark-version: ${{ matrix.spark-version }}
           delta-version: ${{ matrix.delta-version }}
           validation-mode: ${{ matrix.validation-mode }}
+          test-database: ${{ matrix.test-database || 'H2' }}
           use-spark-source-cache: ${{ matrix.spark-source-build }}
