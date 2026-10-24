@@ -29,18 +29,21 @@ import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.service.delta.DeltaConsts;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.service.delta.DeltaUniformUtils;
+import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
@@ -50,6 +53,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
 import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.Transaction;
 import org.hibernate.query.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -1256,5 +1261,48 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         ErrorCode.INVALID_ARGUMENT,
         "Uniform metadata must be set when 'delta.universalFormat.enabledFormats' includes"
             + " 'iceberg'.");
+  }
+
+  // MySQL's REPEATABLE READ answers a plain read from the transaction's first snapshot, so this
+  // catches a commit that re-reads the locked table row without a locking read. (The batch DELETE
+  // in DeltaCommitRepository is a derived table because MySQL rejects LIMIT directly inside an
+  // IN(...) subquery, error 1235, and a subquery selecting from the table being deleted from, error
+  // 1093; every test here that deletes commits covers that.)
+  @Test
+  public void testCommitThatWaitedForTheLockReadsTheOtherCommit() {
+    TableInfo table =
+        createTestingTable("lock_table", TableType.MANAGED, Optional.empty(), tableOperations);
+    UUID tableId = UUID.fromString(table.getTableId());
+    SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
+    setMetadataLocation(sessionFactory, tableId, "m0");
+
+    try (Session commit = sessionFactory.openSession()) {
+      Transaction tx = commit.beginTransaction();
+      if (SupportedDatabase.selected() == SupportedDatabase.MYSQL_8) {
+        // Without REPEATABLE READ this test would pass without testing anything.
+        assertThat(commit.doReturningWork(Connection::getTransactionIsolation))
+            .isEqualTo(Connection.TRANSACTION_REPEATABLE_READ);
+      }
+      // The first read takes this transaction's snapshot: m0.
+      TableInfoDAO dao = commit.get(TableInfoDAO.class, tableId);
+      assertThat(dao.getIcebergMetadataLocation()).isEqualTo("m0");
+      // Another commit lands m1 before this one takes the lock.
+      setMetadataLocation(sessionFactory, tableId, "m1");
+
+      RepositoryUtils.lockTableForCommit(
+          commit, dao, tableId, Optional.empty(), ErrorCode.UPDATE_REQUIREMENT_CONFLICT);
+
+      assertThat(dao.getIcebergMetadataLocation()).isEqualTo("m1");
+      tx.rollback();
+    }
+  }
+
+  private static void setMetadataLocation(
+      SessionFactory sessionFactory, UUID tableId, String location) {
+    try (Session session = sessionFactory.openSession()) {
+      Transaction tx = session.beginTransaction();
+      session.get(TableInfoDAO.class, tableId).setIcebergMetadataLocation(location);
+      tx.commit();
+    }
   }
 }
