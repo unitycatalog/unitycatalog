@@ -9,7 +9,8 @@ import java.util.Optional;
  */
 public enum SupportedDatabase {
   H2(null),
-  POSTGRES_18("postgres:18-alpine");
+  POSTGRES_18("postgres:18-alpine"),
+  MYSQL_8("mysql:8.4");
 
   public static final String ENV = "UC_TEST_DATABASE";
 
