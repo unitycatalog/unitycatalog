@@ -106,7 +106,10 @@ lazy val commonSettings = Seq(
   },
 
   // Test configs
-  Test / testOptions  := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q"), Tests.Filter(name => !(name startsWith s"$orgName.server.base"))),
+  // Tests tagged "upgrades" run released server images in Docker; testUpgrades* runs them.
+  Test / testOptions  := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q"), Tests.Argument(jupiter, "--exclude-tags=upgrades"), Tests.Filter(name => !(name startsWith s"$orgName.server.base"))),
+  // The coverage run (jacoco, in CI) has its own test options.
+  Jacoco / testOptions += Tests.Argument(jupiter, "--exclude-tags=upgrades"),
   Test / logLevel := util.Level.Info,
   Test / publishArtifact := false,
   fork := true,
@@ -907,3 +910,18 @@ def testOnDatabase(database: String): String =
   s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database") ; test"""
 addCommandAlias("testPostgres18", testOnDatabase("POSTGRES_18"))
 addCommandAlias("testMySQL8", testOnDatabase("MYSQL_8"))
+
+// The JUnit 5 test framework, for its tag options.
+lazy val jupiter = TestFramework("net.aichler.jupiter.api.JupiterFramework")
+// sbt-jacoco's test configuration, which doesn't take Test's test options.
+lazy val Jacoco = config("jacoco")
+
+// Runs only the upgrade tests (tag "upgrades") on one test database. UC_TEST_UPGRADE_PATHS picks
+// the paths, UC_TEST_BASE_REF the git ref UpgradePath.BASE is built from.
+def testUpgradesOn(database: String): String =
+  s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database")""" +
+    """ ; set server / Test / testOptions := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q"), Tests.Argument(TestFramework("net.aichler.jupiter.api.JupiterFramework"), "--include-tags=upgrades"))""" +
+    " ; server/test"
+addCommandAlias("testUpgrades", testUpgradesOn("H2"))
+addCommandAlias("testUpgradesPostgres18", testUpgradesOn("POSTGRES_18"))
+addCommandAlias("testUpgradesMySQL8", testUpgradesOn("MYSQL_8"))
