@@ -133,12 +133,11 @@ This guide outlines how to deploy the Unity Catalog server.
 
 ### Existing deployments and column type changes
 
-The server uses `hibernate.hbm2ddl.auto=update`. Hibernate can create missing tables and
-columns, but **it does not change the type or length of a column that already exists**.
+Flyway manages the database schema. See [Upgrading the database schema](upgrades.md).
 
 `uc_properties.property_value` used to be created as `varchar(255)`. Table and view properties
 (user `TBLPROPERTIES`, Spark `view.sqlConfig.*`, and any other REST-sent property) can exceed
-that. New installs get a wider column from Hibernate. **Existing databases keep `varchar(255)`
+that. New installs get a wider column from the schema steps. **Existing databases keep `varchar(255)`
 until you run one of the statements below**; upgrading the server JAR alone has no effect.
 
 PostgreSQL:
