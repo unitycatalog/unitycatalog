@@ -64,6 +64,15 @@ class HibernateConfiguratorTest {
     assertThat(HibernateConfigurator.resolveConnectionUsername(properties)).isEqualTo("alice");
   }
 
+  @Test
+  void neverLetsHibernateChangeTheSchema() {
+    Properties properties = h2Properties();
+    properties.setProperty("hibernate.hbm2ddl.auto", "update");
+
+    assertThat(HibernateConfigurator.withSchemaUpdatesOff(properties))
+        .containsEntry("hibernate.hbm2ddl.auto", "none");
+  }
+
   private static Properties h2Properties() {
     Properties properties = new Properties();
     properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
