@@ -2,6 +2,7 @@ package io.unitycatalog.server.migrate;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -31,8 +32,6 @@ public final class Migrator implements AutoCloseable {
 
   /** The version of the 0.7 schema, which Flyway records when it adopts a 0.7 database. */
   private static final String BASELINE_0_7 = "1";
-
-  private static final String HIKARI_PREFIX = "hibernate.hikari.";
 
   private final DataSource dataSource;
   private final DatabaseKind kind;
@@ -68,31 +67,17 @@ public final class Migrator implements AutoCloseable {
    * {@link #close()} closes.
    */
   public static Migrator fromHibernateProperties(Properties hibernateProperties) {
-    Properties hikariProperties = new Properties();
-    hibernateProperties.stringPropertyNames().stream()
-        .filter(name -> name.startsWith(HIKARI_PREFIX))
-        .forEach(
-            name ->
-                hikariProperties.setProperty(
-                    name.substring(HIKARI_PREFIX.length()), hibernateProperties.getProperty(name)));
-    HikariConfig config = new HikariConfig(hikariProperties);
-    String url = hibernateProperties.getProperty("hibernate.connection.url");
-    config.setJdbcUrl(url);
-    config.setUsername(
-        hibernateProperties.getProperty(
-            "hibernate.connection.username",
-            hibernateProperties.getProperty("hibernate.connection.user")));
-    config.setPassword(hibernateProperties.getProperty("hibernate.connection.password"));
-    String driver = hibernateProperties.getProperty("hibernate.connection.driver_class");
-    if (driver != null) {
-      config.setDriverClassName(driver);
-    }
+    HikariConfig config = HibernateConfigurator.hikariConfig(hibernateProperties);
     // The run lock's connection plus Flyway's two.
     config.setMaximumPoolSize(3);
     config.setMinimumIdle(0);
     config.setPoolName("uc-migrate");
     HikariDataSource pool = new HikariDataSource(config);
-    return new Migrator(pool, DatabaseKind.fromJdbcUrl(url), List.of(), pool);
+    return new Migrator(
+        pool,
+        DatabaseKind.fromJdbcUrl(hibernateProperties.getProperty("hibernate.connection.url")),
+        List.of(),
+        pool);
   }
 
   private Flyway flyway(String baselineVersion) { // null: no baselining
@@ -101,6 +86,7 @@ public final class Migrator implements AutoCloseable {
             .dataSource(dataSource)
             .locations(locations)
             .table(HISTORY_TABLE)
+            .failOnMissingLocations(true)
             .cleanDisabled(true)
             .validateMigrationNaming(true);
     if (baselineVersion != null) {
@@ -145,20 +131,25 @@ public final class Migrator implements AutoCloseable {
     return latestVersion(flyway(null).info());
   }
 
-  private static String latestVersion(MigrationInfoService info) {
+  private String latestVersion(MigrationInfoService info) {
     return Arrays.stream(info.all())
         .filter(m -> m.getState().isResolved() && m.getVersion() != null)
         .map(MigrationInfo::getVersion)
         .max(MigrationVersion::compareTo)
         .map(MigrationVersion::getVersion)
-        .orElseThrow();
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    "No schema steps found in "
+                        + String.join(", ", locations)
+                        + ": the server jar is incomplete"));
   }
 
   public List<MigrationInfo> applied() {
     return List.of(flyway(null).info().applied());
   }
 
-  /** The steps {@link #migrate()} would apply. */
+  /** The steps {@link #migrate()} would apply to an empty, 0.7 or pending database. */
   public List<MigrationInfo> pending() {
     List<MigrationInfo> pending = List.of(flyway(null).info().pending());
     if (state() != SchemaState.UNVERSIONED_UC) {
@@ -189,23 +180,9 @@ public final class Migrator implements AutoCloseable {
 
   private MigrationOutcome migrateLocked() {
     SchemaState state = state(); // read under the lock
-    switch (state) {
-      case NOT_UC ->
-          throw new IllegalStateException(
-              "The database has tables but none of Unity Catalog's: not a Unity Catalog database."
-                  + " Point the server at an empty database or a Unity Catalog one.");
-      case AHEAD ->
-          throw new IllegalStateException(
-              "The schema is newer than this release (version "
-                  + currentVersion()
-                  + ", this release ends at "
-                  + latestVersion()
-                  + "). Run the newer release.");
-      case FAILED ->
-          throw new IllegalStateException(
-              "A migration step failed in an earlier run. See docs/server/upgrades.md, then rerun"
-                  + " bin/uc-migrate migrate.");
-      default -> {}
+    String refusal = refusal(state);
+    if (refusal != null) {
+      throw new IllegalStateException(refusal);
     }
     String from = state == SchemaState.UNVERSIONED_UC ? BASELINE_0_7 : currentVersion();
     // EMPTY (also with only casbin_rule): baseline at 0 so V1 runs; UNVERSIONED_UC: baseline at 1.
@@ -215,6 +192,28 @@ public final class Migrator implements AutoCloseable {
             : state == SchemaState.UNVERSIONED_UC ? BASELINE_0_7 : null;
     int applied = flyway(baseline).migrate().migrationsExecuted;
     return new MigrationOutcome(from, currentVersion(), applied);
+  }
+
+  /**
+   * Why neither {@link #migrate()} nor a server can go on in {@code state}, or {@code null} when
+   * {@link #migrate()} can.
+   */
+  public String refusal(SchemaState state) {
+    return switch (state) {
+      case NOT_UC ->
+          "The database has tables but none of Unity Catalog's: not a Unity Catalog database."
+              + " Point the server at an empty database or a Unity Catalog one.";
+      case AHEAD ->
+          "The schema is newer than this release (version "
+              + currentVersion()
+              + ", this release ends at "
+              + latestVersion()
+              + "). Run the newer release.";
+      case FAILED ->
+          "A migration step failed in an earlier run. See docs/server/upgrades.md, then rerun"
+              + " bin/uc-migrate migrate.";
+      default -> null;
+    };
   }
 
   private Set<String> tableNamesLowerCase() {

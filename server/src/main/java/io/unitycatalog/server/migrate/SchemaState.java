@@ -10,7 +10,7 @@ public enum SchemaState {
   PENDING,
   /** A step newer than this build is applied: the database belongs to a newer release. */
   AHEAD,
-  /** Unity Catalog's tables without Flyway's history: a 0.7 (or older) database. */
+  /** Unity Catalog's tables without Flyway's history: a database from 0.7. */
   UNVERSIONED_UC,
   /** Tables, but none of Unity Catalog's. */
   NOT_UC,

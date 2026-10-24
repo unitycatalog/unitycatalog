@@ -5,7 +5,7 @@
 -- converted too when it exists, since the adapter finds the rules to delete by comparing text.
 --
 -- One step with many statements, unlike the other steps: converting a table that is already
--- utf8mb4_0900_bin changes nothing, so rerunning the step after a failure part-way is safe.
+-- utf8mb4_0900_bin changes nothing, so the step is safe on databases created with that collation.
 
 SET FOREIGN_KEY_CHECKS = 0;
 

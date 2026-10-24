@@ -7,8 +7,9 @@ release ships the schema steps it needs, and each step is applied once and recor
 Hibernate no longer changes the schema. If your `etc/conf/hibernate.properties` still sets
 `hibernate.hbm2ddl.auto=update`, the server ignores it and logs a warning. You can delete the line.
 
-A server starts only when the database is on the schema version of its release. Otherwise it
-refuses to start and tells you what to do (see [Messages](#messages)).
+A server starts only when the database is on the schema version of its release, or is empty (it
+then sets up the schema itself). Otherwise it refuses to start and tells you what to do (see
+[Messages](#messages)).
 
 ## Schema versions
 
@@ -20,7 +21,7 @@ refuses to start and tells you what to do (see [Messages](#messages)).
 
 ## Upgrading to a new release
 
-Use these steps for every database (H2, PostgreSQL, MySQL) when you do not deploy with Helm.
+Use these steps for every database (H2, PostgreSQL, MySQL).
 
 1. Look at the state of the database with the new release's tool:
 
@@ -56,7 +57,8 @@ Use these steps for every database (H2, PostgreSQL, MySQL) when you do not deplo
 
 `bin/uc-migrate` reads the database settings from `etc/conf/hibernate.properties`, like the
 server. Run it again at any time: when nothing is pending, it prints `(0 steps)` and changes
-nothing. Only one `migrate` runs at a time per database; a second one waits for the first.
+nothing. On PostgreSQL and MySQL, only one `migrate` runs at a time per database; a second one
+waits for the first.
 
 `State` in the `info` output is one of:
 
@@ -73,8 +75,8 @@ nothing. Only one `migrate` runs at a time per database; a second one waits for 
 ## First start on an empty database
 
 A server that starts on an empty database sets up the schema itself, so a new install needs no
-`bin/uc-migrate` run. When several servers start at the same time, one sets up the schema and the
-others wait for it, then start.
+`bin/uc-migrate` run. On PostgreSQL and MySQL, when several servers start at the same time, one
+sets up the schema and the others wait for it, then start.
 
 ## MySQL: case-sensitive text
 
@@ -89,54 +91,52 @@ tables.
 
 ## Going back to 0.7
 
-Restore the backup you took before `bin/uc-migrate migrate`.
-
-Step 2 widens `uc_function_params.type_json`. Once the column holds function parameter types
-longer than 0.7 allows, 0.7 cannot use it as it is: the 0.7 auto-update would narrow the column
-back and cut those values. Going back to 0.7 after storing such types therefore needs the backup.
+0.7 can run on the upgraded schema: steps 1 and 3 change nothing 0.7 cannot read, and step 2 only
+widens a column. Stop the new release's servers and start 0.7 on the same database.
 
 ## Messages
 
 Messages that `bin/uc-migrate` or the server print, and what to do.
 
-`The database has no schema version (a database from 0.7 or earlier); this release needs version 3. Stop the servers and run bin/uc-migrate migrate.`
-: The server found a 0.7 database. Follow [Upgrading to a new release](#upgrading-to-a-new-release).
+`The database has no schema version (a database from 0.7); this release needs version 3. Stop the servers and run bin/uc-migrate migrate.`
+: (printed by the server) The server found a 0.7 database. Follow
+  [Upgrading to a new release](#upgrading-to-a-new-release).
 
 `The database schema is at version <n>; this release needs version <m>. Stop the servers and run bin/uc-migrate migrate.`
-: The database is behind this release. Follow [Upgrading to a new release](#upgrading-to-a-new-release).
-
-`The schema is newer than this release. Run the newer release.`
-: (printed by the server) The database was upgraded by a newer release than the one you started.
-  Start the newer release again. To go back to an older release, restore a backup taken before
-  the upgrade.
+: (printed by the server) The database is behind this release. Follow
+  [Upgrading to a new release](#upgrading-to-a-new-release).
 
 `The schema is newer than this release (version <n>, this release ends at <m>). Run the newer release.`
-: (printed by `bin/uc-migrate`) Same cause and fix as above.
+: (printed by `bin/uc-migrate` and the server) The database was upgraded by a newer release than
+  the one you ran. Run the newer release again. To go back to an older release, restore a backup
+  taken before the upgrade.
 
 `The database has tables but none of Unity Catalog's: not a Unity Catalog database. Point the server at an empty database or a Unity Catalog one.`
-: `hibernate.connection.url` points at a database that other applications use. Check the URL, or
-  use an empty database for Unity Catalog.
+: (printed by `bin/uc-migrate` and the server) `hibernate.connection.url` points at a database
+  that other applications use. Check the URL, or use an empty database for Unity Catalog.
 
 `A migration step failed in an earlier run. See docs/server/upgrades.md, then rerun bin/uc-migrate migrate.`
-: A step failed and its failure is recorded in the history. Read the error that the failing run
-  printed and fix its cause (for example a full disk or missing privileges for the database
-  user). Then restore the backup you took before the run, and run `bin/uc-migrate migrate` again.
-  Do not edit `flyway_schema_history` by hand.
+: (printed by `bin/uc-migrate` and the server) A step failed and its failure is recorded in the
+  history. Read the error that the failing run printed and fix its cause (for example a full disk
+  or missing privileges for the database user). Then restore the backup you took before the run,
+  and run `bin/uc-migrate migrate` again. Do not edit `flyway_schema_history` by hand.
 
 `Could not take the schema migration lock: <reason>`
 : `bin/uc-migrate` or the server could not get the lock that keeps two runs apart. Check that the
   database is reachable and that its user can run the lock call (`pg_advisory_lock` on
   PostgreSQL, `GET_LOCK` on MySQL).
 
-`MySQL did not grant the lock uc_migrate`
+`MySQL did not grant the schema migration lock`
 : MySQL refused the lock. Check the database and run the command again.
 
 `Could not release the schema migration lock: <reason>`
-: The migration finished, but the lock call failed at the end. The database connection closes the
-  lock when the process exits. Run `bin/uc-migrate info` to see the state.
+: The run finished, but the lock call failed at the end. The database releases the lock when that
+  connection closes, at the latest when the process exits. Run `bin/uc-migrate info` to see the
+  state.
 
 `Could not list the database's tables: <reason>`
-: The tool could not read the database. Check the connection settings and the user's privileges.
+: `bin/uc-migrate` or the server could not read the database. Check the connection settings and
+  the user's privileges.
 
 `Usage: bin/uc-migrate migrate | info`
 : `bin/uc-migrate` takes exactly one argument, `migrate` or `info`.
