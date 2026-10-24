@@ -54,16 +54,12 @@ import java.util.Set;
  * parameters, a user, and a grant to that user on each. {@link #write} creates it through any
  * server's API; {@link #assertReadBack} checks it through another's, as whole objects. It writes
  * only fields {@link io.unitycatalog.server.migrate.SchemaMigrator#BASELINE_RELEASE} stores.
+ *
+ * <p>Each copy is named for the release that writes it ({@code v0.7.0} writes {@code v0_7_0}): its
+ * catalog, its user's email and its storage directories, which are siblings of the other copies'.
  */
 public final class DataSet {
 
-  private static final String CATALOG = "upgrade_catalog";
-  private static final String SCHEMA = CATALOG + ".upgrade_schema";
-  private static final String MANAGED_TABLE = SCHEMA + ".managed_table";
-  private static final String EXTERNAL_TABLE = SCHEMA + ".external_table";
-  private static final String VOLUME = SCHEMA + ".upgrade_volume";
-  private static final String FUNCTION = SCHEMA + ".upgrade_function";
-  private static final String USER = "upgrade-reader@example.com";
   private static final String STORAGE = "file:///tmp/uc-storage/";
   private static final String COMMENT = "kept across upgrades";
   private static final Map<String, String> PROPERTIES = Map.of("upgrade.key", "upgrade value");
@@ -84,21 +80,30 @@ public final class DataSet {
           ColumnTypeName.DECIMAL, "0.00BD",
           ColumnTypeName.NULL, "NULL");
 
-  /** The grant {@link #write} gives {@link #USER} on each securable. */
-  private static final Map<String, Grant> GRANTS =
-      Map.of(
-          CATALOG, new Grant(SecurableType.CATALOG, Privilege.USE_CATALOG),
-          SCHEMA, new Grant(SecurableType.SCHEMA, Privilege.USE_SCHEMA),
-          MANAGED_TABLE, new Grant(SecurableType.TABLE, Privilege.SELECT),
-          EXTERNAL_TABLE, new Grant(SecurableType.TABLE, Privilege.MODIFY),
-          VOLUME, new Grant(SecurableType.VOLUME, Privilege.READ_VOLUME),
-          FUNCTION, new Grant(SecurableType.FUNCTION, Privilege.EXECUTE));
-
   private record Grant(SecurableType type, Privilege privilege) {}
 
-  private DataSet() {}
+  private final String copy;
+  private final String catalog;
+  private final String schema;
+  private final String managedTable;
+  private final String externalTable;
+  private final String volume;
+  private final String function;
+  private final String user;
 
-  public static void write(ApiClient api) {
+  /** The copy {@code release} (a git ref) writes. */
+  public DataSet(String release) {
+    copy = release.replaceAll("\\W", "_");
+    catalog = "upgrade_catalog_" + copy;
+    schema = catalog + ".upgrade_schema";
+    managedTable = schema + ".managed_table";
+    externalTable = schema + ".external_table";
+    volume = schema + ".upgrade_volume";
+    function = schema + ".upgrade_function";
+    user = "upgrade-reader-" + copy + "@example.com";
+  }
+
+  public void write(ApiClient api) {
     try {
       new CatalogsApi(api).createCatalog(as(api, catalog(), CreateCatalog.class));
       new SchemasApi(api).createSchema(as(api, schema(), CreateSchema.class));
@@ -107,9 +112,9 @@ public final class DataSet {
       StagingTableInfo staging =
           tables.createStagingTable(
               new CreateStagingTable()
-                  .catalogName(CATALOG)
-                  .schemaName(name(SCHEMA))
-                  .name(name(MANAGED_TABLE)));
+                  .catalogName(catalog)
+                  .schemaName(name(schema))
+                  .name(name(managedTable)));
       tables.createTable(
           as(
               api,
@@ -126,9 +131,9 @@ public final class DataSet {
           .createUser(
               new UserResource()
                   .displayName("Upgrade reader")
-                  .emails(List.of(new Email().value(USER).primary(true))));
+                  .emails(List.of(new Email().value(user).primary(true))));
       GrantsApi grants = new GrantsApi(api);
-      for (Map.Entry<String, Grant> grant : GRANTS.entrySet()) {
+      for (Map.Entry<String, Grant> grant : grants().entrySet()) {
         grants.update(
             grant.getValue().type(),
             grant.getKey(),
@@ -136,7 +141,7 @@ public final class DataSet {
                 .changes(
                     List.of(
                         new PermissionsChange()
-                            .principal(USER)
+                            .principal(user)
                             .add(List.of(grant.getValue().privilege()))
                             .remove(List.of()))));
       }
@@ -145,46 +150,42 @@ public final class DataSet {
     }
   }
 
-  /** Checks the data {@link #write} wrote; failures name {@code server}, the one that read it. */
-  public static void assertReadBack(ApiClient api, String server) {
+  /** Checks the data {@link #write} wrote; failures name this copy. */
+  public void assertReadBack(ApiClient api) {
     try {
-      assertKept(new CatalogsApi(api).getCatalog(CATALOG), catalog(), "catalog", server);
-      assertKept(new SchemasApi(api).getSchema(SCHEMA), schema(), "schema", server);
+      assertKept(new CatalogsApi(api).getCatalog(catalog), catalog(), "catalog");
+      assertKept(new SchemasApi(api).getSchema(schema), schema(), "schema");
 
       TablesApi tables = new TablesApi(api);
-      TableInfo managed = tables.getTable(MANAGED_TABLE, null, null);
-      assertListKept(managed.getColumns(), managedColumns(), "managed table columns", server);
+      TableInfo managed = tables.getTable(managedTable, null, null);
+      assertListKept(managed.getColumns(), managedColumns(), "managed table columns");
       // Its location is the staging location the server chose.
-      assertKept(
-          managed, managedTable(managed.getTableId()), "managed table", server, "storageLocation");
-      TableInfo external = tables.getTable(EXTERNAL_TABLE, null, null);
-      assertListKept(external.getColumns(), externalColumns(), "external table columns", server);
-      assertKept(external, externalTable(), "external table", server);
+      assertKept(managed, managedTable(managed.getTableId()), "managed table", "storageLocation");
+      TableInfo external = tables.getTable(externalTable, null, null);
+      assertListKept(external.getColumns(), externalColumns(), "external table columns");
+      assertKept(external, externalTable(), "external table");
 
-      assertKept(new VolumesApi(api).getVolume(VOLUME), volume(), "volume", server);
-      FunctionInfo function = new FunctionsApi(api).getFunction(FUNCTION);
+      assertKept(new VolumesApi(api).getVolume(volume), volume(), "volume");
+      FunctionInfo function = new FunctionsApi(api).getFunction(this.function);
       assertListKept(
           function.getInputParams().getParameters(),
           function().getInputParams().getParameters(),
-          "function parameters",
-          server);
+          "function parameters");
       assertListKept(
           function.getReturnParams().getParameters(),
           function().getReturnParams().getParameters(),
-          "function return parameters",
-          server);
-      assertKept(function, function(), "function", server);
+          "function return parameters");
+      assertKept(function, function(), "function");
 
       GrantsApi grants = new GrantsApi(api);
-      for (Map.Entry<String, Grant> grant : GRANTS.entrySet()) {
+      for (Map.Entry<String, Grant> grant : grants().entrySet()) {
         assertKept(
-            grants.get(grant.getValue().type(), grant.getKey(), USER).getPrivilegeAssignments(),
+            grants.get(grant.getValue().type(), grant.getKey(), user).getPrivilegeAssignments(),
             List.of(
                 new PrivilegeAssignment()
-                    .principal(USER)
+                    .principal(user)
                     .privileges(List.of(grant.getValue().privilege()))),
-            "grants on " + grant.getKey(),
-            server);
+            "grants on " + grant.getKey());
       }
     } catch (ApiException e) {
       throw new IllegalStateException("Could not read the data set back", e);
@@ -192,19 +193,17 @@ public final class DataSet {
   }
 
   /** Columns or parameters, whole, in order: a short message for the one that changed. */
-  private static <T> void assertListKept(
-      List<T> actual, List<T> expected, String what, String server) {
-    assertThat(actual).as("%s after %s", what, server).containsExactlyElementsOf(expected);
+  private <T> void assertListKept(List<T> actual, List<T> expected, String what) {
+    assertThat(actual).as("%s %s", what, copy).containsExactlyElementsOf(expected);
   }
 
   /**
    * Asserts {@code actual} equals {@code expected} field by field, but for the {@link #GENERATED}
    * ones and {@code alsoIgnored}.
    */
-  private static void assertKept(
-      Object actual, Object expected, String what, String server, String... alsoIgnored) {
+  private void assertKept(Object actual, Object expected, String what, String... alsoIgnored) {
     assertThat(actual)
-        .as("%s after %s", what, server)
+        .as("%s %s", what, copy)
         .usingRecursiveComparison()
         .ignoringFieldsMatchingRegexes(GENERATED)
         .ignoringFields(alsoIgnored)
@@ -216,38 +215,49 @@ public final class DataSet {
     return api.getObjectMapper().convertValue(info, type);
   }
 
-  private static CatalogInfo catalog() {
-    return new CatalogInfo().name(CATALOG).comment(COMMENT).properties(PROPERTIES);
+  /** The grant {@link #write} gives {@link #user} on each securable. */
+  private Map<String, Grant> grants() {
+    return Map.of(
+        catalog, new Grant(SecurableType.CATALOG, Privilege.USE_CATALOG),
+        schema, new Grant(SecurableType.SCHEMA, Privilege.USE_SCHEMA),
+        managedTable, new Grant(SecurableType.TABLE, Privilege.SELECT),
+        externalTable, new Grant(SecurableType.TABLE, Privilege.MODIFY),
+        volume, new Grant(SecurableType.VOLUME, Privilege.READ_VOLUME),
+        function, new Grant(SecurableType.FUNCTION, Privilege.EXECUTE));
   }
 
-  private static SchemaInfo schema() {
+  private CatalogInfo catalog() {
+    return new CatalogInfo().name(catalog).comment(COMMENT).properties(PROPERTIES);
+  }
+
+  private SchemaInfo schema() {
     return new SchemaInfo()
-        .catalogName(CATALOG)
-        .name(name(SCHEMA))
+        .catalogName(catalog)
+        .name(name(schema))
         .comment(COMMENT)
         .properties(PROPERTIES);
   }
 
   /** The managed Delta table, whose properties name its id as the staging table's. */
-  private static TableInfo managedTable(String tableId) {
+  private TableInfo managedTable(String tableId) {
     Map<String, String> properties = new HashMap<>(PROPERTIES);
     properties.put(TABLE_ID_PROPERTY, tableId);
-    return table(MANAGED_TABLE, TableType.MANAGED, DataSourceFormat.DELTA, managedColumns())
+    return table(managedTable, TableType.MANAGED, DataSourceFormat.DELTA, managedColumns())
         .properties(properties);
   }
 
   /** The external table: Parquet, so it can have every column type. */
-  private static TableInfo externalTable() {
-    return table(EXTERNAL_TABLE, TableType.EXTERNAL, DataSourceFormat.PARQUET, externalColumns())
-        .storageLocation(STORAGE + name(EXTERNAL_TABLE))
+  private TableInfo externalTable() {
+    return table(externalTable, TableType.EXTERNAL, DataSourceFormat.PARQUET, externalColumns())
+        .storageLocation(STORAGE + copy + "_" + name(externalTable))
         .properties(PROPERTIES);
   }
 
-  private static TableInfo table(
+  private TableInfo table(
       String fullName, TableType type, DataSourceFormat format, List<ColumnInfo> columns) {
     return new TableInfo()
-        .catalogName(CATALOG)
-        .schemaName(name(SCHEMA))
+        .catalogName(catalog)
+        .schemaName(name(schema))
         .name(name(fullName))
         .tableType(type)
         .dataSourceFormat(format)
@@ -382,18 +392,18 @@ public final class DataSet {
         + ",\"nullable\":true,\"metadata\":{}}";
   }
 
-  private static VolumeInfo volume() {
+  private VolumeInfo volume() {
     return new VolumeInfo()
-        .catalogName(CATALOG)
-        .schemaName(name(SCHEMA))
-        .name(name(VOLUME))
+        .catalogName(catalog)
+        .schemaName(name(schema))
+        .name(name(volume))
         .volumeType(VolumeType.EXTERNAL)
-        .storageLocation(STORAGE + name(VOLUME))
+        .storageLocation(STORAGE + copy + "_" + name(volume))
         .comment(COMMENT);
   }
 
   /** A table function: one input parameter per column type, and two return columns. */
-  private static FunctionInfo function() {
+  private FunctionInfo function() {
     List<FunctionParameterInfo> inputs =
         positioned(everyType()).stream()
             .map(
@@ -417,9 +427,9 @@ public final class DataSet {
             returnColumn("total", ColumnTypeName.LONG, "bigint", "\"long\"", 0),
             returnColumn("label", ColumnTypeName.STRING, "string", "\"string\"", 1));
     return new FunctionInfo()
-        .catalogName(CATALOG)
-        .schemaName(name(SCHEMA))
-        .name(name(FUNCTION))
+        .catalogName(catalog)
+        .schemaName(name(schema))
+        .name(name(function))
         .comment(COMMENT)
         .inputParams(new FunctionParameterInfos().parameters(inputs))
         .returnParams(new FunctionParameterInfos().parameters(returns))
@@ -432,7 +442,7 @@ public final class DataSet {
         .routineDefinition("return [(len(string_col), string_col)]")
         .externalLanguage("python")
         .securityType(FunctionInfo.SecurityTypeEnum.DEFINER)
-        .specificName(name(FUNCTION))
+        .specificName(name(function))
         .sqlDataAccess(FunctionInfo.SqlDataAccessEnum.NO_SQL);
   }
 

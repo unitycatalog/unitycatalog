@@ -1,6 +1,6 @@
 name: Upgrade Tests
 
-# Databases written by older servers upgrade and keep their data: every UpgradePath on every
+# Databases written by older servers upgrade and keep their data: the release chain on every
 # test database (tests tagged "upgrades", which the unit tests leave out). Runs only when a
 # change touches the schema, its migration code or the upgrade test kit.
 on:
@@ -21,23 +21,18 @@ jobs:
     runs-on: ubuntu-latest
     name: Pick the old servers
     outputs:
-      base-sha: ${{ steps.refs.outputs.base-sha }}
       release-chain: ${{ steps.refs.outputs.release-chain }}
       refs: ${{ steps.refs.outputs.refs }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          fetch-depth: 2
       - name: Fetch the release tags
         run: git fetch --tags --force origin
-      # The base is the merge commit's first parent, the code this PR starts from (base_ref would
-      # drift when main moves on). The release chain is the latest patch of each minor release
-      # from SchemaMigrator.BASELINE_RELEASE up to, not including, this build's version; the
-      # upgrade tests compute the same chain themselves when UC_TEST_RELEASE_CHAIN is unset.
-      - name: Pick the base commit and the release chain
+      # The release chain is every release from SchemaMigrator.BASELINE_RELEASE up to, not
+      # including, this build's version; the upgrade tests compute the same chain themselves when
+      # UC_TEST_RELEASE_CHAIN is unset.
+      - name: Pick the release chain
         id: refs
         run: |
-          base=$(git rev-parse HEAD^1)
           baseline=$(sed -n 's/.*BASELINE_RELEASE = "\(.*\)";/\1/p' server/src/main/java/io/unitycatalog/server/migrate/SchemaMigrator.java)
           version=$(sed -n 's/.*"\(.*\)".*/\1/p' version.sbt)
           version=${version%-SNAPSHOT}
@@ -45,14 +40,13 @@ jobs:
             if [ "$tag" != "v$version" ] && printf '%s\n' "v$baseline" "$tag" "v$version" | sort -CV; then
               echo "$tag"
             fi
-          done | sort -rV | sort -t. -k1,2 -us | sort -V | xargs)
-          refs="{\"name\":\"base\",\"sha\":\"$base\"}"
+          done | sort -V | xargs)
+          refs=""
           for tag in $chain; do
             refs="$refs,{\"name\":\"$tag\",\"sha\":\"$(git rev-parse "$tag^{commit}")\"}"
           done
-          echo "base-sha=$base" >> "$GITHUB_OUTPUT"
           echo "release-chain=$chain" >> "$GITHUB_OUTPUT"
-          echo "refs=[$refs]" >> "$GITHUB_OUTPUT"
+          echo "refs=[${refs#,}]" >> "$GITHUB_OUTPUT"
 
   build-jars:
     needs: refs
@@ -96,11 +90,9 @@ jobs:
           - test-database: "MYSQL_8"
             alias: "testUpgradesMySQL8"
     steps:
-      # The tests find each old server's jar by its commit: they resolve the base commit and the
-      # release tags, so both must be in the clone.
+      # The tests find each old server's jar by its commit: they resolve the release tags, so the
+      # tags must be in the clone.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          fetch-depth: 2
       - name: Fetch the release tags
         run: git fetch --tags --force origin
       - name: Prepare the environment
@@ -116,6 +108,5 @@ jobs:
       - name: Run upgrade tests
         env:
           UC_TEST_JAR_DIR: ${{ runner.temp }}/jars
-          UC_TEST_BASE_REF: ${{ needs.refs.outputs.base-sha }}
           UC_TEST_RELEASE_CHAIN: ${{ needs.refs.outputs.release-chain }}
         run: build/sbt -J-Xmx2G ${{ matrix.alias }}

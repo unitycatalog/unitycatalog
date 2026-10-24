@@ -22,7 +22,7 @@ public final class OldImage {
   public static final String JAR_DIR_ENV = "UC_TEST_JAR_DIR";
 
   private static final Path JAR_CACHE =
-      Path.of(System.getProperty("user.home"), ".cache", "uc-upgrade-base");
+      Path.of(System.getProperty("user.home"), ".cache", "uc-upgrade-jars");
 
   private final String ref;
   private String name;
@@ -33,7 +33,7 @@ public final class OldImage {
 
   /**
    * The shaded server jar of {@code ref}'s commit: {@code <sha>.jar} in {@value #JAR_DIR_ENV} if
-   * set and present, else in {@code ~/.cache/uc-upgrade-base}, else built once into that cache.
+   * set and present, else in {@code ~/.cache/uc-upgrade-jars}, else built once into that cache.
    */
   public static OldImage jarBuiltFrom(String ref) {
     return new OldImage(ref);
@@ -76,7 +76,7 @@ public final class OldImage {
   private static void build(Path repo, String sha, Path target) {
     Path source = null;
     try {
-      source = Files.createTempDirectory("uc-base-source");
+      source = Files.createTempDirectory("uc-old-source");
       Path archive = source.resolve("source.tar");
       git("-C", repo.toString(), "archive", "-o", archive.toString(), sha);
       run(new ProcessBuilder("tar", "-xf", archive.toString(), "-C", source.toString()));
