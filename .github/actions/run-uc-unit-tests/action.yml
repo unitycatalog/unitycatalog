@@ -21,7 +21,7 @@ inputs:
     required: false
     default: 'false'
   test-database:
-    description: SupportedDatabase constant the tests run on (UC_TEST_DATABASE).
+    description: Database the tests run on (default H2).
     required: false
     default: 'H2'
 
