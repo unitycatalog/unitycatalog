@@ -295,7 +295,6 @@ class ManagedTableCleanupTaskTest {
    */
   private Repositories impatientRepositories() {
     Properties impatient = testDatabase.hibernateProperties();
-    impatient.setProperty("hibernate.hbm2ddl.auto", "none");
     // Set on the URL, not with SET: a PostgreSQL SET is undone when its transaction rolls back.
     impatient.setProperty(
         "hibernate.connection.url",

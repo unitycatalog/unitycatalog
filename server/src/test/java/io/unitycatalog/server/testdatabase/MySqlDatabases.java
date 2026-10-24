@@ -7,18 +7,19 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Properties;
 import org.testcontainers.containers.JdbcDatabaseContainer;
 import org.testcontainers.containers.MySQLContainer;
 
 /**
  * MySQL test databases. MySQL has no {@code CREATE DATABASE … TEMPLATE}, so each database replays
- * the {@code SHOW CREATE TABLE} statements captured from {@code uc_template}.
+ * the {@code SHOW CREATE TABLE} statements captured from {@code uc_template}, then copies the
+ * template's rows (Flyway's history), as PostgreSQL's TEMPLATE does.
  */
 final class MySqlDatabases extends TemplateDatabases {
 
   private static MySqlDatabases instance;
 
+  private List<String> templateTables;
   private List<String> templateDdl;
 
   private MySqlDatabases(SupportedDatabase database) {
@@ -72,30 +73,17 @@ final class MySqlDatabases extends TemplateDatabases {
   }
 
   @Override
-  void configureTemplate(Properties hibernateProperties) {
-    // MySQL rejects the index on uc_staging_tables.staging_location (key too long); carry on
-    // without it, as a real MySQL install does.
-    hibernateProperties.setProperty("hibernate.hbm2ddl.halt_on_error", "false");
-  }
-
-  @Override
-  void templateBuilt(List<String> mappedTables) {
+  void templateBuilt() {
+    templateTables = new ArrayList<>();
     templateDdl = new ArrayList<>();
     try (Connection connection = connect(TEMPLATE);
         Statement statement = connection.createStatement()) {
-      List<String> tables = new ArrayList<>();
       try (ResultSet rs = statement.executeQuery("SHOW TABLES")) {
         while (rs.next()) {
-          tables.add(rs.getString(1));
+          templateTables.add(rs.getString(1));
         }
       }
-      // halt_on_error=false hides any failed DDL, so check every mapped table was created.
-      List<String> missing = new ArrayList<>(mappedTables);
-      missing.removeAll(tables);
-      if (!missing.isEmpty()) {
-        throw new IllegalStateException("The MySQL template schema lacks tables " + missing);
-      }
-      for (String table : tables) {
+      for (String table : templateTables) {
         try (ResultSet rs = statement.executeQuery("SHOW CREATE TABLE `" + table + "`")) {
           rs.next();
           templateDdl.add(rs.getString(2));
@@ -113,14 +101,13 @@ final class MySqlDatabases extends TemplateDatabases {
         Statement statement = connection.createStatement()) {
       // Foreign keys may point at tables created later.
       statement.addBatch("SET FOREIGN_KEY_CHECKS=0");
-      templateDdl.forEach(
-          ddl -> {
-            try {
-              statement.addBatch(ddl);
-            } catch (SQLException e) {
-              throw new IllegalStateException(e);
-            }
-          });
+      for (String ddl : templateDdl) {
+        statement.addBatch(ddl);
+      }
+      for (String table : templateTables) {
+        statement.addBatch(
+            "INSERT INTO `" + table + "` SELECT * FROM " + TEMPLATE + ".`" + table + "`");
+      }
       statement.executeBatch();
     } catch (SQLException e) {
       throw new IllegalStateException("Could not clone the template into " + name, e);

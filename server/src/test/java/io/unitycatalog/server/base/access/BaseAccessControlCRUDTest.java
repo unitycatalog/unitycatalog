@@ -42,8 +42,7 @@ public abstract class BaseAccessControlCRUDTest extends BaseCRUDTest {
 
   // Part of the tearDown() override chain (not a separate @AfterEach) so the casbin cleanup is
   // guaranteed to run before super.tearDown() closes the SessionFactory. casbin_rule is created
-  // by the casbin JDBCAdapter outside Hibernate's create-drop, so it survives across tests and
-  // must be cleared explicitly.
+  // by the casbin JDBCAdapter, not by the migration steps, so it is cleared explicitly.
   @AfterEach
   @Override
   public void tearDown() {

@@ -79,7 +79,7 @@ class HibernateConfiguratorTest {
     properties.setProperty(
         "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
     properties.setProperty("hibernate.connection.user", "sa");
-    properties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
+    properties.setProperty("hibernate.hbm2ddl.auto", "none");
     return properties;
   }
 }
