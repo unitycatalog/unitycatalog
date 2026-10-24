@@ -101,11 +101,22 @@ abstract class TemplateDatabases {
   }
 
   final TestDatabase newDatabase(String name) {
+    checkStarted();
+    cloneTemplate(name);
+    return testDatabase(name, "none", () -> execute(dropSql(name)));
+  }
+
+  /** A database with no tables, for tests that build the schema themselves. */
+  final TestDatabase newEmptyDatabase(String name) {
+    checkStarted();
+    createDatabase(name);
+    return testDatabase(name, "none", () -> execute(dropSql(name)));
+  }
+
+  private void checkStarted() {
     if (failure != null) {
       throw new IllegalStateException(failure.getMessage() + " (cached; not retried)", failure);
     }
-    cloneTemplate(name);
-    return testDatabase(name, "none", () -> execute(dropSql(name)));
   }
 
   private TestDatabase testDatabase(String name, String hbm2ddlAuto, Runnable release) {

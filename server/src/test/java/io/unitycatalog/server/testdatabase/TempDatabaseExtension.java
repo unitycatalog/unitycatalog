@@ -30,7 +30,10 @@ final class TempDatabaseExtension implements BeforeAllCallback, BeforeEachCallba
     for (Field field :
         AnnotationSupport.findAnnotatedFields(context.getRequiredTestClass(), TempDatabase.class)) {
       if (Modifier.isStatic(field.getModifiers()) == isStatic) {
-        TestDatabase database = TestDatabases.newDatabase();
+        TestDatabase database =
+            field.getAnnotation(TempDatabase.class).empty()
+                ? TestDatabases.newEmptyDatabase()
+                : TestDatabases.newDatabase();
         context
             .getStore(ExtensionContext.Namespace.create(TempDatabaseExtension.class, field))
             .put("database", database);
