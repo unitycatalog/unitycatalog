@@ -11,6 +11,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Index;
 import jakarta.persistence.Lob;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.util.Date;
 import java.util.List;
@@ -79,6 +80,7 @@ public class TableInfoDAO extends IdentifiableDAO {
   // listTables reads the columns of a whole page of tables; initialize them in batches instead of
   // one query per table.
   @BatchSize(size = 100)
+  @OrderBy("ordinalPosition")
   private List<ColumnInfoDAO> columns;
 
   @Lob
