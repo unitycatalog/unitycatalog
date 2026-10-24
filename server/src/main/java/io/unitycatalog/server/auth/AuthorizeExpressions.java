@@ -21,11 +21,10 @@ public final class AuthorizeExpressions {
   private AuthorizeExpressions() {}
 
   /**
-   * Authorization policy for reading table metadata (UC REST {@code GET /tables/{name}}, UC Delta
-   * API, and the Iceberg REST {@code loadTable}). Metastore admin and catalog owner pass
-   * unconditionally; schema owner passes with catalog {@code USE_CATALOG}; regular callers need
-   * {@code USE_SCHEMA} + {@code USE_CATALOG} plus any of {@code OWNER} / {@code SELECT} / {@code
-   * MODIFY} on the table itself.
+   * Authorization policy for reading table metadata and filtering table listings. Metastore admin
+   * and catalog owner pass unconditionally; schema owner passes with catalog {@code USE_CATALOG};
+   * regular callers need {@code USE_SCHEMA} + {@code USE_CATALOG} plus any of {@code OWNER} /
+   * {@code SELECT} / {@code MODIFY} on the table itself.
    */
   public static final String GET_TABLE =
       """
@@ -211,6 +210,19 @@ public final class AuthorizeExpressions {
           : (#authorize(#principal, #table, OWNER) ||
               #authorizeAll(#principal, #table, SELECT, MODIFY)))
       """;
+
+  /** Iceberg loadCredentials uses the read rule, or GET_TABLE during migration. */
+  // TODO(#2024): Reuse VEND_TABLE_CREDENTIAL with a fixed READ operation after removing the flag.
+  public static final String VEND_ICEBERG_TABLE_CREDENTIAL =
+      """
+      #strict_privilege_checks ? (
+        #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+        #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+        #authorizeAny(#principal, #table, OWNER, SELECT)
+      ) : (
+      """
+          + GET_TABLE
+          + ")";
 
   /**
    * Authorization policy for the {@code get*Authorization} (permission read) endpoints. These
