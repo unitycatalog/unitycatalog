@@ -32,8 +32,8 @@ runs:
         spark-version: ${{ inputs.spark-version }}
         use-spark-source-cache: ${{ inputs.use-spark-source-cache }}
 
-    # Publish UC to local caches BEFORE building Delta — Delta's build resolves
-    # UC artifacts from ~/.ivy2/local via -DunityCatalogVersion.
+    # Publish UC artifacts before building Delta. Delta's build resolves the pinned
+    # coordinates from Maven local, and its setup check also recognizes ~/.ivy2/local.
     - name: Build, package, and publish UC locally
       shell: bash
       run: |
@@ -56,6 +56,7 @@ runs:
       run: |
         if [[ "${{ inputs.delta-version }}" == "master-SNAPSHOT" ]]; then
           echo "DELTA_VERSION=${{ steps.delta-build.outputs.DELTA_VERSION }}" >> $GITHUB_ENV
+          echo "USE_MAVEN_LOCAL=true" >> $GITHUB_ENV
         else
           echo "DELTA_VERSION=${{ inputs.delta-version }}" >> $GITHUB_ENV
         fi
