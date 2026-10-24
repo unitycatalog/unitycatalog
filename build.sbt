@@ -45,6 +45,7 @@ lazy val nettyVersion = "4.2.18.Final"
 lazy val nettyTcnativeVersion = "2.0.84.Final"
 lazy val vertxVersion = "4.5.34"
 lazy val postgresqlVersion = "42.7.14"
+lazy val flywayVersion = "13.10.3"
 // Keep in step with the Caffeine version iceberg-core depends on (2.9.3 in Iceberg 1.11.0).
 lazy val caffeineVersion = "2.9.3"
 lazy val junitJupiterVersion = "5.13.4"
@@ -420,6 +421,9 @@ lazy val server = (project in file("server"))
 
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
       "com.zaxxer" % "HikariCP" % "7.1.0",
+      "org.flywaydb" % "flyway-core" % flywayVersion,
+      "org.flywaydb" % "flyway-database-postgresql" % flywayVersion,
+      "org.flywaydb" % "flyway-mysql" % flywayVersion,
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",

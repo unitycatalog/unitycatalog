@@ -10,4 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 @Target(ElementType.FIELD)
 @Retention(RetentionPolicy.RUNTIME)
 @ExtendWith(TempDatabaseExtension.class)
-public @interface TempDatabase {}
+public @interface TempDatabase {
+  /** Inject a database without tables ({@link TestDatabases#newEmptyDatabase()}). */
+  boolean empty() default false;
+}
