@@ -220,7 +220,6 @@ public class HibernateConfigurator implements AutoCloseable {
       hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
       hibernateProperties.setProperty(
           "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
-      hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "update");
     } else {
       try (InputStream input = Files.newInputStream(hibernatePropertiesPath)) {
         hibernateProperties.load(input);
@@ -233,9 +232,22 @@ public class HibernateConfigurator implements AutoCloseable {
       hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
       hibernateProperties.setProperty(
           "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
-      hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
       LOGGER.debug("Hibernate configuration set for testing");
     }
-    return hibernateProperties;
+    return withSchemaUpdatesOff(hibernateProperties);
+  }
+
+  /**
+   * Flyway owns the schema, so Hibernate never changes it, even if an old {@code
+   * etc/conf/hibernate.properties} still says {@code update}.
+   */
+  static Properties withSchemaUpdatesOff(Properties properties) {
+    String auto = properties.getProperty("hibernate.hbm2ddl.auto");
+    if (auto != null && !"none".equals(auto)) {
+      LOGGER.warn(
+          "Ignoring hibernate.hbm2ddl.auto={}: the schema is managed by bin/uc-migrate.", auto);
+    }
+    properties.setProperty("hibernate.hbm2ddl.auto", "none");
+    return properties;
   }
 }

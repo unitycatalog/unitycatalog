@@ -7,6 +7,7 @@ import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerListener;
 import com.linecorp.armeria.server.healthcheck.HealthCheckService;
 import com.linecorp.armeria.server.prometheus.PrometheusExpositionService;
+import com.zaxxer.hikari.HikariDataSource;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
@@ -17,6 +18,9 @@ import io.unitycatalog.server.cleanup.StorageCleanupWorker;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.migrate.DatabaseKind;
+import io.unitycatalog.server.migrate.Migrator;
+import io.unitycatalog.server.migrate.SchemaState;
 import io.unitycatalog.server.observability.DbReadinessChecker;
 import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
@@ -59,6 +63,7 @@ import io.vertx.core.Vertx;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
@@ -123,6 +128,7 @@ public class UnityCatalogServer implements AutoCloseable {
     this.blockingThreads = hibernateConfigurator.getDataSource().getMaximumPoolSize();
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
+      requireCurrentSchema(unityCatalogServerBuilder.extraMigrationLocations);
       createdBlockingTaskExecutor =
           BlockingTaskExecutor.builder()
               .numThreads(blockingThreads)
@@ -140,6 +146,34 @@ public class UnityCatalogServer implements AutoCloseable {
       closeBlockingTaskExecutor(createdBlockingTaskExecutor, shutdownTimeout, t);
       closeOwnedSessionFactory(t);
       throw t;
+    }
+  }
+
+  /**
+   * Starts only on the schema version this release ships. An empty database is set up here (a
+   * second server starting at the same time waits for the first); any other mismatch is refused.
+   */
+  private void requireCurrentSchema(List<String> extraMigrationLocations) {
+    HikariDataSource ds = hibernateConfigurator.getDataSource();
+    try (Migrator migrator =
+        new Migrator(ds, DatabaseKind.fromJdbcUrl(ds.getJdbcUrl()), extraMigrationLocations)) {
+      SchemaState state = migrator.prepareForStart();
+      if (state == SchemaState.CURRENT) {
+        return;
+      }
+      if (state == SchemaState.AHEAD) {
+        throw new IllegalStateException(
+            "The schema is newer than this release. Run the newer release.");
+      }
+      String current = migrator.currentVersion();
+      throw new IllegalStateException(
+          "The database "
+              + (current == null
+                  ? "has no schema version (a database from 0.7 or earlier)"
+                  : "schema is at version " + current)
+              + "; this release needs version "
+              + migrator.latestVersion()
+              + ". Stop the servers and run bin/uc-migrate migrate.");
     }
   }
 
@@ -555,6 +589,7 @@ public class UnityCatalogServer implements AutoCloseable {
     private Integer observabilityPort;
     private ServerProperties serverProperties;
     private HibernateConfigurator hibernateConfigurator;
+    private List<String> extraMigrationLocations = List.of();
     private CloudCredentialVendor cloudCredentialVendor;
     private UnaryOperator<FileOperations> fileOperationsDecorator = UnaryOperator.identity();
 
@@ -588,6 +623,13 @@ public class UnityCatalogServer implements AutoCloseable {
     public UnityCatalogServer.Builder hibernateConfigurator(
         HibernateConfigurator hibernateConfigurator) {
       this.hibernateConfigurator = hibernateConfigurator;
+      return this;
+    }
+
+    /** Test seam: schema steps to apply besides this release's (see {@code Migrator}). */
+    public UnityCatalogServer.Builder extraMigrationLocations(
+        List<String> extraMigrationLocations) {
+      this.extraMigrationLocations = extraMigrationLocations;
       return this;
     }
 
