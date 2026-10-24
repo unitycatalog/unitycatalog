@@ -1,6 +1,7 @@
 package io.unitycatalog.server.migrate;
 
 import io.unitycatalog.server.UnityCatalogServer;
+import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.PrintStream;
@@ -41,7 +42,7 @@ public final class UcMigrate {
       err.println(USAGE);
       return 1;
     }
-    try (Migrator migrator = Migrator.fromHibernateProperties(hibernateProperties)) {
+    try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(hibernateProperties)) {
       if (args[0].equals("migrate")) {
         MigrationOutcome outcome = migrator.migrate();
         out.printf(

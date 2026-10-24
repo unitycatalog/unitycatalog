@@ -3,6 +3,9 @@ package io.unitycatalog.server.migrate;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
+import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
+import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.migrate.kit.TestServer;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
@@ -33,7 +36,7 @@ public class MigratorTest {
 
   @Test
   void setsUpAnEmptyDatabase() {
-    Migrator migrator = new Migrator(db.dataSource(), db.kind());
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
     assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
 
     MigrationOutcome outcome = migrator.migrate();
@@ -45,7 +48,7 @@ public class MigratorTest {
   @Test
   void setsUpADatabaseWithOnlyTheAuthorizationRulesTable() {
     execute(db, "CREATE TABLE casbin_rule (id INT)");
-    Migrator migrator = new Migrator(db.dataSource(), db.kind());
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
     assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
 
     assertThat(migrator.migrate().applied()).isEqualTo(releaseSteps(migrator));
@@ -55,7 +58,7 @@ public class MigratorTest {
   @Test
   void adoptsA07Database() {
     create07Schema(db);
-    Migrator migrator = new Migrator(db.dataSource(), db.kind());
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
     assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
 
     MigrationOutcome outcome = migrator.migrate();
@@ -86,7 +89,7 @@ public class MigratorTest {
       insert.executeUpdate();
     }
 
-    new Migrator(db.dataSource(), db.kind()).migrate();
+    new SchemaMigrator(db.dataSource(), db.kind()).migrate();
 
     assertThat(rowsWhere(db, "uc_catalogs", "name", "sales")).isZero();
     assertThat(rowsWhere(db, "uc_catalogs", "name", "Sales")).isOne();
@@ -96,12 +99,12 @@ public class MigratorTest {
 
   @Test
   void upgradesAVersionedDatabase() {
-    String latest = new Migrator(db.dataSource(), db.kind()).migrate().to();
+    String latest = new SchemaMigrator(db.dataSource(), db.kind()).migrate().to();
     List<String> nextRelease = List.of("classpath:db/test-steps/ahead");
     assertThatThrownBy(() -> TestServer.start(db, nextRelease))
         .hasMessageContaining("schema is at version " + latest)
         .hasMessageContaining("bin/uc-migrate migrate");
-    Migrator migrator = new Migrator(db.dataSource(), db.kind(), nextRelease);
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind(), nextRelease);
     assertThat(migrator.state()).isEqualTo(SchemaState.PENDING);
     assertThat(migrator.pending().stream().map(m -> m.getVersion().getVersion()))
         .containsExactly("1000");
@@ -113,7 +116,7 @@ public class MigratorTest {
   @Test
   void refusesADatabaseOfAnotherApplication() {
     execute(db, "CREATE TABLE orders (id INT)");
-    Migrator migrator = new Migrator(db.dataSource(), db.kind());
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
     assertThat(migrator.state()).isEqualTo(SchemaState.NOT_UC);
 
     assertThatThrownBy(migrator::migrate).hasMessageContaining("not a Unity Catalog database");
@@ -121,7 +124,7 @@ public class MigratorTest {
 
   @Test
   void secondRunAppliesNothing() {
-    Migrator migrator = new Migrator(db.dataSource(), db.kind());
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
     migrator.migrate();
 
     assertThat(migrator.migrate().applied()).isZero();
@@ -129,8 +132,9 @@ public class MigratorTest {
 
   @Test
   void refusesASchemaNewerThanThisRelease() {
-    new Migrator(db.dataSource(), db.kind(), List.of("classpath:db/test-steps/ahead")).migrate();
-    Migrator migrator = new Migrator(db.dataSource(), db.kind());
+    new SchemaMigrator(db.dataSource(), db.kind(), List.of("classpath:db/test-steps/ahead"))
+        .migrate();
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
     assertThat(migrator.state()).isEqualTo(SchemaState.AHEAD);
 
     assertThatThrownBy(migrator::migrate).hasMessageContaining("newer than this release");
@@ -138,7 +142,7 @@ public class MigratorTest {
 
   @Test
   void reportsAFailedStep() {
-    Migrator migrator = new Migrator(db.dataSource(), db.kind());
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
     migrator.migrate();
     String q = quote(db);
     execute(
@@ -164,7 +168,7 @@ public class MigratorTest {
             executor.submit(
                 () -> {
                   start.await();
-                  return new Migrator(db.dataSource(), db.kind()).migrate();
+                  return new SchemaMigrator(db.dataSource(), db.kind()).migrate();
                 }));
       }
       for (Future<MigrationOutcome> run : runs) {
@@ -175,7 +179,7 @@ public class MigratorTest {
     }
 
     // The second run waits for the first, then finds the schema current.
-    Migrator migrator = new Migrator(db.dataSource(), db.kind());
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
     String latest = migrator.latestVersion();
     int steps = releaseSteps(migrator);
     assertThat(outcomes)
@@ -187,7 +191,7 @@ public class MigratorTest {
   }
 
   /** The number of steps in this release: they are numbered 1, 2, 3 and so on. */
-  static int releaseSteps(Migrator migrator) {
+  static int releaseSteps(SchemaMigrator migrator) {
     return Integer.parseInt(migrator.latestVersion());
   }
 

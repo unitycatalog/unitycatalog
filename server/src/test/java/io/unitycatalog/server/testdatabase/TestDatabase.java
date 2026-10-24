@@ -2,7 +2,7 @@ package io.unitycatalog.server.testdatabase;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import io.unitycatalog.server.migrate.DatabaseKind;
+import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.ArrayList;

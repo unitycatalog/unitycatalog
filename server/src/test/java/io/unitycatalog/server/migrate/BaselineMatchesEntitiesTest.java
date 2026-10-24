@@ -18,7 +18,7 @@ public class BaselineMatchesEntitiesTest {
 
   @Test
   void stepsBuildTheEntitySchema() {
-    new Migrator(fromSteps.dataSource(), fromSteps.kind()).migrate();
+    new SchemaMigrator(fromSteps.dataSource(), fromSteps.kind()).migrate();
     Properties create = fromEntities.hibernateProperties();
     // "update", as 0.7 ran on every install: unlike "create", it names the unique constraints.
     create.setProperty("hibernate.hbm2ddl.auto", "update");

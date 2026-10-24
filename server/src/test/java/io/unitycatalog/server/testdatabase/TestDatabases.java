@@ -1,6 +1,6 @@
 package io.unitycatalog.server.testdatabase;
 
-import io.unitycatalog.server.migrate.Migrator;
+import io.unitycatalog.server.migrate.SchemaMigrator;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -66,7 +66,7 @@ public final class TestDatabases {
     String url = "jdbc:h2:mem:" + name + ";DB_CLOSE_DELAY=-1";
     // DB_CLOSE_DELAY=-1 keeps an in-memory database until SHUTDOWN, so release it explicitly.
     TestDatabase database = new TestDatabase("org.h2.Driver", url, "sa", "", () -> shutdown(url));
-    try (Migrator migrator = new Migrator(database.dataSource(), database.kind())) {
+    try (SchemaMigrator migrator = new SchemaMigrator(database.dataSource(), database.kind())) {
       migrator.migrate();
     }
     return database;

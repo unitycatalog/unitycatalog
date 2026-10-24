@@ -66,7 +66,7 @@ public class UcMigrateTest {
   }
 
   private String latestVersion() {
-    return new Migrator(db.dataSource(), db.kind()).latestVersion();
+    return new SchemaMigrator(db.dataSource(), db.kind()).latestVersion();
   }
 
   private String out() {

@@ -18,9 +18,9 @@ import io.unitycatalog.server.cleanup.StorageCleanupWorker;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.migrate.DatabaseKind;
-import io.unitycatalog.server.migrate.Migrator;
-import io.unitycatalog.server.migrate.SchemaState;
+import io.unitycatalog.server.migrate.SchemaMigrator;
+import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
+import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.observability.DbReadinessChecker;
 import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
@@ -155,8 +155,9 @@ public class UnityCatalogServer implements AutoCloseable {
    */
   private void requireCurrentSchema(List<String> extraMigrationLocations) {
     HikariDataSource ds = hibernateConfigurator.getDataSource();
-    try (Migrator migrator =
-        new Migrator(ds, DatabaseKind.fromJdbcUrl(ds.getJdbcUrl()), extraMigrationLocations)) {
+    try (SchemaMigrator migrator =
+        new SchemaMigrator(
+            ds, DatabaseKind.fromJdbcUrl(ds.getJdbcUrl()), extraMigrationLocations)) {
       SchemaState state = migrator.prepareForStart();
       if (state == SchemaState.CURRENT) {
         return;
@@ -626,7 +627,7 @@ public class UnityCatalogServer implements AutoCloseable {
       return this;
     }
 
-    /** Test seam: schema steps to apply besides this release's (see {@code Migrator}). */
+    /** Test seam: schema steps to apply besides this release's (see {@code SchemaMigrator}). */
     public UnityCatalogServer.Builder extraMigrationLocations(
         List<String> extraMigrationLocations) {
       this.extraMigrationLocations = extraMigrationLocations;

@@ -3,6 +3,7 @@ package io.unitycatalog.server.migrate;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.migrate.kit.AcrossUpgradePaths;
 import io.unitycatalog.server.migrate.kit.DataSet;
 import io.unitycatalog.server.migrate.kit.OldServer;
@@ -25,7 +26,7 @@ public class RealUpgradeTest {
     path.images.stream().skip(1).forEach(image -> OldServer.run(image, db, api -> {}));
     SchemaSnapshot before = SchemaSnapshot.of(db.dataSource());
 
-    try (Migrator migrator = new Migrator(db.dataSource(), db.kind())) {
+    try (SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind())) {
       if (migrator.state() != SchemaState.CURRENT) {
         assertThatThrownBy(() -> TestServer.start(db))
             .hasMessageContaining("bin/uc-migrate migrate");
@@ -42,7 +43,7 @@ public class RealUpgradeTest {
   /** The schema the steps build on a new empty database. */
   private static SchemaSnapshot freshInstallSnapshot() {
     try (TestDatabase fresh = TestDatabases.newEmptyDatabase();
-        Migrator migrator = new Migrator(fresh.dataSource(), fresh.kind())) {
+        SchemaMigrator migrator = new SchemaMigrator(fresh.dataSource(), fresh.kind())) {
       migrator.migrate();
       return SchemaSnapshot.of(fresh.dataSource());
     }

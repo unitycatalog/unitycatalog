@@ -4,7 +4,7 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiClientBuilder;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
-import io.unitycatalog.server.migrate.DatabaseKind;
+import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.io.IOException;
 import java.io.UncheckedIOException;

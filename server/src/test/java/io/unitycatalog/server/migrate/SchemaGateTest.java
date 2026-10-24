@@ -3,6 +3,7 @@ package io.unitycatalog.server.migrate;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.migrate.kit.SchemaSnapshot;
 import io.unitycatalog.server.migrate.kit.TestServer;
 import io.unitycatalog.server.migrate.kit.slowstep.V1000__Slow_test_step;
@@ -24,7 +25,8 @@ public class SchemaGateTest {
   @Test
   void setsUpAnEmptyDatabaseOnFirstStart() {
     try (TestServer server = TestServer.start(db)) {
-      assertThat(new Migrator(db.dataSource(), db.kind()).state()).isEqualTo(SchemaState.CURRENT);
+      assertThat(new SchemaMigrator(db.dataSource(), db.kind()).state())
+          .isEqualTo(SchemaState.CURRENT);
     }
   }
 
@@ -42,9 +44,10 @@ public class SchemaGateTest {
 
       try (TestServer s1 = first.get();
           TestServer s2 = second.get()) {
-        Migrator migrator = new Migrator(db.dataSource(), db.kind(), SLOW_STEP);
+        SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind(), SLOW_STEP);
         assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
-        int releaseSteps = MigratorTest.releaseSteps(new Migrator(db.dataSource(), db.kind()));
+        int releaseSteps =
+            MigratorTest.releaseSteps(new SchemaMigrator(db.dataSource(), db.kind()));
         assertThat(migrator.applied().stream().map(MigrationInfo::getVersion).toList())
             .doesNotHaveDuplicates()
             .hasSize(releaseSteps + 1);
@@ -64,15 +67,17 @@ public class SchemaGateTest {
         .hasMessageContaining("bin/uc-migrate migrate");
     assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(before);
 
-    new Migrator(db.dataSource(), db.kind()).migrate();
+    new SchemaMigrator(db.dataSource(), db.kind()).migrate();
     try (TestServer server = TestServer.start(db)) {
-      assertThat(new Migrator(db.dataSource(), db.kind()).state()).isEqualTo(SchemaState.CURRENT);
+      assertThat(new SchemaMigrator(db.dataSource(), db.kind()).state())
+          .isEqualTo(SchemaState.CURRENT);
     }
   }
 
   @Test
   void refusesASchemaNewerThanThisRelease() {
-    new Migrator(db.dataSource(), db.kind(), List.of("classpath:db/test-steps/ahead")).migrate();
+    new SchemaMigrator(db.dataSource(), db.kind(), List.of("classpath:db/test-steps/ahead"))
+        .migrate();
 
     assertThatThrownBy(() -> TestServer.start(db)).hasMessageContaining("this release ends at");
   }

@@ -1,6 +1,6 @@
 package io.unitycatalog.server.testdatabase;
 
-import io.unitycatalog.server.migrate.Migrator;
+import io.unitycatalog.server.migrate.SchemaMigrator;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -79,7 +79,7 @@ abstract class TemplateDatabases {
     createDatabase(TEMPLATE);
     // Closing releases every connection: PostgreSQL refuses to copy a template that is in use.
     try (TestDatabase template = testDatabase(TEMPLATE, () -> {});
-        Migrator migrator = new Migrator(template.dataSource(), template.kind())) {
+        SchemaMigrator migrator = new SchemaMigrator(template.dataSource(), template.kind())) {
       migrator.migrate();
     }
     templateBuilt();
