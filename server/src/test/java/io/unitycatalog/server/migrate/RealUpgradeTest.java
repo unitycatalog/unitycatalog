@@ -1,9 +1,7 @@
 package io.unitycatalog.server.migrate;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.migrate.kit.AcrossUpgradePaths;
 import io.unitycatalog.server.migrate.kit.DataSet;
 import io.unitycatalog.server.migrate.kit.OldServer;
@@ -14,7 +12,10 @@ import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
 
-/** Databases real servers wrote, on every {@link UpgradePath}, upgrade and keep their data. */
+/**
+ * Databases real servers wrote, on every {@link UpgradePath}, upgrade on the current server's start
+ * and keep their data.
+ */
 public class RealUpgradeTest {
 
   @TempDatabase(empty = true)
@@ -24,24 +25,15 @@ public class RealUpgradeTest {
   void upgradesAndKeepsTheData(UpgradePath path) {
     OldServer.run(path.images.get(0), db, DataSet::write);
     path.images.stream().skip(1).forEach(image -> OldServer.run(image, db, api -> {}));
-    SchemaSnapshot before = SchemaSnapshot.of(db.dataSource());
 
-    try (SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind())) {
-      if (migrator.state() != SchemaState.CURRENT) {
-        assertThatThrownBy(() -> TestServer.start(db))
-            .hasMessageContaining("bin/uc-migrate migrate");
-        assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(before);
-      }
-      assertThat(migrator.migrate().to()).isEqualTo(migrator.latestVersion());
-    }
-    assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(freshInstallSnapshot());
     try (TestServer server = TestServer.start(db)) {
+      assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(freshInstallSnapshot());
       DataSet.assertReadBack(server.apiClient());
     }
   }
 
   /** The schema the steps build on a new empty database. */
-  private static SchemaSnapshot freshInstallSnapshot() {
+  static SchemaSnapshot freshInstallSnapshot() {
     try (TestDatabase fresh = TestDatabases.newEmptyDatabase();
         SchemaMigrator migrator = new SchemaMigrator(fresh.dataSource(), fresh.kind())) {
       migrator.migrate();

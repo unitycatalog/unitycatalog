@@ -16,6 +16,9 @@ import org.junit.jupiter.api.Test;
 
 public class SchemaGateTest {
 
+  /** A test-only step 1000: the next release's step for a current database. */
+  private static final List<String> AHEAD = List.of("classpath:db/test-steps/ahead");
+
   private static final List<String> SLOW_STEP =
       List.of("classpath:io/unitycatalog/server/migrate/kit/slowstep");
 
@@ -58,27 +61,45 @@ public class SchemaGateTest {
   }
 
   @Test
-  void refusesA07DatabaseUntilItIsMigrated() {
+  void upgradesA07Database() {
     MigratorTest.create07Schema(db);
-    SchemaSnapshot before = SchemaSnapshot.of(db.dataSource());
 
-    assertThatThrownBy(() -> TestServer.start(db))
-        .hasMessageContaining("no schema version")
-        .hasMessageContaining("bin/uc-migrate migrate");
-    assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(before);
-
-    new SchemaMigrator(db.dataSource(), db.kind()).migrate();
     try (TestServer server = TestServer.start(db)) {
-      assertThat(new SchemaMigrator(db.dataSource(), db.kind()).state())
+      assertThat(SchemaSnapshot.of(db.dataSource()))
+          .isEqualTo(RealUpgradeTest.freshInstallSnapshot());
+    }
+  }
+
+  @Test
+  void appliesPendingSteps() {
+    new SchemaMigrator(db.dataSource(), db.kind()).migrate();
+
+    try (TestServer server = TestServer.start(db, AHEAD)) {
+      assertThat(new SchemaMigrator(db.dataSource(), db.kind(), AHEAD).state())
           .isEqualTo(SchemaState.CURRENT);
     }
   }
 
   @Test
   void refusesASchemaNewerThanThisRelease() {
-    new SchemaMigrator(db.dataSource(), db.kind(), List.of("classpath:db/test-steps/ahead"))
-        .migrate();
+    new SchemaMigrator(db.dataSource(), db.kind(), AHEAD).migrate();
 
     assertThatThrownBy(() -> TestServer.start(db)).hasMessageContaining("this release ends at");
+  }
+
+  @Test
+  void refusesADatabaseOfAnotherApplication() {
+    MigratorTest.execute(db, "CREATE TABLE orders (id INT)");
+
+    assertThatThrownBy(() -> TestServer.start(db))
+        .hasMessageContaining("not a Unity Catalog database");
+  }
+
+  @Test
+  void refusesADatabaseWithAFailedStep() {
+    new SchemaMigrator(db.dataSource(), db.kind()).migrate();
+    MigratorTest.recordFailedStep(db);
+
+    assertThatThrownBy(() -> TestServer.start(db)).hasMessageContaining("A migration step failed");
   }
 }

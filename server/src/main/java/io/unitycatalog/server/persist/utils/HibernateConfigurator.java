@@ -249,7 +249,9 @@ public class HibernateConfigurator implements AutoCloseable {
     String auto = properties.getProperty("hibernate.hbm2ddl.auto");
     if (auto != null && !"none".equals(auto)) {
       LOGGER.warn(
-          "Ignoring hibernate.hbm2ddl.auto={}: the schema is managed by bin/uc-migrate.", auto);
+          "Ignoring hibernate.hbm2ddl.auto={}: the schema is managed by the schema migration"
+              + " steps.",
+          auto);
     }
     properties.setProperty("hibernate.hbm2ddl.auto", "none");
     return properties;

@@ -150,8 +150,8 @@ public class UnityCatalogServer implements AutoCloseable {
   }
 
   /**
-   * Starts only on the schema version this release ships. An empty database is set up here (a
-   * second server starting at the same time waits for the first); any other mismatch is refused.
+   * Upgrades the database to the schema version this release ships, or refuses one it cannot
+   * upgrade (see {@link SchemaMigrator#prepareForStart()}).
    */
   private void requireCurrentSchema(List<String> extraMigrationLocations) {
     HikariDataSource ds = hibernateConfigurator.getDataSource();
@@ -159,22 +159,13 @@ public class UnityCatalogServer implements AutoCloseable {
         new SchemaMigrator(
             ds, DatabaseKind.fromJdbcUrl(ds.getJdbcUrl()), extraMigrationLocations)) {
       SchemaState state = migrator.prepareForStart();
-      if (state == SchemaState.CURRENT) {
-        return;
+      if (state != SchemaState.CURRENT) {
+        throw new IllegalStateException(
+            "The database schema is "
+                + state
+                + " after migration; this release needs version "
+                + migrator.latestVersion());
       }
-      String refusal = migrator.refusal(state);
-      if (refusal != null) {
-        throw new IllegalStateException(refusal);
-      }
-      String current = migrator.currentVersion();
-      throw new IllegalStateException(
-          "The database "
-              + (current == null
-                  ? "has no schema version (a database from 0.7)"
-                  : "schema is at version " + current)
-              + "; this release needs version "
-              + migrator.latestVersion()
-              + ". Stop the servers and run bin/uc-migrate migrate.");
     }
   }
 

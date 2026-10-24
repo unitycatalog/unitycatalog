@@ -88,8 +88,8 @@ This guide outlines how to deploy the Unity Catalog server.
     ```
 
   A database created with a case-insensitive collation is converted, with its tables, when the
-  schema is set up or upgraded (`bin/uc-migrate migrate`, or the server's first start on an empty
-  database). The server logs a warning at startup if the database or its tables still use one.
+  server starts and sets up or upgrades the schema. The server logs a warning at startup if the
+  database or its tables still use one.
 
 - Modify the `etc/conf/hibernate.properties` file with your MySQL connection details:
 
@@ -138,8 +138,7 @@ Flyway manages the database schema. See [Upgrading the database schema](upgrades
 `uc_properties.property_value` used to be created as `varchar(255)`. Table and view properties
 (user `TBLPROPERTIES`, Spark `view.sqlConfig.*`, and any other REST-sent property) can exceed
 that. New installs get a wider column from the schema steps. **Existing databases keep `varchar(255)`
-until you run one of the statements below**; upgrading the server or running
-`bin/uc-migrate migrate` leaves it unchanged.
+until you run one of the statements below**; upgrading the server leaves it unchanged.
 
 PostgreSQL:
 

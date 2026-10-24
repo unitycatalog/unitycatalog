@@ -23,6 +23,8 @@ import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationInfoService;
 import org.flywaydb.core.api.MigrationVersion;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Upgrades Unity Catalog's database schema with the steps of {@code db/migration/<database>}: sets
@@ -89,6 +91,7 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(SchemaMigrator.class);
   private static final String HISTORY_TABLE = "flyway_schema_history";
 
   /** The version of the 0.7 schema, which Flyway records when it adopts a 0.7 database. */
@@ -210,16 +213,6 @@ public final class SchemaMigrator implements AutoCloseable {
     return List.of(flyway(null).info().applied());
   }
 
-  /** The steps {@link #migrate()} would apply to an empty, 0.7 or pending database. */
-  public List<MigrationInfo> pending() {
-    List<MigrationInfo> pending = List.of(flyway(null).info().pending());
-    if (state() != SchemaState.UNVERSIONED_UC) {
-      return pending;
-    }
-    // Adopting a 0.7 database records the 0.7 schema as the baseline; only later steps run.
-    return pending.stream().filter(m -> m.getVersion().isNewerThan(BASELINE_0_7)).toList();
-  }
-
   /** Under the run lock: classifies the database, then sets it up, adopts it and upgrades it. */
   public MigrationOutcome migrate() {
     try (RunLock lock = RunLock.acquire(dataSource, kind)) {
@@ -227,15 +220,21 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
-  /** Under the run lock: migrates an empty database (a first start); returns the state after. */
+  /**
+   * Run by every server start: under the run lock, migrates the database like {@link #migrate()}
+   * and returns the state after. A second server starting at the same time waits for the first.
+   */
   public SchemaState prepareForStart() {
     try (RunLock lock = RunLock.acquire(dataSource, kind)) {
-      SchemaState state = state();
-      if (state == SchemaState.EMPTY) {
-        migrateLocked();
-        state = state();
+      MigrationOutcome outcome = migrateLocked();
+      if (outcome.applied() > 0) {
+        LOGGER.info(
+            "Upgraded the database schema from version {} to {} ({} steps)",
+            outcome.from() == null ? "none" : outcome.from(),
+            outcome.to(),
+            outcome.applied());
       }
-      return state;
+      return state();
     }
   }
 
@@ -256,10 +255,9 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Why neither {@link #migrate()} nor a server can go on in {@code state}, or {@code null} when
-   * {@link #migrate()} can.
+   * Why {@link #migrate()} refuses a database in {@code state}, or {@code null} when it goes on.
    */
-  public String refusal(SchemaState state) {
+  private String refusal(SchemaState state) {
     return switch (state) {
       case NOT_UC ->
           "The database has tables but none of Unity Catalog's: not a Unity Catalog database."
@@ -270,9 +268,7 @@ public final class SchemaMigrator implements AutoCloseable {
               + ", this release ends at "
               + latestVersion()
               + "). Run the newer release.";
-      case FAILED ->
-          "A migration step failed in an earlier run. See docs/server/upgrades.md, then rerun"
-              + " bin/uc-migrate migrate.";
+      case FAILED -> "A migration step failed in an earlier run. See docs/server/upgrades.md.";
       default -> null;
     };
   }

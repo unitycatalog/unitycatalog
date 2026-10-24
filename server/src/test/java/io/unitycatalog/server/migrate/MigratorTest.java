@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
-import io.unitycatalog.server.migrate.kit.TestServer;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.io.IOException;
@@ -101,13 +100,8 @@ public class MigratorTest {
   void upgradesAVersionedDatabase() {
     String latest = new SchemaMigrator(db.dataSource(), db.kind()).migrate().to();
     List<String> nextRelease = List.of("classpath:db/test-steps/ahead");
-    assertThatThrownBy(() -> TestServer.start(db, nextRelease))
-        .hasMessageContaining("schema is at version " + latest)
-        .hasMessageContaining("bin/uc-migrate migrate");
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind(), nextRelease);
     assertThat(migrator.state()).isEqualTo(SchemaState.PENDING);
-    assertThat(migrator.pending().stream().map(m -> m.getVersion().getVersion()))
-        .containsExactly("1000");
 
     assertThat(migrator.migrate()).isEqualTo(new MigrationOutcome(latest, "1000", 1));
     assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
@@ -144,16 +138,20 @@ public class MigratorTest {
   void reportsAFailedStep() {
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
     migrator.migrate();
-    String q = quote(db);
+    recordFailedStep(db);
+
+    assertThat(migrator.state()).isEqualTo(SchemaState.FAILED);
+  }
+
+  /** Records a failed step in Flyway's history, as a run that failed midway leaves it. */
+  static void recordFailedStep(TestDatabase db) {
     execute(
         db,
         ("INSERT INTO %1$sflyway_schema_history%1$s (%1$sinstalled_rank%1$s, %1$sversion%1$s,"
                 + " %1$sdescription%1$s, %1$stype%1$s, %1$sscript%1$s, %1$sinstalled_by%1$s,"
                 + " %1$sexecution_time%1$s, %1$ssuccess%1$s)"
                 + " VALUES (1000, '1000', 'broken', 'SQL', 'V1000__broken.sql', 'test', 0, false)")
-            .formatted(q));
-
-    assertThat(migrator.state()).isEqualTo(SchemaState.FAILED);
+            .formatted(quote(db)));
   }
 
   @Test
@@ -253,7 +251,7 @@ public class MigratorTest {
     }
   }
 
-  private static void execute(TestDatabase db, String sql) {
+  static void execute(TestDatabase db, String sql) {
     try (Connection connection = db.dataSource().getConnection();
         Statement statement = connection.createStatement()) {
       statement.execute(sql);
