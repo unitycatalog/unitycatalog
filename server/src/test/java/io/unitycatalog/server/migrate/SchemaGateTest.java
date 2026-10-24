@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.migrate.kit.SchemaSnapshot;
 import io.unitycatalog.server.migrate.kit.TestServer;
-import io.unitycatalog.server.migrate.kit.slowstep.V1000__Slow_test_step;
+import io.unitycatalog.server.migrate.teststeps.slow.V1000__Slow_test_step;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.util.List;
@@ -20,7 +20,7 @@ public class SchemaGateTest {
   private static final List<String> AHEAD = List.of("classpath:db/test-steps/ahead");
 
   private static final List<String> SLOW_STEP =
-      List.of("classpath:io/unitycatalog/server/migrate/kit/slowstep");
+      List.of("classpath:io/unitycatalog/server/migrate/teststeps/slow");
 
   @TempDatabase(empty = true)
   TestDatabase db;

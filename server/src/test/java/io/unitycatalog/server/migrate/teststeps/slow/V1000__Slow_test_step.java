@@ -1,4 +1,4 @@
-package io.unitycatalog.server.migrate.kit.slowstep;
+package io.unitycatalog.server.migrate.teststeps.slow;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
