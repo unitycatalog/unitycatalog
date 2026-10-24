@@ -324,6 +324,8 @@ paths:
           $ref: '#/components/responses/ForbiddenResponse'
         '404':
           $ref: '#/components/responses/NotFoundResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableResponse'
     head:
       tags:
         - DeltaTables
@@ -1548,6 +1550,7 @@ components:
         - CommitStateUnknownException
         - InternalServerErrorException
         - NotImplementedException
+        - ServiceUnavailableException
       # Keep enum order aligned with x-enum-descriptions below
       x-enum-descriptions:
         - 'BadRequestException: (400) Malformed request or invalid action.'
@@ -1567,6 +1570,7 @@ components:
         - 'CommitStateUnknownException: (500) Commit outcome unknown (e.g., network failure after the server received the request). The client should check the table state before retrying.'
         - 'InternalServerErrorException: (500) A server-side problem that might not be addressable from the client side.'
         - 'NotImplementedException: (501) The requested functionality is not supported by the server.'
+        - 'ServiceUnavailableException: (503) The server is temporarily unable to serve the request. The client may retry after a delay.'
 
     DeltaErrorModel:
       type: object

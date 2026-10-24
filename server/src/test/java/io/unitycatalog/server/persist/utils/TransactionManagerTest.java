@@ -14,6 +14,8 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.TransactionRollbackException;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
+import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -287,18 +289,19 @@ public class TransactionManagerTest {
   public class IsolationLevelWithRealDatabaseTest {
 
     private static SessionFactory realSessionFactory;
-    private static HibernateConfigurator hibernateConfigurator;
+    private static TestDatabase testDatabase;
 
     @BeforeAll
     public static void setUp() {
       ServerProperties serverProperties = new ServerProperties(new Properties());
-      hibernateConfigurator = new HibernateConfigurator(serverProperties);
-      realSessionFactory = hibernateConfigurator.getSessionFactory();
+      testDatabase = TestDatabases.newDatabase();
+      realSessionFactory =
+          testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
     }
 
     @AfterAll
     public static void tearDown() {
-      hibernateConfigurator.close();
+      testDatabase.close();
     }
 
     @Test

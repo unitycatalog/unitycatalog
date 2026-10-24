@@ -47,6 +47,9 @@ public enum ErrorCode {
   OUT_OF_RANGE(11, 400, DeltaErrorType.BAD_REQUEST_EXCEPTION),
   UNIMPLEMENTED(12, 501, DeltaErrorType.NOT_IMPLEMENTED_EXCEPTION),
   INTERNAL(13, 500, DeltaErrorType.INTERNAL_SERVER_ERROR_EXCEPTION),
+  // Temporarily unable to serve the request, which the client can retry, e.g. a table drop that
+  // timed out waiting for the table lock.
+  UNAVAILABLE(14, 503, DeltaErrorType.SERVICE_UNAVAILABLE_EXCEPTION),
   DATA_LOSS(15, 500, DeltaErrorType.INTERNAL_SERVER_ERROR_EXCEPTION),
   // UC-specific "already exists" error codes for backwards compatibility (all HTTP 400). But new
   // Delta API returns 409 as it has no backwards compatibility concern.
