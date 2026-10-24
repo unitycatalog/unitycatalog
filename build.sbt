@@ -45,6 +45,7 @@ lazy val nettyVersion = "4.2.18.Final"
 lazy val nettyTcnativeVersion = "2.0.84.Final"
 lazy val vertxVersion = "4.5.34"
 lazy val postgresqlVersion = "42.7.14"
+lazy val flywayVersion = "13.10.3"
 // Keep in step with the Caffeine version iceberg-core depends on (2.9.3 in Iceberg 1.11.0).
 lazy val caffeineVersion = "2.9.3"
 lazy val junitJupiterVersion = "5.13.4"
@@ -99,12 +100,17 @@ lazy val commonSettings = Seq(
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
+    // Merged, not dropped: Flyway finds its database support through these ServiceLoader files.
+    case PathList("META-INF", "services", _*) => MergeStrategy.filterDistinctLines
     case PathList("META-INF", xs @ _*) => MergeStrategy.discard
     case _ => MergeStrategy.first
   },
 
   // Test configs
-  Test / testOptions  := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q"), Tests.Filter(name => !(name startsWith s"$orgName.server.base"))),
+  // Tests tagged "upgrades" run released server images in Docker; testUpgrades* runs them.
+  Test / testOptions  := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q"), Tests.Argument(jupiter, "--exclude-tags=upgrades"), Tests.Filter(name => !(name startsWith s"$orgName.server.base"))),
+  // The coverage run (jacoco, in CI) has its own test options.
+  Jacoco / testOptions += Tests.Argument(jupiter, "--exclude-tags=upgrades"),
   Test / logLevel := util.Level.Info,
   Test / publishArtifact := false,
   fork := true,
@@ -116,7 +122,10 @@ lazy val commonSettings = Seq(
       targetDir = packageFile.getParentFile,
       // Also include the jar being built (packageFile) in the classpath
       // This is specifically required by the server project since the server and control models are provided dependencies
-      classpath = (Runtime / dependencyClasspath).value :+ Attributed.blank(packageFile)
+      // The jar replaces the project's own class directory: with both, Flyway finds every
+      // migration step twice.
+      classpath = (Runtime / dependencyClasspath).value
+        .filterNot(_.data == (Compile / classDirectory).value) :+ Attributed.blank(packageFile)
     )
     packageFile
   },
@@ -420,6 +429,9 @@ lazy val server = (project in file("server"))
 
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
       "com.zaxxer" % "HikariCP" % "7.1.0",
+      "org.flywaydb" % "flyway-core" % flywayVersion,
+      "org.flywaydb" % "flyway-database-postgresql" % flywayVersion,
+      "org.flywaydb" % "flyway-mysql" % flywayVersion,
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
@@ -484,9 +496,7 @@ lazy val server = (project in file("server"))
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
 
       // Integration testing
-      "org.testcontainers" % "mysql" % testcontainersVersion % Test,
       "org.testcontainers" % "junit-jupiter" % testcontainersVersion % Test,
-      "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
 
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
@@ -665,6 +675,8 @@ lazy val testDatabaseDependencies = Seq(
   "org.testcontainers" % "testcontainers" % testcontainersVersion % Test,
   "org.testcontainers" % "postgresql" % testcontainersVersion % Test,
   "org.postgresql" % "postgresql" % postgresqlVersion % Test,
+  "org.testcontainers" % "mysql" % testcontainersVersion % Test,
+  "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
 )
 
 /*
@@ -898,3 +910,19 @@ val generate = taskKey[Unit]("generate code from APIs")
 def testOnDatabase(database: String): String =
   s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database") ; test"""
 addCommandAlias("testPostgres18", testOnDatabase("POSTGRES_18"))
+addCommandAlias("testMySQL8", testOnDatabase("MYSQL_8"))
+
+// The JUnit 5 test framework, for its tag options.
+lazy val jupiter = TestFramework("net.aichler.jupiter.api.JupiterFramework")
+// sbt-jacoco's test configuration, which doesn't take Test's test options.
+lazy val Jacoco = config("jacoco")
+
+// Runs only the upgrade tests (tag "upgrades") on one test database. UC_TEST_UPGRADE_PATHS picks
+// the paths, UC_TEST_BASE_REF the git ref UpgradePath.BASE is built from.
+def testUpgradesOn(database: String): String =
+  s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database")""" +
+    """ ; set server / Test / testOptions := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q"), Tests.Argument(TestFramework("net.aichler.jupiter.api.JupiterFramework"), "--include-tags=upgrades"))""" +
+    " ; server/test"
+addCommandAlias("testUpgrades", testUpgradesOn("H2"))
+addCommandAlias("testUpgradesPostgres18", testUpgradesOn("POSTGRES_18"))
+addCommandAlias("testUpgradesMySQL8", testUpgradesOn("MYSQL_8"))

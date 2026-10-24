@@ -78,6 +78,19 @@ This guide outlines how to deploy the Unity Catalog server.
     docker-compose -f etc/db/mysql-example.yml up -d
     ```
 
+- Unity Catalog treats storage paths and names as case-sensitive. PostgreSQL and H2 compare text
+  case-sensitively by default, but MySQL's default collation is case-insensitive. Create the
+  database with a binary collation. The example file already does this for `ucdb` when it creates a
+  new data volume; for your own server run:
+
+    ```sql
+    CREATE DATABASE ucdb CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
+    ```
+
+  A database created with a case-insensitive collation is converted, with its tables, when the
+  schema is set up or upgraded (`bin/uc-migrate migrate`, or the server's first start on an empty
+  database). The server logs a warning at startup if the database or its tables still use one.
+
 - Modify the `etc/conf/hibernate.properties` file with your MySQL connection details:
 
     ```properties
@@ -120,13 +133,13 @@ This guide outlines how to deploy the Unity Catalog server.
 
 ### Existing deployments and column type changes
 
-The server uses `hibernate.hbm2ddl.auto=update`. Hibernate can create missing tables and
-columns, but **it does not change the type or length of a column that already exists**.
+Flyway manages the database schema. See [Upgrading the database schema](upgrades.md).
 
 `uc_properties.property_value` used to be created as `varchar(255)`. Table and view properties
 (user `TBLPROPERTIES`, Spark `view.sqlConfig.*`, and any other REST-sent property) can exceed
-that. New installs get a wider column from Hibernate. **Existing databases keep `varchar(255)`
-until you run one of the statements below**; upgrading the server JAR alone has no effect.
+that. New installs get a wider column from the schema steps. **Existing databases keep `varchar(255)`
+until you run one of the statements below**; upgrading the server or running
+`bin/uc-migrate migrate` leaves it unchanged.
 
 PostgreSQL:
 

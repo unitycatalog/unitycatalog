@@ -25,8 +25,8 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.testdatabase.SupportedDatabase;
+import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Files;
@@ -40,7 +40,6 @@ import java.util.function.Function;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -52,7 +51,7 @@ class ManagedTableCleanupTaskTest {
   @TempDir Path tempDir;
 
   private SessionFactory sessionFactory;
-  private TestDatabase testDatabase;
+  @TempDatabase private TestDatabase testDatabase;
   private Repositories repositories;
   private ServerProperties serverProperties;
   private UUID schemaId;
@@ -62,8 +61,7 @@ class ManagedTableCleanupTaskTest {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
     serverProperties = new ServerProperties(properties);
-    testDatabase = TestDatabases.newDatabase();
-    sessionFactory = testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
+    sessionFactory = testDatabase.sessionFactory();
     repositories = new Repositories(sessionFactory, serverProperties);
 
     UUID catalogId = UUID.randomUUID();
@@ -84,11 +82,6 @@ class ManagedTableCleanupTaskTest {
         },
         "Failed to create test namespace",
         /* readOnly= */ false);
-  }
-
-  @AfterEach
-  void tearDown() {
-    testDatabase.close();
   }
 
   @Test
@@ -296,10 +289,12 @@ class ManagedTableCleanupTaskTest {
     }
   }
 
-  /** Repositories on this database whose connections give up waiting for a lock after 50 ms. */
+  /**
+   * Repositories on this database whose connections give up waiting for a lock quickly (50 ms; 1 s
+   * on MySQL, its minimum).
+   */
   private Repositories impatientRepositories() {
-    Properties impatient = testDatabase.hibernateProperties(serverProperties);
-    impatient.setProperty("hibernate.hbm2ddl.auto", "none");
+    Properties impatient = testDatabase.hibernateProperties();
     // Set on the URL, not with SET: a PostgreSQL SET is undone when its transaction rolls back.
     impatient.setProperty(
         "hibernate.connection.url",
@@ -307,6 +302,7 @@ class ManagedTableCleanupTaskTest {
             + switch (SupportedDatabase.selected()) {
               case H2 -> ";LOCK_TIMEOUT=50";
               case POSTGRES_18 -> "?options=-c%20lock_timeout%3D50";
+              case MYSQL_8 -> "?sessionVariables=innodb_lock_wait_timeout=1";
             });
     return new Repositories(
         testDatabase.openHibernateConfigurator(impatient).getSessionFactory(), serverProperties);

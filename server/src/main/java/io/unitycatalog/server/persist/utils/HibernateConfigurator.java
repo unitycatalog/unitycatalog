@@ -27,7 +27,13 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Properties;
+import java.util.Set;
+import java.util.TreeSet;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
@@ -64,16 +70,55 @@ public class HibernateConfigurator implements AutoCloseable {
    */
   public HibernateConfigurator(Properties hibernateProperties) {
     this.hibernateProperties = hibernateProperties;
-    this.dataSource = createDataSource(hibernateProperties);
+    this.dataSource = new HikariDataSource(hikariConfig(hibernateProperties));
     try {
       this.sessionFactory = createSessionFactory(hibernateProperties, dataSource);
     } catch (Throwable t) {
       dataSource.close();
       throw t;
     }
+    warnIfMySqlIsCaseInsensitive(hibernateProperties);
   }
 
-  private static HikariDataSource createDataSource(Properties hibernateProperties) {
+  /**
+   * Storage paths and names are case-sensitive, but MySQL's default collation is not. Warns when
+   * the database, or a table in it, compares text case-insensitively (a {@code _ci} collation).
+   * Flyway's history table is left out: it keeps the collation the database had when Flyway first
+   * ran, and holds no names or paths.
+   */
+  private void warnIfMySqlIsCaseInsensitive(Properties properties) {
+    if (!properties.getProperty("hibernate.connection.url", "").startsWith("jdbc:mysql:")) {
+      return;
+    }
+    try (Connection connection = dataSource.getConnection();
+        Statement statement = connection.createStatement();
+        ResultSet collations =
+            statement.executeQuery(
+                "SELECT @@collation_database UNION "
+                    + "SELECT TABLE_COLLATION FROM information_schema.TABLES "
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_COLLATION IS NOT NULL "
+                    + "AND TABLE_NAME <> 'flyway_schema_history'")) {
+      Set<String> caseInsensitive = new TreeSet<>();
+      while (collations.next()) {
+        if (collations.getString(1).endsWith("_ci")) {
+          caseInsensitive.add(collations.getString(1));
+        }
+      }
+      if (!caseInsensitive.isEmpty()) {
+        LOGGER.warn(
+            "The MySQL database compares text case-insensitively (collation {}), so storage paths"
+                + " and names that differ only in case are treated as the same. Create the"
+                + " database with COLLATE utf8mb4_0900_bin; see the MySQL section of"
+                + " docs/server/deployment.md.",
+            caseInsensitive);
+      }
+    } catch (SQLException e) {
+      LOGGER.debug("Could not check the MySQL collation", e);
+    }
+  }
+
+  /** The connection pool settings of {@code hibernateProperties}. */
+  public static HikariConfig hikariConfig(Properties hibernateProperties) {
     Properties hikariProperties = new Properties();
     hibernateProperties.stringPropertyNames().stream()
         .filter(name -> name.startsWith(HIKARI_PREFIX))
@@ -103,7 +148,7 @@ public class HibernateConfigurator implements AutoCloseable {
     if (hikariConfig.getPoolName() == null) {
       hikariConfig.setPoolName("unity-catalog");
     }
-    return new HikariDataSource(hikariConfig);
+    return hikariConfig;
   }
 
   /**
@@ -179,7 +224,6 @@ public class HibernateConfigurator implements AutoCloseable {
       hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
       hibernateProperties.setProperty(
           "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
-      hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "update");
     } else {
       try (InputStream input = Files.newInputStream(hibernatePropertiesPath)) {
         hibernateProperties.load(input);
@@ -192,9 +236,22 @@ public class HibernateConfigurator implements AutoCloseable {
       hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
       hibernateProperties.setProperty(
           "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
-      hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
       LOGGER.debug("Hibernate configuration set for testing");
     }
-    return hibernateProperties;
+    return withSchemaUpdatesOff(hibernateProperties);
+  }
+
+  /**
+   * Flyway owns the schema, so Hibernate never changes it, even if an old {@code
+   * etc/conf/hibernate.properties} still says {@code update}.
+   */
+  static Properties withSchemaUpdatesOff(Properties properties) {
+    String auto = properties.getProperty("hibernate.hbm2ddl.auto");
+    if (auto != null && !"none".equals(auto)) {
+      LOGGER.warn(
+          "Ignoring hibernate.hbm2ddl.auto={}: the schema is managed by bin/uc-migrate.", auto);
+    }
+    properties.setProperty("hibernate.hbm2ddl.auto", "none");
+    return properties;
   }
 }
