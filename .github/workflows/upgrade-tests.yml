@@ -17,38 +17,72 @@ permissions:
   contents: read
 
 jobs:
-  base-jar:
+  refs:
     runs-on: ubuntu-latest
-    name: Build the base server jar
+    name: Pick the old servers
     outputs:
-      base-sha: ${{ steps.base.outputs.sha }}
+      base-sha: ${{ steps.refs.outputs.base-sha }}
+      release-chain: ${{ steps.refs.outputs.release-chain }}
+      refs: ${{ steps.refs.outputs.refs }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 2
-      # The first parent of the merge commit is the code this PR starts from. base_ref would
-      # drift when main moves on.
-      - name: Check out the base commit
-        id: base
+      - name: Fetch the release tags
+        run: git fetch --tags --force origin
+      # The base is the merge commit's first parent, the code this PR starts from (base_ref would
+      # drift when main moves on). The release chain is the latest patch of each minor release
+      # from SchemaMigrator.BASELINE_RELEASE up to, not including, this build's version; the
+      # upgrade tests compute the same chain themselves when UC_TEST_RELEASE_CHAIN is unset.
+      - name: Pick the base commit and the release chain
+        id: refs
         run: |
-          git checkout HEAD^1
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          base=$(git rev-parse HEAD^1)
+          baseline=$(sed -n 's/.*BASELINE_RELEASE = "\(.*\)";/\1/p' server/src/main/java/io/unitycatalog/server/migrate/SchemaMigrator.java)
+          version=$(sed -n 's/.*"\(.*\)".*/\1/p' version.sbt)
+          version=${version%-SNAPSHOT}
+          chain=$(git tag --list | grep -xE 'v[0-9]+\.[0-9]+\.[0-9]+' | while read -r tag; do
+            if [ "$tag" != "v$version" ] && printf '%s\n' "v$baseline" "$tag" "v$version" | sort -CV; then
+              echo "$tag"
+            fi
+          done | sort -rV | sort -t. -k1,2 -us | sort -V | xargs)
+          refs="{\"name\":\"base\",\"sha\":\"$base\"}"
+          for tag in $chain; do
+            refs="$refs,{\"name\":\"$tag\",\"sha\":\"$(git rev-parse "$tag^{commit}")\"}"
+          done
+          echo "base-sha=$base" >> "$GITHUB_OUTPUT"
+          echo "release-chain=$chain" >> "$GITHUB_OUTPUT"
+          echo "refs=[$refs]" >> "$GITHUB_OUTPUT"
+
+  build-jars:
+    needs: refs
+    runs-on: ubuntu-latest
+    name: Build the server jar (${{ matrix.name }})
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.refs.outputs.refs) }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ matrix.sha }}
       - name: Prepare the environment
         uses: ./.github/actions/prepare-spark-env
         with:
           spark-version: "4.0.0"
-      - name: Build the base server jar
-        run: build/sbt -J-Xmx2G serverShaded/assembly
-      - name: Upload the base server jar
+      - name: Build the server jar
+        run: |
+          build/sbt -J-Xmx2G serverShaded/assembly
+          mv server-shaded/target/unitycatalog-server-shaded-assembly-*.jar "${{ matrix.sha }}.jar"
+      - name: Upload the server jar
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: base-server-jar
-          path: server-shaded/target/unitycatalog-server-shaded-assembly-*.jar
+          name: jar-${{ matrix.sha }}
+          path: ${{ matrix.sha }}.jar
           retention-days: 1
           if-no-files-found: error
 
   upgrade-tests:
-    needs: base-jar
+    needs: [refs, build-jars]
     runs-on: ubuntu-latest
     name: Upgrade tests (${{ matrix.test-database }})
     strategy:
@@ -62,19 +96,26 @@ jobs:
           - test-database: "MYSQL_8"
             alias: "testUpgradesMySQL8"
     steps:
+      # The tests find each old server's jar by its commit: they resolve the base commit and the
+      # release tags, so both must be in the clone.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 2
+      - name: Fetch the release tags
+        run: git fetch --tags --force origin
       - name: Prepare the environment
         uses: ./.github/actions/prepare-spark-env
         with:
           spark-version: "4.0.0"
-      - name: Download the base server jar
+      - name: Download the server jars
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: base-server-jar
-          path: ${{ runner.temp }}/base-jar
+          pattern: jar-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/jars
       - name: Run upgrade tests
         env:
-          UC_TEST_BASE_REF: ${{ needs.base-jar.outputs.base-sha }}
-        run: |
-          export UC_TEST_BASE_JAR="$(ls "${{ runner.temp }}"/base-jar/unitycatalog-server-shaded-assembly-*.jar)"
-          build/sbt -J-Xmx2G ${{ matrix.alias }}
+          UC_TEST_JAR_DIR: ${{ runner.temp }}/jars
+          UC_TEST_BASE_REF: ${{ needs.refs.outputs.base-sha }}
+          UC_TEST_RELEASE_CHAIN: ${{ needs.refs.outputs.release-chain }}
+        run: build/sbt -J-Xmx2G ${{ matrix.alias }}
