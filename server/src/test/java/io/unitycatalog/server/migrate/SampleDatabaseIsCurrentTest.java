@@ -27,8 +27,9 @@ public class SampleDatabaseIsCurrentTest {
       String version = migrator.currentVersion();
       assertThat(state)
           .as(
-              "etc/db/h2db is at version %s, this build at %s; run `bin/uc-migrate migrate` from"
-                  + " the repo root and commit etc/db/h2db.mv.db",
+              "etc/db/h2db is at version %s, this build at %s; from the repo root run"
+                  + " `build/sbt server/package`, then `bin/uc-migrate migrate`, and commit"
+                  + " etc/db/h2db.mv.db",
               version == null ? "none" : version, migrator.latestVersion())
           .isEqualTo(SchemaState.CURRENT);
     }
