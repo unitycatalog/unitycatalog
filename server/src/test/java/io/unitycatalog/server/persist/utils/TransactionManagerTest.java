@@ -326,7 +326,13 @@ public class TransactionManagerTest {
           "test",
           true);
 
-      // Run a transaction with REPEATABLE_READ
+      // Request a level other than the default, or "restored" cannot be told from "never changed"
+      int requested =
+          defaultIsolation[0] == Connection.TRANSACTION_REPEATABLE_READ
+              ? Connection.TRANSACTION_SERIALIZABLE
+              : Connection.TRANSACTION_REPEATABLE_READ;
+
+      // Run a transaction with the requested level
       TransactionManager.executeWithTransaction(
           realSessionFactory,
           session -> {
@@ -336,10 +342,10 @@ public class TransactionManagerTest {
           },
           "test",
           true,
-          Optional.of(Connection.TRANSACTION_REPEATABLE_READ));
+          Optional.of(requested));
 
-      // Check the isolation level was set to REPEATABLE_READ during the transaction
-      assertThat(isolationDuringTx[0]).isEqualTo(Connection.TRANSACTION_REPEATABLE_READ);
+      // Check the requested isolation level was set during the transaction
+      assertThat(isolationDuringTx[0]).isEqualTo(requested);
 
       // Run another transaction without custom isolation to verify restore
       TransactionManager.executeWithTransaction(

@@ -296,7 +296,10 @@ class ManagedTableCleanupTaskTest {
     }
   }
 
-  /** Repositories on this database whose connections give up waiting for a lock after 50 ms. */
+  /**
+   * Repositories on this database whose connections give up waiting for a lock quickly (50 ms; 1 s
+   * on MySQL, its minimum).
+   */
   private Repositories impatientRepositories() {
     Properties impatient = testDatabase.hibernateProperties(serverProperties);
     impatient.setProperty("hibernate.hbm2ddl.auto", "none");
