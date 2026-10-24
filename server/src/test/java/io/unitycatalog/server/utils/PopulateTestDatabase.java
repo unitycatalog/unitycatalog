@@ -5,6 +5,7 @@ import static io.unitycatalog.server.utils.ColumnUtils.getTypeJson;
 import static io.unitycatalog.server.utils.ColumnUtils.getTypeText;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import io.unitycatalog.server.migrate.Migrator;
 import io.unitycatalog.server.model.ColumnTypeName;
 import io.unitycatalog.server.model.CreateCatalog;
 import io.unitycatalog.server.model.CreateFunction;
@@ -53,6 +54,11 @@ public class PopulateTestDatabase {
     Properties properties = new Properties();
     properties.setProperty(Property.SERVER_ENV.getKey(), "dev");
     ServerProperties serverProperties = new ServerProperties(properties);
+    try (Migrator migrator =
+        Migrator.fromHibernateProperties(
+            HibernateConfigurator.setupHibernateProperties(serverProperties))) {
+      migrator.migrate();
+    }
     HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
     Repositories repositories =
         new Repositories(hibernateConfigurator.getSessionFactory(), serverProperties);
