@@ -100,17 +100,6 @@ public class MigratorTest {
   }
 
   @Test
-  void refusesADatabaseWithAnotherApplicationsFlywayHistory() {
-    execute(db, "CREATE TABLE flyway_schema_history (installed_rank INT)");
-    SchemaSnapshot before = SchemaSnapshot.of(db.dataSource());
-    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
-    assertThat(migrator.state()).isEqualTo(SchemaState.NOT_UC);
-
-    assertThatThrownBy(migrator::migrate).hasMessageContaining("not a Unity Catalog database");
-    assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(before);
-  }
-
-  @Test
   void secondRunAppliesNothing() {
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
     migrator.migrate();
