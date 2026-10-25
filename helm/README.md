@@ -499,6 +499,18 @@ ucdb
 			<td>MySQL database name</td>
 		</tr>
 		<tr>
+			<td>server.db.mysqlConfig.driver.subPath</td>
+			<td>string</td>
+			<td><pre lang="">
+not set: the whole volume
+</pre>
+</td>
+			<td>Directory in `volume` that holds the driver jar
+
+Example: `connector-j`
+</td>
+		</tr>
+		<tr>
 			<td>server.db.mysqlConfig.driver.volume</td>
 			<td>object</td>
 			<td><pre lang="">
@@ -508,9 +520,13 @@ not set
 			<td>Volume that holds the MySQL JDBC driver jar (Required)
 
 The server image does not include the MySQL JDBC driver
-([MySQL Connector/J](https://dev.mysql.com/downloads/connector/j/)). The chart mounts this volume into the
-server and loads every jar in it. Any volume source works, for example a PersistentVolumeClaim that holds
-`mysql-connector-j-<version>.jar`. The driver jar is larger than a ConfigMap can hold.
+([MySQL Connector/J](https://dev.mysql.com/downloads/connector/j/)). The chart mounts this volume (or its
+`subPath`) into the server and the pre-upgrade check and puts every entry in it on the Java module path.
+The directory must hold exactly one jar, `mysql-connector-j-<version>.jar`, and nothing else: two driver
+versions, or a directory the server cannot read such as the `lost+found` of a new file system, stop the
+server before it starts. To replace the driver, replace the jar. Any volume source works, for example a
+PersistentVolumeClaim with `subPath` naming a directory on it. The driver jar is larger than a ConfigMap
+can hold.
 
 Example:
 ```yaml

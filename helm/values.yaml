@@ -338,9 +338,13 @@ server:
         # @raw
         #
         # The server image does not include the MySQL JDBC driver
-        # ([MySQL Connector/J](https://dev.mysql.com/downloads/connector/j/)). The chart mounts this volume into the
-        # server and loads every jar in it. Any volume source works, for example a PersistentVolumeClaim that holds
-        # `mysql-connector-j-<version>.jar`. The driver jar is larger than a ConfigMap can hold.
+        # ([MySQL Connector/J](https://dev.mysql.com/downloads/connector/j/)). The chart mounts this volume (or its
+        # `subPath`) into the server and the pre-upgrade check and puts every entry in it on the Java module path.
+        # The directory must hold exactly one jar, `mysql-connector-j-<version>.jar`, and nothing else: two driver
+        # versions, or a directory the server cannot read such as the `lost+found` of a new file system, stop the
+        # server before it starts. To replace the driver, replace the jar. Any volume source works, for example a
+        # PersistentVolumeClaim with `subPath` naming a directory on it. The driver jar is larger than a ConfigMap
+        # can hold.
         #
         # Example:
         # ```yaml
@@ -350,6 +354,14 @@ server:
         # ```
         #
         volume:
+
+        # -- (string) Directory in `volume` that holds the driver jar
+        # @default -- not set: the whole volume
+        # @raw
+        #
+        # Example: `connector-j`
+        #
+        subPath:
 
     # -- (string) Override Hibernate configuration for the server
     # @default -- not set

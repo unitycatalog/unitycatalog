@@ -85,7 +85,10 @@ helm upgrade --install unitycatalog oci://registry-1.docker.io/unitycatalog/unit
 
 The server image does not include the MySQL JDBC driver. Put the driver jar
 ([MySQL Connector/J](https://dev.mysql.com/downloads/connector/j/)) on a volume and point
-`server.db.mysqlConfig.driver.volume` at it. The chart mounts the volume into the server and loads every jar on it.
+`server.db.mysqlConfig.driver.volume` at it, and `server.db.mysqlConfig.driver.subPath` at a directory on it if the
+jar is not at the top. The chart puts every entry of that directory on the Java module path, so it must hold exactly
+one driver jar and nothing else: two driver versions, or a directory the server cannot read, such as the `lost+found`
+of a new file system, stop the server and the check before they start. To replace the driver, replace the jar.
 The servers and the [pre-upgrade check](#upgrade-and-uninstall) mount it at the same time, so use a volume that
 several pods can mount, for example a PersistentVolumeClaim with access mode `ReadOnlyMany`. The jar is too large for
 a ConfigMap.
@@ -109,6 +112,7 @@ server:
         volume:
           persistentVolumeClaim:
             claimName: mysql-driver
+        subPath: connector-j
 ```
 
 `server.db.mysqlConfig.extraParams` adds parameters to the JDBC URL, for example `sslMode`. With authentication on,

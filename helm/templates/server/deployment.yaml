@@ -122,6 +122,9 @@ spec:
           {{- if eq .Values.server.db.type "mysql" }}
             - name: mysql-driver
               mountPath: /home/unitycatalog/jdbc-drivers
+              {{- with .Values.server.db.mysqlConfig.driver.subPath }}
+              subPath: {{ . | quote }}
+              {{- end }}
               readOnly: true
           {{- end }}
           {{- range $index, $config := .Values.storage.credentials.gcs }}
