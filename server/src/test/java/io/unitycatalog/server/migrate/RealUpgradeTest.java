@@ -47,7 +47,7 @@ public class RealUpgradeTest {
   /** The schema the steps build on a new empty database. */
   static SchemaSnapshot freshInstallSnapshot() {
     try (TestDatabase fresh = TestDatabases.newEmptyDatabase()) {
-      new SchemaMigrator(fresh.dataSource(), fresh.kind()).migrate();
+      new SchemaMigrator(fresh.dataSource()).migrate();
       return SchemaSnapshot.of(fresh.dataSource());
     }
   }

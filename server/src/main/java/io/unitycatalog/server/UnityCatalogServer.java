@@ -7,7 +7,6 @@ import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerListener;
 import com.linecorp.armeria.server.healthcheck.HealthCheckService;
 import com.linecorp.armeria.server.prometheus.PrometheusExpositionService;
-import com.zaxxer.hikari.HikariDataSource;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
@@ -19,8 +18,6 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.migrate.SchemaMigrator;
-import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
-import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.observability.DbReadinessChecker;
 import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
@@ -127,7 +124,8 @@ public class UnityCatalogServer implements AutoCloseable {
     this.blockingThreads = hibernateConfigurator.getDataSource().getMaximumPoolSize();
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
-      requireCurrentSchema();
+      // Upgrades the database to this release's schema, or refuses one it cannot upgrade.
+      new SchemaMigrator(hibernateConfigurator.getDataSource()).migrate();
       createdBlockingTaskExecutor =
           BlockingTaskExecutor.builder()
               .numThreads(blockingThreads)
@@ -145,24 +143,6 @@ public class UnityCatalogServer implements AutoCloseable {
       closeBlockingTaskExecutor(createdBlockingTaskExecutor, shutdownTimeout, t);
       closeOwnedSessionFactory(t);
       throw t;
-    }
-  }
-
-  /**
-   * Upgrades the database to the schema version this release ships, or refuses one it cannot
-   * upgrade (see {@link SchemaMigrator#prepareForStart()}).
-   */
-  private void requireCurrentSchema() {
-    HikariDataSource ds = hibernateConfigurator.getDataSource();
-    DatabaseKind kind = DatabaseKind.fromJdbcUrl(ds.getJdbcUrl());
-    SchemaMigrator migrator = new SchemaMigrator(ds, kind);
-    SchemaState state = migrator.prepareForStart();
-    if (state != SchemaState.CURRENT) {
-      throw new IllegalStateException(
-          "The database schema is "
-              + state
-              + " after migration; this release needs version "
-              + migrator.latestVersion());
     }
   }
 

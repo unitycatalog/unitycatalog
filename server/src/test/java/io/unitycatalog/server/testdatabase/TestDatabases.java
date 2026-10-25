@@ -66,7 +66,7 @@ public final class TestDatabases {
     String url = "jdbc:h2:mem:" + name + ";DB_CLOSE_DELAY=-1";
     // DB_CLOSE_DELAY=-1 keeps an in-memory database until SHUTDOWN, so release it explicitly.
     TestDatabase database = new TestDatabase("org.h2.Driver", url, "sa", "", () -> shutdown(url));
-    new SchemaMigrator(database.dataSource(), database.kind()).migrate();
+    new SchemaMigrator(database.dataSource()).migrate();
     return database;
   }
 

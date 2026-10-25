@@ -79,7 +79,7 @@ abstract class TemplateDatabases {
     createDatabase(TEMPLATE);
     // Closing releases every connection: PostgreSQL refuses to copy a template that is in use.
     try (TestDatabase template = testDatabase(TEMPLATE, () -> {})) {
-      new SchemaMigrator(template.dataSource(), template.kind()).migrate();
+      new SchemaMigrator(template.dataSource()).migrate();
     }
     templateBuilt();
   }

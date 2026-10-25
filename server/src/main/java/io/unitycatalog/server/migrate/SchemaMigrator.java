@@ -10,9 +10,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.locks.ReentrantLock;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
@@ -30,17 +27,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class SchemaMigrator {
 
-  /**
-   * The result of {@link #migrate()}.
-   *
-   * @param from the schema version before the run, {@code null} for an empty database
-   * @param to the schema version after the run
-   * @param applied the number of steps the run applied
-   */
-  public record MigrationOutcome(String from, String to, int applied) {}
-
   /** What a database holds, compared with the schema steps of this build. */
-  public enum SchemaState {
+  enum SchemaState {
     /** No tables, apart from Casbin's authorization rules table. */
     EMPTY,
     /** Every step of this build is applied. */
@@ -55,38 +43,30 @@ public final class SchemaMigrator {
     NOT_UC
   }
 
-  /** The databases Unity Catalog's schema steps exist for. */
-  public enum DatabaseKind {
-    H2("h2"),
-    POSTGRESQL("postgresql"),
-    MYSQL("mysql");
-
-    private final String folder;
-
-    DatabaseKind(String folder) {
-      this.folder = folder;
-    }
+  /** The databases Unity Catalog's schema steps exist for; each has its folder of steps. */
+  enum DatabaseKind {
+    H2,
+    POSTGRESQL,
+    MYSQL;
 
     /**
      * The database of a JDBC URL, from its prefix.
      *
      * @throws IllegalArgumentException for a URL of any other database
      */
-    public static DatabaseKind fromJdbcUrl(String url) {
-      if (url.startsWith("jdbc:h2:")) {
-        return H2;
-      } else if (url.startsWith("jdbc:postgresql:")) {
-        return POSTGRESQL;
-      } else if (url.startsWith("jdbc:mysql:")) {
-        return MYSQL;
+    static DatabaseKind fromJdbcUrl(String url) {
+      for (DatabaseKind kind : values()) {
+        if (url.startsWith("jdbc:" + kind.folder() + ":")) {
+          return kind;
+        }
       }
       throw new IllegalArgumentException(
           "Unsupported database URL " + url + ": use jdbc:h2:, jdbc:postgresql: or jdbc:mysql:");
     }
 
     /** The folder under {@code db/migration} holding this database's steps. */
-    public String folder() {
-      return folder;
+    String folder() {
+      return name().toLowerCase(Locale.ROOT);
     }
   }
 
@@ -97,7 +77,7 @@ public final class SchemaMigrator {
    * The release whose schema is version 1. A database without schema history from it is adopted as
    * version 1; one from an earlier release has to be started on a {@value} server once first.
    */
-  public static final String BASELINE_RELEASE = "0.7.0";
+  static final String BASELINE_RELEASE = "0.7.0";
 
   /** The schema version of {@link #BASELINE_RELEASE}, which Flyway records when it adopts one. */
   private static final String BASELINE_VERSION = "1";
@@ -110,18 +90,26 @@ public final class SchemaMigrator {
   private final String[] locations;
 
   /** Applies this release's steps to {@code dataSource}; closing it stays with the caller. */
-  public SchemaMigrator(DataSource dataSource, DatabaseKind kind) {
-    this(dataSource, kind, List.of());
+  public SchemaMigrator(DataSource dataSource) {
+    this(dataSource, List.of());
   }
 
   /** Also applies the steps in {@code extraLocations} (tests' own steps). */
-  public SchemaMigrator(DataSource dataSource, DatabaseKind kind, List<String> extraLocations) {
+  SchemaMigrator(DataSource dataSource, List<String> extraLocations) {
     this.dataSource = dataSource;
-    this.kind = kind;
+    this.kind = DatabaseKind.fromJdbcUrl(jdbcUrl(dataSource));
     List<String> locations = new ArrayList<>();
     locations.add("classpath:db/migration/" + kind.folder());
     locations.addAll(extraLocations);
     this.locations = locations.toArray(String[]::new);
+  }
+
+  private static String jdbcUrl(DataSource dataSource) {
+    try (Connection connection = dataSource.getConnection()) {
+      return connection.getMetaData().getURL();
+    } catch (SQLException e) {
+      throw new IllegalStateException("Could not connect to the database: " + e.getMessage(), e);
+    }
   }
 
   private Flyway flyway(String baselineVersion) { // null: no baselining
@@ -144,10 +132,46 @@ public final class SchemaMigrator {
   }
 
   /**
+   * Under the run lock: classifies the database, then sets it up, adopts it and upgrades it, and
+   * checks that it ends at this build's schema version. A second run at the same time waits for the
+   * first. Returns the number of steps it applied.
+   */
+  public int migrate() {
+    try (RunLock lock = RunLock.acquire(dataSource, kind)) {
+      SchemaState state = state(); // read under the lock
+      refuseIfUnsupported(state);
+      String from = state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : currentVersion();
+      // EMPTY (also with only casbin_rule): baseline at 0 so V1 runs; UNVERSIONED_UC: baseline at
+      // 1.
+      String baseline =
+          state == SchemaState.EMPTY
+              ? "0"
+              : state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : null;
+      int applied = flyway(baseline).migrate().migrationsExecuted;
+      if (applied > 0) {
+        LOGGER.info(
+            "Upgraded the database schema from version {} to {} ({} steps)",
+            from == null ? "none" : from,
+            currentVersion(),
+            applied);
+      }
+      SchemaState after = state();
+      if (after != SchemaState.CURRENT) {
+        throw new IllegalStateException(
+            "The database schema is "
+                + after
+                + " after migration; this release needs version "
+                + latestVersion());
+      }
+      return applied;
+    }
+  }
+
+  /**
    * Classifies the database against this build's steps. Changes nothing and does not take the run
    * lock, so a run in progress can change the answer.
    */
-  public SchemaState state() {
+  SchemaState state() {
     Set<String> tables = tableNamesLowerCase();
     tables.remove("casbin_rule"); // Casbin's adapter creates it on its own
     if (tables.contains(HISTORY_TABLE)) {
@@ -168,103 +192,43 @@ public final class SchemaMigrator {
   }
 
   /** The highest applied version, {@code null} without history. */
-  public String currentVersion() {
+  String currentVersion() {
     return version(flyway(null).info().current());
   }
 
   /** The highest step in this build. */
-  public String latestVersion() {
+  String latestVersion() {
     return latestVersion(flyway(null).info());
   }
 
-  private String latestVersion(MigrationInfoService info) {
+  private static String latestVersion(MigrationInfoService info) {
     return Arrays.stream(info.all())
         .filter(m -> m.getState().isResolved() && m.getVersion() != null)
         .map(MigrationInfo::getVersion)
         .max(MigrationVersion::compareTo)
-        .map(MigrationVersion::getVersion)
-        .orElseThrow(
-            () ->
-                new IllegalStateException(
-                    "No schema steps found in "
-                        + String.join(", ", locations)
-                        + ": the server jar is incomplete"));
+        .orElseThrow()
+        .getVersion();
   }
 
-  /** The entries of the schema history: the baseline, if any, and every step applied or failed. */
-  public List<MigrationInfo> applied() {
-    return List.of(flyway(null).info().applied());
-  }
-
-  /** Under the run lock: classifies the database, then sets it up, adopts it and upgrades it. */
-  public MigrationOutcome migrate() {
-    try (RunLock lock = RunLock.acquire(dataSource, kind)) {
-      return migrateLocked();
-    }
-  }
-
-  /**
-   * Run by every server start: under the run lock, migrates the database like {@link #migrate()}
-   * and returns the state after. A second server starting at the same time waits for the first.
-   */
-  public SchemaState prepareForStart() {
-    try (RunLock lock = RunLock.acquire(dataSource, kind)) {
-      MigrationOutcome outcome = migrateLocked();
-      if (outcome.applied() > 0) {
-        LOGGER.info(
-            "Upgraded the database schema from version {} to {} ({} steps)",
-            outcome.from() == null ? "none" : outcome.from(),
-            outcome.to(),
-            outcome.applied());
-      }
-      return state();
-    }
-  }
-
-  private MigrationOutcome migrateLocked() {
-    SchemaState state = state(); // read under the lock
-    String refusal = refusal(state);
-    if (refusal != null) {
-      throw new IllegalStateException(refusal);
-    }
-    if (state == SchemaState.UNVERSIONED_UC) {
-      requireBaselineRelease();
-    }
-    String from = state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : currentVersion();
-    // EMPTY (also with only casbin_rule): baseline at 0 so V1 runs; UNVERSIONED_UC: baseline at 1.
-    String baseline =
-        state == SchemaState.EMPTY
-            ? "0"
-            : state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : null;
-    int applied = flyway(baseline).migrate().migrationsExecuted;
-    return new MigrationOutcome(from, currentVersion(), applied);
-  }
-
-  /**
-   * Why {@link #migrate()} refuses a database in {@code state}, or {@code null} when it goes on.
-   */
-  private String refusal(SchemaState state) {
-    return switch (state) {
-      case NOT_UC ->
+  /** Throws for a database that {@link #migrate()} must not change. */
+  private void refuseIfUnsupported(SchemaState state) {
+    if (state == SchemaState.NOT_UC) {
+      throw new IllegalStateException(
           "The database has tables but none of Unity Catalog's: not a Unity Catalog database."
-              + " Point the server at an empty database or a Unity Catalog one.";
-      case AHEAD ->
+              + " Point the server at an empty database or a Unity Catalog one.");
+    }
+    if (state == SchemaState.AHEAD) {
+      throw new IllegalStateException(
           "The schema is newer than this release (version "
               + currentVersion()
               + ", this release ends at "
               + latestVersion()
-              + "). Run the newer release.";
-      default -> null;
-    };
-  }
-
-  /**
-   * Refuses a database without schema history from a release before {@value #BASELINE_RELEASE},
-   * which this release does not migrate. Stop-gap: it only checks for a table that release added
-   * ({@value #BASELINE_ONLY_TABLE}), until adoption compares the whole schema with the baseline.
-   */
-  private void requireBaselineRelease() {
-    if (!tableNamesLowerCase().contains(BASELINE_ONLY_TABLE)) {
+              + "). Run the newer release.");
+    }
+    // Stop-gap: refuses a database from a release before BASELINE_RELEASE by one table that
+    // release added, until adoption compares the whole schema with the baseline.
+    if (state == SchemaState.UNVERSIONED_UC
+        && !tableNamesLowerCase().contains(BASELINE_ONLY_TABLE)) {
       throw new IllegalStateException(
           "The database is from a release before "
               + BASELINE_RELEASE
@@ -299,120 +263,88 @@ public final class SchemaMigrator {
   }
 
   /**
-   * One lock per database for a whole migration run, so two runs never classify or change the
-   * schema at the same time. Flyway's own lock is released between steps, so it isn't enough.
-   *
-   * <ul>
-   *   <li>PostgreSQL: {@code pg_advisory_lock} on a fixed key, since PostgreSQL scopes advisory
-   *       locks to the database. MySQL: {@code GET_LOCK} on a name derived from the database's.
-   *       Either is held on one dedicated connection until {@link #close()}.
-   *   <li>H2: an embedded H2 file database is opened by one process, so a lock inside this JVM,
-   *       keyed by the database, is enough.
-   * </ul>
+   * One lock per database for a whole migration run, so two servers never run the steps at the same
+   * time; Flyway's own lock is released between steps. PostgreSQL takes {@code pg_advisory_lock} on
+   * a fixed key (advisory locks are per database), MySQL {@code GET_LOCK} on a name derived from
+   * the database's (MySQL's locks are per server). The lock is held on one connection until {@link
+   * #close()}. H2 needs none: one process opens an H2 file database.
    */
   private static final class RunLock implements AutoCloseable {
 
     /** Any fixed key; Flyway's own advisory lock uses a different one. */
     private static final long POSTGRES_KEY = 0x75635f6d69677261L; // "uc_migra"
 
-    /**
-     * The lock name, as SQL. MySQL's locks are global to the server, so the name includes the
-     * database; SHA1 keeps it within MySQL's 64-character limit.
-     */
+    /** The lock name, as SQL; SHA1 keeps it within MySQL's 64-character limit. */
     private static final String MYSQL_NAME = "CONCAT('uc_migrate.', SHA1(DATABASE()))";
 
-    private static final ConcurrentMap<String, ReentrantLock> H2_LOCKS = new ConcurrentHashMap<>();
+    private final Connection connection; // null: no lock (H2)
+    private final String unlockSql;
 
-    private final DatabaseKind kind;
-    private final Connection connection; // PostgreSQL and MySQL
-    private final ReentrantLock h2Lock; // H2
-
-    private RunLock(DatabaseKind kind, Connection connection, ReentrantLock h2Lock) {
-      this.kind = kind;
+    private RunLock(Connection connection, String unlockSql) {
       this.connection = connection;
-      this.h2Lock = h2Lock;
+      this.unlockSql = unlockSql;
     }
 
     /** Blocks until this run holds the lock, logging once when another run holds it. */
     static RunLock acquire(DataSource dataSource, DatabaseKind kind) {
+      if (kind == DatabaseKind.H2) {
+        return new RunLock(null, null);
+      }
+      boolean postgres = kind == DatabaseKind.POSTGRESQL;
+      String tryLock =
+          postgres
+              ? "SELECT pg_try_advisory_lock(" + POSTGRES_KEY + ")"
+              : "SELECT GET_LOCK(" + MYSQL_NAME + ", 0)";
+      String lock =
+          postgres
+              ? "SELECT pg_advisory_lock(" + POSTGRES_KEY + ")"
+              : "SELECT GET_LOCK(" + MYSQL_NAME + ", -1)";
+      String unlock =
+          postgres
+              ? "SELECT pg_advisory_unlock(" + POSTGRES_KEY + ")"
+              : "SELECT RELEASE_LOCK(" + MYSQL_NAME + ")";
+      Connection connection = null;
       try {
-        if (kind == DatabaseKind.H2) {
-          ReentrantLock lock =
-              H2_LOCKS.computeIfAbsent(h2Key(dataSource), k -> new ReentrantLock());
-          if (!lock.tryLock()) {
-            logWaiting();
-            lock.lock();
+        connection = dataSource.getConnection();
+        // Outside a transaction, so the run doesn't keep one open while it holds the lock.
+        connection.setAutoCommit(true);
+        try (Statement statement = connection.createStatement();
+            ResultSet rs = statement.executeQuery(tryLock)) {
+          rs.next();
+          if (!rs.getBoolean(1)) {
+            LOGGER.info("Another server is migrating the schema; waiting for it to finish.");
+            statement.execute(lock);
           }
-          return new RunLock(kind, null, lock);
         }
-        Connection connection = dataSource.getConnection();
-        try {
-          // Outside a transaction, so the run doesn't keep one open while it holds the lock.
-          connection.setAutoCommit(true);
-          String trySql =
-              kind == DatabaseKind.POSTGRESQL
-                  ? "SELECT pg_try_advisory_lock(" + POSTGRES_KEY + ")"
-                  : "SELECT GET_LOCK(" + MYSQL_NAME + ", 0)";
-          try (Statement statement = connection.createStatement();
-              ResultSet rs = statement.executeQuery(trySql)) {
-            rs.next();
-            if (rs.getBoolean(1)) {
-              return new RunLock(kind, connection, null);
-            }
-          }
-          logWaiting();
-          String sql =
-              kind == DatabaseKind.POSTGRESQL
-                  ? "SELECT pg_advisory_lock(" + POSTGRES_KEY + ")"
-                  : "SELECT GET_LOCK(" + MYSQL_NAME + ", -1)";
-          try (Statement statement = connection.createStatement();
-              ResultSet rs = statement.executeQuery(sql)) {
-            rs.next();
-            if (kind == DatabaseKind.MYSQL && rs.getInt(1) != 1) {
-              throw new IllegalStateException("MySQL did not grant the schema migration lock");
-            }
-          }
-          return new RunLock(kind, connection, null);
-        } catch (SQLException | RuntimeException e) {
-          connection.close();
-          throw e;
-        }
+        return new RunLock(connection, unlock);
       } catch (SQLException e) {
+        close(connection);
         throw new IllegalStateException(
             "Could not take the schema migration lock: " + e.getMessage(), e);
       }
     }
 
-    private static void logWaiting() {
-      LOGGER.info("Another server is migrating the schema; waiting for it to finish.");
-    }
-
-    /** The database file's path, or the name of an in-memory database. */
-    private static String h2Key(DataSource dataSource) throws SQLException {
-      try (Connection connection = dataSource.getConnection();
-          Statement statement = connection.createStatement();
-          ResultSet rs = statement.executeQuery("SELECT COALESCE(DATABASE_PATH(), DATABASE())")) {
-        rs.next();
-        return rs.getString(1);
-      }
-    }
-
     @Override
     public void close() {
-      if (h2Lock != null) {
-        h2Lock.unlock();
+      if (connection == null) {
         return;
       }
-      String sql =
-          kind == DatabaseKind.POSTGRESQL
-              ? "SELECT pg_advisory_unlock(" + POSTGRES_KEY + ")"
-              : "SELECT RELEASE_LOCK(" + MYSQL_NAME + ")";
-      try (Connection c = connection;
-          Statement statement = c.createStatement()) {
-        statement.execute(sql);
+      try (Statement statement = connection.createStatement()) {
+        statement.execute(unlockSql);
       } catch (SQLException e) {
-        throw new IllegalStateException(
-            "Could not release the schema migration lock: " + e.getMessage(), e);
+        LOGGER.warn("Could not release the schema migration lock; closing its connection does", e);
+      } finally {
+        close(connection);
+      }
+    }
+
+    private static void close(Connection connection) {
+      try {
+        if (connection != null) {
+          connection.close();
+        }
+      } catch (SQLException e) {
+        LOGGER.debug("Could not close the schema migration lock's connection", e);
       }
     }
   }

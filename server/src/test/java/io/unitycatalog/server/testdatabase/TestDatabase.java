@@ -2,7 +2,6 @@ package io.unitycatalog.server.testdatabase;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.ArrayList;
@@ -36,10 +35,6 @@ public final class TestDatabase implements AutoCloseable {
 
   public String jdbcUrl() {
     return url;
-  }
-
-  public DatabaseKind kind() {
-    return DatabaseKind.fromJdbcUrl(url);
   }
 
   /** A small connection pool on this database, closed by {@link #close()}. */

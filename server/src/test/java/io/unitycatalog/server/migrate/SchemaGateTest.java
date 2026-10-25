@@ -24,8 +24,7 @@ public class SchemaGateTest {
   @Test
   void setsUpAnEmptyDatabaseOnFirstStart() {
     try (TestServer server = TestServer.start(db, storageRoot)) {
-      assertThat(new SchemaMigrator(db.dataSource(), db.kind()).state())
-          .isEqualTo(SchemaState.CURRENT);
+      assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.CURRENT);
     }
   }
 
@@ -41,7 +40,7 @@ public class SchemaGateTest {
 
   @Test
   void refusesASchemaNewerThanThisRelease() {
-    new SchemaMigrator(db.dataSource(), db.kind(), AHEAD).migrate();
+    new SchemaMigrator(db.dataSource(), AHEAD).migrate();
 
     assertThatThrownBy(() -> TestServer.start(db, storageRoot))
         .hasMessageContaining("this release ends at");

@@ -84,13 +84,6 @@ Messages that the server prints when it refuses to start, and what to do.
   is reachable and that its user can run the lock call (`pg_advisory_lock` on PostgreSQL,
   `GET_LOCK` on MySQL).
 
-`MySQL did not grant the schema migration lock`
-: MySQL refused the lock. Check the database and start the server again.
-
-`Could not release the schema migration lock: <reason>`
-: The migration finished, but the lock call failed at the end. The database releases the lock when
-  that connection closes, at the latest when the process exits. Start the server again.
-
-`Could not list the database's tables: <reason>`
+`Could not connect to the database: <reason>` or `Could not list the database's tables: <reason>`
 : The server could not read the database. Check the connection settings and the user's
   privileges.

@@ -6,7 +6,6 @@ import static io.unitycatalog.server.utils.ColumnUtils.getTypeText;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.unitycatalog.server.migrate.SchemaMigrator;
-import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.model.ColumnTypeName;
 import io.unitycatalog.server.model.CreateCatalog;
 import io.unitycatalog.server.model.CreateFunction;
@@ -56,10 +55,7 @@ public class PopulateTestDatabase {
     properties.setProperty(Property.SERVER_ENV.getKey(), "dev");
     ServerProperties serverProperties = new ServerProperties(properties);
     HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
-    new SchemaMigrator(
-            hibernateConfigurator.getDataSource(),
-            DatabaseKind.fromJdbcUrl(hibernateConfigurator.getDataSource().getJdbcUrl()))
-        .migrate();
+    new SchemaMigrator(hibernateConfigurator.getDataSource()).migrate();
     Repositories repositories =
         new Repositories(hibernateConfigurator.getSessionFactory(), serverProperties);
     CatalogRepository catalogRepository = repositories.getCatalogRepository();
