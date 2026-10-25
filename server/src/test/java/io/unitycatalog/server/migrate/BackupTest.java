@@ -156,6 +156,26 @@ public class BackupTest {
   }
 
   /**
+   * A database at a later release of the previous minor line (0.7.5 at 6001) is not partway through
+   * this release's steps: an older backup is replaced, as at that line's first release.
+   */
+  @Test
+  void takesAFreshBackupAtALaterReleaseOfThePreviousLine() {
+    Properties releases = SkippedReleaseTest.releases("0.6.0=1", "0.7.0=6000", "0.7.5=6001");
+    List<String> locations =
+        List.of(BASE + db.kind().folder(), ADD + db.kind().folder(), FAIL + db.kind().folder());
+    new SchemaMigrator(db.dataSource(), db.kind(), locations.subList(0, 2), releases).migrate();
+    new Backup(db.dataSource(), db.kind(), SchemaMigrator.LOCK_WAIT, null).take(false);
+    execute(db, "INSERT INTO test_backup_items (id, name) VALUES (3, 'three')");
+    Contents before = contents();
+
+    SchemaMigrator migrator =
+        new SchemaMigrator(db.dataSource(), db.kind(), locations, releases).withBackup(null);
+    assertThatThrownBy(migrator::migrate).hasMessageEndingWith(RESTORED);
+    assertThat(contents()).isEqualTo(before);
+  }
+
+  /**
    * MySQL: a restore that fails partway, here on a table a client's open transaction holds, leaves
    * the database as it was and the copy in place.
    */
