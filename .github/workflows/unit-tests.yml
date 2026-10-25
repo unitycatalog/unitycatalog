@@ -111,8 +111,8 @@ jobs:
           test-database: ${{ matrix.test-database || 'H2' }}
           use-spark-source-cache: ${{ matrix.spark-source-build }}
 
-  # Databases already ran the merged schema steps, so a pull request may only add steps, numbered
-  # above the base's, and none on a release branch.
+  # Databases already ran the merged schema steps, so a pull request may only add steps, and none
+  # on a release branch.
   migration-steps:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

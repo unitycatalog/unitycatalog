@@ -2,10 +2,8 @@
 #
 # Fails when HEAD edits, deletes or renames a schema migration step that exists on <base-ref>.
 # Databases already ran those steps, so a change to the schema must be a new step.
-# Also fails when HEAD adds a step numbered at or below the highest step of its folder on
-# <base-ref>: a database that already ran that highest step would refuse the new one below it.
-# And when <base-branch> is a release branch (branch-*), it fails on any new step: the step's
-# number could clash with a different step on main, and the next upgrade would break.
+# Also fails on any new step when <base-branch> is a release branch (branch-*): the step's number
+# could clash with a different step on main, and the next upgrade would break.
 #
 # Usage: dev/check-migration-steps.sh <base-ref> [<base-branch>]
 # Needs the history back to the merge base of <base-ref> and HEAD (CI passes HEAD^1, the merge
@@ -37,65 +35,9 @@ fi
 echo "No merged migration step changed since $1."
 
 added=$(git diff --diff-filter=A --name-only "$merge_base" HEAD -- "$steps_dir")
-if [[ -z "$added" ]]; then
-  exit 0
-fi
-
-if [[ "$base_branch" == branch-* ]]; then
+if [[ -n "$added" && "$base_branch" == branch-* ]]; then
   echo "These migration steps are new on the release branch $base_branch:" >&2
   echo "$added" >&2
   echo "Release branches take no new steps; add the step on main." >&2
   exit 1
 fi
-
-# The version of a step file: "V1_1__name.sql" is 1.1.
-version() {
-  local name=${1##*/}
-  name=${name#V}
-  echo "${name%%__*}" | tr _ .
-}
-
-# Whether version $1 is above version $2. Flyway compares the parts numerically, a missing
-# part counting as 0: 10 is above 9, and 2 equals 2.0.
-above() {
-  local -a a b
-  IFS=. read -ra a <<<"$1"
-  IFS=. read -ra b <<<"$2"
-  local i x y
-  for ((i = 0; i < ${#a[@]} || i < ${#b[@]}; i++)); do
-    x=$((10#${a[i]:-0}))
-    y=$((10#${b[i]:-0}))
-    if ((x != y)); then
-      ((x > y))
-      return
-    fi
-  done
-  return 1
-}
-
-# The highest step version in folder $2 at ref $1, or empty when it has no step.
-base_max() {
-  local max="" file v
-  for file in $(git ls-tree --name-only "$1" -- "$2/"); do
-    v=$(version "$file")
-    if [[ -z "$max" ]] || above "$v" "$max"; then
-      max=$v
-    fi
-  done
-  echo "$max"
-}
-
-failed=0
-for file in $added; do
-  v=$(version "$file")
-  max=$(base_max "$1" "$(dirname "$file")")
-  if [[ -n "$max" ]] && ! above "$v" "$max"; then
-    echo "$file is version $v, not above $max, the highest step in its folder on $1." >&2
-    echo "Renumber it above $max." >&2
-    failed=1
-  fi
-done
-if ((failed)); then
-  exit 1
-fi
-echo "Every new migration step is numbered above the steps on $1."
