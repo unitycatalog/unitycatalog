@@ -37,8 +37,10 @@ import org.slf4j.LoggerFactory;
  *       session on {@code <db>} closed, so they run on a connection to the companion database
  *       {@code <db>_uc_upgrade}, with the pool's connections closed.
  *   <li>MySQL: the database {@code <db>_uc_backup}, with each table created from {@code SHOW CREATE
- *       TABLE} and its rows copied in one transaction; the restore drops {@code <db>}'s tables and
- *       moves the copies back with {@code RENAME TABLE}.
+ *       TABLE}, its rows copied in one transaction, then the table {@code uc_backup_complete},
+ *       which marks the copy complete; the restore moves {@code <db>}'s tables to {@code
+ *       <db>_uc_trash} and the copies back in one {@code RENAME TABLE}, which MySQL runs whole or
+ *       not at all.
  *   <li>H2 (a file database): the file {@code <file>_uc_backup.mv.db}, copied with the database
  *       closed; the restore moves it back.
  * </ul>
@@ -60,6 +62,17 @@ final class Backup {
   private static final String COPY = "_uc_backup";
   private static final String COMPANION = "_uc_upgrade";
   private static final String MARK_TABLE = "uc_restored";
+  private static final String TRASH = "_uc_trash";
+
+  /** MySQL: the copy's table that marks it complete, created after its rows are copied. */
+  private static final String COMPLETE_TABLE = "uc_backup_complete";
+
+  /** Whether a copy exists, and whether it was taken in full. */
+  private enum CopyState {
+    NONE,
+    INCOMPLETE,
+    COMPLETE
+  }
 
   /** A PostgreSQL or MySQL JDBC URL: group 2 is the database. */
   private static final Pattern URL_DATABASE =
@@ -126,15 +139,30 @@ final class Backup {
 
   /**
    * Takes the backup. An existing copy is kept when {@code reuse} (the database is partway through
-   * this release's steps, so the copy is from before them) and replaced otherwise.
+   * this release's steps, so the copy is from before them) and replaced otherwise. Refuses to
+   * replace a copy holding tables the database lacks, and to keep an incomplete copy.
    */
   void take(boolean reuse) {
     try {
-      if (exists()) {
-        if (reuse) {
-          LOGGER.info("Kept the backup {} taken before this upgrade started.", copyName());
-          return;
-        }
+      CopyState copy = copyState();
+      if (copy == CopyState.COMPLETE && reuse) {
+        LOGGER.info("Kept the backup {} taken before this upgrade started.", copyName());
+        return;
+      }
+      if (copy == CopyState.INCOMPLETE && reuse) {
+        throw new IllegalStateException(
+            "The backup "
+                + copyName()
+                + " is incomplete: taking it was interrupted. The database is partway through this"
+                + " release's steps, so there is no backup from before them. Drop "
+                + copyName()
+                + " to upgrade with a backup of the database as it is now, or restore a backup of"
+                + " your own.");
+      }
+      if (copy == CopyState.COMPLETE) {
+        refuseWhenTheDatabaseLacksTheCopysTables();
+      }
+      if (copy != CopyState.NONE) {
         drop();
       }
       switch (kind) {
@@ -320,6 +348,12 @@ final class Backup {
                   + quote(table));
         }
         statement.execute("COMMIT");
+        statement.execute(
+            "CREATE TABLE "
+                + quote(copyName())
+                + "."
+                + quote(COMPLETE_TABLE)
+                + " (taken_at TIMESTAMP NOT NULL)");
       } catch (SQLException e) {
         try {
           execute(connection, "ROLLBACK");
@@ -343,25 +377,63 @@ final class Backup {
     }
   }
 
+  /**
+   * Moves the database's tables to {@code <db>_uc_trash} and the copy's back in one {@code RENAME
+   * TABLE}: a restore that fails or is killed leaves either database whole.
+   */
   private void restoreMySql() throws SQLException {
+    String trash = name() + TRASH;
     try (Connection connection = connection();
         Statement statement = connection.createStatement()) {
       statement.execute("SET FOREIGN_KEY_CHECKS = 0");
       try {
-        for (String table : tables(connection, name())) {
-          statement.execute("DROP TABLE " + quote(name()) + "." + quote(table));
-        }
+        statement.execute("DROP DATABASE IF EXISTS " + quote(trash)); // a killed restore's
+        statement.execute("CREATE DATABASE " + quote(trash));
         List<String> renames = new ArrayList<>();
+        for (String table : tables(connection, name())) {
+          renames.add(move(table, name(), trash));
+        }
         for (String table : tables(connection, copyName())) {
-          renames.add(
-              quote(copyName()) + "." + quote(table) + " TO " + quote(name()) + "." + quote(table));
+          if (!table.equals(COMPLETE_TABLE)) {
+            renames.add(move(table, copyName(), name()));
+          }
         }
-        if (!renames.isEmpty()) {
-          statement.execute("RENAME TABLE " + String.join(", ", renames));
-        }
+        statement.execute("RENAME TABLE " + String.join(", ", renames));
+        statement.execute("DROP DATABASE " + quote(trash));
         statement.execute("DROP DATABASE " + quote(copyName()));
       } finally {
         statement.execute("SET FOREIGN_KEY_CHECKS = 1");
+      }
+    }
+  }
+
+  /**
+   * MySQL: the {@code RENAME TABLE} pair that moves {@code table} from {@code from} to {@code to}.
+   */
+  private String move(String table, String from, String to) {
+    return quote(from) + "." + quote(table) + " TO " + quote(to) + "." + quote(table);
+  }
+
+  /**
+   * MySQL: refuses when the database lacks tables that its complete copy has, as a restore cut
+   * short by a release before this one could leave it: the copy is then the only good one.
+   */
+  private void refuseWhenTheDatabaseLacksTheCopysTables() throws SQLException {
+    if (kind != DatabaseKind.MYSQL) {
+      return;
+    }
+    try (Connection connection = connection()) {
+      List<String> missing = tables(connection, copyName());
+      missing.remove(COMPLETE_TABLE);
+      missing.removeAll(tables(connection, name()));
+      if (!missing.isEmpty()) {
+        throw new IllegalStateException(
+            "The database lacks tables that its backup "
+                + copyName()
+                + " has ("
+                + String.join(", ", missing)
+                + "), so the server keeps the backup. "
+                + restoreByHand());
       }
     }
   }
@@ -470,31 +542,45 @@ final class Backup {
     }
   }
 
-  private boolean exists() throws SQLException {
+  /**
+   * Whether the copy exists and is complete. PostgreSQL's {@code CREATE DATABASE} and H2's move are
+   * whole or nothing; MySQL's copy is complete once it has {@link #COMPLETE_TABLE}.
+   */
+  private CopyState copyState() throws SQLException {
     return switch (kind) {
       case POSTGRESQL -> {
-        try (Connection connection = companionConnection();
-            PreparedStatement query =
-                connection.prepareStatement("SELECT 1 FROM pg_database WHERE datname = ?")) {
-          query.setString(1, copyName());
-          try (ResultSet rs = query.executeQuery()) {
-            yield rs.next();
-          }
+        try (Connection connection = companionConnection()) {
+          yield exists(connection, "SELECT 1 FROM pg_database WHERE datname = ?")
+              ? CopyState.COMPLETE
+              : CopyState.NONE;
         }
       }
       case MYSQL -> {
-        try (Connection connection = connection();
-            PreparedStatement query =
-                connection.prepareStatement(
-                    "SELECT 1 FROM information_schema.schemata WHERE schema_name = ?")) {
-          query.setString(1, copyName());
-          try (ResultSet rs = query.executeQuery()) {
-            yield rs.next();
+        try (Connection connection = connection()) {
+          if (!exists(
+              connection, "SELECT 1 FROM information_schema.schemata WHERE schema_name = ?")) {
+            yield CopyState.NONE;
           }
+          yield exists(
+                  connection,
+                  "SELECT 1 FROM information_schema.tables WHERE table_schema = ?"
+                      + " AND table_name = '%s'".formatted(COMPLETE_TABLE))
+              ? CopyState.COMPLETE
+              : CopyState.INCOMPLETE;
         }
       }
-      case H2 -> Files.exists(h2File(COPY));
+      case H2 -> Files.exists(h2File(COPY)) ? CopyState.COMPLETE : CopyState.NONE;
     };
+  }
+
+  /** Whether {@code sql}, with the copy's name as its parameter, returns a row. */
+  private boolean exists(Connection connection, String sql) throws SQLException {
+    try (PreparedStatement query = connection.prepareStatement(sql)) {
+      query.setString(1, copyName());
+      try (ResultSet rs = query.executeQuery()) {
+        return rs.next();
+      }
+    }
   }
 
   /** The restored mark as its release and revision; empty without one. */

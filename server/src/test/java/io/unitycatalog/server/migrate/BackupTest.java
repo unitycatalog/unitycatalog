@@ -23,6 +23,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -46,6 +47,11 @@ public class BackupTest {
   private static final Properties RELEASES = SkippedReleaseTest.releases("0.7.0=1", "0.7.5=6000");
 
   private static final String RELEASE = VersionUtils.VERSION.replaceFirst("-.*", "");
+
+  /** MySQL: the database's tables. */
+  private static final String TABLES =
+      "SELECT table_name FROM information_schema.tables"
+          + " WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'";
 
   private static final String RESTORED =
       "The database was restored from the backup taken before the upgrade; the previous release"
@@ -133,6 +139,67 @@ public class BackupTest {
 
     assertThatThrownBy(migrator(null, ADD, FAIL)::migrate).hasMessageEndingWith(RESTORED);
     assertThat(contents()).isEqualTo(before);
+  }
+
+  /**
+   * MySQL: a restore that fails partway, here on a table a client's open transaction holds, leaves
+   * the database as it was and the copy in place.
+   */
+  @Test
+  void failedRestoreChangesNothing() throws SQLException {
+    assumeTrue(db.kind() == DatabaseKind.MYSQL);
+    Backup backup = new Backup(db.dataSource(), db.kind(), Duration.ofSeconds(1), null);
+    backup.take(false);
+    execute(db, "INSERT INTO test_backup_items (id, name) VALUES (3, 'three')");
+    Contents changed = contents();
+    List<String> tables = rows(db, TABLES);
+    try (Connection client = db.dataSource().getConnection();
+        Statement statement = client.createStatement()) {
+      client.setAutoCommit(false);
+      // The restore reaches the table it lists last after the others.
+      statement.executeQuery("SELECT * FROM " + tables.get(tables.size() - 1)).close();
+
+      assertThatThrownBy(backup::restore).hasMessageContaining("Could not restore the backup");
+      client.rollback();
+    }
+    assertThat(contents()).isEqualTo(changed);
+    assertThat(backupExists()).isTrue();
+  }
+
+  /** MySQL: a copy whose tables the database lacks is kept, as the only good one, and refused. */
+  @Test
+  void keepsTheBackupOfTablesTheDatabaseLacks() {
+    assumeTrue(db.kind() == DatabaseKind.MYSQL);
+    new Backup(db.dataSource(), db.kind(), SchemaMigrator.LOCK_WAIT, null).take(false);
+    execute(db, "DROP TABLE test_backup_items");
+
+    assertThatThrownBy(migrator(null, ADD)::migrate)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining(name(db) + "_uc_backup")
+        .hasMessageContaining("test_backup_items");
+    assertThat(backupExists()).isTrue();
+  }
+
+  /**
+   * MySQL: a copy that a run killed while copying left (its tables without their rows) is no
+   * backup; a run partway through the steps refuses instead of restoring it.
+   */
+  @Test
+  void refusesAnIncompleteBackupWhileMidUpgrade() {
+    assumeTrue(db.kind() == DatabaseKind.MYSQL);
+    assertThatThrownBy(withoutBackup(ADD, FAIL)::migrate)
+        .hasMessageContaining("V6002__fail_on_a_missing_table.sql");
+    List<String> items = rows(db, "SELECT * FROM test_backup_items ORDER BY id");
+    String copy = name(db) + "_uc_backup";
+    execute(db, "CREATE DATABASE `" + copy + "`");
+    for (String table : rows(db, TABLES)) {
+      execute(db, "CREATE TABLE `%s`.`%2$s` LIKE `%2$s`".formatted(copy, table));
+    }
+
+    assertThatThrownBy(migrator(null, ADD, FAIL)::migrate)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("The backup " + copy + " is incomplete");
+    assertThat(rows(db, "SELECT * FROM test_backup_items ORDER BY id")).isEqualTo(items);
   }
 
   @Test
@@ -308,15 +375,15 @@ public class BackupTest {
   }
 
   /**
-   * Drops the backup copy and the companion database that a run with the backup on may leave on the
-   * database server (PostgreSQL, MySQL; H2's files go with the test's folder).
+   * Drops the backup copy, the companion database and MySQL's trash that a run with the backup on
+   * may leave on the database server (PostgreSQL, MySQL; H2's files go with the test's folder).
    */
   static void dropCompanions(TestDatabase db) {
     if (db.kind() == DatabaseKind.H2) {
       return;
     }
     String name = name(db);
-    for (String suffix : List.of("_uc_backup", "_uc_upgrade")) {
+    for (String suffix : List.of("_uc_backup", "_uc_upgrade", "_uc_trash")) {
       execute(
           db,
           db.kind() == DatabaseKind.POSTGRESQL

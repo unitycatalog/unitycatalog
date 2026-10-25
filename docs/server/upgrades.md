@@ -91,7 +91,7 @@ upgrade. To go back after a successful upgrade, use a backup of your own (see
 | Database | The backup | The restore |
 | -------- | ---------- | ----------- |
 | PostgreSQL | The database `<db>_uc_backup`, a copy made with `CREATE DATABASE <db>_uc_backup TEMPLATE <db>` | `DROP DATABASE <db>`, then `ALTER DATABASE <db>_uc_backup RENAME TO <db>` |
-| MySQL | The database `<db>_uc_backup`, with each table created from `SHOW CREATE TABLE` and its rows copied in one transaction | Drops the tables of `<db>` and moves each copied table back with `RENAME TABLE` |
+| MySQL | The database `<db>_uc_backup`, with each table created from `SHOW CREATE TABLE` and its rows copied in one transaction, then the table `uc_backup_complete`, which marks the copy complete | One `RENAME TABLE` moves the tables of `<db>` to the database `<db>_uc_trash` and each copied table back, all or none; then drops `<db>_uc_trash` and the copy |
 | H2 | The file `<file>_uc_backup.mv.db` next to the database file, copied with the database closed | Moves the copy back in place of the database file |
 
 On PostgreSQL, the copy and the drop need every session on `<db>` closed. The server closes its
@@ -121,6 +121,17 @@ or an upgrade that failed with the backup off) keeps a copy that is already ther
 upgrade started, and restores that one if the upgrade fails. A database still at the previous
 release gets a new copy; an older copy is dropped first.
 
+On MySQL, a copy without `uc_backup_complete` is incomplete: a server was killed while copying. A
+database at the previous release gets a new copy in its place. A database partway through this
+release's steps has no backup from before them, and the server refuses to start:
+
+```text
+The backup <db>_uc_backup is incomplete: taking it was interrupted. The database is partway through this release's steps, so there is no backup from before them. Drop <db>_uc_backup to upgrade with a backup of the database as it is now, or restore a backup of your own.
+```
+
+The server never drops a complete copy that has tables the database lacks: it refuses to start and
+names the copy. Restore it by hand as below.
+
 ### Stopping the server during a restore
 
 On SIGTERM the server stops at the next safe point (see
@@ -139,14 +150,16 @@ DROP DATABASE <db>;
 ALTER DATABASE <db>_uc_backup RENAME TO <db>;
 -- MySQL
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE <db>.<table>, ...;            -- every table of <db>
-RENAME TABLE <db>_uc_backup.<table> TO <db>.<table>, ...;  -- every table of the copy
+CREATE DATABASE <db>_uc_trash;
+RENAME TABLE <db>.<table> TO <db>_uc_trash.<table>, ...,       -- every table of <db>
+  <db>_uc_backup.<table> TO <db>.<table>, ...;                 -- every table of the copy but uc_backup_complete
+DROP DATABASE <db>_uc_trash;
 DROP DATABASE <db>_uc_backup;
 SET FOREIGN_KEY_CHECKS = 1;
 ```
 
-On MySQL, a copy without tables means the restore had moved them back: drop `<db>_uc_backup`. On
-H2, move `<file>_uc_backup.mv.db` to `<file>.mv.db`.
+On MySQL, a copy with no table but `uc_backup_complete` means the restore had moved them back:
+drop `<db>_uc_backup` and `<db>_uc_trash`. On H2, move `<file>_uc_backup.mv.db` to `<file>.mv.db`.
 
 ### The restored mark with Helm
 
