@@ -47,6 +47,11 @@ public class DataStepTest {
       "classpath:io/unitycatalog/server/migrate/teststeps/batched";
   private static final String SLOWLY =
       "classpath:io/unitycatalog/server/migrate/teststeps/slowbatches";
+  private static final String SLOW_FINAL = "classpath:db/test-steps/slow-final/";
+
+  /** The rows a data step filled. */
+  private static final String FILLED =
+      "SELECT COUNT(*) FROM test_data_step_items WHERE upper_name = UPPER(name)";
 
   @TempDatabase(empty = true)
   TestDatabase db;
@@ -123,7 +128,7 @@ public class DataStepTest {
     // H2 has no sleep function for the slow step, and closes its database in a shutdown hook of
     // its own, under the running step.
     assumeTrue(db.kind() != DatabaseKind.H2);
-    int filled = stopServerDuringTheSlowStep();
+    int filled = stopServerDuring(SLOWLY, FILLED);
 
     // The server finished that batch (killing it would roll the batch back), then stopped.
     assertThat(filledRows()).isGreaterThan(filled).isLessThan(ROWS);
@@ -139,7 +144,7 @@ public class DataStepTest {
   void serverRestoresTheBackupOnSigterm() throws Exception {
     assumeTrue(db.kind() != DatabaseKind.H2); // as serverStopsAtABatchOnSigterm
     try {
-      stopServerDuringTheSlowStep("-D" + Property.MIGRATION_BACKUP.getKey() + "=true");
+      stopServerDuring(SLOWLY, FILLED, "-D" + Property.MIGRATION_BACKUP.getKey() + "=true");
 
       // The server restored the database from before step 2001 before it exited.
       assertThat(filledRows()).isZero();
@@ -149,12 +154,35 @@ public class DataStepTest {
     }
   }
 
+  /** SIGTERM during the last step, which has no boundary of its own: the server still restores. */
+  @Test
+  void serverRestoresTheBackupOnSigtermDuringTheLastStep() throws Exception {
+    assumeTrue(db.kind() != DatabaseKind.H2); // as serverStopsAtABatchOnSigterm
+    String running =
+        db.kind() == DatabaseKind.POSTGRESQL
+            ? "SELECT COUNT(*) FROM pg_stat_activity"
+                + " WHERE query LIKE '%pg_sleep(5)%' AND pid <> pg_backend_pid()"
+            : "SELECT COUNT(*) FROM information_schema.processlist"
+                + " WHERE info LIKE '%SLEEP(1) = 0%' AND id <> CONNECTION_ID()";
+    try {
+      stopServerDuring(
+          SLOW_FINAL + db.kind().folder(),
+          running,
+          "-D" + Property.MIGRATION_BACKUP.getKey() + "=true");
+
+      assertThat(filledRows()).isZero();
+      assertThat(historyRows("2001")).isZero();
+    } finally {
+      BackupTest.dropCompanions(db);
+    }
+  }
+
   /**
-   * Starts a server in a process of its own, with {@code jvmArgs}, that runs the slow step, sends
-   * it SIGTERM once the step filled a row, and waits for it to exit with a non-zero code. Returns
-   * the rows filled before SIGTERM.
+   * Starts a server in a process of its own, with {@code jvmArgs}, that runs the slow step in
+   * {@code steps}, sends it SIGTERM once {@code progress} (a count, on a connection of its own) is
+   * above 0, and waits for it to exit with a non-zero code. Returns that count.
    */
-  private int stopServerDuringTheSlowStep(String... jvmArgs) throws Exception {
+  private int stopServerDuring(String steps, String progress, String... jvmArgs) throws Exception {
     Path properties = Files.createTempFile("uc-hibernate", ".properties");
     try {
       try (Writer out = Files.newBufferedWriter(properties)) {
@@ -172,7 +200,7 @@ public class DataStepTest {
               TestServer.class.getName(),
               properties.toString(),
               CREATE_TABLE + db.kind().folder(),
-              SLOWLY));
+              steps));
       // With the backup on, the server copies a PostgreSQL database only while no other session
       // is connected to it: close the test's pooled connections, and poll on short ones.
       HikariDataSource pool = (HikariDataSource) db.dataSource();
@@ -186,7 +214,7 @@ public class DataStepTest {
       int filled;
       try {
         long deadline = System.nanoTime() + Duration.ofMinutes(3).toNanos();
-        while ((filled = filledRowsOnAConnectionOfItsOwn()) == 0) {
+        while ((filled = countOnAConnectionOfItsOwn(progress)) == 0) {
           assertThat(server.isAlive()).as("the server is running").isTrue();
           assertThat(System.nanoTime()).as("the step started in time").isLessThan(deadline);
           Thread.sleep(100);
@@ -218,24 +246,15 @@ public class DataStepTest {
   }
 
   private int filledRows() throws SQLException {
-    try (Connection connection = db.dataSource().getConnection()) {
-      return filledRows(connection);
-    }
+    return count(FILLED);
   }
 
-  private int filledRowsOnAConnectionOfItsOwn() throws SQLException {
+  private int countOnAConnectionOfItsOwn(String sql) throws SQLException {
     HikariDataSource pool = (HikariDataSource) db.dataSource();
     try (Connection connection =
-        DriverManager.getConnection(db.jdbcUrl(), pool.getUsername(), pool.getPassword())) {
-      return filledRows(connection);
-    }
-  }
-
-  private static int filledRows(Connection connection) throws SQLException {
-    try (Statement statement = connection.createStatement();
-        ResultSet rs =
-            statement.executeQuery(
-                "SELECT COUNT(*) FROM test_data_step_items WHERE upper_name = UPPER(name)")) {
+            DriverManager.getConnection(db.jdbcUrl(), pool.getUsername(), pool.getPassword());
+        Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery(sql)) {
       rs.next();
       return rs.getInt(1);
     }

@@ -117,6 +117,19 @@ public class AdoptionRepairTest {
     assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
   }
 
+  /** Another application's tables in the same schema aren't Unity Catalog's: not compared. */
+  @Test
+  void adoptsADatabaseWhoseSchemaHasAnotherApplicationsTables() {
+    create07Schema(db);
+    execute(db, "CREATE TABLE other_app_items (id INT PRIMARY KEY, name VARCHAR(64))");
+    execute(db, "CREATE INDEX other_app_items_name_idx ON other_app_items (name)");
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
+
+    migrator.migrate();
+
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+  }
+
   @Test
   void refusesADifferenceItCannotRepair() {
     create07Schema(db);

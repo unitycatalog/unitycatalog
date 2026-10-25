@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.sql.DataSource;
@@ -33,12 +34,15 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li>PostgreSQL: the database {@code <db>_uc_backup}, made with {@code CREATE DATABASE ...
- *       TEMPLATE <db>}; the restore drops {@code <db>} and renames the copy to it. Both need every
- *       session on {@code <db>} closed, so they run on a connection to the companion database
- *       {@code <db>_uc_upgrade}, with the pool's connections closed.
+ *       TEMPLATE <db>} under another name, given {@code <db>}'s own settings, grants, owner and
+ *       connection limit, then renamed; the restore drops {@code <db>} and renames the copy to it.
+ *       Both need every session on {@code <db>} closed, so they run on a connection to the
+ *       companion database {@code <db>_uc_upgrade}, with the pool's connections closed.
  *   <li>MySQL: the database {@code <db>_uc_backup}, with each table created from {@code SHOW CREATE
- *       TABLE} and its rows copied in one transaction; the restore drops {@code <db>}'s tables and
- *       moves the copies back with {@code RENAME TABLE}.
+ *       TABLE}, its rows copied in one transaction, then the table {@code uc_backup_complete},
+ *       which marks the copy complete; the restore moves {@code <db>}'s tables to {@code
+ *       <db>_uc_trash} and the copies back in one {@code RENAME TABLE}, which MySQL runs whole or
+ *       not at all.
  *   <li>H2 (a file database): the file {@code <file>_uc_backup.mv.db}, copied with the database
  *       closed; the restore moves it back.
  * </ul>
@@ -60,6 +64,34 @@ final class Backup {
   private static final String COPY = "_uc_backup";
   private static final String COMPANION = "_uc_upgrade";
   private static final String MARK_TABLE = "uc_restored";
+  private static final String TRASH = "_uc_trash";
+
+  /** MySQL: the copy's table that marks it complete, created after its rows are copied. */
+  private static final String COMPLETE_TABLE = "uc_backup_complete";
+
+  /** Whether a copy exists, and whether it was taken in full. */
+  private enum CopyState {
+    NONE,
+    INCOMPLETE,
+    COMPLETE
+  }
+
+  /**
+   * PostgreSQL's settings whose value is a list, which {@code pg_db_role_setting} holds as quoted
+   * names (as pg_dump's list of them).
+   */
+  private static final Set<String> LIST_SETTINGS =
+      Set.of(
+          "local_preload_libraries",
+          "search_path",
+          "session_preload_libraries",
+          "shared_preload_libraries",
+          "temp_tablespaces",
+          "unix_socket_directories");
+
+  /** One element of a list setting's value: group 1 a quoted name, group 2 a plain one. */
+  private static final Pattern LIST_ELEMENT =
+      Pattern.compile("\\s*(?:\"((?:[^\"]|\"\")*)\"|([^,]+))\\s*(?:,|$)");
 
   /** A PostgreSQL or MySQL JDBC URL: group 2 is the database. */
   private static final Pattern URL_DATABASE =
@@ -104,12 +136,7 @@ final class Backup {
     try {
       List<String> mark = mark();
       if (mark.equals(List.of(release, chartRevision))) {
-        throw new IllegalStateException(
-            "The upgrade to "
-                + release
-                + " failed and the database was restored in chart revision "
-                + chartRevision
-                + "; fix the cause, then run helm upgrade again (a new revision clears this).");
+        throw new IllegalStateException(restoredRefusal(release));
       }
       if (!mark.isEmpty()) {
         clearMark();
@@ -125,16 +152,53 @@ final class Backup {
   }
 
   /**
+   * The refusal of a run of the release {@code release} in the chart revision whose restore the
+   * mark records, or {@code null}. Changes nothing in the database.
+   */
+  String refusalForTheRestoredMark(String release) {
+    try {
+      return chartRevision != null && mark().equals(List.of(release, chartRevision))
+          ? restoredRefusal(release)
+          : null;
+    } catch (SQLException | IOException e) {
+      throw new IllegalStateException("Could not read the restored mark: " + e.getMessage(), e);
+    }
+  }
+
+  private String restoredRefusal(String release) {
+    return "The upgrade to "
+        + release
+        + " failed and the database was restored in chart revision "
+        + chartRevision
+        + "; fix the cause, then run helm upgrade again (a new revision clears this).";
+  }
+
+  /**
    * Takes the backup. An existing copy is kept when {@code reuse} (the database is partway through
-   * this release's steps, so the copy is from before them) and replaced otherwise.
+   * this release's steps, so the copy is from before them) and replaced otherwise. Refuses to
+   * replace a copy holding tables the database lacks, and to keep an incomplete copy.
    */
   void take(boolean reuse) {
     try {
-      if (exists()) {
-        if (reuse) {
-          LOGGER.info("Kept the backup {} taken before this upgrade started.", copyName());
-          return;
-        }
+      CopyState copy = copyState();
+      if (copy == CopyState.COMPLETE && reuse) {
+        LOGGER.info("Kept the backup {} taken before this upgrade started.", copyName());
+        return;
+      }
+      if (copy == CopyState.INCOMPLETE && reuse) {
+        throw new IllegalStateException(
+            "The backup "
+                + copyName()
+                + " is incomplete: taking it was interrupted. The database is partway through this"
+                + " release's steps, so there is no backup from before them. Drop "
+                + copyName()
+                + " to upgrade with a backup of the database as it is now, or restore a backup of"
+                + " your own.");
+      }
+      if (copy == CopyState.COMPLETE) {
+        refuseWhenTheDatabaseLacksTheCopysTables();
+      }
+      if (copy != CopyState.NONE) {
         drop();
       }
       switch (kind) {
@@ -252,16 +316,129 @@ final class Backup {
     return connect(companion);
   }
 
+  /**
+   * Copies the database under another name, gives the copy what {@code TEMPLATE} doesn't copy, then
+   * renames it: a copy under the backup's name is complete.
+   */
   private void takePostgres() throws SQLException, IOException {
+    String partial = copyName() + "_part";
     try (Connection connection = companionConnection();
         Statement statement = connection.createStatement()) {
+      List<String> attributes = databaseAttributes(connection, partial);
+      statement.execute("DROP DATABASE IF EXISTS " + quote(partial)); // a killed run's
       withPoolClosed(
           () ->
               statement.execute(
-                  "CREATE DATABASE " + quote(copyName()) + " TEMPLATE " + quote(name())));
+                  "CREATE DATABASE " + quote(partial) + " TEMPLATE " + quote(name())));
+      try {
+        for (String sql : attributes) {
+          statement.execute(sql);
+        }
+        statement.execute("ALTER DATABASE " + quote(partial) + " RENAME TO " + quote(copyName()));
+      } catch (SQLException e) {
+        try {
+          statement.execute("DROP DATABASE " + quote(partial));
+        } catch (SQLException cleanup) {
+          e.addSuppressed(cleanup);
+        }
+        throw e;
+      }
     } catch (SQLException e) {
       throw otherSessions(e);
     }
+  }
+
+  /**
+   * PostgreSQL: the statements that give {@code target} the database's owner, connection limit,
+   * grants and settings (its own and its roles'), which {@code CREATE DATABASE ... TEMPLATE}
+   * doesn't copy.
+   */
+  private List<String> databaseAttributes(Connection connection, String target)
+      throws SQLException {
+    String database = quote(target);
+    List<String> statements = new ArrayList<>();
+    for (List<String> row :
+        query(
+            connection,
+            "SELECT pg_get_userbyid(datdba), datconnlimit, datacl IS NULL FROM pg_database"
+                + " WHERE datname = ?")) {
+      statements.add("ALTER DATABASE " + database + " OWNER TO " + quote(row.get(0)));
+      statements.add("ALTER DATABASE " + database + " CONNECTION LIMIT " + row.get(1));
+      if (row.get(2).equals("f")) { // grants of its own: none by default
+        statements.add("REVOKE ALL ON DATABASE " + database + " FROM PUBLIC");
+      }
+    }
+    for (List<String> row :
+        query(
+            connection,
+            "SELECT r.rolname, a.privilege_type, a.is_grantable FROM pg_database d,"
+                + " aclexplode(d.datacl) a LEFT JOIN pg_roles r ON r.oid = a.grantee"
+                + " WHERE d.datname = ?")) {
+      statements.add(
+          "GRANT "
+              + row.get(1)
+              + " ON DATABASE "
+              + database
+              + " TO "
+              + (row.get(0) == null ? "PUBLIC" : quote(row.get(0)))
+              + (row.get(2).equals("t") ? " WITH GRANT OPTION" : ""));
+    }
+    for (List<String> row :
+        query(
+            connection,
+            "SELECT r.rolname, unnest(s.setconfig) FROM pg_db_role_setting s JOIN pg_database d"
+                + " ON d.oid = s.setdatabase LEFT JOIN pg_roles r ON r.oid = s.setrole"
+                + " WHERE d.datname = ?")) {
+      String[] setting = row.get(1).split("=", 2);
+      statements.add(
+          (row.get(0) == null
+                  ? "ALTER DATABASE " + database
+                  : "ALTER ROLE " + quote(row.get(0)) + " IN DATABASE " + database)
+              + " SET "
+              + quote(setting[0])
+              + " TO "
+              + settingValue(setting[0], setting[1]));
+    }
+    return statements;
+  }
+
+  /** The rows of {@code sql}, with the database's name as its parameter. */
+  private List<List<String>> query(Connection connection, String sql) throws SQLException {
+    List<List<String>> rows = new ArrayList<>();
+    try (PreparedStatement query = connection.prepareStatement(sql)) {
+      query.setString(1, name());
+      try (ResultSet rs = query.executeQuery()) {
+        while (rs.next()) {
+          List<String> row = new ArrayList<>();
+          for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) {
+            row.add(rs.getString(i));
+          }
+          rows.add(row);
+        }
+      }
+    }
+    return rows;
+  }
+
+  /** The value of the PostgreSQL setting {@code setting} as SQL: a string per list element. */
+  private static String settingValue(String setting, String value) {
+    if (!LIST_SETTINGS.contains(setting)) {
+      return literal(value);
+    }
+    List<String> elements = new ArrayList<>();
+    Matcher element = LIST_ELEMENT.matcher(value);
+    while (element.find()) {
+      elements.add(
+          literal(
+              element.group(1) != null
+                  ? element.group(1).replace("\"\"", "\"")
+                  : element.group(2).strip()));
+    }
+    return String.join(", ", elements);
+  }
+
+  private static String literal(String value) {
+    return "'" + value.replace("'", "''") + "'";
   }
 
   private void restorePostgres() throws SQLException, IOException {
@@ -320,6 +497,12 @@ final class Backup {
                   + quote(table));
         }
         statement.execute("COMMIT");
+        statement.execute(
+            "CREATE TABLE "
+                + quote(copyName())
+                + "."
+                + quote(COMPLETE_TABLE)
+                + " (taken_at TIMESTAMP NOT NULL)");
       } catch (SQLException e) {
         try {
           execute(connection, "ROLLBACK");
@@ -343,25 +526,63 @@ final class Backup {
     }
   }
 
+  /**
+   * Moves the database's tables to {@code <db>_uc_trash} and the copy's back in one {@code RENAME
+   * TABLE}: a restore that fails or is killed leaves either database whole.
+   */
   private void restoreMySql() throws SQLException {
+    String trash = name() + TRASH;
     try (Connection connection = connection();
         Statement statement = connection.createStatement()) {
       statement.execute("SET FOREIGN_KEY_CHECKS = 0");
       try {
-        for (String table : tables(connection, name())) {
-          statement.execute("DROP TABLE " + quote(name()) + "." + quote(table));
-        }
+        statement.execute("DROP DATABASE IF EXISTS " + quote(trash)); // a killed restore's
+        statement.execute("CREATE DATABASE " + quote(trash));
         List<String> renames = new ArrayList<>();
+        for (String table : tables(connection, name())) {
+          renames.add(move(table, name(), trash));
+        }
         for (String table : tables(connection, copyName())) {
-          renames.add(
-              quote(copyName()) + "." + quote(table) + " TO " + quote(name()) + "." + quote(table));
+          if (!table.equals(COMPLETE_TABLE)) {
+            renames.add(move(table, copyName(), name()));
+          }
         }
-        if (!renames.isEmpty()) {
-          statement.execute("RENAME TABLE " + String.join(", ", renames));
-        }
+        statement.execute("RENAME TABLE " + String.join(", ", renames));
+        statement.execute("DROP DATABASE " + quote(trash));
         statement.execute("DROP DATABASE " + quote(copyName()));
       } finally {
         statement.execute("SET FOREIGN_KEY_CHECKS = 1");
+      }
+    }
+  }
+
+  /**
+   * MySQL: the {@code RENAME TABLE} pair that moves {@code table} from {@code from} to {@code to}.
+   */
+  private String move(String table, String from, String to) {
+    return quote(from) + "." + quote(table) + " TO " + quote(to) + "." + quote(table);
+  }
+
+  /**
+   * MySQL: refuses when the database lacks tables that its complete copy has, as a restore cut
+   * short by a release before this one could leave it: the copy is then the only good one.
+   */
+  private void refuseWhenTheDatabaseLacksTheCopysTables() throws SQLException {
+    if (kind != DatabaseKind.MYSQL) {
+      return;
+    }
+    try (Connection connection = connection()) {
+      List<String> missing = tables(connection, copyName());
+      missing.remove(COMPLETE_TABLE);
+      missing.removeAll(tables(connection, name()));
+      if (!missing.isEmpty()) {
+        throw new IllegalStateException(
+            "The database lacks tables that its backup "
+                + copyName()
+                + " has ("
+                + String.join(", ", missing)
+                + "), so the server keeps the backup. "
+                + restoreByHand());
       }
     }
   }
@@ -470,31 +691,45 @@ final class Backup {
     }
   }
 
-  private boolean exists() throws SQLException {
+  /**
+   * Whether the copy exists and is complete. PostgreSQL's {@code CREATE DATABASE} and H2's move are
+   * whole or nothing; MySQL's copy is complete once it has {@link #COMPLETE_TABLE}.
+   */
+  private CopyState copyState() throws SQLException {
     return switch (kind) {
       case POSTGRESQL -> {
-        try (Connection connection = companionConnection();
-            PreparedStatement query =
-                connection.prepareStatement("SELECT 1 FROM pg_database WHERE datname = ?")) {
-          query.setString(1, copyName());
-          try (ResultSet rs = query.executeQuery()) {
-            yield rs.next();
-          }
+        try (Connection connection = companionConnection()) {
+          yield exists(connection, "SELECT 1 FROM pg_database WHERE datname = ?")
+              ? CopyState.COMPLETE
+              : CopyState.NONE;
         }
       }
       case MYSQL -> {
-        try (Connection connection = connection();
-            PreparedStatement query =
-                connection.prepareStatement(
-                    "SELECT 1 FROM information_schema.schemata WHERE schema_name = ?")) {
-          query.setString(1, copyName());
-          try (ResultSet rs = query.executeQuery()) {
-            yield rs.next();
+        try (Connection connection = connection()) {
+          if (!exists(
+              connection, "SELECT 1 FROM information_schema.schemata WHERE schema_name = ?")) {
+            yield CopyState.NONE;
           }
+          yield exists(
+                  connection,
+                  "SELECT 1 FROM information_schema.tables WHERE table_schema = ?"
+                      + " AND table_name = '%s'".formatted(COMPLETE_TABLE))
+              ? CopyState.COMPLETE
+              : CopyState.INCOMPLETE;
         }
       }
-      case H2 -> Files.exists(h2File(COPY));
+      case H2 -> Files.exists(h2File(COPY)) ? CopyState.COMPLETE : CopyState.NONE;
     };
+  }
+
+  /** Whether {@code sql}, with the copy's name as its parameter, returns a row. */
+  private boolean exists(Connection connection, String sql) throws SQLException {
+    try (PreparedStatement query = connection.prepareStatement(sql)) {
+      query.setString(1, copyName());
+      try (ResultSet rs = query.executeQuery()) {
+        return rs.next();
+      }
+    }
   }
 
   /** The restored mark as its release and revision; empty without one. */
@@ -507,7 +742,10 @@ final class Backup {
       try (Reader in = Files.newBufferedReader(h2MarkFile())) {
         mark.load(in);
       }
-      return List.of(mark.getProperty("release"), mark.getProperty("revision"));
+      String release = mark.getProperty("release");
+      String revision = mark.getProperty("revision");
+      // A file without them: a crash while writing it.
+      return release == null || revision == null ? List.of() : List.of(release, revision);
     }
     try (Connection connection = markConnection();
         Statement statement = connection.createStatement();
@@ -553,9 +791,14 @@ final class Backup {
     return connection;
   }
 
-  /** The mark's table: in the companion database, which MySQL names in the statement. */
+  /**
+   * The mark's table: in the companion database, which MySQL names in the statement. PostgreSQL's
+   * is in {@code public}: the URL's {@code currentSchema} is a schema of the database only.
+   */
   private String markTable() {
-    return kind == DatabaseKind.MYSQL ? quote(name() + COMPANION) + "." + MARK_TABLE : MARK_TABLE;
+    return kind == DatabaseKind.MYSQL
+        ? quote(name() + COMPANION) + "." + MARK_TABLE
+        : "public." + MARK_TABLE;
   }
 
   /** A connection of the pool, out of a transaction, waiting at most {@link #lockWait}. */

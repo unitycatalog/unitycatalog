@@ -16,24 +16,28 @@ import java.io.StringReader;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Properties;
+import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.Test;
 
 /**
- * A test-only release map: 0.7.0 ends at step 1 and 0.7.5, the release before this build, at step
- * 3. This release's test-only steps create {@code test_release_items} (version 5001) and add a
- * column to it (version 5002).
+ * A test-only release map: 0.6.0 ends at step 1 and 0.7.0, the first release of the minor line
+ * before this build's, at step 3, as does its patch release 0.7.5. This release's test-only steps
+ * create {@code test_release_items} (version 5001) and add a column to it (version 5002).
  */
 public class SkippedReleaseTest {
 
-  static final Properties RELEASES = releases("0.7.0=1", "0.7.5=3");
+  static final Properties RELEASES = releases("0.6.0=1", "0.7.0=3", "0.7.5=3");
 
   private static final String FIRST_STEP = "classpath:db/test-steps/release-first/";
   private static final String SECOND_STEP = "classpath:db/test-steps/release-second/";
 
   private static final String REFUSAL =
-      "The database is at schema version 2, from release 0.7.0 or earlier; this release upgrades"
-          + " only from 0.7.5 (version 3 or later). Upgrade to 0.7.5 first, then to this release.";
+      "The database is at schema version 2, from release 0.6.0 or earlier; this release upgrades"
+          + " only from 0.7.0 or a later 0.7 release (version 3 or later). Upgrade to the latest"
+          + " 0.7 release first, then to this release.";
 
   @TempDatabase(empty = true)
   TestDatabase db;
@@ -58,16 +62,39 @@ public class SkippedReleaseTest {
     assertThat(migrator().migrate().to()).isEqualTo("5002");
   }
 
+  /** Any release of the minor line before this build's: here 0.7.0 with 0.7.5 listed. */
+  @Test
+  void upgradesADatabaseOfAnEarlierPatchOfThePreviousMinorLine() {
+    MigratorTest.create07Schema(db);
+
+    assertThat(migrator(releases("0.7.0=1", "0.7.5=3")).migrate().to()).isEqualTo("5002");
+  }
+
+  /** Patch releases without steps of their own don't move the release before this build's. */
+  @Test
+  void theReleaseBeforeIsTheFirstOfThePreviousMinorLine() {
+    NavigableMap<MigrationVersion, MigrationVersion> releases =
+        SchemaMigrator.releases(releases("0.7.0=1", "0.8.0=3", "0.8.1=3"));
+
+    assertThat(SchemaMigrator.previousRelease(releases, version("0.8.2")))
+        .isEqualTo(entry("0.7.0", "1"));
+    assertThat(SchemaMigrator.previousRelease(releases, version("0.8.0")))
+        .isEqualTo(entry("0.7.0", "1"));
+    assertThat(SchemaMigrator.previousRelease(releases, version("0.9.0")))
+        .isEqualTo(entry("0.8.0", "3"));
+    assertThat(SchemaMigrator.previousRelease(releases, version("0.7.1"))).isNull();
+  }
+
   /** A database without history is one of 0.7.0, at version 1; MigratorTest adopts one. */
   @Test
   void refusesADatabaseOfTheBaselineReleaseAfterALaterRelease() {
     MigratorTest.create07Schema(db);
-    SchemaMigrator migrator = migrator(releases("0.7.0=1", "0.7.5=5002"));
+    SchemaMigrator migrator = migrator(releases("0.6.0=1", "0.7.0=5002"));
     SchemaSnapshot before = SchemaSnapshot.of(db.dataSource());
     String refusal =
-        "The database is at schema version 1, from release 0.7.0 or earlier; this release upgrades"
-            + " only from 0.7.5 (version 5002 or later). Upgrade to 0.7.5 first, then to this"
-            + " release.";
+        "The database is at schema version 1, from release 0.6.0 or earlier; this release upgrades"
+            + " only from 0.7.0 or a later 0.7 release (version 5002 or later). Upgrade to the"
+            + " latest 0.7 release first, then to this release.";
 
     assertThatThrownBy(migrator::migrate)
         .isInstanceOf(IllegalStateException.class)
@@ -120,6 +147,14 @@ public class SkippedReleaseTest {
         db.kind(),
         List.of(FIRST_STEP + db.kind().folder(), SECOND_STEP + db.kind().folder()),
         releases);
+  }
+
+  private static MigrationVersion version(String version) {
+    return MigrationVersion.fromVersion(version);
+  }
+
+  private static Map.Entry<MigrationVersion, MigrationVersion> entry(String release, String step) {
+    return Map.entry(version(release), version(step));
   }
 
   /** A release map of {@code release=last step} lines. */
