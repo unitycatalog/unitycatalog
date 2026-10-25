@@ -4,7 +4,9 @@ import static io.unitycatalog.server.migrate.MigratorTest.execute;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
+import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.io.ByteArrayOutputStream;
@@ -12,6 +14,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -55,6 +58,23 @@ public class BadRowCheckTest {
 
     assertThat(migrator(CREATE_TABLE, UNIQUE_NAMES).migrate())
         .isEqualTo(new MigrationOutcome("3000", "3001", 1));
+  }
+
+  /** The server's pool doesn't autocommit (see {@link HibernateConfigurator#hikariConfig}). */
+  @Test
+  void checksAndUpgradesOnTheServersPool() {
+    createItems("a", "a", "b");
+    try (HikariDataSource pool =
+        new HikariDataSource(HibernateConfigurator.hikariConfig(db.hibernateProperties()))) {
+      SchemaMigrator migrator = migrator(pool, CREATE_TABLE, UNIQUE_NAMES);
+
+      assertThatThrownBy(migrator::migrate)
+          .hasMessageContaining("Check 3001 (unique test named item names) found 2 rows:\n");
+
+      execute(db, "DELETE FROM test_named_items WHERE id = 2");
+      assertThat(migrator.migrate()).isEqualTo(new MigrationOutcome("3000", "3001", 1));
+    }
+    assertThat(migrator(CREATE_TABLE, UNIQUE_NAMES).currentVersion()).isEqualTo("3001");
   }
 
   @Test
@@ -109,10 +129,12 @@ public class BadRowCheckTest {
   }
 
   private SchemaMigrator migrator(String... steps) {
+    return migrator(db.dataSource(), steps);
+  }
+
+  private SchemaMigrator migrator(DataSource dataSource, String... steps) {
     return new SchemaMigrator(
-        db.dataSource(),
-        db.kind(),
-        List.of(steps).stream().map(s -> s + db.kind().folder()).toList());
+        dataSource, db.kind(), List.of(steps).stream().map(s -> s + db.kind().folder()).toList());
   }
 
   private static List<String> history(SchemaMigrator migrator) {
