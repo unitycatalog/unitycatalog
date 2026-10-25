@@ -13,10 +13,10 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A database every release of the {@link OldServer#releaseChain()} wrote its own copy of the {@link
- * DataSet} to, in turn, upgrades on the current server's start to the schema of a new install and
- * keeps every copy. Only the current server reads the copies back: reading them back on a release
- * in between would only re-check releases that already shipped.
+ * Each release of {@link OldServer#releaseChain()}, oldest first, writes its own copy of the {@link
+ * DataSet} to one database; the current server then upgrades it to a new install's schema and reads
+ * every copy back. Only the current server reads them: reading them on a release in between would
+ * only re-check releases that already shipped.
  *
  * <p>It builds and runs old servers' jars, so it runs only with {@code UC_TEST_UPGRADES=true} (the
  * upgrade tests workflow sets it).

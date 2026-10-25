@@ -2,8 +2,10 @@ package io.unitycatalog.server.migrate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.migrate.slowstep.V1000__Slow_test_step;
 import io.unitycatalog.server.testdatabase.TempDatabase;
@@ -17,7 +19,10 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Duration;
 import java.util.List;
+import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -101,14 +106,6 @@ public class MigratorTest {
   }
 
   @Test
-  void secondRunAppliesNothing() {
-    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
-    migrator.migrate();
-
-    assertThat(migrator.migrate()).isZero();
-  }
-
-  @Test
   void refusesASchemaNewerThanThisRelease() {
     new SchemaMigrator(db.dataSource(), NEXT_RELEASE).migrate();
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
@@ -125,9 +122,23 @@ public class MigratorTest {
       Future<Integer> first =
           executor.submit(() -> new SchemaMigrator(db.dataSource(), SLOW_STEP).migrate());
       assertThat(V1000__Slow_test_step.awaitStarted()).isTrue();
+      // On PostgreSQL and MySQL the second run must wait in the run lock's blocking call, before it
+      // looks at the database; on H2, Flyway's own lock makes it wait.
+      CountDownLatch waitsForTheRunLock = new CountDownLatch(1);
+      DataSource secondDataSource =
+          isH2()
+              ? db.dataSource()
+              : withLockCall(
+                  MigratorTest::isBlockingLock,
+                  sql -> {
+                    waitsForTheRunLock.countDown();
+                    return sql;
+                  });
       Future<Integer> second =
-          executor.submit(() -> new SchemaMigrator(db.dataSource(), SLOW_STEP).migrate());
-      // The first run is inside its last step, so the second waits for it.
+          executor.submit(() -> new SchemaMigrator(secondDataSource, SLOW_STEP).migrate());
+      if (!isH2()) {
+        assertThat(waitsForTheRunLock.await(1, TimeUnit.MINUTES)).isTrue();
+      }
       assertThatThrownBy(() -> second.get(2, TimeUnit.SECONDS))
           .isInstanceOf(TimeoutException.class);
       V1000__Slow_test_step.release();
@@ -169,7 +180,7 @@ public class MigratorTest {
   @Test
   void stopsWhenTheLockIsNotGranted() {
     assumeFalse(isH2(), "H2 has no run lock");
-    // Another run holds the lock, and the blocking call returns without granting it.
+    // Another run holds the lock, and the blocking call returns NULL (on MySQL: interrupted).
     DataSource refusing =
         withLockCall(
             sql -> isTryLock(sql) || isBlockingLock(sql),
@@ -177,7 +188,7 @@ public class MigratorTest {
 
     assertThatThrownBy(new SchemaMigrator(refusing)::migrate)
         .hasMessageContaining("Could not take the schema migration lock")
-        .hasMessageContaining("did not grant it");
+        .hasMessageContaining("returned NULL");
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
   }
 
@@ -191,6 +202,17 @@ public class MigratorTest {
 
     assertThatThrownBy(new SchemaMigrator(failing)::migrate)
         .hasMessageContaining("Could not release the schema migration lock");
+    // The lock's database session was closed, so a run on other connections takes it at once.
+    try (HikariDataSource other = new HikariDataSource()) {
+      Properties properties = db.hibernateProperties();
+      other.setJdbcUrl(db.jdbcUrl());
+      other.setUsername(properties.getProperty("hibernate.connection.username"));
+      other.setPassword(properties.getProperty("hibernate.connection.password"));
+      assertThat(
+              assertTimeoutPreemptively(
+                  Duration.ofMinutes(1), () -> new SchemaMigrator(other).migrate()))
+          .isZero();
+    }
   }
 
   /** The number of steps in this release: they are numbered 1, 2, 3 and so on. */

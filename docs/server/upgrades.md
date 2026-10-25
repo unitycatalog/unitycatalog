@@ -42,11 +42,15 @@ Use these steps for every database (H2, PostgreSQL, MySQL).
     The server applies the pending steps, logs what it applied, then starts:
 
     ```text
-    Upgraded the database schema from version 1 to 2 (1 steps)
+    Upgraded the database schema from version 1 to 2 (1 step(s))
     ```
 
 On PostgreSQL and MySQL, when several servers start at the same time, one applies the steps and
 the others wait for it, then start.
+
+The server opens its API port only after the steps finish, so a long step on a large table can
+outlast a startup or liveness probe. During an upgrade, lengthen or turn off those probes, or
+start one server first.
 
 ## Going back to the baseline release
 
@@ -74,21 +78,26 @@ Messages that the server prints when it refuses to start, and what to do.
   use an empty database for Unity Catalog.
 
 `Validate failed: Migrations have failed validation. Detected failed migration to version <n> (<description>).`
-: Step `<n>` failed and its failure is recorded in the history. Read the error that the failing
-  start printed and fix its cause (for example a full disk or missing privileges for the database
-  user). Then restore the backup you took before the upgrade and start the server again. Do not edit
-  `uc_schema_history` by hand.
+: On H2 and MySQL, step `<n>` failed and its failure is recorded in the history (PostgreSQL rolls a
+  failed step back and records nothing). Flyway's advice to run `repair` does not apply: Unity
+  Catalog has no repair command. Read the error that the failing start printed and fix its cause
+  (for example a full disk or missing privileges for the database user). Then restore the backup you
+  took before the upgrade and start the server again. Do not edit `uc_schema_history` by hand.
 
 `Could not take the schema migration lock: <reason>`
 : The server could not get the lock that keeps two migration runs apart, so it changed nothing.
   Check that the database is reachable and that its user can run the lock call
   (`pg_advisory_lock` on PostgreSQL, `GET_LOCK` on MySQL), then start the server again. On MySQL,
-  `the database did not grant it` means the waiting call was interrupted, for example by
+  `the lock call returned NULL` means the call failed or was interrupted, for example by
   `KILL QUERY`.
 
 `Could not release the schema migration lock: <reason>. The database releases it when the connection closes; start the server again.`
-: The steps ran, but releasing the lock failed at the end. The server closed the lock's
+: Releasing the lock failed at the end of the run. The server closed the lock's database
   connection, which releases the lock. Start the server again.
+
+`Unsupported database jdbc:<name>: use jdbc:h2:, jdbc:postgresql: or jdbc:mysql:`
+: `hibernate.connection.url` points at a database that Unity Catalog does not support. Use H2,
+  PostgreSQL or MySQL.
 
 `Could not connect to the database: <reason>` or `Could not list the database's tables: <reason>`
 : The server could not read the database. Check the connection settings and the user's

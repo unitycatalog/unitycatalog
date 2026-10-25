@@ -54,8 +54,8 @@ public final class TestDatabase implements AutoCloseable {
   }
 
   /**
-   * The server's Hibernate properties pointed at this database. Hibernate never changes the schema
-   * ({@code hbm2ddl.auto=none}): the migration steps built it.
+   * The server's Hibernate properties pointed at this database, with {@code hbm2ddl.auto=none}: the
+   * migration steps own the schema.
    */
   public Properties hibernateProperties() {
     Properties properties =

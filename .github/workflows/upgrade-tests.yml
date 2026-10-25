@@ -1,8 +1,8 @@
 name: Upgrade Tests
 
-# Databases written by older servers upgrade and keep their data: the release chain on every
-# test database (RealUpgradeTest, which runs only with UC_TEST_UPGRADES=true). Runs only when a
-# change touches the schema, its migration code or the upgrade test kit.
+# Each release since 0.7.0 writes data to one database, then this build upgrades it and reads the
+# data back (RealUpgradeTest, which runs only with UC_TEST_UPGRADES=true). Runs only for changes
+# to the schema steps, the migration code or its tests.
 on:
   pull_request:
     branches: [ "main", "branch-*" ]

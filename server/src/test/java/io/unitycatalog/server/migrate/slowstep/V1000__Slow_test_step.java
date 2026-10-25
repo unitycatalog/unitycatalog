@@ -7,7 +7,7 @@ import org.flywaydb.core.api.migration.Context;
 
 /**
  * A test-only step that stays running until {@link #release()}, so a test can start a second run
- * while the first one holds the run lock. Does nothing to the database. Public: Flyway creates it.
+ * while the first is still inside a step. Does nothing to the database. Public: Flyway creates it.
  */
 public class V1000__Slow_test_step extends BaseJavaMigration {
 
