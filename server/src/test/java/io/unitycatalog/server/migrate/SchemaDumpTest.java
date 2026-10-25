@@ -1,6 +1,6 @@
 package io.unitycatalog.server.migrate;
 
-import static org.assertj.core.api.Assertions.fail;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.testdatabase.TempDatabase;
@@ -8,7 +8,6 @@ import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -40,41 +39,17 @@ public class SchemaDumpTest {
       return;
     }
     String recorded = Files.exists(dump) ? Files.readString(dump) : "";
-    if (!recorded.equals(actual)) {
-      fail(
-          "The migrated schema differs from %s; regenerate with `build/sbt 'set every Test /"
-              + " envVars := Map(\"%s\" -> \"%s\", \"%s\" -> \"true\")' 'server/testOnly %s'`"
-              + " and commit the file:%n%s",
-          dump,
-          SupportedDatabase.ENV,
-          SupportedDatabase.selected(),
-          UPDATE_ENV,
-          getClass().getName(),
-          diff(dump, recorded, actual));
-    }
-  }
-
-  /**
-   * A diff of two sorted dumps: lines only in the recorded one with "-", only in the new with "+".
-   */
-  private static String diff(Path dump, String recorded, String actual) {
-    List<String> before = recorded.lines().toList();
-    List<String> after = actual.lines().toList();
-    StringBuilder out = new StringBuilder("--- " + dump + "\n+++ migrated schema\n");
-    int i = 0;
-    int j = 0;
-    while (i < before.size() || j < after.size()) {
-      int cmp =
-          i == before.size() ? 1 : j == after.size() ? -1 : before.get(i).compareTo(after.get(j));
-      if (cmp == 0) {
-        i++;
-        j++;
-      } else if (cmp < 0) {
-        out.append('-').append(before.get(i++)).append('\n');
-      } else {
-        out.append('+').append(after.get(j++)).append('\n');
-      }
-    }
-    return out.toString();
+    // On a mismatch, AssertJ lists the lines missing from the migrated schema and the new ones.
+    assertThat(actual.lines().toList())
+        .as(
+            "The migrated schema differs from %s; regenerate with `build/sbt 'set every Test /"
+                + " envVars := Map(\"%s\" -> \"%s\", \"%s\" -> \"true\")' 'server/testOnly %s'`"
+                + " and commit the file",
+            dump,
+            SupportedDatabase.ENV,
+            SupportedDatabase.selected(),
+            UPDATE_ENV,
+            getClass().getName())
+        .containsExactlyElementsOf(recorded.lines().toList());
   }
 }
