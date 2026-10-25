@@ -1,7 +1,11 @@
 package io.unitycatalog.server.persist.utils;
 
+import static io.unitycatalog.server.persist.utils.TransactionManagerTest.MockTransactionTest.OperationError.CLIENT_ERROR;
+import static io.unitycatalog.server.persist.utils.TransactionManagerTest.MockTransactionTest.OperationError.RUNTIME;
+import static io.unitycatalog.server.persist.utils.TransactionManagerTest.MockTransactionTest.OperationError.SIGNAL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -20,6 +24,8 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Date;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
@@ -131,7 +137,8 @@ public class TransactionManagerTest {
           .isInstanceOf(BaseException.class)
           .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INTERNAL)
           .hasMessageContaining(errorMessage)
-          .hasMessageContaining(testException.getMessage());
+          .hasMessageContaining(testException.getMessage())
+          .hasCause(testException);
 
       verify(transaction).rollback();
       verify(transaction, never()).commit();
@@ -141,7 +148,6 @@ public class TransactionManagerTest {
     public void testTransactionRollbackExceptionIsRethrownAsIsNotWrapped() {
       // A TransactionRollbackException signals rollback, not an error, so it is rethrown by
       // identity for the caller to catch, not wrapped into a BaseException/INTERNAL.
-      class SignalException extends TransactionRollbackException {}
       SignalException signal = new SignalException();
 
       assertThatThrownBy(
@@ -157,6 +163,154 @@ public class TransactionManagerTest {
 
       verify(transaction).rollback();
       verify(transaction, never()).commit();
+    }
+
+    /** A replay signal, the control-flow exception that callers treat as success. */
+    static class SignalException extends TransactionRollbackException {}
+
+    /** What the operation fails with. */
+    enum OperationError {
+      RUNTIME,
+      CLIENT_ERROR,
+      SIGNAL
+    }
+
+    /**
+     * One row per combination of failures after the operation fails. Columns: the operation's
+     * error, whether the rollback fails, whether the session close fails; then what is thrown
+     * ({@code original}, {@code internal} wrapping it, or {@code rollback failed} wrapping a
+     * signal), the failures suppressed on the thrown error, and those suppressed on the original.
+     */
+    static Stream<Arguments> failureLevels() {
+      return Stream.of(
+          Arguments.of(RUNTIME, true, false, "internal", List.of(), List.of("rollback")),
+          Arguments.of(RUNTIME, false, true, "internal", List.of("close"), List.of()),
+          Arguments.of(RUNTIME, true, true, "internal", List.of("close"), List.of("rollback")),
+          Arguments.of(
+              CLIENT_ERROR, true, false, "original", List.of("rollback"), List.of("rollback")),
+          Arguments.of(CLIENT_ERROR, false, true, "original", List.of("close"), List.of("close")),
+          Arguments.of(
+              CLIENT_ERROR,
+              true,
+              true,
+              "original",
+              List.of("rollback", "close"),
+              List.of("rollback", "close")),
+          Arguments.of(SIGNAL, false, true, "original", List.of("close"), List.of("close")),
+          Arguments.of(SIGNAL, true, false, "rollback failed", List.of(), List.of("rollback")),
+          Arguments.of(
+              SIGNAL, true, true, "rollback failed", List.of("close"), List.of("rollback")));
+    }
+
+    @ParameterizedTest
+    @MethodSource("failureLevels")
+    public void testFailuresAfterTheOperationAreKeptOnItsError(
+        OperationError operationError,
+        boolean rollbackFails,
+        boolean closeFails,
+        String thrown,
+        List<String> suppressedOnThrown,
+        List<String> suppressedOnOriginal) {
+      Exception original =
+          switch (operationError) {
+            case RUNTIME -> new RuntimeException("connection reset");
+            case CLIENT_ERROR -> new BaseException(ErrorCode.INVALID_ARGUMENT, "bad input");
+            case SIGNAL -> new SignalException();
+          };
+      Map<String, RuntimeException> failures =
+          Map.of(
+              "rollback", new RuntimeException("rollback failed"),
+              "close", new RuntimeException("close failed"));
+      if (rollbackFails) {
+        doThrow(failures.get("rollback")).when(transaction).rollback();
+      }
+      if (closeFails) {
+        doThrow(failures.get("close")).when(session).close();
+      }
+
+      Throwable error =
+          catchThrowable(
+              () ->
+                  TransactionManager.executeWithTransaction(
+                      sessionFactory,
+                      session -> {
+                        throw original;
+                      },
+                      "Error executing operation",
+                      false));
+
+      switch (thrown) {
+        case "original" -> assertThat(error).isSameAs(original);
+        case "internal" -> assertInternal(error, "Error executing operation: connection reset");
+        case "rollback failed" ->
+            assertInternal(error, "Error executing operation: transaction rollback failed");
+        default -> throw new IllegalArgumentException(thrown);
+      }
+      if (error != original) {
+        assertThat(error).hasCause(original);
+      }
+      assertThat(error.getSuppressed())
+          .containsExactly(
+              suppressedOnThrown.stream().map(failures::get).toArray(Throwable[]::new));
+      assertThat(original.getSuppressed())
+          .containsExactly(
+              suppressedOnOriginal.stream().map(failures::get).toArray(Throwable[]::new));
+      verify(transaction).rollback();
+      verify(transaction, never()).commit();
+    }
+
+    private void assertInternal(Throwable error, String message) {
+      assertThat(error)
+          .isInstanceOfSatisfying(
+              BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INTERNAL))
+          .hasMessage(message);
+    }
+
+    @Test
+    public void testFailedCommitIsRolledBackAndKeptAsTheCause() {
+      RuntimeException commitError = new RuntimeException("commit failed");
+      doThrow(commitError).when(transaction).commit();
+
+      assertThatThrownBy(
+              () ->
+                  TransactionManager.executeWithTransaction(
+                      sessionFactory, session -> "ok", "Error executing operation", false))
+          .isInstanceOfSatisfying(
+              BaseException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INTERNAL))
+          .hasMessage("Error executing operation: commit failed")
+          .hasCause(commitError);
+      verify(transaction).rollback();
+    }
+
+    @Test
+    public void testFailedSessionCloseAfterACommitIsThrown() {
+      RuntimeException closeError = new RuntimeException("close failed");
+      doThrow(closeError).when(session).close();
+
+      assertThatThrownBy(
+              () ->
+                  TransactionManager.executeWithTransaction(
+                      sessionFactory, session -> "ok", "Error executing operation", false))
+          .isSameAs(closeError);
+      verify(transaction).commit();
+    }
+
+    @Test
+    public void testFailedIsolationSetFailsBeforeTheTransaction() {
+      RuntimeException setError = new RuntimeException("set failed");
+      reset(session);
+      doThrow(setError).when(session).doWork(any());
+
+      assertThatThrownBy(
+              () ->
+                  TransactionManager.executeWithTransaction(
+                      sessionFactory,
+                      session -> "ok",
+                      "Error executing operation",
+                      false,
+                      Optional.of(Connection.TRANSACTION_REPEATABLE_READ)))
+          .isSameAs(setError);
+      verify(session, never()).beginTransaction();
     }
 
     @Test
@@ -293,10 +447,13 @@ public class TransactionManagerTest {
 
     @BeforeAll
     public static void setUp() {
-      ServerProperties serverProperties = new ServerProperties(new Properties());
       testDatabase = TestDatabases.newDatabase();
+      Properties hibernateProperties =
+          testDatabase.hibernateProperties(new ServerProperties(new Properties()));
+      // One pooled connection, so each transaction reuses the connection the previous one used.
+      hibernateProperties.setProperty("hibernate.hikari.maximumPoolSize", "1");
       realSessionFactory =
-          testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
+          testDatabase.openHibernateConfigurator(hibernateProperties).getSessionFactory();
     }
 
     @AfterAll

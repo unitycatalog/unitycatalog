@@ -103,7 +103,7 @@ appenders=console
 appender.console.type=Console
 appender.console.name=Console
 appender.console.layout.type=PatternLayout
-appender.console.layout.pattern=%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n
+appender.console.layout.pattern=%d{HH:mm:ss.SSS} ${hostName} [%t] %-5level %logger{36} %notEmpty{request_id=%X{request_id} }- %msg%n
 
 rootLogger.level={{ .Values.server.logLevel }}
 rootLogger.appenderRefs=console
