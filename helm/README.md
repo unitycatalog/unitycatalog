@@ -1178,6 +1178,9 @@ The server copies the database on the same database server, so it needs:
   database)
 - room there for a full copy of the database; with `db.type: file`, on the database volume
 - with H2, a file database: the chart refuses an in-memory one
+- one replica (`deployment.replicaCount: 1`), which the chart enforces: every new server opens connections to
+  the database before it waits for the upgrade, and the copy and the restore need none open. Scale to 1 for
+  the upgrade, then scale back.
 
 On SIGTERM during the upgrade the server restores the backup before it exits, so
 `deployment.terminationGracePeriodSeconds` must cover 60 seconds plus the restore.

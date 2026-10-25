@@ -155,7 +155,9 @@ server:
 To have the server copy the database before it upgrades the schema, and restore the copy if the upgrade fails, set
 `server.migration.backup.enabled: true` (see [Backup before the upgrade](upgrades.md#backup-before-the-upgrade)). The
 database user must be able to create and drop databases (PostgreSQL: `CREATEDB` and owner of the Unity Catalog
-database), and the database server, or with H2 the database volume, needs room for a full copy. On SIGTERM during the
+database), and the database server, or with H2 the database volume, needs room for a full copy. The chart also
+requires `server.deployment.replicaCount: 1`: every new server opens connections to the database before it waits for
+the upgrade, and the copy and the restore need none open. Scale to 1 for the upgrade, then scale back. On SIGTERM during the
 upgrade, the server restores the copy before it exits, so `server.deployment.terminationGracePeriodSeconds` (120
 seconds by default) must cover 60 seconds plus the restore.
 
