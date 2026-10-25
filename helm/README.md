@@ -1060,10 +1060,14 @@ example a MySQL upgrade that rebuilds large tables, set the whole probe with a l
 			<td>server.deployment.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td><pre lang="json">
-30
+120
 </pre>
 </td>
 			<td>Seconds the server has to stop after Kubernetes sends it SIGTERM, before Kubernetes kills it
+
+On SIGTERM during a schema upgrade, the server stops at the next safe point, waiting up to 60 seconds for a
+running statement; with `migration.backup.enabled`, it then restores the backup before it exits. Keep this above
+60 seconds plus the restore.
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-termination)
 </td>

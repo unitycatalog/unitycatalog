@@ -156,8 +156,8 @@ To have the server copy the database before it upgrades the schema, and restore 
 `server.migration.backup.enabled: true` (see [Backup before the upgrade](upgrades.md#backup-before-the-upgrade)). The
 database user must be able to create and drop databases (PostgreSQL: `CREATEDB` and owner of the Unity Catalog
 database), and the database server, or with H2 the database volume, needs room for a full copy. On SIGTERM during the
-upgrade, the server restores the copy before it exits, so `server.deployment.terminationGracePeriodSeconds` must
-cover 60 seconds plus the restore.
+upgrade, the server restores the copy before it exits, so `server.deployment.terminationGracePeriodSeconds` (120
+seconds by default) must cover 60 seconds plus the restore.
 
 The chart passes its revision to the server (`UC_CHART_REVISION`), so every `helm upgrade` restarts the servers. When
 an upgrade fails and the server restores the copy, it marks the database with that revision, and later starts in the
