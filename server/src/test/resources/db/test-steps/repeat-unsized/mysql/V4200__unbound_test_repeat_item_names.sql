@@ -1,0 +1,1 @@
+-- MySQL's varchar takes a size, so this change has no MySQL form.

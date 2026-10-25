@@ -178,6 +178,9 @@ public final class SchemaMigrator implements AutoCloseable {
   private static final Map<String, String> TYPE_NAMES =
       Map.of("clob", "character large object", "varchar", "character varying");
 
+  /** The types the steps name without a size, since they take none. */
+  private static final Set<String> UNSIZED_TYPES = Set.of("text", "clob", "mediumtext", "longtext");
+
   private static final Pattern CHECK = Pattern.compile("C(\\d+(?:_\\d+)*)__(.+)\\.sql");
 
   /** The most rows of one check that a refusal lists. */
@@ -420,7 +423,8 @@ public final class SchemaMigrator implements AutoCloseable {
       return false;
     }
     String statement = stepStatement(step);
-    if (statement.contains(";")) { // more than one statement, such as the baseline step
+    if (statement.contains(";") // more than one statement, such as the baseline step
+        || hasSeveralChanges(statement)) {
       return false;
     }
     try (Connection connection = dataSource.getConnection()) {
@@ -459,6 +463,10 @@ public final class SchemaMigrator implements AutoCloseable {
           && names(metaData.getIndexInfo(catalog, schema, table, false, false), "INDEX_NAME")
               .contains(createIndex.group(1).toLowerCase(Locale.ROOT));
     } else if (changeType.lookingAt()) {
+      if (changeType.group(4) == null
+          && !UNSIZED_TYPES.contains(changeType.group(3).toLowerCase(Locale.ROOT))) {
+        return false; // without a size, the type may be a sized one at its default size
+      }
       String table = tableName(metaData, catalog, schema, changeType.group(1));
       return table != null
           && hasType(
@@ -491,6 +499,27 @@ public final class SchemaMigrator implements AutoCloseable {
   private static String typeName(String type) {
     String name = type.toLowerCase(Locale.ROOT);
     return TYPE_NAMES.getOrDefault(name, name);
+  }
+
+  /**
+   * Whether a statement makes several changes, such as {@code ADD COLUMN a INT, ADD COLUMN b INT}:
+   * it has a comma outside parentheses and quotes.
+   */
+  private static boolean hasSeveralChanges(String statement) {
+    int depth = 0;
+    char quote = 0;
+    for (char c : statement.toCharArray()) {
+      if (quote != 0) {
+        quote = c == quote ? 0 : quote;
+      } else if (c == '\'' || c == '"' || c == '`') {
+        quote = c;
+      } else if (c == '(' || c == ')') {
+        depth += c == '(' ? 1 : -1;
+      } else if (c == ',' && depth == 0) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** The name of {@code table} as the database stores it, or {@code null} when it is missing. */

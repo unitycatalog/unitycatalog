@@ -2,7 +2,10 @@ package io.unitycatalog.server.migrate;
 
 import static io.unitycatalog.server.migrate.MigratorTest.execute;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.testdatabase.TempDatabase;
@@ -32,6 +35,11 @@ public class StepAlreadyInDatabaseTest {
 
   private static final String BASE = "classpath:db/test-steps/repeat-base/";
   private static final String STEPS = "classpath:db/test-steps/repeat/";
+  // Version 4100 adds two columns in one statement; H2 has no form with one ADD per column, so its
+  // step adds them as one list.
+  private static final String TWO_COLUMNS = "db/test-steps/repeat-two-columns/";
+  // Version 4200 drops the size of a varchar (H2 and PostgreSQL; MySQL's varchar takes a size).
+  private static final String UNSIZED = "db/test-steps/repeat-unsized/";
 
   @TempDatabase(empty = true)
   TestDatabase db;
@@ -74,6 +82,29 @@ public class StepAlreadyInDatabaseTest {
     migrator.migrate();
 
     assertThat(sent).containsAll(steps().stream().map(this::statement).toList());
+  }
+
+  @Test
+  void runsAStepOfTwoChangesWhenOneIsThere() {
+    migrator(db.dataSource(), BASE).migrate();
+    execute(db, "ALTER TABLE test_repeat_items ADD extra_a INT");
+    List<String> sent = new ArrayList<>();
+    SchemaMigrator migrator = migrator(recording(sent), BASE, "classpath:" + TWO_COLUMNS);
+
+    assertThatThrownBy(migrator::migrate).hasMessageContaining("V4100");
+    assertThat(sent)
+        .contains(statement(TWO_COLUMNS, "V4100__add_two_test_repeat_item_columns.sql"));
+  }
+
+  @Test
+  void runsAStepThatDropsTheSizeOfAType() {
+    assumeTrue(db.kind() != DatabaseKind.MYSQL);
+    migrator(db.dataSource(), BASE).migrate();
+    List<String> sent = new ArrayList<>();
+
+    migrator(recording(sent), BASE, "classpath:" + UNSIZED).migrate();
+
+    assertThat(sent).contains(statement(UNSIZED, "V4200__unbound_test_repeat_item_names.sql"));
   }
 
   @Test
