@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
+import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.io.ByteArrayOutputStream;
@@ -57,11 +58,26 @@ public class SkippedReleaseTest {
     assertThat(migrator().migrate().to()).isEqualTo("5002");
   }
 
+  /** A database without history is one of 0.7.0, at version 1; MigratorTest adopts one. */
   @Test
-  void adoptsADatabaseOfTheBaselineRelease() {
+  void refusesADatabaseOfTheBaselineReleaseAfterALaterRelease() {
     MigratorTest.create07Schema(db);
+    SchemaMigrator migrator = migrator(releases("0.7.0=1", "0.7.5=5002"));
+    SchemaSnapshot before = SchemaSnapshot.of(db.dataSource());
+    String refusal =
+        "The database is at schema version 1, from release 0.7.0 or earlier; this release upgrades"
+            + " only from 0.7.5 (version 5002 or later). Upgrade to 0.7.5 first, then to this"
+            + " release.";
 
-    assertThat(migrator().migrate()).isEqualTo(new MigrationOutcome("1", "5002", 4));
+    assertThatThrownBy(migrator::migrate)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage(refusal);
+    // No baseline row: the history table is still missing.
+    assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(before);
+    assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8)).contains(refusal);
   }
 
   @Test
@@ -95,11 +111,15 @@ public class SkippedReleaseTest {
   }
 
   private SchemaMigrator migrator() {
+    return migrator(RELEASES);
+  }
+
+  private SchemaMigrator migrator(Properties releases) {
     return new SchemaMigrator(
         db.dataSource(),
         db.kind(),
         List.of(FIRST_STEP + db.kind().folder(), SECOND_STEP + db.kind().folder()),
-        RELEASES);
+        releases);
   }
 
   /** A release map of {@code release=last step} lines. */

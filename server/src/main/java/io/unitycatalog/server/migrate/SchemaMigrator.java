@@ -956,18 +956,25 @@ public final class SchemaMigrator implements AutoCloseable {
           case UNVERSIONED_UC -> missingBaselineTables();
           default -> null;
         };
-    return refusal == null && (state == SchemaState.PENDING || state == SchemaState.FAILED)
-        ? skippedRelease()
-        : refusal;
+    if (refusal != null) {
+      return refusal;
+    }
+    return switch (state) {
+      case PENDING, FAILED -> skippedRelease(currentVersion());
+      // A database without history is one of the baseline release.
+      case UNVERSIONED_UC -> skippedRelease(BASELINE_VERSION);
+      default -> null;
+    };
   }
 
   /**
    * Refuses a database below the last step of the release before this build's: one that would skip
    * that release. A database between that step and this build's last is a run that stopped midway.
+   *
+   * @param current the database's schema version, {@code null} for none
    */
-  private String skippedRelease() {
+  private String skippedRelease(String current) {
     Map.Entry<MigrationVersion, MigrationVersion> previous = previousRelease();
-    String current = currentVersion();
     // Version 0: the first run on an empty database stopped before its first step.
     if (previous == null || current == null || current.equals("0")) {
       return null;

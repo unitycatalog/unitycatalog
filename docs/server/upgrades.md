@@ -73,8 +73,9 @@ It changes nothing. Start the release that the message names on the database onc
 start this release. `bin/start-uc-server --check-schema` reports the same.
 
 A database partway between the release before and this one (an upgrade that stopped midway) goes
-on. So do an empty database and a database without schema history from the
-[baseline release](#the-baseline-release).
+on. So does an empty database. A database without schema history is one of the
+[baseline release](#the-baseline-release), at version 1: a release goes on with it only when it
+upgrades from the baseline release.
 
 ## The schema differs
 
