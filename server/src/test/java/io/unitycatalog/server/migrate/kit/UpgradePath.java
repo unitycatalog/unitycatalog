@@ -1,6 +1,7 @@
 package io.unitycatalog.server.migrate.kit;
 
 import io.unitycatalog.server.migrate.SchemaMigrator;
+import io.unitycatalog.server.utils.VersionUtils;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
@@ -8,8 +9,7 @@ import java.util.stream.Stream;
 /**
  * The old servers a database passes through before this code, run in order on one database: one
  * server jar per release, oldest first, every release from {@link SchemaMigrator#BASELINE_RELEASE}
- * up to, not including, this build's version. The release tags in {@value #RELEASE_CHAIN_ENV}
- * (space-separated), or else the repository's {@code vX.Y.Z} tags.
+ * up to, not including, this build's version, from the repository's {@code vX.Y.Z} tags.
  *
  * <p>It is the only upgrade path the tests take:
  *
@@ -29,8 +29,6 @@ import java.util.stream.Stream;
  */
 public final class UpgradePath {
 
-  public static final String RELEASE_CHAIN_ENV = "UC_TEST_RELEASE_CHAIN";
-
   private UpgradePath() {}
 
   /** The release chain's server jars, oldest first. */
@@ -39,14 +37,7 @@ public final class UpgradePath {
   }
 
   private static List<String> releaseTags() {
-    String chain = System.getenv(RELEASE_CHAIN_ENV);
-    if (chain != null && !chain.isBlank()) {
-      return List.of(chain.trim().split("\\s+"));
-    }
-    // ThisBuild / version := "0.8.0-SNAPSHOT"
-    String sbt = OldImage.git("show", "HEAD:version.sbt");
-    String version = sbt.substring(sbt.indexOf('"') + 1, sbt.lastIndexOf('"'));
-    return releaseTags(OldImage.git("tag", "--list").lines(), version);
+    return releaseTags(OldImage.git("tag", "--list").lines(), VersionUtils.VERSION);
   }
 
   /** The release tags of the chain, given all tags and this build's version. */
