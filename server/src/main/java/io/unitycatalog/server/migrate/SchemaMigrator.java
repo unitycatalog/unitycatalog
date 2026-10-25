@@ -214,6 +214,13 @@ public final class SchemaMigrator implements AutoCloseable {
 
   private static final Pattern CHECK = Pattern.compile("C(\\d+(?:_\\d+)*)__(.+)\\.sql");
 
+  /**
+   * The SQL steps of several statements that are safe to repeat, by {@code <database>/<file>}, with
+   * the reason: a run reruns them after they failed.
+   */
+  static final Map<String, String> SAFE_TO_REPEAT =
+      Map.of("mysql/V3__case_sensitive_text.sql", "converts every table; safe to repeat");
+
   /** The most rows of one check that a refusal lists. */
   private static final int MAX_ROWS_LISTED = 20;
 
@@ -623,14 +630,15 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * Whether a failed step can run again: a step of this build that is a SQL step whose probe can
-   * tell whether its change is there, or a {@link DataStep}, which changes only the rows not
-   * changed yet.
+   * tell whether its change is there or that is {@link #SAFE_TO_REPEAT}, or a {@link DataStep},
+   * which changes only the rows not changed yet.
    */
   private boolean canRunAgain(MigrationInfo step) {
     if (!step.getState().isResolved()) {
       return false;
     } else if (step.getType() == CoreMigrationType.SQL) {
-      return probe(step).isPresent();
+      return SAFE_TO_REPEAT.containsKey(kind.folder() + "/" + step.getScript())
+          || probe(step).isPresent();
     }
     try {
       return DataStep.class.isAssignableFrom(

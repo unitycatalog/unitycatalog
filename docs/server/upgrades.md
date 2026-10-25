@@ -70,8 +70,8 @@ When a step fails, the next start picks up from it:
   next start checks what the step left. A step that adds or changes one thing (a table, column,
   index, constraint or column type) is recorded without running when its change is there, and runs
   when it is absent. A step that changes rows runs again and changes only the rows it has not
-  changed yet. The server logs `Step <n> (<description>) failed in an earlier run; running it
-  again.`
+  changed yet. Step 3 on MySQL, which is safe to repeat, runs again too. The server logs
+  `Step <n> (<description>) failed in an earlier run; running it again.`
 
 For any other failed step, for example one that makes several changes and stopped between them,
 the server can't tell what is in the database and refuses to start. Read the error that the

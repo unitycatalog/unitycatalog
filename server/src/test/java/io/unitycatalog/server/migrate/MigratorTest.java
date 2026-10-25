@@ -126,6 +126,31 @@ public class MigratorTest {
   }
 
   @Test
+  void rerunsAFailedStepThatIsSafeToRepeat() throws SQLException {
+    assumeTrue(db.kind() == DatabaseKind.MYSQL);
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
+    migrator.migrate();
+    // Step 3 converted some tables, then failed.
+    execute(
+        db, "ALTER TABLE uc_catalogs CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci");
+    execute(db, "DELETE FROM uc_schema_history WHERE version = '3'");
+    recordFailedStep(db, "V3__case_sensitive_text.sql");
+
+    migrator.migrate();
+
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+    try (Connection connection = db.dataSource().getConnection();
+        Statement statement = connection.createStatement();
+        ResultSet rs =
+            statement.executeQuery(
+                "SELECT table_collation FROM information_schema.tables"
+                    + " WHERE table_schema = DATABASE() AND table_name = 'uc_catalogs'")) {
+      rs.next();
+      assertThat(rs.getString(1)).isEqualTo("utf8mb4_0900_bin");
+    }
+  }
+
+  @Test
   void upgradesAVersionedDatabase() {
     String latest = new SchemaMigrator(db.dataSource(), db.kind()).migrate().to();
     List<String> nextRelease = List.of("classpath:db/test-steps/ahead");
