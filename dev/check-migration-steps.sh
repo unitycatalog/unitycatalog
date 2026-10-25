@@ -2,8 +2,9 @@
 #
 # Fails when HEAD edits, deletes or renames a schema migration step that exists on <base-ref>.
 # Databases already ran those steps, so a change to the schema must be a new step.
-# Also fails when HEAD adds a step numbered at or below the highest step of its folder on
-# <base-ref>: a database that already ran that highest step would refuse the new one below it.
+# Also fails when HEAD adds a step numbered at or below the highest step a database runs on
+# <base-ref> (its SQL folder and the Java steps): a database that already ran that highest step
+# would refuse the new one below it.
 # And when <base-branch> is a release branch (branch-*), it fails on any new step: the step's
 # number could clash with a different step on main, and the next upgrade would break.
 #
@@ -39,7 +40,8 @@ if [[ -n "$changed" ]]; then
 fi
 echo "No merged migration step changed since $1."
 
-added=$(git diff --diff-filter=A --name-only "$merge_base" HEAD -- "$steps_dir")
+added=$(git diff --diff-filter=A --name-only "$merge_base" HEAD -- \
+  "$sql_steps" "$java_steps" ":(exclude)$java_steps/package-info.java")
 if [[ -z "$added" ]]; then
   exit 0
 fi
@@ -76,10 +78,14 @@ above() {
   return 1
 }
 
-# The highest step version in folder $2 at ref $1, or empty when it has no step.
+# The highest step version at ref $1 under the paths that follow, or empty when they have none.
 base_max() {
-  local max="" file v
-  for file in $(git ls-tree --name-only "$1" -- "$2/"); do
+  local ref=$1 max="" file v
+  shift
+  for file in $(git ls-tree -r --name-only "$ref" -- "$@"); do
+    if [[ "${file##*/}" != V*__* ]]; then
+      continue
+    fi
     v=$(version "$file")
     if [[ -z "$max" ]] || above "$v" "$max"; then
       max=$v
@@ -88,12 +94,20 @@ base_max() {
   echo "$max"
 }
 
+# A database runs its SQL folder and the Java steps, so a SQL step must be above both, and a
+# Java step above every folder.
 failed=0
 for file in $added; do
   v=$(version "$file")
-  max=$(base_max "$1" "$(dirname "$file")")
+  if [[ "$file" == "$java_steps"/* ]]; then
+    max=$(base_max "$1" "$sql_steps" "$java_steps")
+    scope="of any database"
+  else
+    max=$(base_max "$1" "$(dirname "$file")" "$java_steps")
+    scope="in its folder and the Java steps"
+  fi
   if [[ -n "$max" ]] && ! above "$v" "$max"; then
-    echo "$file is version $v, not above $max, the highest step in its folder on $1." >&2
+    echo "$file is version $v, not above $max, the highest step $scope on $1." >&2
     echo "Renumber it above $max." >&2
     failed=1
   fi

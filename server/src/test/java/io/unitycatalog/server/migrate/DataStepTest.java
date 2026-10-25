@@ -120,7 +120,7 @@ public class DataStepTest {
     return Flyway.configure()
         .dataSource(db.dataSource())
         .locations(locations.toArray(String[]::new))
-        .table("flyway_schema_history")
+        .table("uc_schema_history")
         .load();
   }
 
@@ -138,7 +138,7 @@ public class DataStepTest {
   /** The history rows of {@code version}. */
   private int historyRows(String version) throws SQLException {
     return count(
-        "SELECT COUNT(*) FROM %1$sflyway_schema_history%1$s WHERE %1$sversion%1$s = '%2$s'"
+        "SELECT COUNT(*) FROM %1$suc_schema_history%1$s WHERE %1$sversion%1$s = '%2$s'"
             .formatted(quote(db), version));
   }
 
