@@ -1,0 +1,1 @@
+ALTER TABLE test_repeat_items ALTER COLUMN label VARCHAR(64) NOT NULL;

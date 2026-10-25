@@ -36,10 +36,11 @@ later release migrates older schemas too.
 
 ## Upgrading to a new release
 
-Upgrade one release at a time: a release upgrades a database of the release before it, not one of
-an older release. To go from 0.8.0 to 1.0.0 with 0.9.0 in between, upgrade to 0.9.0 first. A
-release without steps of its own (for example most patch releases) can be skipped; the server
-tells you when a release can't be (see [Skipping a release](#skipping-a-release)).
+Upgrade one minor line at a time: a release upgrades a database of any release of the minor line
+before its own (for 1.0.0, any 0.9 release) or of a later release, such as an earlier patch release
+of its own line, but not one of an older line. To go from 0.8.0 to 1.0.0 with 0.9 in between,
+upgrade to the latest 0.9 release first. The server tells you when a release can't be skipped (see
+[Skipping a release](#skipping-a-release)).
 
 Use these steps for every database (H2, PostgreSQL, MySQL).
 
@@ -188,18 +189,17 @@ there.
 
 ## Skipping a release
 
-The server refuses to start on a database of a release older than the one before it, for example
-this release 1.0.0 on a 0.8.0 database:
+The server refuses to start on a database of a release older than the minor line before it, for
+example this release 1.0.0 on a 0.8.0 database:
 
 ```text
-The database is at schema version 3, from release 0.8.0 or earlier; this release upgrades only from 0.9.0 (version 5 or later). Upgrade to 0.9.0 first, then to this release.
+The database is at schema version 3, from release 0.8.0 or earlier; this release upgrades only from 0.9.0 or a later 0.9 release (version 5 or later). Upgrade to the latest 0.9 release first, then to this release.
 ```
 
-It changes nothing. Start the release that the message names on the database once, stop it, then
-start this release. `bin/start-uc-server --check-schema` reports the same.
+It changes nothing. Start the latest release of the line that the message names on the database
+once, stop it, then start this release. `bin/start-uc-server --check-schema` reports the same.
 
-A database partway between the release before and this one (an upgrade that stopped midway) goes
-on. So does an empty database. A database without schema history is one of the
+A database partway between that line and this release (an upgrade that stopped midway) goes on. So does an empty database. A database without schema history is one of the
 [baseline release](#the-baseline-release), at version 1: a release goes on with it only when it
 upgrades from the baseline release.
 
@@ -328,7 +328,9 @@ database, first set `hibernate.hbm2ddl.auto=none` in its `etc/conf/hibernate.pro
 For maintainers. When you cut a release, add a line for it to
 `server/src/main/resources/db/migration/releases.properties`: the release and the version of the
 last step it ships (the last step of the release before it when it ships none), for example
-`0.8.0=3`. The next release upgrades only from that schema version on.
+`0.8.0=3`. List patch releases too. The releases of the next minor line upgrade from the schema
+version of this line's first release on, so a patch release that adds steps doesn't change where
+they upgrade from.
 
 The release notes list the release's schema steps and checks:
 
@@ -369,7 +371,7 @@ Messages that the server prints when it refuses to start, and what to do.
 : See [Locks held by other sessions](#locks-held-by-other-sessions). The message names the table
   when the step's statement names one.
 
-`The database is at schema version <v>, from release <r> or earlier; this release upgrades only from <p> (version <n> or later). Upgrade to <p> first, then to this release.`
+`The database is at schema version <v>, from release <r> or earlier; this release upgrades only from <p> or a later <line> release (version <n> or later). Upgrade to the latest <line> release first, then to this release.`
 : See [Skipping a release](#skipping-a-release).
 
 `The schema of <tables> differs from what this release's steps build (-: what they build, +: what the database has): ...`

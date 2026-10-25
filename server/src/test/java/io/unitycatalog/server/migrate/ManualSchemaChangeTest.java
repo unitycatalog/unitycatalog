@@ -113,12 +113,25 @@ public class ManualSchemaChangeTest {
         .contains("+column uc_function_params.note type=");
   }
 
+  /**
+   * MySQL's step 3 converts every table's character set, which the schema check doesn't compare:
+   * that doesn't make an index added by hand to a table it converts a difference.
+   */
+  @Test
+  void startsWithAnIndexAddedByHandOnATableWhoseCharacterSetAStepConverts() {
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
+    migrator.migrate();
+    execute(db, "CREATE INDEX uc_catalogs_name_id_idx ON uc_catalogs (name, id)");
+
+    assertThat(migrator.prepareForStart()).isEqualTo(SchemaState.CURRENT);
+  }
+
   /** Not checked: a table that no step of this release changes. */
   @Test
   void startsWithAChangeByHandOnATableThisReleaseDoesNotChange() {
     new SchemaMigrator(db.dataSource(), db.kind()).migrate();
     execute(db, "ALTER TABLE uc_catalogs ADD COLUMN note VARCHAR(64)");
-    // 0.7.5 ends at step 3; this release's own step 5001 creates test_release_items.
+    // 0.7.0 ends at step 3; this release's own step 5001 creates test_release_items.
     SchemaMigrator migrator =
         new SchemaMigrator(
             db.dataSource(),
