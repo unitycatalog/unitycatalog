@@ -1,10 +1,11 @@
 {{- if and .Values.server.enabled .Values.server.upgradeCheck.enabled (has .Values.server.db.type (list "postgresql" "mysql")) -}}
-{{- $name := printf "%s-upgrade-check" (include "unitycatalog.server.fullname" .) }}
+{{- $name := printf "%s-upgrade-check" (include "unitycatalog.server.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- $configName := printf "%s-upgrade-check-config-templates" (include "unitycatalog.server.fullname" .) | trunc 63 | trimSuffix "-" }}
 # Hooks run before Helm updates the release's ConfigMap, so the Job gets the new configuration from its own copy.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ printf "%s-config-templates" $name | quote }}
+  name: {{ $configName | quote }}
   labels: {{- include "unitycatalog.server.upgradeCheckLabels" . | nindent 4 }}
   annotations:
     helm.sh/hook: pre-upgrade
@@ -81,7 +82,7 @@ spec:
       volumes:
         - name: config-templates
           configMap:
-            name: {{ printf "%s-config-templates" $name | quote }}
+            name: {{ $configName | quote }}
         - name: config-volume
           emptyDir: {}
         - name: jwt-key-volume

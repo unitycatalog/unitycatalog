@@ -131,8 +131,11 @@ in this order:
 If the check fails, read the Job's log. It says why, for example which rows block the upgrade:
 
 ```sh
-kubectl logs --namespace unitycatalog job/unitycatalog-unitycatalog-chart-server-upgrade-check
+kubectl logs --namespace unitycatalog job/<fullname>-server-upgrade-check
 ```
+
+`<fullname>` is the prefix of the release's resource names: `unitycatalog-unitycatalog-chart` for the release above,
+`unitycatalog` with `nameOverride: unitycatalog`. The chart cuts the Job name to 63 characters.
 
 Fix the cause as the release notes describe, then run `helm upgrade` again; it replaces the failed Job. To skip the
 check, set `server.upgradeCheck.enabled: false`. With the default H2 database there is no check Job: the server checks
