@@ -65,9 +65,14 @@ database, first set `hibernate.hbm2ddl.auto=none` in its `etc/conf/hibernate.pro
 
 Messages that the server prints when it refuses to start, and what to do.
 
-`The database is from a release before 0.7.0. Start a 0.7.0 server on it once, then start this release.`
-: The database has no schema history and lacks a table the baseline release added. Follow
+`The database is from a release before 0.7.0 (missing tables: <tables>). Start a 0.7.0 server on it once, then start this release.`
+: The database has no schema history and lacks tables of the baseline release. Follow
   [The baseline release](#the-baseline-release).
+
+`hibernate.hbm2ddl.auto=<value> is not supported: the schema steps manage the schema. Set it to none.`
+: A server embedded in an application was given Hibernate settings that let Hibernate change the
+  schema. Set `hibernate.hbm2ddl.auto=none`; the server's own `etc/conf/hibernate.properties` is
+  always read with `none`.
 
 `The schema is newer than this release (version <n>, this release ends at <m>). Run the newer release.`
 : The database was upgraded by a newer release than the one you ran. Run the newer release again.

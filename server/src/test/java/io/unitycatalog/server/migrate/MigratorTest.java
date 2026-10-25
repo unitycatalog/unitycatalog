@@ -10,12 +10,9 @@ import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.migrate.slowstep.V1000__Slow_test_step;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import java.io.IOException;
-import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -56,7 +53,7 @@ public class MigratorTest {
 
   @Test
   void setsUpADatabaseWithOnlyTheAuthorizationRulesTable() {
-    execute(db, "CREATE TABLE casbin_rule (id INT)");
+    UpgradeTestUtils.execute(db, "CREATE TABLE casbin_rule (id INT)");
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
     assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
 
@@ -66,7 +63,7 @@ public class MigratorTest {
 
   @Test
   void adoptsA07Database() {
-    create07Schema(db);
+    UpgradeTestUtils.create07Schema(db);
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
     assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
 
@@ -77,12 +74,13 @@ public class MigratorTest {
 
   @Test
   void refusesADatabaseFromBeforeTheBaselineRelease() {
-    create07Schema(db);
-    execute(db, "DROP TABLE uc_storage_cleanup_tasks");
+    UpgradeTestUtils.create07Schema(db);
+    UpgradeTestUtils.execute(db, "DROP TABLE uc_storage_cleanup_tasks");
     SchemaSnapshot before = SchemaSnapshot.of(db.dataSource());
 
     assertThatThrownBy(new SchemaMigrator(db.dataSource())::migrate)
-        .hasMessageContaining("from a release before " + SchemaMigrator.BASELINE_RELEASE);
+        .hasMessageContaining("from a release before " + SchemaMigrator.BASELINE_RELEASE)
+        .hasMessageContaining("missing tables: uc_storage_cleanup_tasks)");
     assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(before);
   }
 
@@ -98,7 +96,7 @@ public class MigratorTest {
 
   @Test
   void refusesADatabaseOfAnotherApplication() {
-    execute(db, "CREATE TABLE orders (id INT)");
+    UpgradeTestUtils.execute(db, "CREATE TABLE orders (id INT)");
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
     assertThat(migrator.state()).isEqualTo(SchemaState.NOT_UC);
 
@@ -158,7 +156,7 @@ public class MigratorTest {
     new SchemaMigrator(db.dataSource()).migrate();
     // What a run that failed in step 2 leaves behind on H2 and MySQL; PostgreSQL rolls it back.
     String q = identifierQuote(db.dataSource());
-    execute(
+    UpgradeTestUtils.execute(
         db,
         "UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false WHERE %1$sversion%1$s = '2'"
             .formatted(q));
@@ -218,26 +216,6 @@ public class MigratorTest {
   /** The number of steps in this release: they are numbered 1, 2, 3 and so on. */
   static int releaseSteps(SchemaMigrator migrator) {
     return Integer.parseInt(migrator.latestVersion());
-  }
-
-  /** Builds a database of the baseline release: its schema without Flyway's history. */
-  static void create07Schema(TestDatabase db) {
-    String path =
-        "db/migration/"
-            + SchemaMigrator.DatabaseKind.fromJdbcUrl(db.jdbcUrl()).folder()
-            + "/V1__baseline_0_7.sql";
-    String sql;
-    try (InputStream in = MigratorTest.class.getClassLoader().getResourceAsStream(path)) {
-      sql = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-    } catch (IOException e) {
-      throw new IllegalStateException(e);
-    }
-    String withoutComments = sql.replaceAll("(?m)^\\s*--.*$", "");
-    for (String statement : withoutComments.split(";")) {
-      if (!statement.isBlank()) {
-        execute(db, statement);
-      }
-    }
   }
 
   private boolean isH2() {
@@ -321,15 +299,6 @@ public class MigratorTest {
       return connection.getMetaData().getIdentifierQuoteString();
     } catch (SQLException e) {
       throw new IllegalStateException(e);
-    }
-  }
-
-  static void execute(TestDatabase db, String sql) {
-    try (Connection connection = db.dataSource().getConnection();
-        Statement statement = connection.createStatement()) {
-      statement.execute(sql);
-    } catch (SQLException e) {
-      throw new IllegalStateException(sql, e);
     }
   }
 }

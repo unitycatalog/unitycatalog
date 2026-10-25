@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import io.unitycatalog.server.testdatabase.TestDatabases;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -39,16 +38,9 @@ public class RealUpgradeTest {
     }
 
     try (TestServer server = TestServer.start(db, workDir.resolve("storage"))) {
-      assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(freshInstallSnapshot());
+      assertThat(SchemaSnapshot.of(db.dataSource()))
+          .isEqualTo(UpgradeTestUtils.freshInstallSnapshot());
       copies.forEach(copy -> copy.assertReadBack(server.apiClient()));
-    }
-  }
-
-  /** The schema the steps build on a new empty database. */
-  static SchemaSnapshot freshInstallSnapshot() {
-    try (TestDatabase fresh = TestDatabases.newEmptyDatabase()) {
-      new SchemaMigrator(fresh.dataSource()).migrate();
-      return SchemaSnapshot.of(fresh.dataSource());
     }
   }
 }

@@ -45,6 +45,8 @@ final class OldServer {
 
   private OldServer() {}
 
+  // The releases to run.
+
   /**
    * The releases a database passes through before this build, oldest first: every {@code vX.Y.Z}
    * tag from {@link SchemaMigrator#BASELINE_RELEASE} up to, not including, this build's version.
@@ -62,6 +64,52 @@ final class OldServer {
         .sorted(Comparator.comparingLong(OldServer::number))
         .toList();
   }
+
+  /** {@code v1.2.3} or {@code 1.2.3-SNAPSHOT} as a number that sorts like the version. */
+  private static long number(String version) {
+    String[] parts = version.replaceFirst("^v", "").replaceFirst("-.*", "").split("\\.");
+    return (Long.parseLong(parts[0]) * 1_000_000 + Long.parseLong(parts[1])) * 1_000_000
+        + Long.parseLong(parts[2]);
+  }
+
+  // Their server jars.
+
+  /** The shaded server jar of {@code ref}'s commit, built once into {@link #JAR_CACHE}. */
+  private static String jar(String ref, Path workDir) throws IOException {
+    Path repo = Path.of(git("rev-parse", "--show-toplevel"));
+    String sha = git("-C", repo.toString(), "rev-parse", ref + "^{commit}");
+    Path cached = JAR_CACHE.resolve(sha + ".jar");
+    if (!Files.exists(cached)) {
+      build(repo, sha, cached, Files.createDirectories(workDir.resolve("source-" + sha)));
+    }
+    return cached.toString();
+  }
+
+  /**
+   * Exports {@code sha}'s tree with {@code git archive} (nothing untracked) into {@code source},
+   * builds its shaded server jar there and copies it to {@code target}.
+   */
+  private static void build(Path repo, String sha, Path target, Path source) throws IOException {
+    Path archive = source.resolve("source.tar");
+    git("-C", repo.toString(), "archive", "-o", archive.toString(), sha);
+    run(new ProcessBuilder("tar", "-xf", archive.toString(), "-C", source.toString()));
+    System.err.println("Building the server jar of " + sha + " in " + source);
+    run(
+        new ProcessBuilder("build/sbt", "-J-Xmx2G", "serverShaded/assembly")
+            .directory(source.toFile())
+            .redirectOutput(ProcessBuilder.Redirect.INHERIT));
+    try (DirectoryStream<Path> jars =
+        Files.newDirectoryStream(
+            source.resolve("server-shaded/target"), "unitycatalog-server-shaded-assembly-*.jar")) {
+      Path built = jars.iterator().next();
+      Files.createDirectories(target.getParent());
+      Path partial = Files.createTempFile(target.getParent(), sha, ".partial");
+      Files.copy(built, partial, StandardCopyOption.REPLACE_EXISTING);
+      Files.move(partial, target, StandardCopyOption.ATOMIC_MOVE);
+    }
+  }
+
+  // Running one.
 
   /**
    * Starts release {@code tag} on {@code db} in a directory under {@code workDir}, waits until it
@@ -113,41 +161,6 @@ final class OldServer {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException(e);
-    }
-  }
-
-  /** The shaded server jar of {@code ref}'s commit, built once into {@link #JAR_CACHE}. */
-  private static String jar(String ref, Path workDir) throws IOException {
-    Path repo = Path.of(git("rev-parse", "--show-toplevel"));
-    String sha = git("-C", repo.toString(), "rev-parse", ref + "^{commit}");
-    Path cached = JAR_CACHE.resolve(sha + ".jar");
-    if (!Files.exists(cached)) {
-      build(repo, sha, cached, Files.createDirectories(workDir.resolve("source-" + sha)));
-    }
-    return cached.toString();
-  }
-
-  /**
-   * Exports {@code sha}'s tree with {@code git archive} (nothing untracked) into {@code source},
-   * builds its shaded server jar there and copies it to {@code target}.
-   */
-  private static void build(Path repo, String sha, Path target, Path source) throws IOException {
-    Path archive = source.resolve("source.tar");
-    git("-C", repo.toString(), "archive", "-o", archive.toString(), sha);
-    run(new ProcessBuilder("tar", "-xf", archive.toString(), "-C", source.toString()));
-    System.err.println("Building the server jar of " + sha + " in " + source);
-    run(
-        new ProcessBuilder("build/sbt", "-J-Xmx2G", "serverShaded/assembly")
-            .directory(source.toFile())
-            .redirectOutput(ProcessBuilder.Redirect.INHERIT));
-    try (DirectoryStream<Path> jars =
-        Files.newDirectoryStream(
-            source.resolve("server-shaded/target"), "unitycatalog-server-shaded-assembly-*.jar")) {
-      Path built = jars.iterator().next();
-      Files.createDirectories(target.getParent());
-      Path partial = Files.createTempFile(target.getParent(), sha, ".partial");
-      Files.copy(built, partial, StandardCopyOption.REPLACE_EXISTING);
-      Files.move(partial, target, StandardCopyOption.ATOMIC_MOVE);
     }
   }
 
@@ -219,12 +232,7 @@ final class OldServer {
     }
   }
 
-  /** {@code v1.2.3} or {@code 1.2.3-SNAPSHOT} as a number that sorts like the version. */
-  private static long number(String version) {
-    String[] parts = version.replaceFirst("^v", "").replaceFirst("-.*", "").split("\\.");
-    return (Long.parseLong(parts[0]) * 1_000_000 + Long.parseLong(parts[1])) * 1_000_000
-        + Long.parseLong(parts[2]);
-  }
+  // Processes.
 
   private static String git(String... args) {
     List<String> command = new ArrayList<>(List.of("git"));

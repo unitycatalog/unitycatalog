@@ -1,5 +1,8 @@
 package io.unitycatalog.server.migrate;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -9,7 +12,9 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
@@ -25,7 +30,7 @@ import org.slf4j.LoggerFactory;
  * baseline) and applies the pending steps. On PostgreSQL and MySQL, each {@link #migrate()} holds a
  * {@link RunLock} from classifying the database to the last step.
  */
-public final class SchemaMigrator {
+public final class SchemaMigrator implements AutoCloseable {
 
   /** What a database holds, compared with the schema steps of this build. */
   enum SchemaState {
@@ -39,6 +44,8 @@ public final class SchemaMigrator {
     AHEAD,
     /** Unity Catalog's tables without Flyway's history: a database of the baseline release. */
     UNVERSIONED_UC,
+    /** Unity Catalog's tables without Flyway's history, lacking some of the baseline's. */
+    BEFORE_BASELINE,
     /** Tables, but none of Unity Catalog's. */
     NOT_UC
   }
@@ -88,12 +95,52 @@ public final class SchemaMigrator {
   /** The baseline Flyway records on an empty database, below step 1 so that step 1 runs. */
   private static final String EMPTY_BASELINE_VERSION = "0";
 
-  /** A table that {@link #BASELINE_RELEASE} added: no database of an earlier release has it. */
-  private static final String BASELINE_ONLY_TABLE = "uc_storage_cleanup_tasks";
+  /**
+   * The tables of {@link #BASELINE_RELEASE}'s schema. A database without history that lacks one is
+   * from an earlier release. Until adoption compares the whole schema with the baseline, only the
+   * tables are checked.
+   */
+  private static final Set<String> BASELINE_TABLES =
+      Set.of(
+          "uc_catalogs",
+          "uc_columns",
+          "uc_credentials",
+          "uc_delta_commits",
+          "uc_dependencies",
+          "uc_external_locations",
+          "uc_function_params",
+          "uc_functions",
+          "uc_metastore",
+          "uc_model_versions",
+          "uc_properties",
+          "uc_registered_models",
+          "uc_schemas",
+          "uc_staging_tables",
+          "uc_storage_cleanup_tasks",
+          "uc_tables",
+          "uc_users",
+          "uc_volumes");
+
+  /** The run lock's connection plus Flyway's two (PostgreSQL uses both; MySQL one). */
+  private static final int POOL_SIZE = 3;
 
   private final DataSource dataSource;
   private final DatabaseKind kind;
   private final String[] locations;
+  private final HikariDataSource ownedPool; // null: the caller's pool
+
+  /**
+   * A migrator with its own small pool on the database of {@code hibernateProperties}, which {@link
+   * #close()} closes. The server's pool can then be any size.
+   */
+  public static SchemaMigrator fromHibernateProperties(Properties hibernateProperties) {
+    HikariConfig config = HibernateConfigurator.hikariConfig(hibernateProperties);
+    config.setMaximumPoolSize(POOL_SIZE);
+    config.setMinimumIdle(0);
+    config.setPoolName("schema-migrator");
+    HikariDataSource pool = new HikariDataSource(config);
+    return new SchemaMigrator(pool, DatabaseKind.fromJdbcUrl(config.getJdbcUrl()), List.of(), pool);
+  }
 
   /** Applies this release's steps to {@code dataSource}; closing it stays with the caller. */
   public SchemaMigrator(DataSource dataSource) {
@@ -102,12 +149,21 @@ public final class SchemaMigrator {
 
   /** Also applies the steps in {@code extraLocations} (tests' own steps). */
   SchemaMigrator(DataSource dataSource, List<String> extraLocations) {
+    this(dataSource, DatabaseKind.fromJdbcUrl(jdbcUrl(dataSource)), extraLocations, null);
+  }
+
+  private SchemaMigrator(
+      DataSource dataSource,
+      DatabaseKind kind,
+      List<String> extraLocations,
+      HikariDataSource ownedPool) {
     this.dataSource = dataSource;
-    this.kind = DatabaseKind.fromJdbcUrl(jdbcUrl(dataSource));
+    this.kind = kind;
     List<String> locations = new ArrayList<>();
     locations.add("classpath:db/migration/" + kind.folder());
     locations.addAll(extraLocations);
     this.locations = locations.toArray(String[]::new);
+    this.ownedPool = ownedPool;
   }
 
   private static String jdbcUrl(DataSource dataSource) {
@@ -149,13 +205,7 @@ public final class SchemaMigrator {
       SchemaState state = state();
       refuseIfUnsupported(state);
       String from = state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : currentVersion();
-      // Baseline at 0 on an empty database so step 1 runs; at 1 on a baseline-release one, so it
-      // is skipped.
-      String baseline =
-          state == SchemaState.EMPTY
-              ? EMPTY_BASELINE_VERSION
-              : state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : null;
-      int applied = flyway(baseline).migrate().migrationsExecuted;
+      int applied = flyway(baselineFor(state)).migrate().migrationsExecuted;
       if (applied > 0) {
         LOGGER.info(
             "Upgraded the database schema from version {} to {} ({} step(s))",
@@ -163,14 +213,7 @@ public final class SchemaMigrator {
             currentVersion(),
             applied);
       }
-      SchemaState after = state();
-      if (after != SchemaState.CURRENT) {
-        throw new IllegalStateException(
-            "The database schema is "
-                + after
-                + " after migration; this release needs version "
-                + latestVersion());
-      }
+      requireCurrent();
       return applied;
     }
   }
@@ -196,7 +239,12 @@ public final class SchemaMigrator {
     if (tables.isEmpty()) {
       return SchemaState.EMPTY;
     }
-    return tables.contains("uc_catalogs") ? SchemaState.UNVERSIONED_UC : SchemaState.NOT_UC;
+    if (!tables.contains("uc_catalogs")) {
+      return SchemaState.NOT_UC;
+    }
+    return tables.containsAll(BASELINE_TABLES)
+        ? SchemaState.UNVERSIONED_UC
+        : SchemaState.BEFORE_BASELINE;
   }
 
   /** The highest applied version, {@code null} without history. */
@@ -218,32 +266,62 @@ public final class SchemaMigrator {
         .getVersion();
   }
 
+  /**
+   * The baseline Flyway records before the first step: below step 1 on an empty database so step 1
+   * runs, at 1 on a baseline-release database so step 1 is skipped, and none once history exists.
+   */
+  private static String baselineFor(SchemaState state) {
+    return switch (state) {
+      case EMPTY -> EMPTY_BASELINE_VERSION;
+      case UNVERSIONED_UC -> BASELINE_VERSION;
+      default -> null;
+    };
+  }
+
   /** Throws for a database that {@link #migrate()} must not change. */
   private void refuseIfUnsupported(SchemaState state) {
-    if (state == SchemaState.NOT_UC) {
-      throw new IllegalStateException(
-          "The database has tables but none of Unity Catalog's: not a Unity Catalog database."
-              + " Point the server at an empty database or a Unity Catalog one.");
+    String refusal =
+        switch (state) {
+          case NOT_UC ->
+              "The database has tables but none of Unity Catalog's: not a Unity Catalog database."
+                  + " Point the server at an empty database or a Unity Catalog one.";
+          case AHEAD ->
+              "The schema is newer than this release (version "
+                  + currentVersion()
+                  + ", this release ends at "
+                  + latestVersion()
+                  + "). Run the newer release.";
+          case BEFORE_BASELINE ->
+              "The database is from a release before "
+                  + BASELINE_RELEASE
+                  + " (missing tables: "
+                  + String.join(", ", missingBaselineTables())
+                  + "). Start a "
+                  + BASELINE_RELEASE
+                  + " server on it once, then start this release.";
+          default -> null;
+        };
+    if (refusal != null) {
+      throw new IllegalStateException(refusal);
     }
-    if (state == SchemaState.AHEAD) {
+  }
+
+  /** Throws unless the database ends at this build's schema version. */
+  private void requireCurrent() {
+    SchemaState state = state();
+    if (state != SchemaState.CURRENT) {
       throw new IllegalStateException(
-          "The schema is newer than this release (version "
-              + currentVersion()
-              + ", this release ends at "
-              + latestVersion()
-              + "). Run the newer release.");
+          "The database schema is "
+              + state
+              + " after migration; this release needs version "
+              + latestVersion());
     }
-    // Stop-gap: refuses a database from a release before BASELINE_RELEASE by one table that
-    // release added, until adoption compares the whole schema with the baseline.
-    if (state == SchemaState.UNVERSIONED_UC
-        && !tableNamesLowerCase().contains(BASELINE_ONLY_TABLE)) {
-      throw new IllegalStateException(
-          "The database is from a release before "
-              + BASELINE_RELEASE
-              + ". Start a "
-              + BASELINE_RELEASE
-              + " server on it once, then start this release.");
-    }
+  }
+
+  private Set<String> missingBaselineTables() {
+    Set<String> missing = new TreeSet<>(BASELINE_TABLES);
+    missing.removeAll(tableNamesLowerCase());
+    return missing;
   }
 
   private Set<String> tableNamesLowerCase() {
@@ -268,6 +346,14 @@ public final class SchemaMigrator {
 
   private static String version(MigrationInfo info) {
     return info == null || info.getVersion() == null ? null : info.getVersion().getVersion();
+  }
+
+  /** Closes the migrator's own pool, if it has one. */
+  @Override
+  public void close() {
+    if (ownedPool != null) {
+      ownedPool.close();
+    }
   }
 
   /**
