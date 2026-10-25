@@ -176,7 +176,11 @@ public final class SchemaMigrator implements AutoCloseable {
           "alter\\s+table\\s+(\\w+)\\s+add\\s+constraint\\s+(\\w+)", Pattern.CASE_INSENSITIVE);
   private static final Pattern ADD_COLUMN =
       Pattern.compile(
-          "alter\\s+table\\s+(\\w+)\\s+add\\s+(?:column\\s+)?(\\w+)", Pattern.CASE_INSENSITIVE);
+          "alter\\s+table\\s+(\\w+)\\s+add\\s+(?:column\\s+)?"
+              // Not a key, index or constraint without a name, such as ADD UNIQUE (c).
+              + "(?!(?:unique|primary|foreign|index|key|check|constraint|fulltext|spatial)\\b)"
+              + "(\\w+)",
+          Pattern.CASE_INSENSITIVE);
   private static final Pattern CREATE_INDEX =
       Pattern.compile(
           "create\\s+(?:unique\\s+)?index\\s+(\\w+)\\s+on\\s+(\\w+)", Pattern.CASE_INSENSITIVE);

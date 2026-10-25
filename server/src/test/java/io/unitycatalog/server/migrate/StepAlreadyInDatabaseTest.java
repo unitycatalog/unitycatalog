@@ -43,6 +43,8 @@ public class StepAlreadyInDatabaseTest {
   private static final String TWO_COLUMNS = "db/test-steps/repeat-two-columns/";
   // Version 4200 drops the size of a varchar (H2 and PostgreSQL; MySQL's varchar takes a size).
   private static final String UNSIZED = "db/test-steps/repeat-unsized/";
+  // Version 4400 adds a unique key without a name, which no probe recognises.
+  private static final String UNNAMED_KEY = "db/test-steps/repeat-unnamed-key/";
 
   private static final String ADD_NOTE = "V4002__add_test_repeat_item_note.sql";
 
@@ -148,6 +150,19 @@ public class StepAlreadyInDatabaseTest {
                 + " failed\"); then start the server again.");
     assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(before);
     assertThat(migrator.state()).isEqualTo(SchemaState.FAILED);
+  }
+
+  @Test
+  void refusesAFailedStepThatAddsAKeyWithoutAName() {
+    migrator(db.dataSource(), BASE).migrate();
+    execute(db, statement(UNNAMED_KEY, "V4400__unique_test_repeat_item_labels.sql"));
+    MigratorTest.recordFailedStep(db, "V4400__unique_test_repeat_item_labels.sql");
+    SchemaMigrator migrator = migrator(db.dataSource(), BASE, "classpath:" + UNNAMED_KEY);
+
+    assertThatThrownBy(migrator::migrate)
+        .hasMessageStartingWith(
+            "Step 4400 (unique test repeat item labels) failed in an earlier run, and the server"
+                + " can't tell how much of its change is in the database.");
   }
 
   @Test
