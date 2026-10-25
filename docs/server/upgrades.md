@@ -76,7 +76,10 @@ It needs:
 - All servers stopped, as for every upgrade: the backup is taken while no other server uses the
   database, and a restore erases what was written after it.
 - A database user that can create and drop databases on the database server (PostgreSQL: `CREATEDB`
-  and owner of the Unity Catalog database), and room there for a full copy of the database.
+  and owner of the Unity Catalog database), and room there for a full copy of the database. On
+  PostgreSQL, the user also gives the copy the database's settings and grants, so it needs the
+  rights to set them: a setting by role (`ALTER ROLE ... IN DATABASE`) of another role needs
+  `CREATEROLE` or a superuser.
 - On PostgreSQL, the database name in `hibernate.connection.url`.
 - On H2, a file database (`jdbc:h2:file:...`). The server refuses to start on an in-memory one
   with the backup on.
@@ -90,7 +93,7 @@ upgrade. To go back after a successful upgrade, use a backup of your own (see
 
 | Database | The backup | The restore |
 | -------- | ---------- | ----------- |
-| PostgreSQL | The database `<db>_uc_backup`, a copy made with `CREATE DATABASE <db>_uc_backup TEMPLATE <db>` | `DROP DATABASE <db>`, then `ALTER DATABASE <db>_uc_backup RENAME TO <db>` |
+| PostgreSQL | The database `<db>_uc_backup`, a copy made with `CREATE DATABASE <db>_uc_backup_part TEMPLATE <db>`, given the settings (`ALTER DATABASE <db> SET ...`, `ALTER ROLE ... IN DATABASE <db> SET ...`), grants, owner and connection limit of `<db>`, which `TEMPLATE` doesn't copy, then renamed to `<db>_uc_backup` | `DROP DATABASE <db>`, then `ALTER DATABASE <db>_uc_backup RENAME TO <db>` |
 | MySQL | The database `<db>_uc_backup`, with each table created from `SHOW CREATE TABLE` and its rows copied in one transaction, then the table `uc_backup_complete`, which marks the copy complete | One `RENAME TABLE` moves the tables of `<db>` to the database `<db>_uc_trash` and each copied table back, all or none; then drops `<db>_uc_trash` and the copy |
 | H2 | The file `<file>_uc_backup.mv.db` next to the database file, copied with the database closed | Moves the copy back in place of the database file |
 

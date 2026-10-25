@@ -202,6 +202,45 @@ public class BackupTest {
     assertThat(rows(db, "SELECT * FROM test_backup_items ORDER BY id")).isEqualTo(items);
   }
 
+  /**
+   * PostgreSQL: the restored database keeps the database's own settings, grants and connection
+   * limit, which {@code CREATE DATABASE ... TEMPLATE} doesn't copy.
+   */
+  @Test
+  void restoreKeepsTheDatabaseSettingsAndGrants() {
+    assumeTrue(db.kind() == DatabaseKind.POSTGRESQL);
+    String database = "\"" + name(db) + "\"";
+    String role = "\"" + name(db) + "_reader\"";
+    execute(db, "CREATE ROLE " + role);
+    try {
+      execute(db, "ALTER DATABASE " + database + " SET search_path = public, \"$user\"");
+      execute(db, "ALTER DATABASE " + database + " SET application_name = 'it''s kept'");
+      execute(db, "ALTER ROLE " + role + " IN DATABASE " + database + " SET work_mem = '8MB'");
+      execute(db, "GRANT CONNECT ON DATABASE " + database + " TO " + role);
+      execute(db, "ALTER DATABASE " + database + " CONNECTION LIMIT 50");
+      List<String> before = databaseAttributes();
+
+      assertThatThrownBy(migrator(null, ADD, FAIL)::migrate).hasMessageEndingWith(RESTORED);
+      assertThat(databaseAttributes()).isEqualTo(before);
+    } finally {
+      dropCompanions(db);
+      execute(db, "DROP OWNED BY " + role); // its grant on the database
+      execute(db, "DROP ROLE " + role);
+    }
+  }
+
+  /** PostgreSQL: the database's settings by role, ACL, owner and connection limit. */
+  private List<String> databaseAttributes() {
+    return rows(
+        db,
+        "SELECT (SELECT string_agg(COALESCE(r.rolname, '') || ':' || array_to_string(s.setconfig,"
+            + " '|'), ';' ORDER BY r.rolname NULLS FIRST) FROM pg_db_role_setting s LEFT JOIN"
+            + " pg_roles r ON r.oid = s.setrole WHERE s.setdatabase = d.oid),"
+            + " (SELECT string_agg(a::text, ';' ORDER BY a::text) FROM unnest(d.datacl) a),"
+            + " pg_get_userbyid(d.datdba), d.datconnlimit"
+            + " FROM pg_database d WHERE d.datname = current_database()");
+  }
+
   @Test
   void refusesTheChartRevisionThatRestored() {
     assertThatThrownBy(migrator("7", ADD, FAIL)::migrate).hasMessageEndingWith(RESTORED);
