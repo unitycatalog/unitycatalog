@@ -1159,6 +1159,27 @@ info
 			<td>Log level for the server</td>
 		</tr>
 		<tr>
+			<td>server.migration.backup.enabled</td>
+			<td>bool</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+			<td>Back up the database before the server upgrades its schema, and restore it if the upgrade fails
+
+Sets `server.migration.backup` in server.properties; see
+[Backup before the upgrade](https://github.com/unitycatalog/unitycatalog/blob/main/docs/server/upgrades.md#backup-before-the-upgrade).
+The server copies the database on the same database server, so it needs:
+- a database user that can create and drop databases (PostgreSQL: `CREATEDB` and owner of the Unity Catalog
+  database)
+- room there for a full copy of the database; with `db.type: file`, on the database volume
+- with H2, a file database: the chart refuses an in-memory one
+
+On SIGTERM during the upgrade the server restores the backup before it exits, so
+`deployment.terminationGracePeriodSeconds` must cover 60 seconds plus the restore.
+</td>
+		</tr>
+		<tr>
 			<td>server.service.port</td>
 			<td>int</td>
 			<td><pre lang="json">

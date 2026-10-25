@@ -2,6 +2,9 @@
 {{- if and (eq .Values.server.db.type "file") (gt (int .Values.server.deployment.replicaCount) 1) }}
 {{- fail "server.db.type file supports one server: set server.deployment.replicaCount to 1, or use postgresql or mysql" }}
 {{- end }}
+{{- if and .Values.server.migration.backup.enabled (contains "jdbc:h2:mem:" (.Values.server.db.overrideConfig | default "")) }}
+{{- fail "server.migration.backup.enabled needs an H2 file database, but server.db.overrideConfig uses one in memory (jdbc:h2:mem:). Turn the backup off, or use a file database." }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

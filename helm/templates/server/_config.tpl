@@ -41,6 +41,10 @@ gcs.jsonKeyFilePath.{{ $index }}=/etc/conf/gcs-credentials-{{ $index }}.json
 {{- end }}
 {{- end }}
 
+{{- if .Values.server.migration.backup.enabled }}
+server.migration.backup=true
+{{- end }}
+
 {{- range $k, $v := .Values.server.config.extraProperties }}
 {{ $k }}={{ $v }}
 {{- end }}

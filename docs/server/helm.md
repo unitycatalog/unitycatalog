@@ -152,6 +152,13 @@ server:
       failureThreshold: 720 # 2 hours
 ```
 
+To have the server copy the database before it upgrades the schema, and restore the copy if the upgrade fails, set
+`server.migration.backup.enabled: true` (see [Backup before the upgrade](upgrades.md#backup-before-the-upgrade)). The
+database user must be able to create and drop databases (PostgreSQL: `CREATEDB` and owner of the Unity Catalog
+database), and the database server, or with H2 the database volume, needs room for a full copy. On SIGTERM during the
+upgrade, the server restores the copy before it exits, so `server.deployment.terminationGracePeriodSeconds` must
+cover 60 seconds plus the restore.
+
 `helm rollback` does not undo the schema upgrade. To go back, restore the backup first, as described in
 [Going back to the baseline release](upgrades.md#going-back-to-the-baseline-release).
 
