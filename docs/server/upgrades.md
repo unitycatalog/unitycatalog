@@ -9,8 +9,9 @@ Hibernate no longer changes the schema. If your `etc/conf/hibernate.properties` 
 
 Every server start brings the database to the schema version of its release before the server
 serves requests. It sets up an empty database, adopts a database without schema history (one from
-the baseline release) and applies the steps that are not applied yet. It refuses to start on a
-database it cannot upgrade and tells you what to do (see [Messages](#messages)).
+the baseline release, see [Adopting an older database](#adopting-an-older-database)) and applies
+the steps that are not applied yet. It refuses to start on a database it cannot upgrade and tells
+you what to do (see [Messages](#messages)).
 
 After the steps, and on every start, the server checks the tables that this release's steps
 change (see [The schema differs](#the-schema-differs)).
@@ -25,6 +26,98 @@ The first baseline release is 0.7.0: schema version 1 is its schema, and a 0.7.0
 schema history is adopted as version 1. A database from an earlier release must be upgraded to
 0.7.0 first: start a 0.7.0 server on it once, stop it, then start this release. This holds until a
 later release migrates older schemas too.
+
+## Adopting an older database
+
+A database from a release before 0.7.0 still differs from a fresh 0.7.0 database after that one
+0.7.0 start, because 0.7.0's Hibernate update neither changes an existing CHECK constraint nor
+reports a constraint it fails to add. When the server adopts a database without schema history, it
+compares every table with the 0.7.0 schema (columns, keys, indexes, foreign keys and CHECK
+constraints) and repairs these differences before it records the baseline, after the
+[backup](#backup-before-the-upgrade) if that is on:
+
+| Difference | Releases | Repair |
+| ---------- | -------- | ------ |
+| The CHECKs on `uc_function_params.type_name` and `uc_functions.data_type` allow 0 to 20, not 0 to 21: creating a function with a `TABLE_TYPE` parameter or return type fails. | 0.4.0 and earlier | Re-creates both CHECKs to allow 0 to 21. |
+| The unique constraint `uc_users_external_id_key` on `uc_users.external_id` is missing, because two users shared an external id when 0.7.0 first started. | Every release before 0.7.0 | Adds the constraint. |
+
+The server logs each repair as `Repaired a difference from the 0.7.0 schema: <difference>.`, and
+`bin/start-uc-server --check-schema` lists the repairs it would make. It refuses to start, before
+any change, in the cases below.
+
+### Users that share an external id
+
+The constraint can't be added while users share an external id; the message lists them. The
+external id maps an identity provider's user to the Unity Catalog user, so decide which user keeps
+it, clear it on the others, then start the server again:
+
+```sql
+UPDATE uc_users SET external_id = NULL WHERE id = '<id>';
+-- MySQL
+UPDATE uc_users SET external_id = NULL WHERE id = UUID_TO_BIN('<id>');
+```
+
+### Function types of releases before 0.4.1
+
+Release 0.4.1 added the function type `VARIANT`, which moved the types after it. A database with
+the 0.4.0 CHECKs stores some function types as numbers that this release reads as other types:
+
+| Stored | Written by 0.4.0 and earlier | Read by 0.4.1 and later |
+| ------ | ---------------------------- | ----------------------- |
+| 17 | `CHAR` | `VARIANT` |
+| 18 | `NULL` | `CHAR` |
+| 19 | `USER_DEFINED_TYPE` | `NULL` |
+| 20 | `TABLE_TYPE` | `USER_DEFINED_TYPE` |
+
+When it finds such a value, the server refuses and lists each function with the column and the
+stored value. The database does not record which release wrote a row, so only you can tell which
+meaning a value has:
+
+- If every listed function was created before the database first ran 0.4.1 or later, shift the
+  stored values. Widen the two CHECKs first, since 21 breaks them, then update the rows:
+
+    ```sql
+    -- PostgreSQL
+    ALTER TABLE uc_function_params DROP CONSTRAINT uc_function_params_type_name_check,
+      ADD CONSTRAINT uc_function_params_type_name_check CHECK (type_name BETWEEN 0 AND 21);
+    ALTER TABLE uc_functions DROP CONSTRAINT uc_functions_data_type_check,
+      ADD CONSTRAINT uc_functions_data_type_check CHECK (data_type BETWEEN 0 AND 21);
+    -- H2 and MySQL: find the CHECKs' names first
+    SELECT tc.table_name, tc.constraint_name FROM information_schema.table_constraints tc
+      JOIN information_schema.check_constraints cc ON cc.constraint_schema = tc.constraint_schema
+        AND cc.constraint_name = tc.constraint_name
+      WHERE LOWER(tc.table_name) IN ('uc_function_params', 'uc_functions')
+        AND UPPER(cc.check_clause) LIKE '%BETWEEN 0 AND 20%';
+    ALTER TABLE uc_function_params DROP CONSTRAINT <name>;  -- MySQL: DROP CHECK <name>
+    ALTER TABLE uc_function_params ADD CHECK (type_name BETWEEN 0 AND 21);
+    ALTER TABLE uc_functions DROP CONSTRAINT <name>;        -- MySQL: DROP CHECK <name>
+    ALTER TABLE uc_functions ADD CHECK (data_type BETWEEN 0 AND 21);
+    -- every database
+    UPDATE uc_function_params SET type_name = type_name + 1 WHERE type_name BETWEEN 17 AND 20;
+    UPDATE uc_functions SET data_type = data_type + 1 WHERE data_type BETWEEN 17 AND 20;
+    ```
+
+- Otherwise, values written by 0.4.1 or later already mean the newer types, and shifting them
+  would break those functions. Delete the listed functions, for example through a 0.7.0 server,
+  and create them again after the upgrade.
+
+Then start the server again.
+
+### Other differences
+
+Any other difference stops the server, which lists the first 20 differing lines:
+
+```text
+The database differs from the 0.7.0 schema in ways the server can't repair (-: the 0.7.0 schema, +: what the database has):
+  +column uc_catalogs.note type=character varying size=64 nullable=YES default=null
+Compare it with a fresh 0.7.0 database and fix the differences by hand, or ask on the project's issue tracker; see docs/server/upgrades.md (section "Adopting an older database").
+```
+
+Such a difference comes from a change made by hand or from a database setup that this release was
+not tested with (for example MySQL before 8.0.16, which ignores CHECK constraints). Fix the
+differences it lists, or ask on the project's issue tracker, then start the server again. A change
+of one of this release's steps that is already in the database is no difference: the server
+records that step without running it.
 
 ## Schema versions
 
@@ -81,9 +174,10 @@ It needs:
 - On H2, a file database (`jdbc:h2:file:...`). The server refuses to start on an in-memory one
   with the backup on.
 
-The server takes the backup only when it has steps to apply, after the checks that can refuse the
-upgrade (a skipped release, [rows that block an upgrade](#rows-that-block-an-upgrade), a step it
-can't run again), so an up-to-date or refused database gets none. It logs
+The server takes the backup only when it has steps to apply or a database to adopt, after the
+checks that can refuse the upgrade (a skipped release, a database it
+[can't adopt](#adopting-an-older-database), [rows that block an upgrade](#rows-that-block-an-upgrade),
+a step it can't run again), so an up-to-date or refused database gets none. It logs
 `Backed up the database to <copy> before the upgrade.` and drops the copy after a successful
 upgrade. To go back after a successful upgrade, use a backup of your own (see
 [Going back to the baseline release](#going-back-to-the-baseline-release)).
@@ -329,6 +423,13 @@ Messages that the server prints when it refuses to start, and what to do.
 `The database is from a release before 0.7.0 (missing tables: <tables>). Start a 0.7.0 server on it once, then start this release.`
 : The database has no schema history and lacks tables of the baseline release. Follow
   [The baseline release](#the-baseline-release).
+
+`The database differs from the 0.7.0 schema in ways the server can't repair (-: the 0.7.0 schema, +: what the database has): ...`
+: See [Other differences](#other-differences).
+
+`The upgrade is stopped before any change: the database differs from the 0.7.0 schema, and these rows keep the server from repairing it.`
+: The message lists users that share an external id or functions with types of a release before
+  0.4.1. See [Adopting an older database](#adopting-an-older-database).
 
 `The schema is newer than this release (version <n>, this release ends at <m>). Run the newer release.`
 : The database was upgraded by a newer release than the one you ran. Run the newer release again.
