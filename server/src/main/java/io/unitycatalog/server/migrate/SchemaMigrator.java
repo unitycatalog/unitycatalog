@@ -1306,14 +1306,20 @@ public final class SchemaMigrator implements AutoCloseable {
   /**
    * Compares a database to adopt with the schema of the baseline release: finds the {@link Drift}s
    * it has, and refuses it for any other difference, or for rows that keep a drift from being
-   * repaired. Changes nothing.
+   * repaired. Compares Unity Catalog's tables only (those of the baseline release and of this
+   * build). Changes nothing.
    */
   private Adoption adoption() {
     List<String> baseline = dump(BASELINE_DUMPS).entries();
     Set<String> built = new HashSet<>(dump(SCHEMA_DUMPS).entries());
+    // Unity Catalog's tables only: another application's may share the schema.
+    Set<String> ucTables = new HashSet<>();
+    Stream.concat(baseline.stream(), built.stream())
+        .forEach(entry -> ucTables.add(SchemaSnapshot.tableOf(entry)));
     List<String> diff =
         new ArrayList<>(
-            SchemaSnapshot.diff(baseline, SchemaSnapshot.of(flywayDataSource()).entries()));
+            SchemaSnapshot.diff(
+                baseline, SchemaSnapshot.of(flywayDataSource()).only(ucTables).entries()));
     // A later step's change already in the database (an entry that it adds, or one that it
     // removes, missing): the run records the step without running it.
     diff.removeIf(

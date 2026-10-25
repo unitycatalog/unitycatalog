@@ -32,8 +32,9 @@ later release migrates older schemas too.
 A database from a release before 0.7.0 still differs from a fresh 0.7.0 database after that one
 0.7.0 start, because 0.7.0's Hibernate update neither changes an existing CHECK constraint nor
 reports a constraint it fails to add. When the server adopts a database without schema history, it
-compares every table with the 0.7.0 schema (columns, keys, indexes, foreign keys and CHECK
-constraints) and repairs these differences before it records the baseline, after the
+compares Unity Catalog's tables with the 0.7.0 schema (columns, keys, indexes, foreign keys and
+CHECK constraints; other tables in the schema, such as another application's, are left out) and
+repairs these differences before it records the baseline, after the
 [backup](#backup-before-the-upgrade) if that is on:
 
 | Difference | Releases | Repair |
