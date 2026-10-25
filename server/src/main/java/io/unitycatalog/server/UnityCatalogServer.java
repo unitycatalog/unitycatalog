@@ -129,7 +129,6 @@ public class UnityCatalogServer implements AutoCloseable {
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
       requireCurrentSchema(unityCatalogServerBuilder.extraMigrationLocations);
-      hibernateConfigurator.warnIfMySqlIsCaseInsensitive();
       createdBlockingTaskExecutor =
           BlockingTaskExecutor.builder()
               .numThreads(blockingThreads)

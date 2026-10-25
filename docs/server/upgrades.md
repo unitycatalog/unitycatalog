@@ -25,7 +25,6 @@ later release migrates older schemas too.
 | ------- | ------ |
 | 1 | The schema of the baseline release. A database without schema history from that release already has it. |
 | 2 | Widens `uc_function_params.type_json`, so function parameter types can be longer. |
-| 3 | MySQL only: makes text comparisons case-sensitive (see [MySQL](#mysql-case-sensitive-text)). Changes nothing on PostgreSQL and H2. |
 
 ## Upgrading to a new release
 
@@ -42,7 +41,7 @@ Use these steps for every database (H2, PostgreSQL, MySQL).
     The server applies the pending steps, logs what it applied, then starts:
 
     ```text
-    Upgraded the database schema from version 1 to 3 (2 steps)
+    Upgraded the database schema from version 1 to 2 (1 steps)
     ```
 
 On PostgreSQL and MySQL, when several servers start at the same time, one applies the steps and
@@ -51,16 +50,6 @@ the others wait for it, then start.
 ## First start on an empty database
 
 A server that starts on an empty database sets up the schema itself, the same way.
-
-## MySQL: case-sensitive text
-
-Starting with this release, text comparisons in MySQL are case-sensitive, like PostgreSQL and H2.
-MySQL databases created with the default collation ignored case, so names and storage paths that
-differed only in case counted as the same value. After step 3, they are distinct values.
-
-The step converts the database and each Unity Catalog table to the `utf8mb4_0900_bin` collation.
-MySQL rebuilds each table, and writes to a table are blocked while it is rebuilt. The time it takes
-grows with the size of your tables, and the server starts serving requests after it ends.
 
 ## Going back to the baseline release
 

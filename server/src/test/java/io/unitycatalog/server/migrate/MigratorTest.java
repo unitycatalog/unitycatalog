@@ -2,9 +2,7 @@ package io.unitycatalog.server.migrate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.migrate.kit.SchemaSnapshot;
@@ -14,13 +12,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -82,47 +78,6 @@ public class MigratorTest {
         .hasMessageContaining("before " + SchemaMigrator.BASELINE_RELEASE)
         .hasMessageContaining("missing tables: uc_storage_cleanup_tasks)");
     assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(before);
-  }
-
-  @Test
-  void makesTextComparisonsCaseSensitive() throws SQLException {
-    if (db.kind() == DatabaseKind.MYSQL) {
-      // A baseline-release install on MySQL's default collation, which ignores case.
-      execute(db, "ALTER DATABASE CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci");
-    }
-    create07Schema(db);
-    // The authorization rules table, shaped like Casbin's adapter creates it.
-    execute(
-        db, "CREATE TABLE casbin_rule (id INT PRIMARY KEY, ptype VARCHAR(255), v0 VARCHAR(255))");
-    execute(db, "INSERT INTO casbin_rule (id, ptype, v0) VALUES (1, 'p', 'Alice')");
-    try (Connection connection = db.dataSource().getConnection();
-        PreparedStatement insert =
-            connection.prepareStatement("INSERT INTO uc_catalogs (id, name) VALUES (?, 'Sales')")) {
-      insert.setObject(1, db.kind() == DatabaseKind.MYSQL ? new byte[16] : new UUID(0, 1));
-      insert.executeUpdate();
-    }
-
-    new SchemaMigrator(db.dataSource(), db.kind()).migrate();
-
-    assertThat(rowsWhere(db, "uc_catalogs", "name", "sales")).isZero();
-    assertThat(rowsWhere(db, "uc_catalogs", "name", "Sales")).isOne();
-    assertThat(rowsWhere(db, "casbin_rule", "v0", "alice")).isZero();
-    assertThat(rowsWhere(db, "casbin_rule", "v0", "Alice")).isOne();
-  }
-
-  @Test
-  void convertsALatin1DatabaseWithTheStagingLocationIndex() {
-    assumeTrue(db.kind() == DatabaseKind.MYSQL);
-    // A 0.7.0 server on a latin1 database created idx_staging_location, which is too long in
-    // utf8mb4.
-    execute(db, "ALTER DATABASE CHARACTER SET latin1 COLLATE latin1_swedish_ci");
-    create07Schema(db);
-    execute(db, "CREATE INDEX idx_staging_location ON uc_staging_tables (staging_location)");
-    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
-
-    migrator.migrate();
-
-    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
   }
 
   @Test
@@ -246,20 +201,6 @@ public class MigratorTest {
     for (String statement : withoutComments.split(";")) {
       if (!statement.isBlank()) {
         execute(db, statement);
-      }
-    }
-  }
-
-  private static int rowsWhere(TestDatabase db, String table, String column, String value)
-      throws SQLException {
-    try (Connection connection = db.dataSource().getConnection();
-        PreparedStatement query =
-            connection.prepareStatement(
-                "SELECT COUNT(*) FROM " + table + " WHERE " + column + " = ?")) {
-      query.setString(1, value);
-      try (ResultSet rs = query.executeQuery()) {
-        rs.next();
-        return rs.getInt(1);
       }
     }
   }
