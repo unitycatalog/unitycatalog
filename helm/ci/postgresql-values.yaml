@@ -1,0 +1,6 @@
+server:
+  db:
+    type: postgresql
+    postgresqlConfig:
+      host: postgres
+      passwordSecretName: db-password

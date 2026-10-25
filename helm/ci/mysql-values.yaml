@@ -1,0 +1,10 @@
+server:
+  db:
+    type: mysql
+    mysqlConfig:
+      host: mysql
+      passwordSecretName: db-password
+      driver:
+        volume:
+          persistentVolumeClaim:
+            claimName: mysql-driver

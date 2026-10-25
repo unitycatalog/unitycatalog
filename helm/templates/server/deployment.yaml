@@ -1,6 +1,6 @@
 {{- if .Values.server.enabled -}}
 {{- if and (eq .Values.server.db.type "file") (gt (int .Values.server.deployment.replicaCount) 1) }}
-{{- fail "server.db.type file supports one server: set server.deployment.replicaCount to 1, or use postgresql" }}
+{{- fail "server.db.type file supports one server: set server.deployment.replicaCount to 1, or use postgresql or mysql" }}
 {{- end }}
 apiVersion: apps/v1
 kind: Deployment
@@ -105,6 +105,13 @@ spec:
                   name: {{ .Values.server.db.postgresqlConfig.passwordSecretName | quote }}
                   key: {{ required "Password secret key is required" .Values.server.db.postgresqlConfig.passwordSecretKey | quote }}
           {{- end }}
+          {{- if and (eq .Values.server.db.type "mysql") .Values.server.db.mysqlConfig.passwordSecretName }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.server.db.mysqlConfig.passwordSecretName | quote }}
+                  key: {{ required "Password secret key is required" .Values.server.db.mysqlConfig.passwordSecretKey | quote }}
+          {{- end }}
           {{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.ssl.enabled }}
           {{- if .Values.server.db.postgresqlConfig.ssl.rootCert }}
             - name: DB_ROOT_CERT
@@ -175,6 +182,13 @@ spec:
             - name: api
               containerPort: {{ .Values.server.deployment.port }}
               protocol: TCP
+          {{- if eq .Values.server.db.type "mysql" }}
+          env:
+            # The image does not include the MySQL JDBC driver. Its launcher lists the classpath jars in a file, so the
+            # driver jars mounted from the volume load from the module path instead.
+            - name: JDK_JAVA_OPTIONS
+              value: "--module-path=/home/unitycatalog/jdbc-drivers --add-modules=ALL-MODULE-PATH"
+          {{- end }}
 
           {{- if .Values.server.deployment.enableLivenessProbe }}
           {{- with .Values.server.deployment.livenessProbe }}
@@ -222,6 +236,11 @@ spec:
             - name: db-volume
               mountPath: /home/unitycatalog/etc/db
           {{- end }}
+          {{- if eq .Values.server.db.type "mysql" }}
+            - name: mysql-driver
+              mountPath: /home/unitycatalog/jdbc-drivers
+              readOnly: true
+          {{- end }}
           {{- range $index, $config := .Values.storage.credentials.gcs }}
             - name: gcs-credentials-{{ $index }}
               mountPath: /home/unitycatalog/etc/conf/gcs-credentials-{{ $index }}.json
@@ -250,6 +269,10 @@ spec:
         - name: db-volume
           persistentVolumeClaim:
             claimName: {{ include "unitycatalog.server.db.filePvcName" . | quote }}
+      {{- end }}
+      {{- if eq .Values.server.db.type "mysql" }}
+        - name: mysql-driver
+          {{- toYaml (required "server.db.mysqlConfig.driver.volume is required: the server image does not include the MySQL JDBC driver" .Values.server.db.mysqlConfig.driver.volume) | nindent 10 }}
       {{- end }}
       {{- range $index, $config := .Values.storage.credentials.gcs }}
         - name: gcs-credentials-{{ $index }}

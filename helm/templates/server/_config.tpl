@@ -84,8 +84,26 @@ hibernate.connection.user={{ .Values.server.db.postgresqlConfig.username }}
 {{- if .Values.server.db.postgresqlConfig.passwordSecretName }}
 hibernate.connection.password=${DB_PASSWORD}
 {{- end }}
+{{- else if eq .Values.server.db.type "mysql" -}}
+
+{{- $urlParamsList := list }}
+{{- range $key, $value := .Values.server.db.mysqlConfig.extraParams }}
+{{- $urlParamsList = append $urlParamsList (printf "%s=%v" $key $value) }}
+{{- end }}
+
+{{- $urlParams := "" }}
+{{- if $urlParamsList }}
+{{- $urlParams = printf "?%s" ($urlParamsList | join "&") }}
+{{- end -}}
+
+hibernate.connection.driver_class=com.mysql.cj.jdbc.Driver
+hibernate.connection.url=jdbc:mysql://{{ .Values.server.db.mysqlConfig.host }}:{{ .Values.server.db.mysqlConfig.port }}/{{ .Values.server.db.mysqlConfig.dbName }}{{ $urlParams }}
+hibernate.connection.user={{ .Values.server.db.mysqlConfig.username }}
+{{- if .Values.server.db.mysqlConfig.passwordSecretName }}
+hibernate.connection.password=${DB_PASSWORD}
+{{- end }}
 {{- else }}
-{{ fail "Unsupported database type. Supported types are: file, postgresql." }}
+{{ fail "Unsupported database type. Supported types are: file, postgresql, mysql." }}
 {{- end }}
 
 hibernate.hbm2ddl.auto=update

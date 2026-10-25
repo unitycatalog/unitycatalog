@@ -10,7 +10,7 @@ using the [Helm](https://github.com/helm/helm) package manager.
 ## Features
 - Deploys the Unity Catalog server, and the UI with `ui.enabled=true`
 - Supports OAuth authentication
-- Supports file H2DB and PostgreSQL as a database
+- Supports file H2DB, PostgreSQL and MySQL as a database
 - Customizable configuration for server and UI using Helm values
 
 ## Installing the Chart
@@ -490,6 +490,101 @@ If not set, the default storage class will be used
 </td>
 		</tr>
 		<tr>
+			<td>server.db.mysqlConfig.dbName</td>
+			<td>string</td>
+			<td><pre lang="">
+ucdb
+</pre>
+</td>
+			<td>MySQL database name</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.driver.volume</td>
+			<td>object</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>Volume that holds the MySQL JDBC driver jar (Required)
+
+The server image does not include the MySQL JDBC driver
+([MySQL Connector/J](https://dev.mysql.com/downloads/connector/j/)). The chart mounts this volume into the
+server and loads every jar in it. Any volume source works, for example a PersistentVolumeClaim that holds
+`mysql-connector-j-<version>.jar`. The driver jar is larger than a ConfigMap can hold.
+
+Example:
+```yaml
+volume:
+  persistentVolumeClaim:
+    claimName: mysql-driver
+```
+</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.extraParams</td>
+			<td>object</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>MySQL JDBC URL params
+
+Example:
+```yaml
+extraParams:
+  sslMode: VERIFY_IDENTITY
+```
+</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.host</td>
+			<td>string</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>MySQL database host (Required)</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.passwordSecretKey</td>
+			<td>string</td>
+			<td><pre lang="">
+password
+</pre>
+</td>
+			<td>MySQL user password secret key</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.passwordSecretName</td>
+			<td>string</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>MySQL user password secret name
+
+If not set, connection will be made without a password
+</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.port</td>
+			<td>int</td>
+			<td><pre lang="">
+3306
+</pre>
+</td>
+			<td>MySQL database port</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.username</td>
+			<td>string</td>
+			<td><pre lang="">
+root
+</pre>
+</td>
+			<td>MySQL username</td>
+		</tr>
+		<tr>
 			<td>server.db.overrideConfig</td>
 			<td>string</td>
 			<td><pre lang="">
@@ -640,7 +735,7 @@ postgres
 </td>
 			<td>Database type
 
-Supported values: `file`, `postgresql`
+Supported values: `file`, `postgresql`, `mysql`
 </td>
 		</tr>
 		<tr>

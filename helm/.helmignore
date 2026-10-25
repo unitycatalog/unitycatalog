@@ -29,3 +29,5 @@
 RELEASING.md
 # Helm-docs files
 README.md.gotmpl
+# chart-testing values
+ci/

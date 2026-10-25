@@ -177,7 +177,7 @@ server:
     # -- (string) Database type
     # @raw
     #
-    # Supported values: `file`, `postgresql`
+    # Supported values: `file`, `postgresql`, `mysql`
     #
     type: file
     fileConfig:
@@ -290,6 +290,66 @@ server:
       # ```
       #
       extraParams:
+
+    mysqlConfig:
+      # -- (string) MySQL database host (Required)
+      # @default -- not set
+      host:
+
+      # -- (int) MySQL database port
+      # @default -- 3306
+      port: 3306
+
+      # -- (string) MySQL database name
+      # @default -- ucdb
+      dbName: ucdb
+
+      # -- (string) MySQL username
+      # @default -- root
+      username: root
+
+      # -- (string) MySQL user password secret name
+      # @default -- not set
+      # @raw
+      #
+      # If not set, connection will be made without a password
+      #
+      passwordSecretName:
+
+      # -- (string) MySQL user password secret key
+      # @default -- password
+      passwordSecretKey: password
+
+      # -- (object) MySQL JDBC URL params
+      # @default -- not set
+      # @raw
+      #
+      # Example:
+      # ```yaml
+      # extraParams:
+      #   sslMode: VERIFY_IDENTITY
+      # ```
+      #
+      extraParams:
+
+      driver:
+        # -- (object) Volume that holds the MySQL JDBC driver jar (Required)
+        # @default -- not set
+        # @raw
+        #
+        # The server image does not include the MySQL JDBC driver
+        # ([MySQL Connector/J](https://dev.mysql.com/downloads/connector/j/)). The chart mounts this volume into the
+        # server and loads every jar in it. Any volume source works, for example a PersistentVolumeClaim that holds
+        # `mysql-connector-j-<version>.jar`. The driver jar is larger than a ConfigMap can hold.
+        #
+        # Example:
+        # ```yaml
+        # volume:
+        #   persistentVolumeClaim:
+        #     claimName: mysql-driver
+        # ```
+        #
+        volume:
 
     # -- (string) Override Hibernate configuration for the server
     # @default -- not set
