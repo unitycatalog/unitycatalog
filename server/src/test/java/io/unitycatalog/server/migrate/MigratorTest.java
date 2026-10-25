@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
-import io.unitycatalog.server.migrate.kit.SchemaSnapshot;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.io.IOException;

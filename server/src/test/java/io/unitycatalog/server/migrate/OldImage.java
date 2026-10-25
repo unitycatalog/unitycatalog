@@ -1,4 +1,4 @@
-package io.unitycatalog.server.migrate.kit;
+package io.unitycatalog.server.migrate;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -15,7 +15,7 @@ import java.util.stream.Stream;
  * An old server an {@link UpgradePath} runs: the shaded server jar of a git ref. Resolved on first
  * use, so listing the paths builds nothing.
  */
-public final class OldImage {
+final class OldImage {
 
   private static final Path JAR_CACHE =
       Path.of(System.getProperty("user.home"), ".cache", "uc-upgrade-jars");
@@ -31,12 +31,12 @@ public final class OldImage {
    * The shaded server jar of {@code ref}'s commit, built once into {@code
    * ~/.cache/uc-upgrade-jars}.
    */
-  public static OldImage jarBuiltFrom(String ref) {
+  static OldImage jarBuiltFrom(String ref) {
     return new OldImage(ref);
   }
 
   /** The jar's path, building the jar first if needed. */
-  public synchronized String name() {
+  synchronized String name() {
     if (name == null) {
       name = jar(ref);
     }

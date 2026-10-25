@@ -2,12 +2,6 @@ package io.unitycatalog.server.migrate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.unitycatalog.server.migrate.kit.DataSet;
-import io.unitycatalog.server.migrate.kit.OldImage;
-import io.unitycatalog.server.migrate.kit.OldServer;
-import io.unitycatalog.server.migrate.kit.SchemaSnapshot;
-import io.unitycatalog.server.migrate.kit.TestServer;
-import io.unitycatalog.server.migrate.kit.UpgradePath;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;

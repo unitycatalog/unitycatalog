@@ -2,7 +2,6 @@ package io.unitycatalog.server.migrate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.unitycatalog.server.migrate.kit.SchemaSnapshot;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.util.Properties;

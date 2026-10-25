@@ -1,4 +1,4 @@
-package io.unitycatalog.server.migrate.kit;
+package io.unitycatalog.server.migrate;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -16,11 +16,11 @@ import javax.sql.DataSource;
  * plain indexes, and foreign keys. Names are lower-cased. Casbin's rule table and Flyway's history
  * table are left out.
  */
-public record SchemaSnapshot(List<String> entries) {
+record SchemaSnapshot(List<String> entries) {
 
   private static final Set<String> IGNORED_TABLES = Set.of("casbin_rule", "uc_schema_history");
 
-  public static SchemaSnapshot of(DataSource dataSource) {
+  static SchemaSnapshot of(DataSource dataSource) {
     try (Connection connection = dataSource.getConnection()) {
       return read(connection);
     } catch (SQLException e) {

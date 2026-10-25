@@ -1,4 +1,4 @@
-package io.unitycatalog.server.migrate.kit;
+package io.unitycatalog.server.migrate;
 
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiClientBuilder;
@@ -23,7 +23,7 @@ import java.util.stream.Stream;
  * BaseServerTest.setUp()} (the database's own configurator, authorization on). {@link #start}
  * throws what the server throws when it refuses the database's schema.
  */
-public final class TestServer implements AutoCloseable {
+final class TestServer implements AutoCloseable {
 
   private final UnityCatalogServer server;
   private final Path storageRoot;
@@ -35,7 +35,7 @@ public final class TestServer implements AutoCloseable {
     this.port = port;
   }
 
-  public static TestServer start(TestDatabase db) {
+  static TestServer start(TestDatabase db) {
     try {
       Path storageRoot = Files.createTempDirectory("uc-test-server");
       try {
@@ -72,7 +72,7 @@ public final class TestServer implements AutoCloseable {
   }
 
   /** A client for this server, authenticated with the server's own service token. */
-  public ApiClient apiClient() {
+  ApiClient apiClient() {
     try {
       String token = Files.readString(Path.of("etc/conf/token.txt")).trim();
       return ApiClientBuilder.create()

@@ -1,6 +1,5 @@
-package io.unitycatalog.server.migrate.kit;
+package io.unitycatalog.server.migrate;
 
-import io.unitycatalog.server.migrate.SchemaMigrator;
 import io.unitycatalog.server.utils.VersionUtils;
 import java.util.Comparator;
 import java.util.List;
@@ -27,12 +26,12 @@ import java.util.stream.Stream;
  *   <li>No path ends at the latest release alone: the chain's last release writes its own copy.
  * </ul>
  */
-public final class UpgradePath {
+final class UpgradePath {
 
   private UpgradePath() {}
 
   /** The release chain's server jars, oldest first. */
-  public static List<OldImage> releaseChain() {
+  static List<OldImage> releaseChain() {
     return releaseTags().stream().map(OldImage::jarBuiltFrom).toList();
   }
 

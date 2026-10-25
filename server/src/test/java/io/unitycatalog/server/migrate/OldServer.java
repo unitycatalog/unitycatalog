@@ -1,4 +1,4 @@
-package io.unitycatalog.server.migrate.kit;
+package io.unitycatalog.server.migrate;
 
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiClientBuilder;
@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
  * {@code etc/conf}, on the test database itself; for MySQL the test's driver jar is added to its
  * classpath.
  */
-public final class OldServer {
+final class OldServer {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(OldServer.class);
 
@@ -45,7 +45,7 @@ public final class OldServer {
    * Starts {@code image} on {@code db}, waits until it serves requests, passes {@code callback} a
    * client authenticated as the server's admin, then stops the server.
    */
-  public static void run(OldImage image, TestDatabase db, Consumer<ApiClient> callback) {
+  static void run(OldImage image, TestDatabase db, Consumer<ApiClient> callback) {
     try {
       Path home = Files.createTempDirectory("uc-old-server");
       try {
