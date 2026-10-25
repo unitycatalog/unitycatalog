@@ -5,10 +5,12 @@ import io.unitycatalog.client.ApiClientBuilder;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.server.UnityCatalogServer;
+import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.IOException;
+import java.io.Reader;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.nio.file.Files;
@@ -42,6 +44,23 @@ public final class TestServer implements AutoCloseable {
 
   /** Also applies the schema steps in {@code extraMigrationLocations} (tests' own steps). */
   public static TestServer start(TestDatabase db, List<String> extraMigrationLocations) {
+    return start(db.openHibernateConfigurator(db.hibernateProperties()), extraMigrationLocations);
+  }
+
+  /**
+   * Starts the server in a process of its own, for a test that stops it with a signal: {@code args}
+   * are a file of the database's Hibernate properties, then the extra migration locations.
+   */
+  public static void main(String[] args) throws IOException {
+    Properties hibernateProperties = new Properties();
+    try (Reader in = Files.newBufferedReader(Path.of(args[0]))) {
+      hibernateProperties.load(in);
+    }
+    start(new HibernateConfigurator(hibernateProperties), List.of(args).subList(1, args.length));
+  }
+
+  private static TestServer start(
+      HibernateConfigurator hibernateConfigurator, List<String> extraMigrationLocations) {
     try {
       Path storageRoot = Files.createTempDirectory("uc-test-server");
       try {
@@ -59,7 +78,7 @@ public final class TestServer implements AutoCloseable {
             UnityCatalogServer.builder()
                 .port(port)
                 .serverProperties(new ServerProperties(properties))
-                .hibernateConfigurator(db.openHibernateConfigurator(db.hibernateProperties()))
+                .hibernateConfigurator(hibernateConfigurator)
                 .extraMigrationLocations(extraMigrationLocations)
                 .build();
         try {

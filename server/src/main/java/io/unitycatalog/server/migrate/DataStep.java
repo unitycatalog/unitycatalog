@@ -49,6 +49,7 @@ public abstract class DataStep extends BaseJavaMigration {
    * changes at most that many rows and only rows not yet changed (for example {@code WHERE id IN
    * (SELECT id FROM t WHERE c IS NULL LIMIT ?)}); the SQL for that differs between databases. A
    * changed row must no longer match: a new value that can be NULL in that example never stops.
+   * When the server is told to stop during its start, the step stops after the batch it is in.
    */
   protected final long updateInBatches(Connection connection, String sql, int batchSize)
       throws SQLException {
@@ -69,6 +70,8 @@ public abstract class DataStep extends BaseJavaMigration {
         }
         total += changed;
         LOGGER.info("{}: changed {} rows in this batch, {} so far", name(), changed, total);
+        SchemaMigrator.stopIfRequested(
+            "a batch boundary of step " + getVersion() + " (" + getDescription() + ")");
       }
     }
     return total;

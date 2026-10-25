@@ -38,6 +38,8 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -77,6 +79,10 @@ import org.slf4j.LoggerFactory;
  *
  * <p>A statement of the run waits at most {@link #LOCK_WAIT} for a lock that another session holds,
  * then fails.
+ *
+ * <p>When the process is told to stop during the run of a server start, the run stops at the next
+ * boundary (before a step, or after a batch of a batched {@link DataStep}) and the next start
+ * finishes it.
  */
 public final class SchemaMigrator implements AutoCloseable {
 
@@ -210,6 +216,9 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /** The most rows of one check that a refusal lists. */
   private static final int MAX_ROWS_LISTED = 20;
+
+  /** Set by the shutdown hook of {@link #prepareForStart()}: the run stops at its next boundary. */
+  private static volatile boolean stopRequested;
 
   private final DataSource dataSource;
   private final DatabaseKind kind;
@@ -366,7 +375,7 @@ public final class SchemaMigrator implements AutoCloseable {
    */
   public SchemaState prepareForStart() {
     try (RunLock lock = RunLock.acquire(dataSource, kind)) {
-      MigrationOutcome outcome = migrateLocked();
+      MigrationOutcome outcome = migrateStoppingOnShutdown();
       if (outcome.applied() > 0) {
         LOGGER.info(
             "Upgraded the database schema from version {} to {} ({} steps)",
@@ -409,6 +418,53 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
+  /**
+   * {@link #migrateLocked()} with a shutdown hook that asks the run to stop at its next boundary
+   * and waits for it, up to {@link #lockWait}. A statement that is running is not interrupted.
+   */
+  private MigrationOutcome migrateStoppingOnShutdown() {
+    CountDownLatch done = new CountDownLatch(1);
+    Thread hook =
+        new Thread(
+            () -> {
+              stopRequested = true;
+              try {
+                done.await(lockWait.toMillis(), TimeUnit.MILLISECONDS);
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              }
+            },
+            "schema-migration-stop");
+    Runtime.getRuntime().addShutdownHook(hook);
+    try {
+      return migrateLocked();
+    } finally {
+      done.countDown();
+      try {
+        Runtime.getRuntime().removeShutdownHook(hook);
+      } catch (IllegalStateException e) {
+        // The JVM is shutting down: the hook is running.
+      }
+    }
+  }
+
+  /**
+   * Stops the run at {@code boundary} when the process is shutting down during a server start's
+   * run: logs it, also on standard error, and throws.
+   */
+  static void stopIfRequested(String boundary) {
+    if (stopRequested) {
+      String message =
+          "Stopped the schema migration at "
+              + boundary
+              + " on SIGTERM; start the server again to finish it.";
+      LOGGER.warn(message);
+      // Log4j's own shutdown hook has likely stopped the logger by now.
+      System.err.println(message);
+      throw new IllegalStateException(message);
+    }
+  }
+
   private MigrationOutcome migrateLocked() {
     SchemaState state = state(); // read under the lock
     String refusal = refusal(state);
@@ -432,6 +488,7 @@ public final class SchemaMigrator implements AutoCloseable {
     }
     int applied = 0;
     for (MigrationInfo step : pendingSteps(from)) {
+      stopIfRequested("the start of step " + version(step) + " (" + step.getDescription() + ")");
       boolean alreadyThere = isAlreadyThere(step);
       if (alreadyThere) {
         LOGGER.info(
