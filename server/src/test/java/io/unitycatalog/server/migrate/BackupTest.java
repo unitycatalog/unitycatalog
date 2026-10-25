@@ -2,6 +2,7 @@ package io.unitycatalog.server.migrate;
 
 import static io.unitycatalog.server.migrate.MigratorTest.execute;
 import static io.unitycatalog.server.migrate.MigratorTest.quote;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -16,7 +17,9 @@ import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.VersionUtils;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.io.Reader;
 import java.io.UncheckedIOException;
 import java.io.Writer;
@@ -377,6 +380,25 @@ public class BackupTest {
       rs.next();
       return rs.getInt(1);
     }
+  }
+
+  @Test
+  void checkSchemaReportsTheRestoredMark() {
+    assertThatThrownBy(migrator("7", ADD, FAIL)::migrate).hasMessageEndingWith(RESTORED);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator("7", ADD).checkSchema(new PrintStream(out, true, UTF_8))).isOne();
+    assertThat(out.toString(UTF_8)).contains("restored in chart revision 7");
+    assertThat(marks()).containsExactly(RELEASE + " 7");
+  }
+
+  /** H2: an empty mark file, as a crash while writing it leaves, is no mark. */
+  @Test
+  void ignoresAnEmptyMarkFile() throws IOException {
+    assumeTrue(db.kind() == DatabaseKind.H2);
+    Files.createFile(Path.of(name(db) + "_uc_upgrade.properties"));
+
+    assertThat(migrator("7", ADD).migrate().to()).isEqualTo("6001");
   }
 
   @Test

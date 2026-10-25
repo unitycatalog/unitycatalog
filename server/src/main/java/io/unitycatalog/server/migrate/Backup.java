@@ -136,12 +136,7 @@ final class Backup {
     try {
       List<String> mark = mark();
       if (mark.equals(List.of(release, chartRevision))) {
-        throw new IllegalStateException(
-            "The upgrade to "
-                + release
-                + " failed and the database was restored in chart revision "
-                + chartRevision
-                + "; fix the cause, then run helm upgrade again (a new revision clears this).");
+        throw new IllegalStateException(restoredRefusal(release));
       }
       if (!mark.isEmpty()) {
         clearMark();
@@ -154,6 +149,28 @@ final class Backup {
     } catch (SQLException | IOException e) {
       throw new IllegalStateException("Could not read the restored mark: " + e.getMessage(), e);
     }
+  }
+
+  /**
+   * The refusal of a run of the release {@code release} in the chart revision whose restore the
+   * mark records, or {@code null}. Changes nothing in the database.
+   */
+  String refusalForTheRestoredMark(String release) {
+    try {
+      return chartRevision != null && mark().equals(List.of(release, chartRevision))
+          ? restoredRefusal(release)
+          : null;
+    } catch (SQLException | IOException e) {
+      throw new IllegalStateException("Could not read the restored mark: " + e.getMessage(), e);
+    }
+  }
+
+  private String restoredRefusal(String release) {
+    return "The upgrade to "
+        + release
+        + " failed and the database was restored in chart revision "
+        + chartRevision
+        + "; fix the cause, then run helm upgrade again (a new revision clears this).";
   }
 
   /**
@@ -725,7 +742,10 @@ final class Backup {
       try (Reader in = Files.newBufferedReader(h2MarkFile())) {
         mark.load(in);
       }
-      return List.of(mark.getProperty("release"), mark.getProperty("revision"));
+      String release = mark.getProperty("release");
+      String revision = mark.getProperty("revision");
+      // A file without them: a crash while writing it.
+      return release == null || revision == null ? List.of() : List.of(release, revision);
     }
     try (Connection connection = markConnection();
         Statement statement = connection.createStatement();

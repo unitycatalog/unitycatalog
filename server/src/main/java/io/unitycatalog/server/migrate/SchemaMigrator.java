@@ -519,7 +519,11 @@ public final class SchemaMigrator implements AutoCloseable {
               + "; this release ends at "
               + latestVersion()
               + ".");
-      String refusal = refusal(state);
+      String refusal =
+          backup == null ? null : backup.refusalForTheRestoredMark(THIS_RELEASE.getVersion());
+      if (refusal == null) {
+        refusal = refusal(state);
+      }
       if (refusal == null) {
         List<MigrationInfo> pending = pendingSteps(from);
         out.println(pending.isEmpty() ? "Pending steps: none." : "Pending steps:");

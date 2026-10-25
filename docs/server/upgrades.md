@@ -183,6 +183,8 @@ The upgrade to <release> failed and the database was restored in chart revision 
 The previous release starts on the restored database, so `helm rollback`, `helm upgrade --atomic`
 or Flux remediation can bring it back. A start in another revision clears the mark and upgrades.
 Without `UC_CHART_REVISION` no mark is written: fix the cause and start the server again.
+`bin/start-uc-server --check-schema` with the backup on prints the same refusal while the mark is
+there.
 
 ## Skipping a release
 
