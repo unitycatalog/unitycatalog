@@ -48,6 +48,28 @@ Use these steps for every database (H2, PostgreSQL, MySQL).
 On PostgreSQL and MySQL, when several servers start at the same time, one applies the steps and
 the others wait for it, then start.
 
+## Rows that block an upgrade
+
+A step can add a rule that existing rows break, for example that names are unique. Such a step
+ships a check that lists the rows that break the rule, and the upgrade waits until there are none.
+
+Before you stop the old servers, run the new release's check against the database:
+
+```sh
+bin/start-uc-server --check-schema
+```
+
+It changes nothing and does not start the server. It prints the schema version, the pending steps
+and the result:
+
+- Exit code 0: the upgrade will go through.
+- Exit code 1: the upgrade would be refused. The output says why, for example the rows that break
+  a rule. The release notes say how to fix them. Fix them, then run the check again until it exits
+  with 0, and upgrade.
+
+The server runs the same checks when it starts and refuses to start the same way, before any step
+runs.
+
 ## First start on an empty database
 
 A server that starts on an empty database sets up the schema itself, the same way.
@@ -92,6 +114,9 @@ Messages that the server prints when it refuses to start, and what to do.
   start printed and fix its cause (for example a full disk or missing privileges for the database
   user). Then restore the backup you took before the upgrade and start the server again. Do not edit
   `uc_schema_history` by hand.
+
+`The upgrade is stopped before any change: <n> check found rows that break a rule of this release.`
+: The message lists the rows. See [Rows that block an upgrade](#rows-that-block-an-upgrade).
 
 `Could not take the schema migration lock: <reason>`
 : The server could not get the lock that keeps two migration runs apart. Check that the database
