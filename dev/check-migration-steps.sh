@@ -11,6 +11,8 @@
 # name as <base-branch>.
 
 set -euo pipefail
+# The paths below are relative to the repository root.
+cd "$(git rev-parse --show-toplevel)"
 
 if [[ $# -lt 1 || $# -gt 2 ]]; then
   echo "Usage: $0 <base-ref> [<base-branch>]" >&2
