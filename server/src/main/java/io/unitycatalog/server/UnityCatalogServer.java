@@ -7,7 +7,6 @@ import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerListener;
 import com.linecorp.armeria.server.healthcheck.HealthCheckService;
 import com.linecorp.armeria.server.prometheus.PrometheusExpositionService;
-import com.zaxxer.hikari.HikariDataSource;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
@@ -19,8 +18,6 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.migrate.SchemaMigrator;
-import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
-import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.observability.DbReadinessChecker;
 import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
@@ -63,7 +60,7 @@ import io.vertx.core.Vertx;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.List;
+import java.util.Properties;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
@@ -128,8 +125,21 @@ public class UnityCatalogServer implements AutoCloseable {
     this.blockingThreads = hibernateConfigurator.getDataSource().getMaximumPoolSize();
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
-      requireCurrentSchema(unityCatalogServerBuilder.extraMigrationLocations);
-      hibernateConfigurator.warnIfMySqlIsCaseInsensitive();
+      Properties hibernateProperties = hibernateConfigurator.getHibernateProperties();
+      // The schema steps own the schema; an injected configurator may still let Hibernate change
+      // it.
+      String schemaUpdates = hibernateProperties.getProperty("hibernate.hbm2ddl.auto", "none");
+      if (!"none".equals(schemaUpdates)) {
+        throw new IllegalStateException(
+            "hibernate.hbm2ddl.auto="
+                + schemaUpdates
+                + " is not supported: the schema steps manage the schema. Set it to none.");
+      }
+      // Upgrades the database to this release's schema, or refuses one it cannot upgrade. The
+      // migration uses its own small pool, so the server's pool size does not limit it.
+      try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(hibernateProperties)) {
+        migrator.migrate();
+      }
       createdBlockingTaskExecutor =
           BlockingTaskExecutor.builder()
               .numThreads(blockingThreads)
@@ -147,33 +157,6 @@ public class UnityCatalogServer implements AutoCloseable {
       closeBlockingTaskExecutor(createdBlockingTaskExecutor, shutdownTimeout, t);
       closeOwnedSessionFactory(t);
       throw t;
-    }
-  }
-
-  /**
-   * Upgrades the database to the schema version this release ships, or refuses one it cannot
-   * upgrade (see {@link SchemaMigrator#prepareForStart()}).
-   */
-  private void requireCurrentSchema(List<String> extraMigrationLocations) {
-    HikariDataSource ds = hibernateConfigurator.getDataSource();
-    DatabaseKind kind = DatabaseKind.fromJdbcUrl(ds.getJdbcUrl());
-    if (kind != DatabaseKind.H2 && ds.getMaximumPoolSize() < 3) {
-      // Otherwise the migration waits for a connection that never frees up, then times out.
-      throw new IllegalStateException(
-          "The schema migration needs 3 database connections (its lock plus 2 for Flyway), but"
-              + " the pool allows "
-              + ds.getMaximumPoolSize()
-              + ". Set hibernate.hikari.maximumPoolSize to 3 or more.");
-    }
-    try (SchemaMigrator migrator = new SchemaMigrator(ds, kind, extraMigrationLocations)) {
-      SchemaState state = migrator.prepareForStart();
-      if (state != SchemaState.CURRENT) {
-        throw new IllegalStateException(
-            "The database schema is "
-                + state
-                + " after migration; this release needs version "
-                + migrator.latestVersion());
-      }
     }
   }
 
@@ -589,7 +572,6 @@ public class UnityCatalogServer implements AutoCloseable {
     private Integer observabilityPort;
     private ServerProperties serverProperties;
     private HibernateConfigurator hibernateConfigurator;
-    private List<String> extraMigrationLocations = List.of();
     private CloudCredentialVendor cloudCredentialVendor;
     private UnaryOperator<FileOperations> fileOperationsDecorator = UnaryOperator.identity();
 
@@ -623,13 +605,6 @@ public class UnityCatalogServer implements AutoCloseable {
     public UnityCatalogServer.Builder hibernateConfigurator(
         HibernateConfigurator hibernateConfigurator) {
       this.hibernateConfigurator = hibernateConfigurator;
-      return this;
-    }
-
-    /** Test seam: schema steps to apply besides this release's (see {@code SchemaMigrator}). */
-    public UnityCatalogServer.Builder extraMigrationLocations(
-        List<String> extraMigrationLocations) {
-      this.extraMigrationLocations = extraMigrationLocations;
       return this;
     }
 

@@ -54,12 +54,8 @@ public class PopulateTestDatabase {
     Properties properties = new Properties();
     properties.setProperty(Property.SERVER_ENV.getKey(), "dev");
     ServerProperties serverProperties = new ServerProperties(properties);
-    try (SchemaMigrator migrator =
-        SchemaMigrator.fromHibernateProperties(
-            HibernateConfigurator.setupHibernateProperties(serverProperties))) {
-      migrator.migrate();
-    }
     HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
+    new SchemaMigrator(hibernateConfigurator.getDataSource()).migrate();
     Repositories repositories =
         new Repositories(hibernateConfigurator.getSessionFactory(), serverProperties);
     CatalogRepository catalogRepository = repositories.getCatalogRepository();

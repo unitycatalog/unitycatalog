@@ -2,7 +2,6 @@ package io.unitycatalog.server.testdatabase;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.ArrayList;
@@ -38,10 +37,6 @@ public final class TestDatabase implements AutoCloseable {
     return url;
   }
 
-  public DatabaseKind kind() {
-    return DatabaseKind.fromJdbcUrl(url);
-  }
-
   /** A small connection pool on this database, closed by {@link #close()}. */
   public synchronized DataSource dataSource() {
     if (dataSource == null) {
@@ -59,8 +54,8 @@ public final class TestDatabase implements AutoCloseable {
   }
 
   /**
-   * The server's Hibernate properties pointed at this database. Hibernate never changes the schema
-   * ({@code hbm2ddl.auto=none}): the migration steps built it.
+   * The server's Hibernate properties pointed at this database, with {@code hbm2ddl.auto=none}: the
+   * migration steps own the schema.
    */
   public Properties hibernateProperties() {
     Properties properties =

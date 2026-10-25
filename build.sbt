@@ -99,17 +99,14 @@ lazy val commonSettings = Seq(
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
-    // Merged, not dropped: Flyway finds its database support through these ServiceLoader files.
-    case PathList("META-INF", "services", _*) => MergeStrategy.filterDistinctLines
+    // Merged, not dropped: Flyway finds its database support through its ServiceLoader file.
+    case PathList("META-INF", "services", f) if f.startsWith("org.flywaydb") => MergeStrategy.filterDistinctLines
     case PathList("META-INF", xs @ _*) => MergeStrategy.discard
     case _ => MergeStrategy.first
   },
 
   // Test configs
-  // Tests tagged "upgrades" run old servers (release jars); testUpgrades* runs them.
-  Test / testOptions  := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q"), Tests.Argument(jupiter, "--exclude-tags=upgrades"), Tests.Filter(name => !(name startsWith s"$orgName.server.base"))),
-  // The coverage run (jacoco, in CI) has its own test options.
-  Jacoco / testOptions += Tests.Argument(jupiter, "--exclude-tags=upgrades"),
+  Test / testOptions  := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q"), Tests.Filter(name => !(name startsWith s"$orgName.server.base"))),
   Test / logLevel := util.Level.Info,
   Test / publishArtifact := false,
   fork := true,
@@ -913,19 +910,3 @@ def testOnDatabase(database: String): String =
   s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database") ; test"""
 addCommandAlias("testPostgres18", testOnDatabase("POSTGRES_18"))
 addCommandAlias("testMySQL8", testOnDatabase("MYSQL_8"))
-
-// The JUnit 5 test framework, for its tag options.
-lazy val jupiter = TestFramework("net.aichler.jupiter.api.JupiterFramework")
-// sbt-jacoco's test configuration, which doesn't take Test's test options.
-lazy val Jacoco = config("jacoco")
-
-// Runs only the upgrade tests (tag "upgrades") on one test database. UC_TEST_RELEASE_CHAIN picks
-// the release tags of UpgradePath, and UC_TEST_JAR_DIR a directory of prebuilt <commit sha>.jar
-// server jars to use instead of building them.
-def testUpgradesOn(database: String): String =
-  s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database")""" +
-    """ ; set server / Test / testOptions := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q"), Tests.Argument(TestFramework("net.aichler.jupiter.api.JupiterFramework"), "--include-tags=upgrades"))""" +
-    " ; server/test"
-addCommandAlias("testUpgrades", testUpgradesOn("H2"))
-addCommandAlias("testUpgradesPostgres18", testUpgradesOn("POSTGRES_18"))
-addCommandAlias("testUpgradesMySQL8", testUpgradesOn("MYSQL_8"))

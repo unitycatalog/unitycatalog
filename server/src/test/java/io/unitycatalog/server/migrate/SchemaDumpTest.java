@@ -2,7 +2,6 @@ package io.unitycatalog.server.migrate;
 
 import static org.assertj.core.api.Assertions.fail;
 
-import io.unitycatalog.server.migrate.kit.SchemaSnapshot;
 import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
@@ -26,11 +25,14 @@ public class SchemaDumpTest {
 
   @Test
   void migratedSchemaMatchesTheRecordedDump() throws IOException {
-    try (SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind())) {
+    try (SchemaMigrator migrator = new SchemaMigrator(db.dataSource())) {
       migrator.migrate();
     }
     String actual = SchemaSnapshot.of(db.dataSource()).render();
-    Path dump = Path.of("server/src/test/resources/schema", db.kind().folder() + ".txt");
+    Path dump =
+        Path.of(
+            "server/src/test/resources/schema",
+            SchemaMigrator.DatabaseKind.fromJdbcUrl(db.jdbcUrl()).folder() + ".txt");
 
     if ("true".equals(System.getenv(UPDATE_ENV))) {
       Files.createDirectories(dump.getParent());

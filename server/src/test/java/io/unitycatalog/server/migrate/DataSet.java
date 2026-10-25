@@ -1,4 +1,4 @@
-package io.unitycatalog.server.migrate.kit;
+package io.unitycatalog.server.migrate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -53,12 +53,12 @@ import java.util.Set;
  * column of every type, a volume, a function with one parameter of every type and return
  * parameters, a user, and a grant to that user on each. {@link #write} creates it through any
  * server's API; {@link #assertReadBack} checks it through another's, as whole objects. It writes
- * only fields {@link io.unitycatalog.server.migrate.SchemaMigrator#BASELINE_RELEASE} stores.
+ * only fields {@link SchemaMigrator#BASELINE_RELEASE} stores.
  *
  * <p>Each copy is named for the release that writes it ({@code v0.7.0} writes {@code v0_7_0}): its
  * catalog, its user's email and its storage directories, which are siblings of the other copies'.
  */
-public final class DataSet {
+final class DataSet {
 
   private static final String STORAGE = "file:///tmp/uc-storage/";
   private static final String COMMENT = "kept across upgrades";
@@ -92,7 +92,7 @@ public final class DataSet {
   private final String user;
 
   /** The copy {@code release} (a git ref) writes. */
-  public DataSet(String release) {
+  DataSet(String release) {
     copy = release.replaceAll("\\W", "_");
     catalog = "upgrade_catalog_" + copy;
     schema = catalog + ".upgrade_schema";
@@ -103,7 +103,7 @@ public final class DataSet {
     user = "upgrade-reader-" + copy + "@example.com";
   }
 
-  public void write(ApiClient api) {
+  void write(ApiClient api) {
     try {
       new CatalogsApi(api).createCatalog(as(api, catalog(), CreateCatalog.class));
       new SchemasApi(api).createSchema(as(api, schema(), CreateSchema.class));
@@ -151,7 +151,7 @@ public final class DataSet {
   }
 
   /** Checks the data {@link #write} wrote; failures name this copy. */
-  public void assertReadBack(ApiClient api) {
+  void assertReadBack(ApiClient api) {
     try {
       assertKept(new CatalogsApi(api).getCatalog(catalog), catalog(), "catalog");
       assertKept(new SchemasApi(api).getSchema(schema), schema(), "schema");

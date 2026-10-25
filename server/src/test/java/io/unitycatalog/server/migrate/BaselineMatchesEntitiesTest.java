@@ -2,7 +2,6 @@ package io.unitycatalog.server.migrate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.unitycatalog.server.migrate.kit.SchemaSnapshot;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.util.Properties;
@@ -18,7 +17,7 @@ public class BaselineMatchesEntitiesTest {
 
   @Test
   void stepsBuildTheEntitySchema() {
-    new SchemaMigrator(fromSteps.dataSource(), fromSteps.kind()).migrate();
+    new SchemaMigrator(fromSteps.dataSource()).migrate();
     Properties create = fromEntities.hibernateProperties();
     // "update", as the baseline release ran: unlike "create", it names the unique constraints.
     create.setProperty("hibernate.hbm2ddl.auto", "update");

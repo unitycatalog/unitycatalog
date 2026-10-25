@@ -1,4 +1,4 @@
-package io.unitycatalog.server.migrate.kit;
+package io.unitycatalog.server.migrate;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -20,7 +20,7 @@ import javax.sql.DataSource;
  * Names are lower-cased; CHECK clauses keep their case, since enum literals in them are
  * case-sensitive. Casbin's rule table and Unity Catalog's schema history table are left out.
  */
-public record SchemaSnapshot(List<String> entries) {
+record SchemaSnapshot(List<String> entries) {
 
   private static final Set<String> IGNORED_TABLES = Set.of("casbin_rule", "uc_schema_history");
 
@@ -43,7 +43,7 @@ public record SchemaSnapshot(List<String> entries) {
       where con.contype = 'c' and n.nspname = current_schema()
       """;
 
-  public static SchemaSnapshot of(DataSource dataSource) {
+  static SchemaSnapshot of(DataSource dataSource) {
     try (Connection connection = dataSource.getConnection()) {
       return read(connection);
     } catch (SQLException e) {
@@ -52,7 +52,7 @@ public record SchemaSnapshot(List<String> entries) {
   }
 
   /** One entry per line, in sorted order, ending with a newline: the recorded schema dumps. */
-  public String render() {
+  String render() {
     return entries.stream().map(entry -> entry + "\n").collect(Collectors.joining());
   }
 

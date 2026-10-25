@@ -71,13 +71,14 @@ public class HibernateConfigurator implements AutoCloseable {
   public HibernateConfigurator(Properties hibernateProperties) {
     requireSchemaFromConnection(hibernateProperties);
     this.hibernateProperties = hibernateProperties;
-    this.dataSource = new HikariDataSource(hikariConfig(hibernateProperties));
+    this.dataSource = createDataSource(hibernateProperties);
     try {
       this.sessionFactory = createSessionFactory(hibernateProperties, dataSource);
     } catch (Throwable t) {
       dataSource.close();
       throw t;
     }
+    warnIfMySqlIsCaseInsensitive(hibernateProperties);
   }
 
   /**
@@ -99,14 +100,12 @@ public class HibernateConfigurator implements AutoCloseable {
   /**
    * Storage paths and names are case-sensitive, but MySQL's default collation is not. Warns when
    * the database, or a table in it, compares text case-insensitively (a {@code _ci} collation).
-   * Flyway's history table is left out: it keeps the collation the database had when Flyway first
-   * ran, and holds no names or paths. The server calls it after the schema migration, which
-   * converts such a database.
+   *
+   * <p>TODO: decide whether a schema step should convert such a database to a case-sensitive
+   * collation instead of only warning.
    */
-  public void warnIfMySqlIsCaseInsensitive() {
-    if (!hibernateProperties
-        .getProperty("hibernate.connection.url", "")
-        .startsWith("jdbc:mysql:")) {
+  private void warnIfMySqlIsCaseInsensitive(Properties properties) {
+    if (!properties.getProperty("hibernate.connection.url", "").startsWith("jdbc:mysql:")) {
       return;
     }
     try (Connection connection = dataSource.getConnection();
@@ -115,8 +114,7 @@ public class HibernateConfigurator implements AutoCloseable {
             statement.executeQuery(
                 "SELECT @@collation_database UNION "
                     + "SELECT TABLE_COLLATION FROM information_schema.TABLES "
-                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_COLLATION IS NOT NULL "
-                    + "AND TABLE_NAME <> 'uc_schema_history'")) {
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_COLLATION IS NOT NULL")) {
       Set<String> caseInsensitive = new TreeSet<>();
       while (collations.next()) {
         if (collations.getString(1).endsWith("_ci")) {
@@ -134,6 +132,10 @@ public class HibernateConfigurator implements AutoCloseable {
     } catch (SQLException e) {
       LOGGER.debug("Could not check the MySQL collation", e);
     }
+  }
+
+  private static HikariDataSource createDataSource(Properties hibernateProperties) {
+    return new HikariDataSource(hikariConfig(hibernateProperties));
   }
 
   /** The connection pool settings of {@code hibernateProperties}. */

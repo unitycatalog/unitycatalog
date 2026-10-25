@@ -1,8 +1,8 @@
 name: Upgrade Tests
 
-# Databases written by older servers upgrade and keep their data: the release chain on every
-# test database (tests tagged "upgrades", which the unit tests leave out). Runs only when a
-# change touches the schema, its migration code or the upgrade test kit.
+# Each release since 0.7.0 writes data to one database, then this build upgrades it and reads the
+# data back (RealUpgradeTest, which runs only with UC_TEST_UPGRADES=true). Runs only for changes
+# to the schema steps, the migration code or its tests.
 on:
   pull_request:
     branches: [ "main", "branch-*" ]
@@ -22,96 +22,24 @@ permissions:
   contents: read
 
 jobs:
-  refs:
-    runs-on: ubuntu-latest
-    name: Pick the old servers
-    outputs:
-      release-chain: ${{ steps.refs.outputs.release-chain }}
-      refs: ${{ steps.refs.outputs.refs }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - name: Fetch the release tags
-        run: git fetch --tags --force origin
-      # The release chain is every release from SchemaMigrator.BASELINE_RELEASE up to, not
-      # including, this build's version; the upgrade tests compute the same chain themselves when
-      # UC_TEST_RELEASE_CHAIN is unset.
-      - name: Pick the release chain
-        id: refs
-        run: |
-          baseline=$(sed -n 's/.*BASELINE_RELEASE = "\(.*\)";/\1/p' server/src/main/java/io/unitycatalog/server/migrate/SchemaMigrator.java)
-          version=$(sed -n 's/.*"\(.*\)".*/\1/p' version.sbt)
-          version=${version%-SNAPSHOT}
-          chain=$(git tag --list | grep -xE 'v[0-9]+\.[0-9]+\.[0-9]+' | while read -r tag; do
-            if [ "$tag" != "v$version" ] && printf '%s\n' "v$baseline" "$tag" "v$version" | sort -CV; then
-              echo "$tag"
-            fi
-          done | sort -V | xargs)
-          refs=""
-          for tag in $chain; do
-            refs="$refs,{\"name\":\"$tag\",\"sha\":\"$(git rev-parse "$tag^{commit}")\"}"
-          done
-          echo "release-chain=$chain" >> "$GITHUB_OUTPUT"
-          echo "refs=[${refs#,}]" >> "$GITHUB_OUTPUT"
-
-  build-jars:
-    needs: refs
-    runs-on: ubuntu-latest
-    name: Build the server jar (${{ matrix.name }})
-    strategy:
-      matrix:
-        include: ${{ fromJSON(needs.refs.outputs.refs) }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          ref: ${{ matrix.sha }}
-      - name: Prepare the environment
-        uses: ./.github/actions/prepare-spark-env
-        with:
-          spark-version: "4.0.0"
-      - name: Build the server jar
-        run: |
-          build/sbt -J-Xmx2G serverShaded/assembly
-          mv server-shaded/target/unitycatalog-server-shaded-assembly-*.jar "${{ matrix.sha }}.jar"
-      - name: Upload the server jar
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: jar-${{ matrix.sha }}
-          path: ${{ matrix.sha }}.jar
-          retention-days: 1
-          if-no-files-found: error
-
   upgrade-tests:
-    needs: [refs, build-jars]
     runs-on: ubuntu-latest
     name: Upgrade tests (${{ matrix.test-database }})
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - test-database: "H2"
-            alias: "testUpgrades"
-          - test-database: "POSTGRES_18"
-            alias: "testUpgradesPostgres18"
-          - test-database: "MYSQL_8"
-            alias: "testUpgradesMySQL8"
+        test-database: [ "H2", "POSTGRES_18", "MYSQL_8" ]
     steps:
-      # The tests find each old server's jar by its commit: they resolve the release tags, so the
-      # tags must be in the clone.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      # The test builds each release's server jar from its tag.
       - name: Fetch the release tags
         run: git fetch --tags --force origin
       - name: Prepare the environment
         uses: ./.github/actions/prepare-spark-env
         with:
           spark-version: "4.0.0"
-      - name: Download the server jars
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          pattern: jar-*
-          merge-multiple: true
-          path: ${{ runner.temp }}/jars
       - name: Run upgrade tests
         env:
-          UC_TEST_JAR_DIR: ${{ runner.temp }}/jars
-          UC_TEST_RELEASE_CHAIN: ${{ needs.refs.outputs.release-chain }}
-        run: build/sbt -J-Xmx2G ${{ matrix.alias }}
+          UC_TEST_DATABASE: ${{ matrix.test-database }}
+          UC_TEST_UPGRADES: "true"
+        run: build/sbt -J-Xmx2G "server/testOnly io.unitycatalog.server.migrate.RealUpgradeTest"

@@ -2,7 +2,6 @@ package io.unitycatalog.server.migrate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -24,7 +23,7 @@ public class SampleDatabaseIsCurrentTest {
     dataSource.setURL("jdbc:h2:file:" + dir.resolve("h2db"));
     dataSource.setUser("");
 
-    try (SchemaMigrator migrator = new SchemaMigrator(dataSource, DatabaseKind.H2)) {
+    try (SchemaMigrator migrator = new SchemaMigrator(dataSource)) {
       SchemaState state = migrator.state();
       String version = migrator.currentVersion();
       assertThat(state)

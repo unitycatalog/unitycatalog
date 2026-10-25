@@ -8,8 +8,9 @@ Hibernate no longer changes the schema. If your `etc/conf/hibernate.properties` 
 `hibernate.hbm2ddl.auto=update`, the server ignores it and logs a warning. You can delete the line.
 
 Every server start brings the database to the schema version of its release before the server
-serves requests. It sets up an empty database, adopts a database without schema history (one from
-the baseline release) and applies the steps that are not applied yet. It refuses to start on a
+serves requests. It sets up an empty database (the first start of a new install), adopts a
+database without schema history (one from the baseline release) and applies the steps that are not
+applied yet. It refuses to start on a
 database it cannot upgrade and tells you what to do (see [Messages](#messages)).
 
 ## The baseline release
@@ -25,7 +26,6 @@ later release migrates older schemas too.
 | ------- | ------ |
 | 1 | The schema of the baseline release. A database without schema history from that release already has it. |
 | 2 | Widens `uc_function_params.type_json`, so function parameter types can be longer. |
-| 3 | MySQL only: makes text comparisons case-sensitive (see [MySQL](#mysql-case-sensitive-text)). Changes nothing on PostgreSQL and H2. |
 
 ## Upgrading to a new release
 
@@ -42,25 +42,15 @@ Use these steps for every database (H2, PostgreSQL, MySQL).
     The server applies the pending steps, logs what it applied, then starts:
 
     ```text
-    Upgraded the database schema from version 1 to 3 (2 steps)
+    Upgraded the database schema from version 1 to 2 (1 step(s))
     ```
 
 On PostgreSQL and MySQL, when several servers start at the same time, one applies the steps and
 the others wait for it, then start.
 
-## First start on an empty database
-
-A server that starts on an empty database sets up the schema itself, the same way.
-
-## MySQL: case-sensitive text
-
-Starting with this release, text comparisons in MySQL are case-sensitive, like PostgreSQL and H2.
-MySQL databases created with the default collation ignored case, so names and storage paths that
-differed only in case counted as the same value. After step 3, they are distinct values.
-
-The step converts the database and each Unity Catalog table to the `utf8mb4_0900_bin` collation.
-MySQL rebuilds each table, and writes to a table are blocked while it is rebuilt. The time it takes
-grows with the size of your tables, and the server starts serving requests after it ends.
+The server opens its API port only after the steps finish, so a long step on a large table can
+outlast a startup or liveness probe. During an upgrade, lengthen or turn off those probes, or
+start one server first.
 
 ## Going back to the baseline release
 
@@ -79,6 +69,11 @@ Messages that the server prints when it refuses to start, and what to do.
 : The database has no schema history and lacks tables of the baseline release. Follow
   [The baseline release](#the-baseline-release).
 
+`hibernate.hbm2ddl.auto=<value> is not supported: the schema steps manage the schema. Set it to none.`
+: A server embedded in an application was given Hibernate settings that let Hibernate change the
+  schema. Set `hibernate.hbm2ddl.auto=none`; the server's own `etc/conf/hibernate.properties` is
+  always read with `none`.
+
 `The schema is newer than this release (version <n>, this release ends at <m>). Run the newer release.`
 : The database was upgraded by a newer release than the one you ran. Run the newer release again.
   To go back to an older release, restore a backup taken before the upgrade.
@@ -87,31 +82,31 @@ Messages that the server prints when it refuses to start, and what to do.
 : `hibernate.connection.url` points at a database that other applications use. Check the URL, or
   use an empty database for Unity Catalog.
 
-`A migration step failed in an earlier run: version <n> (<description>). See docs/server/upgrades.md.`
-: Step `<n>` failed and its failure is recorded in the history. Read the error that the failing
-  start printed and fix its cause (for example a full disk or missing privileges for the database
-  user). Then restore the backup you took before the upgrade and start the server again. Do not edit
-  `uc_schema_history` by hand.
+`Validate failed: Migrations have failed validation. Detected failed migration to version <n> (<description>).`
+: On H2 and MySQL, step `<n>` failed and its failure is recorded in the history (PostgreSQL rolls a
+  failed step back and records nothing). Flyway's advice to run `repair` does not apply: Unity
+  Catalog has no repair command. Read the error that the failing start printed and fix its cause
+  (for example a full disk or missing privileges for the database user). Then restore the backup you
+  took before the upgrade and start the server again. Do not edit `uc_schema_history` by hand.
 
 `Could not take the schema migration lock: <reason>`
-: The server could not get the lock that keeps two migration runs apart. Check that the database
-  is reachable and that its user can run the lock call (`pg_advisory_lock` on PostgreSQL,
-  `GET_LOCK` on MySQL).
+: The server could not get the lock that keeps two migration runs apart, so it changed nothing.
+  Check that the database is reachable and that its user can run the lock call
+  (`pg_advisory_lock` on PostgreSQL, `GET_LOCK` on MySQL), then start the server again. On MySQL,
+  `the lock call returned NULL` means the call failed or was interrupted, for example by
+  `KILL QUERY`.
 
-`MySQL did not grant the schema migration lock`
-: MySQL refused the lock. Check the database and start the server again.
+`Could not release the schema migration lock: <reason>. The database releases it when the connection closes; start the server again.`
+: Releasing the lock failed at the end of the run. The server closed the lock's database
+  connection, which releases the lock. Start the server again.
 
-`Could not release the schema migration lock: <reason>`
-: The migration finished, but the lock call failed at the end. The database releases the lock when
-  that connection closes, at the latest when the process exits. Start the server again.
+`Unsupported database jdbc:<name>: use jdbc:h2:, jdbc:postgresql: or jdbc:mysql:`
+: `hibernate.connection.url` points at a database that Unity Catalog does not support. Use H2,
+  PostgreSQL or MySQL.
 
-`Could not list the database's tables: <reason>`
+`Could not connect to the database: <reason>` or `Could not list the database's tables: <reason>`
 : The server could not read the database. Check the connection settings and the user's
   privileges.
-
-`The schema migration needs 3 database connections (its lock plus 2 for Flyway), but the pool allows <n>. Set hibernate.hikari.maximumPoolSize to 3 or more.`
-: PostgreSQL and MySQL only. Raise `hibernate.hikari.maximumPoolSize` in
-  `etc/conf/hibernate.properties`.
 
 `hibernate.default_schema is not supported: the schema migration uses the connection's schema. Remove it and set the schema in the JDBC URL instead (PostgreSQL: currentSchema=...).`
 : The same holds for `hibernate.default_catalog`. Put the schema in `hibernate.connection.url`, for
