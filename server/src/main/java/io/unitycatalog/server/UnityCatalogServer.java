@@ -60,6 +60,7 @@ import io.vertx.core.Vertx;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Properties;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
@@ -124,10 +125,19 @@ public class UnityCatalogServer implements AutoCloseable {
     this.blockingThreads = hibernateConfigurator.getDataSource().getMaximumPoolSize();
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
+      Properties hibernateProperties = hibernateConfigurator.getHibernateProperties();
+      // The schema steps own the schema; an injected configurator may still let Hibernate change
+      // it.
+      String schemaUpdates = hibernateProperties.getProperty("hibernate.hbm2ddl.auto", "none");
+      if (!"none".equals(schemaUpdates)) {
+        throw new IllegalStateException(
+            "hibernate.hbm2ddl.auto="
+                + schemaUpdates
+                + " is not supported: the schema steps manage the schema. Set it to none.");
+      }
       // Upgrades the database to this release's schema, or refuses one it cannot upgrade. The
       // migration uses its own small pool, so the server's pool size does not limit it.
-      try (SchemaMigrator migrator =
-          SchemaMigrator.fromHibernateProperties(hibernateConfigurator.getHibernateProperties())) {
+      try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(hibernateProperties)) {
         migrator.migrate();
       }
       createdBlockingTaskExecutor =

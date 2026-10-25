@@ -32,6 +32,11 @@ final class TestServer implements AutoCloseable {
 
   /** Starts the server on {@code db}, with its table storage under {@code storageRoot}. */
   static TestServer start(TestDatabase db, Path storageRoot) {
+    return start(db, db.hibernateProperties(), storageRoot);
+  }
+
+  /** The same, with the given Hibernate properties for {@code db}. */
+  static TestServer start(TestDatabase db, Properties hibernateProperties, Path storageRoot) {
     try {
       int port;
       try (ServerSocket socket = new ServerSocket(0)) {
@@ -46,7 +51,7 @@ final class TestServer implements AutoCloseable {
           UnityCatalogServer.builder()
               .port(port)
               .serverProperties(new ServerProperties(properties))
-              .hibernateConfigurator(db.openHibernateConfigurator(db.hibernateProperties()))
+              .hibernateConfigurator(db.openHibernateConfigurator(hibernateProperties))
               .build();
       try {
         server.start();

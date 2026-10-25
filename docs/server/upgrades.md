@@ -69,6 +69,11 @@ Messages that the server prints when it refuses to start, and what to do.
 : The database has no schema history and lacks tables of the baseline release. Follow
   [The baseline release](#the-baseline-release).
 
+`hibernate.hbm2ddl.auto=<value> is not supported: the schema steps manage the schema. Set it to none.`
+: A server embedded in an application was given Hibernate settings that let Hibernate change the
+  schema. Set `hibernate.hbm2ddl.auto=none`; the server's own `etc/conf/hibernate.properties` is
+  always read with `none`.
+
 `The schema is newer than this release (version <n>, this release ends at <m>). Run the newer release.`
 : The database was upgraded by a newer release than the one you ran. Run the newer release again.
   To go back to an older release, restore a backup taken before the upgrade.
@@ -102,3 +107,7 @@ Messages that the server prints when it refuses to start, and what to do.
 `Could not connect to the database: <reason>` or `Could not list the database's tables: <reason>`
 : The server could not read the database. Check the connection settings and the user's
   privileges.
+
+`hibernate.default_schema is not supported: the schema migration uses the connection's schema. Remove it and set the schema in the JDBC URL instead (PostgreSQL: currentSchema=...).`
+: The same holds for `hibernate.default_catalog`. Put the schema in `hibernate.connection.url`, for
+  example `jdbc:postgresql://localhost:5432/ucdb?currentSchema=uc`.

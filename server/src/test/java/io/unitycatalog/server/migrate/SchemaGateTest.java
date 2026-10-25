@@ -8,6 +8,7 @@ import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Properties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -36,6 +37,15 @@ public class SchemaGateTest {
       assertThat(SchemaSnapshot.of(db.dataSource()))
           .isEqualTo(UpgradeTestUtils.freshInstallSnapshot());
     }
+  }
+
+  @Test
+  void refusesAConfiguratorThatLetsHibernateChangeTheSchema() {
+    Properties update = db.hibernateProperties();
+    update.setProperty("hibernate.hbm2ddl.auto", "update");
+
+    assertThatThrownBy(() -> TestServer.start(db, update, storageRoot))
+        .hasMessageContaining("hibernate.hbm2ddl.auto=update is not supported");
   }
 
   @Test
