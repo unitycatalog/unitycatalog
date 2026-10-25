@@ -122,7 +122,8 @@ in this order:
 
 1. With PostgreSQL or MySQL, a `pre-upgrade` hook Job runs the new release's `bin/start-uc-server --check-schema`,
    which changes nothing. If the new release would refuse the upgrade, the Job fails and so does `helm upgrade`,
-   before it changes any resource; the old servers keep serving.
+   before it changes any resource; the old servers keep serving. The Job's pod gets the server pod's extra init
+   containers, volumes and labels (`server.deployment.extra*`), but not its extra containers.
 2. The chart stops all old servers, then starts the new ones (update strategy `Recreate`), because old and new
    servers must not run at once while the schema changes. The API is down until a new server is ready.
 3. The first new server applies the pending schema steps, then serves. Other replicas wait for it.

@@ -1216,7 +1216,10 @@ true
 A `pre-upgrade` hook Job runs the new server image's `bin/start-uc-server --check-schema`, which changes
 nothing. If the new release would refuse to upgrade the database schema, the Job fails, `helm upgrade` stops
 before it changes the release, and the Job's log says why, for example the rows that block the upgrade.
-A failed Job is kept until the next upgrade.
+A failed Job is kept until the next upgrade. Its pod is set up like the server's: the init containers
+(including `deployment.extraInitContainers`), volumes and mounts (including `deployment.extraVolumes` and
+`deployment.extraVolumeMounts`) and `deployment.extraPodLabels`, but not `deployment.extraContainers`, which
+would keep it from completing.
 </td>
 		</tr>
 		<tr>

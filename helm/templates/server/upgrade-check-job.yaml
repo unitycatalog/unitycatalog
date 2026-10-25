@@ -5,7 +5,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ printf "%s-config-templates" $name | quote }}
-  labels: {{- include "unitycatalog.commonLabels" . | nindent 4 }}
+  labels: {{- include "unitycatalog.server.upgradeCheckLabels" . | nindent 4 }}
   annotations:
     helm.sh/hook: pre-upgrade
     helm.sh/hook-weight: "-1"
@@ -19,7 +19,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ $name | quote }}
-  labels: {{- include "unitycatalog.commonLabels" . | nindent 4 }}
+  labels: {{- include "unitycatalog.server.upgradeCheckLabels" . | nindent 4 }}
   annotations:
     helm.sh/hook: pre-upgrade
     helm.sh/hook-weight: "0"
@@ -28,7 +28,11 @@ spec:
   backoffLimit: 0
   template:
     metadata:
-      labels: {{- include "unitycatalog.commonLabels" . | nindent 8 }}
+      labels:
+        {{- include "unitycatalog.server.upgradeCheckLabels" . | nindent 8 }}
+        {{- with .Values.server.deployment.extraPodLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       restartPolicy: Never
       {{- with .Values.server.deployment.imagePullSecrets }}
@@ -40,6 +44,10 @@ spec:
       {{- end }}
       initContainers:
         {{- include "unitycatalog.server.initContainer" . | nindent 8 }}
+      {{- with .Values.server.deployment.extraInitContainers }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # Not extraContainers: a sidecar would keep the Job from completing.
       containers:
         - name: upgrade-check
           {{- with .Values.server.deployment.securityContext }}
@@ -67,6 +75,9 @@ spec:
               subPath: jsonKey
               readOnly: true
           {{- end }}
+          {{- with .Values.server.deployment.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
       volumes:
         - name: config-templates
           configMap:
@@ -84,6 +95,9 @@ spec:
         - name: gcs-credentials-{{ $index }}
           secret:
             secretName: {{ $config.credentialsSecretName | quote }}
+      {{- end }}
+      {{- with .Values.server.deployment.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.server.deployment.nodeSelector }}
       nodeSelector: {{- toYaml . | nindent 8 }}

@@ -75,6 +75,16 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- end }}
 
 {{/*
+Labels of the pre-upgrade check: like the server's, with another component, so the server Service does not select it
+*/}}
+{{- define "unitycatalog.server.upgradeCheckLabels" -}}
+{{ include "unitycatalog.commonLabels" . }}
+app.kubernetes.io/name: "unitycatalog"
+app.kubernetes.io/component: "upgrade-check"
+app.kubernetes.io/instance: {{ .Release.Name | quote }}
+{{- end }}
+
+{{/*
 Server full name
 */}}
 {{- define "unitycatalog.server.fullname" -}}
