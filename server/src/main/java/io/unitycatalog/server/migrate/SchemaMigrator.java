@@ -40,6 +40,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.CoreMigrationType;
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationInfoService;
 import org.flywaydb.core.api.MigrationVersion;
@@ -58,6 +59,9 @@ import org.slf4j.LoggerFactory;
  * C<version>__<description>.sql} in {@code db/migration/checks/<database>}, one query that returns
  * the rows breaking it. Before any step runs, the checks of the pending steps run, and the upgrade
  * is refused while one returns rows.
+ *
+ * <p>A SQL step whose change is already in the database (a run stopped before Flyway recorded it,
+ * or someone applied it by hand) is recorded without running it.
  */
 public final class SchemaMigrator implements AutoCloseable {
 
@@ -66,7 +70,8 @@ public final class SchemaMigrator implements AutoCloseable {
    *
    * @param from the schema version before the run, {@code null} for an empty database
    * @param to the schema version after the run
-   * @param applied the number of steps the run applied
+   * @param applied the number of steps the run applied, counting those it found already in the
+   *     database and recorded without running
    */
   public record MigrationOutcome(String from, String to, int applied) {}
 
@@ -198,6 +203,10 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   private Flyway flyway(String baselineVersion) { // null: no baselining
+    return configuration(baselineVersion).load();
+  }
+
+  private FluentConfiguration configuration(String baselineVersion) {
     FluentConfiguration configuration =
         Flyway.configure()
             .dataSource(dataSource)
@@ -213,7 +222,7 @@ public final class SchemaMigrator implements AutoCloseable {
           .baselineDescription(
               "0".equals(baselineVersion) ? "empty" : "baseline " + BASELINE_RELEASE);
     }
-    return configuration.load();
+    return configuration;
   }
 
   /**
@@ -318,13 +327,7 @@ public final class SchemaMigrator implements AutoCloseable {
               + ".");
       String refusal = refusal(state);
       if (refusal == null) {
-        List<MigrationInfo> pending =
-            Arrays.stream(flyway(null).info().pending())
-                .filter(
-                    m ->
-                        from == null
-                            || m.getVersion().compareTo(MigrationVersion.fromVersion(from)) > 0)
-                .toList();
+        List<MigrationInfo> pending = pendingSteps(from);
         out.println(pending.isEmpty() ? "Pending steps: none." : "Pending steps:");
         pending.forEach(m -> out.println("  " + version(m) + " " + m.getDescription()));
         refusal = failedChecks(from);
@@ -349,8 +352,69 @@ public final class SchemaMigrator implements AutoCloseable {
         state == SchemaState.EMPTY
             ? "0"
             : state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : null;
-    int applied = flyway(baseline).migrate().migrationsExecuted;
+    int applied = 0;
+    for (MigrationInfo step : pendingSteps(from)) {
+      boolean alreadyThere = isAlreadyThere(step);
+      if (alreadyThere) {
+        LOGGER.info(
+            "Step {} ({}) is already in the database; recorded it without running it.",
+            version(step),
+            step.getDescription());
+      }
+      applied +=
+          configuration(baseline)
+              .target(step.getVersion())
+              .skipExecutingMigrations(alreadyThere)
+              .load()
+              .migrate()
+              .migrationsExecuted;
+    }
     return new MigrationOutcome(from, currentVersion(), applied);
+  }
+
+  /** The steps above version {@code from} ({@code null}: every step), in order. */
+  private List<MigrationInfo> pendingSteps(String from) {
+    return Arrays.stream(flyway(null).info().pending())
+        .filter(
+            m -> from == null || m.getVersion().compareTo(MigrationVersion.fromVersion(from)) > 0)
+        .toList();
+  }
+
+  /**
+   * Whether the change of a SQL step is already in the database, so that running it would fail: a
+   * run stopped between the step and its history row, or someone applied it by hand. Recognises a
+   * step by its one statement; any other step runs.
+   */
+  private boolean isAlreadyThere(MigrationInfo step) {
+    if (step.getType() != CoreMigrationType.SQL) {
+      return false;
+    }
+    String statement = stepStatement(step);
+    if (statement.contains(";")) { // more than one statement, such as the baseline step
+      return false;
+    }
+    Matcher createTable = CREATE_TABLE.matcher(statement);
+    if (createTable.lookingAt()) {
+      return tableNamesLowerCase().contains(createTable.group(1).toLowerCase(Locale.ROOT));
+    }
+    return false;
+  }
+
+  /** A SQL step's statements without comments or the last semicolon. */
+  private String stepStatement(MigrationInfo step) {
+    for (String location : locations) {
+      if (location.startsWith("classpath:") && !location.equals(JAVA_STEPS)) {
+        String folder = location.substring("classpath:".length()).replaceAll("/+$", "");
+        InputStream in =
+            SchemaMigrator.class
+                .getClassLoader()
+                .getResourceAsStream(folder + "/" + step.getScript());
+        if (in != null) {
+          return read(in).replaceAll("--[^\n]*", "").strip().replaceAll(";$", "");
+        }
+      }
+    }
+    throw new IllegalStateException("Could not find the step " + step.getScript());
   }
 
   /**
@@ -553,7 +617,12 @@ public final class SchemaMigrator implements AutoCloseable {
 
   private String baselineStep() {
     String path = "db/migration/" + kind.folder() + "/" + BASELINE_STEP;
-    try (InputStream in = SchemaMigrator.class.getClassLoader().getResourceAsStream(path)) {
+    return read(SchemaMigrator.class.getClassLoader().getResourceAsStream(path));
+  }
+
+  /** Reads and closes {@code in}. */
+  private static String read(InputStream in) {
+    try (in) {
       return new String(in.readAllBytes(), StandardCharsets.UTF_8);
     } catch (IOException e) {
       throw new UncheckedIOException(e);
