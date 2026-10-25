@@ -52,6 +52,56 @@ Use these steps for every database (H2, PostgreSQL, MySQL).
 On PostgreSQL and MySQL, when several servers start at the same time, one applies the steps and
 the others wait for it, then start.
 
+## Locks held by other sessions
+
+Each statement of the upgrade waits at most 60 seconds for a lock that another session holds, for
+example a client's open transaction on a table that the step changes. Then the step fails and the
+server refuses to start (see [Messages](#messages)). Stop the other sessions on the database and
+start the server again: it runs the step again.
+
+## A step that failed
+
+When a step fails, the next start picks up from it:
+
+- PostgreSQL keeps no record of the failed step, and the next start runs it again. A failed schema
+  change was rolled back; a step that changes rows in batches keeps the batches it committed and
+  goes on from there.
+- H2 and MySQL can't roll a schema change back, so the history records the step as failed. The
+  next start checks what the step left. A step that adds or changes one thing (a table, column,
+  index, constraint or column type) is recorded without running when its change is there, and runs
+  when it is absent. A step that changes rows runs again and changes only the rows it has not
+  changed yet. The server logs `Step <n> (<description>) failed in an earlier run; running it
+  again.`
+
+For any other failed step, for example one that makes several changes and stopped between them,
+the server can't tell what is in the database and refuses to start. Read the error that the
+failing start printed and fix its cause (for example a full disk or missing privileges for the
+database user). Then either restore the backup you took before the upgrade, or undo the step's
+change by hand and remove its failed record:
+
+```sql
+-- PostgreSQL and MySQL
+DELETE FROM uc_schema_history WHERE success = false;
+-- H2
+DELETE FROM "uc_schema_history" WHERE "success" = FALSE;
+```
+
+Then start the server again: it runs the step.
+
+## Stopping a server during the upgrade
+
+`bin/start-uc-server` runs the server in its own process, so the server gets the SIGTERM that
+`docker stop`, Kubernetes or `kill` sends. A server that gets SIGTERM during the upgrade stops at
+the next safe point: before its next step, or after the current batch of a step that changes rows
+in batches. A statement that is running finishes first; the server waits for it up to 60 seconds
+(Kubernetes stops waiting after the pod's grace period, 30 seconds by default), and after that the
+database finishes or rolls back the statement on its own. The server prints `Stopped the schema
+migration at <point> on SIGTERM; start the server again to finish it.` and exits with a non-zero
+code. The next start finishes the upgrade.
+
+On H2, the database closes as the process stops, so the running step fails instead of stopping;
+the next start handles it as [a step that failed](#a-step-that-failed).
+
 ## Rows that block an upgrade
 
 A step can add a rule that existing rows break, for example that names are unique. Such a step
@@ -113,11 +163,13 @@ Messages that the server prints when it refuses to start, and what to do.
 : `hibernate.connection.url` points at a database that other applications use. Check the URL, or
   use an empty database for Unity Catalog.
 
-`A migration step failed in an earlier run: version <n> (<description>). See docs/server/upgrades.md.`
-: Step `<n>` failed and its failure is recorded in the history. Read the error that the failing
-  start printed and fix its cause (for example a full disk or missing privileges for the database
-  user). Then restore the backup you took before the upgrade and start the server again. Do not edit
-  `uc_schema_history` by hand.
+`Step <n> (<description>) failed in an earlier run, and the server can't tell how much of its change is in the database. Restore the backup you took before the upgrade, or undo the step's change by hand and remove its failed record as docs/server/upgrades.md shows (section "A step that failed"); then start the server again.`
+: Step `<n>` failed in an earlier start, and it is not a step that the server can check and run
+  again. See [A step that failed](#a-step-that-failed).
+
+`Step <n> (<description>) waited more than 60 seconds for a lock on <table>; another session holds it. Stop the other sessions on the database, then start the server again.`
+: See [Locks held by other sessions](#locks-held-by-other-sessions). The message names the table
+  when the step's statement names one.
 
 `The upgrade is stopped before any change: <n> check found rows that break a rule of this release.`
 : The message lists the rows. See [Rows that block an upgrade](#rows-that-block-an-upgrade).

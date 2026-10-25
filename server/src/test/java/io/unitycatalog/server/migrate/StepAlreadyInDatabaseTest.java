@@ -141,11 +141,11 @@ public class StepAlreadyInDatabaseTest {
 
     assertThatThrownBy(migrator::migrate)
         .hasMessage(
-            "Step 4100 (add two test repeat item columns) failed in an earlier run, and its change"
-                + " may be partly in the database. Change the database by hand so that the step's"
-                + " change is either fully there or not there at all, or restore the backup you"
-                + " took before the upgrade; then start the server again. See"
-                + " docs/server/upgrades.md.");
+            "Step 4100 (add two test repeat item columns) failed in an earlier run, and the server"
+                + " can't tell how much of its change is in the database. Restore the backup you"
+                + " took before the upgrade, or undo the step's change by hand and remove its"
+                + " failed record as docs/server/upgrades.md shows (section \"A step that"
+                + " failed\"); then start the server again.");
     assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(before);
     assertThat(migrator.state()).isEqualTo(SchemaState.FAILED);
   }

@@ -855,11 +855,11 @@ public final class SchemaMigrator implements AutoCloseable {
                           + version(m)
                           + " ("
                           + m.getDescription()
-                          + ") failed in an earlier run, and its change may be partly in the"
-                          + " database. Change the database by hand so that the step's change is"
-                          + " either fully there or not there at all, or restore the backup you"
-                          + " took before the upgrade; then start the server again. See"
-                          + " docs/server/upgrades.md.")
+                          + ") failed in an earlier run, and the server can't tell how much of"
+                          + " its change is in the database. Restore the backup you took before"
+                          + " the upgrade, or undo the step's change by hand and remove its"
+                          + " failed record as docs/server/upgrades.md shows (section \"A step"
+                          + " that failed\"); then start the server again.")
               .orElse(null);
       case UNVERSIONED_UC -> missingBaselineTables();
       default -> null;
