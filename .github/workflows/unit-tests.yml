@@ -111,7 +111,8 @@ jobs:
           test-database: ${{ matrix.test-database || 'H2' }}
           use-spark-source-cache: ${{ matrix.spark-source-build }}
 
-  # Databases already ran the merged schema steps, so a pull request may only add steps.
+  # Databases already ran the merged schema steps, so a pull request may only add steps, numbered
+  # above the base's, and none on a release branch.
   migration-steps:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -122,4 +123,7 @@ jobs:
           # HEAD^1, the first parent of the merge commit, is the code this change starts from.
           fetch-depth: 2
       - name: Check merged migration steps
-        run: dev/check-migration-steps.sh "$(git rev-parse HEAD^1)"
+        env:
+          # The base branch name tells the script whether the pull request targets a release branch.
+          BASE_BRANCH: ${{ github.base_ref }}
+        run: dev/check-migration-steps.sh "$(git rev-parse HEAD^1)" "$BASE_BRANCH"

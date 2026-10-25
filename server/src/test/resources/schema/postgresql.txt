@@ -1,3 +1,17 @@
+check uc_credentials (((credential_type)::text = 'AWS_IAM_ROLE'::text))
+check uc_credentials (((purpose >= 0) AND (purpose <= 0)))
+check uc_dependencies (((dependency_type)::text = ANY ((ARRAY['TABLE'::character varying, 'FUNCTION'::character varying])::text[])))
+check uc_dependencies (((dependent_type)::text = 'TABLE'::text))
+check uc_function_params (((input_or_return >= 0) AND (input_or_return <= 1)))
+check uc_function_params (((parameter_mode >= 0) AND (parameter_mode <= 0)))
+check uc_function_params (((parameter_type >= 0) AND (parameter_type <= 1)))
+check uc_function_params (((type_name >= 0) AND (type_name <= 21)))
+check uc_functions (((data_type >= 0) AND (data_type <= 21)))
+check uc_functions (((parameter_style >= 0) AND (parameter_style <= 0)))
+check uc_functions (((routine_body >= 0) AND (routine_body <= 1)))
+check uc_functions (((security_type >= 0) AND (security_type <= 0)))
+check uc_functions (((sql_data_access >= 0) AND (sql_data_access <= 2)))
+check uc_storage_cleanup_tasks (((resource_type)::text = ANY ((ARRAY['TABLE'::character varying, 'VOLUME'::character varying, 'REGISTERED_MODEL'::character varying, 'MODEL_VERSION'::character varying, 'STAGING_TABLE'::character varying])::text[])))
 column uc_catalogs.comment type=varchar size=255 nullable=YES default=null
 column uc_catalogs.created_at type=timestamp size=29 nullable=YES default=null
 column uc_catalogs.created_by type=varchar size=255 nullable=YES default=null

@@ -1,3 +1,13 @@
+check uc_credentials (`purpose` between 0 and 0)
+check uc_function_params (`input_or_return` between 0 and 1)
+check uc_function_params (`parameter_mode` between 0 and 0)
+check uc_function_params (`parameter_type` between 0 and 1)
+check uc_function_params (`type_name` between 0 and 21)
+check uc_functions (`data_type` between 0 and 21)
+check uc_functions (`parameter_style` between 0 and 0)
+check uc_functions (`routine_body` between 0 and 1)
+check uc_functions (`security_type` between 0 and 0)
+check uc_functions (`sql_data_access` between 0 and 2)
 column uc_catalogs.comment type=varchar size=255 nullable=YES default=null
 column uc_catalogs.created_at type=datetime size=26 nullable=YES default=null
 column uc_catalogs.created_by type=varchar size=255 nullable=YES default=null

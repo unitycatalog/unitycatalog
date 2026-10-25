@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 /**
  * The schema the steps build matches the dump recorded for the selected database, so a change to
  * the steps shows up in the pull request as a change to the dump. The dump covers tables, columns,
- * keys, indexes and foreign keys; CHECK constraints and MySQL collations are not in it.
+ * keys, indexes, foreign keys and CHECK constraints; MySQL collations are not in it.
  */
 public class SchemaDumpTest {
 

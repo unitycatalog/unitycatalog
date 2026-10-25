@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -14,12 +15,33 @@ import javax.sql.DataSource;
 /**
  * A database's schema read through {@link DatabaseMetaData}, as sorted records that compare with
  * {@code equals}: tables, columns (type, size, nullability, default), primary keys, unique and
- * plain indexes, and foreign keys. Names are lower-cased. Casbin's rule table and Flyway's history
- * table are left out.
+ * plain indexes, foreign keys, and CHECK constraints (read from the database's catalog tables, by
+ * clause: their generated names differ between a schema the steps built and one Hibernate built).
+ * Names are lower-cased; CHECK clauses keep their case, since enum literals in them are
+ * case-sensitive. Casbin's rule table and Unity Catalog's schema history table are left out.
  */
 public record SchemaSnapshot(List<String> entries) {
 
   private static final Set<String> IGNORED_TABLES = Set.of("casbin_rule", "uc_schema_history");
+
+  /** H2 and MySQL list CHECK constraints in the standard information schema. */
+  private static final String STANDARD_CHECKS =
+      """
+      select tc.table_name, cc.check_clause
+      from information_schema.table_constraints tc
+      join information_schema.check_constraints cc
+        on cc.constraint_schema = tc.constraint_schema and cc.constraint_name = tc.constraint_name
+      where tc.constraint_type = 'CHECK' and tc.table_schema = %s
+      """;
+
+  private static final String POSTGRES_CHECKS =
+      """
+      select c.relname, pg_get_constraintdef(con.oid)
+      from pg_constraint con
+      join pg_class c on c.oid = con.conrelid
+      join pg_namespace n on n.oid = c.relnamespace
+      where con.contype = 'c' and n.nspname = current_schema()
+      """;
 
   public static SchemaSnapshot of(DataSource dataSource) {
     try (Connection connection = dataSource.getConnection()) {
@@ -92,7 +114,31 @@ public record SchemaSnapshot(List<String> entries) {
         }
       }
     }
+    entries.addAll(checks(connection));
     return new SchemaSnapshot(entries.stream().sorted().toList());
+  }
+
+  private static List<String> checks(Connection connection) throws SQLException {
+    String query =
+        switch (connection.getMetaData().getDatabaseProductName()) {
+          case "H2" -> STANDARD_CHECKS.formatted("current_schema");
+          case "MySQL" -> STANDARD_CHECKS.formatted("database()");
+          case "PostgreSQL" -> POSTGRES_CHECKS;
+          default -> throw new IllegalStateException("No CHECK constraint query for this database");
+        };
+    List<String> checks = new ArrayList<>();
+    try (Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery(query)) {
+      while (rs.next()) {
+        String table = lower(rs.getString(1));
+        if (!IGNORED_TABLES.contains(table)) {
+          // PostgreSQL's definition starts with "CHECK"; the others give the bare clause.
+          String clause = rs.getString(2).replaceAll("\\s+", " ").trim();
+          checks.add("check %s %s".formatted(table, clause.replaceFirst("^(?i)check ", "")));
+        }
+      }
+    }
+    return checks;
   }
 
   private static List<String> tables(DatabaseMetaData metaData, String catalog, String schema)

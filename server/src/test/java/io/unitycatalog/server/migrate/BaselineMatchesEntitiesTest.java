@@ -25,7 +25,8 @@ public class BaselineMatchesEntitiesTest {
     // MySQL rejects one index of the entities (key too long); the baseline schema never had it.
     create.setProperty("hibernate.hbm2ddl.halt_on_error", "false");
     fromEntities.openHibernateConfigurator(create); // the entities build the second
-    assertThat(SchemaSnapshot.of(fromSteps.dataSource()))
-        .isEqualTo(SchemaSnapshot.of(fromEntities.dataSource()));
+    // On a mismatch, AssertJ lists just the differing entries.
+    assertThat(SchemaSnapshot.of(fromSteps.dataSource()).entries())
+        .containsExactlyElementsOf(SchemaSnapshot.of(fromEntities.dataSource()).entries());
   }
 }
