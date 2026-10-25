@@ -1177,6 +1177,21 @@ info
 			<td>Service type for the server</td>
 		</tr>
 		<tr>
+			<td>server.upgradeCheck.enabled</td>
+			<td>bool</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+			<td>Check the database before `helm upgrade` stops the old servers (PostgreSQL and MySQL)
+
+A `pre-upgrade` hook Job runs the new server image's `bin/start-uc-server --check-schema`, which changes
+nothing. If the new release would refuse to upgrade the database schema, the Job fails, `helm upgrade` stops
+before it changes the release, and the Job's log says why, for example the rows that block the upgrade.
+A failed Job is kept until the next upgrade.
+</td>
+		</tr>
+		<tr>
 			<td>serviceAccount.annotations</td>
 			<td>object</td>
 			<td><pre lang="">

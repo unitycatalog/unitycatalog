@@ -127,3 +127,19 @@ rootLogger.level={{ .Values.server.logLevel }}
 rootLogger.appenderRefs=console
 rootLogger.appenderRef.console.ref=Console
 {{- end }}
+
+{{/*
+The server's configuration templates, which its init container renders. The pre-upgrade check Job reads them too.
+*/}}
+{{- define "unitycatalog.server.configTemplatesData" -}}
+server.log4j2.properties.template: |-
+  {{- include "unitycatalog.server.log4j2ConfigTemplate" . | nindent 2 }}
+server.properties.template: |-
+  {{- include "unitycatalog.server.configTemplate" . | nindent 2 }}
+hibernate.properties.template: |-
+  {{- include "unitycatalog.server.hibernateConfigTemplate" . | nindent 2 }}
+{{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.ssl.rootCert }}
+dbcaroot.crt: |
+  {{- .Values.server.db.postgresqlConfig.ssl.rootCert | nindent 2 }}
+{{- end }}
+{{- end }}

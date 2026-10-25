@@ -1,0 +1,97 @@
+{{- if and .Values.server.enabled .Values.server.upgradeCheck.enabled (has .Values.server.db.type (list "postgresql" "mysql")) -}}
+{{- $name := printf "%s-upgrade-check" (include "unitycatalog.server.fullname" .) }}
+# Hooks run before Helm updates the release's ConfigMap, so the Job gets the new configuration from its own copy.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-config-templates" $name | quote }}
+  labels: {{- include "unitycatalog.commonLabels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "-1"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+data:
+  {{- include "unitycatalog.server.configTemplatesData" . | nindent 2 }}
+---
+# Runs the new release's schema checks against the database before the old servers stop. A failed Job fails
+# helm upgrade and is kept for its log until the next upgrade.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name | quote }}
+  labels: {{- include "unitycatalog.commonLabels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels: {{- include "unitycatalog.commonLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- with .Values.server.deployment.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "unitycatalog.serviceAccountName" . | quote }}
+      {{- with .Values.server.deployment.podSecurityContext }}
+      securityContext: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        {{- include "unitycatalog.server.initContainer" . | nindent 8 }}
+      containers:
+        - name: upgrade-check
+          {{- with .Values.server.deployment.securityContext }}
+          securityContext: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
+          command: ["./bin/start-uc-server", "--check-schema"]
+          {{- if eq .Values.server.db.type "mysql" }}
+          env:
+            - name: JDK_JAVA_OPTIONS
+              value: "--module-path=/home/unitycatalog/jdbc-drivers --add-modules=ALL-MODULE-PATH"
+          {{- end }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: /home/unitycatalog/etc/conf
+          {{- if eq .Values.server.db.type "mysql" }}
+            - name: mysql-driver
+              mountPath: /home/unitycatalog/jdbc-drivers
+              readOnly: true
+          {{- end }}
+          {{- range $index, $config := .Values.storage.credentials.gcs }}
+            - name: gcs-credentials-{{ $index }}
+              mountPath: /home/unitycatalog/etc/conf/gcs-credentials-{{ $index }}.json
+              subPath: jsonKey
+              readOnly: true
+          {{- end }}
+      volumes:
+        - name: config-templates
+          configMap:
+            name: {{ printf "%s-config-templates" $name | quote }}
+        - name: config-volume
+          emptyDir: {}
+        - name: jwt-key-volume
+          secret:
+            secretName: {{ include "unitycatalog.server.jwtKeypairSecretName" . | quote }}
+      {{- if eq .Values.server.db.type "mysql" }}
+        - name: mysql-driver
+          {{- toYaml (required "server.db.mysqlConfig.driver.volume is required: the server image does not include the MySQL JDBC driver" .Values.server.db.mysqlConfig.driver.volume) | nindent 10 }}
+      {{- end }}
+      {{- range $index, $config := .Values.storage.credentials.gcs }}
+        - name: gcs-credentials-{{ $index }}
+          secret:
+            secretName: {{ $config.credentialsSecretName | quote }}
+      {{- end }}
+      {{- with .Values.server.deployment.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.deployment.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.deployment.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
