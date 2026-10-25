@@ -150,7 +150,7 @@ Conventions:
   - is a new Flyway step for each database under `server/src/main/resources/db/migration/{h2,postgresql,mysql}/`, numbered after the last one; never edit a merged step;
   - holds one DDL statement per SQL file;
   - adds a row to the schema versions table of `docs/server/upgrades.md`;
-  - regenerates the schema dumps in `server/src/test/resources/schema/` (`SchemaDumpTest` prints the command); `BaselineMatchesEntitiesTest` checks the steps against the entities;
+  - regenerates the schema dumps in `server/src/main/resources/schema/` (`SchemaDumpTest` prints the command); `BaselineMatchesEntitiesTest` checks the steps against the entities;
   - migrates the sample database: from the repo root run `build/sbt server/package`, start `bin/start-uc-server` once, stop it, and commit `etc/db/h2db.mv.db`.
 - **Enforce invariants at the database level** (unique constraints) rather than only in code, where duplicate creation or races are possible.
 

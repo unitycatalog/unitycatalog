@@ -32,7 +32,7 @@ public class SchemaDumpTest {
     String actual = SchemaSnapshot.of(db.dataSource()).render();
     Path dump =
         Path.of(
-            "server/src/test/resources/schema",
+            "server/src/main/resources/schema",
             SchemaMigrator.DatabaseKind.fromJdbcUrl(db.jdbcUrl()).folder() + ".txt");
 
     if ("true".equals(System.getenv(UPDATE_ENV))) {
