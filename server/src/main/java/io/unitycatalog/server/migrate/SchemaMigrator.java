@@ -797,10 +797,11 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * Whether a database at version {@code from} is partway through this release's steps: above the
-   * last step of the release before this build's.
+   * last step of the latest release listed before this build's, the one it was at before this
+   * upgrade started.
    */
   private boolean isMidUpgrade(String from) {
-    Map.Entry<MigrationVersion, MigrationVersion> previous = previousRelease();
+    Map.Entry<MigrationVersion, MigrationVersion> previous = releases.lowerEntry(THIS_RELEASE);
     return previous != null
         && from != null
         && MigrationVersion.fromVersion(from).compareTo(previous.getValue()) > 0;
