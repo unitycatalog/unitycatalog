@@ -40,6 +40,9 @@ public class StepAlreadyInDatabaseTest {
   private static final String TWO_COLUMNS = "db/test-steps/repeat-two-columns/";
   // Version 4200 drops the size of a varchar (H2 and PostgreSQL; MySQL's varchar takes a size).
   private static final String UNSIZED = "db/test-steps/repeat-unsized/";
+  // Version 4300 restates a column's type and size and changes something else: NOT NULL (H2,
+  // MySQL) or the collation (PostgreSQL).
+  private static final String OTHER_CLAUSES = "db/test-steps/repeat-other-clauses/";
 
   @TempDatabase(empty = true)
   TestDatabase db;
@@ -105,6 +108,30 @@ public class StepAlreadyInDatabaseTest {
     migrator(recording(sent), BASE, "classpath:" + UNSIZED).migrate();
 
     assertThat(sent).contains(statement(UNSIZED, "V4200__unbound_test_repeat_item_names.sql"));
+  }
+
+  @Test
+  void runsATypeChangeThatAlsoChangesSomethingElse() {
+    migrator(db.dataSource(), BASE).migrate();
+    List<String> sent = new ArrayList<>();
+
+    migrator(recording(sent), BASE, "classpath:" + OTHER_CLAUSES).migrate();
+
+    assertThat(sent)
+        .contains(statement(OTHER_CLAUSES, "V4300__restate_test_repeat_item_labels.sql"));
+  }
+
+  /** MySQL's {@code MODIFY} restates the whole column: without {@code DEFAULT}, it drops one. */
+  @Test
+  void runsAModifyThatDropsTheColumnsDefault() {
+    assumeTrue(db.kind() == DatabaseKind.MYSQL);
+    migrator(db.dataSource(), BASE).migrate();
+    execute(db, "ALTER TABLE test_repeat_items MODIFY COLUMN label varchar(255) NULL DEFAULT 'x'");
+    List<String> sent = new ArrayList<>();
+
+    migrator(recording(sent), BASE, STEPS).migrate();
+
+    assertThat(sent).contains(statement("V4005__widen_test_repeat_item_labels.sql"));
   }
 
   @Test

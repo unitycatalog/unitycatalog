@@ -163,15 +163,18 @@ public final class SchemaMigrator implements AutoCloseable {
           "create\\s+(?:unique\\s+)?index\\s+(\\w+)\\s+on\\s+(\\w+)", Pattern.CASE_INSENSITIVE);
 
   /**
-   * {@code ALTER TABLE t ALTER COLUMN c [SET DATA TYPE | TYPE] type[(n)]} (H2, PostgreSQL) or
-   * {@code ALTER TABLE t MODIFY [COLUMN] c type[(n)]} (MySQL); not a type with other parameters,
-   * such as MySQL's {@code enum (...)}.
+   * {@code ALTER TABLE t ALTER COLUMN c [SET DATA TYPE | TYPE] type[(n)] [[NOT] NULL]} (H2,
+   * PostgreSQL) or {@code ALTER TABLE t MODIFY [COLUMN] c type[(n)] [[NOT] NULL]} (MySQL), and
+   * nothing after it: not a type with other parameters, such as MySQL's {@code enum (...)}, nor a
+   * statement that changes more than the type, such as with {@code DEFAULT}, {@code COLLATE} or
+   * {@code USING}. Group 6 is the {@code NULL} of a nullability, group 5 its {@code NOT}.
    */
   private static final Pattern CHANGE_TYPE =
       Pattern.compile(
           "alter\\s+table\\s+(\\w+)\\s+(?:alter\\s+column|modify(?:\\s+column)?)\\s+(\\w+)\\s+"
               + "(?:set\\s+data\\s+type\\s+|type\\s+)?(\\w+)"
-              + "(?:\\s*\\(\\s*(\\d+)\\s*\\))?(?!\\s*\\()",
+              + "(?:\\s*\\(\\s*(\\d+)\\s*\\))?(?!\\s*\\()"
+              + "(?:\\s+(not\\s+)?(null))?\\s*$",
           Pattern.CASE_INSENSITIVE);
 
   /** The names H2's metadata gives the types the steps name otherwise. */
@@ -467,28 +470,41 @@ public final class SchemaMigrator implements AutoCloseable {
           && !UNSIZED_TYPES.contains(changeType.group(3).toLowerCase(Locale.ROOT))) {
         return false; // without a size, the type may be a sized one at its default size
       }
+      // MySQL's MODIFY and H2's ALTER COLUMN c type (without SET DATA TYPE or TYPE) restate the
+      // column: they drop its default, and MySQL's makes it nullable unless it says NOT NULL.
+      boolean restates = statement.substring(changeType.end(2), changeType.start(3)).isBlank();
+      Boolean nullable =
+          changeType.group(6) != null
+              ? Boolean.valueOf(changeType.group(5) == null)
+              : restates && kind == DatabaseKind.MYSQL ? Boolean.TRUE : null;
       String table = tableName(metaData, catalog, schema, changeType.group(1));
       return table != null
           && hasType(
               metaData.getColumns(catalog, schema, table, null),
               changeType.group(2),
               changeType.group(3),
-              changeType.group(4));
+              changeType.group(4),
+              nullable,
+              restates);
     }
     return false;
   }
 
   /**
    * Whether the column {@code column} of the columns {@code rs} (which this closes) has the type
-   * {@code type} and, unless {@code null}, the size {@code size}.
+   * {@code type} and, unless {@code null}, the size {@code size} and the nullability {@code
+   * nullable}, and when {@code noDefault}, no default.
    */
-  private static boolean hasType(ResultSet rs, String column, String type, String size)
+  private static boolean hasType(
+      ResultSet rs, String column, String type, String size, Boolean nullable, boolean noDefault)
       throws SQLException {
     try (rs) {
       while (rs.next()) {
         if (rs.getString("COLUMN_NAME").equalsIgnoreCase(column)) {
           return typeName(rs.getString("TYPE_NAME")).equals(typeName(type))
-              && (size == null || rs.getInt("COLUMN_SIZE") == Integer.parseInt(size));
+              && (size == null || rs.getInt("COLUMN_SIZE") == Integer.parseInt(size))
+              && (nullable == null || nullable == "YES".equals(rs.getString("IS_NULLABLE")))
+              && (!noDefault || rs.getString("COLUMN_DEF") == null);
         }
       }
     }
