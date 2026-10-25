@@ -13,8 +13,8 @@ import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
 import java.util.ArrayList;
 import java.util.List;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 /**
  * A database every release of the {@link UpgradePath} wrote its own copy of the {@link DataSet} to,
@@ -22,8 +22,8 @@ import org.junit.jupiter.api.Test;
  * copy. Only the current server reads the copies back: reading them back on a release in between
  * would only re-check releases that already shipped.
  *
- * <p>Tagged {@code upgrades}: it runs old servers' jars, so it stays out of the default test run
- * ({@code build/sbt testUpgrades} runs it).
+ * <p>It builds and runs old servers' jars, so it runs only with {@code UC_TEST_UPGRADES=true} (the
+ * upgrade tests workflow sets it).
  */
 public class RealUpgradeTest {
 
@@ -31,7 +31,7 @@ public class RealUpgradeTest {
   TestDatabase db;
 
   @Test
-  @Tag("upgrades")
+  @EnabledIfEnvironmentVariable(named = "UC_TEST_UPGRADES", matches = "true")
   void upgradesAndKeepsTheData() {
     List<OldImage> chain = UpgradePath.releaseChain();
     assertThat(chain).as("no release tags found: git fetch --tags").isNotEmpty();
