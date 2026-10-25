@@ -562,11 +562,13 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * A connection of the run, other than the run lock's: Flyway's, the probes' and the checks'. It
-   * waits at most {@link #lockWait} for a lock.
+   * waits at most {@link #lockWait} for a lock, and autocommits even when the pool's connections
+   * don't (the server's): a statement then opens no transaction that stays open.
    */
   private Connection connection() throws SQLException {
     Connection connection = dataSource.getConnection();
     try (Statement statement = connection.createStatement()) {
+      connection.setAutoCommit(true);
       statement.execute(lockWaitSql());
     } catch (SQLException | RuntimeException e) {
       connection.close();
