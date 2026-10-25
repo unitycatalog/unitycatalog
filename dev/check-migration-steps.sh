@@ -98,6 +98,8 @@ base_max() {
 # Java step above every folder.
 failed=0
 for file in $added; do
+  # Checks (checks/<db>/C*.sql) are not steps; the rule above keeps them from changing.
+  [[ ${file##*/} == V* ]] || continue
   v=$(version "$file")
   if [[ "$file" == "$java_steps"/* ]]; then
     max=$(base_max "$1" "$sql_steps" "$java_steps")

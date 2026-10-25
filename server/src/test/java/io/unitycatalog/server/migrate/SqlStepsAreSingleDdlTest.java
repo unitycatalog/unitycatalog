@@ -4,22 +4,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
+import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.Test;
 
 /**
  * Every SQL step of every database holds one DDL statement, so a step either applies whole or not
  * at all, and data changes go in Java steps. A step without statements (a version that changes
- * nothing on that database) is allowed.
+ * nothing on that database) is allowed. Every check ({@code checks/<db>/C<version>__*.sql}) holds
+ * one query and belongs to the step of its version in {@code <db>}.
  */
 public class SqlStepsAreSingleDdlTest {
 
   private static final Path STEPS = Path.of("server/src/main/resources/db/migration");
+  private static final Path CHECKS = STEPS.resolve("checks");
 
   /** Steps that hold more than one statement, with the reason. */
   private static final Map<String, String> EXEMPT =
@@ -58,9 +62,58 @@ public class SqlStepsAreSingleDdlTest {
         .isEmpty();
   }
 
+  @Test
+  void eachCheckIsOneQueryOfAStep() throws IOException {
+    List<String> problems = new ArrayList<>();
+    List<Path> checks = List.of();
+    if (Files.isDirectory(CHECKS)) {
+      try (Stream<Path> files = Files.walk(CHECKS)) {
+        checks =
+            files.filter(f -> f.getFileName().toString().matches("C.*\\.sql")).sorted().toList();
+      }
+    }
+    for (Path check : checks) {
+      String name = STEPS.relativize(check).toString().replace('\\', '/');
+      Path folder = STEPS.resolve(CHECKS.relativize(check.getParent()));
+      MigrationVersion version = version(check);
+      boolean hasStep;
+      try (Stream<Path> files = Files.list(folder)) {
+        hasStep =
+            files
+                .map(f -> f.getFileName().toString())
+                .anyMatch(f -> f.matches("V.*__.*\\.sql") && version(Path.of(f)).equals(version));
+      } catch (NoSuchFileException e) {
+        hasStep = false;
+      }
+      if (!hasStep) {
+        problems.add(name + " has no step V" + version + " in " + STEPS.relativize(folder));
+      }
+      List<String> statements = statements(Files.readString(check));
+      if (statements.size() != 1) {
+        problems.add(name + " has " + statements.size() + " statements");
+      } else if (!List.of("SELECT", "WITH").contains(firstWord(statements.get(0)))) {
+        problems.add(name + " is not a query: " + statements.get(0));
+      }
+    }
+    assertThat(problems)
+        .as(
+            "Each check in checks/<db>/ holds one SELECT (or WITH ... SELECT) and has a step of"
+                + " the same version in <db>/")
+        .isEmpty();
+  }
+
+  /** The version of a step or check file: "V1_1__name.sql" is 1.1. */
+  private static MigrationVersion version(Path file) {
+    String name = file.getFileName().toString();
+    return MigrationVersion.fromVersion(name.substring(1, name.indexOf("__")).replace('_', '.'));
+  }
+
+  private static String firstWord(String statement) {
+    return statement.split("\\s+", 2)[0].toUpperCase(Locale.ROOT);
+  }
+
   private static boolean isDdl(String statement) {
-    String first = statement.split("\\s+", 2)[0].toUpperCase(Locale.ROOT);
-    return DDL.contains(first);
+    return DDL.contains(firstWord(statement));
   }
 
   /** The file's statements, without comments; quoted text is kept as it is. */
