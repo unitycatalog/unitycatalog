@@ -14,7 +14,8 @@ import org.junit.jupiter.api.Test;
 /**
  * The schema the steps build matches the dump recorded for the selected database, so a change to
  * the steps shows up in the pull request as a change to the dump. The dump covers tables, columns,
- * keys, indexes, foreign keys and CHECK constraints; MySQL collations are not in it.
+ * keys, indexes, foreign keys and CHECK constraints; MySQL collations are not in it. So does the
+ * schema of the baseline step alone, which the server compares a database it adopts with.
  */
 public class SchemaDumpTest {
 
@@ -28,8 +29,19 @@ public class SchemaDumpTest {
     try (SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind())) {
       migrator.migrate();
     }
+    assertMatchesTheDump(Path.of("server/src/main/resources/schema"));
+  }
+
+  @Test
+  void baselineSchemaMatchesTheRecordedDump() throws IOException {
+    MigratorTest.create07Schema(db);
+    assertMatchesTheDump(Path.of("server/src/main/resources/schema/baseline"));
+  }
+
+  /** The database's schema matches the dump of its kind in {@code folder}, or rewrites it. */
+  private void assertMatchesTheDump(Path folder) throws IOException {
     String actual = SchemaSnapshot.of(db.dataSource()).render();
-    Path dump = Path.of("server/src/main/resources/schema", db.kind().folder() + ".txt");
+    Path dump = folder.resolve(db.kind().folder() + ".txt");
 
     if ("true".equals(System.getenv(UPDATE_ENV))) {
       Files.createDirectories(dump.getParent());
@@ -39,7 +51,7 @@ public class SchemaDumpTest {
     String recorded = Files.exists(dump) ? Files.readString(dump) : "";
     if (!recorded.equals(actual)) {
       fail(
-          "The migrated schema differs from %s; regenerate with `build/sbt 'set every Test /"
+          "The schema differs from %s; regenerate with `build/sbt 'set every Test /"
               + " envVars := Map(\"%s\" -> \"%s\", \"%s\" -> \"true\")' 'server/testOnly %s'`"
               + " and commit the file:%n%s",
           dump,

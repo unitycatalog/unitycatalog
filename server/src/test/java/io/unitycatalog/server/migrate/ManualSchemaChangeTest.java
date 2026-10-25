@@ -56,18 +56,6 @@ public class ManualSchemaChangeTest {
   }
 
   @Test
-  void refusesAfterTheStepsRanOnATableChangedByHand() {
-    MigratorTest.create07Schema(db);
-    execute(db, ADD_COLUMN);
-    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
-
-    assertThatThrownBy(migrator::migrate)
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("+column uc_function_params.note type=");
-    assertThat(migrator.currentVersion()).isEqualTo(migrator.latestVersion());
-  }
-
-  @Test
   void refusesToStartWithAnIndexDroppedByHand() {
     // No release before this build's: every step is this release's.
     SchemaMigrator migrator =

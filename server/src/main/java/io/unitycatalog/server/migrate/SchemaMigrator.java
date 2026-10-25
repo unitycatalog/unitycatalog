@@ -84,6 +84,10 @@ import org.slf4j.LoggerFactory;
  * <p>A statement of the run waits at most {@link #LOCK_WAIT} for a lock that another session holds,
  * then fails.
  *
+ * <p>A database it adopts must have the schema of the baseline release ({@code
+ * schema/baseline/<database>.txt}), apart from the {@link Drift}s that databases of older releases
+ * have after one start of a baseline release server, which the run repairs before the baseline.
+ *
  * <p>A run upgrades only a database of the release before this build's, listed in {@link
  * #RELEASES}, or one partway from it. After the steps, and on every start, the tables that this
  * release's steps change must match the schema the steps build ({@link SchemaSnapshot}).
@@ -191,6 +195,84 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /** The schema this build's steps build, by database: {@code schema/<database>.txt}. */
   private static final String SCHEMA_DUMPS = "schema/";
+
+  /** The schema of {@link #BASELINE_RELEASE}, by database: what its step alone builds. */
+  private static final String BASELINE_DUMPS = "schema/baseline/";
+
+  /**
+   * A difference from the schema of {@link #BASELINE_RELEASE} that a database of an older release
+   * has after one start of a {@value #BASELINE_RELEASE} server, whose Hibernate update neither
+   * changes a CHECK constraint nor reports a constraint it failed to add. Adopting the database
+   * repairs it.
+   */
+  private enum Drift {
+    /** Releases up to 0.4.0 knew 21 function types (0 to 20); 0.4.1 added VARIANT. */
+    PARAMETER_TYPES("uc_function_params", "type_name"),
+    RETURN_TYPES("uc_functions", "data_type"),
+    /** Every release before 0.7.0 let users share an external id, which keeps the key out. */
+    EXTERNAL_ID_KEY("uc_users", "external_id");
+
+    final String table;
+    final String column;
+
+    Drift(String table, String column) {
+      this.table = table;
+      this.column = column;
+    }
+
+    boolean isTypeCheck() {
+      return this != EXTERNAL_ID_KEY;
+    }
+
+    String description() {
+      return isTypeCheck()
+          ? "the CHECK on " + table + "." + column + " that allows 0 to 20 instead of 0 to 21"
+          : "the missing unique constraint uc_users_external_id_key on " + table + "." + column;
+    }
+  }
+
+  /**
+   * What adopting a database finds: the drifts to repair, or why it refuses.
+   *
+   * @param refusal {@code null} when the adoption goes on
+   */
+  private record Adoption(List<Drift> drifts, String refusal) {}
+
+  /** The upper bound in the baseline's CHECK on a function type: 21, its clause's last number. */
+  private static final Pattern TYPE_CHECK_BOUND = Pattern.compile("21(?=\\D*$)");
+
+  /**
+   * The function types of releases up to 0.4.0 that this release reads as other types: their 17 to
+   * 20 (CHAR, NULL, USER_DEFINED_TYPE, TABLE_TYPE) are VARIANT, CHAR, NULL, USER_DEFINED_TYPE now.
+   */
+  private static final String SHIFTED_FUNCTION_TYPES =
+      """
+      select concat(c.name, '.', s.name, '.', f.name) as function_name,
+        'uc_function_params.type_name' as type_column, p.name as parameter_name,
+        p.type_name as stored_value
+      from uc_function_params p
+      join uc_functions f on f.id = p.function_id
+      join uc_schemas s on s.id = f.schema_id
+      join uc_catalogs c on c.id = s.catalog_id
+      where p.type_name between 17 and 20
+      union all
+      select concat(c.name, '.', s.name, '.', f.name), 'uc_functions.data_type', null, f.data_type
+      from uc_functions f
+      join uc_schemas s on s.id = f.schema_id
+      join uc_catalogs c on c.id = s.catalog_id
+      where f.data_type between 17 and 20
+      order by 1, 2, 3
+      """;
+
+  /** The users sharing an external id; {@code %s} is the id as text. */
+  private static final String SHARED_EXTERNAL_IDS =
+      """
+      select %s as id, name, email, external_id from uc_users
+      where external_id in (
+        select external_id from uc_users
+        where external_id is not null group by external_id having count(*) > 1)
+      order by external_id, name
+      """;
 
   /** The table a statement of a SQL step changes: created, altered, dropped or indexed. */
   private static final Pattern CHANGED_TABLE =
@@ -520,6 +602,20 @@ public final class SchemaMigrator implements AutoCloseable {
               + latestVersion()
               + ".");
       String refusal = refusal(state);
+      if (refusal == null && state == SchemaState.UNVERSIONED_UC) {
+        Adoption adoption = adoption();
+        adoption
+            .drifts()
+            .forEach(
+                d ->
+                    out.println(
+                        "A difference from the "
+                            + BASELINE_RELEASE
+                            + " schema that the upgrade repairs: "
+                            + d.description()
+                            + "."));
+        refusal = adoption.refusal();
+      }
       if (refusal == null) {
         List<MigrationInfo> pending = pendingSteps(from);
         out.println(pending.isEmpty() ? "Pending steps: none." : "Pending steps:");
@@ -599,6 +695,12 @@ public final class SchemaMigrator implements AutoCloseable {
       refusal = refusal(state);
     }
     String from = state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : currentVersion();
+    List<Drift> drifts = List.of();
+    if (refusal == null && state == SchemaState.UNVERSIONED_UC) {
+      Adoption adoption = adoption();
+      drifts = adoption.drifts();
+      refusal = adoption.refusal();
+    }
     if (refusal == null) {
       refusal = failedChecks(from);
     }
@@ -606,12 +708,12 @@ public final class SchemaMigrator implements AutoCloseable {
       throw new IllegalStateException(refusal);
     }
     if (backup == null || (state != SchemaState.UNVERSIONED_UC && pendingSteps(from).isEmpty())) {
-      return upgrade(state, from);
+      return upgrade(state, from, drifts);
     }
     backup.take(/* reuse= */ isMidUpgrade(from));
     MigrationOutcome outcome;
     try {
-      outcome = upgrade(state, from);
+      outcome = upgrade(state, from, drifts);
     } catch (RuntimeException e) {
       throw restoreAfter(e);
     }
@@ -626,14 +728,15 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Adopts a database of the baseline release, applies the pending steps above version {@code from}
-   * and checks the schema.
+   * Adopts a database of the baseline release, repairing its {@code drifts} first, applies the
+   * pending steps above version {@code from} and checks the schema.
    */
-  private MigrationOutcome upgrade(SchemaState state, String from) {
+  private MigrationOutcome upgrade(SchemaState state, String from, List<Drift> drifts) {
     // EMPTY (also with only casbin_rule): baseline at 0 in V1's run, so V1 runs. UNVERSIONED_UC:
     // baseline at 1 before any step: a run that only records steps would record V1 as one of them.
     String baseline = state == SchemaState.EMPTY ? "0" : null;
     if (state == SchemaState.UNVERSIONED_UC) {
+      drifts.forEach(this::repair);
       flyway(BASELINE_VERSION).baseline();
     }
     int applied = 0;
@@ -1120,11 +1223,7 @@ public final class SchemaMigrator implements AutoCloseable {
     if (tables.isEmpty()) {
       return null;
     }
-    String dump = SCHEMA_DUMPS + kind.folder() + ".txt";
-    List<String> recorded =
-        SchemaSnapshot.parse(read(SchemaMigrator.class.getClassLoader().getResourceAsStream(dump)))
-            .only(tables)
-            .entries();
+    List<String> recorded = dump(SCHEMA_DUMPS).only(tables).entries();
     List<String> diff =
         SchemaSnapshot.diff(
             recorded,
@@ -1137,16 +1236,11 @@ public final class SchemaMigrator implements AutoCloseable {
     for (String line : diff) {
       differing.add(SchemaSnapshot.tableOf(line.substring(1)));
     }
-    StringBuilder lines = new StringBuilder();
-    diff.stream().limit(MAX_ROWS_LISTED).forEach(l -> lines.append("  ").append(l).append('\n'));
-    if (diff.size() > MAX_ROWS_LISTED) {
-      lines.append("  ... and ").append(diff.size() - MAX_ROWS_LISTED).append(" more\n");
-    }
     return "The schema of "
         + String.join(", ", differing)
         + " differs from what this release's steps build (-: what they build, +: what the"
         + " database has):\n"
-        + lines
+        + listed(diff)
         + "Undo the manual change, or restore the backup; see docs/server/upgrades.md (section"
         + " \"The schema differs\").";
   }
@@ -1207,6 +1301,173 @@ public final class SchemaMigrator implements AutoCloseable {
       }
     }
     return tables;
+  }
+
+  /**
+   * Compares a database to adopt with the schema of the baseline release: finds the {@link Drift}s
+   * it has, and refuses it for any other difference, or for rows that keep a drift from being
+   * repaired. Changes nothing.
+   */
+  private Adoption adoption() {
+    List<String> baseline = dump(BASELINE_DUMPS).entries();
+    Set<String> built = new HashSet<>(dump(SCHEMA_DUMPS).entries());
+    List<String> diff =
+        new ArrayList<>(
+            SchemaSnapshot.diff(baseline, SchemaSnapshot.of(flywayDataSource()).entries()));
+    // A later step's change already in the database (an entry that it adds, or one that it
+    // removes, missing): the run records the step without running it.
+    diff.removeIf(
+        line ->
+            line.startsWith("+")
+                ? built.contains(line.substring(1))
+                : !built.contains(line.substring(1)));
+    if (kind == DatabaseKind.MYSQL) {
+      // A 0.7.0 server on a latin1 database created this index; step 3 drops it.
+      diff.removeIf(line -> line.startsWith("+index uc_staging_tables.idx_staging_location "));
+    }
+    List<Drift> drifts = new ArrayList<>();
+    for (Drift drift : Drift.values()) {
+      List<String> lines = driftLines(drift, baseline);
+      // A CHECK of bound 20, with or without the baseline's (an H2 repair stopped midway), or the
+      // key's missing index.
+      if (diff.contains(lines.get(0))) {
+        diff.removeAll(lines);
+        drifts.add(drift);
+      }
+    }
+    if (!diff.isEmpty()) {
+      return new Adoption(List.of(), unknownDifference(diff));
+    }
+    List<String> blocked = new ArrayList<>();
+    if (drifts.contains(Drift.EXTERNAL_ID_KEY)) {
+      String rows =
+          rowsFound(
+              SHARED_EXTERNAL_IDS.formatted(kind == DatabaseKind.MYSQL ? "bin_to_uuid(id)" : "id"),
+              "The check for users sharing an external id (decide which user keeps it and clear"
+                  + " it on the others)");
+      if (rows != null) {
+        blocked.add(rows);
+      }
+    }
+    if (drifts.stream().anyMatch(Drift::isTypeCheck)) {
+      String rows =
+          rowsFound(
+              SHIFTED_FUNCTION_TYPES,
+              "The check for function types stored by a release before 0.4.1 (this release reads"
+                  + " them as other types)");
+      if (rows != null) {
+        blocked.add(rows);
+      }
+    }
+    if (blocked.isEmpty()) {
+      return new Adoption(drifts, null);
+    }
+    return new Adoption(
+        List.of(),
+        "The upgrade is stopped before any change: the database differs from the "
+            + BASELINE_RELEASE
+            + " schema, and these rows keep the server from repairing it.\n"
+            + String.join("", blocked)
+            + "Fix them as docs/server/upgrades.md shows (section \"Adopting an older"
+            + " database\"), then start the server again.");
+  }
+
+  /**
+   * The diff lines of {@code drift} against the baseline's entries {@code baseline}, the line that
+   * shows it first: a CHECK of bound 20 instead of the baseline's, the key's missing index entries.
+   */
+  private static List<String> driftLines(Drift drift, List<String> baseline) {
+    if (drift.isTypeCheck()) {
+      String check =
+          baseline.stream()
+              .filter(e -> e.startsWith("check " + drift.table + " "))
+              .filter(e -> e.toLowerCase(Locale.ROOT).contains(drift.column))
+              .findFirst()
+              .orElseThrow();
+      return List.of("+" + TYPE_CHECK_BOUND.matcher(check).replaceFirst("20"), "-" + check);
+    }
+    return baseline.stream()
+        .filter(e -> e.startsWith("index uc_users.uc_users_external_id_key"))
+        .map(e -> "-" + e)
+        .toList();
+  }
+
+  /** The refusal for differences {@code diff} from the baseline's schema that are no drift. */
+  private static String unknownDifference(List<String> diff) {
+    return "The database differs from the "
+        + BASELINE_RELEASE
+        + " schema in ways the server can't repair (-: the "
+        + BASELINE_RELEASE
+        + " schema, +: what the database has):\n"
+        + listed(diff)
+        + "Compare it with a fresh "
+        + BASELINE_RELEASE
+        + " database and fix the differences by hand, or ask on the project's issue tracker; see"
+        + " docs/server/upgrades.md (section \"Adopting an older database\").";
+  }
+
+  /** Repairs {@code drift} in one statement, apart from a CHECK on H2, and logs it. */
+  private void repair(Drift drift) {
+    try (Connection connection = connection();
+        Statement statement = connection.createStatement()) {
+      if (drift.isTypeCheck()) {
+        List<String> lines =
+            driftLines(drift, dump(BASELINE_DUMPS).entries()).stream()
+                .map(l -> l.substring(1))
+                .toList();
+        Map<String, String> checks = SchemaSnapshot.checkNames(connection);
+        String narrow = checks.get(lines.get(0));
+        String wide = "check (" + drift.column + " between 0 and 21)";
+        String table = "alter table " + drift.table;
+        switch (kind) {
+          case POSTGRESQL ->
+              statement.execute(
+                  table + " drop constraint " + narrow + ", add constraint " + narrow + " " + wide);
+          case MYSQL ->
+              statement.execute(
+                  table + " drop check " + narrow + ", add constraint " + narrow + " " + wide);
+          case H2 -> {
+            // One change per statement: add the wide CHECK first, so a stop in between leaves
+            // both, which the next run repairs.
+            if (!checks.containsKey(lines.get(1))) {
+              statement.execute(table + " add " + wide);
+            }
+            statement.execute(table + " drop constraint " + narrow);
+          }
+        }
+      } else {
+        statement.execute(
+            "alter table uc_users add constraint uc_users_external_id_key unique (external_id)");
+      }
+    } catch (SQLException e) {
+      throw new IllegalStateException(
+          "Could not repair a difference from the "
+              + BASELINE_RELEASE
+              + " schema ("
+              + drift.description()
+              + "): "
+              + e.getMessage(),
+          e);
+    }
+    LOGGER.info(
+        "Repaired a difference from the {} schema: {}.", BASELINE_RELEASE, drift.description());
+  }
+
+  /** The first {@value #MAX_ROWS_LISTED} lines of a schema difference, indented. */
+  private static String listed(List<String> diff) {
+    StringBuilder lines = new StringBuilder();
+    diff.stream().limit(MAX_ROWS_LISTED).forEach(l -> lines.append("  ").append(l).append('\n'));
+    if (diff.size() > MAX_ROWS_LISTED) {
+      lines.append("  ... and ").append(diff.size() - MAX_ROWS_LISTED).append(" more\n");
+    }
+    return lines.toString();
+  }
+
+  /** The recorded dump of this database in {@code folder}. */
+  private SchemaSnapshot dump(String folder) {
+    String dump = folder + kind.folder() + ".txt";
+    return SchemaSnapshot.parse(
+        read(SchemaMigrator.class.getClassLoader().getResourceAsStream(dump)));
   }
 
   /**
@@ -1340,6 +1601,11 @@ public final class SchemaMigrator implements AutoCloseable {
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
+    return rowsFound(sql, title);
+  }
+
+  /** {@link #rowsFound(URL, String)} for the query {@code sql}. */
+  private String rowsFound(String sql, String title) {
     try (Connection connection = connection()) {
       connection.setReadOnly(true);
       connection.setAutoCommit(false);

@@ -6,8 +6,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
@@ -30,7 +32,7 @@ public record SchemaSnapshot(List<String> entries) {
   /** H2 and MySQL list CHECK constraints in the standard information schema. */
   private static final String STANDARD_CHECKS =
       """
-      select tc.table_name, cc.check_clause
+      select tc.table_name, cc.check_clause, tc.constraint_name
       from information_schema.table_constraints tc
       join information_schema.check_constraints cc
         on cc.constraint_schema = tc.constraint_schema and cc.constraint_name = tc.constraint_name
@@ -39,7 +41,7 @@ public record SchemaSnapshot(List<String> entries) {
 
   private static final String POSTGRES_CHECKS =
       """
-      select c.relname, pg_get_constraintdef(con.oid)
+      select c.relname, pg_get_constraintdef(con.oid), con.conname
       from pg_constraint con
       join pg_class c on c.oid = con.conrelid
       join pg_namespace n on n.oid = c.relnamespace
@@ -160,6 +162,22 @@ public record SchemaSnapshot(List<String> entries) {
   }
 
   private static List<String> checks(Connection connection) throws SQLException {
+    return checksWithNames(connection).stream().map(Map.Entry::getKey).toList();
+  }
+
+  /**
+   * The names of the CHECK constraints, by entry ({@code check <table> <clause>}): a constraint to
+   * drop is found by its clause, since its name may be generated.
+   */
+  static Map<String, String> checkNames(Connection connection) throws SQLException {
+    Map<String, String> names = new HashMap<>();
+    checksWithNames(connection).forEach(check -> names.put(check.getKey(), check.getValue()));
+    return names;
+  }
+
+  /** The CHECK constraints' entries, each with the constraint's name. */
+  private static List<Map.Entry<String, String>> checksWithNames(Connection connection)
+      throws SQLException {
     String query =
         switch (connection.getMetaData().getDatabaseProductName()) {
           case "H2" -> STANDARD_CHECKS.formatted("current_schema");
@@ -167,7 +185,7 @@ public record SchemaSnapshot(List<String> entries) {
           case "PostgreSQL" -> POSTGRES_CHECKS;
           default -> throw new IllegalStateException("No CHECK constraint query for this database");
         };
-    List<String> checks = new ArrayList<>();
+    List<Map.Entry<String, String>> checks = new ArrayList<>();
     try (Statement statement = connection.createStatement();
         ResultSet rs = statement.executeQuery(query)) {
       while (rs.next()) {
@@ -175,7 +193,10 @@ public record SchemaSnapshot(List<String> entries) {
         if (!IGNORED_TABLES.contains(table)) {
           // PostgreSQL's definition starts with "CHECK"; the others give the bare clause.
           String clause = rs.getString(2).replaceAll("\\s+", " ").trim();
-          checks.add("check %s %s".formatted(table, clause.replaceFirst("^(?i)check ", "")));
+          checks.add(
+              Map.entry(
+                  "check %s %s".formatted(table, clause.replaceFirst("^(?i)check ", "")),
+                  rs.getString(3)));
         }
       }
     }
