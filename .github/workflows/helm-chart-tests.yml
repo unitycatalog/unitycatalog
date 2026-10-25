@@ -1,0 +1,82 @@
+name: Helm Chart Tests
+
+# Pull requests only: their caches are scoped to the pull request, so this job can't write caches that main reads.
+on:
+  pull_request:
+    paths:
+      - "helm/**"
+      - "ui/**"
+      - "Dockerfile"
+      - ".github/workflows/helm-chart-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  helm-chart:
+    name: Lint and install the Helm chart
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.20.0
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@720270857a28afd41e2426521a7801db09e9b510 # v2.9.0
+        with:
+          uv_version: 0.13.1
+
+      - name: Check that the chart README is up to date
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/helm:/helm-docs" \
+            jnorwood/helm-docs:v1.14.2@sha256:7e562b49ab6b1dbc50c3da8f2dd6ffa8a5c6bba327b1c6335cc15ce29267979c
+          # helm-docs may only regenerate helm/README.md; any other change under helm/ also fails.
+          if [ -n "$(git status --porcelain -- helm)" ]; then
+            git status --short -- helm
+            echo "::error::helm-docs changed files under helm/. If only helm/README.md changed, regenerate it with helm-docs v1.14.2 (pre-commit run helm-docs --all-files) and commit the result."
+            exit 1
+          fi
+
+      - name: Lint the chart
+        run: ct lint --charts helm --validate-maintainers=false --check-version-increment=false
+
+      - name: Build the server and UI images
+        run: |
+          docker build -t unitycatalog:ci .
+          docker build -t unitycatalog-ui:ci ui
+
+      - name: Create kind cluster
+        uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
+        with:
+          version: v0.33.0
+          node_image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+          kubectl_version: v1.37.1
+
+      - name: Load the images into kind
+        # package-chart.sh 0.0.0-ci stamps app version v0.0.0-ci, which sets both image tags.
+        run: |
+          docker tag unitycatalog:ci unitycatalog:v0.0.0-ci
+          docker tag unitycatalog-ui:ci unitycatalog-ui:v0.0.0-ci
+          kind load docker-image unitycatalog:v0.0.0-ci unitycatalog-ui:v0.0.0-ci --name chart-testing
+
+      - name: Package the chart as a release, install it and run helm test
+        run: |
+          helm/package-chart.sh 0.0.0-ci "$RUNNER_TEMP"
+          helm install uc "$RUNNER_TEMP/unitycatalog-chart-0.0.0-ci.tgz" --namespace uc --create-namespace --wait --timeout 600s \
+            --set server.deployment.image.repository=unitycatalog \
+            --set server.deployment.image.pullPolicy=Never \
+            --set ui.enabled=true \
+            --set ui.deployment.image.repository=unitycatalog-ui \
+            --set ui.deployment.image.pullPolicy=Never
+          helm test uc --namespace uc --logs
