@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -82,6 +83,10 @@ import org.slf4j.LoggerFactory;
  *
  * <p>A statement of the run waits at most {@link #LOCK_WAIT} for a lock that another session holds,
  * then fails.
+ *
+ * <p>A run upgrades only a database of the release before this build's, listed in {@link
+ * #RELEASES}, or one partway from it. After the steps, and on every start, the tables that this
+ * release's steps change must match the schema the steps build ({@link SchemaSnapshot}).
  *
  * <p>When the process is told to stop during the run of a server start, the run stops at the next
  * boundary (before a step, or after a batch of a batched {@link DataStep}) and the next start
@@ -180,6 +185,27 @@ public final class SchemaMigrator implements AutoCloseable {
   private static final MigrationVersion THIS_RELEASE =
       MigrationVersion.fromVersion(VersionUtils.VERSION.replaceFirst("-.*", ""));
 
+  /** The schema this build's steps build, by database: {@code schema/<database>.txt}. */
+  private static final String SCHEMA_DUMPS = "schema/";
+
+  /** The table a statement of a SQL step changes: created, altered, dropped or indexed. */
+  private static final Pattern CHANGED_TABLE =
+      Pattern.compile(
+          "(?:create\\s+table(?:\\s+if\\s+not\\s+exists)?|alter\\s+table"
+              + "|drop\\s+table(?:\\s+if\\s+exists)?"
+              + "|(?:create\\s+(?:unique\\s+)?|drop\\s+)index"
+              + "\\s+(?:if\\s+(?:not\\s+)?exists\\s+)?\\w+\\s+on)"
+              + "\\s+(\\w+)",
+          Pattern.CASE_INSENSITIVE);
+
+  /** MySQL's text types, narrowest first. */
+  private static final List<String> MYSQL_TEXT_TYPES =
+      List.of("tinytext", "text", "mediumtext", "longtext");
+
+  /** A column entry of a {@link SchemaSnapshot}: the column, its type, and the rest after size. */
+  private static final Pattern COLUMN_ENTRY =
+      Pattern.compile("(column \\S+) type=(\\S+) size=\\d+ (.*)");
+
   private static final Pattern CREATE_TABLE =
       Pattern.compile("create\\s+table\\s+(\\w+)", Pattern.CASE_INSENSITIVE);
 
@@ -234,7 +260,7 @@ public final class SchemaMigrator implements AutoCloseable {
   static final Map<String, String> SAFE_TO_REPEAT =
       Map.of("mysql/V3__case_sensitive_text.sql", "converts every table; safe to repeat");
 
-  /** The most rows of one check that a refusal lists. */
+  /** The most rows of one check, or lines of a schema difference, that a refusal lists. */
   private static final int MAX_ROWS_LISTED = 20;
 
   /** Set by the shutdown hook of {@link #prepareForStart()}: the run stops at its next boundary. */
@@ -470,6 +496,9 @@ public final class SchemaMigrator implements AutoCloseable {
         pending.forEach(m -> out.println("  " + version(m) + " " + m.getDescription()));
         refusal = failedChecks(from);
       }
+      if (refusal == null && state == SchemaState.CURRENT) {
+        refusal = schemaDiffers();
+      }
       out.println(refusal == null ? "The upgrade would go through." : refusal);
       return refusal == null ? 0 : 1;
     }
@@ -567,6 +596,10 @@ public final class SchemaMigrator implements AutoCloseable {
         }
         throw e;
       }
+    }
+    String differs = schemaDiffers();
+    if (differs != null) {
+      throw new IllegalStateException(differs);
     }
     return new MigrationOutcome(from, currentVersion(), applied);
   }
@@ -933,7 +966,7 @@ public final class SchemaMigrator implements AutoCloseable {
    * that release. A database between that step and this build's last is a run that stopped midway.
    */
   private String skippedRelease() {
-    Map.Entry<MigrationVersion, MigrationVersion> previous = releases.lowerEntry(THIS_RELEASE);
+    Map.Entry<MigrationVersion, MigrationVersion> previous = previousRelease();
     String current = currentVersion();
     // Version 0: the first run on an empty database stopped before its first step.
     if (previous == null || current == null || current.equals("0")) {
@@ -960,6 +993,111 @@ public final class SchemaMigrator implements AutoCloseable {
         + " or later). Upgrade to "
         + release
         + " first, then to this release.";
+  }
+
+  /** The release before this build's, with its last step; {@code null} when none is listed. */
+  private Map.Entry<MigrationVersion, MigrationVersion> previousRelease() {
+    return releases.lowerEntry(THIS_RELEASE);
+  }
+
+  /**
+   * Refuses a database whose tables that this release's SQL steps change differ from what this
+   * build's steps build ({@code schema/<database>.txt}): someone changed them by hand. Other tables
+   * are not compared. This release's steps are those above the last step of the release before this
+   * build's, or every step when none is listed.
+   */
+  private String schemaDiffers() {
+    Set<String> tables = tablesThisReleaseChanges();
+    if (tables.isEmpty()) {
+      return null;
+    }
+    String dump = SCHEMA_DUMPS + kind.folder() + ".txt";
+    List<String> recorded =
+        SchemaSnapshot.parse(read(SchemaMigrator.class.getClassLoader().getResourceAsStream(dump)))
+            .only(tables)
+            .entries();
+    List<String> diff =
+        SchemaSnapshot.diff(
+            recorded,
+            widerTextAsRecorded(
+                recorded, SchemaSnapshot.of(flywayDataSource()).only(tables).entries()));
+    if (diff.isEmpty()) {
+      return null;
+    }
+    Set<String> differing = new TreeSet<>();
+    for (String line : diff) {
+      differing.add(SchemaSnapshot.tableOf(line.substring(1)));
+    }
+    StringBuilder lines = new StringBuilder();
+    diff.stream().limit(MAX_ROWS_LISTED).forEach(l -> lines.append("  ").append(l).append('\n'));
+    if (diff.size() > MAX_ROWS_LISTED) {
+      lines.append("  ... and ").append(diff.size() - MAX_ROWS_LISTED).append(" more\n");
+    }
+    return "The schema of "
+        + String.join(", ", differing)
+        + " differs from what this release's steps build (-: what they build, +: what the"
+        + " database has):\n"
+        + lines
+        + "Undo the manual change, or restore the backup; see docs/server/upgrades.md (section"
+        + " \"The schema differs\").";
+  }
+
+  /**
+   * The database's entries {@code actual}, sorted, with a MySQL text column wider than in {@code
+   * recorded} taken as recorded: step 3 converts a latin1 or utf8mb3 table to utf8mb4, and MySQL
+   * widens its text columns so they keep their length in characters.
+   */
+  private List<String> widerTextAsRecorded(List<String> recorded, List<String> actual) {
+    if (kind != DatabaseKind.MYSQL) {
+      return actual;
+    }
+    Map<String, Matcher> recordedColumns = new HashMap<>();
+    for (String entry : recorded) {
+      Matcher column = COLUMN_ENTRY.matcher(entry);
+      if (column.matches()) {
+        recordedColumns.put(column.group(1), column);
+      }
+    }
+    List<String> entries = new ArrayList<>();
+    for (String entry : actual) {
+      Matcher column = COLUMN_ENTRY.matcher(entry);
+      Matcher expected = column.matches() ? recordedColumns.get(column.group(1)) : null;
+      boolean isWider =
+          expected != null
+              && MYSQL_TEXT_TYPES.indexOf(expected.group(2)) >= 0
+              && MYSQL_TEXT_TYPES.indexOf(column.group(2))
+                  >= MYSQL_TEXT_TYPES.indexOf(expected.group(2))
+              && column.group(3).equals(expected.group(3));
+      entries.add(isWider ? expected.group() : entry);
+    }
+    return entries.stream().sorted().toList();
+  }
+
+  /**
+   * The tables, lower-cased, that this release's SQL steps in {@code db/migration} change, from
+   * their statements. Java steps change rows, not the schema; tests' own steps are left out.
+   */
+  private Set<String> tablesThisReleaseChanges() {
+    Map.Entry<MigrationVersion, MigrationVersion> previous = previousRelease();
+    Set<String> tables = new TreeSet<>();
+    for (MigrationInfo step : flyway(null).info().all()) {
+      if (step.getType() != CoreMigrationType.SQL
+          || !step.getState().isResolved()
+          || (previous != null && step.getVersion().compareTo(previous.getValue()) <= 0)) {
+        continue;
+      }
+      InputStream in =
+          SchemaMigrator.class
+              .getClassLoader()
+              .getResourceAsStream("db/migration/" + kind.folder() + "/" + step.getScript());
+      if (in != null) {
+        Matcher matcher = CHANGED_TABLE.matcher(read(in).replaceAll("--[^\n]*", ""));
+        while (matcher.find()) {
+          tables.add(matcher.group(1).toLowerCase(Locale.ROOT));
+        }
+      }
+    }
+    return tables;
   }
 
   /**

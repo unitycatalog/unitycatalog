@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
-import io.unitycatalog.server.migrate.kit.SchemaSnapshot;
 import io.unitycatalog.server.migrate.kit.TestServer;
 import io.unitycatalog.server.migrate.teststeps.slow.V1000__Slow_test_step;
 import io.unitycatalog.server.testdatabase.TempDatabase;

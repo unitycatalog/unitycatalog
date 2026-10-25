@@ -2,14 +2,13 @@ package io.unitycatalog.server.migrate;
 
 import static org.assertj.core.api.Assertions.fail;
 
-import io.unitycatalog.server.migrate.kit.SchemaSnapshot;
 import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -30,7 +29,7 @@ public class SchemaDumpTest {
       migrator.migrate();
     }
     String actual = SchemaSnapshot.of(db.dataSource()).render();
-    Path dump = Path.of("server/src/test/resources/schema", db.kind().folder() + ".txt");
+    Path dump = Path.of("server/src/main/resources/schema", db.kind().folder() + ".txt");
 
     if ("true".equals(System.getenv(UPDATE_ENV))) {
       Files.createDirectories(dump.getParent());
@@ -52,27 +51,13 @@ public class SchemaDumpTest {
     }
   }
 
-  /**
-   * A diff of two sorted dumps: lines only in the recorded one with "-", only in the new with "+".
-   */
+  /** A diff of two dumps: lines only in the recorded one with "-", only in the new with "+". */
   private static String diff(Path dump, String recorded, String actual) {
-    List<String> before = recorded.lines().toList();
-    List<String> after = actual.lines().toList();
-    StringBuilder out = new StringBuilder("--- " + dump + "\n+++ migrated schema\n");
-    int i = 0;
-    int j = 0;
-    while (i < before.size() || j < after.size()) {
-      int cmp =
-          i == before.size() ? 1 : j == after.size() ? -1 : before.get(i).compareTo(after.get(j));
-      if (cmp == 0) {
-        i++;
-        j++;
-      } else if (cmp < 0) {
-        out.append('-').append(before.get(i++)).append('\n');
-      } else {
-        out.append('+').append(after.get(j++)).append('\n');
-      }
-    }
-    return out.toString();
+    return "--- %s%n+++ migrated schema%n%s"
+        .formatted(
+            dump,
+            SchemaSnapshot.diff(recorded.lines().toList(), actual.lines().toList()).stream()
+                .map(line -> line + "\n")
+                .collect(Collectors.joining()));
   }
 }

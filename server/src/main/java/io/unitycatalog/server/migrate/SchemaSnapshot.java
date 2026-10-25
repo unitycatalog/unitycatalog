@@ -1,4 +1,4 @@
-package io.unitycatalog.server.migrate.kit;
+package io.unitycatalog.server.migrate;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -19,6 +19,9 @@ import javax.sql.DataSource;
  * clause: their generated names differ between a schema the steps built and one Hibernate built).
  * Names are lower-cased; CHECK clauses keep their case, since enum literals in them are
  * case-sensitive. Casbin's rule table and Unity Catalog's schema history table are left out.
+ *
+ * <p>The schema the steps build is recorded in {@code schema/<database>.txt}, which {@link
+ * SchemaMigrator} compares the database with.
  */
 public record SchemaSnapshot(List<String> entries) {
 
@@ -54,6 +57,44 @@ public record SchemaSnapshot(List<String> entries) {
   /** One entry per line, in sorted order, ending with a newline: the recorded schema dumps. */
   public String render() {
     return entries.stream().map(entry -> entry + "\n").collect(Collectors.joining());
+  }
+
+  /** The entries of a recorded dump, one per line. */
+  static SchemaSnapshot parse(String dump) {
+    return new SchemaSnapshot(dump.lines().toList());
+  }
+
+  /** The entries of the tables {@code tables} (lower-case names). */
+  SchemaSnapshot only(Set<String> tables) {
+    return new SchemaSnapshot(entries.stream().filter(e -> tables.contains(tableOf(e))).toList());
+  }
+
+  /** The table of an entry: {@code column t.c ...}, {@code table t} and {@code check t ...}. */
+  static String tableOf(String entry) {
+    return entry.split(" ")[1].split("\\.")[0];
+  }
+
+  /**
+   * A diff of two sorted lists of entries: those only in {@code before} with "-", only in {@code
+   * after} with "+", in sorted order.
+   */
+  static List<String> diff(List<String> before, List<String> after) {
+    List<String> diff = new ArrayList<>();
+    int i = 0;
+    int j = 0;
+    while (i < before.size() || j < after.size()) {
+      int cmp =
+          i == before.size() ? 1 : j == after.size() ? -1 : before.get(i).compareTo(after.get(j));
+      if (cmp == 0) {
+        i++;
+        j++;
+      } else if (cmp < 0) {
+        diff.add("-" + before.get(i++));
+      } else {
+        diff.add("+" + after.get(j++));
+      }
+    }
+    return diff;
   }
 
   private static SchemaSnapshot read(Connection connection) throws SQLException {
