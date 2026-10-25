@@ -48,11 +48,6 @@ Use these steps for every database (H2, PostgreSQL, MySQL).
 On PostgreSQL and MySQL, when several servers start at the same time, one applies the steps and
 the others wait for it, then start.
 
-With the Helm chart, set `server.deployment.updateStrategy` to `type: Recreate` for an upgrade, so
-all pods stop before the new one migrates. If a long step (for example MySQL's case-sensitivity
-conversion of large tables) may take longer than the startup probe allows (5 minutes by default),
-raise `failureThreshold` in `server.deployment.startupProbe`.
-
 ## First start on an empty database
 
 A server that starts on an empty database sets up the schema itself, the same way.
