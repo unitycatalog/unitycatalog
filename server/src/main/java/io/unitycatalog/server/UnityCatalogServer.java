@@ -156,15 +156,14 @@ public class UnityCatalogServer implements AutoCloseable {
   private void requireCurrentSchema(List<String> extraMigrationLocations) {
     HikariDataSource ds = hibernateConfigurator.getDataSource();
     DatabaseKind kind = DatabaseKind.fromJdbcUrl(ds.getJdbcUrl());
-    try (SchemaMigrator migrator = new SchemaMigrator(ds, kind, extraMigrationLocations)) {
-      SchemaState state = migrator.prepareForStart();
-      if (state != SchemaState.CURRENT) {
-        throw new IllegalStateException(
-            "The database schema is "
-                + state
-                + " after migration; this release needs version "
-                + migrator.latestVersion());
-      }
+    SchemaMigrator migrator = new SchemaMigrator(ds, kind, extraMigrationLocations);
+    SchemaState state = migrator.prepareForStart();
+    if (state != SchemaState.CURRENT) {
+      throw new IllegalStateException(
+          "The database schema is "
+              + state
+              + " after migration; this release needs version "
+              + migrator.latestVersion());
     }
   }
 

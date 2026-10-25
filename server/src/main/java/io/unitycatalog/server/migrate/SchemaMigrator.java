@@ -1,8 +1,5 @@
 package io.unitycatalog.server.migrate;
 
-import com.zaxxer.hikari.HikariConfig;
-import com.zaxxer.hikari.HikariDataSource;
-import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -12,7 +9,6 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -32,7 +28,7 @@ import org.slf4j.LoggerFactory;
  * and applies the pending steps. Each {@link #migrate()} runs under a {@link RunLock}, from
  * classifying the database to the last step.
  */
-public final class SchemaMigrator implements AutoCloseable {
+public final class SchemaMigrator {
 
   /**
    * The result of {@link #migrate()}.
@@ -112,48 +108,20 @@ public final class SchemaMigrator implements AutoCloseable {
   private final DataSource dataSource;
   private final DatabaseKind kind;
   private final String[] locations;
-  private final HikariDataSource ownedPool;
 
-  /** Does not own {@code dataSource}. */
+  /** Applies this release's steps to {@code dataSource}; closing it stays with the caller. */
   public SchemaMigrator(DataSource dataSource, DatabaseKind kind) {
     this(dataSource, kind, List.of());
   }
 
   /** Also applies the steps in {@code extraLocations} (tests' own steps). */
   public SchemaMigrator(DataSource dataSource, DatabaseKind kind, List<String> extraLocations) {
-    this(dataSource, kind, extraLocations, null);
-  }
-
-  private SchemaMigrator(
-      DataSource dataSource,
-      DatabaseKind kind,
-      List<String> extraLocations,
-      HikariDataSource ownedPool) {
     this.dataSource = dataSource;
     this.kind = kind;
     List<String> locations = new ArrayList<>();
     locations.add("classpath:db/migration/" + kind.folder());
     locations.addAll(extraLocations);
     this.locations = locations.toArray(String[]::new);
-    this.ownedPool = ownedPool;
-  }
-
-  /**
-   * A migrator on the database of the server's Hibernate properties, with its own small pool that
-   * {@link #close()} closes.
-   */
-  public static SchemaMigrator fromHibernateProperties(Properties hibernateProperties) {
-    HikariConfig config = HibernateConfigurator.hikariConfig(hibernateProperties);
-    // The run lock's connection plus Flyway's two.
-    config.setMaximumPoolSize(3);
-    config.setMinimumIdle(0);
-    config.setPoolName("schema-migrator");
-    HikariDataSource pool = new HikariDataSource(config);
-    return new SchemaMigrator(
-        pool,
-        DatabaseKind.fromJdbcUrl(hibernateProperties.getProperty("hibernate.connection.url")),
-        List.of(),
-        pool);
   }
 
   private Flyway flyway(String baselineVersion) { // null: no baselining
@@ -328,13 +296,6 @@ public final class SchemaMigrator implements AutoCloseable {
 
   private static String version(MigrationInfo info) {
     return info == null || info.getVersion() == null ? null : info.getVersion().getVersion();
-  }
-
-  @Override
-  public void close() {
-    if (ownedPool != null) {
-      ownedPool.close();
-    }
   }
 
   /**

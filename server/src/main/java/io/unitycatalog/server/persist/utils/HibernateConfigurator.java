@@ -70,7 +70,7 @@ public class HibernateConfigurator implements AutoCloseable {
    */
   public HibernateConfigurator(Properties hibernateProperties) {
     this.hibernateProperties = hibernateProperties;
-    this.dataSource = new HikariDataSource(hikariConfig(hibernateProperties));
+    this.dataSource = createDataSource(hibernateProperties);
     try {
       this.sessionFactory = createSessionFactory(hibernateProperties, dataSource);
     } catch (Throwable t) {
@@ -117,8 +117,7 @@ public class HibernateConfigurator implements AutoCloseable {
     }
   }
 
-  /** The connection pool settings of {@code hibernateProperties}. */
-  public static HikariConfig hikariConfig(Properties hibernateProperties) {
+  private static HikariDataSource createDataSource(Properties hibernateProperties) {
     Properties hikariProperties = new Properties();
     hibernateProperties.stringPropertyNames().stream()
         .filter(name -> name.startsWith(HIKARI_PREFIX))
@@ -148,7 +147,7 @@ public class HibernateConfigurator implements AutoCloseable {
     if (hikariConfig.getPoolName() == null) {
       hikariConfig.setPoolName("unity-catalog");
     }
-    return hikariConfig;
+    return new HikariDataSource(hikariConfig);
   }
 
   /**
