@@ -63,7 +63,6 @@ import io.vertx.core.Vertx;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.List;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
@@ -128,7 +127,7 @@ public class UnityCatalogServer implements AutoCloseable {
     this.blockingThreads = hibernateConfigurator.getDataSource().getMaximumPoolSize();
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
-      requireCurrentSchema(unityCatalogServerBuilder.extraMigrationLocations);
+      requireCurrentSchema();
       createdBlockingTaskExecutor =
           BlockingTaskExecutor.builder()
               .numThreads(blockingThreads)
@@ -153,10 +152,10 @@ public class UnityCatalogServer implements AutoCloseable {
    * Upgrades the database to the schema version this release ships, or refuses one it cannot
    * upgrade (see {@link SchemaMigrator#prepareForStart()}).
    */
-  private void requireCurrentSchema(List<String> extraMigrationLocations) {
+  private void requireCurrentSchema() {
     HikariDataSource ds = hibernateConfigurator.getDataSource();
     DatabaseKind kind = DatabaseKind.fromJdbcUrl(ds.getJdbcUrl());
-    SchemaMigrator migrator = new SchemaMigrator(ds, kind, extraMigrationLocations);
+    SchemaMigrator migrator = new SchemaMigrator(ds, kind);
     SchemaState state = migrator.prepareForStart();
     if (state != SchemaState.CURRENT) {
       throw new IllegalStateException(
@@ -579,7 +578,6 @@ public class UnityCatalogServer implements AutoCloseable {
     private Integer observabilityPort;
     private ServerProperties serverProperties;
     private HibernateConfigurator hibernateConfigurator;
-    private List<String> extraMigrationLocations = List.of();
     private CloudCredentialVendor cloudCredentialVendor;
     private UnaryOperator<FileOperations> fileOperationsDecorator = UnaryOperator.identity();
 
@@ -613,13 +611,6 @@ public class UnityCatalogServer implements AutoCloseable {
     public UnityCatalogServer.Builder hibernateConfigurator(
         HibernateConfigurator hibernateConfigurator) {
       this.hibernateConfigurator = hibernateConfigurator;
-      return this;
-    }
-
-    /** Test seam: schema steps to apply besides this release's (see {@code SchemaMigrator}). */
-    public UnityCatalogServer.Builder extraMigrationLocations(
-        List<String> extraMigrationLocations) {
-      this.extraMigrationLocations = extraMigrationLocations;
       return this;
     }
 

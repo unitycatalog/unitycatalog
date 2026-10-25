@@ -14,7 +14,6 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.stream.Stream;
@@ -37,11 +36,6 @@ public final class TestServer implements AutoCloseable {
   }
 
   public static TestServer start(TestDatabase db) {
-    return start(db, List.of());
-  }
-
-  /** Also applies the schema steps in {@code extraMigrationLocations} (tests' own steps). */
-  public static TestServer start(TestDatabase db, List<String> extraMigrationLocations) {
     try {
       Path storageRoot = Files.createTempDirectory("uc-test-server");
       try {
@@ -60,7 +54,6 @@ public final class TestServer implements AutoCloseable {
                 .port(port)
                 .serverProperties(new ServerProperties(properties))
                 .hibernateConfigurator(db.openHibernateConfigurator(db.hibernateProperties()))
-                .extraMigrationLocations(extraMigrationLocations)
                 .build();
         try {
           server.start();
