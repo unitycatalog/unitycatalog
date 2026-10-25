@@ -17,7 +17,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>By default the whole step runs in one transaction. A step on a table that may be large returns
  * true from {@link #batched()} and calls {@link #updateInBatches} from {@link #apply}: each batch
- * is committed, so once the failed run is repaired, a rerun continues where the last one stopped.
+ * is committed, so the next run of a step that failed or stopped continues where the last one
+ * stopped.
  */
 public abstract class DataStep extends BaseJavaMigration {
 
@@ -48,6 +49,7 @@ public abstract class DataStep extends BaseJavaMigration {
    * changes at most that many rows and only rows not yet changed (for example {@code WHERE id IN
    * (SELECT id FROM t WHERE c IS NULL LIMIT ?)}); the SQL for that differs between databases. A
    * changed row must no longer match: a new value that can be NULL in that example never stops.
+   * When the server is told to stop during its start, the step stops after the batch it is in.
    */
   protected final long updateInBatches(Connection connection, String sql, int batchSize)
       throws SQLException {
@@ -68,6 +70,8 @@ public abstract class DataStep extends BaseJavaMigration {
         }
         total += changed;
         LOGGER.info("{}: changed {} rows in this batch, {} so far", name(), changed, total);
+        SchemaMigrator.stopIfRequested(
+            "a batch boundary of step " + getVersion() + " (" + getDescription() + ")");
       }
     }
     return total;

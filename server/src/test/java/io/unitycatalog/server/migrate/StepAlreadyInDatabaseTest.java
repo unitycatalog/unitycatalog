@@ -8,10 +8,13 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
+import io.unitycatalog.server.migrate.kit.SchemaSnapshot;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
@@ -40,6 +43,8 @@ public class StepAlreadyInDatabaseTest {
   private static final String TWO_COLUMNS = "db/test-steps/repeat-two-columns/";
   // Version 4200 drops the size of a varchar (H2 and PostgreSQL; MySQL's varchar takes a size).
   private static final String UNSIZED = "db/test-steps/repeat-unsized/";
+
+  private static final String ADD_NOTE = "V4002__add_test_repeat_item_note.sql";
 
   @TempDatabase(empty = true)
   TestDatabase db;
@@ -94,6 +99,55 @@ public class StepAlreadyInDatabaseTest {
     assertThatThrownBy(migrator::migrate).hasMessageContaining("V4100");
     assertThat(sent)
         .contains(statement(TWO_COLUMNS, "V4100__add_two_test_repeat_item_columns.sql"));
+  }
+
+  @Test
+  void recordsAFailedStepWhoseChangeIsThere() {
+    migrator(db.dataSource(), BASE).migrate();
+    execute(db, statement(ADD_NOTE));
+    MigratorTest.recordFailedStep(db, ADD_NOTE);
+    List<String> sent = new ArrayList<>();
+    SchemaMigrator migrator = migrator(recording(sent), BASE, STEPS);
+
+    migrator.migrate();
+
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+    assertThat(sent).doesNotContain(statement(ADD_NOTE));
+  }
+
+  @Test
+  void runsAFailedStepWhoseChangeIsAbsent() {
+    migrator(db.dataSource(), BASE).migrate();
+    MigratorTest.recordFailedStep(db, ADD_NOTE);
+    List<String> sent = new ArrayList<>();
+    SchemaMigrator migrator = migrator(recording(sent), BASE, STEPS);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isZero();
+    assertThat(out.toString(StandardCharsets.UTF_8)).contains("  4002 add test repeat item note\n");
+
+    migrator.migrate();
+
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+    assertThat(sent).contains(statement(ADD_NOTE));
+  }
+
+  @Test
+  void refusesAFailedStepOfTwoChangesWhenOneIsThere() {
+    migrator(db.dataSource(), BASE).migrate();
+    execute(db, "ALTER TABLE test_repeat_items ADD extra_a INT");
+    MigratorTest.recordFailedStep(db, "V4100__add_two_test_repeat_item_columns.sql");
+    SchemaSnapshot before = SchemaSnapshot.of(db.dataSource());
+    SchemaMigrator migrator = migrator(db.dataSource(), BASE, "classpath:" + TWO_COLUMNS);
+
+    assertThatThrownBy(migrator::migrate)
+        .hasMessage(
+            "Step 4100 (add two test repeat item columns) failed in an earlier run, and the server"
+                + " can't tell how much of its change is in the database. Restore the backup you"
+                + " took before the upgrade, or undo the step's change by hand and remove its"
+                + " failed record as docs/server/upgrades.md shows (section \"A step that"
+                + " failed\"); then start the server again.");
+    assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(before);
+    assertThat(migrator.state()).isEqualTo(SchemaState.FAILED);
   }
 
   @Test

@@ -13,11 +13,13 @@ generate_jar() {
   $GENERATE_JAR_COMMAND || exit
 }
 
-# This function starts the unity catalog server
+# This function starts the unity catalog server. exec: java replaces this shell, so it gets the
+# signals sent to the script (SIGTERM from docker stop or Kubernetes, where the script is PID 1)
+# and the script exits with java's exit status.
 run_uc_server_java_command() {
   SERVER_JAVA_COMMAND="java -cp $(cat "$1") io.unitycatalog.server.UnityCatalogServer"
   shift
-  $SERVER_JAVA_COMMAND "$@" || exit
+  exec $SERVER_JAVA_COMMAND "$@"
 }
 
 # This function runs the server using the source code

@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -25,13 +26,17 @@ public class SqlStepsAreSingleDdlTest {
   private static final Path STEPS = Path.of("server/src/main/resources/db/migration");
   private static final Path CHECKS = STEPS.resolve("checks");
 
-  /** Steps that hold more than one statement, with the reason. */
-  private static final Map<String, String> EXEMPT =
-      Map.of(
-          "h2/V1__baseline_0_7.sql", "the baseline: the whole schema at once",
-          "postgresql/V1__baseline_0_7.sql", "the baseline: the whole schema at once",
-          "mysql/V1__baseline_0_7.sql", "the baseline: the whole schema at once",
-          "mysql/V3__case_sensitive_text.sql", "converts every table; safe to repeat");
+  /**
+   * Steps that hold more than one statement, with the reason: the baselines, and the steps that
+   * {@link SchemaMigrator#SAFE_TO_REPEAT} reruns after they failed.
+   */
+  private static final Map<String, String> EXEMPT = new HashMap<>(SchemaMigrator.SAFE_TO_REPEAT);
+
+  static {
+    for (String database : List.of("h2", "postgresql", "mysql")) {
+      EXEMPT.put(database + "/V1__baseline_0_7.sql", "the baseline: the whole schema at once");
+    }
+  }
 
   private static final List<String> DDL = List.of("CREATE", "ALTER", "DROP", "RENAME");
 

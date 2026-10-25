@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.UncheckedIOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.net.JarURLConnection;
 import java.net.URI;
 import java.net.URL;
@@ -20,6 +22,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -29,11 +32,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -43,8 +49,10 @@ import java.util.stream.Stream;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.CoreMigrationType;
+import org.flywaydb.core.api.FlywayException;
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationInfoService;
+import org.flywaydb.core.api.MigrationState;
 import org.flywaydb.core.api.MigrationVersion;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.slf4j.Logger;
@@ -64,6 +72,17 @@ import org.slf4j.LoggerFactory;
  *
  * <p>A SQL step whose change is already in the database (a run stopped before Flyway recorded it,
  * or someone applied it by hand) is recorded without running it.
+ *
+ * <p>A step that failed in an earlier run is run again, or recorded when its change is there, if
+ * the run can tell what the failed run left: a SQL step whose change is fully there or absent, or a
+ * {@link DataStep}, which goes on from the rows it has not changed yet. Otherwise the run refuses.
+ *
+ * <p>A statement of the run waits at most {@link #LOCK_WAIT} for a lock that another session holds,
+ * then fails.
+ *
+ * <p>When the process is told to stop during the run of a server start, the run stops at the next
+ * boundary (before a step, or after a batch of a batched {@link DataStep}) and the next start
+ * finishes it.
  */
 public final class SchemaMigrator implements AutoCloseable {
 
@@ -181,14 +200,37 @@ public final class SchemaMigrator implements AutoCloseable {
   /** The types the steps name without a size, since they take none. */
   private static final Set<String> UNSIZED_TYPES = Set.of("text", "clob", "mediumtext", "longtext");
 
+  /** The table a statement waits for: {@code ALTER TABLE t ...} or {@code CREATE INDEX i ON t}. */
+  private static final Pattern LOCKED_TABLE =
+      Pattern.compile(
+          "alter\\s+table\\s+(\\w+)|create\\s+(?:unique\\s+)?index\\s+\\w+\\s+on\\s+(\\w+)",
+          Pattern.CASE_INSENSITIVE);
+
+  /**
+   * How long a statement of a migration run waits for a lock that another session holds before it
+   * fails, so a step doesn't wait forever behind a long transaction while the servers are down.
+   */
+  static final Duration LOCK_WAIT = Duration.ofSeconds(60);
+
   private static final Pattern CHECK = Pattern.compile("C(\\d+(?:_\\d+)*)__(.+)\\.sql");
+
+  /**
+   * The SQL steps of several statements that are safe to repeat, by {@code <database>/<file>}, with
+   * the reason: a run reruns them after they failed.
+   */
+  static final Map<String, String> SAFE_TO_REPEAT =
+      Map.of("mysql/V3__case_sensitive_text.sql", "converts every table; safe to repeat");
 
   /** The most rows of one check that a refusal lists. */
   private static final int MAX_ROWS_LISTED = 20;
 
+  /** Set by the shutdown hook of {@link #prepareForStart()}: the run stops at its next boundary. */
+  private static volatile boolean stopRequested;
+
   private final DataSource dataSource;
   private final DatabaseKind kind;
   private final String[] locations;
+  private final Duration lockWait;
   private final HikariDataSource ownedPool;
 
   /** Does not own {@code dataSource}. */
@@ -198,13 +240,20 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /** Also applies the steps in {@code extraLocations} (tests' own steps). */
   public SchemaMigrator(DataSource dataSource, DatabaseKind kind, List<String> extraLocations) {
-    this(dataSource, kind, extraLocations, null);
+    this(dataSource, kind, extraLocations, LOCK_WAIT);
+  }
+
+  /** Waits at most {@code lockWait} for a lock instead of {@link #LOCK_WAIT} (tests' own cap). */
+  SchemaMigrator(
+      DataSource dataSource, DatabaseKind kind, List<String> extraLocations, Duration lockWait) {
+    this(dataSource, kind, extraLocations, lockWait, null);
   }
 
   private SchemaMigrator(
       DataSource dataSource,
       DatabaseKind kind,
       List<String> extraLocations,
+      Duration lockWait,
       HikariDataSource ownedPool) {
     this.dataSource = dataSource;
     this.kind = kind;
@@ -213,6 +262,7 @@ public final class SchemaMigrator implements AutoCloseable {
     locations.add(JAVA_STEPS);
     locations.addAll(extraLocations);
     this.locations = locations.toArray(String[]::new);
+    this.lockWait = lockWait;
     this.ownedPool = ownedPool;
   }
 
@@ -231,6 +281,7 @@ public final class SchemaMigrator implements AutoCloseable {
         pool,
         DatabaseKind.fromJdbcUrl(hibernateProperties.getProperty("hibernate.connection.url")),
         List.of(),
+        LOCK_WAIT,
         pool);
   }
 
@@ -241,7 +292,7 @@ public final class SchemaMigrator implements AutoCloseable {
   private FluentConfiguration configuration(String baselineVersion) {
     FluentConfiguration configuration =
         Flyway.configure()
-            .dataSource(dataSource)
+            .dataSource(flywayDataSource())
             .locations(locations)
             .table(HISTORY_TABLE)
             .failOnMissingLocations(true)
@@ -284,9 +335,14 @@ public final class SchemaMigrator implements AutoCloseable {
     return tables.contains("uc_catalogs") ? SchemaState.UNVERSIONED_UC : SchemaState.NOT_UC;
   }
 
-  /** The highest applied version, {@code null} without history. */
+  /** The highest version applied, not counting a failed step; {@code null} without history. */
   public String currentVersion() {
-    return version(flyway(null).info().current());
+    return Arrays.stream(flyway(null).info().applied())
+        .filter(m -> !m.getState().isFailed() && m.getVersion() != null)
+        .map(MigrationInfo::getVersion)
+        .max(MigrationVersion::compareTo)
+        .map(MigrationVersion::getVersion)
+        .orElse(null);
   }
 
   /** The highest step in this build. */
@@ -326,7 +382,7 @@ public final class SchemaMigrator implements AutoCloseable {
    */
   public SchemaState prepareForStart() {
     try (RunLock lock = RunLock.acquire(dataSource, kind)) {
-      MigrationOutcome outcome = migrateLocked();
+      MigrationOutcome outcome = migrateStoppingOnShutdown();
       if (outcome.applied() > 0) {
         LOGGER.info(
             "Upgraded the database schema from version {} to {} ({} steps)",
@@ -369,10 +425,62 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
+  /**
+   * {@link #migrateLocked()} with a shutdown hook that asks the run to stop at its next boundary
+   * and waits for it, up to {@link #lockWait}. A statement that is running is not interrupted.
+   */
+  private MigrationOutcome migrateStoppingOnShutdown() {
+    CountDownLatch done = new CountDownLatch(1);
+    Thread hook =
+        new Thread(
+            () -> {
+              stopRequested = true;
+              try {
+                done.await(lockWait.toMillis(), TimeUnit.MILLISECONDS);
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              }
+            },
+            "schema-migration-stop");
+    Runtime.getRuntime().addShutdownHook(hook);
+    try {
+      return migrateLocked();
+    } finally {
+      done.countDown();
+      try {
+        Runtime.getRuntime().removeShutdownHook(hook);
+      } catch (IllegalStateException e) {
+        // The JVM is shutting down: the hook is running.
+      }
+    }
+  }
+
+  /**
+   * Stops the run at {@code boundary} when the process is shutting down during a server start's
+   * run: logs it, also on standard error, and throws.
+   */
+  static void stopIfRequested(String boundary) {
+    if (stopRequested) {
+      String message =
+          "Stopped the schema migration at "
+              + boundary
+              + " on SIGTERM; start the server again to finish it.";
+      LOGGER.warn(message);
+      // Log4j's own shutdown hook has likely stopped the logger by now.
+      System.err.println(message);
+      throw new IllegalStateException(message);
+    }
+  }
+
   private MigrationOutcome migrateLocked() {
     SchemaState state = state(); // read under the lock
-    String from = state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : currentVersion();
     String refusal = refusal(state);
+    if (refusal == null && state == SchemaState.FAILED) {
+      removeFailedSteps();
+      state = state();
+      refusal = refusal(state);
+    }
+    String from = state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : currentVersion();
     if (refusal == null) {
       refusal = failedChecks(from);
     }
@@ -387,6 +495,7 @@ public final class SchemaMigrator implements AutoCloseable {
     }
     int applied = 0;
     for (MigrationInfo step : pendingSteps(from)) {
+      stopIfRequested("the start of step " + version(step) + " (" + step.getDescription() + ")");
       boolean alreadyThere = isAlreadyThere(step);
       if (alreadyThere) {
         LOGGER.info(
@@ -394,41 +503,186 @@ public final class SchemaMigrator implements AutoCloseable {
             version(step),
             step.getDescription());
       }
-      applied +=
-          configuration(baseline)
-              .target(step.getVersion())
-              .skipExecutingMigrations(alreadyThere)
-              .load()
-              .migrate()
-              .migrationsExecuted;
+      try {
+        applied +=
+            configuration(baseline)
+                .target(step.getVersion())
+                .skipExecutingMigrations(alreadyThere)
+                .load()
+                .migrate()
+                .migrationsExecuted;
+      } catch (FlywayException e) {
+        if (isLockWait(e)) {
+          throw new IllegalStateException(lockWaitRefusal(step), e);
+        }
+        throw e;
+      }
     }
     return new MigrationOutcome(from, currentVersion(), applied);
   }
 
-  /** The steps above version {@code from} ({@code null}: every step), in order. */
+  /** The statement that sets {@link #lockWait} on a connection of the run. */
+  private String lockWaitSql() {
+    return switch (kind) {
+      case POSTGRESQL -> "SET lock_timeout = " + lockWait.toMillis();
+      // lock_wait_timeout for table (metadata) locks, innodb_lock_wait_timeout for row locks.
+      case MYSQL ->
+          "SET SESSION lock_wait_timeout = "
+              + lockWaitSeconds()
+              + ", SESSION innodb_lock_wait_timeout = "
+              + lockWaitSeconds();
+      case H2 -> "SET LOCK_TIMEOUT " + lockWait.toMillis();
+    };
+  }
+
+  private long lockWaitSeconds() {
+    return Math.max(1, lockWait.toSeconds());
+  }
+
+  /**
+   * {@link #dataSource} for Flyway, whose connections come from {@link #connection()}. (Flyway's
+   * {@code initSql} would do it too, but Flyway logs a deprecation warning for it on every load.)
+   */
+  private DataSource flywayDataSource() {
+    return (DataSource)
+        Proxy.newProxyInstance(
+            DataSource.class.getClassLoader(),
+            new Class<?>[] {DataSource.class},
+            (proxy, method, args) -> {
+              if (method.getName().equals("getConnection") && args == null) {
+                return connection();
+              }
+              try {
+                return method.invoke(dataSource, args);
+              } catch (InvocationTargetException e) {
+                throw e.getCause();
+              }
+            });
+  }
+
+  /**
+   * A connection of the run, other than the run lock's: Flyway's, the probes' and the checks'. It
+   * waits at most {@link #lockWait} for a lock.
+   */
+  private Connection connection() throws SQLException {
+    Connection connection = dataSource.getConnection();
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(lockWaitSql());
+    } catch (SQLException | RuntimeException e) {
+      connection.close();
+      throw e;
+    }
+    return connection;
+  }
+
+  /** Whether {@code e} comes from a statement that waited longer than {@link #lockWait}. */
+  private boolean isLockWait(Throwable e) {
+    for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+      if (cause instanceof SQLException sql
+          && switch (kind) {
+            case POSTGRESQL -> "55P03".equals(sql.getSQLState()); // lock_not_available
+            case MYSQL -> sql.getErrorCode() == 1205; // ER_LOCK_WAIT_TIMEOUT
+            case H2 -> sql.getErrorCode() == 50200; // LOCK_TIMEOUT_1
+          }) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** The refusal for a step that waited longer than {@link #lockWait}, with the table if known. */
+  private String lockWaitRefusal(MigrationInfo step) {
+    String table = null;
+    if (step.getType() == CoreMigrationType.SQL) {
+      Matcher matcher = LOCKED_TABLE.matcher(stepStatement(step));
+      if (matcher.lookingAt()) {
+        table = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+      }
+    }
+    return "Step "
+        + version(step)
+        + " ("
+        + step.getDescription()
+        + ") waited more than "
+        + lockWaitSeconds()
+        + " seconds for a lock"
+        + (table == null ? "" : " on " + table)
+        + "; another session holds it. Stop the other sessions on the database, then start the"
+        + " server again.";
+  }
+
+  /**
+   * The steps above version {@code from} ({@code null}: every step) not applied yet or failed in an
+   * earlier run, in order.
+   */
   private List<MigrationInfo> pendingSteps(String from) {
-    return Arrays.stream(flyway(null).info().pending())
+    return Arrays.stream(flyway(null).info().all())
+        .filter(m -> m.getState() == MigrationState.PENDING || m.getState().isFailed())
         .filter(
             m -> from == null || m.getVersion().compareTo(MigrationVersion.fromVersion(from)) > 0)
         .toList();
   }
 
+  /** The steps that failed in an earlier run. */
+  private List<MigrationInfo> failedSteps() {
+    return Arrays.stream(flyway(null).info().all()).filter(m -> m.getState().isFailed()).toList();
+  }
+
+  /**
+   * Whether a failed step can run again: a step of this build that is a SQL step whose probe can
+   * tell whether its change is there or that is {@link #SAFE_TO_REPEAT}, or a {@link DataStep},
+   * which changes only the rows not changed yet.
+   */
+  private boolean canRunAgain(MigrationInfo step) {
+    if (!step.getState().isResolved()) {
+      return false;
+    } else if (step.getType() == CoreMigrationType.SQL) {
+      return SAFE_TO_REPEAT.containsKey(kind.folder() + "/" + step.getScript())
+          || probe(step).isPresent();
+    }
+    try {
+      return DataStep.class.isAssignableFrom(
+          Class.forName(step.getScript(), false, SchemaMigrator.class.getClassLoader()));
+    } catch (ClassNotFoundException e) {
+      return false;
+    }
+  }
+
+  /**
+   * Removes the failed steps' history rows with Flyway's repair, so the run runs them again or
+   * records them like pending steps.
+   */
+  private void removeFailedSteps() {
+    for (MigrationInfo step : failedSteps()) {
+      LOGGER.info(
+          "Step {} ({}) failed in an earlier run; running it again.",
+          version(step),
+          step.getDescription());
+    }
+    flyway(null).repair();
+  }
+
+  /** Whether the change of a SQL step is already in the database; false when it can't tell. */
+  private boolean isAlreadyThere(MigrationInfo step) {
+    return probe(step).orElse(false);
+  }
+
   /**
    * Whether the change of a SQL step is already in the database, so that running it would fail: a
    * run stopped between the step and its history row, or someone applied it by hand. Recognises a
-   * step by its one statement; any other step runs.
+   * step by its one statement; empty for any other step.
    */
-  private boolean isAlreadyThere(MigrationInfo step) {
+  private Optional<Boolean> probe(MigrationInfo step) {
     if (step.getType() != CoreMigrationType.SQL) {
-      return false;
+      return Optional.empty();
     }
     String statement = stepStatement(step);
     if (statement.contains(";") // more than one statement, such as the baseline step
         || hasSeveralChanges(statement)) {
-      return false;
+      return Optional.empty();
     }
-    try (Connection connection = dataSource.getConnection()) {
-      return isAlreadyThere(statement, connection);
+    try (Connection connection = connection()) {
+      return probe(statement, connection);
     } catch (SQLException e) {
       throw new IllegalStateException(
           "Could not check whether step "
@@ -439,7 +693,7 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
-  private boolean isAlreadyThere(String statement, Connection connection) throws SQLException {
+  private Optional<Boolean> probe(String statement, Connection connection) throws SQLException {
     DatabaseMetaData metaData = connection.getMetaData();
     String catalog = connection.getCatalog();
     String schema = connection.getSchema();
@@ -449,33 +703,36 @@ public final class SchemaMigrator implements AutoCloseable {
     Matcher createIndex = CREATE_INDEX.matcher(statement);
     Matcher changeType = CHANGE_TYPE.matcher(statement);
     if (createTable.lookingAt()) {
-      return tableName(metaData, catalog, schema, createTable.group(1)) != null;
+      return Optional.of(tableName(metaData, catalog, schema, createTable.group(1)) != null);
     } else if (addConstraint.lookingAt()) {
-      return hasConstraint(connection, addConstraint.group(1), addConstraint.group(2));
+      return Optional.of(hasConstraint(connection, addConstraint.group(1), addConstraint.group(2)));
     } else if (addColumn.lookingAt()) {
       String table = tableName(metaData, catalog, schema, addColumn.group(1));
-      return table != null
-          && names(metaData.getColumns(catalog, schema, table, null), "COLUMN_NAME")
-              .contains(addColumn.group(2).toLowerCase(Locale.ROOT));
+      return Optional.of(
+          table != null
+              && names(metaData.getColumns(catalog, schema, table, null), "COLUMN_NAME")
+                  .contains(addColumn.group(2).toLowerCase(Locale.ROOT)));
     } else if (createIndex.lookingAt()) {
       String table = tableName(metaData, catalog, schema, createIndex.group(2));
-      return table != null
-          && names(metaData.getIndexInfo(catalog, schema, table, false, false), "INDEX_NAME")
-              .contains(createIndex.group(1).toLowerCase(Locale.ROOT));
+      return Optional.of(
+          table != null
+              && names(metaData.getIndexInfo(catalog, schema, table, false, false), "INDEX_NAME")
+                  .contains(createIndex.group(1).toLowerCase(Locale.ROOT)));
     } else if (changeType.lookingAt()) {
       if (changeType.group(4) == null
           && !UNSIZED_TYPES.contains(changeType.group(3).toLowerCase(Locale.ROOT))) {
-        return false; // without a size, the type may be a sized one at its default size
+        return Optional.empty(); // without a size, the type may be a sized one at its default size
       }
       String table = tableName(metaData, catalog, schema, changeType.group(1));
-      return table != null
-          && hasType(
-              metaData.getColumns(catalog, schema, table, null),
-              changeType.group(2),
-              changeType.group(3),
-              changeType.group(4));
+      return Optional.of(
+          table != null
+              && hasType(
+                  metaData.getColumns(catalog, schema, table, null),
+                  changeType.group(2),
+                  changeType.group(3),
+                  changeType.group(4)));
     }
-    return false;
+    return Optional.empty();
   }
 
   /**
@@ -582,7 +839,8 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Why {@link #migrate()} refuses a database in {@code state}, or {@code null} when it goes on.
+   * Why {@link #migrate()} refuses a database in {@code state}, or {@code null} when it goes on (a
+   * FAILED one when every failed step can run again).
    */
   private String refusal(SchemaState state) {
     return switch (state) {
@@ -595,18 +853,22 @@ public final class SchemaMigrator implements AutoCloseable {
               + ", this release ends at "
               + latestVersion()
               + "). Run the newer release.";
-      case FAILED -> {
-        MigrationInfo failed =
-            Arrays.stream(flyway(null).info().all())
-                .filter(m -> m.getState().isFailed())
-                .findFirst()
-                .orElseThrow();
-        yield "A migration step failed in an earlier run: version "
-            + version(failed)
-            + " ("
-            + failed.getDescription()
-            + "). See docs/server/upgrades.md.";
-      }
+      case FAILED ->
+          failedSteps().stream()
+              .filter(m -> !canRunAgain(m))
+              .findFirst()
+              .map(
+                  m ->
+                      "Step "
+                          + version(m)
+                          + " ("
+                          + m.getDescription()
+                          + ") failed in an earlier run, and the server can't tell how much of"
+                          + " its change is in the database. Restore the backup you took before"
+                          + " the upgrade, or undo the step's change by hand and remove its"
+                          + " failed record as docs/server/upgrades.md shows (section \"A step"
+                          + " that failed\"); then start the server again.")
+              .orElse(null);
       case UNVERSIONED_UC -> missingBaselineTables();
       default -> null;
     };
@@ -743,7 +1005,7 @@ public final class SchemaMigrator implements AutoCloseable {
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
-    try (Connection connection = dataSource.getConnection()) {
+    try (Connection connection = connection()) {
       connection.setReadOnly(true);
       connection.setAutoCommit(false);
       try (Statement statement = connection.createStatement();
@@ -795,7 +1057,7 @@ public final class SchemaMigrator implements AutoCloseable {
 
   private Set<String> tableNamesLowerCase() {
     Set<String> tables = new HashSet<>();
-    try (Connection connection = dataSource.getConnection();
+    try (Connection connection = connection();
         ResultSet rs =
             connection
                 .getMetaData()
@@ -821,6 +1083,9 @@ public final class SchemaMigrator implements AutoCloseable {
   public void close() {
     if (ownedPool != null) {
       ownedPool.close();
+    } else if (dataSource instanceof HikariDataSource pool && pool.getHikariPoolMXBean() != null) {
+      // The run's connections keep its lock wait; the pool replaces them with new ones.
+      pool.getHikariPoolMXBean().softEvictConnections();
     }
   }
 

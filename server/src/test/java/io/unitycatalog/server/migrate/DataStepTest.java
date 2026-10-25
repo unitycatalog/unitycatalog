@@ -4,26 +4,35 @@ import static io.unitycatalog.server.migrate.MigratorTest.execute;
 import static io.unitycatalog.server.migrate.MigratorTest.quote;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
+import io.unitycatalog.server.migrate.kit.TestServer;
 import io.unitycatalog.server.migrate.teststeps.batched.V2001__Fill_upper_name_in_batches;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import java.io.File;
+import java.io.Writer;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import org.flywaydb.core.Flyway;
+import java.util.concurrent.TimeUnit;
+import org.flywaydb.core.api.MigrationState;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
  * Test-only steps create {@code test_data_step_items} (version 2000, SQL) and fill its {@code
- * upper_name} from {@code name} (version 2001, a {@link DataStep}), in one transaction or in
- * batches of 2.
+ * upper_name} from {@code name} (version 2001, a {@link DataStep}), in one transaction, in batches
+ * of 2, or slowly in batches of 1.
  */
 public class DataStepTest {
 
@@ -33,6 +42,8 @@ public class DataStepTest {
       "classpath:io/unitycatalog/server/migrate/teststeps/onetx";
   private static final String IN_BATCHES =
       "classpath:io/unitycatalog/server/migrate/teststeps/batched";
+  private static final String SLOWLY =
+      "classpath:io/unitycatalog/server/migrate/teststeps/slowbatches";
 
   @TempDatabase(empty = true)
   TestDatabase db;
@@ -97,12 +108,61 @@ public class DataStepTest {
     }
     assertThat(filledRows()).isEqualTo(2);
 
-    // Every database records the failed step (it ran outside a transaction), which a rerun refuses
-    // until Flyway's repair removes it.
-    flyway(IN_BATCHES).repair();
+    // H2 and MySQL record the failed step (PostgreSQL rolls the record back with Flyway's lock
+    // transaction); either way the rerun runs it again and changes the rows the first run left.
     assertThat(migrate(IN_BATCHES)).isEqualTo(new MigrationOutcome("2000", "2001", 1));
     assertThat(filledRows()).isEqualTo(ROWS);
     assertThat(historyRows("2001")).isOne();
+  }
+
+  @Test
+  void serverStopsAtABatchOnSigterm() throws Exception {
+    // H2 has no sleep function for the slow step, and closes its database in a shutdown hook of
+    // its own, under the running step.
+    assumeTrue(db.kind() != DatabaseKind.H2);
+    Path properties = Files.createTempFile("uc-hibernate", ".properties");
+    try {
+      try (Writer out = Files.newBufferedWriter(properties)) {
+        db.hibernateProperties().store(out, null);
+      }
+      Process server =
+          new ProcessBuilder(
+                  Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                  // The test's classes may record coverage; the server's process records none.
+                  "-Djacoco-agent.output=none",
+                  "-cp",
+                  System.getProperty("java.class.path"),
+                  TestServer.class.getName(),
+                  properties.toString(),
+                  CREATE_TABLE + db.kind().folder(),
+                  SLOWLY)
+              .directory(new File(System.getProperty("user.dir")))
+              .inheritIO()
+              .start();
+      int filled;
+      try {
+        long deadline = System.nanoTime() + Duration.ofMinutes(3).toNanos();
+        while ((filled = filledRows()) == 0) {
+          assertThat(server.isAlive()).as("the server is running").isTrue();
+          assertThat(System.nanoTime()).as("the step started in time").isLessThan(deadline);
+          Thread.sleep(100);
+        }
+      } finally {
+        server.destroy(); // SIGTERM, during the batch after the rows filled so far
+        assertThat(server.waitFor(2, TimeUnit.MINUTES)).isTrue();
+      }
+      assertThat(server.exitValue()).isNotZero();
+      // The server finished that batch (killing it would roll the batch back), then stopped.
+      assertThat(filledRows()).isGreaterThan(filled).isLessThan(ROWS);
+    } finally {
+      Files.delete(properties);
+    }
+    assertThat(new SchemaMigrator(db.dataSource(), db.kind(), locations(SLOWLY)).applied())
+        .filteredOn(m -> m.getVersion().getVersion().equals("2001"))
+        .noneMatch(m -> m.getState() == MigrationState.SUCCESS);
+
+    assertThat(migrate(SLOWLY)).isEqualTo(new MigrationOutcome("2000", "2001", 1));
+    assertThat(filledRows()).isEqualTo(ROWS);
   }
 
   /** Migrates with the release steps, the table step and the given steps. */
@@ -111,17 +171,6 @@ public class DataStepTest {
         new SchemaMigrator(db.dataSource(), db.kind(), locations(steps))) {
       return migrator.migrate();
     }
-  }
-
-  private Flyway flyway(String... steps) {
-    List<String> locations = locations(steps);
-    locations.add(0, "classpath:db/migration/" + db.kind().folder());
-    locations.add(1, SchemaMigrator.JAVA_STEPS);
-    return Flyway.configure()
-        .dataSource(db.dataSource())
-        .locations(locations.toArray(String[]::new))
-        .table("uc_schema_history")
-        .load();
   }
 
   private List<String> locations(String... steps) {

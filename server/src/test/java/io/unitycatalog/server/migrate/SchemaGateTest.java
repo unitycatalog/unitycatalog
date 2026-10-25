@@ -103,6 +103,6 @@ public class SchemaGateTest {
     MigratorTest.recordFailedStep(db);
 
     assertThatThrownBy(() -> TestServer.start(db))
-        .hasMessageContaining("A migration step failed in an earlier run: version 1000 (broken)");
+        .hasMessageContaining("Step 1000 (broken) failed in an earlier run");
   }
 }
