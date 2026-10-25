@@ -6,8 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 public class SchemaGateTest {
 
@@ -17,9 +19,11 @@ public class SchemaGateTest {
   @TempDatabase(empty = true)
   TestDatabase db;
 
+  @TempDir Path storageRoot;
+
   @Test
   void setsUpAnEmptyDatabaseOnFirstStart() {
-    try (TestServer server = TestServer.start(db)) {
+    try (TestServer server = TestServer.start(db, storageRoot)) {
       assertThat(new SchemaMigrator(db.dataSource(), db.kind()).state())
           .isEqualTo(SchemaState.CURRENT);
     }
@@ -29,7 +33,7 @@ public class SchemaGateTest {
   void upgradesA07Database() {
     MigratorTest.create07Schema(db);
 
-    try (TestServer server = TestServer.start(db)) {
+    try (TestServer server = TestServer.start(db, storageRoot)) {
       assertThat(SchemaSnapshot.of(db.dataSource()))
           .isEqualTo(RealUpgradeTest.freshInstallSnapshot());
     }
@@ -39,6 +43,7 @@ public class SchemaGateTest {
   void refusesASchemaNewerThanThisRelease() {
     new SchemaMigrator(db.dataSource(), db.kind(), AHEAD).migrate();
 
-    assertThatThrownBy(() -> TestServer.start(db)).hasMessageContaining("this release ends at");
+    assertThatThrownBy(() -> TestServer.start(db, storageRoot))
+        .hasMessageContaining("this release ends at");
   }
 }

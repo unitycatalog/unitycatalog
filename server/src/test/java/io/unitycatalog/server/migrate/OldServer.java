@@ -1,11 +1,11 @@
 package io.unitycatalog.server.migrate;
 
+import static io.unitycatalog.server.utils.TestUtils.createApiClient;
+
 import io.unitycatalog.client.ApiClient;
-import io.unitycatalog.client.ApiClientBuilder;
-import io.unitycatalog.client.auth.TokenProvider;
-import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
-import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
+import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.utils.VersionUtils;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -16,83 +16,138 @@ import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Map;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Runs an {@link OldImage} on a {@link TestDatabase} the way an operator runs that release: its own
- * {@code etc/conf} files pointed at the database, Hibernate auto-update as the release shipped it,
- * and authorization on. The server jar runs as a child process in a temporary directory holding its
- * {@code etc/conf}, on the test database itself; for MySQL the test's driver jar is added to its
- * classpath.
+ * Runs a released server on a {@link TestDatabase} the way an operator runs that release: its
+ * shaded jar, built from the release tag, as a child process with its own {@code etc/conf} pointed
+ * at the database, Hibernate auto-update as the release shipped it, and authorization on.
  */
 final class OldServer {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(OldServer.class);
 
+  private static final Path JAR_CACHE =
+      Path.of(System.getProperty("user.home"), ".cache", "uc-upgrade-jars");
+
   private OldServer() {}
 
   /**
-   * Starts {@code image} on {@code db}, waits until it serves requests, passes {@code callback} a
-   * client authenticated as the server's admin, then stops the server.
+   * The releases a database passes through before this build, oldest first: every {@code vX.Y.Z}
+   * tag from {@link SchemaMigrator#BASELINE_RELEASE} up to, not including, this build's version.
+   * Each one writes its own copy of the data, since an upgrade can break on rows only one release
+   * wrote.
    */
-  static void run(OldImage image, TestDatabase db, Consumer<ApiClient> callback) {
+  static List<String> releaseChain() {
+    return git("tag", "--list")
+        .lines()
+        .filter(tag -> tag.matches("v\\d+\\.\\d+\\.\\d+"))
+        .filter(
+            tag ->
+                number(tag) >= number(SchemaMigrator.BASELINE_RELEASE)
+                    && number(tag) < number(VersionUtils.VERSION))
+        .sorted(Comparator.comparingLong(OldServer::number))
+        .toList();
+  }
+
+  /**
+   * Starts release {@code tag} on {@code db} in a directory under {@code workDir}, waits until it
+   * serves requests, passes {@code callback} a client authenticated as the server's admin, then
+   * stops the server.
+   */
+  static void run(String tag, TestDatabase db, Path workDir, Consumer<ApiClient> callback) {
     try {
-      Path home = Files.createTempDirectory("uc-old-server");
+      Path home = Files.createDirectories(workDir.resolve(tag));
+      Path conf = Files.createDirectories(home.resolve("etc/conf"));
+      Files.writeString(conf.resolve("server.properties"), serverProperties());
+      Files.writeString(conf.resolve("hibernate.properties"), hibernateProperties(db));
+      // The shaded jar leaves out Vert.x's version file, which the server reads at start; the
+      // test's own Vert.x jar, after it, supplies the file.
+      String classpath =
+          jar(tag, workDir)
+              + File.pathSeparator
+              + jarOf(io.vertx.core.Vertx.class)
+              + (db.jdbcUrl().startsWith("jdbc:mysql:")
+                  ? File.pathSeparator + jarOf(com.mysql.cj.jdbc.Driver.class)
+                  : "");
+      int port = freePortPair();
+      Process process =
+          new ProcessBuilder(
+                  Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                  "-cp",
+                  classpath,
+                  "io.unitycatalog.server.UnityCatalogServer",
+                  "-p",
+                  String.valueOf(port))
+              .directory(home.toFile())
+              .inheritIO()
+              .start();
       try {
-        Path conf = Files.createDirectories(home.resolve("etc/conf"));
-        Files.writeString(conf.resolve("server.properties"), serverProperties());
-        Files.writeString(conf.resolve("hibernate.properties"), hibernateProperties(db));
-        // The shaded jar leaves out Vert.x's version file, which the server reads at start; the
-        // test's own Vert.x jar, after it, supplies the file.
-        String classpath =
-            image.name()
-                + File.pathSeparator
-                + jarOf(io.vertx.core.Vertx.class)
-                + (db.kind() == DatabaseKind.MYSQL
-                    ? File.pathSeparator + jarOf(com.mysql.cj.jdbc.Driver.class)
-                    : "");
-        int port = freePortPair();
-        Process process =
-            new ProcessBuilder(
-                    Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-                    "-cp",
-                    classpath,
-                    "io.unitycatalog.server.UnityCatalogServer",
-                    "-p",
-                    String.valueOf(port))
-                .directory(home.toFile())
-                .inheritIO()
-                .start();
-        try {
-          URI uri = URI.create("http://localhost:" + port);
-          awaitServing(process, uri);
-          callback.accept(apiClient(uri, Files.readString(conf.resolve("token.txt")).trim()));
-        } finally {
-          // SIGTERM, so the server closes the database cleanly.
-          process.destroy();
-          if (!process.waitFor(2, TimeUnit.MINUTES)) {
-            process.destroyForcibly().waitFor();
-          }
-          LOGGER.info("{} stopped with exit code {}", image, process.exitValue());
-        }
+        URI uri = URI.create("http://localhost:" + port);
+        awaitServing(process, uri);
+        String token = Files.readString(conf.resolve("token.txt")).trim();
+        callback.accept(createApiClient(new ServerConfig(uri.toString(), token)));
       } finally {
-        delete(home);
+        // SIGTERM, so the server closes the database cleanly.
+        process.destroy();
+        if (!process.waitFor(2, TimeUnit.MINUTES)) {
+          process.destroyForcibly().waitFor();
+        }
+        LOGGER.info("{} stopped with exit code {}", tag, process.exitValue());
       }
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException(e);
+    }
+  }
+
+  /** The shaded server jar of {@code ref}'s commit, built once into {@link #JAR_CACHE}. */
+  private static String jar(String ref, Path workDir) throws IOException {
+    Path repo = Path.of(git("rev-parse", "--show-toplevel"));
+    String sha = git("-C", repo.toString(), "rev-parse", ref + "^{commit}");
+    Path cached = JAR_CACHE.resolve(sha + ".jar");
+    if (!Files.exists(cached)) {
+      build(repo, sha, cached, Files.createDirectories(workDir.resolve("source-" + sha)));
+    }
+    return cached.toString();
+  }
+
+  /**
+   * Exports {@code sha}'s tree with {@code git archive} (nothing untracked) into {@code source},
+   * builds its shaded server jar there and copies it to {@code target}.
+   */
+  private static void build(Path repo, String sha, Path target, Path source) throws IOException {
+    Path archive = source.resolve("source.tar");
+    git("-C", repo.toString(), "archive", "-o", archive.toString(), sha);
+    run(new ProcessBuilder("tar", "-xf", archive.toString(), "-C", source.toString()));
+    System.err.println("Building the server jar of " + sha + " in " + source);
+    run(
+        new ProcessBuilder("build/sbt", "-J-Xmx2G", "serverShaded/assembly")
+            .directory(source.toFile())
+            .redirectOutput(ProcessBuilder.Redirect.INHERIT));
+    try (DirectoryStream<Path> jars =
+        Files.newDirectoryStream(
+            source.resolve("server-shaded/target"), "unitycatalog-server-shaded-assembly-*.jar")) {
+      Path built = jars.iterator().next();
+      Files.createDirectories(target.getParent());
+      Path partial = Files.createTempFile(target.getParent(), sha, ".partial");
+      Files.copy(built, partial, StandardCopyOption.REPLACE_EXISTING);
+      Files.move(partial, target, StandardCopyOption.ATOMIC_MOVE);
     }
   }
 
@@ -130,14 +185,6 @@ final class OldServer {
     }
   }
 
-  private static void delete(Path root) {
-    try (Stream<Path> paths = Files.walk(root)) {
-      paths.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
-    } catch (IOException e) {
-      // A leftover temp directory is harmless.
-    }
-  }
-
   private static String serverProperties() {
     return String.join(
         "\n",
@@ -172,11 +219,35 @@ final class OldServer {
     }
   }
 
-  static ApiClient apiClient(URI uri, String token) {
-    return ApiClientBuilder.create()
-        .uri(uri)
-        .tokenProvider(TokenProvider.create(Map.of("type", "static", "token", token)))
-        .retryPolicy(JitterDelayRetryPolicy.builder().maxAttempts(1).build())
-        .build();
+  /** {@code v1.2.3} or {@code 1.2.3-SNAPSHOT} as a number that sorts like the version. */
+  private static long number(String version) {
+    String[] parts = version.replaceFirst("^v", "").replaceFirst("-.*", "").split("\\.");
+    return (Long.parseLong(parts[0]) * 1_000_000 + Long.parseLong(parts[1])) * 1_000_000
+        + Long.parseLong(parts[2]);
+  }
+
+  private static String git(String... args) {
+    List<String> command = new ArrayList<>(List.of("git"));
+    command.addAll(List.of(args));
+    return run(new ProcessBuilder(command)).trim();
+  }
+
+  /** Runs {@code builder}, returning its standard output; its errors go to this process's. */
+  private static String run(ProcessBuilder builder) {
+    try {
+      Process process = builder.redirectError(ProcessBuilder.Redirect.INHERIT).start();
+      String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+      int exit = process.waitFor();
+      if (exit != 0) {
+        throw new IllegalStateException(
+            String.join(" ", builder.command()) + " exited with " + exit);
+      }
+      return output;
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException(e);
+    }
   }
 }

@@ -1,22 +1,19 @@
 package io.unitycatalog.server.migrate;
 
+import static io.unitycatalog.server.utils.TestUtils.createApiClient;
+
 import io.unitycatalog.client.ApiClient;
-import io.unitycatalog.client.ApiClientBuilder;
-import io.unitycatalog.client.auth.TokenProvider;
-import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.server.UnityCatalogServer;
+import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.ServerSocket;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
-import java.util.Map;
 import java.util.Properties;
-import java.util.stream.Stream;
 
 /**
  * The current server, in this process, on a {@link TestDatabase}: built like {@code
@@ -26,48 +23,40 @@ import java.util.stream.Stream;
 final class TestServer implements AutoCloseable {
 
   private final UnityCatalogServer server;
-  private final Path storageRoot;
   private final int port;
 
-  private TestServer(UnityCatalogServer server, Path storageRoot, int port) {
+  private TestServer(UnityCatalogServer server, int port) {
     this.server = server;
-    this.storageRoot = storageRoot;
     this.port = port;
   }
 
-  static TestServer start(TestDatabase db) {
+  /** Starts the server on {@code db}, with its table storage under {@code storageRoot}. */
+  static TestServer start(TestDatabase db, Path storageRoot) {
     try {
-      Path storageRoot = Files.createTempDirectory("uc-test-server");
+      int port;
+      try (ServerSocket socket = new ServerSocket(0)) {
+        port = socket.getLocalPort();
+      }
+      Properties properties = new Properties();
+      properties.setProperty(Property.SERVER_ENV.getKey(), "test");
+      properties.setProperty(Property.AUTHORIZATION_ENABLED.getKey(), "enable");
+      properties.setProperty(Property.TABLE_STORAGE_ROOT.getKey(), storageRoot.toUri().toString());
+      properties.setProperty(Property.EXTERNAL_LOCAL_ROOTS.getKey(), storageRoot.toString());
+      UnityCatalogServer server =
+          UnityCatalogServer.builder()
+              .port(port)
+              .serverProperties(new ServerProperties(properties))
+              .hibernateConfigurator(db.openHibernateConfigurator(db.hibernateProperties()))
+              .build();
       try {
-        int port;
-        try (ServerSocket socket = new ServerSocket(0)) {
-          port = socket.getLocalPort();
-        }
-        Properties properties = new Properties();
-        properties.setProperty(Property.SERVER_ENV.getKey(), "test");
-        properties.setProperty(Property.AUTHORIZATION_ENABLED.getKey(), "enable");
-        properties.setProperty(
-            Property.TABLE_STORAGE_ROOT.getKey(), storageRoot.toUri().toString());
-        properties.setProperty(Property.EXTERNAL_LOCAL_ROOTS.getKey(), storageRoot.toString());
-        UnityCatalogServer server =
-            UnityCatalogServer.builder()
-                .port(port)
-                .serverProperties(new ServerProperties(properties))
-                .hibernateConfigurator(db.openHibernateConfigurator(db.hibernateProperties()))
-                .build();
-        try {
-          server.start();
-        } catch (Throwable t) {
-          server.close();
-          throw t;
-        }
-        return new TestServer(server, storageRoot, port);
+        server.start();
       } catch (Throwable t) {
-        delete(storageRoot);
+        server.close();
         throw t;
       }
+      return new TestServer(server, port);
     } catch (IOException e) {
-      throw new IllegalStateException(e);
+      throw new UncheckedIOException(e);
     }
   }
 
@@ -75,30 +64,14 @@ final class TestServer implements AutoCloseable {
   ApiClient apiClient() {
     try {
       String token = Files.readString(Path.of("etc/conf/token.txt")).trim();
-      return ApiClientBuilder.create()
-          .uri(URI.create("http://localhost:" + port))
-          .tokenProvider(TokenProvider.create(Map.of("type", "static", "token", token)))
-          .retryPolicy(JitterDelayRetryPolicy.builder().maxAttempts(1).build())
-          .build();
+      return createApiClient(new ServerConfig("http://localhost:" + port, token));
     } catch (IOException e) {
-      throw new IllegalStateException(e);
+      throw new UncheckedIOException(e);
     }
   }
 
   @Override
   public void close() {
-    try {
-      server.close();
-    } finally {
-      delete(storageRoot);
-    }
-  }
-
-  private static void delete(Path root) {
-    try (Stream<Path> paths = Files.walk(root)) {
-      paths.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
-    } catch (IOException e) {
-      // A leftover temp directory is harmless.
-    }
+    server.close();
   }
 }
