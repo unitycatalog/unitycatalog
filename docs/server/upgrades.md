@@ -44,7 +44,8 @@ tells you when a release can't be (see [Skipping a release](#skipping-a-release)
 Use these steps for every database (H2, PostgreSQL, MySQL).
 
 1. Stop all servers.
-2. Back up the database.
+2. Back up the database, or let the server do it (see
+   [Backup before the upgrade](#backup-before-the-upgrade)).
 3. Start the new release:
 
     ```sh
@@ -59,6 +60,108 @@ Use these steps for every database (H2, PostgreSQL, MySQL).
 
 On PostgreSQL and MySQL, when several servers start at the same time, one applies the steps and
 the others wait for it, then start.
+
+## Backup before the upgrade
+
+The server can back up the whole database before the upgrade changes anything, on the same
+database server, and restore it if the upgrade fails. The backup is off by default. Turn it on in
+`etc/conf/server.properties`:
+
+```properties
+server.migration.backup=true
+```
+
+It needs:
+
+- All servers stopped, as for every upgrade: the backup is taken while no other server uses the
+  database, and a restore erases what was written after it.
+- A database user that can create and drop databases on the database server (PostgreSQL: `CREATEDB`
+  and owner of the Unity Catalog database), and room there for a full copy of the database.
+- On PostgreSQL, the database name in `hibernate.connection.url`.
+- On H2, a file database (`jdbc:h2:file:...`). The server refuses to start on an in-memory one
+  with the backup on.
+
+The server takes the backup only when it has steps to apply, after the checks that can refuse the
+upgrade (a skipped release, [rows that block an upgrade](#rows-that-block-an-upgrade), a step it
+can't run again), so an up-to-date or refused database gets none. It logs
+`Backed up the database to <copy> before the upgrade.` and drops the copy after a successful
+upgrade. To go back after a successful upgrade, use a backup of your own (see
+[Going back to the baseline release](#going-back-to-the-baseline-release)).
+
+| Database | The backup | The restore |
+| -------- | ---------- | ----------- |
+| PostgreSQL | The database `<db>_uc_backup`, a copy made with `CREATE DATABASE <db>_uc_backup TEMPLATE <db>` | `DROP DATABASE <db>`, then `ALTER DATABASE <db>_uc_backup RENAME TO <db>` |
+| MySQL | The database `<db>_uc_backup`, with each table created from `SHOW CREATE TABLE` and its rows copied in one transaction | Drops the tables of `<db>` and moves each copied table back with `RENAME TABLE` |
+| H2 | The file `<file>_uc_backup.mv.db` next to the database file, copied with the database closed | Moves the copy back in place of the database file |
+
+On PostgreSQL, the copy and the drop need every session on `<db>` closed. The server closes its
+own connections and runs these statements, and its migration lock, from a small database of its
+own, `<db>_uc_upgrade`, which it creates. When another session is connected, for example a server
+of the old release that is still running, the server refuses to start before any change:
+
+```text
+Could not back up the database before the upgrade, which changed nothing: other sessions are connected to the database (...). Stop the other servers on the database, then start the server again
+```
+
+### When the upgrade fails
+
+When a step fails, the [schema check](#the-schema-differs) after the steps fails, or the server gets
+SIGTERM during the upgrade, the server restores the backup and refuses to start, printing the error
+and then:
+
+```text
+The database was restored from the backup taken before the upgrade; the previous release can start on it.
+```
+
+The copy is gone: it is the database again. Fix the cause and start the new release again; the
+upgrade starts from the beginning, with a new backup.
+
+A start that finds the database partway through this release's steps (a server killed with SIGKILL,
+or an upgrade that failed with the backup off) keeps a copy that is already there, taken before the
+upgrade started, and restores that one if the upgrade fails. A database still at the previous
+release gets a new copy; an older copy is dropped first.
+
+### Stopping the server during a restore
+
+On SIGTERM the server stops at the next safe point (see
+[Stopping a server during the upgrade](#stopping-a-server-during-the-upgrade)), then restores the
+backup before it exits, however long that takes. Give it a grace period longer than 60 seconds (a
+running statement) plus the restore: on PostgreSQL and MySQL the restore drops and renames, which
+is quick; on H2 it moves a file. On Kubernetes, set the pod's `terminationGracePeriodSeconds`
+(30 seconds by default); with `docker stop`, use `-t` (10 seconds by default).
+
+If the server is killed during the restore, or the restore fails, the copy is still there, and the
+server prints where. Restore it by hand with all servers stopped:
+
+```sql
+-- PostgreSQL, connected to another database such as postgres
+DROP DATABASE <db>;
+ALTER DATABASE <db>_uc_backup RENAME TO <db>;
+-- MySQL
+SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE <db>.<table>, ...;            -- every table of <db>
+RENAME TABLE <db>_uc_backup.<table> TO <db>.<table>, ...;  -- every table of the copy
+DROP DATABASE <db>_uc_backup;
+SET FOREIGN_KEY_CHECKS = 1;
+```
+
+On MySQL, a copy without tables means the restore had moved them back: drop `<db>_uc_backup`. On
+H2, move `<file>_uc_backup.mv.db` to `<file>.mv.db`.
+
+### The restored mark with Helm
+
+When the environment variable `UC_CHART_REVISION` is set to the Helm chart revision the server runs
+in, a restore also writes a mark naming the release and that revision: the table `uc_restored` in
+the database `<db>_uc_upgrade` on PostgreSQL and MySQL, the file `<file>_uc_upgrade.properties` on
+H2. A later start of the same release in the same revision refuses instead of upgrading again:
+
+```text
+The upgrade to <release> failed and the database was restored in chart revision <revision>; fix the cause, then run helm upgrade again (a new revision clears this).
+```
+
+The previous release starts on the restored database, so `helm rollback`, `helm upgrade --atomic`
+or Flux remediation can bring it back. A start in another revision clears the mark and upgrades.
+Without `UC_CHART_REVISION` no mark is written: fix the cause and start the server again.
 
 ## Skipping a release
 
@@ -147,6 +250,9 @@ code. The next start finishes the upgrade.
 
 On H2, the database closes as the process stops, so the running step fails instead of stopping;
 the next start handles it as [a step that failed](#a-step-that-failed).
+
+With the [backup](#backup-before-the-upgrade) on, the server restores it before it exits instead
+(see [Stopping the server during a restore](#stopping-the-server-during-a-restore)).
 
 ## Rows that block an upgrade
 
@@ -248,6 +354,25 @@ Messages that the server prints when it refuses to start, and what to do.
 
 `The upgrade is stopped before any change: <n> check found rows that break a rule of this release.`
 : The message lists the rows. See [Rows that block an upgrade](#rows-that-block-an-upgrade).
+
+`The database was restored from the backup taken before the upgrade; the previous release can start on it.`
+: Printed after the error of an upgrade that failed with the backup on. See
+  [When the upgrade fails](#when-the-upgrade-fails).
+
+`The upgrade to <release> failed and the database was restored in chart revision <revision>; fix the cause, then run helm upgrade again (a new revision clears this).`
+: See [The restored mark with Helm](#the-restored-mark-with-helm).
+
+`Could not back up the database before the upgrade, which changed nothing: <reason>`
+: The backup failed, so the server did not upgrade. On PostgreSQL, `other sessions are connected to
+  the database` means another server or client is connected: stop it. Otherwise check that the
+  database user can create and drop databases and that the database server has room for a copy.
+
+`Could not restore the backup: <reason>. <where the copy is>`
+: The upgrade failed and the restore failed too. Restore the copy by hand (see
+  [Stopping the server during a restore](#stopping-the-server-during-a-restore)).
+
+`The backup before the upgrade (server.migration.backup) needs an H2 file database (jdbc:h2:file:...), but this one is in memory. Turn the backup off, or use a file database.`
+: See [Backup before the upgrade](#backup-before-the-upgrade).
 
 `Could not take the schema migration lock: <reason>`
 : The server could not get the lock that keeps two migration runs apart. Check that the database
