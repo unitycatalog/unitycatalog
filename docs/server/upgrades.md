@@ -97,7 +97,3 @@ Messages that the server prints when it refuses to start, and what to do.
 `Could not list the database's tables: <reason>`
 : The server could not read the database. Check the connection settings and the user's
   privileges.
-
-`The schema migration needs 3 database connections (its lock plus 2 for Flyway), but the pool allows <n>. Set hibernate.hikari.maximumPoolSize to 3 or more.`
-: PostgreSQL and MySQL only. Raise `hibernate.hikari.maximumPoolSize` in
-  `etc/conf/hibernate.properties`.

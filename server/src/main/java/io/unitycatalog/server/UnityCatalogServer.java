@@ -156,14 +156,6 @@ public class UnityCatalogServer implements AutoCloseable {
   private void requireCurrentSchema(List<String> extraMigrationLocations) {
     HikariDataSource ds = hibernateConfigurator.getDataSource();
     DatabaseKind kind = DatabaseKind.fromJdbcUrl(ds.getJdbcUrl());
-    if (kind != DatabaseKind.H2 && ds.getMaximumPoolSize() < 3) {
-      // Otherwise the migration waits for a connection that never frees up, then times out.
-      throw new IllegalStateException(
-          "The schema migration needs 3 database connections (its lock plus 2 for Flyway), but"
-              + " the pool allows "
-              + ds.getMaximumPoolSize()
-              + ". Set hibernate.hikari.maximumPoolSize to 3 or more.");
-    }
     try (SchemaMigrator migrator = new SchemaMigrator(ds, kind, extraMigrationLocations)) {
       SchemaState state = migrator.prepareForStart();
       if (state != SchemaState.CURRENT) {
