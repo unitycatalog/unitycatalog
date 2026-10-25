@@ -8,9 +8,11 @@ on:
       - "ui/**"
       - "Dockerfile"
       - ".github/workflows/helm-chart-tests.yml"
-      # Schema steps: the job also upgrades a release from the base branch.
+      # Schema steps and the server start: the job also upgrades a release from the base branch.
       - "server/src/main/resources/db/**"
       - "server/src/main/java/io/unitycatalog/server/migrate/**"
+      - "server/src/main/java/io/unitycatalog/server/UnityCatalogServer.java"
+      - "bin/start-uc-server"
 
 permissions:
   contents: read
@@ -158,6 +160,17 @@ jobs:
             "${values[@]}"
           kubectl get events --namespace uc-upgrade --field-selector involvedObject.name=uc-server-upgrade-check,reason=Completed \
             -o name | grep -q . || { echo "::error::The pre-upgrade check Job did not run"; exit 1; }
-          kubectl logs --namespace uc-upgrade deploy/uc-server -c server | grep -i "schema" || true
+          # The new server must leave no step pending (an upgrade from a base without new steps logs none).
+          kubectl exec --namespace uc-upgrade deploy/uc-server -c server -- ./bin/start-uc-server --check-schema \
+            | tee "$RUNNER_TEMP/check-after-upgrade.txt"
+          grep -q "Pending steps: none." "$RUNNER_TEMP/check-after-upgrade.txt"
           helm test uc --namespace uc-upgrade --logs
           api http://localhost:8080/api/2.1/unity-catalog/catalogs/created_before_upgrade
+
+      - name: Show the upgrade test's resources and logs
+        if: failure()
+        run: |
+          kubectl get pods,jobs,events --namespace uc-upgrade || true
+          kubectl describe job/uc-server-upgrade-check deploy/uc-server --namespace uc-upgrade || true
+          kubectl logs job/uc-server-upgrade-check --namespace uc-upgrade --all-containers || true
+          kubectl logs deploy/uc-server --namespace uc-upgrade --all-containers || true
