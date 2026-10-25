@@ -32,9 +32,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Runs a released server on a {@link TestDatabase} the way an operator runs that release: its
- * shaded jar, built from the release tag, as a child process with its own {@code etc/conf} pointed
- * at the database, Hibernate auto-update as the release shipped it, and authorization on.
+ * Runs a server built from a git ref (a release tag, or this commit) on a {@link TestDatabase} the
+ * way an operator runs it: its shaded jar as a child process with its own {@code etc/conf} pointed
+ * at the database, Hibernate auto-update as every release shipped it, and authorization on.
  */
 final class OldServer {
 

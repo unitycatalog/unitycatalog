@@ -97,8 +97,10 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * The tables of {@link #BASELINE_RELEASE}'s schema. A database without history that lacks one is
-   * from an earlier release. Until adoption compares the whole schema with the baseline, only the
-   * tables are checked.
+   * from an earlier release.
+   *
+   * <p>TODO(#2053): compare the whole schema with the recorded baseline schema, not only its
+   * tables.
    */
   private static final Set<String> BASELINE_TABLES =
       Set.of(

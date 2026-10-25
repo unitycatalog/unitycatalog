@@ -43,4 +43,21 @@ public class RealUpgradeTest {
       copies.forEach(copy -> copy.assertReadBack(server.apiClient()));
     }
   }
+
+  /** This commit's shaded jar sets up an empty database, as a packaged deployment runs it. */
+  @Test
+  @EnabledIfEnvironmentVariable(named = "UC_TEST_UPGRADES", matches = "true")
+  void packagedServerSetsUpTheSchema(@TempDir Path workDir) {
+    DataSet data = new DataSet("HEAD");
+    OldServer.run(
+        "HEAD",
+        db,
+        workDir,
+        api -> {
+          data.write(api);
+          data.assertReadBack(api);
+        });
+    assertThat(SchemaSnapshot.of(db.dataSource()))
+        .isEqualTo(UpgradeTestUtils.freshInstallSnapshot());
+  }
 }
