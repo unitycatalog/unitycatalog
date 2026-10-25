@@ -18,7 +18,7 @@ import java.util.List;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Test-only steps create {@code test_repeat_items} (version 4000) and then change the database once
@@ -33,8 +33,17 @@ public class StepAlreadyInDatabaseTest {
   @TempDatabase(empty = true)
   TestDatabase db;
 
+  /** The steps from version 4001, one per kind of change. */
+  static List<String> steps() {
+    return List.of(
+        "V4001__create_test_repeat_others.sql",
+        "V4002__add_test_repeat_item_note.sql",
+        "V4003__index_test_repeat_item_names.sql",
+        "V4004__unique_test_repeat_item_codes.sql");
+  }
+
   @ParameterizedTest
-  @ValueSource(strings = {"V4001__create_test_repeat_others.sql"})
+  @MethodSource("steps")
   void recordsAStepWhoseChangeIsThereWithoutRunningIt(String step) {
     migrator(db.dataSource(), BASE).migrate();
     execute(db, statement(step));
@@ -56,7 +65,7 @@ public class StepAlreadyInDatabaseTest {
 
     migrator.migrate();
 
-    assertThat(sent).contains(statement("V4001__create_test_repeat_others.sql"));
+    assertThat(sent).containsAll(steps().stream().map(this::statement).toList());
   }
 
   private SchemaMigrator migrator(DataSource dataSource, String... steps) {

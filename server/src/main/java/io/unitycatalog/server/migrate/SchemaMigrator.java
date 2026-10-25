@@ -14,6 +14,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -148,6 +150,17 @@ public final class SchemaMigrator implements AutoCloseable {
 
   private static final Pattern CREATE_TABLE =
       Pattern.compile("create\\s+table\\s+(\\w+)", Pattern.CASE_INSENSITIVE);
+
+  // The statements of the SQL steps whose change can be found in the database.
+  private static final Pattern ADD_CONSTRAINT =
+      Pattern.compile(
+          "alter\\s+table\\s+(\\w+)\\s+add\\s+constraint\\s+(\\w+)", Pattern.CASE_INSENSITIVE);
+  private static final Pattern ADD_COLUMN =
+      Pattern.compile(
+          "alter\\s+table\\s+(\\w+)\\s+add\\s+(?:column\\s+)?(\\w+)", Pattern.CASE_INSENSITIVE);
+  private static final Pattern CREATE_INDEX =
+      Pattern.compile(
+          "create\\s+(?:unique\\s+)?index\\s+(\\w+)\\s+on\\s+(\\w+)", Pattern.CASE_INSENSITIVE);
 
   private static final Pattern CHECK = Pattern.compile("C(\\d+(?:_\\d+)*)__(.+)\\.sql");
 
@@ -393,11 +406,84 @@ public final class SchemaMigrator implements AutoCloseable {
     if (statement.contains(";")) { // more than one statement, such as the baseline step
       return false;
     }
+    try (Connection connection = dataSource.getConnection()) {
+      return isAlreadyThere(statement, connection);
+    } catch (SQLException e) {
+      throw new IllegalStateException(
+          "Could not check whether step "
+              + version(step)
+              + " is already in the database: "
+              + e.getMessage(),
+          e);
+    }
+  }
+
+  private boolean isAlreadyThere(String statement, Connection connection) throws SQLException {
+    DatabaseMetaData metaData = connection.getMetaData();
+    String catalog = connection.getCatalog();
+    String schema = connection.getSchema();
     Matcher createTable = CREATE_TABLE.matcher(statement);
+    Matcher addConstraint = ADD_CONSTRAINT.matcher(statement);
+    Matcher addColumn = ADD_COLUMN.matcher(statement);
+    Matcher createIndex = CREATE_INDEX.matcher(statement);
     if (createTable.lookingAt()) {
-      return tableNamesLowerCase().contains(createTable.group(1).toLowerCase(Locale.ROOT));
+      return tableName(metaData, catalog, schema, createTable.group(1)) != null;
+    } else if (addConstraint.lookingAt()) {
+      return hasConstraint(connection, addConstraint.group(1), addConstraint.group(2));
+    } else if (addColumn.lookingAt()) {
+      String table = tableName(metaData, catalog, schema, addColumn.group(1));
+      return table != null
+          && names(metaData.getColumns(catalog, schema, table, null), "COLUMN_NAME")
+              .contains(addColumn.group(2).toLowerCase(Locale.ROOT));
+    } else if (createIndex.lookingAt()) {
+      String table = tableName(metaData, catalog, schema, createIndex.group(2));
+      return table != null
+          && names(metaData.getIndexInfo(catalog, schema, table, false, false), "INDEX_NAME")
+              .contains(createIndex.group(1).toLowerCase(Locale.ROOT));
     }
     return false;
+  }
+
+  /** The name of {@code table} as the database stores it, or {@code null} when it is missing. */
+  private static String tableName(
+      DatabaseMetaData metaData, String catalog, String schema, String table) throws SQLException {
+    try (ResultSet rs = metaData.getTables(catalog, schema, null, new String[] {"TABLE"})) {
+      while (rs.next()) {
+        if (rs.getString("TABLE_NAME").equalsIgnoreCase(table)) {
+          return rs.getString("TABLE_NAME");
+        }
+      }
+    }
+    return null;
+  }
+
+  /** The lower-cased values of column {@code label} of {@code rs}, which this closes. */
+  private static Set<String> names(ResultSet rs, String label) throws SQLException {
+    Set<String> names = new HashSet<>();
+    try (rs) {
+      while (rs.next()) {
+        if (rs.getString(label) != null) {
+          names.add(rs.getString(label).toLowerCase(Locale.ROOT));
+        }
+      }
+    }
+    return names;
+  }
+
+  /** Whether {@code table} has a key, foreign key or CHECK constraint named {@code constraint}. */
+  private boolean hasConstraint(Connection connection, String table, String constraint)
+      throws SQLException {
+    String sql =
+        "SELECT 1 FROM information_schema.table_constraints WHERE table_schema = "
+            + (kind == DatabaseKind.MYSQL ? "DATABASE()" : "current_schema")
+            + " AND LOWER(table_name) = ? AND LOWER(constraint_name) = ?";
+    try (PreparedStatement query = connection.prepareStatement(sql)) {
+      query.setString(1, table.toLowerCase(Locale.ROOT));
+      query.setString(2, constraint.toLowerCase(Locale.ROOT));
+      try (ResultSet rs = query.executeQuery()) {
+        return rs.next();
+      }
+    }
   }
 
   /** A SQL step's statements without comments or the last semicolon. */
