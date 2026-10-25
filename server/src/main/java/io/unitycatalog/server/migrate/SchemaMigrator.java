@@ -20,6 +20,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -43,6 +44,7 @@ import java.util.stream.Stream;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.CoreMigrationType;
+import org.flywaydb.core.api.FlywayException;
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationInfoService;
 import org.flywaydb.core.api.MigrationVersion;
@@ -64,6 +66,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>A SQL step whose change is already in the database (a run stopped before Flyway recorded it,
  * or someone applied it by hand) is recorded without running it.
+ *
+ * <p>A statement of the run waits at most {@link #LOCK_WAIT} for a lock that another session holds,
+ * then fails.
  */
 public final class SchemaMigrator implements AutoCloseable {
 
@@ -181,6 +186,18 @@ public final class SchemaMigrator implements AutoCloseable {
   /** The types the steps name without a size, since they take none. */
   private static final Set<String> UNSIZED_TYPES = Set.of("text", "clob", "mediumtext", "longtext");
 
+  /** The table a statement waits for: {@code ALTER TABLE t ...} or {@code CREATE INDEX i ON t}. */
+  private static final Pattern LOCKED_TABLE =
+      Pattern.compile(
+          "alter\\s+table\\s+(\\w+)|create\\s+(?:unique\\s+)?index\\s+\\w+\\s+on\\s+(\\w+)",
+          Pattern.CASE_INSENSITIVE);
+
+  /**
+   * How long a statement of a migration run waits for a lock that another session holds before it
+   * fails, so a step doesn't wait forever behind a long transaction while the servers are down.
+   */
+  static final Duration LOCK_WAIT = Duration.ofSeconds(60);
+
   private static final Pattern CHECK = Pattern.compile("C(\\d+(?:_\\d+)*)__(.+)\\.sql");
 
   /** The most rows of one check that a refusal lists. */
@@ -189,6 +206,7 @@ public final class SchemaMigrator implements AutoCloseable {
   private final DataSource dataSource;
   private final DatabaseKind kind;
   private final String[] locations;
+  private final Duration lockWait;
   private final HikariDataSource ownedPool;
 
   /** Does not own {@code dataSource}. */
@@ -198,13 +216,20 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /** Also applies the steps in {@code extraLocations} (tests' own steps). */
   public SchemaMigrator(DataSource dataSource, DatabaseKind kind, List<String> extraLocations) {
-    this(dataSource, kind, extraLocations, null);
+    this(dataSource, kind, extraLocations, LOCK_WAIT);
+  }
+
+  /** Waits at most {@code lockWait} for a lock instead of {@link #LOCK_WAIT} (tests' own cap). */
+  SchemaMigrator(
+      DataSource dataSource, DatabaseKind kind, List<String> extraLocations, Duration lockWait) {
+    this(dataSource, kind, extraLocations, lockWait, null);
   }
 
   private SchemaMigrator(
       DataSource dataSource,
       DatabaseKind kind,
       List<String> extraLocations,
+      Duration lockWait,
       HikariDataSource ownedPool) {
     this.dataSource = dataSource;
     this.kind = kind;
@@ -213,6 +238,7 @@ public final class SchemaMigrator implements AutoCloseable {
     locations.add(JAVA_STEPS);
     locations.addAll(extraLocations);
     this.locations = locations.toArray(String[]::new);
+    this.lockWait = lockWait;
     this.ownedPool = ownedPool;
   }
 
@@ -231,6 +257,7 @@ public final class SchemaMigrator implements AutoCloseable {
         pool,
         DatabaseKind.fromJdbcUrl(hibernateProperties.getProperty("hibernate.connection.url")),
         List.of(),
+        LOCK_WAIT,
         pool);
   }
 
@@ -246,7 +273,8 @@ public final class SchemaMigrator implements AutoCloseable {
             .table(HISTORY_TABLE)
             .failOnMissingLocations(true)
             .cleanDisabled(true)
-            .validateMigrationNaming(true);
+            .validateMigrationNaming(true)
+            .initSql(lockWaitSql());
     if (baselineVersion != null) {
       configuration
           .baselineOnMigrate(true)
@@ -394,15 +422,88 @@ public final class SchemaMigrator implements AutoCloseable {
             version(step),
             step.getDescription());
       }
-      applied +=
-          configuration(baseline)
-              .target(step.getVersion())
-              .skipExecutingMigrations(alreadyThere)
-              .load()
-              .migrate()
-              .migrationsExecuted;
+      try {
+        applied +=
+            configuration(baseline)
+                .target(step.getVersion())
+                .skipExecutingMigrations(alreadyThere)
+                .load()
+                .migrate()
+                .migrationsExecuted;
+      } catch (FlywayException e) {
+        if (isLockWait(e)) {
+          throw new IllegalStateException(lockWaitRefusal(step), e);
+        }
+        throw e;
+      }
     }
     return new MigrationOutcome(from, currentVersion(), applied);
+  }
+
+  /** The statement that sets {@link #lockWait} on a connection of the run. */
+  private String lockWaitSql() {
+    return switch (kind) {
+      case POSTGRESQL -> "SET lock_timeout = " + lockWait.toMillis();
+      // lock_wait_timeout for table (metadata) locks, innodb_lock_wait_timeout for row locks.
+      case MYSQL ->
+          "SET SESSION lock_wait_timeout = "
+              + lockWaitSeconds()
+              + ", SESSION innodb_lock_wait_timeout = "
+              + lockWaitSeconds();
+      case H2 -> "SET LOCK_TIMEOUT " + lockWait.toMillis();
+    };
+  }
+
+  private long lockWaitSeconds() {
+    return Math.max(1, lockWait.toSeconds());
+  }
+
+  /** A connection for the run's own queries, waiting at most {@link #lockWait} like Flyway's. */
+  private Connection connection() throws SQLException {
+    Connection connection = dataSource.getConnection();
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(lockWaitSql());
+    } catch (SQLException | RuntimeException e) {
+      connection.close();
+      throw e;
+    }
+    return connection;
+  }
+
+  /** Whether {@code e} comes from a statement that waited longer than {@link #lockWait}. */
+  private boolean isLockWait(Throwable e) {
+    for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+      if (cause instanceof SQLException sql
+          && switch (kind) {
+            case POSTGRESQL -> "55P03".equals(sql.getSQLState()); // lock_not_available
+            case MYSQL -> sql.getErrorCode() == 1205; // ER_LOCK_WAIT_TIMEOUT
+            case H2 -> sql.getErrorCode() == 50200; // LOCK_TIMEOUT_1
+          }) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** The refusal for a step that waited longer than {@link #lockWait}, with the table if known. */
+  private String lockWaitRefusal(MigrationInfo step) {
+    String table = null;
+    if (step.getType() == CoreMigrationType.SQL) {
+      Matcher matcher = LOCKED_TABLE.matcher(stepStatement(step));
+      if (matcher.lookingAt()) {
+        table = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+      }
+    }
+    return "Step "
+        + version(step)
+        + " ("
+        + step.getDescription()
+        + ") waited more than "
+        + lockWaitSeconds()
+        + " seconds for a lock"
+        + (table == null ? "" : " on " + table)
+        + "; another session holds it. Stop the other sessions on the database, then start the"
+        + " server again.";
   }
 
   /** The steps above version {@code from} ({@code null}: every step), in order. */
@@ -427,7 +528,7 @@ public final class SchemaMigrator implements AutoCloseable {
         || hasSeveralChanges(statement)) {
       return false;
     }
-    try (Connection connection = dataSource.getConnection()) {
+    try (Connection connection = connection()) {
       return isAlreadyThere(statement, connection);
     } catch (SQLException e) {
       throw new IllegalStateException(
@@ -743,7 +844,7 @@ public final class SchemaMigrator implements AutoCloseable {
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
-    try (Connection connection = dataSource.getConnection()) {
+    try (Connection connection = connection()) {
       connection.setReadOnly(true);
       connection.setAutoCommit(false);
       try (Statement statement = connection.createStatement();
@@ -795,7 +896,7 @@ public final class SchemaMigrator implements AutoCloseable {
 
   private Set<String> tableNamesLowerCase() {
     Set<String> tables = new HashSet<>();
-    try (Connection connection = dataSource.getConnection();
+    try (Connection connection = connection();
         ResultSet rs =
             connection
                 .getMetaData()
@@ -821,6 +922,9 @@ public final class SchemaMigrator implements AutoCloseable {
   public void close() {
     if (ownedPool != null) {
       ownedPool.close();
+    } else if (dataSource instanceof HikariDataSource pool && pool.getHikariPoolMXBean() != null) {
+      // The run's connections keep its lock wait; the pool replaces them with new ones.
+      pool.getHikariPoolMXBean().softEvictConnections();
     }
   }
 
