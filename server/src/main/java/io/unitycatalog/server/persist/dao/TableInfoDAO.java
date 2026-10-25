@@ -11,6 +11,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Index;
 import jakarta.persistence.Lob;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.util.Date;
 import java.util.List;
@@ -79,6 +80,11 @@ public class TableInfoDAO extends IdentifiableDAO {
   // listTables reads the columns of a whole page of tables; initialize them in batches instead of
   // one query per table.
   @BatchSize(size = 100)
+  // Without an explicit order the rows come back in whatever order PostgreSQL returns them, which
+  // drifts from ordinal_position once a table's column rows are rewritten. Clients bind columns by
+  // position (Spark pairs a view's columns with its persisted query-output names), so always
+  // return them in declared order.
+  @OrderBy("ordinalPosition ASC")
   private List<ColumnInfoDAO> columns;
 
   @Lob
