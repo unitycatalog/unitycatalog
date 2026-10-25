@@ -1,0 +1,1 @@
+CREATE TABLE test_named_items (id INT PRIMARY KEY, name VARCHAR(64) NOT NULL);

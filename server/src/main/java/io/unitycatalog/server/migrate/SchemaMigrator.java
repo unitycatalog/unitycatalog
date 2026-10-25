@@ -6,24 +6,37 @@ import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.net.JarURLConnection;
+import java.net.URI;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
@@ -39,6 +52,11 @@ import org.slf4j.LoggerFactory;
  * versions: sets up an empty database, adopts one of the baseline release (recording version 1 as
  * the baseline) and applies the pending steps. Each {@link #migrate()} runs under a {@link
  * RunLock}, from classifying the database to the last step.
+ *
+ * <p>A step that adds a rule existing rows can break ships a check: {@code
+ * C<version>__<description>.sql} in {@code db/migration/checks/<database>}, one query that returns
+ * the rows breaking it. Before any step runs, the checks of the pending steps run, and the upgrade
+ * is refused while one returns rows.
  */
 public final class SchemaMigrator implements AutoCloseable {
 
@@ -124,6 +142,11 @@ public final class SchemaMigrator implements AutoCloseable {
 
   private static final Pattern CREATE_TABLE =
       Pattern.compile("create\\s+table\\s+(\\w+)", Pattern.CASE_INSENSITIVE);
+
+  private static final Pattern CHECK = Pattern.compile("C(\\d+(?:_\\d+)*)__(.+)\\.sql");
+
+  /** The most rows of one check that a refusal lists. */
+  private static final int MAX_ROWS_LISTED = 20;
 
   private final DataSource dataSource;
   private final DatabaseKind kind;
@@ -275,14 +298,14 @@ public final class SchemaMigrator implements AutoCloseable {
 
   private MigrationOutcome migrateLocked() {
     SchemaState state = state(); // read under the lock
+    String from = state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : currentVersion();
     String refusal = refusal(state);
+    if (refusal == null) {
+      refusal = failedChecks(from);
+    }
     if (refusal != null) {
       throw new IllegalStateException(refusal);
     }
-    if (state == SchemaState.UNVERSIONED_UC) {
-      requireBaselineTables();
-    }
-    String from = state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : currentVersion();
     // EMPTY (also with only casbin_rule): baseline at 0 so V1 runs; UNVERSIONED_UC: baseline at 1.
     String baseline =
         state == SchemaState.EMPTY
@@ -318,6 +341,7 @@ public final class SchemaMigrator implements AutoCloseable {
             + failed.getDescription()
             + "). See docs/server/upgrades.md.";
       }
+      case UNVERSIONED_UC -> missingBaselineTables();
       default -> null;
     };
   }
@@ -326,7 +350,7 @@ public final class SchemaMigrator implements AutoCloseable {
    * Refuses a database without schema history that lacks a table the baseline step creates: one
    * from a release before {@value #BASELINE_RELEASE}, which this release does not migrate.
    */
-  private void requireBaselineTables() {
+  private String missingBaselineTables() {
     Set<String> missing = new TreeSet<>();
     Matcher matcher = CREATE_TABLE.matcher(baselineStep());
     while (matcher.find()) {
@@ -334,16 +358,159 @@ public final class SchemaMigrator implements AutoCloseable {
     }
     missing.removeAll(tableNamesLowerCase());
     missing.remove("casbin_rule"); // Casbin's adapter creates it on its own
-    if (!missing.isEmpty()) {
-      throw new IllegalStateException(
-          "The database is from a release before "
-              + BASELINE_RELEASE
-              + " (missing tables: "
-              + String.join(", ", missing)
-              + "). Start a "
-              + BASELINE_RELEASE
-              + " server on it once, then start this release.");
+    if (missing.isEmpty()) {
+      return null;
     }
+    return "The database is from a release before "
+        + BASELINE_RELEASE
+        + " (missing tables: "
+        + String.join(", ", missing)
+        + "). Start a "
+        + BASELINE_RELEASE
+        + " server on it once, then start this release.";
+  }
+
+  /**
+   * Runs the check of every step above version {@code from}, each in a read-only transaction of its
+   * own, and returns the refusal when any finds rows, or {@code null}. Runs none without a version:
+   * an empty database has no rows to check.
+   */
+  private String failedChecks(String from) {
+    if (from == null) {
+      return null;
+    }
+    MigrationVersion current = MigrationVersion.fromVersion(from);
+    List<String> failures = new ArrayList<>();
+    for (URL check : checks()) {
+      MigrationVersion version = checkVersion(check);
+      if (version.compareTo(current) > 0) {
+        String description = checkName(check).group(2).replace('_', ' ');
+        String rows = rowsFound(check, "Check " + version + " (" + description + ")");
+        if (rows != null) {
+          failures.add(rows);
+        }
+      }
+    }
+    if (failures.isEmpty()) {
+      return null;
+    }
+    return "The upgrade is stopped before any change: "
+        + failures.size()
+        + (failures.size() == 1 ? " check found" : " checks found")
+        + " rows that break a rule of this release.\n"
+        + String.join("", failures)
+        + "Fix them as docs/server/upgrades.md shows (section \"Rows that block an upgrade\"),"
+        + " then start the server again.";
+  }
+
+  /**
+   * The checks of the SQL step locations, by version: those of {@code <base>/<database>} are in
+   * {@code <base>/checks/<database>}.
+   */
+  private List<URL> checks() {
+    // By classpath path: like a class, a file on the classpath twice counts once, the first copy.
+    Map<String, URL> checks = new LinkedHashMap<>();
+    for (String location : locations) {
+      if (location.equals(JAVA_STEPS) || !location.startsWith("classpath:")) {
+        continue;
+      }
+      String folder = location.substring("classpath:".length()).replaceAll("/+$", "");
+      int slash = folder.lastIndexOf('/');
+      String path = folder.substring(0, slash + 1) + "checks/" + folder.substring(slash + 1);
+      try {
+        for (URL url : Collections.list(SchemaMigrator.class.getClassLoader().getResources(path))) {
+          for (String file : fileNames(url, path)) {
+            if (CHECK.matcher(file).matches()) {
+              checks.putIfAbsent(path + "/" + file, URI.create(url + "/" + file).toURL());
+            }
+          }
+        }
+      } catch (IOException e) {
+        throw new UncheckedIOException(e);
+      }
+    }
+    return checks.values().stream()
+        .sorted(Comparator.comparing(SchemaMigrator::checkVersion))
+        .toList();
+  }
+
+  /** The names of the files in the classpath folder {@code path}, found at {@code url}. */
+  private static List<String> fileNames(URL url, String path) throws IOException {
+    if (url.getProtocol().equals("jar")) {
+      JarURLConnection connection = (JarURLConnection) url.openConnection();
+      connection.setUseCaches(false); // a JarFile of its own, to close
+      try (JarFile jar = connection.getJarFile()) {
+        String prefix = path + "/";
+        return jar.stream()
+            .map(JarEntry::getName)
+            .filter(n -> n.startsWith(prefix) && n.indexOf('/', prefix.length()) < 0)
+            .map(n -> n.substring(prefix.length()))
+            .toList();
+      }
+    }
+    try (Stream<Path> files = Files.list(Path.of(URI.create(url.toString())))) {
+      return files.map(f -> f.getFileName().toString()).toList();
+    }
+  }
+
+  /** A check's file name matched by {@link #CHECK}: group 1 is the version, 2 the description. */
+  private static Matcher checkName(URL check) {
+    String path = check.getPath();
+    Matcher name = CHECK.matcher(path.substring(path.lastIndexOf('/') + 1));
+    name.matches();
+    return name;
+  }
+
+  /** The version of a check: "C1_1__name.sql" is 1.1. */
+  private static MigrationVersion checkVersion(URL check) {
+    return MigrationVersion.fromVersion(checkName(check).group(1).replace('_', '.'));
+  }
+
+  /**
+   * Runs a check in a read-only transaction: the rows it found, at most {@value #MAX_ROWS_LISTED}
+   * as {@code column=value}, under {@code title}, or {@code null} when it found none.
+   */
+  private String rowsFound(URL check, String title) {
+    String sql;
+    try (InputStream in = check.openStream()) {
+      sql = new String(in.readAllBytes(), StandardCharsets.UTF_8).strip().replaceAll(";$", "");
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+    try (Connection connection = dataSource.getConnection()) {
+      connection.setReadOnly(true);
+      connection.setAutoCommit(false);
+      try (Statement statement = connection.createStatement();
+          ResultSet rs = statement.executeQuery(sql)) {
+        StringBuilder rows = new StringBuilder();
+        int count = 0;
+        while (rs.next()) {
+          if (++count <= MAX_ROWS_LISTED) {
+            rows.append("  ").append(row(rs)).append('\n');
+          }
+        }
+        if (count > MAX_ROWS_LISTED) {
+          rows.append("  ... and ").append(count - MAX_ROWS_LISTED).append(" more\n");
+        }
+        return count == 0
+            ? null
+            : title + " found " + count + (count == 1 ? " row:\n" : " rows:\n") + rows;
+      } finally {
+        connection.rollback();
+      }
+    } catch (SQLException e) {
+      throw new IllegalStateException(title + " failed: " + e.getMessage(), e);
+    }
+  }
+
+  /** The current row as {@code column=value, ...}, in the query's column order. */
+  private static String row(ResultSet rs) throws SQLException {
+    ResultSetMetaData columns = rs.getMetaData();
+    List<String> values = new ArrayList<>();
+    for (int i = 1; i <= columns.getColumnCount(); i++) {
+      values.add(columns.getColumnLabel(i).toLowerCase(Locale.ROOT) + "=" + rs.getString(i));
+    }
+    return String.join(", ", values);
   }
 
   private String baselineStep() {
