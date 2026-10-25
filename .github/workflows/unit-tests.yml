@@ -113,6 +113,8 @@ jobs:
 
   # Databases already ran the merged schema steps, so a pull request may only add steps, and none
   # on a release branch.
+  # TODO: make this job a required status check on main and branch-0.8 onward (repository branch
+  # protection); until then a failing run does not block a merge. Not on branch-0.7: it has no job.
   migration-steps:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
