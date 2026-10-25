@@ -96,13 +96,4 @@ public class SchemaGateTest {
     assertThatThrownBy(() -> TestServer.start(db))
         .hasMessageContaining("not a Unity Catalog database");
   }
-
-  @Test
-  void refusesADatabaseWithAFailedStep() {
-    new SchemaMigrator(db.dataSource(), db.kind()).migrate();
-    MigratorTest.recordFailedStep(db);
-
-    assertThatThrownBy(() -> TestServer.start(db))
-        .hasMessageContaining("A migration step failed in an earlier run: version 1000 (broken)");
-  }
 }

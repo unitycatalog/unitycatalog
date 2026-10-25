@@ -56,9 +56,7 @@ public final class SchemaMigrator implements AutoCloseable {
     /** Unity Catalog's tables without Flyway's history: a database of the baseline release. */
     UNVERSIONED_UC,
     /** Tables, but none of Unity Catalog's. */
-    NOT_UC,
-    /** An earlier run recorded a failed step. */
-    FAILED
+    NOT_UC
   }
 
   /** The databases Unity Catalog's schema steps exist for. */
@@ -186,9 +184,6 @@ public final class SchemaMigrator implements AutoCloseable {
     tables.remove("casbin_rule"); // Casbin's adapter creates it on its own
     if (tables.contains(HISTORY_TABLE)) {
       MigrationInfoService info = flyway(null).info();
-      if (Arrays.stream(info.all()).anyMatch(m -> m.getState().isFailed())) {
-        return SchemaState.FAILED;
-      }
       String current = version(info.current());
       if (current == null) {
         return SchemaState.PENDING;
@@ -291,18 +286,6 @@ public final class SchemaMigrator implements AutoCloseable {
               + ", this release ends at "
               + latestVersion()
               + "). Run the newer release.";
-      case FAILED -> {
-        MigrationInfo failed =
-            Arrays.stream(flyway(null).info().all())
-                .filter(m -> m.getState().isFailed())
-                .findFirst()
-                .orElseThrow();
-        yield "A migration step failed in an earlier run: version "
-            + version(failed)
-            + " ("
-            + failed.getDescription()
-            + "). See docs/server/upgrades.md.";
-      }
       default -> null;
     };
   }

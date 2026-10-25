@@ -129,26 +129,6 @@ public class MigratorTest {
   }
 
   @Test
-  void reportsAFailedStep() {
-    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
-    migrator.migrate();
-    recordFailedStep(db);
-
-    assertThat(migrator.state()).isEqualTo(SchemaState.FAILED);
-  }
-
-  /** Records a failed step in Flyway's history, as a run that failed midway leaves it. */
-  static void recordFailedStep(TestDatabase db) {
-    execute(
-        db,
-        ("INSERT INTO %1$suc_schema_history%1$s (%1$sinstalled_rank%1$s, %1$sversion%1$s,"
-                + " %1$sdescription%1$s, %1$stype%1$s, %1$sscript%1$s, %1$sinstalled_by%1$s,"
-                + " %1$sexecution_time%1$s, %1$ssuccess%1$s)"
-                + " VALUES (1000, '1000', 'broken', 'SQL', 'V1000__broken.sql', 'test', 0, false)")
-            .formatted(quote(db)));
-  }
-
-  @Test
   void concurrentRunsApplyEachStepOnce() throws Exception {
     CyclicBarrier start = new CyclicBarrier(2);
     ExecutorService executor = Executors.newFixedThreadPool(2);

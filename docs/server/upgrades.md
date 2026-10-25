@@ -76,7 +76,7 @@ Messages that the server prints when it refuses to start, and what to do.
 : `hibernate.connection.url` points at a database that other applications use. Check the URL, or
   use an empty database for Unity Catalog.
 
-`A migration step failed in an earlier run: version <n> (<description>). See docs/server/upgrades.md.`
+`Validate failed: Migrations have failed validation. Detected failed migration to version <n> (<description>).`
 : Step `<n>` failed and its failure is recorded in the history. Read the error that the failing
   start printed and fix its cause (for example a full disk or missing privileges for the database
   user). Then restore the backup you took before the upgrade and start the server again. Do not edit
