@@ -3,6 +3,7 @@ package io.unitycatalog.server.migrate;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.utils.VersionUtils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
@@ -32,9 +33,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -167,6 +170,16 @@ public final class SchemaMigrator implements AutoCloseable {
   /** The step that creates the schema of {@link #BASELINE_RELEASE}. */
   private static final String BASELINE_STEP = "V1__baseline_0_7.sql";
 
+  /**
+   * Every release since {@link #BASELINE_RELEASE}, with the version of its last step: {@code
+   * <release>=<version>}.
+   */
+  static final String RELEASES = "db/migration/releases.properties";
+
+  /** This build's release: its version without a qualifier such as {@code -SNAPSHOT}. */
+  private static final MigrationVersion THIS_RELEASE =
+      MigrationVersion.fromVersion(VersionUtils.VERSION.replaceFirst("-.*", ""));
+
   private static final Pattern CREATE_TABLE =
       Pattern.compile("create\\s+table\\s+(\\w+)", Pattern.CASE_INSENSITIVE);
 
@@ -233,6 +246,9 @@ public final class SchemaMigrator implements AutoCloseable {
   private final Duration lockWait;
   private final HikariDataSource ownedPool;
 
+  /** The releases of {@link #RELEASES}, each with the version of its last step. */
+  private final NavigableMap<MigrationVersion, MigrationVersion> releases;
+
   /** Does not own {@code dataSource}. */
   public SchemaMigrator(DataSource dataSource, DatabaseKind kind) {
     this(dataSource, kind, List.of());
@@ -246,7 +262,13 @@ public final class SchemaMigrator implements AutoCloseable {
   /** Waits at most {@code lockWait} for a lock instead of {@link #LOCK_WAIT} (tests' own cap). */
   SchemaMigrator(
       DataSource dataSource, DatabaseKind kind, List<String> extraLocations, Duration lockWait) {
-    this(dataSource, kind, extraLocations, lockWait, null);
+    this(dataSource, kind, extraLocations, lockWait, null, null);
+  }
+
+  /** Takes the releases from {@code releases} instead of {@link #RELEASES} (tests' own map). */
+  SchemaMigrator(
+      DataSource dataSource, DatabaseKind kind, List<String> extraLocations, Properties releases) {
+    this(dataSource, kind, extraLocations, LOCK_WAIT, null, releases);
   }
 
   private SchemaMigrator(
@@ -254,7 +276,8 @@ public final class SchemaMigrator implements AutoCloseable {
       DatabaseKind kind,
       List<String> extraLocations,
       Duration lockWait,
-      HikariDataSource ownedPool) {
+      HikariDataSource ownedPool,
+      Properties releases) { // null: those of RELEASES
     this.dataSource = dataSource;
     this.kind = kind;
     List<String> locations = new ArrayList<>();
@@ -264,6 +287,32 @@ public final class SchemaMigrator implements AutoCloseable {
     this.locations = locations.toArray(String[]::new);
     this.lockWait = lockWait;
     this.ownedPool = ownedPool;
+    this.releases = releases(releases);
+  }
+
+  /**
+   * The releases of {@code properties} ({@code null}: of {@link #RELEASES}) and their last steps.
+   */
+  private static NavigableMap<MigrationVersion, MigrationVersion> releases(Properties properties) {
+    if (properties == null) {
+      properties = new Properties();
+      try (InputStream in = SchemaMigrator.class.getClassLoader().getResourceAsStream(RELEASES)) {
+        if (in == null) {
+          throw new IllegalStateException(
+              "Could not find " + RELEASES + ": the server jar is incomplete");
+        }
+        properties.load(in);
+      } catch (IOException e) {
+        throw new UncheckedIOException(e);
+      }
+    }
+    NavigableMap<MigrationVersion, MigrationVersion> releases = new TreeMap<>();
+    for (String release : properties.stringPropertyNames()) {
+      releases.put(
+          MigrationVersion.fromVersion(release),
+          MigrationVersion.fromVersion(properties.getProperty(release).trim()));
+    }
+    return releases;
   }
 
   /**
@@ -282,7 +331,8 @@ public final class SchemaMigrator implements AutoCloseable {
         DatabaseKind.fromJdbcUrl(hibernateProperties.getProperty("hibernate.connection.url")),
         List.of(),
         LOCK_WAIT,
-        pool);
+        pool,
+        null);
   }
 
   private Flyway flyway(String baselineVersion) { // null: no baselining
@@ -843,35 +893,73 @@ public final class SchemaMigrator implements AutoCloseable {
    * FAILED one when every failed step can run again).
    */
   private String refusal(SchemaState state) {
-    return switch (state) {
-      case NOT_UC ->
-          "The database has tables but none of Unity Catalog's: not a Unity Catalog database."
-              + " Point the server at an empty database or a Unity Catalog one.";
-      case AHEAD ->
-          "The schema is newer than this release (version "
-              + currentVersion()
-              + ", this release ends at "
-              + latestVersion()
-              + "). Run the newer release.";
-      case FAILED ->
-          failedSteps().stream()
-              .filter(m -> !canRunAgain(m))
-              .findFirst()
-              .map(
-                  m ->
-                      "Step "
-                          + version(m)
-                          + " ("
-                          + m.getDescription()
-                          + ") failed in an earlier run, and the server can't tell how much of"
-                          + " its change is in the database. Restore the backup you took before"
-                          + " the upgrade, or undo the step's change by hand and remove its"
-                          + " failed record as docs/server/upgrades.md shows (section \"A step"
-                          + " that failed\"); then start the server again.")
-              .orElse(null);
-      case UNVERSIONED_UC -> missingBaselineTables();
-      default -> null;
-    };
+    String refusal =
+        switch (state) {
+          case NOT_UC ->
+              "The database has tables but none of Unity Catalog's: not a Unity Catalog database."
+                  + " Point the server at an empty database or a Unity Catalog one.";
+          case AHEAD ->
+              "The schema is newer than this release (version "
+                  + currentVersion()
+                  + ", this release ends at "
+                  + latestVersion()
+                  + "). Run the newer release.";
+          case FAILED ->
+              failedSteps().stream()
+                  .filter(m -> !canRunAgain(m))
+                  .findFirst()
+                  .map(
+                      m ->
+                          "Step "
+                              + version(m)
+                              + " ("
+                              + m.getDescription()
+                              + ") failed in an earlier run, and the server can't tell how much of"
+                              + " its change is in the database. Restore the backup you took before"
+                              + " the upgrade, or undo the step's change by hand and remove its"
+                              + " failed record as docs/server/upgrades.md shows (section \"A step"
+                              + " that failed\"); then start the server again.")
+                  .orElse(null);
+          case UNVERSIONED_UC -> missingBaselineTables();
+          default -> null;
+        };
+    return refusal == null && (state == SchemaState.PENDING || state == SchemaState.FAILED)
+        ? skippedRelease()
+        : refusal;
+  }
+
+  /**
+   * Refuses a database below the last step of the release before this build's: one that would skip
+   * that release. A database between that step and this build's last is a run that stopped midway.
+   */
+  private String skippedRelease() {
+    Map.Entry<MigrationVersion, MigrationVersion> previous = releases.lowerEntry(THIS_RELEASE);
+    String current = currentVersion();
+    // Version 0: the first run on an empty database stopped before its first step.
+    if (previous == null || current == null || current.equals("0")) {
+      return null;
+    }
+    MigrationVersion version = MigrationVersion.fromVersion(current);
+    if (version.compareTo(previous.getValue()) >= 0) {
+      return null;
+    }
+    String from =
+        releases.entrySet().stream()
+            .filter(r -> r.getValue().compareTo(version) <= 0)
+            .reduce((earlier, later) -> later)
+            .map(r -> ", from release " + r.getKey().getVersion() + " or earlier")
+            .orElse("");
+    String release = previous.getKey().getVersion();
+    return "The database is at schema version "
+        + current
+        + from
+        + "; this release upgrades only from "
+        + release
+        + " (version "
+        + previous.getValue().getVersion()
+        + " or later). Upgrade to "
+        + release
+        + " first, then to this release.";
   }
 
   /**
