@@ -162,6 +162,22 @@ public final class SchemaMigrator implements AutoCloseable {
       Pattern.compile(
           "create\\s+(?:unique\\s+)?index\\s+(\\w+)\\s+on\\s+(\\w+)", Pattern.CASE_INSENSITIVE);
 
+  /**
+   * {@code ALTER TABLE t ALTER COLUMN c [SET DATA TYPE | TYPE] type[(n)]} (H2, PostgreSQL) or
+   * {@code ALTER TABLE t MODIFY [COLUMN] c type[(n)]} (MySQL); not a type with other parameters,
+   * such as MySQL's {@code enum (...)}.
+   */
+  private static final Pattern CHANGE_TYPE =
+      Pattern.compile(
+          "alter\\s+table\\s+(\\w+)\\s+(?:alter\\s+column|modify(?:\\s+column)?)\\s+(\\w+)\\s+"
+              + "(?:set\\s+data\\s+type\\s+|type\\s+)?(\\w+)"
+              + "(?:\\s*\\(\\s*(\\d+)\\s*\\))?(?!\\s*\\()",
+          Pattern.CASE_INSENSITIVE);
+
+  /** The names H2's metadata gives the types the steps name otherwise. */
+  private static final Map<String, String> TYPE_NAMES =
+      Map.of("clob", "character large object", "varchar", "character varying");
+
   private static final Pattern CHECK = Pattern.compile("C(\\d+(?:_\\d+)*)__(.+)\\.sql");
 
   /** The most rows of one check that a refusal lists. */
@@ -360,11 +376,12 @@ public final class SchemaMigrator implements AutoCloseable {
     if (refusal != null) {
       throw new IllegalStateException(refusal);
     }
-    // EMPTY (also with only casbin_rule): baseline at 0 so V1 runs; UNVERSIONED_UC: baseline at 1.
-    String baseline =
-        state == SchemaState.EMPTY
-            ? "0"
-            : state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : null;
+    // EMPTY (also with only casbin_rule): baseline at 0 in V1's run, so V1 runs. UNVERSIONED_UC:
+    // baseline at 1 before any step: a run that only records steps would record V1 as one of them.
+    String baseline = state == SchemaState.EMPTY ? "0" : null;
+    if (state == SchemaState.UNVERSIONED_UC) {
+      flyway(BASELINE_VERSION).baseline();
+    }
     int applied = 0;
     for (MigrationInfo step : pendingSteps(from)) {
       boolean alreadyThere = isAlreadyThere(step);
@@ -426,6 +443,7 @@ public final class SchemaMigrator implements AutoCloseable {
     Matcher addConstraint = ADD_CONSTRAINT.matcher(statement);
     Matcher addColumn = ADD_COLUMN.matcher(statement);
     Matcher createIndex = CREATE_INDEX.matcher(statement);
+    Matcher changeType = CHANGE_TYPE.matcher(statement);
     if (createTable.lookingAt()) {
       return tableName(metaData, catalog, schema, createTable.group(1)) != null;
     } else if (addConstraint.lookingAt()) {
@@ -440,8 +458,39 @@ public final class SchemaMigrator implements AutoCloseable {
       return table != null
           && names(metaData.getIndexInfo(catalog, schema, table, false, false), "INDEX_NAME")
               .contains(createIndex.group(1).toLowerCase(Locale.ROOT));
+    } else if (changeType.lookingAt()) {
+      String table = tableName(metaData, catalog, schema, changeType.group(1));
+      return table != null
+          && hasType(
+              metaData.getColumns(catalog, schema, table, null),
+              changeType.group(2),
+              changeType.group(3),
+              changeType.group(4));
     }
     return false;
+  }
+
+  /**
+   * Whether the column {@code column} of the columns {@code rs} (which this closes) has the type
+   * {@code type} and, unless {@code null}, the size {@code size}.
+   */
+  private static boolean hasType(ResultSet rs, String column, String type, String size)
+      throws SQLException {
+    try (rs) {
+      while (rs.next()) {
+        if (rs.getString("COLUMN_NAME").equalsIgnoreCase(column)) {
+          return typeName(rs.getString("TYPE_NAME")).equals(typeName(type))
+              && (size == null || rs.getInt("COLUMN_SIZE") == Integer.parseInt(size));
+        }
+      }
+    }
+    return false;
+  }
+
+  /** A type's name, lower-cased, with H2's names for the short ones the steps use. */
+  private static String typeName(String type) {
+    String name = type.toLowerCase(Locale.ROOT);
+    return TYPE_NAMES.getOrDefault(name, name);
   }
 
   /** The name of {@code table} as the database stores it, or {@code null} when it is missing. */
