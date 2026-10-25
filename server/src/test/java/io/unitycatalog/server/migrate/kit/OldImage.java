@@ -3,7 +3,6 @@ package io.unitycatalog.server.migrate.kit;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -18,9 +17,6 @@ import java.util.stream.Stream;
  */
 public final class OldImage {
 
-  /** A directory of prebuilt server jars, each named {@code <commit sha>.jar}. */
-  public static final String JAR_DIR_ENV = "UC_TEST_JAR_DIR";
-
   private static final Path JAR_CACHE =
       Path.of(System.getProperty("user.home"), ".cache", "uc-upgrade-jars");
 
@@ -32,8 +28,8 @@ public final class OldImage {
   }
 
   /**
-   * The shaded server jar of {@code ref}'s commit: {@code <sha>.jar} in {@value #JAR_DIR_ENV} if
-   * set and present, else in {@code ~/.cache/uc-upgrade-jars}, else built once into that cache.
+   * The shaded server jar of {@code ref}'s commit, built once into {@code
+   * ~/.cache/uc-upgrade-jars}.
    */
   public static OldImage jarBuiltFrom(String ref) {
     return new OldImage(ref);
@@ -55,13 +51,6 @@ public final class OldImage {
   private static String jar(String ref) {
     Path repo = Path.of(git("rev-parse", "--show-toplevel"));
     String sha = git("-C", repo.toString(), "rev-parse", ref + "^{commit}");
-    String prebuiltDir = System.getenv(JAR_DIR_ENV);
-    if (prebuiltDir != null && !prebuiltDir.isBlank()) {
-      Path prebuilt = Path.of(prebuiltDir, sha + ".jar");
-      if (Files.exists(prebuilt)) {
-        return prebuilt.toString();
-      }
-    }
     Path cached = JAR_CACHE.resolve(sha + ".jar");
     if (!Files.exists(cached)) {
       build(repo, sha, cached);
@@ -80,17 +69,6 @@ public final class OldImage {
       Path archive = source.resolve("source.tar");
       git("-C", repo.toString(), "archive", "-o", archive.toString(), sha);
       run(new ProcessBuilder("tar", "-xf", archive.toString(), "-C", source.toString()));
-      if (System.getenv("MAVEN_PROXY_URL") != null) {
-        // build/sbt fetches its launcher from the mirror's root, which a Maven mirror may not
-        // serve. Reuse the launcher this checkout already downloaded (git-ignored, so not in the
-        // archive).
-        try (DirectoryStream<Path> launchers =
-            Files.newDirectoryStream(repo.resolve("build"), "sbt-launch-*.jar")) {
-          for (Path launcher : launchers) {
-            Files.copy(launcher, source.resolve("build").resolve(launcher.getFileName()));
-          }
-        }
-      }
       System.err.println("Building the server jar of " + sha + " in " + source);
       run(
           new ProcessBuilder("build/sbt", "-J-Xmx2G", "serverShaded/assembly")
