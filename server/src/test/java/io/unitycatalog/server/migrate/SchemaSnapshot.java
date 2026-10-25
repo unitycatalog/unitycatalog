@@ -120,11 +120,10 @@ record SchemaSnapshot(List<String> entries) {
 
   private static List<String> checks(Connection connection) throws SQLException {
     String query =
-        switch (connection.getMetaData().getDatabaseProductName()) {
-          case "H2" -> STANDARD_CHECKS.formatted("current_schema");
-          case "MySQL" -> STANDARD_CHECKS.formatted("database()");
-          case "PostgreSQL" -> POSTGRES_CHECKS;
-          default -> throw new IllegalStateException("No CHECK constraint query for this database");
+        switch (SchemaMigrator.DatabaseKind.fromJdbcUrl(connection.getMetaData().getURL())) {
+          case H2 -> STANDARD_CHECKS.formatted("current_schema");
+          case MYSQL -> STANDARD_CHECKS.formatted("database()");
+          case POSTGRESQL -> POSTGRES_CHECKS;
         };
     List<String> checks = new ArrayList<>();
     try (Statement statement = connection.createStatement();
