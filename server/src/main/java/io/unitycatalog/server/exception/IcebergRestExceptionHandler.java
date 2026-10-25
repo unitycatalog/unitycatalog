@@ -59,6 +59,7 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
               message,
               new NoSuchTableException(exception, "%s", message));
     }
+    logIfServerError(ctx, httpStatus(exception), cause);
     return createErrorResponse(exception);
   }
 
