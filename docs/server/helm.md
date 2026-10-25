@@ -165,13 +165,14 @@ the upgrade, and the copy and the restore need none open. Scale to 1 for the upg
 upgrade, the server restores the copy before it exits, so `server.deployment.terminationGracePeriodSeconds` (120
 seconds by default) must cover 60 seconds plus the restore.
 
-The chart passes its revision to the server (`UC_CHART_REVISION`), so every `helm upgrade` restarts the servers. When
-an upgrade fails and the server restores the copy, it marks the database with that revision, and later starts in the
-same revision refuse instead of upgrading and restoring again (see
+With the backup on, the chart passes its revision to the server (`UC_CHART_REVISION`), so every `helm upgrade`
+restarts the servers. When an upgrade fails and the server restores the copy, it marks the database with that
+revision, and later starts in the same revision refuse instead of upgrading and restoring again (see
 [The restored mark with Helm](upgrades.md#the-restored-mark-with-helm)). The previous release starts on the restored
 database, so `helm rollback`, or `helm upgrade --atomic`, which rolls back on its own, brings the old servers back.
 With `--atomic`, give `--timeout` more time than the upgrade takes; otherwise the rollback stops the upgrade. Fix the
-cause, then run `helm upgrade` again: its new revision clears the mark.
+cause, then run `helm upgrade` again: its new revision clears the mark. `helm template`, which Argo CD uses, always
+renders revision 1, so there set `server.migration.backup.chartRevision` to a new value to try again.
 
 `helm rollback` does not undo a successful schema upgrade. To go back, restore the backup first, as described in
 [Going back to the baseline release](upgrades.md#going-back-to-the-baseline-release).

@@ -1163,6 +1163,21 @@ info
 			<td>Log level for the server</td>
 		</tr>
 		<tr>
+			<td>server.migration.backup.chartRevision</td>
+			<td>string</td>
+			<td><pre lang="">
+the Helm release revision
+</pre>
+</td>
+			<td>Revision that a restore marks the database with
+
+With the backup on, the chart passes it to the server as `UC_CHART_REVISION`. After an upgrade fails and the
+server restores the backup, later starts in the same revision refuse instead of upgrading again, and a new
+revision clears the mark. `helm upgrade` makes a new revision each time. `helm template`, which Argo CD uses,
+always renders revision 1: set a new value here to try the upgrade again.
+</td>
+		</tr>
+		<tr>
 			<td>server.migration.backup.enabled</td>
 			<td>bool</td>
 			<td><pre lang="json">

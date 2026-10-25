@@ -676,6 +676,17 @@ server:
       #
       enabled: false
 
+      # -- (string) Revision that a restore marks the database with
+      # @default -- the Helm release revision
+      # @raw
+      #
+      # With the backup on, the chart passes it to the server as `UC_CHART_REVISION`. After an upgrade fails and the
+      # server restores the backup, later starts in the same revision refuse instead of upgrading again, and a new
+      # revision clears the mark. `helm upgrade` makes a new revision each time. `helm template`, which Argo CD uses,
+      # always renders revision 1: set a new value here to try the upgrade again.
+      #
+      chartRevision:
+
   upgradeCheck:
     # -- (bool) Check the database before `helm upgrade` stops the old servers (PostgreSQL and MySQL)
     # @raw
