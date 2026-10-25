@@ -53,8 +53,12 @@ spec:
             - name: api
               containerPort: {{ .Values.server.deployment.port }}
               protocol: TCP
-          {{- if eq .Values.server.db.type "mysql" }}
           env:
+            # With the backup on, a restore marks the database with this revision: later starts of the same revision
+            # refuse instead of upgrading again, and the next helm upgrade (a new revision) clears the mark.
+            - name: UC_CHART_REVISION
+              value: {{ .Release.Revision | quote }}
+          {{- if eq .Values.server.db.type "mysql" }}
             # The image does not include the MySQL JDBC driver. Its launcher lists the classpath jars in a file, so the
             # driver jars mounted from the volume load from the module path instead.
             - name: JDK_JAVA_OPTIONS

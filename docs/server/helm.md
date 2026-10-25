@@ -159,7 +159,15 @@ database), and the database server, or with H2 the database volume, needs room f
 upgrade, the server restores the copy before it exits, so `server.deployment.terminationGracePeriodSeconds` must
 cover 60 seconds plus the restore.
 
-`helm rollback` does not undo the schema upgrade. To go back, restore the backup first, as described in
+The chart passes its revision to the server (`UC_CHART_REVISION`), so every `helm upgrade` restarts the servers. When
+an upgrade fails and the server restores the copy, it marks the database with that revision, and later starts in the
+same revision refuse instead of upgrading and restoring again (see
+[The restored mark with Helm](upgrades.md#the-restored-mark-with-helm)). The previous release starts on the restored
+database, so `helm rollback`, or `helm upgrade --atomic`, which rolls back on its own, brings the old servers back.
+With `--atomic`, give `--timeout` more time than the upgrade takes; otherwise the rollback stops the upgrade. Fix the
+cause, then run `helm upgrade` again: its new revision clears the mark.
+
+`helm rollback` does not undo a successful schema upgrade. To go back, restore the backup first, as described in
 [Going back to the baseline release](upgrades.md#going-back-to-the-baseline-release).
 
 If you installed the chart from a source checkout before 0.8.0, set `nameOverride: unitycatalog` in your values.
