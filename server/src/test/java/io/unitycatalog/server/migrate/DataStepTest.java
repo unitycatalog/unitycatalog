@@ -16,7 +16,6 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -97,9 +96,8 @@ public class DataStepTest {
     }
     assertThat(filledRows()).isEqualTo(2);
 
-    // Every database records the failed step (it ran outside a transaction), which a rerun refuses
-    // until Flyway's repair removes it.
-    flyway(IN_BATCHES).repair();
+    // H2 and MySQL record the failed step (PostgreSQL rolls the record back with Flyway's lock
+    // transaction); either way the rerun runs it again and changes the rows the first run left.
     assertThat(migrate(IN_BATCHES)).isEqualTo(new MigrationOutcome("2000", "2001", 1));
     assertThat(filledRows()).isEqualTo(ROWS);
     assertThat(historyRows("2001")).isOne();
@@ -111,17 +109,6 @@ public class DataStepTest {
         new SchemaMigrator(db.dataSource(), db.kind(), locations(steps))) {
       return migrator.migrate();
     }
-  }
-
-  private Flyway flyway(String... steps) {
-    List<String> locations = locations(steps);
-    locations.add(0, "classpath:db/migration/" + db.kind().folder());
-    locations.add(1, SchemaMigrator.JAVA_STEPS);
-    return Flyway.configure()
-        .dataSource(db.dataSource())
-        .locations(locations.toArray(String[]::new))
-        .table("uc_schema_history")
-        .load();
   }
 
   private List<String> locations(String... steps) {

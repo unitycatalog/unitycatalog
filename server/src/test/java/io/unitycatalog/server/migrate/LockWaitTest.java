@@ -10,8 +10,6 @@ import java.sql.Connection;
 import java.sql.Statement;
 import java.time.Duration;
 import java.util.List;
-import java.util.stream.Stream;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -50,19 +48,7 @@ public class LockWaitTest {
       other.rollback();
     }
 
-    // H2 and MySQL record the failed step (their DDL commits on its own), which a rerun refuses
-    // until Flyway's repair removes it.
-    Flyway.configure()
-        .dataSource(db.dataSource())
-        .locations(
-            Stream.concat(
-                    Stream.of(
-                        "classpath:db/migration/" + db.kind().folder(), SchemaMigrator.JAVA_STEPS),
-                    locations(CREATE_TABLE, ADD_COLUMN).stream())
-                .toArray(String[]::new))
-        .table("uc_schema_history")
-        .load()
-        .repair();
+    // H2 and MySQL recorded the step as failed; the rerun finds its column absent and runs it.
     SchemaMigrator migrator = migrator(CREATE_TABLE, ADD_COLUMN);
     migrator.migrate();
     assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);

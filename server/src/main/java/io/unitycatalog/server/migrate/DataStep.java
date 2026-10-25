@@ -17,7 +17,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>By default the whole step runs in one transaction. A step on a table that may be large returns
  * true from {@link #batched()} and calls {@link #updateInBatches} from {@link #apply}: each batch
- * is committed, so once the failed run is repaired, a rerun continues where the last one stopped.
+ * is committed, so the next run of a step that failed or stopped continues where the last one
+ * stopped.
  */
 public abstract class DataStep extends BaseJavaMigration {
 

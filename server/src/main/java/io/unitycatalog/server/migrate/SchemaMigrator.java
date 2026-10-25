@@ -30,6 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
@@ -47,6 +48,7 @@ import org.flywaydb.core.api.CoreMigrationType;
 import org.flywaydb.core.api.FlywayException;
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationInfoService;
+import org.flywaydb.core.api.MigrationState;
 import org.flywaydb.core.api.MigrationVersion;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.slf4j.Logger;
@@ -66,6 +68,10 @@ import org.slf4j.LoggerFactory;
  *
  * <p>A SQL step whose change is already in the database (a run stopped before Flyway recorded it,
  * or someone applied it by hand) is recorded without running it.
+ *
+ * <p>A step that failed in an earlier run is run again, or recorded when its change is there, if
+ * the run can tell what the failed run left: a SQL step whose change is fully there or absent, or a
+ * {@link DataStep}, which goes on from the rows it has not changed yet. Otherwise the run refuses.
  *
  * <p>A statement of the run waits at most {@link #LOCK_WAIT} for a lock that another session holds,
  * then fails.
@@ -312,9 +318,14 @@ public final class SchemaMigrator implements AutoCloseable {
     return tables.contains("uc_catalogs") ? SchemaState.UNVERSIONED_UC : SchemaState.NOT_UC;
   }
 
-  /** The highest applied version, {@code null} without history. */
+  /** The highest version applied, not counting a failed step; {@code null} without history. */
   public String currentVersion() {
-    return version(flyway(null).info().current());
+    return Arrays.stream(flyway(null).info().applied())
+        .filter(m -> !m.getState().isFailed() && m.getVersion() != null)
+        .map(MigrationInfo::getVersion)
+        .max(MigrationVersion::compareTo)
+        .map(MigrationVersion::getVersion)
+        .orElse(null);
   }
 
   /** The highest step in this build. */
@@ -399,8 +410,13 @@ public final class SchemaMigrator implements AutoCloseable {
 
   private MigrationOutcome migrateLocked() {
     SchemaState state = state(); // read under the lock
-    String from = state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : currentVersion();
     String refusal = refusal(state);
+    if (refusal == null && state == SchemaState.FAILED) {
+      removeFailedSteps();
+      state = state();
+      refusal = refusal(state);
+    }
+    String from = state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : currentVersion();
     if (refusal == null) {
       refusal = failedChecks(from);
     }
@@ -506,30 +522,77 @@ public final class SchemaMigrator implements AutoCloseable {
         + " server again.";
   }
 
-  /** The steps above version {@code from} ({@code null}: every step), in order. */
+  /**
+   * The steps above version {@code from} ({@code null}: every step) not applied yet or failed in an
+   * earlier run, in order.
+   */
   private List<MigrationInfo> pendingSteps(String from) {
-    return Arrays.stream(flyway(null).info().pending())
+    return Arrays.stream(flyway(null).info().all())
+        .filter(m -> m.getState() == MigrationState.PENDING || m.getState().isFailed())
         .filter(
             m -> from == null || m.getVersion().compareTo(MigrationVersion.fromVersion(from)) > 0)
         .toList();
   }
 
+  /** The steps that failed in an earlier run. */
+  private List<MigrationInfo> failedSteps() {
+    return Arrays.stream(flyway(null).info().all()).filter(m -> m.getState().isFailed()).toList();
+  }
+
+  /**
+   * Whether a failed step can run again: a step of this build that is a SQL step whose probe can
+   * tell whether its change is there, or a {@link DataStep}, which changes only the rows not
+   * changed yet.
+   */
+  private boolean canRunAgain(MigrationInfo step) {
+    if (!step.getState().isResolved()) {
+      return false;
+    } else if (step.getType() == CoreMigrationType.SQL) {
+      return probe(step).isPresent();
+    }
+    try {
+      return DataStep.class.isAssignableFrom(
+          Class.forName(step.getScript(), false, SchemaMigrator.class.getClassLoader()));
+    } catch (ClassNotFoundException e) {
+      return false;
+    }
+  }
+
+  /**
+   * Removes the failed steps' history rows with Flyway's repair, so the run runs them again or
+   * records them like pending steps.
+   */
+  private void removeFailedSteps() {
+    for (MigrationInfo step : failedSteps()) {
+      LOGGER.info(
+          "Step {} ({}) failed in an earlier run; running it again.",
+          version(step),
+          step.getDescription());
+    }
+    flyway(null).repair();
+  }
+
+  /** Whether the change of a SQL step is already in the database; false when it can't tell. */
+  private boolean isAlreadyThere(MigrationInfo step) {
+    return probe(step).orElse(false);
+  }
+
   /**
    * Whether the change of a SQL step is already in the database, so that running it would fail: a
    * run stopped between the step and its history row, or someone applied it by hand. Recognises a
-   * step by its one statement; any other step runs.
+   * step by its one statement; empty for any other step.
    */
-  private boolean isAlreadyThere(MigrationInfo step) {
+  private Optional<Boolean> probe(MigrationInfo step) {
     if (step.getType() != CoreMigrationType.SQL) {
-      return false;
+      return Optional.empty();
     }
     String statement = stepStatement(step);
     if (statement.contains(";") // more than one statement, such as the baseline step
         || hasSeveralChanges(statement)) {
-      return false;
+      return Optional.empty();
     }
     try (Connection connection = connection()) {
-      return isAlreadyThere(statement, connection);
+      return probe(statement, connection);
     } catch (SQLException e) {
       throw new IllegalStateException(
           "Could not check whether step "
@@ -540,7 +603,7 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
-  private boolean isAlreadyThere(String statement, Connection connection) throws SQLException {
+  private Optional<Boolean> probe(String statement, Connection connection) throws SQLException {
     DatabaseMetaData metaData = connection.getMetaData();
     String catalog = connection.getCatalog();
     String schema = connection.getSchema();
@@ -550,33 +613,36 @@ public final class SchemaMigrator implements AutoCloseable {
     Matcher createIndex = CREATE_INDEX.matcher(statement);
     Matcher changeType = CHANGE_TYPE.matcher(statement);
     if (createTable.lookingAt()) {
-      return tableName(metaData, catalog, schema, createTable.group(1)) != null;
+      return Optional.of(tableName(metaData, catalog, schema, createTable.group(1)) != null);
     } else if (addConstraint.lookingAt()) {
-      return hasConstraint(connection, addConstraint.group(1), addConstraint.group(2));
+      return Optional.of(hasConstraint(connection, addConstraint.group(1), addConstraint.group(2)));
     } else if (addColumn.lookingAt()) {
       String table = tableName(metaData, catalog, schema, addColumn.group(1));
-      return table != null
-          && names(metaData.getColumns(catalog, schema, table, null), "COLUMN_NAME")
-              .contains(addColumn.group(2).toLowerCase(Locale.ROOT));
+      return Optional.of(
+          table != null
+              && names(metaData.getColumns(catalog, schema, table, null), "COLUMN_NAME")
+                  .contains(addColumn.group(2).toLowerCase(Locale.ROOT)));
     } else if (createIndex.lookingAt()) {
       String table = tableName(metaData, catalog, schema, createIndex.group(2));
-      return table != null
-          && names(metaData.getIndexInfo(catalog, schema, table, false, false), "INDEX_NAME")
-              .contains(createIndex.group(1).toLowerCase(Locale.ROOT));
+      return Optional.of(
+          table != null
+              && names(metaData.getIndexInfo(catalog, schema, table, false, false), "INDEX_NAME")
+                  .contains(createIndex.group(1).toLowerCase(Locale.ROOT)));
     } else if (changeType.lookingAt()) {
       if (changeType.group(4) == null
           && !UNSIZED_TYPES.contains(changeType.group(3).toLowerCase(Locale.ROOT))) {
-        return false; // without a size, the type may be a sized one at its default size
+        return Optional.empty(); // without a size, the type may be a sized one at its default size
       }
       String table = tableName(metaData, catalog, schema, changeType.group(1));
-      return table != null
-          && hasType(
-              metaData.getColumns(catalog, schema, table, null),
-              changeType.group(2),
-              changeType.group(3),
-              changeType.group(4));
+      return Optional.of(
+          table != null
+              && hasType(
+                  metaData.getColumns(catalog, schema, table, null),
+                  changeType.group(2),
+                  changeType.group(3),
+                  changeType.group(4)));
     }
-    return false;
+    return Optional.empty();
   }
 
   /**
@@ -683,7 +749,8 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Why {@link #migrate()} refuses a database in {@code state}, or {@code null} when it goes on.
+   * Why {@link #migrate()} refuses a database in {@code state}, or {@code null} when it goes on (a
+   * FAILED one when every failed step can run again).
    */
   private String refusal(SchemaState state) {
     return switch (state) {
@@ -696,18 +763,22 @@ public final class SchemaMigrator implements AutoCloseable {
               + ", this release ends at "
               + latestVersion()
               + "). Run the newer release.";
-      case FAILED -> {
-        MigrationInfo failed =
-            Arrays.stream(flyway(null).info().all())
-                .filter(m -> m.getState().isFailed())
-                .findFirst()
-                .orElseThrow();
-        yield "A migration step failed in an earlier run: version "
-            + version(failed)
-            + " ("
-            + failed.getDescription()
-            + "). See docs/server/upgrades.md.";
-      }
+      case FAILED ->
+          failedSteps().stream()
+              .filter(m -> !canRunAgain(m))
+              .findFirst()
+              .map(
+                  m ->
+                      "Step "
+                          + version(m)
+                          + " ("
+                          + m.getDescription()
+                          + ") failed in an earlier run, and its change may be partly in the"
+                          + " database. Change the database by hand so that the step's change is"
+                          + " either fully there or not there at all, or restore the backup you"
+                          + " took before the upgrade; then start the server again. See"
+                          + " docs/server/upgrades.md.")
+              .orElse(null);
       case UNVERSIONED_UC -> missingBaselineTables();
       default -> null;
     };

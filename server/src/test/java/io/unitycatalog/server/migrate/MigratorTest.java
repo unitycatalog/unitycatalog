@@ -185,13 +185,23 @@ public class MigratorTest {
 
   /** Records a failed step in Flyway's history, as a run that failed midway leaves it. */
   static void recordFailedStep(TestDatabase db) {
+    recordFailedStep(db, "V1000__broken.sql");
+  }
+
+  /** Records the SQL step {@code script} as failed, as a run that failed midway leaves it. */
+  static void recordFailedStep(TestDatabase db, String script) {
+    String version = script.substring(1, script.indexOf("__"));
+    String description =
+        script
+            .substring(script.indexOf("__") + 2, script.length() - ".sql".length())
+            .replace('_', ' ');
     execute(
         db,
         ("INSERT INTO %1$suc_schema_history%1$s (%1$sinstalled_rank%1$s, %1$sversion%1$s,"
                 + " %1$sdescription%1$s, %1$stype%1$s, %1$sscript%1$s, %1$sinstalled_by%1$s,"
                 + " %1$sexecution_time%1$s, %1$ssuccess%1$s)"
-                + " VALUES (1000, '1000', 'broken', 'SQL', 'V1000__broken.sql', 'test', 0, false)")
-            .formatted(quote(db)));
+                + " VALUES (1000, '%2$s', '%3$s', 'SQL', '%4$s', 'test', 0, false)")
+            .formatted(quote(db), version, description, script));
   }
 
   @Test
