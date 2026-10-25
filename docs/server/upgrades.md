@@ -8,8 +8,9 @@ Hibernate no longer changes the schema. If your `etc/conf/hibernate.properties` 
 `hibernate.hbm2ddl.auto=update`, the server ignores it and logs a warning. You can delete the line.
 
 Every server start brings the database to the schema version of its release before the server
-serves requests. It sets up an empty database, adopts a database without schema history (one from
-the baseline release) and applies the steps that are not applied yet. It refuses to start on a
+serves requests. It sets up an empty database (the first start of a new install), adopts a
+database without schema history (one from the baseline release) and applies the steps that are not
+applied yet. It refuses to start on a
 database it cannot upgrade and tells you what to do (see [Messages](#messages)).
 
 ## The baseline release
@@ -46,10 +47,6 @@ Use these steps for every database (H2, PostgreSQL, MySQL).
 
 On PostgreSQL and MySQL, when several servers start at the same time, one applies the steps and
 the others wait for it, then start.
-
-## First start on an empty database
-
-A server that starts on an empty database sets up the schema itself, the same way.
 
 ## Going back to the baseline release
 

@@ -138,8 +138,9 @@ Flyway manages the database schema. See [Upgrading the database schema](upgrades
 `uc_properties.property_value` used to be created as `varchar(255)`. Table and view properties
 (user `TBLPROPERTIES`, Spark `view.sqlConfig.*`, and any other REST-sent property) can exceed
 that. New installs get a wider column from the schema steps. **Databases created before 0.7.0 keep
-`varchar(255)` until a 0.7.0 server starts on them (its schema update widens the column on H2, PostgreSQL and MySQL) or
-you run one of the statements below**; the schema steps of later releases leave it unchanged.
+`varchar(255)` until a 0.7.0 server starts on them (its schema update widens the column on H2,
+PostgreSQL and MySQL) or you run one of the statements below**; the schema steps of later releases
+leave it unchanged.
 
 PostgreSQL:
 
