@@ -285,7 +285,10 @@ public final class SchemaMigrator {
       this.unlockSql = unlockSql;
     }
 
-    /** Blocks until this run holds the lock, logging once when another run holds it. */
+    /**
+     * Blocks until this run holds the lock, logging once when another run holds it. Throws when the
+     * database fails the lock call or does not grant the lock, so the run never starts unlocked.
+     */
     static RunLock acquire(DataSource dataSource, DatabaseKind kind) {
       if (kind == DatabaseKind.H2) {
         return new RunLock(null, null);
@@ -297,7 +300,7 @@ public final class SchemaMigrator {
               : "SELECT GET_LOCK(" + MYSQL_NAME + ", 0)";
       String lock =
           postgres
-              ? "SELECT pg_advisory_lock(" + POSTGRES_KEY + ")"
+              ? "SELECT true FROM pg_advisory_lock(" + POSTGRES_KEY + ")"
               : "SELECT GET_LOCK(" + MYSQL_NAME + ", -1)";
       String unlock =
           postgres
@@ -308,12 +311,10 @@ public final class SchemaMigrator {
         connection = dataSource.getConnection();
         // Outside a transaction, so the run doesn't keep one open while it holds the lock.
         connection.setAutoCommit(true);
-        try (Statement statement = connection.createStatement();
-            ResultSet rs = statement.executeQuery(tryLock)) {
-          rs.next();
-          if (!rs.getBoolean(1)) {
-            LOGGER.info("Another server is migrating the schema; waiting for it to finish.");
-            statement.execute(lock);
+        if (!isTrue(connection, tryLock)) {
+          LOGGER.info("Another server is migrating the schema; waiting for it to finish.");
+          if (!isTrue(connection, lock)) {
+            throw new SQLException("the database did not grant it");
           }
         }
         return new RunLock(connection, unlock);
@@ -324,17 +325,35 @@ public final class SchemaMigrator {
       }
     }
 
+    /**
+     * Releases the lock. Throws when the release fails, so the server stops instead of starting
+     * with the lock state unknown; the lock's connection is closed either way, which releases it.
+     */
     @Override
     public void close() {
       if (connection == null) {
         return;
       }
-      try (Statement statement = connection.createStatement()) {
-        statement.execute(unlockSql);
+      try {
+        if (!isTrue(connection, unlockSql)) {
+          throw new SQLException("the database did not hold it for this run");
+        }
       } catch (SQLException e) {
-        LOGGER.warn("Could not release the schema migration lock; closing its connection does", e);
+        throw new IllegalStateException(
+            "Could not release the schema migration lock: "
+                + e.getMessage()
+                + ". The database releases it when the connection closes; start the server again.",
+            e);
       } finally {
         close(connection);
+      }
+    }
+
+    /** Runs a lock call; whether it returned true (MySQL's 1). */
+    private static boolean isTrue(Connection connection, String sql) throws SQLException {
+      try (Statement statement = connection.createStatement();
+          ResultSet rs = statement.executeQuery(sql)) {
+        return rs.next() && rs.getBoolean(1);
       }
     }
 

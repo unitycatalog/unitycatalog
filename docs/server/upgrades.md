@@ -80,9 +80,15 @@ Messages that the server prints when it refuses to start, and what to do.
   `uc_schema_history` by hand.
 
 `Could not take the schema migration lock: <reason>`
-: The server could not get the lock that keeps two migration runs apart. Check that the database
-  is reachable and that its user can run the lock call (`pg_advisory_lock` on PostgreSQL,
-  `GET_LOCK` on MySQL).
+: The server could not get the lock that keeps two migration runs apart, so it changed nothing.
+  Check that the database is reachable and that its user can run the lock call
+  (`pg_advisory_lock` on PostgreSQL, `GET_LOCK` on MySQL), then start the server again. On MySQL,
+  `the database did not grant it` means the waiting call was interrupted, for example by
+  `KILL QUERY`.
+
+`Could not release the schema migration lock: <reason>. The database releases it when the connection closes; start the server again.`
+: The steps ran, but releasing the lock failed at the end. The server closed the lock's
+  connection, which releases the lock. Start the server again.
 
 `Could not connect to the database: <reason>` or `Could not list the database's tables: <reason>`
 : The server could not read the database. Check the connection settings and the user's
