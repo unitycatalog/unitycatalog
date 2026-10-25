@@ -161,21 +161,30 @@ To have the server copy the database before it upgrades the schema, and restore 
 database user must be able to create and drop databases (PostgreSQL: `CREATEDB` and owner of the Unity Catalog
 database), and the database server, or with H2 the database volume, needs room for a full copy. The chart also
 requires `server.deployment.replicaCount: 1`: every new server opens connections to the database before it waits for
-the upgrade, and the copy and the restore need none open. Scale to 1 for the upgrade, then scale back. On SIGTERM during the
-upgrade, the server restores the copy before it exits, so `server.deployment.terminationGracePeriodSeconds` (120
-seconds by default) must cover 60 seconds plus the restore.
+the upgrade, and the copy and the restore need none open. Scale to 1 for the upgrade, then scale back. On SIGTERM
+during the upgrade, the server restores the copy before it exits, so
+`server.deployment.terminationGracePeriodSeconds` (120 seconds by default) must cover 60 seconds plus the restore.
 
 With the backup on, the chart passes its revision to the server (`UC_CHART_REVISION`), so every `helm upgrade`
 restarts the servers. When an upgrade fails and the server restores the copy, it marks the database with that
 revision, and later starts in the same revision refuse instead of upgrading and restoring again (see
 [The restored mark with Helm](upgrades.md#the-restored-mark-with-helm)). The previous release starts on the restored
-database, so `helm rollback`, or `helm upgrade --atomic`, which rolls back on its own, brings the old servers back.
-With `--atomic`, give `--timeout` more time than the upgrade takes; otherwise the rollback stops the upgrade. Fix the
-cause, then run `helm upgrade` again: its new revision clears the mark. `helm template`, which Argo CD uses, always
-renders revision 1, so there set `server.migration.backup.chartRevision` to a new value to try again.
+database, so `helm rollback` brings the old servers back. Fix the cause, then run `helm upgrade` again: its new
+revision clears the mark. `helm template`, which Argo CD uses, always renders revision 1, so there set
+`server.migration.backup.chartRevision` to a new value to try again.
 
-`helm rollback` does not undo a successful schema upgrade. To go back, restore the backup first, as described in
-[Going back to the baseline release](upgrades.md#going-back-to-the-baseline-release).
+`helm rollback`, and `helm upgrade --atomic`, which rolls back on any failure, start the previous release on the
+schema the database has then. `--atomic` also rolls back when the schema upgrade went through, for example when
+`--wait` times out after it, or a post-upgrade hook fails, and when the upgrade is still running, which the rollback
+stops. The previous release must not run on an upgraded or partly upgraded schema (see
+[Going back to the baseline release](upgrades.md#going-back-to-the-baseline-release)):
+
+- With the backup off, never use `--atomic`, and never `helm rollback` after a schema upgrade started. To go back,
+  stop the servers and restore your own backup first.
+- With the backup on, a rollback during the upgrade, or after it failed, is safe: the server restores the copy
+  first. A rollback after the upgrade went through is not, because the copy is gone then.
+
+With `--wait` or `--atomic`, set `--timeout` well above the time the upgrade takes; the default is 5 minutes.
 
 If you installed the chart from a source checkout before 0.8.0, set `nameOverride: unitycatalog` in your values.
 The chart is now named `unitycatalog-chart`, which changes the resource names. The override keeps the old names, so
