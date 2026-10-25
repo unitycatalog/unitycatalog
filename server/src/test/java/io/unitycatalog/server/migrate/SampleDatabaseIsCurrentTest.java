@@ -44,7 +44,7 @@ public class SampleDatabaseIsCurrentTest {
             latest,
             state == SchemaState.PENDING
                 ? "the test migrated it, commit etc/db/h2db.mv.db"
-                : "restore it with `git checkout origin/main -- etc/db/h2db.mv.db`")
+                : "restore it with `git checkout HEAD -- etc/db/h2db.mv.db`")
         .isEqualTo(SchemaState.CURRENT);
   }
 
