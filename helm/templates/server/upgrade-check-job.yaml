@@ -39,9 +39,14 @@ spec:
       {{- with .Values.server.deployment.imagePullSecrets }}
       imagePullSecrets: {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.server.upgradeCheck.serviceAccountName }}
+      serviceAccountName: {{ . | quote }}
+      automountServiceAccountToken: true
+      {{- else }}
       # The namespace's default ServiceAccount: the chart's own may not exist yet when pre-upgrade hooks run, and the
       # check needs no Kubernetes API access.
       automountServiceAccountToken: false
+      {{- end }}
       {{- with .Values.server.deployment.podSecurityContext }}
       securityContext: {{- toYaml . | nindent 8 }}
       {{- end }}

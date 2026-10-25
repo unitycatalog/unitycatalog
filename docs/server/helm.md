@@ -127,7 +127,10 @@ in this order:
 1. With PostgreSQL or MySQL, a `pre-upgrade` hook Job runs the new release's `bin/start-uc-server --check-schema`,
    which changes nothing. If the new release would refuse the upgrade, the Job fails and so does `helm upgrade`,
    before it changes any resource; the old servers keep serving. The Job's pod gets the server pod's extra init
-   containers, volumes and labels (`server.deployment.extra*`), but not its extra containers.
+   containers, volumes and labels (`server.deployment.extra*`), but not its extra containers. It runs with the
+   namespace's default ServiceAccount and no API token. If the server reaches the database through workload
+   identity (for example IAM database authentication), set `server.upgradeCheck.serviceAccountName` to a
+   ServiceAccount that exists before the upgrade.
 2. The chart stops all old servers, then starts the new ones (update strategy `Recreate`), because old and new
    servers must not run at once while the schema changes. The API is down until a new server is ready.
 3. The first new server applies the pending schema steps, then serves. Other replicas wait for it.
@@ -165,7 +168,8 @@ To have the server copy the database before it upgrades the schema, and restore 
 database user must be able to create and drop databases (PostgreSQL: `CREATEDB` and owner of the Unity Catalog
 database), and the database server, or with H2 the database volume, needs room for a full copy. The chart also
 requires `server.deployment.replicaCount: 1`: every new server opens connections to the database before it waits for
-the upgrade, and the copy and the restore need none open. Scale to 1 for the upgrade, then scale back. On SIGTERM
+the upgrade, and the copy and the restore need none open. Run the upgrade with one replica, then turn the backup off
+before scaling up (or keep one replica). On SIGTERM
 during the upgrade, the server restores the copy before it exits, so
 `server.deployment.terminationGracePeriodSeconds` (120 seconds by default) must cover 60 seconds plus the restore.
 

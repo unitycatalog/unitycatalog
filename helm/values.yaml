@@ -680,8 +680,8 @@ server:
       # - room there for a full copy of the database; with `db.type: file`, on the database volume
       # - with H2, a file database: the chart refuses an in-memory one
       # - one replica (`deployment.replicaCount: 1`), which the chart enforces: every new server opens connections to
-      #   the database before it waits for the upgrade, and the copy and the restore need none open. Scale to 1 for
-      #   the upgrade, then scale back.
+      #   the database before it waits for the upgrade, and the copy and the restore need none open. Run the upgrade
+      #   with one replica, then turn the backup off before scaling up (or keep one replica).
       #
       # On SIGTERM during the upgrade the server restores the backup before it exits, so
       # `deployment.terminationGracePeriodSeconds` must cover 60 seconds plus the restore.
@@ -709,9 +709,21 @@ server:
     # A failed Job is kept until the next upgrade. Its pod is set up like the server's: the init containers
     # (including `deployment.extraInitContainers`), volumes and mounts (including `deployment.extraVolumes` and
     # `deployment.extraVolumeMounts`) and `deployment.extraPodLabels`, but not `deployment.extraContainers`, which
-    # would keep it from completing. It runs with the namespace's default ServiceAccount and no API token.
+    # would keep it from completing. It runs with the namespace's default ServiceAccount and no API token, unless
+    # `serviceAccountName` is set.
     #
     enabled: true
+
+    # -- (string) ServiceAccount of the pre-upgrade check Job
+    # @default -- not set: the namespace's default ServiceAccount, without a token
+    # @raw
+    #
+    # Set it when the server reaches the database through workload identity, for example IAM database
+    # authentication: the Job then uses this ServiceAccount and mounts its token. It must exist before
+    # `helm upgrade` runs, because the hook runs before the chart creates its resources, so name one that the chart
+    # does not create in the same upgrade.
+    #
+    serviceAccountName:
 
   jwtKeypairSecret:
     # -- (string) Name of the keypair secret for JWT signing
