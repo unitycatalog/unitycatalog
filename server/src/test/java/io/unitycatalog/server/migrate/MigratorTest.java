@@ -146,6 +146,17 @@ public class MigratorTest {
   }
 
   @Test
+  void refusesADatabaseWithAnotherApplicationsFlywayHistory() {
+    execute(db, "CREATE TABLE flyway_schema_history (installed_rank INT)");
+    SchemaSnapshot before = SchemaSnapshot.of(db.dataSource());
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
+    assertThat(migrator.state()).isEqualTo(SchemaState.NOT_UC);
+
+    assertThatThrownBy(migrator::migrate).hasMessageContaining("not a Unity Catalog database");
+    assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(before);
+  }
+
+  @Test
   void secondRunAppliesNothing() {
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
     migrator.migrate();
@@ -176,7 +187,7 @@ public class MigratorTest {
   static void recordFailedStep(TestDatabase db) {
     execute(
         db,
-        ("INSERT INTO %1$sflyway_schema_history%1$s (%1$sinstalled_rank%1$s, %1$sversion%1$s,"
+        ("INSERT INTO %1$suc_schema_history%1$s (%1$sinstalled_rank%1$s, %1$sversion%1$s,"
                 + " %1$sdescription%1$s, %1$stype%1$s, %1$sscript%1$s, %1$sinstalled_by%1$s,"
                 + " %1$sexecution_time%1$s, %1$ssuccess%1$s)"
                 + " VALUES (1000, '1000', 'broken', 'SQL', 'V1000__broken.sql', 'test', 0, false)")
@@ -261,7 +272,7 @@ public class MigratorTest {
         Statement statement = connection.createStatement();
         ResultSet rs =
             statement.executeQuery(
-                ("SELECT %1$sversion%1$s FROM %1$sflyway_schema_history%1$s"
+                ("SELECT %1$sversion%1$s FROM %1$suc_schema_history%1$s"
                         + " WHERE %1$sversion%1$s IS NOT NULL ORDER BY %1$sversion%1$s")
                     .formatted(q))) {
       while (rs.next()) {

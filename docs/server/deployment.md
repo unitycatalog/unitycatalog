@@ -49,7 +49,9 @@ This guide outlines how to deploy the Unity Catalog server.
     that are created.
 - If you configure local storage, the server reads and writes it with its own identity; see
     [Local file system storage](./configuration.md#local-file-system-storage) before letting other users write to it.
-- The `etc/db/` directory contains the backend database that is used by the UC server.
+- The `etc/db/` directory contains the backend database that is used by the UC server. By default
+    this is an H2 database file, which supports one server per file; to run more than one server, use
+    PostgreSQL or MySQL.
 
 ### Configuring the database
 

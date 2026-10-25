@@ -18,7 +18,7 @@ import javax.sql.DataSource;
  */
 public record SchemaSnapshot(List<String> entries) {
 
-  private static final Set<String> IGNORED_TABLES = Set.of("casbin_rule", "flyway_schema_history");
+  private static final Set<String> IGNORED_TABLES = Set.of("casbin_rule", "uc_schema_history");
 
   public static SchemaSnapshot of(DataSource dataSource) {
     try (Connection connection = dataSource.getConnection()) {

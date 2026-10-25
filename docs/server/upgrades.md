@@ -2,7 +2,7 @@
 
 Unity Catalog uses [Flyway](https://flywaydb.org/) to manage the schema of its database. Each
 release ships the schema steps it needs, and each step is applied once and recorded in the
-`flyway_schema_history` table.
+`uc_schema_history` table.
 
 Hibernate no longer changes the schema. If your `etc/conf/hibernate.properties` still sets
 `hibernate.hbm2ddl.auto=update`, the server ignores it and logs a warning. You can delete the line.
@@ -91,7 +91,7 @@ Messages that the server prints when it refuses to start, and what to do.
 : Step `<n>` failed and its failure is recorded in the history. Read the error that the failing
   start printed and fix its cause (for example a full disk or missing privileges for the database
   user). Then restore the backup you took before the upgrade and start the server again. Do not edit
-  `flyway_schema_history` by hand.
+  `uc_schema_history` by hand.
 
 `Could not take the schema migration lock: <reason>`
 : The server could not get the lock that keeps two migration runs apart. Check that the database

@@ -104,7 +104,7 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   private static final Logger LOGGER = LoggerFactory.getLogger(SchemaMigrator.class);
-  private static final String HISTORY_TABLE = "flyway_schema_history";
+  private static final String HISTORY_TABLE = "uc_schema_history";
 
   /**
    * The release whose schema is version 1. A database without schema history from it is adopted as
@@ -416,19 +416,34 @@ public final class SchemaMigrator implements AutoCloseable {
       this.h2Lock = h2Lock;
     }
 
-    /** Blocks until this run holds the lock. */
+    /** Blocks until this run holds the lock, logging once when another run holds it. */
     static RunLock acquire(DataSource dataSource, DatabaseKind kind) {
       try {
         if (kind == DatabaseKind.H2) {
           ReentrantLock lock =
               H2_LOCKS.computeIfAbsent(h2Key(dataSource), k -> new ReentrantLock());
-          lock.lock();
+          if (!lock.tryLock()) {
+            logWaiting();
+            lock.lock();
+          }
           return new RunLock(kind, null, lock);
         }
         Connection connection = dataSource.getConnection();
         try {
           // Outside a transaction, so the run doesn't keep one open while it holds the lock.
           connection.setAutoCommit(true);
+          String trySql =
+              kind == DatabaseKind.POSTGRESQL
+                  ? "SELECT pg_try_advisory_lock(" + POSTGRES_KEY + ")"
+                  : "SELECT GET_LOCK(" + MYSQL_NAME + ", 0)";
+          try (Statement statement = connection.createStatement();
+              ResultSet rs = statement.executeQuery(trySql)) {
+            rs.next();
+            if (rs.getBoolean(1)) {
+              return new RunLock(kind, connection, null);
+            }
+          }
+          logWaiting();
           String sql =
               kind == DatabaseKind.POSTGRESQL
                   ? "SELECT pg_advisory_lock(" + POSTGRES_KEY + ")"
@@ -449,6 +464,10 @@ public final class SchemaMigrator implements AutoCloseable {
         throw new IllegalStateException(
             "Could not take the schema migration lock: " + e.getMessage(), e);
       }
+    }
+
+    private static void logWaiting() {
+      LOGGER.info("Another server is migrating the schema; waiting for it to finish.");
     }
 
     /** The database file's path, or the name of an in-memory database. */

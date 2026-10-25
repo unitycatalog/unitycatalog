@@ -116,7 +116,7 @@ public class HibernateConfigurator implements AutoCloseable {
                 "SELECT @@collation_database UNION "
                     + "SELECT TABLE_COLLATION FROM information_schema.TABLES "
                     + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_COLLATION IS NOT NULL "
-                    + "AND TABLE_NAME <> 'flyway_schema_history'")) {
+                    + "AND TABLE_NAME <> 'uc_schema_history'")) {
       Set<String> caseInsensitive = new TreeSet<>();
       while (collations.next()) {
         if (collations.getString(1).endsWith("_ci")) {
