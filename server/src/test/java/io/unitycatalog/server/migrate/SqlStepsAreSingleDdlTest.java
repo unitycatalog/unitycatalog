@@ -26,8 +26,7 @@ public class SqlStepsAreSingleDdlTest {
       Map.of(
           "h2/V1__baseline_0_7.sql", "the baseline: the whole schema at once",
           "postgresql/V1__baseline_0_7.sql", "the baseline: the whole schema at once",
-          "mysql/V1__baseline_0_7.sql", "the baseline: the whole schema at once",
-          "mysql/V3__case_sensitive_text.sql", "converts every table; safe to repeat");
+          "mysql/V1__baseline_0_7.sql", "the baseline: the whole schema at once");
 
   private static final List<String> DDL = List.of("CREATE", "ALTER", "DROP", "RENAME");
 
