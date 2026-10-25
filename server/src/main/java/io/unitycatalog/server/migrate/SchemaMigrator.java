@@ -15,6 +15,9 @@ import java.util.Locale;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
@@ -125,15 +128,6 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /** The run lock's connection plus Flyway's two (PostgreSQL uses both; MySQL one). */
   private static final int POOL_SIZE = 3;
-
-  /** The run lock's PostgreSQL advisory lock key; Flyway's own lock uses a different one. */
-  static final long RUN_LOCK_KEY = 0x75635f6d69677261L; // "uc_migra"
-
-  /**
-   * The run lock's MySQL lock name, as SQL. MySQL's locks are per server, so the name includes the
-   * database; SHA1 keeps it within MySQL's 64-character limit.
-   */
-  static final String RUN_LOCK_NAME = "CONCAT('uc_migrate.', SHA1(DATABASE()))";
 
   private final DataSource dataSource;
   private final DatabaseKind kind;
@@ -372,17 +366,30 @@ public final class SchemaMigrator implements AutoCloseable {
    * time; Flyway's own lock is released between steps. PostgreSQL takes {@code pg_advisory_lock} on
    * a fixed key (advisory locks are per database), MySQL {@code GET_LOCK} on a name derived from
    * the database's (MySQL's locks are per server). The lock is held on one connection until {@link
-   * #close()}. H2 has none: its file lock admits one process, and a server runs one migration at
-   * start.
+   * #close()}. H2 takes a lock inside this JVM, keyed by the database: an H2 file database is
+   * opened by one process.
    */
-  private static final class RunLock implements AutoCloseable {
+  static final class RunLock implements AutoCloseable {
 
-    private final Connection connection; // null: no lock (H2)
+    /** Any fixed key; Flyway's own advisory lock uses a different one. */
+    private static final long POSTGRES_KEY = 0x75635f6d69677261L; // "uc_migra"
+
+    /**
+     * The lock name, as SQL. MySQL's locks are per server, so the name includes the database; SHA1
+     * keeps it within MySQL's 64-character limit.
+     */
+    private static final String MYSQL_NAME = "CONCAT('uc_migrate.', SHA1(DATABASE()))";
+
+    private static final ConcurrentMap<String, ReentrantLock> H2_LOCKS = new ConcurrentHashMap<>();
+
+    private final Connection connection; // PostgreSQL and MySQL
     private final String unlockSql;
+    private final ReentrantLock h2Lock; // H2
 
-    private RunLock(Connection connection, String unlockSql) {
+    private RunLock(Connection connection, String unlockSql, ReentrantLock h2Lock) {
       this.connection = connection;
       this.unlockSql = unlockSql;
+      this.h2Lock = h2Lock;
     }
 
     /**
@@ -391,33 +398,39 @@ public final class SchemaMigrator implements AutoCloseable {
      */
     static RunLock acquire(DataSource dataSource, DatabaseKind kind) {
       if (kind == DatabaseKind.H2) {
-        return new RunLock(null, null);
+        ReentrantLock lock =
+            H2_LOCKS.computeIfAbsent(h2Key(dataSource), key -> new ReentrantLock());
+        if (!lock.tryLock()) {
+          logWaiting();
+          lock.lock();
+        }
+        return new RunLock(null, null, lock);
       }
       boolean postgres = kind == DatabaseKind.POSTGRESQL;
       String tryLock =
           postgres
-              ? "SELECT pg_try_advisory_lock(" + RUN_LOCK_KEY + ")"
-              : "SELECT GET_LOCK(" + RUN_LOCK_NAME + ", 0)";
+              ? "SELECT pg_try_advisory_lock(" + POSTGRES_KEY + ")"
+              : "SELECT GET_LOCK(" + MYSQL_NAME + ", 0)";
       String lock =
           postgres
-              ? "SELECT true FROM pg_advisory_lock(" + RUN_LOCK_KEY + ")"
-              : "SELECT GET_LOCK(" + RUN_LOCK_NAME + ", -1)";
+              ? "SELECT true FROM pg_advisory_lock(" + POSTGRES_KEY + ")"
+              : "SELECT GET_LOCK(" + MYSQL_NAME + ", -1)";
       String unlock =
           postgres
-              ? "SELECT pg_advisory_unlock(" + RUN_LOCK_KEY + ")"
-              : "SELECT RELEASE_LOCK(" + RUN_LOCK_NAME + ")";
+              ? "SELECT pg_advisory_unlock(" + POSTGRES_KEY + ")"
+              : "SELECT RELEASE_LOCK(" + MYSQL_NAME + ")";
       Connection connection = null;
       try {
         connection = dataSource.getConnection();
         // Outside a transaction, so the run doesn't keep one open while it holds the lock.
         connection.setAutoCommit(true);
         if (!isTrue(connection, tryLock)) {
-          LOGGER.info("Another server is migrating the schema; waiting for it to finish.");
+          logWaiting();
           if (!isTrue(connection, lock)) {
             throw new SQLException("the database did not grant it");
           }
         }
-        return new RunLock(connection, unlock);
+        return new RunLock(connection, unlock, null);
       } catch (SQLException e) {
         close(connection);
         throw new IllegalStateException(
@@ -432,7 +445,8 @@ public final class SchemaMigrator implements AutoCloseable {
      */
     @Override
     public void close() {
-      if (connection == null) {
+      if (h2Lock != null) {
+        h2Lock.unlock();
         return;
       }
       try {
@@ -448,6 +462,28 @@ public final class SchemaMigrator implements AutoCloseable {
             e);
       } finally {
         close(connection);
+      }
+    }
+
+    /** The number of runs waiting for this H2 lock (tests). */
+    int h2Waiting() {
+      return h2Lock.getQueueLength();
+    }
+
+    private static void logWaiting() {
+      LOGGER.info("Another server is migrating the schema; waiting for it to finish.");
+    }
+
+    /** The database file's path, or the name of an in-memory database. */
+    private static String h2Key(DataSource dataSource) {
+      try (Connection connection = dataSource.getConnection();
+          Statement statement = connection.createStatement();
+          ResultSet rs = statement.executeQuery("SELECT COALESCE(DATABASE_PATH(), DATABASE())")) {
+        rs.next();
+        return rs.getString(1);
+      } catch (SQLException e) {
+        throw new IllegalStateException(
+            "Could not take the schema migration lock: " + e.getMessage(), e);
       }
     }
 

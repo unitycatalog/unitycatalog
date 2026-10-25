@@ -24,6 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import javax.sql.DataSource;
@@ -109,40 +110,31 @@ public class MigratorTest {
 
   @Test
   void runsStartingAtOnceOnAnEmptyDatabaseTakeTurns() throws Exception {
-    assumeFalse(isH2(), "H2 has no run lock");
-    boolean postgres = db.jdbcUrl().startsWith("jdbc:postgresql:");
+    // The test holds the run lock, so both runs must wait for it before they change anything.
+    CountDownLatch waitingInTheDatabase = new CountDownLatch(2);
+    DataSource watched =
+        withLockCall(
+            MigratorTest::isBlockingLock,
+            sql -> {
+              waitingInTheDatabase.countDown();
+              return sql;
+            });
     ExecutorService executor = Executors.newFixedThreadPool(2);
     try {
-      // The test holds the run lock, so both runs must wait for it before they look at the
-      // database.
-      Connection holder = db.dataSource().getConnection();
-      holder
-          .createStatement()
-          .execute(
-              postgres
-                  ? "SELECT pg_advisory_lock(" + SchemaMigrator.RUN_LOCK_KEY + ")"
-                  : "SELECT GET_LOCK(" + SchemaMigrator.RUN_LOCK_NAME + ", -1)");
-      CountDownLatch bothWaiting = new CountDownLatch(2);
-      DataSource watched =
-          withLockCall(
-              MigratorTest::isBlockingLock,
-              sql -> {
-                bothWaiting.countDown();
-                return sql;
-              });
       List<Future<Integer>> runs = new ArrayList<>();
-      for (int i = 0; i < 2; i++) {
-        runs.add(executor.submit(() -> new SchemaMigrator(watched).migrate()));
+      try (SchemaMigrator.RunLock held =
+          SchemaMigrator.RunLock.acquire(
+              db.dataSource(), SchemaMigrator.DatabaseKind.fromJdbcUrl(db.jdbcUrl()))) {
+        for (int i = 0; i < 2; i++) {
+          runs.add(executor.submit(() -> new SchemaMigrator(watched).migrate()));
+        }
+        if (isH2()) {
+          awaitUntil(() -> held.h2Waiting() == 2);
+        } else {
+          assertThat(waitingInTheDatabase.await(1, TimeUnit.MINUTES)).isTrue();
+        }
+        assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
       }
-      assertThat(bothWaiting.await(1, TimeUnit.MINUTES)).isTrue();
-      assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
-      holder
-          .createStatement()
-          .execute(
-              postgres
-                  ? "SELECT pg_advisory_unlock(" + SchemaMigrator.RUN_LOCK_KEY + ")"
-                  : "SELECT RELEASE_LOCK(" + SchemaMigrator.RUN_LOCK_NAME + ")");
-      holder.close();
 
       int applied = 0;
       for (Future<Integer> run : runs) {
@@ -221,6 +213,14 @@ public class MigratorTest {
   /** The number of steps in this release: they are numbered 1, 2, 3 and so on. */
   static int releaseSteps(SchemaMigrator migrator) {
     return Integer.parseInt(migrator.latestVersion());
+  }
+
+  private static void awaitUntil(BooleanSupplier condition) throws InterruptedException {
+    long deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(1);
+    while (!condition.getAsBoolean()) {
+      assertThat(System.nanoTime()).as("timed out waiting").isLessThan(deadline);
+      Thread.sleep(50);
+    }
   }
 
   private boolean isH2() {
