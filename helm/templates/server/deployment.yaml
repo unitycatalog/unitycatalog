@@ -1,4 +1,7 @@
 {{- if .Values.server.enabled -}}
+{{- if and (eq .Values.server.db.type "file") (gt (int .Values.server.deployment.replicaCount) 1) }}
+{{- fail "server.db.type file supports one server: set server.deployment.replicaCount to 1, or use postgresql" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -27,6 +30,7 @@ spec:
       imagePullSecrets: {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "unitycatalog.serviceAccountName" . | quote }}
+      terminationGracePeriodSeconds: {{ .Values.server.deployment.terminationGracePeriodSeconds }}
       {{- with .Values.server.deployment.podSecurityContext }}
       securityContext: {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -173,7 +177,7 @@ spec:
               protocol: TCP
 
           {{- if .Values.server.deployment.enableLivenessProbe }}
-          {{- if .Values.server.deployment.livenessProbe }}
+          {{- with .Values.server.deployment.livenessProbe }}
           livenessProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           livenessProbe:
@@ -186,7 +190,7 @@ spec:
           {{- end }}
 
           {{- if .Values.server.deployment.enableReadinessProbe }}
-          {{- if .Values.server.deployment.readinessProbe }}
+          {{- with .Values.server.deployment.readinessProbe }}
           readinessProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           readinessProbe:
@@ -199,7 +203,7 @@ spec:
           {{- end }}
 
           {{- if .Values.server.deployment.enableStartupProbe }}
-          {{- if .Values.server.deployment.startupProbe }}
+          {{- with .Values.server.deployment.startupProbe }}
           startupProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           startupProbe:
@@ -207,7 +211,7 @@ spec:
               port: api
             timeoutSeconds: 10
             periodSeconds: 10
-            failureThreshold: 30 # 5 minutes
+            failureThreshold: 180 # 30 minutes, for a schema upgrade at start
           {{- end }}
           {{- end }}
 
@@ -267,9 +271,8 @@ spec:
   strategy:
   {{- if .Values.server.deployment.updateStrategy }}
     {{- toYaml .Values.server.deployment.updateStrategy | nindent 4 }}
-  {{- else if and (eq .Values.server.db.type "file") (eq (int .Values.server.deployment.replicaCount) 1) }}
-    type: Recreate
   {{- else }}
-    type: RollingUpdate
+    # Old and new servers must not run at once while the new one upgrades the schema.
+    type: Recreate
   {{- end }}
 {{- end -}}

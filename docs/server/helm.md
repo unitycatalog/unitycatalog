@@ -71,8 +71,8 @@ server:
 ```
 
 With authentication on (`auth.enabled: true`), PostgreSQL also needs `server.authorization.policy-refresh: "true"` under
-`server.config.extraProperties`. Replicas share the database, and even a single replica runs next to its replacement
-during an upgrade, so a grant or revoke made through one server must reach the others. See
+`server.config.extraProperties`. Replicas share the database, so a grant or revoke made through one server must reach
+the others. See
 [Multiple server instances](auth.md#multiple-server-instances).
 
 ```sh

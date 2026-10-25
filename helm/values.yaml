@@ -345,7 +345,7 @@ server:
     # -- (int) Number of replicas
     # @raw
     #
-    # For replica count higher than 1 - use an external database
+    # For replica count higher than 1 - use an external database. The chart refuses more than 1 with `db.type: file`.
     #
     replicaCount: 1
 
@@ -486,8 +486,11 @@ server:
     affinity:
 
     # -- (object) Update strategy for the deployment
-    # @default -- # If replicaCount: 1 and db type "file"<br>type: Recreate<br># Else<br>type: RollingUpdate
+    # @default -- type: Recreate
     # @raw
+    #
+    # A new release can upgrade the database schema when it starts, so by default all old servers stop before the
+    # new ones start. Override it only for an upgrade that you know changes no schema.
     #
     # [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#updating-a-deployment)
     #
@@ -537,12 +540,23 @@ server:
     enableStartupProbe: true
 
     # -- (object) Startup probe
-    # @default -- tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 30 # 5 minutes
+    # @default -- tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 180 # 30 minutes
     # @raw
+    #
+    # The server upgrades the database schema before it opens its port, so the probe must allow for the longest
+    # upgrade: Kubernetes restarts the server after `failureThreshold × periodSeconds`. Raise `failureThreshold` for a
+    # long upgrade, for example a MySQL upgrade that rebuilds large tables.
     #
     # [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
     #
     startupProbe:
+
+    # -- (int) Seconds the server has to stop after Kubernetes sends it SIGTERM, before Kubernetes kills it
+    # @raw
+    #
+    # [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-termination)
+    #
+    terminationGracePeriodSeconds: 30
 
   createUsersJob:
     image:

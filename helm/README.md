@@ -918,7 +918,7 @@ tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureT
 </td>
 			<td>Number of replicas
 
-For replica count higher than 1 - use an external database
+For replica count higher than 1 - use an external database. The chart refuses more than 1 with `db.type: file`.
 </td>
 		</tr>
 		<tr>
@@ -949,12 +949,28 @@ not set
 			<td>server.deployment.startupProbe</td>
 			<td>object</td>
 			<td><pre lang="">
-tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 30 # 5 minutes
+tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 180 # 30 minutes
 </pre>
 </td>
 			<td>Startup probe
 
+The server upgrades the database schema before it opens its port, so the probe must allow for the longest
+upgrade: Kubernetes restarts the server after `failureThreshold × periodSeconds`. Raise `failureThreshold` for a
+long upgrade, for example a MySQL upgrade that rebuilds large tables.
+
 [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
+</td>
+		</tr>
+		<tr>
+			<td>server.deployment.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td><pre lang="json">
+30
+</pre>
+</td>
+			<td>Seconds the server has to stop after Kubernetes sends it SIGTERM, before Kubernetes kills it
+
+[Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-termination)
 </td>
 		</tr>
 		<tr>
@@ -973,10 +989,13 @@ not set
 			<td>server.deployment.updateStrategy</td>
 			<td>object</td>
 			<td><pre lang="">
-# If replicaCount: 1 and db type "file"<br>type: Recreate<br># Else<br>type: RollingUpdate
+type: Recreate
 </pre>
 </td>
 			<td>Update strategy for the deployment
+
+A new release can upgrade the database schema when it starts, so by default all old servers stop before the
+new ones start. Override it only for an upgrade that you know changes no schema.
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#updating-a-deployment)
 </td>
