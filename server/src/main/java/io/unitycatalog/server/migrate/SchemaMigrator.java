@@ -84,9 +84,10 @@ import org.slf4j.LoggerFactory;
  * <p>A statement of the run waits at most {@link #LOCK_WAIT} for a lock that another session holds,
  * then fails.
  *
- * <p>A run upgrades only a database of the release before this build's, listed in {@link
- * #RELEASES}, or one partway from it. After the steps, and on every start, the tables that this
- * release's steps change must match the schema the steps build ({@link SchemaSnapshot}).
+ * <p>A run upgrades only a database of a release of the minor line before this build's (from the
+ * first of that line listed in {@link #RELEASES}) or of a later release, or one partway from it.
+ * After the steps, and on every start, the tables that this release's steps change must match the
+ * schema the steps build ({@link SchemaSnapshot}).
  *
  * <p>When the process is told to stop during the run of a server start, the run stops at the next
  * boundary (before a step, or after a batch of a batched {@link DataStep}) and the next start
@@ -196,6 +197,16 @@ public final class SchemaMigrator implements AutoCloseable {
               + "|(?:create\\s+(?:unique\\s+)?|drop\\s+)index"
               + "\\s+(?:if\\s+(?:not\\s+)?exists\\s+)?\\w+\\s+on)"
               + "\\s+(\\w+)",
+          Pattern.CASE_INSENSITIVE);
+
+  /**
+   * A statement that changes only a table's character set or collation, which the schema check
+   * doesn't compare: MySQL's {@code ALTER TABLE t CONVERT TO CHARACTER SET ... COLLATE ...}.
+   */
+  private static final Pattern CHARSET_ONLY =
+      Pattern.compile(
+          "alter\\s+table\\s+\\w+(?:\\s+(?:convert\\s+to|default)"
+              + "|\\s+(?:character\\s+set|charset|collate)\\s*=?\\s*\\w+)+\\s*(?=;|\\z)",
           Pattern.CASE_INSENSITIVE);
 
   /** MySQL's text types, narrowest first. */
@@ -319,7 +330,7 @@ public final class SchemaMigrator implements AutoCloseable {
   /**
    * The releases of {@code properties} ({@code null}: of {@link #RELEASES}) and their last steps.
    */
-  private static NavigableMap<MigrationVersion, MigrationVersion> releases(Properties properties) {
+  static NavigableMap<MigrationVersion, MigrationVersion> releases(Properties properties) {
     if (properties == null) {
       properties = new Properties();
       try (InputStream in = SchemaMigrator.class.getClassLoader().getResourceAsStream(RELEASES)) {
@@ -968,8 +979,9 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Refuses a database below the last step of the release before this build's: one that would skip
-   * that release. A database between that step and this build's last is a run that stopped midway.
+   * Refuses a database below the last step of the release before this build's ({@link
+   * #previousRelease()}): one that would skip that release's minor line. A database between that
+   * step and this build's last is a run that stopped midway.
    *
    * @param current the database's schema version, {@code null} for none
    */
@@ -989,22 +1001,46 @@ public final class SchemaMigrator implements AutoCloseable {
             .reduce((earlier, later) -> later)
             .map(r -> ", from release " + r.getKey().getVersion() + " or earlier")
             .orElse("");
-    String release = previous.getKey().getVersion();
+    String line = minorLine(previous.getKey()).getVersion();
     return "The database is at schema version "
         + current
         + from
         + "; this release upgrades only from "
-        + release
-        + " (version "
+        + previous.getKey().getVersion()
+        + " or a later "
+        + line
+        + " release (version "
         + previous.getValue().getVersion()
-        + " or later). Upgrade to "
-        + release
-        + " first, then to this release.";
+        + " or later). Upgrade to the latest "
+        + line
+        + " release first, then to this release.";
   }
 
   /** The release before this build's, with its last step; {@code null} when none is listed. */
   private Map.Entry<MigrationVersion, MigrationVersion> previousRelease() {
-    return releases.lowerEntry(THIS_RELEASE);
+    return previousRelease(releases, THIS_RELEASE);
+  }
+
+  /**
+   * The release before {@code thisRelease} in {@code releases}: the first of the minor line before
+   * its own, so that any release of that line upgrades, and a patch release, also one without steps
+   * of its own, upgrades from the same release as the first of its line.
+   */
+  static Map.Entry<MigrationVersion, MigrationVersion> previousRelease(
+      NavigableMap<MigrationVersion, MigrationVersion> releases, MigrationVersion thisRelease) {
+    MigrationVersion line = minorLine(thisRelease);
+    return releases.entrySet().stream()
+        .filter(release -> minorLine(release.getKey()).compareTo(line) < 0)
+        .reduce(
+            (first, later) ->
+                minorLine(later.getKey()).compareTo(minorLine(first.getKey())) == 0 ? first : later)
+        .orElse(null);
+  }
+
+  /** The minor line of a release: {@code 0.8} for 0.8.2. */
+  private static MigrationVersion minorLine(MigrationVersion release) {
+    String[] parts = release.getVersion().split("\\.");
+    return MigrationVersion.fromVersion(parts.length < 2 ? parts[0] : parts[0] + "." + parts[1]);
   }
 
   /**
@@ -1082,7 +1118,8 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * The tables, lower-cased, that this release's SQL steps in {@code db/migration} change, from
-   * their statements. Java steps change rows, not the schema; tests' own steps are left out.
+   * their statements; not a table whose character set or collation is all a statement changes. Java
+   * steps change rows, not the schema; tests' own steps are left out.
    */
   private Set<String> tablesThisReleaseChanges() {
     Map.Entry<MigrationVersion, MigrationVersion> previous = previousRelease();
@@ -1098,7 +1135,8 @@ public final class SchemaMigrator implements AutoCloseable {
               .getClassLoader()
               .getResourceAsStream("db/migration/" + kind.folder() + "/" + step.getScript());
       if (in != null) {
-        Matcher matcher = CHANGED_TABLE.matcher(read(in).replaceAll("--[^\n]*", ""));
+        String statements = read(in).replaceAll("--[^\n]*", "");
+        Matcher matcher = CHANGED_TABLE.matcher(CHARSET_ONLY.matcher(statements).replaceAll(""));
         while (matcher.find()) {
           tables.add(matcher.group(1).toLowerCase(Locale.ROOT));
         }
