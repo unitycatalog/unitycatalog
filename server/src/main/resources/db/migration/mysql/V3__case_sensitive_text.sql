@@ -11,6 +11,18 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 ALTER DATABASE CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
 
+-- A 0.7.0 server on a latin1 database created this index; in utf8mb4 its key is too long, and the
+-- baseline never has it.
+SET @drop_staging_location_index = IF(
+    EXISTS (SELECT 1 FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'uc_staging_tables'
+              AND INDEX_NAME = 'idx_staging_location'),
+    'DROP INDEX idx_staging_location ON uc_staging_tables',
+    'DO 0');
+PREPARE drop_staging_location_index FROM @drop_staging_location_index;
+EXECUTE drop_staging_location_index;
+DEALLOCATE PREPARE drop_staging_location_index;
+
 ALTER TABLE uc_catalogs CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
 ALTER TABLE uc_columns CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
 ALTER TABLE uc_credentials CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;

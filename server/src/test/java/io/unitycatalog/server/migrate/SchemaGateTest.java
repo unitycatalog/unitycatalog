@@ -33,6 +33,8 @@ public class SchemaGateTest {
     }
   }
 
+  // A smoke test of the server path; MigratorTest.concurrentRunsApplyEachStepOnce proves the run
+  // lock.
   @Test
   void twoServersStartingAtOnceSetUpTheSchemaOnce() throws Exception {
     V1000__Slow_test_step.reset();
@@ -100,6 +102,7 @@ public class SchemaGateTest {
     new SchemaMigrator(db.dataSource(), db.kind()).migrate();
     MigratorTest.recordFailedStep(db);
 
-    assertThatThrownBy(() -> TestServer.start(db)).hasMessageContaining("A migration step failed");
+    assertThatThrownBy(() -> TestServer.start(db))
+        .hasMessageContaining("A migration step failed in an earlier run: version 1000 (broken)");
   }
 }

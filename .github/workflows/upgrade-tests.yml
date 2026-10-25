@@ -9,8 +9,13 @@ on:
     paths:
       - "server/src/main/resources/db/migration/**"
       - "server/src/main/java/io/unitycatalog/server/migrate/**"
-      - "server/src/main/java/io/unitycatalog/server/persist/dao/**"
+      - "server/src/main/java/io/unitycatalog/server/persist/**"
+      - "server/src/main/java/io/unitycatalog/server/UnityCatalogServer.java"
       - "server/src/test/java/io/unitycatalog/server/migrate/**"
+      - "server/src/test/java/io/unitycatalog/server/testdatabase/**"
+      - "build.sbt"
+      - "version.sbt"
+      - ".github/actions/prepare-spark-env/**"
       - ".github/workflows/upgrade-tests.yml"
 
 permissions:

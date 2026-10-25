@@ -33,8 +33,10 @@ public class RealUpgradeTest {
   @Test
   @Tag("upgrades")
   void upgradesAndKeepsTheData() {
+    List<OldImage> chain = UpgradePath.releaseChain();
+    assertThat(chain).as("no release tags found: git fetch --tags").isNotEmpty();
     List<DataSet> copies = new ArrayList<>();
-    for (OldImage image : UpgradePath.releaseChain()) {
+    for (OldImage image : chain) {
       DataSet copy = new DataSet(image.toString());
       OldServer.run(image, db, copy::write);
       copies.add(copy);

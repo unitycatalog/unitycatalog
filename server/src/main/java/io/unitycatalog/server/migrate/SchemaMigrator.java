@@ -80,6 +80,11 @@ public final class SchemaMigrator implements AutoCloseable {
       this.folder = folder;
     }
 
+    /**
+     * The database of a JDBC URL, from its prefix.
+     *
+     * @throws IllegalArgumentException for a URL of any other database
+     */
     public static DatabaseKind fromJdbcUrl(String url) {
       if (url.startsWith("jdbc:h2:")) {
         return H2;
@@ -103,7 +108,7 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * The release whose schema is version 1. A database without schema history from it is adopted as
-   * version 1; one from an earlier release has to be started on this release once first.
+   * version 1; one from an earlier release has to be started on a {@value} server once first.
    */
   public static final String BASELINE_RELEASE = "0.7.0";
 
@@ -182,6 +187,10 @@ public final class SchemaMigrator implements AutoCloseable {
     return configuration.load();
   }
 
+  /**
+   * Classifies the database against this build's steps. Changes nothing and does not take the run
+   * lock, so a run in progress can change the answer.
+   */
   public SchemaState state() {
     Set<String> tables = tableNamesLowerCase();
     tables.remove("casbin_rule"); // Casbin's adapter creates it on its own
@@ -229,6 +238,7 @@ public final class SchemaMigrator implements AutoCloseable {
                         + ": the server jar is incomplete"));
   }
 
+  /** The entries of the schema history: the baseline, if any, and every step applied or failed. */
   public List<MigrationInfo> applied() {
     return List.of(flyway(null).info().applied());
   }
@@ -291,7 +301,18 @@ public final class SchemaMigrator implements AutoCloseable {
               + ", this release ends at "
               + latestVersion()
               + "). Run the newer release.";
-      case FAILED -> "A migration step failed in an earlier run. See docs/server/upgrades.md.";
+      case FAILED -> {
+        MigrationInfo failed =
+            Arrays.stream(flyway(null).info().all())
+                .filter(m -> m.getState().isFailed())
+                .findFirst()
+                .orElseThrow();
+        yield "A migration step failed in an earlier run: version "
+            + version(failed)
+            + " ("
+            + failed.getDescription()
+            + "). See docs/server/upgrades.md.";
+      }
       default -> null;
     };
   }
@@ -365,8 +386,9 @@ public final class SchemaMigrator implements AutoCloseable {
    * schema at the same time. Flyway's own lock is released between steps, so it isn't enough.
    *
    * <ul>
-   *   <li>PostgreSQL: {@code pg_advisory_lock} and MySQL: {@code GET_LOCK} on a name derived from
-   *       the database's, held on one dedicated connection until {@link #close()}.
+   *   <li>PostgreSQL: {@code pg_advisory_lock} on a fixed key, since PostgreSQL scopes advisory
+   *       locks to the database. MySQL: {@code GET_LOCK} on a name derived from the database's.
+   *       Either is held on one dedicated connection until {@link #close()}.
    *   <li>H2: an embedded H2 file database is opened by one process, so a lock inside this JVM,
    *       keyed by the database, is enough.
    * </ul>

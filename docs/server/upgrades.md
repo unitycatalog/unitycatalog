@@ -48,6 +48,11 @@ Use these steps for every database (H2, PostgreSQL, MySQL).
 On PostgreSQL and MySQL, when several servers start at the same time, one applies the steps and
 the others wait for it, then start.
 
+With the Helm chart, set `server.deployment.updateStrategy` to `type: Recreate` for an upgrade, so
+all pods stop before the new one migrates. If a long step (for example MySQL's case-sensitivity
+conversion of large tables) may take longer than the startup probe allows (5 minutes by default),
+raise `failureThreshold` in `server.deployment.startupProbe`.
+
 ## First start on an empty database
 
 A server that starts on an empty database sets up the schema itself, the same way.
@@ -64,9 +69,12 @@ grows with the size of your tables, and the server starts serving requests after
 
 ## Going back to the baseline release
 
-The baseline release can run on the upgraded schema: steps 1 and 3 change nothing it cannot read,
-and step 2 only widens a column. Stop the new release's servers and start the baseline release on
-the same database.
+To go back, stop the new release's servers and restore the backup you took before the upgrade.
+
+Do not start the baseline release on the upgraded database as it is: its Hibernate setting
+`hibernate.hbm2ddl.auto=update` changes column types back (it narrows the column that step 2
+widened) while the schema history still records the step. If you must run 0.7.0 on the upgraded
+database, first set `hibernate.hbm2ddl.auto=none` in its `etc/conf/hibernate.properties`.
 
 ## Messages
 
@@ -84,10 +92,10 @@ Messages that the server prints when it refuses to start, and what to do.
 : `hibernate.connection.url` points at a database that other applications use. Check the URL, or
   use an empty database for Unity Catalog.
 
-`A migration step failed in an earlier run. See docs/server/upgrades.md.`
-: A step failed and its failure is recorded in the history. Read the error that the failing start
-  printed and fix its cause (for example a full disk or missing privileges for the database user).
-  Then restore the backup you took before the upgrade and start the server again. Do not edit
+`A migration step failed in an earlier run: version <n> (<description>). See docs/server/upgrades.md.`
+: Step `<n>` failed and its failure is recorded in the history. Read the error that the failing
+  start printed and fix its cause (for example a full disk or missing privileges for the database
+  user). Then restore the backup you took before the upgrade and start the server again. Do not edit
   `flyway_schema_history` by hand.
 
 `Could not take the schema migration lock: <reason>`
@@ -100,8 +108,16 @@ Messages that the server prints when it refuses to start, and what to do.
 
 `Could not release the schema migration lock: <reason>`
 : The migration finished, but the lock call failed at the end. The database releases the lock when
-  that connection closes, at the latest when the process exits.
+  that connection closes, at the latest when the process exits. Start the server again.
 
 `Could not list the database's tables: <reason>`
 : The server could not read the database. Check the connection settings and the user's
   privileges.
+
+`The schema migration needs 3 database connections (its lock plus 2 for Flyway), but the pool allows <n>. Set hibernate.hikari.maximumPoolSize to 3 or more.`
+: PostgreSQL and MySQL only. Raise `hibernate.hikari.maximumPoolSize` in
+  `etc/conf/hibernate.properties`.
+
+`hibernate.default_schema is not supported: the schema migration uses the connection's schema. Remove it and set the schema in the JDBC URL instead (PostgreSQL: currentSchema=...).`
+: The same holds for `hibernate.default_catalog`. Put the schema in `hibernate.connection.url`, for
+  example `jdbc:postgresql://localhost:5432/ucdb?currentSchema=uc`.

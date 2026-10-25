@@ -69,6 +69,7 @@ public class HibernateConfigurator implements AutoCloseable {
    * properties (e.g. point at PostgreSQL via Testcontainers) before construction.
    */
   public HibernateConfigurator(Properties hibernateProperties) {
+    requireSchemaFromConnection(hibernateProperties);
     this.hibernateProperties = hibernateProperties;
     this.dataSource = new HikariDataSource(hikariConfig(hibernateProperties));
     try {
@@ -77,17 +78,35 @@ public class HibernateConfigurator implements AutoCloseable {
       dataSource.close();
       throw t;
     }
-    warnIfMySqlIsCaseInsensitive(hibernateProperties);
+  }
+
+  /**
+   * The schema migration and Hibernate must use the same schema, and the migration uses the
+   * connection's. Refuses Hibernate's own default schema or catalog, which only Hibernate would
+   * use.
+   */
+  private static void requireSchemaFromConnection(Properties properties) {
+    for (String name : new String[] {"hibernate.default_schema", "hibernate.default_catalog"}) {
+      if (properties.getProperty(name) != null) {
+        throw new IllegalArgumentException(
+            name
+                + " is not supported: the schema migration uses the connection's schema. Remove it"
+                + " and set the schema in the JDBC URL instead (PostgreSQL: currentSchema=...).");
+      }
+    }
   }
 
   /**
    * Storage paths and names are case-sensitive, but MySQL's default collation is not. Warns when
    * the database, or a table in it, compares text case-insensitively (a {@code _ci} collation).
    * Flyway's history table is left out: it keeps the collation the database had when Flyway first
-   * ran, and holds no names or paths.
+   * ran, and holds no names or paths. The server calls it after the schema migration, which
+   * converts such a database.
    */
-  private void warnIfMySqlIsCaseInsensitive(Properties properties) {
-    if (!properties.getProperty("hibernate.connection.url", "").startsWith("jdbc:mysql:")) {
+  public void warnIfMySqlIsCaseInsensitive() {
+    if (!hibernateProperties
+        .getProperty("hibernate.connection.url", "")
+        .startsWith("jdbc:mysql:")) {
       return;
     }
     try (Connection connection = dataSource.getConnection();

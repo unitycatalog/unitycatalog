@@ -45,7 +45,7 @@ A fast pre-push scan; each item is expanded in the themes below.
 □ api/all.yaml updated and `build/sbt generate` run; no hand-edited generated code?
 □ [Component] PR title prefix present? (DCO sign-off is expected but overridable, not a blocker.)
 □ Authz: narrowest privilege; create-checks-parent / mutate-checks-self; fails closed?
-□ Schema change additive-only (hbm2ddl.auto=update) and portable across H2/MySQL/PostgreSQL?
+□ Schema change shipped as new Flyway steps per database (db/migration/<db>/), no edits of merged steps?
 □ Connector changes hold across the Spark/Delta matrix; all distribution artifacts version-matched?
 □ Managed AND external table paths covered; optional deps (e.g. delta-spark) not assumed present?
 □ API errors matched by structured code, rendered in the right dialect (UC REST vs Delta/Iceberg)?
@@ -148,7 +148,7 @@ Each theme lists the concrete checks and the **principle** behind it (so you can
 - Use `Option` over sentinel/magic values ("how do you distinguish default 0 from not-measured?").
 - Watch perf/complexity regressions and concurrency (synchronized/volatile; static state reset between tests).
 - **Release what you acquire**: `stop()` must release everything `init()` or the constructor created (don't leave a session factory unclosed).
-- **Persistence schema changes are additive and restart-safe** on an existing database (Hibernate runs `hbm2ddl.auto=update`): add columns or indexes, never drop or retype, and keep it portable across H2, MySQL, and PostgreSQL.
+- **Persistence schema changes ship as new Flyway steps** for each database under `server/src/main/resources/db/migration/<db>/` (H2, MySQL, PostgreSQL), never as edits of merged steps; `BaselineMatchesEntitiesTest` and the upgrade tests check them.
 - **Avoid N+1 DB lookups in list operations** (batch or precompute rather than a lookup per result), and don't buffer a whole HTTP response for a check that can run synchronously.
 - **Hold across the Spark/Delta version matrix**: fail fast on incompatible versions rather than failing silently; connector code in the shared tree must compile across the whole cross-build (verify each version and state what you validated); version-match every distribution channel; and keep shims to the differences only, not byte-identical copies.
 

@@ -1,6 +1,7 @@
 package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Properties;
@@ -75,6 +76,15 @@ class HibernateConfiguratorTest {
     assertThat(
             HibernateConfigurator.setupHibernateProperties(new ServerProperties(new Properties())))
         .containsEntry("hibernate.hbm2ddl.auto", "none");
+  }
+
+  @Test
+  void refusesHibernatesOwnDefaultSchema() {
+    Properties properties = h2Properties();
+    properties.setProperty("hibernate.default_schema", "uc");
+
+    assertThatThrownBy(() -> new HibernateConfigurator(properties))
+        .hasMessageContaining("set the schema in the JDBC URL instead");
   }
 
   private static Properties h2Properties() {

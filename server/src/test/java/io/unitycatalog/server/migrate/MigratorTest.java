@@ -2,6 +2,7 @@ package io.unitycatalog.server.migrate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
@@ -107,6 +108,21 @@ public class MigratorTest {
     assertThat(rowsWhere(db, "uc_catalogs", "name", "Sales")).isOne();
     assertThat(rowsWhere(db, "casbin_rule", "v0", "alice")).isZero();
     assertThat(rowsWhere(db, "casbin_rule", "v0", "Alice")).isOne();
+  }
+
+  @Test
+  void convertsALatin1DatabaseWithTheStagingLocationIndex() {
+    assumeTrue(db.kind() == DatabaseKind.MYSQL);
+    // A 0.7.0 server on a latin1 database created idx_staging_location, which is too long in
+    // utf8mb4.
+    execute(db, "ALTER DATABASE CHARACTER SET latin1 COLLATE latin1_swedish_ci");
+    create07Schema(db);
+    execute(db, "CREATE INDEX idx_staging_location ON uc_staging_tables (staging_location)");
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), db.kind());
+
+    migrator.migrate();
+
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
   }
 
   @Test
