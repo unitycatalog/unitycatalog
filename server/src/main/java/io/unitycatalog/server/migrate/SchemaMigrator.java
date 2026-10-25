@@ -88,9 +88,10 @@ import org.slf4j.LoggerFactory;
  * schema/baseline/<database>.txt}), apart from the {@link Drift}s that databases of older releases
  * have after one start of a baseline release server, which the run repairs before the baseline.
  *
- * <p>A run upgrades only a database of the release before this build's, listed in {@link
- * #RELEASES}, or one partway from it. After the steps, and on every start, the tables that this
- * release's steps change must match the schema the steps build ({@link SchemaSnapshot}).
+ * <p>A run upgrades only a database of a release of the minor line before this build's (from the
+ * first of that line listed in {@link #RELEASES}) or of a later release, or one partway from it.
+ * After the steps, and on every start, the tables that this release's steps change must match the
+ * schema the steps build ({@link SchemaSnapshot}).
  *
  * <p>When the process is told to stop during the run of a server start, the run stops at the next
  * boundary (before a step, or after a batch of a batched {@link DataStep}) and the next start
@@ -284,6 +285,16 @@ public final class SchemaMigrator implements AutoCloseable {
               + "\\s+(\\w+)",
           Pattern.CASE_INSENSITIVE);
 
+  /**
+   * A statement that changes only a table's character set or collation, which the schema check
+   * doesn't compare: MySQL's {@code ALTER TABLE t CONVERT TO CHARACTER SET ... COLLATE ...}.
+   */
+  private static final Pattern CHARSET_ONLY =
+      Pattern.compile(
+          "alter\\s+table\\s+\\w+(?:\\s+(?:convert\\s+to|default)"
+              + "|\\s+(?:character\\s+set|charset|collate)\\s*=?\\s*\\w+)+\\s*(?=;|\\z)",
+          Pattern.CASE_INSENSITIVE);
+
   /** MySQL's text types, narrowest first. */
   private static final List<String> MYSQL_TEXT_TYPES =
       List.of("tinytext", "text", "mediumtext", "longtext");
@@ -301,21 +312,28 @@ public final class SchemaMigrator implements AutoCloseable {
           "alter\\s+table\\s+(\\w+)\\s+add\\s+constraint\\s+(\\w+)", Pattern.CASE_INSENSITIVE);
   private static final Pattern ADD_COLUMN =
       Pattern.compile(
-          "alter\\s+table\\s+(\\w+)\\s+add\\s+(?:column\\s+)?(\\w+)", Pattern.CASE_INSENSITIVE);
+          "alter\\s+table\\s+(\\w+)\\s+add\\s+(?:column\\s+)?"
+              // Not a key, index or constraint without a name, such as ADD UNIQUE (c).
+              + "(?!(?:unique|primary|foreign|index|key|check|constraint|fulltext|spatial)\\b)"
+              + "(\\w+)",
+          Pattern.CASE_INSENSITIVE);
   private static final Pattern CREATE_INDEX =
       Pattern.compile(
           "create\\s+(?:unique\\s+)?index\\s+(\\w+)\\s+on\\s+(\\w+)", Pattern.CASE_INSENSITIVE);
 
   /**
-   * {@code ALTER TABLE t ALTER COLUMN c [SET DATA TYPE | TYPE] type[(n)]} (H2, PostgreSQL) or
-   * {@code ALTER TABLE t MODIFY [COLUMN] c type[(n)]} (MySQL); not a type with other parameters,
-   * such as MySQL's {@code enum (...)}.
+   * {@code ALTER TABLE t ALTER COLUMN c [SET DATA TYPE | TYPE] type[(n)] [[NOT] NULL]} (H2,
+   * PostgreSQL) or {@code ALTER TABLE t MODIFY [COLUMN] c type[(n)] [[NOT] NULL]} (MySQL), and
+   * nothing after it: not a type with other parameters, such as MySQL's {@code enum (...)}, nor a
+   * statement that changes more than the type, such as with {@code DEFAULT}, {@code COLLATE} or
+   * {@code USING}. Group 6 is the {@code NULL} of a nullability, group 5 its {@code NOT}.
    */
   private static final Pattern CHANGE_TYPE =
       Pattern.compile(
           "alter\\s+table\\s+(\\w+)\\s+(?:alter\\s+column|modify(?:\\s+column)?)\\s+(\\w+)\\s+"
               + "(?:set\\s+data\\s+type\\s+|type\\s+)?(\\w+)"
-              + "(?:\\s*\\(\\s*(\\d+)\\s*\\))?(?!\\s*\\()",
+              + "(?:\\s*\\(\\s*(\\d+)\\s*\\))?(?!\\s*\\()"
+              + "(?:\\s+(not\\s+)?(null))?\\s*$",
           Pattern.CASE_INSENSITIVE);
 
   /** The names H2's metadata gives the types the steps name otherwise. */
@@ -431,7 +449,7 @@ public final class SchemaMigrator implements AutoCloseable {
   /**
    * The releases of {@code properties} ({@code null}: of {@link #RELEASES}) and their last steps.
    */
-  private static NavigableMap<MigrationVersion, MigrationVersion> releases(Properties properties) {
+  static NavigableMap<MigrationVersion, MigrationVersion> releases(Properties properties) {
     if (properties == null) {
       properties = new Properties();
       try (InputStream in = SchemaMigrator.class.getClassLoader().getResourceAsStream(RELEASES)) {
@@ -601,7 +619,11 @@ public final class SchemaMigrator implements AutoCloseable {
               + "; this release ends at "
               + latestVersion()
               + ".");
-      String refusal = refusal(state);
+      String refusal =
+          backup == null ? null : backup.refusalForTheRestoredMark(THIS_RELEASE.getVersion());
+      if (refusal == null) {
+        refusal = refusal(state);
+      }
       if (refusal == null && state == SchemaState.UNVERSIONED_UC) {
         Adoption adoption = adoption();
         adoption
@@ -714,6 +736,8 @@ public final class SchemaMigrator implements AutoCloseable {
     MigrationOutcome outcome;
     try {
       outcome = upgrade(state, from, drifts);
+      // SIGTERM during the last step, which has no boundary after it: restore as documented.
+      stopIfRequested("the end of the upgrade");
     } catch (RuntimeException e) {
       throw restoreAfter(e);
     }
@@ -850,11 +874,13 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * A connection of the run, other than the run lock's: Flyway's, the probes' and the checks'. It
-   * waits at most {@link #lockWait} for a lock.
+   * waits at most {@link #lockWait} for a lock, and autocommits even when the pool's connections
+   * don't (the server's): a statement then opens no transaction that stays open.
    */
   private Connection connection() throws SQLException {
     Connection connection = dataSource.getConnection();
     try (Statement statement = connection.createStatement()) {
+      connection.setAutoCommit(true);
       statement.execute(lockWaitSql(kind, lockWait));
     } catch (SQLException | RuntimeException e) {
       connection.close();
@@ -1011,6 +1037,13 @@ public final class SchemaMigrator implements AutoCloseable {
           && !UNSIZED_TYPES.contains(changeType.group(3).toLowerCase(Locale.ROOT))) {
         return Optional.empty(); // without a size, the type may be a sized one at its default size
       }
+      // MySQL's MODIFY and H2's ALTER COLUMN c type (without SET DATA TYPE or TYPE) restate the
+      // column: they drop its default, and MySQL's makes it nullable unless it says NOT NULL.
+      boolean restates = statement.substring(changeType.end(2), changeType.start(3)).isBlank();
+      Boolean nullable =
+          changeType.group(6) != null
+              ? Boolean.valueOf(changeType.group(5) == null)
+              : restates && kind == DatabaseKind.MYSQL ? Boolean.TRUE : null;
       String table = tableName(metaData, catalog, schema, changeType.group(1));
       return Optional.of(
           table != null
@@ -1018,22 +1051,28 @@ public final class SchemaMigrator implements AutoCloseable {
                   metaData.getColumns(catalog, schema, table, null),
                   changeType.group(2),
                   changeType.group(3),
-                  changeType.group(4)));
+                  changeType.group(4),
+                  nullable,
+                  restates));
     }
     return Optional.empty();
   }
 
   /**
    * Whether the column {@code column} of the columns {@code rs} (which this closes) has the type
-   * {@code type} and, unless {@code null}, the size {@code size}.
+   * {@code type} and, unless {@code null}, the size {@code size} and the nullability {@code
+   * nullable}, and when {@code noDefault}, no default.
    */
-  private static boolean hasType(ResultSet rs, String column, String type, String size)
+  private static boolean hasType(
+      ResultSet rs, String column, String type, String size, Boolean nullable, boolean noDefault)
       throws SQLException {
     try (rs) {
       while (rs.next()) {
         if (rs.getString("COLUMN_NAME").equalsIgnoreCase(column)) {
           return typeName(rs.getString("TYPE_NAME")).equals(typeName(type))
-              && (size == null || rs.getInt("COLUMN_SIZE") == Integer.parseInt(size));
+              && (size == null || rs.getInt("COLUMN_SIZE") == Integer.parseInt(size))
+              && (nullable == null || nullable == "YES".equals(rs.getString("IS_NULLABLE")))
+              && (!noDefault || rs.getString("COLUMN_DEF") == null);
         }
       }
     }
@@ -1173,8 +1212,9 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Refuses a database below the last step of the release before this build's: one that would skip
-   * that release. A database between that step and this build's last is a run that stopped midway.
+   * Refuses a database below the last step of the release before this build's ({@link
+   * #previousRelease()}): one that would skip that release's minor line. A database between that
+   * step and this build's last is a run that stopped midway.
    *
    * @param current the database's schema version, {@code null} for none
    */
@@ -1194,22 +1234,46 @@ public final class SchemaMigrator implements AutoCloseable {
             .reduce((earlier, later) -> later)
             .map(r -> ", from release " + r.getKey().getVersion() + " or earlier")
             .orElse("");
-    String release = previous.getKey().getVersion();
+    String line = minorLine(previous.getKey()).getVersion();
     return "The database is at schema version "
         + current
         + from
         + "; this release upgrades only from "
-        + release
-        + " (version "
+        + previous.getKey().getVersion()
+        + " or a later "
+        + line
+        + " release (version "
         + previous.getValue().getVersion()
-        + " or later). Upgrade to "
-        + release
-        + " first, then to this release.";
+        + " or later). Upgrade to the latest "
+        + line
+        + " release first, then to this release.";
   }
 
   /** The release before this build's, with its last step; {@code null} when none is listed. */
   private Map.Entry<MigrationVersion, MigrationVersion> previousRelease() {
-    return releases.lowerEntry(THIS_RELEASE);
+    return previousRelease(releases, THIS_RELEASE);
+  }
+
+  /**
+   * The release before {@code thisRelease} in {@code releases}: the first of the minor line before
+   * its own, so that any release of that line upgrades, and a patch release, also one without steps
+   * of its own, upgrades from the same release as the first of its line.
+   */
+  static Map.Entry<MigrationVersion, MigrationVersion> previousRelease(
+      NavigableMap<MigrationVersion, MigrationVersion> releases, MigrationVersion thisRelease) {
+    MigrationVersion line = minorLine(thisRelease);
+    return releases.entrySet().stream()
+        .filter(release -> minorLine(release.getKey()).compareTo(line) < 0)
+        .reduce(
+            (first, later) ->
+                minorLine(later.getKey()).compareTo(minorLine(first.getKey())) == 0 ? first : later)
+        .orElse(null);
+  }
+
+  /** The minor line of a release: {@code 0.8} for 0.8.2. */
+  private static MigrationVersion minorLine(MigrationVersion release) {
+    String[] parts = release.getVersion().split("\\.");
+    return MigrationVersion.fromVersion(parts.length < 2 ? parts[0] : parts[0] + "." + parts[1]);
   }
 
   /**
@@ -1278,7 +1342,8 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * The tables, lower-cased, that this release's SQL steps in {@code db/migration} change, from
-   * their statements. Java steps change rows, not the schema; tests' own steps are left out.
+   * their statements; not a table whose character set or collation is all a statement changes. Java
+   * steps change rows, not the schema; tests' own steps are left out.
    */
   private Set<String> tablesThisReleaseChanges() {
     Map.Entry<MigrationVersion, MigrationVersion> previous = previousRelease();
@@ -1294,7 +1359,8 @@ public final class SchemaMigrator implements AutoCloseable {
               .getClassLoader()
               .getResourceAsStream("db/migration/" + kind.folder() + "/" + step.getScript());
       if (in != null) {
-        Matcher matcher = CHANGED_TABLE.matcher(read(in).replaceAll("--[^\n]*", ""));
+        String statements = read(in).replaceAll("--[^\n]*", "");
+        Matcher matcher = CHANGED_TABLE.matcher(CHARSET_ONLY.matcher(statements).replaceAll(""));
         while (matcher.find()) {
           tables.add(matcher.group(1).toLowerCase(Locale.ROOT));
         }
@@ -1754,6 +1820,13 @@ public final class SchemaMigrator implements AutoCloseable {
         try {
           // Outside a transaction, so the run doesn't keep one open while it holds the lock.
           connection.setAutoCommit(true);
+          if (kind == DatabaseKind.POSTGRESQL) {
+            // lock_timeout caps advisory-lock waits too: the companion's connection has the
+            // run's, and a pooled one may keep an earlier run's.
+            try (Statement statement = connection.createStatement()) {
+              statement.execute("SET lock_timeout = 0");
+            }
+          }
           String trySql =
               kind == DatabaseKind.POSTGRESQL
                   ? "SELECT pg_try_advisory_lock(" + POSTGRES_KEY + ")"

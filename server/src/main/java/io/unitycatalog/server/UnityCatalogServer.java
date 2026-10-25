@@ -490,10 +490,15 @@ public class UnityCatalogServer implements AutoCloseable {
     ServerProperties serverProperties = new ServerProperties(SERVER_PROPERTIES_FILE);
     if (options.isCheckSchema()) {
       // Checks the database against this release's steps, then exits; never migrates or serves.
+      // With the backup on, it takes the run lock where a start with the backup on does.
       int exitCode;
-      try (SchemaMigrator migrator =
+      SchemaMigrator withoutBackup =
           SchemaMigrator.fromHibernateProperties(
-              HibernateConfigurator.setupHibernateProperties(serverProperties))) {
+              HibernateConfigurator.setupHibernateProperties(serverProperties));
+      try (SchemaMigrator migrator =
+          serverProperties.isMigrationBackupEnabled()
+              ? withoutBackup.withBackup()
+              : withoutBackup) {
         exitCode = migrator.checkSchema(System.out);
       }
       System.exit(exitCode);

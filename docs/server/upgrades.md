@@ -130,10 +130,11 @@ records that step without running it.
 
 ## Upgrading to a new release
 
-Upgrade one release at a time: a release upgrades a database of the release before it, not one of
-an older release. To go from 0.8.0 to 1.0.0 with 0.9.0 in between, upgrade to 0.9.0 first. A
-release without steps of its own (for example most patch releases) can be skipped; the server
-tells you when a release can't be (see [Skipping a release](#skipping-a-release)).
+Upgrade one minor line at a time: a release upgrades a database of any release of the minor line
+before its own (for 1.0.0, any 0.9 release) or of a later release, such as an earlier patch release
+of its own line, but not one of an older line. To go from 0.8.0 to 1.0.0 with 0.9 in between,
+upgrade to the latest 0.9 release first. The server tells you when a release can't be skipped (see
+[Skipping a release](#skipping-a-release)).
 
 Use these steps for every database (H2, PostgreSQL, MySQL).
 
@@ -170,7 +171,10 @@ It needs:
 - All servers stopped, as for every upgrade: the backup is taken while no other server uses the
   database, and a restore erases what was written after it.
 - A database user that can create and drop databases on the database server (PostgreSQL: `CREATEDB`
-  and owner of the Unity Catalog database), and room there for a full copy of the database.
+  and owner of the Unity Catalog database), and room there for a full copy of the database. On
+  PostgreSQL, the user also gives the copy the database's settings and grants, so it needs the
+  rights to set them: a setting by role (`ALTER ROLE ... IN DATABASE`) of another role needs
+  `CREATEROLE` or a superuser.
 - On PostgreSQL, the database name in `hibernate.connection.url`.
 - On H2, a file database (`jdbc:h2:file:...`). The server refuses to start on an in-memory one
   with the backup on.
@@ -185,8 +189,8 @@ upgrade. To go back after a successful upgrade, use a backup of your own (see
 
 | Database | The backup | The restore |
 | -------- | ---------- | ----------- |
-| PostgreSQL | The database `<db>_uc_backup`, a copy made with `CREATE DATABASE <db>_uc_backup TEMPLATE <db>` | `DROP DATABASE <db>`, then `ALTER DATABASE <db>_uc_backup RENAME TO <db>` |
-| MySQL | The database `<db>_uc_backup`, with each table created from `SHOW CREATE TABLE` and its rows copied in one transaction | Drops the tables of `<db>` and moves each copied table back with `RENAME TABLE` |
+| PostgreSQL | The database `<db>_uc_backup`, a copy made with `CREATE DATABASE <db>_uc_backup_part TEMPLATE <db>`, given the settings (`ALTER DATABASE <db> SET ...`, `ALTER ROLE ... IN DATABASE <db> SET ...`), grants, owner and connection limit of `<db>`, which `TEMPLATE` doesn't copy, then renamed to `<db>_uc_backup` | `DROP DATABASE <db>`, then `ALTER DATABASE <db>_uc_backup RENAME TO <db>` |
+| MySQL | The database `<db>_uc_backup`, with each table created from `SHOW CREATE TABLE` and its rows copied in one transaction, then the table `uc_backup_complete`, which marks the copy complete | One `RENAME TABLE` moves the tables of `<db>` to the database `<db>_uc_trash` and each copied table back, all or none; then drops `<db>_uc_trash` and the copy |
 | H2 | The file `<file>_uc_backup.mv.db` next to the database file, copied with the database closed | Moves the copy back in place of the database file |
 
 On PostgreSQL, the copy and the drop need every session on `<db>` closed. The server closes its
@@ -197,6 +201,11 @@ of the old release that is still running, the server refuses to start before any
 ```text
 Could not back up the database before the upgrade, which changed nothing: other sessions are connected to the database (...). Stop the other servers on the database, then start the server again
 ```
+
+Give every server of one database, and `bin/start-uc-server --check-schema`, the same
+`server.migration.backup` setting: on PostgreSQL, the migration lock of a server with the backup
+on is in `<db>_uc_upgrade`, so a server with the backup off neither waits for it nor makes it
+wait. `--check-schema` reads the setting from the same `etc/conf/server.properties`.
 
 ### When the upgrade fails
 
@@ -216,6 +225,17 @@ or an upgrade that failed with the backup off) keeps a copy that is already ther
 upgrade started, and restores that one if the upgrade fails. A database still at the previous
 release gets a new copy; an older copy is dropped first.
 
+On MySQL, a copy without `uc_backup_complete` is incomplete: a server was killed while copying. A
+database at the previous release gets a new copy in its place. A database partway through this
+release's steps has no backup from before them, and the server refuses to start:
+
+```text
+The backup <db>_uc_backup is incomplete: taking it was interrupted. The database is partway through this release's steps, so there is no backup from before them. Drop <db>_uc_backup to upgrade with a backup of the database as it is now, or restore a backup of your own.
+```
+
+The server never drops a complete copy that has tables the database lacks: it refuses to start and
+names the copy. Restore it by hand as below.
+
 ### Stopping the server during a restore
 
 On SIGTERM the server stops at the next safe point (see
@@ -234,14 +254,16 @@ DROP DATABASE <db>;
 ALTER DATABASE <db>_uc_backup RENAME TO <db>;
 -- MySQL
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE <db>.<table>, ...;            -- every table of <db>
-RENAME TABLE <db>_uc_backup.<table> TO <db>.<table>, ...;  -- every table of the copy
+CREATE DATABASE <db>_uc_trash;
+RENAME TABLE <db>.<table> TO <db>_uc_trash.<table>, ...,       -- every table of <db>
+  <db>_uc_backup.<table> TO <db>.<table>, ...;                 -- every table of the copy but uc_backup_complete
+DROP DATABASE <db>_uc_trash;
 DROP DATABASE <db>_uc_backup;
 SET FOREIGN_KEY_CHECKS = 1;
 ```
 
-On MySQL, a copy without tables means the restore had moved them back: drop `<db>_uc_backup`. On
-H2, move `<file>_uc_backup.mv.db` to `<file>.mv.db`.
+On MySQL, a copy with no table but `uc_backup_complete` means the restore had moved them back:
+drop `<db>_uc_backup` and `<db>_uc_trash`. On H2, move `<file>_uc_backup.mv.db` to `<file>.mv.db`.
 
 ### The restored mark with Helm
 
@@ -257,21 +279,22 @@ The upgrade to <release> failed and the database was restored in chart revision 
 The previous release starts on the restored database, so `helm rollback`, `helm upgrade --atomic`
 or Flux remediation can bring it back. A start in another revision clears the mark and upgrades.
 Without `UC_CHART_REVISION` no mark is written: fix the cause and start the server again.
+`bin/start-uc-server --check-schema` with the backup on prints the same refusal while the mark is
+there.
 
 ## Skipping a release
 
-The server refuses to start on a database of a release older than the one before it, for example
-this release 1.0.0 on a 0.8.0 database:
+The server refuses to start on a database of a release older than the minor line before it, for
+example this release 1.0.0 on a 0.8.0 database:
 
 ```text
-The database is at schema version 3, from release 0.8.0 or earlier; this release upgrades only from 0.9.0 (version 5 or later). Upgrade to 0.9.0 first, then to this release.
+The database is at schema version 3, from release 0.8.0 or earlier; this release upgrades only from 0.9.0 or a later 0.9 release (version 5 or later). Upgrade to the latest 0.9 release first, then to this release.
 ```
 
-It changes nothing. Start the release that the message names on the database once, stop it, then
-start this release. `bin/start-uc-server --check-schema` reports the same.
+It changes nothing. Start the latest release of the line that the message names on the database
+once, stop it, then start this release. `bin/start-uc-server --check-schema` reports the same.
 
-A database partway between the release before and this one (an upgrade that stopped midway) goes
-on. So does an empty database. A database without schema history is one of the
+A database partway between that line and this release (an upgrade that stopped midway) goes on. So does an empty database. A database without schema history is one of the
 [baseline release](#the-baseline-release), at version 1: a release goes on with it only when it
 upgrades from the baseline release.
 
@@ -400,7 +423,9 @@ database, first set `hibernate.hbm2ddl.auto=none` in its `etc/conf/hibernate.pro
 For maintainers. When you cut a release, add a line for it to
 `server/src/main/resources/db/migration/releases.properties`: the release and the version of the
 last step it ships (the last step of the release before it when it ships none), for example
-`0.8.0=3`. The next release upgrades only from that schema version on.
+`0.8.0=3`. List patch releases too. The releases of the next minor line upgrade from the schema
+version of this line's first release on, so a patch release that adds steps doesn't change where
+they upgrade from.
 
 The release notes list the release's schema steps and checks:
 
@@ -448,7 +473,7 @@ Messages that the server prints when it refuses to start, and what to do.
 : See [Locks held by other sessions](#locks-held-by-other-sessions). The message names the table
   when the step's statement names one.
 
-`The database is at schema version <v>, from release <r> or earlier; this release upgrades only from <p> (version <n> or later). Upgrade to <p> first, then to this release.`
+`The database is at schema version <v>, from release <r> or earlier; this release upgrades only from <p> or a later <line> release (version <n> or later). Upgrade to the latest <line> release first, then to this release.`
 : See [Skipping a release](#skipping-a-release).
 
 `The schema of <tables> differs from what this release's steps build (-: what they build, +: what the database has): ...`
