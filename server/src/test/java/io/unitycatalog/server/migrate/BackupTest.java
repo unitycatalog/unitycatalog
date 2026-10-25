@@ -44,9 +44,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The backup before the upgrade ({@code server.migration.backup}). A test-only release map makes
- * version 6000 (a test-only step that creates {@code test_backup_items}) the last step of the
- * release before this one. This release's test-only steps add a column to it (6001) and fail on a
- * missing table (6002).
+ * version 6000 (a test-only step that creates {@code test_backup_items}) the last step of 0.7.0,
+ * the release before this one (the first of the minor line before this build's). This release's
+ * test-only steps add a column to it (6001) and fail on a missing table (6002).
  */
 public class BackupTest {
 
@@ -55,7 +55,7 @@ public class BackupTest {
   private static final String FAIL = "classpath:db/test-steps/backup-fail/";
   private static final String DRIFT = "classpath:db/test-steps/backup-drift/";
 
-  private static final Properties RELEASES = SkippedReleaseTest.releases("0.7.0=1", "0.7.5=6000");
+  private static final Properties RELEASES = SkippedReleaseTest.releases("0.6.0=1", "0.7.0=6000");
 
   private static final String RELEASE = VersionUtils.VERSION.replaceFirst("-.*", "");
 
