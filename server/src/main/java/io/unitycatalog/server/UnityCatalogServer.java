@@ -128,7 +128,9 @@ public class UnityCatalogServer implements AutoCloseable {
     this.blockingThreads = hibernateConfigurator.getDataSource().getMaximumPoolSize();
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
-      requireCurrentSchema(unityCatalogServerBuilder.extraMigrationLocations);
+      requireCurrentSchema(
+          unityCatalogServerBuilder.extraMigrationLocations,
+          unityCatalogServerBuilder.serverProperties.isMigrationBackupEnabled());
       hibernateConfigurator.warnIfMySqlIsCaseInsensitive();
       createdBlockingTaskExecutor =
           BlockingTaskExecutor.builder()
@@ -152,9 +154,10 @@ public class UnityCatalogServer implements AutoCloseable {
 
   /**
    * Upgrades the database to the schema version this release ships, or refuses one it cannot
-   * upgrade (see {@link SchemaMigrator#prepareForStart()}).
+   * upgrade (see {@link SchemaMigrator#prepareForStart()}); with {@code backup}, backs it up first
+   * and restores it if the upgrade fails ({@link SchemaMigrator#withBackup()}).
    */
-  private void requireCurrentSchema(List<String> extraMigrationLocations) {
+  private void requireCurrentSchema(List<String> extraMigrationLocations, boolean backup) {
     HikariDataSource ds = hibernateConfigurator.getDataSource();
     DatabaseKind kind = DatabaseKind.fromJdbcUrl(ds.getJdbcUrl());
     if (kind != DatabaseKind.H2 && ds.getMaximumPoolSize() < 3) {
@@ -165,7 +168,8 @@ public class UnityCatalogServer implements AutoCloseable {
               + ds.getMaximumPoolSize()
               + ". Set hibernate.hikari.maximumPoolSize to 3 or more.");
     }
-    try (SchemaMigrator migrator = new SchemaMigrator(ds, kind, extraMigrationLocations)) {
+    SchemaMigrator withoutBackup = new SchemaMigrator(ds, kind, extraMigrationLocations);
+    try (SchemaMigrator migrator = backup ? withoutBackup.withBackup() : withoutBackup) {
       SchemaState state = migrator.prepareForStart();
       if (state != SchemaState.CURRENT) {
         throw new IllegalStateException(

@@ -91,6 +91,10 @@ import org.slf4j.LoggerFactory;
  * <p>When the process is told to stop during the run of a server start, the run stops at the next
  * boundary (before a step, or after a batch of a batched {@link DataStep}) and the next start
  * finishes it.
+ *
+ * <p>With the backup on ({@link #withBackup()}), a run that changes the database first copies it
+ * whole on the same database server, and restores the copy when a step or the schema check after
+ * the steps fails, or the process is told to stop; see {@link Backup}.
  */
 public final class SchemaMigrator implements AutoCloseable {
 
@@ -271,6 +275,7 @@ public final class SchemaMigrator implements AutoCloseable {
   private final String[] locations;
   private final Duration lockWait;
   private final HikariDataSource ownedPool;
+  private final Backup backup; // null: no backup
 
   /** The releases of {@link #RELEASES}, each with the version of its last step. */
   private final NavigableMap<MigrationVersion, MigrationVersion> releases;
@@ -314,6 +319,31 @@ public final class SchemaMigrator implements AutoCloseable {
     this.lockWait = lockWait;
     this.ownedPool = ownedPool;
     this.releases = releases(releases);
+    this.backup = null;
+  }
+
+  private SchemaMigrator(SchemaMigrator migrator, Backup backup) {
+    this.dataSource = migrator.dataSource;
+    this.kind = migrator.kind;
+    this.locations = migrator.locations;
+    this.lockWait = migrator.lockWait;
+    this.ownedPool = migrator.ownedPool;
+    this.releases = migrator.releases;
+    this.backup = backup;
+  }
+
+  /**
+   * This migrator with the backup before the upgrade on ({@code server.migration.backup}). In a
+   * Helm chart revision, named by the environment variable {@value Backup#CHART_REVISION_ENV}, a
+   * restore marks it, and later runs of that revision refuse. Needs a Hikari {@code dataSource}.
+   */
+  public SchemaMigrator withBackup() {
+    return withBackup(System.getenv(Backup.CHART_REVISION_ENV));
+  }
+
+  /** {@link #withBackup()} in the chart revision {@code chartRevision}; {@code null}: none. */
+  SchemaMigrator withBackup(String chartRevision) {
+    return new SchemaMigrator(this, new Backup(dataSource, kind, lockWait, chartRevision));
   }
 
   /**
@@ -447,7 +477,7 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /** Under the run lock: classifies the database, then sets it up, adopts it and upgrades it. */
   public MigrationOutcome migrate() {
-    try (RunLock lock = RunLock.acquire(dataSource, kind)) {
+    try (RunLock lock = RunLock.acquire(dataSource, kind, backup)) {
       return migrateLocked();
     }
   }
@@ -457,7 +487,7 @@ public final class SchemaMigrator implements AutoCloseable {
    * and returns the state after. A second server starting at the same time waits for the first.
    */
   public SchemaState prepareForStart() {
-    try (RunLock lock = RunLock.acquire(dataSource, kind)) {
+    try (RunLock lock = RunLock.acquire(dataSource, kind, backup)) {
       MigrationOutcome outcome = migrateStoppingOnShutdown();
       if (outcome.applied() > 0) {
         LOGGER.info(
@@ -478,7 +508,7 @@ public final class SchemaMigrator implements AutoCloseable {
    * @return 0 when an upgrade would go through, 1 when {@link #migrate()} would refuse it
    */
   public int checkSchema(PrintStream out) {
-    try (RunLock lock = RunLock.acquire(dataSource, kind)) {
+    try (RunLock lock = RunLock.acquire(dataSource, kind, backup)) {
       SchemaState state = state();
       String from = state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : currentVersion();
       out.println(
@@ -506,7 +536,9 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * {@link #migrateLocked()} with a shutdown hook that asks the run to stop at its next boundary
-   * and waits for it, up to {@link #lockWait}. A statement that is running is not interrupted.
+   * and waits for it, up to {@link #lockWait}; with the backup on, until the run has restored the
+   * backup, however long it takes (the orchestrator's grace period bounds it). A statement that is
+   * running is not interrupted.
    */
   private MigrationOutcome migrateStoppingOnShutdown() {
     CountDownLatch done = new CountDownLatch(1);
@@ -515,7 +547,11 @@ public final class SchemaMigrator implements AutoCloseable {
             () -> {
               stopRequested = true;
               try {
-                done.await(lockWait.toMillis(), TimeUnit.MILLISECONDS);
+                if (backup == null) {
+                  done.await(lockWait.toMillis(), TimeUnit.MILLISECONDS);
+                } else {
+                  done.await();
+                }
               } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
               }
@@ -552,6 +588,9 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   private MigrationOutcome migrateLocked() {
+    if (backup != null) {
+      backup.checkBeforeRun(THIS_RELEASE.getVersion());
+    }
     SchemaState state = state(); // read under the lock
     String refusal = refusal(state);
     if (refusal == null && state == SchemaState.FAILED) {
@@ -566,6 +605,31 @@ public final class SchemaMigrator implements AutoCloseable {
     if (refusal != null) {
       throw new IllegalStateException(refusal);
     }
+    if (backup == null || (state != SchemaState.UNVERSIONED_UC && pendingSteps(from).isEmpty())) {
+      return upgrade(state, from);
+    }
+    backup.take(/* reuse= */ isMidUpgrade(from));
+    MigrationOutcome outcome;
+    try {
+      outcome = upgrade(state, from);
+    } catch (RuntimeException e) {
+      throw restoreAfter(e);
+    }
+    try {
+      backup.drop();
+    } catch (RuntimeException e) {
+      // The upgrade went through: the server starts. A later run partway through the next
+      // release's steps would keep the copy, so it must go.
+      LOGGER.warn("{}; drop it by hand.", e.getMessage(), e);
+    }
+    return outcome;
+  }
+
+  /**
+   * Adopts a database of the baseline release, applies the pending steps above version {@code from}
+   * and checks the schema.
+   */
+  private MigrationOutcome upgrade(SchemaState state, String from) {
     // EMPTY (also with only casbin_rule): baseline at 0 in V1's run, so V1 runs. UNVERSIONED_UC:
     // baseline at 1 before any step: a run that only records steps would record V1 as one of them.
     String baseline = state == SchemaState.EMPTY ? "0" : null;
@@ -604,21 +668,59 @@ public final class SchemaMigrator implements AutoCloseable {
     return new MigrationOutcome(from, currentVersion(), applied);
   }
 
-  /** The statement that sets {@link #lockWait} on a connection of the run. */
-  private String lockWaitSql() {
+  /**
+   * Whether a database at version {@code from} is partway through this release's steps: above the
+   * last step of the release before this build's.
+   */
+  private boolean isMidUpgrade(String from) {
+    Map.Entry<MigrationVersion, MigrationVersion> previous = previousRelease();
+    return previous != null
+        && from != null
+        && MigrationVersion.fromVersion(from).compareTo(previous.getValue()) > 0;
+  }
+
+  /**
+   * Restores the backup after the run failed with {@code failure}, and marks the restore: the
+   * exception to throw, which says so (also on standard error when the process is stopping).
+   */
+  private IllegalStateException restoreAfter(RuntimeException failure) {
+    String message = failure.getMessage() != null ? failure.getMessage() : failure.toString();
+    IllegalStateException result;
+    try {
+      backup.restore();
+      backup.markRestored(THIS_RELEASE.getVersion());
+      result =
+          new IllegalStateException(
+              message
+                  + "\nThe database was restored from the backup taken before the upgrade; the"
+                  + " previous release can start on it.",
+              failure);
+    } catch (RuntimeException e) {
+      result = new IllegalStateException(message + "\n" + e.getMessage(), failure);
+      result.addSuppressed(e);
+    }
+    if (stopRequested) {
+      // Log4j's own shutdown hook has likely stopped the logger by now.
+      System.err.println(result.getMessage());
+    }
+    return result;
+  }
+
+  /** The statement that sets the lock wait {@code lockWait} on a connection to {@code kind}. */
+  static String lockWaitSql(DatabaseKind kind, Duration lockWait) {
     return switch (kind) {
       case POSTGRESQL -> "SET lock_timeout = " + lockWait.toMillis();
       // lock_wait_timeout for table (metadata) locks, innodb_lock_wait_timeout for row locks.
       case MYSQL ->
           "SET SESSION lock_wait_timeout = "
-              + lockWaitSeconds()
+              + lockWaitSeconds(lockWait)
               + ", SESSION innodb_lock_wait_timeout = "
-              + lockWaitSeconds();
+              + lockWaitSeconds(lockWait);
       case H2 -> "SET LOCK_TIMEOUT " + lockWait.toMillis();
     };
   }
 
-  private long lockWaitSeconds() {
+  static long lockWaitSeconds(Duration lockWait) {
     return Math.max(1, lockWait.toSeconds());
   }
 
@@ -650,7 +752,7 @@ public final class SchemaMigrator implements AutoCloseable {
   private Connection connection() throws SQLException {
     Connection connection = dataSource.getConnection();
     try (Statement statement = connection.createStatement()) {
-      statement.execute(lockWaitSql());
+      statement.execute(lockWaitSql(kind, lockWait));
     } catch (SQLException | RuntimeException e) {
       connection.close();
       throw e;
@@ -687,7 +789,7 @@ public final class SchemaMigrator implements AutoCloseable {
         + " ("
         + step.getDescription()
         + ") waited more than "
-        + lockWaitSeconds()
+        + lockWaitSeconds(lockWait)
         + " seconds for a lock"
         + (table == null ? "" : " on " + table)
         + "; another session holds it. Stop the other sessions on the database, then start the"
@@ -1333,6 +1435,10 @@ public final class SchemaMigrator implements AutoCloseable {
    *   <li>H2: an embedded H2 file database is opened by one process, so a lock inside this JVM,
    *       keyed by the database, is enough.
    * </ul>
+   *
+   * <p>With the backup on, PostgreSQL's lock is taken in the backup's companion database instead
+   * ({@link Backup#companionConnection()}): copying or dropping the database needs every session on
+   * it closed.
    */
   private static final class RunLock implements AutoCloseable {
 
@@ -1358,7 +1464,7 @@ public final class SchemaMigrator implements AutoCloseable {
     }
 
     /** Blocks until this run holds the lock, logging once when another run holds it. */
-    static RunLock acquire(DataSource dataSource, DatabaseKind kind) {
+    static RunLock acquire(DataSource dataSource, DatabaseKind kind, Backup backup) {
       try {
         if (kind == DatabaseKind.H2) {
           ReentrantLock lock =
@@ -1369,7 +1475,10 @@ public final class SchemaMigrator implements AutoCloseable {
           }
           return new RunLock(kind, null, lock);
         }
-        Connection connection = dataSource.getConnection();
+        Connection connection =
+            backup != null && kind == DatabaseKind.POSTGRESQL
+                ? backup.companionConnection()
+                : dataSource.getConnection();
         try {
           // Outside a transaction, so the run doesn't keep one open while it holds the lock.
           connection.setAutoCommit(true);

@@ -6,17 +6,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
 import io.unitycatalog.server.migrate.kit.TestServer;
 import io.unitycatalog.server.migrate.teststeps.batched.V2001__Fill_upper_name_in_batches;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.File;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -120,29 +123,70 @@ public class DataStepTest {
     // H2 has no sleep function for the slow step, and closes its database in a shutdown hook of
     // its own, under the running step.
     assumeTrue(db.kind() != DatabaseKind.H2);
+    int filled = stopServerDuringTheSlowStep();
+
+    // The server finished that batch (killing it would roll the batch back), then stopped.
+    assertThat(filledRows()).isGreaterThan(filled).isLessThan(ROWS);
+    assertThat(new SchemaMigrator(db.dataSource(), db.kind(), locations(SLOWLY)).applied())
+        .filteredOn(m -> m.getVersion().getVersion().equals("2001"))
+        .noneMatch(m -> m.getState() == MigrationState.SUCCESS);
+
+    assertThat(migrate(SLOWLY)).isEqualTo(new MigrationOutcome("2000", "2001", 1));
+    assertThat(filledRows()).isEqualTo(ROWS);
+  }
+
+  @Test
+  void serverRestoresTheBackupOnSigterm() throws Exception {
+    assumeTrue(db.kind() != DatabaseKind.H2); // as serverStopsAtABatchOnSigterm
+    try {
+      stopServerDuringTheSlowStep("-D" + Property.MIGRATION_BACKUP.getKey() + "=true");
+
+      // The server restored the database from before step 2001 before it exited.
+      assertThat(filledRows()).isZero();
+      assertThat(historyRows("2001")).isZero();
+    } finally {
+      BackupTest.dropCompanions(db);
+    }
+  }
+
+  /**
+   * Starts a server in a process of its own, with {@code jvmArgs}, that runs the slow step, sends
+   * it SIGTERM once the step filled a row, and waits for it to exit with a non-zero code. Returns
+   * the rows filled before SIGTERM.
+   */
+  private int stopServerDuringTheSlowStep(String... jvmArgs) throws Exception {
     Path properties = Files.createTempFile("uc-hibernate", ".properties");
     try {
       try (Writer out = Files.newBufferedWriter(properties)) {
         db.hibernateProperties().store(out, null);
       }
+      List<String> command = new ArrayList<>();
+      command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+      // The test's classes may record coverage; the server's process records none.
+      command.add("-Djacoco-agent.output=none");
+      command.addAll(List.of(jvmArgs));
+      command.addAll(
+          List.of(
+              "-cp",
+              System.getProperty("java.class.path"),
+              TestServer.class.getName(),
+              properties.toString(),
+              CREATE_TABLE + db.kind().folder(),
+              SLOWLY));
+      // With the backup on, the server copies a PostgreSQL database only while no other session
+      // is connected to it: close the test's pooled connections, and poll on short ones.
+      HikariDataSource pool = (HikariDataSource) db.dataSource();
+      pool.setMinimumIdle(0);
+      pool.getHikariPoolMXBean().softEvictConnections();
       Process server =
-          new ProcessBuilder(
-                  Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-                  // The test's classes may record coverage; the server's process records none.
-                  "-Djacoco-agent.output=none",
-                  "-cp",
-                  System.getProperty("java.class.path"),
-                  TestServer.class.getName(),
-                  properties.toString(),
-                  CREATE_TABLE + db.kind().folder(),
-                  SLOWLY)
+          new ProcessBuilder(command)
               .directory(new File(System.getProperty("user.dir")))
               .inheritIO()
               .start();
       int filled;
       try {
         long deadline = System.nanoTime() + Duration.ofMinutes(3).toNanos();
-        while ((filled = filledRows()) == 0) {
+        while ((filled = filledRowsOnAConnectionOfItsOwn()) == 0) {
           assertThat(server.isAlive()).as("the server is running").isTrue();
           assertThat(System.nanoTime()).as("the step started in time").isLessThan(deadline);
           Thread.sleep(100);
@@ -152,17 +196,10 @@ public class DataStepTest {
         assertThat(server.waitFor(2, TimeUnit.MINUTES)).isTrue();
       }
       assertThat(server.exitValue()).isNotZero();
-      // The server finished that batch (killing it would roll the batch back), then stopped.
-      assertThat(filledRows()).isGreaterThan(filled).isLessThan(ROWS);
+      return filled;
     } finally {
       Files.delete(properties);
     }
-    assertThat(new SchemaMigrator(db.dataSource(), db.kind(), locations(SLOWLY)).applied())
-        .filteredOn(m -> m.getVersion().getVersion().equals("2001"))
-        .noneMatch(m -> m.getState() == MigrationState.SUCCESS);
-
-    assertThat(migrate(SLOWLY)).isEqualTo(new MigrationOutcome("2000", "2001", 1));
-    assertThat(filledRows()).isEqualTo(ROWS);
   }
 
   /** Migrates with the release steps, the table step and the given steps. */
@@ -181,7 +218,27 @@ public class DataStepTest {
   }
 
   private int filledRows() throws SQLException {
-    return count("SELECT COUNT(*) FROM test_data_step_items WHERE upper_name = UPPER(name)");
+    try (Connection connection = db.dataSource().getConnection()) {
+      return filledRows(connection);
+    }
+  }
+
+  private int filledRowsOnAConnectionOfItsOwn() throws SQLException {
+    HikariDataSource pool = (HikariDataSource) db.dataSource();
+    try (Connection connection =
+        DriverManager.getConnection(db.jdbcUrl(), pool.getUsername(), pool.getPassword())) {
+      return filledRows(connection);
+    }
+  }
+
+  private static int filledRows(Connection connection) throws SQLException {
+    try (Statement statement = connection.createStatement();
+        ResultSet rs =
+            statement.executeQuery(
+                "SELECT COUNT(*) FROM test_data_step_items WHERE upper_name = UPPER(name)")) {
+      rs.next();
+      return rs.getInt(1);
+    }
   }
 
   /** The history rows of {@code version}. */

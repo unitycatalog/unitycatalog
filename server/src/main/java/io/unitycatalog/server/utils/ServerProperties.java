@@ -296,6 +296,8 @@ public class ServerProperties {
     AWS_SECRET_KEY("aws.secretKey"),
     AWS_SESSION_TOKEN("aws.sessionToken"),
     AWS_REGION("aws.region"),
+    // Copies the whole database before a schema upgrade and restores it if the upgrade fails.
+    MIGRATION_BACKUP("server.migration.backup", "false", BOOLEAN_VALIDATOR),
     INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR);
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
@@ -626,6 +628,11 @@ public class ServerProperties {
    */
   public Duration getShutdownTimeout() {
     return Duration.parse(get(Property.SHUTDOWN_TIMEOUT));
+  }
+
+  /** Whether a schema upgrade first backs up the database and restores it if the upgrade fails. */
+  public boolean isMigrationBackupEnabled() {
+    return isTrueOrEnable(get(Property.MIGRATION_BACKUP));
   }
 
   public boolean isIncludeStackTraceInError() {
