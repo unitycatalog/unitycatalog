@@ -1250,7 +1250,7 @@ before it changes the release, and the Job's log says why, for example the rows 
 A failed Job is kept until the next upgrade. Its pod is set up like the server's: the init containers
 (including `deployment.extraInitContainers`), volumes and mounts (including `deployment.extraVolumes` and
 `deployment.extraVolumeMounts`) and `deployment.extraPodLabels`, but not `deployment.extraContainers`, which
-would keep it from completing.
+would keep it from completing. It runs with the namespace's default ServiceAccount and no API token.
 </td>
 		</tr>
 		<tr>
