@@ -12,6 +12,10 @@ serves requests. It sets up an empty database, adopts a database without schema 
 the baseline release) and applies the steps that are not applied yet. It refuses to start on a
 database it cannot upgrade and tells you what to do (see [Messages](#messages)).
 
+A step whose change is already in the database (a start stopped before it recorded the step, or
+someone applied the change by hand) is recorded without running it, and the server logs
+`Step <n> (<description>) is already in the database; recorded it without running it.`
+
 ## The baseline release
 
 The first baseline release is 0.7.0: schema version 1 is its schema, and a 0.7.0 database without
