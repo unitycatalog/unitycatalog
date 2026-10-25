@@ -75,8 +75,7 @@ public class MigratorTest {
     SchemaSnapshot before = SchemaSnapshot.of(db.dataSource());
 
     assertThatThrownBy(new SchemaMigrator(db.dataSource(), db.kind())::migrate)
-        .hasMessageContaining("before " + SchemaMigrator.BASELINE_RELEASE)
-        .hasMessageContaining("missing tables: uc_storage_cleanup_tasks)");
+        .hasMessageContaining("from a release before " + SchemaMigrator.BASELINE_RELEASE);
     assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(before);
   }
 
