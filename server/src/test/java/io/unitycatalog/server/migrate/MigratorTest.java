@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
-import io.unitycatalog.server.migrate.slowstep.V1000__Slow_test_step;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.lang.reflect.InvocationTargetException;
@@ -17,6 +16,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
@@ -24,7 +24,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import javax.sql.DataSource;
@@ -34,10 +33,6 @@ public class MigratorTest {
 
   /** A test-only step 1000: the next release's step for a current database. */
   private static final List<String> NEXT_RELEASE = List.of("classpath:db/test-steps/ahead");
-
-  /** A test-only step 1000 that runs until the test releases it. */
-  private static final List<String> SLOW_STEP =
-      List.of("classpath:io/unitycatalog/server/migrate/slowstep");
 
   @TempDatabase(empty = true)
   TestDatabase db;
@@ -113,40 +108,50 @@ public class MigratorTest {
   }
 
   @Test
-  void secondRunWaitsForTheFirst() throws Exception {
-    V1000__Slow_test_step.reset();
+  void runsStartingAtOnceOnAnEmptyDatabaseTakeTurns() throws Exception {
+    assumeFalse(isH2(), "H2 has no run lock");
+    boolean postgres = db.jdbcUrl().startsWith("jdbc:postgresql:");
     ExecutorService executor = Executors.newFixedThreadPool(2);
     try {
-      Future<Integer> first =
-          executor.submit(() -> new SchemaMigrator(db.dataSource(), SLOW_STEP).migrate());
-      assertThat(V1000__Slow_test_step.awaitStarted()).isTrue();
-      // On PostgreSQL and MySQL the second run must wait in the run lock's blocking call, before it
-      // looks at the database; on H2, Flyway's own lock makes it wait.
-      CountDownLatch waitsForTheRunLock = new CountDownLatch(1);
-      DataSource secondDataSource =
-          isH2()
-              ? db.dataSource()
-              : withLockCall(
-                  MigratorTest::isBlockingLock,
-                  sql -> {
-                    waitsForTheRunLock.countDown();
-                    return sql;
-                  });
-      Future<Integer> second =
-          executor.submit(() -> new SchemaMigrator(secondDataSource, SLOW_STEP).migrate());
-      if (!isH2()) {
-        assertThat(waitsForTheRunLock.await(1, TimeUnit.MINUTES)).isTrue();
+      // The test holds the run lock, so both runs must wait for it before they look at the
+      // database.
+      Connection holder = db.dataSource().getConnection();
+      holder
+          .createStatement()
+          .execute(
+              postgres
+                  ? "SELECT pg_advisory_lock(" + SchemaMigrator.RUN_LOCK_KEY + ")"
+                  : "SELECT GET_LOCK(" + SchemaMigrator.RUN_LOCK_NAME + ", -1)");
+      CountDownLatch bothWaiting = new CountDownLatch(2);
+      DataSource watched =
+          withLockCall(
+              MigratorTest::isBlockingLock,
+              sql -> {
+                bothWaiting.countDown();
+                return sql;
+              });
+      List<Future<Integer>> runs = new ArrayList<>();
+      for (int i = 0; i < 2; i++) {
+        runs.add(executor.submit(() -> new SchemaMigrator(watched).migrate()));
       }
-      assertThatThrownBy(() -> second.get(2, TimeUnit.SECONDS))
-          .isInstanceOf(TimeoutException.class);
-      V1000__Slow_test_step.release();
+      assertThat(bothWaiting.await(1, TimeUnit.MINUTES)).isTrue();
+      assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
+      holder
+          .createStatement()
+          .execute(
+              postgres
+                  ? "SELECT pg_advisory_unlock(" + SchemaMigrator.RUN_LOCK_KEY + ")"
+                  : "SELECT RELEASE_LOCK(" + SchemaMigrator.RUN_LOCK_NAME + ")");
+      holder.close();
 
-      int applied = first.get(2, TimeUnit.MINUTES) + second.get(2, TimeUnit.MINUTES);
-      assertThat(applied).isEqualTo(releaseSteps(new SchemaMigrator(db.dataSource())) + 1);
-      assertThat(new SchemaMigrator(db.dataSource(), SLOW_STEP).state())
-          .isEqualTo(SchemaState.CURRENT);
+      int applied = 0;
+      for (Future<Integer> run : runs) {
+        applied += run.get(2, TimeUnit.MINUTES);
+      }
+      SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+      assertThat(applied).isEqualTo(releaseSteps(migrator));
+      assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
     } finally {
-      V1000__Slow_test_step.release();
       executor.shutdownNow();
     }
   }

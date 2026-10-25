@@ -126,6 +126,15 @@ public final class SchemaMigrator implements AutoCloseable {
   /** The run lock's connection plus Flyway's two (PostgreSQL uses both; MySQL one). */
   private static final int POOL_SIZE = 3;
 
+  /** The run lock's PostgreSQL advisory lock key; Flyway's own lock uses a different one. */
+  static final long RUN_LOCK_KEY = 0x75635f6d69677261L; // "uc_migra"
+
+  /**
+   * The run lock's MySQL lock name, as SQL. MySQL's locks are per server, so the name includes the
+   * database; SHA1 keeps it within MySQL's 64-character limit.
+   */
+  static final String RUN_LOCK_NAME = "CONCAT('uc_migrate.', SHA1(DATABASE()))";
+
   private final DataSource dataSource;
   private final DatabaseKind kind;
   private final String[] locations;
@@ -368,12 +377,6 @@ public final class SchemaMigrator implements AutoCloseable {
    */
   private static final class RunLock implements AutoCloseable {
 
-    /** Any fixed key; Flyway's own advisory lock uses a different one. */
-    private static final long POSTGRES_KEY = 0x75635f6d69677261L; // "uc_migra"
-
-    /** The lock name, as SQL; SHA1 keeps it within MySQL's 64-character limit. */
-    private static final String MYSQL_NAME = "CONCAT('uc_migrate.', SHA1(DATABASE()))";
-
     private final Connection connection; // null: no lock (H2)
     private final String unlockSql;
 
@@ -393,16 +396,16 @@ public final class SchemaMigrator implements AutoCloseable {
       boolean postgres = kind == DatabaseKind.POSTGRESQL;
       String tryLock =
           postgres
-              ? "SELECT pg_try_advisory_lock(" + POSTGRES_KEY + ")"
-              : "SELECT GET_LOCK(" + MYSQL_NAME + ", 0)";
+              ? "SELECT pg_try_advisory_lock(" + RUN_LOCK_KEY + ")"
+              : "SELECT GET_LOCK(" + RUN_LOCK_NAME + ", 0)";
       String lock =
           postgres
-              ? "SELECT true FROM pg_advisory_lock(" + POSTGRES_KEY + ")"
-              : "SELECT GET_LOCK(" + MYSQL_NAME + ", -1)";
+              ? "SELECT true FROM pg_advisory_lock(" + RUN_LOCK_KEY + ")"
+              : "SELECT GET_LOCK(" + RUN_LOCK_NAME + ", -1)";
       String unlock =
           postgres
-              ? "SELECT pg_advisory_unlock(" + POSTGRES_KEY + ")"
-              : "SELECT RELEASE_LOCK(" + MYSQL_NAME + ")";
+              ? "SELECT pg_advisory_unlock(" + RUN_LOCK_KEY + ")"
+              : "SELECT RELEASE_LOCK(" + RUN_LOCK_NAME + ")";
       Connection connection = null;
       try {
         connection = dataSource.getConnection();

@@ -30,6 +30,20 @@ public class SchemaGateTest {
   }
 
   @Test
+  void setsUpTheSchemaWithASmallConnectionPool() {
+    // Two connections run the server (Casbin keeps one), but not the migration (its lock plus
+    // Flyway's two on PostgreSQL); the migration has its own pool. A regression fails within the
+    // short connection timeout instead of Hikari's 30 seconds.
+    Properties smallPool = db.hibernateProperties();
+    smallPool.setProperty("hibernate.hikari.maximumPoolSize", "2");
+    smallPool.setProperty("hibernate.hikari.connectionTimeout", "1000");
+
+    try (TestServer server = TestServer.start(db, smallPool, storageRoot)) {
+      assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.CURRENT);
+    }
+  }
+
+  @Test
   void upgradesA07Database() {
     UpgradeTestUtils.create07Schema(db);
 
