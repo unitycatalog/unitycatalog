@@ -9,7 +9,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.stream.Collectors;
 import javax.sql.DataSource;
 
 /**
@@ -49,11 +48,6 @@ record SchemaSnapshot(List<String> entries) {
     } catch (SQLException e) {
       throw new IllegalStateException("Could not read the schema", e);
     }
-  }
-
-  /** One entry per line, in sorted order, ending with a newline: the recorded schema dumps. */
-  String render() {
-    return entries.stream().map(entry -> entry + "\n").collect(Collectors.joining());
   }
 
   private static SchemaSnapshot read(Connection connection) throws SQLException {
