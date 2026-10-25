@@ -771,9 +771,14 @@ final class Backup {
     return connection;
   }
 
-  /** The mark's table: in the companion database, which MySQL names in the statement. */
+  /**
+   * The mark's table: in the companion database, which MySQL names in the statement. PostgreSQL's
+   * is in {@code public}: the URL's {@code currentSchema} is a schema of the database only.
+   */
   private String markTable() {
-    return kind == DatabaseKind.MYSQL ? quote(name() + COMPANION) + "." + MARK_TABLE : MARK_TABLE;
+    return kind == DatabaseKind.MYSQL
+        ? quote(name() + COMPANION) + "." + MARK_TABLE
+        : "public." + MARK_TABLE;
   }
 
   /** A connection of the pool, out of a transaction, waiting at most {@link #lockWait}. */

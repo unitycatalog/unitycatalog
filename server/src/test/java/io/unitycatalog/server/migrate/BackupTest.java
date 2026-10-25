@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
@@ -258,6 +259,26 @@ public class BackupTest {
 
     assertThat(migrator("8", ADD).migrate().to()).isEqualTo("6001");
     assertThat(marks()).isEmpty();
+  }
+
+  /** PostgreSQL: the companion database has no schema of the URL's {@code currentSchema}. */
+  @Test
+  void keepsTheMarkWithASchemaInTheUrl() {
+    assumeTrue(db.kind() == DatabaseKind.POSTGRESQL);
+    execute(db, "CREATE SCHEMA uc_test");
+    HikariDataSource pool = (HikariDataSource) db.dataSource();
+    HikariConfig config = new HikariConfig();
+    config.setJdbcUrl(db.jdbcUrl() + "?currentSchema=uc_test");
+    config.setUsername(pool.getUsername());
+    config.setPassword(pool.getPassword());
+    try (HikariDataSource withSchema = new HikariDataSource(config)) {
+      Backup backup = new Backup(withSchema, db.kind(), SchemaMigrator.LOCK_WAIT, "7");
+      backup.checkBeforeRun(RELEASE);
+      backup.markRestored(RELEASE);
+
+      assertThatThrownBy(() -> backup.checkBeforeRun(RELEASE))
+          .hasMessageContaining("restored in chart revision 7");
+    }
   }
 
   @Test
