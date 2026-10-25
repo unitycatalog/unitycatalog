@@ -8,6 +8,9 @@ on:
       - "ui/**"
       - "Dockerfile"
       - ".github/workflows/helm-chart-tests.yml"
+      # Schema steps: the job also upgrades a release from the base branch.
+      - "server/src/main/resources/db/**"
+      - "server/src/main/java/io/unitycatalog/server/migrate/**"
 
 permissions:
   contents: read
@@ -20,7 +23,7 @@ jobs:
   helm-chart:
     name: Lint and install the Helm chart
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -56,6 +59,14 @@ jobs:
           docker build -t unitycatalog:ci .
           docker build -t unitycatalog-ui:ci ui
 
+      - name: Build the server image of the base branch
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --depth=1 origin "$BASE_SHA"
+          git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
+          docker build -t unitycatalog:base "$RUNNER_TEMP/base"
+
       - name: Create kind cluster
         uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
         with:
@@ -68,7 +79,7 @@ jobs:
         run: |
           docker tag unitycatalog:ci unitycatalog:v0.0.0-ci
           docker tag unitycatalog-ui:ci unitycatalog-ui:v0.0.0-ci
-          kind load docker-image unitycatalog:v0.0.0-ci unitycatalog-ui:v0.0.0-ci --name chart-testing
+          kind load docker-image unitycatalog:v0.0.0-ci unitycatalog-ui:v0.0.0-ci unitycatalog:base --name chart-testing
 
       - name: Package the chart as a release, install it and run helm test
         run: |
@@ -80,3 +91,73 @@ jobs:
             --set ui.deployment.image.repository=unitycatalog-ui \
             --set ui.deployment.image.pullPolicy=Never
           helm test uc --namespace uc --logs
+
+      - name: Upgrade a PostgreSQL release from the base branch and run helm test
+        # Installs the base branch's chart and server image, creates a catalog, then upgrades to this chart and image:
+        # the pre-upgrade check Job must pass, the new server upgrades the schema, and the catalog must still be there.
+        run: |
+          kubectl create namespace uc-upgrade
+          kubectl create secret generic db-password --namespace uc-upgrade --from-literal=password=uc-ci-password
+          kubectl apply --namespace uc-upgrade -f - <<'EOF'
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: postgres
+          spec:
+            selector:
+              matchLabels: {app: postgres}
+            template:
+              metadata:
+                labels: {app: postgres}
+              spec:
+                containers:
+                  - name: postgres
+                    image: postgres:18-alpine@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5
+                    env:
+                      - {name: POSTGRES_DB, value: ucdb}
+                      - name: POSTGRES_PASSWORD
+                        valueFrom:
+                          secretKeyRef: {name: db-password, key: password}
+                    ports:
+                      - containerPort: 5432
+                    readinessProbe:
+                      exec:
+                        command: ["pg_isready", "-U", "postgres", "-d", "ucdb"]
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: postgres
+          spec:
+            selector: {app: postgres}
+            ports:
+              - port: 5432
+          EOF
+          kubectl rollout status deployment/postgres --namespace uc-upgrade --timeout 300s
+
+          # fullnameOverride keeps the resource names when the base branch's chart has another name.
+          values=(
+            --set fullnameOverride=uc
+            --set ui.enabled=false
+            --set server.db.type=postgresql
+            --set server.db.postgresqlConfig.host=postgres
+            --set server.db.postgresqlConfig.passwordSecretName=db-password
+            --set server.deployment.image.repository=unitycatalog
+            --set server.deployment.image.pullPolicy=Never
+          )
+          api() {
+            kubectl exec --namespace uc-upgrade deploy/uc-server -c server -- \
+              wget -q -O - --header "Content-Type: application/json" "$@"
+          }
+
+          helm install uc "$RUNNER_TEMP/base/helm" --namespace uc-upgrade --wait --timeout 600s "${values[@]}" \
+            --set server.deployment.image.tag=base
+          api --post-data '{"name": "created_before_upgrade"}' http://localhost:8080/api/2.1/unity-catalog/catalogs
+
+          helm upgrade uc "$RUNNER_TEMP/unitycatalog-chart-0.0.0-ci.tgz" --namespace uc-upgrade --wait --timeout 600s \
+            "${values[@]}"
+          kubectl get events --namespace uc-upgrade --field-selector involvedObject.name=uc-server-upgrade-check,reason=Completed \
+            -o name | grep -q . || { echo "::error::The pre-upgrade check Job did not run"; exit 1; }
+          kubectl logs --namespace uc-upgrade deploy/uc-server -c server | grep -i "schema" || true
+          helm test uc --namespace uc-upgrade --logs
+          api http://localhost:8080/api/2.1/unity-catalog/catalogs/created_before_upgrade
