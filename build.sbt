@@ -917,6 +917,15 @@ def testOnDatabase(database: String): String =
 addCommandAlias("testPostgres18", testOnDatabase("POSTGRES_18"))
 addCommandAlias("testMySQL8", testOnDatabase("MYSQL_8"))
 
+// Rewrites the recorded schema dumps (server/src/main/resources/schema/<db>.txt) from the steps, on
+// every database. PostgreSQL and MySQL need Docker.
+addCommandAlias(
+  "updateSchemaDumps",
+  Seq("H2", "POSTGRES_18", "MYSQL_8").map { database =>
+    s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database", "UC_UPDATE_SCHEMA_DUMPS" -> "true")""" +
+      " ; server/testOnly io.unitycatalog.server.migrate.SchemaDumpTest"
+  }.mkString)
+
 // The JUnit 5 test framework, for its tag options.
 lazy val jupiter = TestFramework("net.aichler.jupiter.api.JupiterFramework")
 // sbt-jacoco's test configuration, which doesn't take Test's test options.

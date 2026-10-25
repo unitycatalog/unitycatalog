@@ -2,7 +2,6 @@ package io.unitycatalog.server.migrate;
 
 import static org.assertj.core.api.Assertions.fail;
 
-import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.io.IOException;
@@ -39,15 +38,9 @@ public class SchemaDumpTest {
     String recorded = Files.exists(dump) ? Files.readString(dump) : "";
     if (!recorded.equals(actual)) {
       fail(
-          "The migrated schema differs from %s; regenerate with `build/sbt 'set every Test /"
-              + " envVars := Map(\"%s\" -> \"%s\", \"%s\" -> \"true\")' 'server/testOnly %s'`"
-              + " and commit the file:%n%s",
-          dump,
-          SupportedDatabase.ENV,
-          SupportedDatabase.selected(),
-          UPDATE_ENV,
-          getClass().getName(),
-          diff(dump, recorded, actual));
+          "The migrated schema differs from %s; run `build/sbt updateSchemaDumps` (needs Docker)"
+              + " and commit the files:%n%s",
+          dump, diff(dump, recorded, actual));
     }
   }
 
