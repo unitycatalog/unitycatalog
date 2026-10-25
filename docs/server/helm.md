@@ -46,8 +46,9 @@ example.
 
 ## Use PostgreSQL
 
-The H2 database supports a single server. To run more than one server replica, use PostgreSQL. The server then starts
-with an empty database; the chart leaves H2 data on its volume. Store the password in a Secret:
+The H2 database supports a single server. To run more than one server replica, use PostgreSQL or
+[MySQL](#use-mysql). The server then starts with an empty database; the chart leaves H2 data on its volume. Store the
+password in a Secret:
 
 ```sh
 kubectl create secret generic db-password --namespace unitycatalog --from-literal=password='<password>'
@@ -80,9 +81,79 @@ helm upgrade --install unitycatalog oci://registry-1.docker.io/unitycatalog/unit
   --version X.Y.Z --namespace unitycatalog --values values.yaml
 ```
 
+## Use MySQL
+
+The server image does not include the MySQL JDBC driver. Put the driver jar
+([MySQL Connector/J](https://dev.mysql.com/downloads/connector/j/)) on a volume and point
+`server.db.mysqlConfig.driver.volume` at it. The chart mounts the volume into the server and loads every jar on it.
+The servers and the [pre-upgrade check](#upgrade-and-uninstall) mount it at the same time, so use a volume that
+several pods can mount, for example a PersistentVolumeClaim with access mode `ReadOnlyMany`. The jar is too large for
+a ConfigMap.
+
+Create the database with a binary collation, as described in
+[Example MySQL Connection](deployment.md#example-mysql-connection), and store the password in a Secret as for
+PostgreSQL. Then set:
+
+```yaml
+server:
+  db:
+    type: mysql
+    mysqlConfig:
+      host: my-mysql.example.com
+      port: 3306
+      dbName: ucdb
+      username: uc
+      passwordSecretName: db-password
+      passwordSecretKey: password
+      driver:
+        volume:
+          persistentVolumeClaim:
+            claimName: mysql-driver
+```
+
+`server.db.mysqlConfig.extraParams` adds parameters to the JDBC URL, for example `sslMode`. With authentication on,
+set `server.authorization.policy-refresh: "true"` as for PostgreSQL.
+
 ## Upgrade and uninstall
 
-To upgrade, read the release notes, then run `helm upgrade` with the new `--version`.
+To upgrade, read the release notes, back up the database, then run `helm upgrade` with the new `--version`. A new
+release can upgrade the database schema when its server starts (see [Upgrades](upgrades.md)), so the chart upgrades
+in this order:
+
+1. With PostgreSQL or MySQL, a `pre-upgrade` hook Job runs the new release's `bin/start-uc-server --check-schema`,
+   which changes nothing. If the new release would refuse the upgrade, the Job fails and so does `helm upgrade`,
+   before it changes any resource; the old servers keep serving.
+2. The chart stops all old servers, then starts the new ones (update strategy `Recreate`), because old and new
+   servers must not run at once while the schema changes. The API is down until a new server is ready.
+3. The first new server applies the pending schema steps, then serves. Other replicas wait for it.
+
+If the check fails, read the Job's log. It says why, for example which rows block the upgrade:
+
+```sh
+kubectl logs --namespace unitycatalog job/unitycatalog-unitycatalog-chart-server-upgrade-check
+```
+
+Fix the cause as the release notes describe, then run `helm upgrade` again; it replaces the failed Job. To skip the
+check, set `server.upgradeCheck.enabled: false`. With the default H2 database there is no check Job: the server checks
+and upgrades the file on its volume when it starts.
+
+Kubernetes restarts a server that has not opened its port within the startup probe's `failureThreshold ×
+periodSeconds`, 30 minutes by default. For a longer upgrade, for example a MySQL upgrade that rebuilds large tables,
+set the whole probe with a larger `failureThreshold`:
+
+```yaml
+server:
+  deployment:
+    startupProbe:
+      tcpSocket:
+        port: api
+      timeoutSeconds: 10
+      periodSeconds: 10
+      failureThreshold: 720 # 2 hours
+```
+
+`helm rollback` does not undo the schema upgrade. To go back, restore the backup first, as described in
+[Going back to the baseline release](upgrades.md#going-back-to-the-baseline-release).
 
 If you installed the chart from a source checkout before 0.8.0, set `nameOverride: unitycatalog` in your values.
 The chart is now named `unitycatalog-chart`, which changes the resource names. The override keeps the old names, so

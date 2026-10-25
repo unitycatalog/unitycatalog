@@ -154,6 +154,9 @@ Use these steps for every database (H2, PostgreSQL, MySQL).
 On PostgreSQL and MySQL, when several servers start at the same time, one applies the steps and
 the others wait for it, then start.
 
+With the Helm chart, `helm upgrade` checks the database, stops the old servers and starts the new
+release; see [Deploy with Helm](helm.md#upgrade-and-uninstall). Back up the database first.
+
 ## Backup before the upgrade
 
 The server can back up the whole database before the upgrade changes anything, on the same

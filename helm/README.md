@@ -1050,8 +1050,8 @@ tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureT
 			<td>Startup probe
 
 The server upgrades the database schema before it opens its port, so the probe must allow for the longest
-upgrade: Kubernetes restarts the server after `failureThreshold × periodSeconds`. Raise `failureThreshold` for a
-long upgrade, for example a MySQL upgrade that rebuilds large tables.
+upgrade: Kubernetes restarts the server after `failureThreshold × periodSeconds`. For a longer upgrade, for
+example a MySQL upgrade that rebuilds large tables, set the whole probe with a larger `failureThreshold`.
 
 [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
 </td>
