@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.UncheckedIOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.net.JarURLConnection;
 import java.net.URI;
 import java.net.URL;
@@ -274,13 +276,12 @@ public final class SchemaMigrator implements AutoCloseable {
   private FluentConfiguration configuration(String baselineVersion) {
     FluentConfiguration configuration =
         Flyway.configure()
-            .dataSource(dataSource)
+            .dataSource(flywayDataSource())
             .locations(locations)
             .table(HISTORY_TABLE)
             .failOnMissingLocations(true)
             .cleanDisabled(true)
-            .validateMigrationNaming(true)
-            .initSql(lockWaitSql());
+            .validateMigrationNaming(true);
     if (baselineVersion != null) {
       configuration
           .baselineOnMigrate(true)
@@ -474,7 +475,31 @@ public final class SchemaMigrator implements AutoCloseable {
     return Math.max(1, lockWait.toSeconds());
   }
 
-  /** A connection for the run's own queries, waiting at most {@link #lockWait} like Flyway's. */
+  /**
+   * {@link #dataSource} for Flyway, whose connections come from {@link #connection()}. (Flyway's
+   * {@code initSql} would do it too, but Flyway logs a deprecation warning for it on every load.)
+   */
+  private DataSource flywayDataSource() {
+    return (DataSource)
+        Proxy.newProxyInstance(
+            DataSource.class.getClassLoader(),
+            new Class<?>[] {DataSource.class},
+            (proxy, method, args) -> {
+              if (method.getName().equals("getConnection") && args == null) {
+                return connection();
+              }
+              try {
+                return method.invoke(dataSource, args);
+              } catch (InvocationTargetException e) {
+                throw e.getCause();
+              }
+            });
+  }
+
+  /**
+   * A connection of the run, other than the run lock's: Flyway's, the probes' and the checks'. It
+   * waits at most {@link #lockWait} for a lock.
+   */
   private Connection connection() throws SQLException {
     Connection connection = dataSource.getConnection();
     try (Statement statement = connection.createStatement()) {
