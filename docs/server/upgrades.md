@@ -101,7 +101,3 @@ Messages that the server prints when it refuses to start, and what to do.
 `The schema migration needs 3 database connections (its lock plus 2 for Flyway), but the pool allows <n>. Set hibernate.hikari.maximumPoolSize to 3 or more.`
 : PostgreSQL and MySQL only. Raise `hibernate.hikari.maximumPoolSize` in
   `etc/conf/hibernate.properties`.
-
-`hibernate.default_schema is not supported: the schema migration uses the connection's schema. Remove it and set the schema in the JDBC URL instead (PostgreSQL: currentSchema=...).`
-: The same holds for `hibernate.default_catalog`. Put the schema in `hibernate.connection.url`, for
-  example `jdbc:postgresql://localhost:5432/ucdb?currentSchema=uc`.

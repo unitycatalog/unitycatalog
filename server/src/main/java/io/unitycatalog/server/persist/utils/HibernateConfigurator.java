@@ -69,7 +69,6 @@ public class HibernateConfigurator implements AutoCloseable {
    * properties (e.g. point at PostgreSQL via Testcontainers) before construction.
    */
   public HibernateConfigurator(Properties hibernateProperties) {
-    requireSchemaFromConnection(hibernateProperties);
     this.hibernateProperties = hibernateProperties;
     this.dataSource = new HikariDataSource(hikariConfig(hibernateProperties));
     try {
@@ -79,22 +78,6 @@ public class HibernateConfigurator implements AutoCloseable {
       throw t;
     }
     warnIfMySqlIsCaseInsensitive(hibernateProperties);
-  }
-
-  /**
-   * The schema migration and Hibernate must use the same schema, and the migration uses the
-   * connection's. Refuses Hibernate's own default schema or catalog, which only Hibernate would
-   * use.
-   */
-  private static void requireSchemaFromConnection(Properties properties) {
-    for (String name : new String[] {"hibernate.default_schema", "hibernate.default_catalog"}) {
-      if (properties.getProperty(name) != null) {
-        throw new IllegalArgumentException(
-            name
-                + " is not supported: the schema migration uses the connection's schema. Remove it"
-                + " and set the schema in the JDBC URL instead (PostgreSQL: currentSchema=...).");
-      }
-    }
   }
 
   /**
