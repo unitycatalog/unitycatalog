@@ -106,6 +106,11 @@ of the old release that is still running, the server refuses to start before any
 Could not back up the database before the upgrade, which changed nothing: other sessions are connected to the database (...). Stop the other servers on the database, then start the server again
 ```
 
+Give every server of one database, and `bin/start-uc-server --check-schema`, the same
+`server.migration.backup` setting: on PostgreSQL, the migration lock of a server with the backup
+on is in `<db>_uc_upgrade`, so a server with the backup off neither waits for it nor makes it
+wait. `--check-schema` reads the setting from the same `etc/conf/server.properties`.
+
 ### When the upgrade fails
 
 When a step fails, the [schema check](#the-schema-differs) after the steps fails, or the server gets

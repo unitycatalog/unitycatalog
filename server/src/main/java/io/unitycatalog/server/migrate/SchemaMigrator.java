@@ -1484,6 +1484,13 @@ public final class SchemaMigrator implements AutoCloseable {
         try {
           // Outside a transaction, so the run doesn't keep one open while it holds the lock.
           connection.setAutoCommit(true);
+          if (kind == DatabaseKind.POSTGRESQL) {
+            // lock_timeout caps advisory-lock waits too: the companion's connection has the
+            // run's, and a pooled one may keep an earlier run's.
+            try (Statement statement = connection.createStatement()) {
+              statement.execute("SET lock_timeout = 0");
+            }
+          }
           String trySql =
               kind == DatabaseKind.POSTGRESQL
                   ? "SELECT pg_try_advisory_lock(" + POSTGRES_KEY + ")"

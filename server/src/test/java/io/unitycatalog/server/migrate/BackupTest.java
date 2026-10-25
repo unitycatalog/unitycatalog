@@ -8,15 +8,18 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.VersionUtils;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.UncheckedIOException;
+import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -28,6 +31,10 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -53,6 +60,9 @@ public class BackupTest {
   private static final String TABLES =
       "SELECT table_name FROM information_schema.tables"
           + " WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'";
+
+  /** The key of {@code SchemaMigrator.RunLock}'s PostgreSQL advisory lock. */
+  private static final long RUN_LOCK_KEY = 0x75635f6d69677261L;
 
   private static final String RESTORED =
       "The database was restored from the backup taken before the upgrade; the previous release"
@@ -278,6 +288,94 @@ public class BackupTest {
 
       assertThatThrownBy(() -> backup.checkBeforeRun(RELEASE))
           .hasMessageContaining("restored in chart revision 7");
+    }
+  }
+
+  /** PostgreSQL: a run waits for another run's lock past the lock-wait cap, however long. */
+  @Test
+  void waitsForTheRunLockPastTheLockWait() throws Exception {
+    assumeTrue(db.kind() == DatabaseKind.POSTGRESQL);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try (Connection holder = companionConnection();
+        Statement statement = holder.createStatement()) {
+      statement.execute("SELECT pg_advisory_lock(" + RUN_LOCK_KEY + ")");
+      List<String> locations = List.of(BASE + db.kind().folder(), ADD + db.kind().folder());
+      Future<MigrationOutcome> run =
+          executor.submit(
+              () ->
+                  new SchemaMigrator(db.dataSource(), db.kind(), locations, Duration.ofSeconds(1))
+                      .withBackup(null)
+                      .migrate());
+      Thread.sleep(3000);
+      assertThat(run.isDone()).as("the run still waits").isFalse();
+
+      statement.execute("SELECT pg_advisory_unlock(" + RUN_LOCK_KEY + ")");
+      assertThat(run.get(1, TimeUnit.MINUTES).to()).isEqualTo("6001");
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  /**
+   * PostgreSQL: {@code bin/start-uc-server --check-schema} with the backup on takes the run lock
+   * where a start with the backup on does, so it waits while that start runs.
+   */
+  @Test
+  void checkSchemaWaitsForARunWithTheBackupOn() throws Exception {
+    assumeTrue(db.kind() == DatabaseKind.POSTGRESQL);
+    Path directory = Files.createTempDirectory("uc-check-schema");
+    Path conf = Files.createDirectories(directory.resolve("etc/conf"));
+    try (Writer out = Files.newBufferedWriter(conf.resolve("hibernate.properties"))) {
+      db.hibernateProperties().store(out, null);
+    }
+    String waiting =
+        "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database()"
+            + " AND query LIKE 'SELECT pg_advisory_lock(%' AND pid <> pg_backend_pid()";
+    Process check = null;
+    try (Connection holder = companionConnection();
+        Statement statement = holder.createStatement()) {
+      statement.execute("SELECT pg_advisory_lock(" + RUN_LOCK_KEY + ")");
+      check =
+          new ProcessBuilder(
+                  Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                  "-Djacoco-agent.output=none",
+                  "-D" + Property.MIGRATION_BACKUP.getKey() + "=true",
+                  "-cp",
+                  System.getProperty("java.class.path"),
+                  UnityCatalogServer.class.getName(),
+                  "--check-schema")
+              .directory(directory.toFile())
+              .inheritIO()
+              .start();
+      long deadline = System.nanoTime() + Duration.ofMinutes(2).toNanos();
+      while (count(statement, waiting) == 0) {
+        assertThat(check.isAlive()).as("--check-schema waits for the lock").isTrue();
+        assertThat(System.nanoTime()).as("--check-schema started in time").isLessThan(deadline);
+        Thread.sleep(100);
+      }
+      statement.execute("SELECT pg_advisory_unlock(" + RUN_LOCK_KEY + ")");
+      assertThat(check.waitFor(2, TimeUnit.MINUTES)).isTrue();
+    } finally {
+      if (check != null) {
+        check.destroyForcibly();
+      }
+      Files.delete(conf.resolve("hibernate.properties"));
+      Files.delete(conf);
+      Files.delete(conf.getParent());
+      Files.delete(directory);
+    }
+  }
+
+  /** PostgreSQL: a connection of its own to the companion database, which this creates. */
+  private Connection companionConnection() throws SQLException {
+    return new Backup(db.dataSource(), db.kind(), SchemaMigrator.LOCK_WAIT, null)
+        .companionConnection();
+  }
+
+  private static int count(Statement statement, String sql) throws SQLException {
+    try (ResultSet rs = statement.executeQuery(sql)) {
+      rs.next();
+      return rs.getInt(1);
     }
   }
 
