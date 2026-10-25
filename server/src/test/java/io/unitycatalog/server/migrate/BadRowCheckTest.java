@@ -8,6 +8,9 @@ import io.unitycatalog.server.migrate.SchemaMigrator.MigrationOutcome;
 import io.unitycatalog.server.migrate.kit.SchemaSnapshot;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -63,6 +66,32 @@ public class BadRowCheckTest {
         .hasMessageContaining("found 25 rows:\n")
         .hasMessageContaining("  id=20, name=a\n  ... and 5 more\n")
         .hasMessageNotContaining("id=21");
+  }
+
+  @Test
+  void checkSchemaListsTheRowsAndChangesNothing() {
+    createItems("a", "a", "b");
+    SchemaMigrator migrator = migrator(CREATE_TABLE, UNIQUE_NAMES);
+    SchemaSnapshot before = SchemaSnapshot.of(db.dataSource());
+    List<String> history = history(migrator);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("Check 3001 (unique test named item names) found 2 rows:\n")
+        .contains("  id=1, name=a\n  id=2, name=a\n");
+    assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(before);
+    assertThat(history(migrator)).isEqualTo(history);
+  }
+
+  @Test
+  void checkSchemaPassesOnceTheRowsAreFixed() {
+    createItems("a", "a", "b");
+    execute(db, "DELETE FROM test_named_items WHERE id = 2");
+    SchemaMigrator migrator = migrator(CREATE_TABLE, UNIQUE_NAMES);
+
+    assertThat(migrator.checkSchema(new PrintStream(new ByteArrayOutputStream()))).isZero();
+    assertThat(migrator.currentVersion()).isEqualTo("3000");
   }
 
   @Test

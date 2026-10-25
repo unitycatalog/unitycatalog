@@ -484,6 +484,16 @@ public class UnityCatalogServer implements AutoCloseable {
     options.parse(args);
     int clientPort = options.getPort();
     ServerProperties serverProperties = new ServerProperties(SERVER_PROPERTIES_FILE);
+    if (options.isCheckSchema()) {
+      // Checks the database against this release's steps, then exits; never migrates or serves.
+      int exitCode;
+      try (SchemaMigrator migrator =
+          SchemaMigrator.fromHibernateProperties(
+              HibernateConfigurator.setupHibernateProperties(serverProperties))) {
+        exitCode = migrator.checkSchema(System.out);
+      }
+      System.exit(exitCode);
+    }
     UnityCatalogServer.Builder serverBuilder =
         UnityCatalogServer.builder().port(clientPort + 1).serverProperties(serverProperties);
     if (options.getObservabilityPort() != null) {

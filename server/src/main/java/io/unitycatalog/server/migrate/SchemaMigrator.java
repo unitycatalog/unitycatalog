@@ -5,6 +5,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.io.UncheckedIOException;
 import java.net.JarURLConnection;
 import java.net.URI;
@@ -293,6 +294,43 @@ public final class SchemaMigrator implements AutoCloseable {
             outcome.applied());
       }
       return state();
+    }
+  }
+
+  /**
+   * For {@code bin/start-uc-server --check-schema}: under the run lock, prints the database's
+   * state, the pending steps and whether {@link #migrate()} would go through, running the checks of
+   * the pending steps. Changes nothing.
+   *
+   * @return 0 when an upgrade would go through, 1 when {@link #migrate()} would refuse it
+   */
+  public int checkSchema(PrintStream out) {
+    try (RunLock lock = RunLock.acquire(dataSource, kind)) {
+      SchemaState state = state();
+      String from = state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : currentVersion();
+      out.println(
+          "Database: "
+              + state
+              + ", schema version "
+              + (from == null ? "none" : from)
+              + "; this release ends at "
+              + latestVersion()
+              + ".");
+      String refusal = refusal(state);
+      if (refusal == null) {
+        List<MigrationInfo> pending =
+            Arrays.stream(flyway(null).info().pending())
+                .filter(
+                    m ->
+                        from == null
+                            || m.getVersion().compareTo(MigrationVersion.fromVersion(from)) > 0)
+                .toList();
+        out.println(pending.isEmpty() ? "Pending steps: none." : "Pending steps:");
+        pending.forEach(m -> out.println("  " + version(m) + " " + m.getDescription()));
+        refusal = failedChecks(from);
+      }
+      out.println(refusal == null ? "The upgrade would go through." : refusal);
+      return refusal == null ? 0 : 1;
     }
   }
 

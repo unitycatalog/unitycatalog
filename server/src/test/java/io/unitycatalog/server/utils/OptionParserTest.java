@@ -43,6 +43,14 @@ class OptionParserTest {
     optionParser.parse(new String[] {"-p", "8081"});
     assertThat(optionParser.getPort()).isEqualTo(8081);
     assertThat(optionParser.getObservabilityPort()).isNull();
+    assertThat(optionParser.isCheckSchema()).isFalse();
+  }
+
+  @Test
+  void testParseCheckSchema() {
+    OptionParser optionParser = new OptionParser();
+    optionParser.parse(new String[] {"--check-schema"});
+    assertThat(optionParser.isCheckSchema()).isTrue();
   }
 
   @ParameterizedTest
@@ -91,6 +99,10 @@ class OptionParserTest {
         .contains(
             "--obs-port <arg> Enable health and metrics on this port"
                 + " (1-65535). Disabled when omitted.");
+    assertThat(help)
+        .contains(
+            "--check-schema Check whether this release can upgrade the database, without"
+                + " changing it, then exit: 0 if it can, 1 if not.");
   }
 
   @Test
