@@ -12,6 +12,9 @@ serves requests. It sets up an empty database, adopts a database without schema 
 the baseline release) and applies the steps that are not applied yet. It refuses to start on a
 database it cannot upgrade and tells you what to do (see [Messages](#messages)).
 
+After the steps, and on every start, the server checks the tables that this release's steps
+change (see [The schema differs](#the-schema-differs)).
+
 A step whose change is already in the database (a start stopped before it recorded the step, or
 someone applied the change by hand) is recorded without running it, and the server logs
 `Step <n> (<description>) is already in the database; recorded it without running it.`
@@ -33,6 +36,11 @@ later release migrates older schemas too.
 
 ## Upgrading to a new release
 
+Upgrade one release at a time: a release upgrades a database of the release before it, not one of
+an older release. To go from 0.8.0 to 1.0.0 with 0.9.0 in between, upgrade to 0.9.0 first. A
+release without steps of its own (for example most patch releases) can be skipped; the server
+tells you when a release can't be (see [Skipping a release](#skipping-a-release)).
+
 Use these steps for every database (H2, PostgreSQL, MySQL).
 
 1. Stop all servers.
@@ -51,6 +59,43 @@ Use these steps for every database (H2, PostgreSQL, MySQL).
 
 On PostgreSQL and MySQL, when several servers start at the same time, one applies the steps and
 the others wait for it, then start.
+
+## Skipping a release
+
+The server refuses to start on a database of a release older than the one before it, for example
+this release 1.0.0 on a 0.8.0 database:
+
+```text
+The database is at schema version 3, from release 0.8.0 or earlier; this release upgrades only from 0.9.0 (version 5 or later). Upgrade to 0.9.0 first, then to this release.
+```
+
+It changes nothing. Start the release that the message names on the database once, stop it, then
+start this release. `bin/start-uc-server --check-schema` reports the same.
+
+A database partway between the release before and this one (an upgrade that stopped midway) goes
+on. So do an empty database and a database without schema history from the
+[baseline release](#the-baseline-release).
+
+## The schema differs
+
+The server compares the tables that this release's steps change (created, altered, dropped or
+indexed) with the schema those steps build: their columns, keys, indexes, foreign keys and CHECK
+constraints. It does so after the steps run and on every start, also when no step is pending. A
+difference means someone changed one of those tables by hand, and the server refuses to start:
+
+```text
+The schema of uc_function_params differs from what this release's steps build (-: what they build, +: what the database has):
+  +column uc_function_params.note type=character varying size=64 nullable=YES default=null
+Undo the manual change, or restore the backup; see docs/server/upgrades.md (section "The schema differs").
+```
+
+The message lists the first 20 differing lines. Undo the change it lists (here, drop the column
+`note`), or restore the backup you took before the upgrade, then start the server again.
+`bin/start-uc-server --check-schema` runs the same comparison on a database that is up to date.
+
+Not checked: tables that no step of this release changes, and MySQL collations. On MySQL, a text
+column wider than the steps make it counts as a match: converting a latin1 or utf8mb3 table to
+utf8mb4 (step 3) widens text columns so they keep their length in characters.
 
 ## Locks held by other sessions
 
@@ -117,9 +162,10 @@ It changes nothing and does not start the server. It prints the schema version, 
 and the result:
 
 - Exit code 0: the upgrade will go through.
-- Exit code 1: the upgrade would be refused. The output says why, for example the rows that break
-  a rule. The release notes say how to fix them. Fix them, then run the check again until it exits
-  with 0, and upgrade.
+- Exit code 1: the upgrade would be refused, or the server would not start. The output says why,
+  for example the rows that break a rule, a skipped release, or a schema that
+  [differs](#the-schema-differs). The release notes say how to fix the rows. Fix the cause, then
+  run the check again until it exits with 0, and upgrade.
 
 The server runs the same checks when it starts and refuses to start the same way, before any step
 runs.
@@ -147,6 +193,28 @@ Do not start the baseline release on the upgraded database as it is: its Hiberna
 widened) while the schema history still records the step. If you must run 0.7.0 on the upgraded
 database, first set `hibernate.hbm2ddl.auto=none` in its `etc/conf/hibernate.properties`.
 
+## Cutting a release
+
+For maintainers. When you cut a release, add a line for it to
+`server/src/main/resources/db/migration/releases.properties`: the release and the version of the
+last step it ships (the last step of the release before it when it ships none), for example
+`0.8.0=3`. The next release upgrades only from that schema version on.
+
+The release notes list the release's schema steps and checks:
+
+```markdown
+### Database schema
+
+Upgrade from <previous release>: the server refuses a database of an older release. Back up the
+database first, and run `bin/start-uc-server --check-schema` before you stop the old servers.
+
+| Version | Change | Database |
+| ------- | ------ | -------- |
+| <n> | <what the step changes, and how long it takes on large tables> | <all, or the database> |
+
+Checks: <the rule each check enforces, and how to fix the rows it lists>, or none.
+```
+
 ## Messages
 
 Messages that the server prints when it refuses to start, and what to do.
@@ -170,6 +238,12 @@ Messages that the server prints when it refuses to start, and what to do.
 `Step <n> (<description>) waited more than 60 seconds for a lock on <table>; another session holds it. Stop the other sessions on the database, then start the server again.`
 : See [Locks held by other sessions](#locks-held-by-other-sessions). The message names the table
   when the step's statement names one.
+
+`The database is at schema version <v>, from release <r> or earlier; this release upgrades only from <p> (version <n> or later). Upgrade to <p> first, then to this release.`
+: See [Skipping a release](#skipping-a-release).
+
+`The schema of <tables> differs from what this release's steps build (-: what they build, +: what the database has): ...`
+: See [The schema differs](#the-schema-differs).
 
 `The upgrade is stopped before any change: <n> check found rows that break a rule of this release.`
 : The message lists the rows. See [Rows that block an upgrade](#rows-that-block-an-upgrade).
