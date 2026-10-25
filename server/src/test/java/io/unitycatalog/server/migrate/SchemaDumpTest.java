@@ -8,6 +8,8 @@ import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -39,8 +41,15 @@ public class SchemaDumpTest {
       return;
     }
     String recorded = Files.exists(dump) ? Files.readString(dump) : "";
-    // On a mismatch, AssertJ lists the lines missing from the migrated schema and the new ones.
-    assertThat(actual.lines().toList())
+    List<String> before = recorded.lines().toList();
+    List<String> after = actual.lines().toList();
+    // Only the lines that differ: "-" only in the recorded dump, "+" only in the migrated schema.
+    List<String> diff =
+        Stream.concat(
+                before.stream().filter(line -> !after.contains(line)).map(line -> "-" + line),
+                after.stream().filter(line -> !before.contains(line)).map(line -> "+" + line))
+            .toList();
+    assertThat(diff)
         .as(
             "The migrated schema differs from %s; regenerate with `build/sbt 'set every Test /"
                 + " envVars := Map(\"%s\" -> \"%s\", \"%s\" -> \"true\")' 'server/testOnly %s'`"
@@ -50,6 +59,6 @@ public class SchemaDumpTest {
             SupportedDatabase.selected(),
             UPDATE_ENV,
             getClass().getName())
-        .containsExactlyElementsOf(recorded.lines().toList());
+        .isEmpty();
   }
 }
