@@ -612,6 +612,8 @@ public final class SchemaMigrator implements AutoCloseable {
     MigrationOutcome outcome;
     try {
       outcome = upgrade(state, from);
+      // SIGTERM during the last step, which has no boundary after it: restore as documented.
+      stopIfRequested("the end of the upgrade");
     } catch (RuntimeException e) {
       throw restoreAfter(e);
     }
