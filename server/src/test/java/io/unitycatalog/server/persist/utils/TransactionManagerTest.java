@@ -6,7 +6,6 @@ import static io.unitycatalog.server.persist.utils.TransactionManagerTest.MockTr
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -587,11 +586,16 @@ public class TransactionManagerTest {
 
     /**
      * PostgreSQL limits a btree index entry to 2,704 bytes. A longer staging location fails the
-     * insert into idx_staging_location, which the request caused, so it is INVALID_ARGUMENT.
+     * insert into idx_staging_location, which the request caused, so it is INVALID_ARGUMENT. H2 has
+     * no such limit, so the insert succeeds there.
      */
     @Test
     public void testValueOverIndexLimitIsInvalidArgument() {
-      assumeTrue(SupportedDatabase.selected() == SupportedDatabase.POSTGRES_18);
+      boolean overIndexLimit =
+          switch (SupportedDatabase.selected()) {
+            case H2 -> false;
+            case POSTGRES_18 -> true;
+          };
       StagingTableDAO stagingTableDAO = new StagingTableDAO();
       stagingTableDAO.setDefaultFields();
       stagingTableDAO.setId(UUID.randomUUID());
@@ -599,7 +603,8 @@ public class TransactionManagerTest {
       // 1,917 characters and 3,817 bytes: fits varchar(2048) but not an index entry.
       stagingTableDAO.setStagingLocation("s3://test-bucket/" + randomTwoByteCharacters(1900));
 
-      assertThatThrownBy(
+      Throwable failure =
+          catchThrowable(
               () ->
                   TransactionManager.executeWithTransaction(
                       realSessionFactory,
@@ -608,10 +613,16 @@ public class TransactionManagerTest {
                         return null;
                       },
                       "Error creating staging table",
-                      /* readOnly= */ false))
-          .isInstanceOf(BaseException.class)
-          .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_ARGUMENT)
-          .hasMessageContaining("index row size");
+                      /* readOnly= */ false));
+
+      if (overIndexLimit) {
+        assertThat(failure)
+            .isInstanceOf(BaseException.class)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_ARGUMENT)
+            .hasMessageContaining("index row size");
+      } else {
+        assertThat(failure).isNull();
+      }
     }
 
     /**
