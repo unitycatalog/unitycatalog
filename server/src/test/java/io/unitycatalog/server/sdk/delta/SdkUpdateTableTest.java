@@ -2587,17 +2587,17 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
   static Stream<SchemaCase> kernelCases() {
     return Stream.of(
         ok(
-                "K4 same name with a new id is a drop and add",
+                "same name with a new id is a drop and add",
                 ID_A,
                 setColumns(fld("a", prim("long"), false, 2, "col-1")))
             .expectColumns("a"),
         ok(
-                "K5 nested same name with a new id is a drop and add",
+                "nested same name with a new id is a drop and add",
                 ID_S,
                 setColumns(fld("s", struct(fld("x", prim("long"), 99, "col-x")), 1, "col-s")))
             .expectColumns("s"),
         ok(
-                "K7 rename a type-widened column",
+                "rename a type-widened column",
                 (t, n) ->
                     t.createManaged(
                         n,
@@ -2609,14 +2609,14 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                     withTypeChange(fld("b", prim("long"), false, 1, "col-1"), "integer", "long")))
             .expectColumns("b"),
         ok(
-                "K8 widen a type without a rename",
+                "widen a type without a rename",
                 (t, n) ->
                     t.createManaged(n, "name", 1, fld("a", prim("integer"), false, 1, "col-1")),
                 setColumns(
                     withTypeChange(fld("a", prim("long"), false, 1, "col-1"), "integer", "long")))
             .expectColumns("a"),
         ok(
-                "K9 nested rename plus a new field with the old name",
+                "nested rename plus a new field with the old name",
                 (t, n) ->
                     t.createManaged(
                         n,
@@ -2633,7 +2633,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                         "col-p")))
             .expectColumns("p"),
         rejected(
-            "K10 rename next to a stored column with an unreadable type",
+            "rename next to a stored column with an unreadable type",
             "the table schema cannot be read",
             (t, n) -> {
               Handle h =
