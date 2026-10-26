@@ -164,6 +164,7 @@ async def test_handle_invalid_client():
 @pytest.mark.parametrize(
     ("execution_mode", "start_methods", "should_warn"),
     [
+        (None, ["spawn"], True),
         ("sandbox", ["spawn"], True),
         ("sandbox", ["fork", "spawn"], False),
         ("local", ["spawn"], False),
@@ -173,9 +174,10 @@ async def test_init_warns_when_sandbox_is_unsupported(
     monkeypatch, caplog, execution_mode, start_methods, should_warn
 ):
     monkeypatch.setattr(multiprocessing, "get_all_start_methods", lambda: start_methods)
+    kwargs = {} if execution_mode is None else {"execution_mode": execution_mode}
     with caplog.at_level(logging.WARNING):
         client = UnitycatalogFunctionClient(
-            api_client=ApiClient(configuration=Configuration()), execution_mode=execution_mode
+            api_client=ApiClient(configuration=Configuration()), **kwargs
         )
     await client.close_async()
 

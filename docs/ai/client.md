@@ -678,8 +678,8 @@ If your function requires access to these modules or needs to have access to the
 execution instead.
 
 The sandbox runs callables in a forked subprocess, so it needs the `fork` multiprocessing start method, which is not available on Windows.
-On such a platform, the client logs a warning when it is created in `"sandbox"` mode, and each function call returns a message that points
-to the `"local"` mode in place of the function's result.
+On such a platform, the client logs a warning when it is created in `"sandbox"` mode, and each function call fails with an error that points
+to the `"local"` mode.
 
 #### Local Mode
 
