@@ -2971,14 +2971,14 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
         // In name mode renames are found by physical name, ignoring case, so both count. y's id
         // changed, so an id key would find only one rename.
         rejected(
-            "G27 two renames found by physical name in another case",
+            "two renames found by physical name in another case",
             "single top-level column rename",
             NAME_AB,
             setColumns(
                 fld("x", prim("long"), false, 1, "COL-1"), fld("y", prim("long"), 9, "col-2"))),
         // A table without column mapping may add and reorder columns.
         ok(
-                "G3 add a column without column mapping",
+                "add a column without column mapping",
                 EXTERNAL,
                 setColumns(
                     fld("id", prim("long"), false, null, null),
@@ -2986,7 +2986,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                     fld("extra", prim("string"), null, null)))
             .expectColumns("id", "amount", "extra"),
         ok(
-                "G4 reorder without column mapping",
+                "reorder without column mapping",
                 EXTERNAL,
                 setColumns(
                     fld("amount", prim("double"), null, null),
@@ -2995,7 +2995,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
         // Without column-mapping identities a missing name is a drop and an add, as when the table
         // is replaced.
         ok(
-                "G5 replace a column without column mapping",
+                "replace a column without column mapping",
                 EXTERNAL,
                 setColumns(
                     fld("id", prim("long"), false, null, null),
@@ -3003,7 +3003,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
             .expectColumns("id", "flag"),
         // Mode none, but the stored fields still carry keys: they are matched by physical name.
         ok(
-                "G6 rename on a mode-none table that stores keys",
+                "rename on a mode-none table that stores keys",
                 EXTERNAL,
                 setColumns(
                     fld("ident", prim("long"), false, 1, "col-1"),
@@ -3015,12 +3015,12 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
             .expectColumns("ident", "amount"),
         // Nested renames and shape changes without column mapping.
         ok(
-                "G34 nested struct rename without column mapping",
+                "nested struct rename without column mapping",
                 EXTERNAL_STRUCT,
                 setColumns(fld("s", struct(fld("y", prim("long"), null, null)), null, null)))
             .expectColumns("s"),
         ok(
-                "G35 array element field rename without column mapping",
+                "array element field rename without column mapping",
                 EXTERNAL,
                 setColumns(
                     fld("id", prim("long"), false, null, null),
@@ -3032,7 +3032,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                     fld("amount", prim("double"), null, null),
                     fld("e", array(struct(fld("x", prim("long"), null, null))), null, null))),
         ok(
-                "G36 map value field rename without column mapping",
+                "map value field rename without column mapping",
                 EXTERNAL,
                 setColumns(
                     fld("id", prim("long"), false, null, null),
@@ -3052,7 +3052,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                         null,
                         null))),
         ok(
-                "G37 array of struct to scalar without column mapping",
+                "array of struct to scalar without column mapping",
                 EXTERNAL,
                 setColumns(
                     fld("id", prim("long"), false, null, null),
@@ -3064,7 +3064,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                     fld("amount", prim("double"), null, null),
                     fld("e", array(struct(fld("x", prim("long"), null, null))), null, null))),
         ok(
-                "G38 map to scalar without column mapping",
+                "map to scalar without column mapping",
                 EXTERNAL,
                 setColumns(
                     fld("id", prim("long"), false, null, null),
@@ -3081,7 +3081,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                         null))),
         // An explicit set-partition-columns next to a rename of another column.
         ok(
-                "G1 rename a non-partition column with explicit partitions",
+                "rename a non-partition column with explicit partitions",
                 NAME_AB,
                 setColumns(
                     fld("a", prim("long"), false, 1, "col-1"), fld("c", prim("long"), 2, "col-2")),
@@ -3091,19 +3091,19 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
             .expectPartitions("a"),
         // Enabling on a table with a struct column, no rename.
         ok(
-                "G2 enable with a nested struct",
+                "enable with a nested struct",
                 EXTERNAL_STRUCT,
                 cmMode("name"),
                 setColumns(fld("s", struct(fld("x", prim("long"), 2, "x")), false, 1, "s")))
             .expectColumns("s"),
         // An integer id sent as a string is usable.
         ok(
-                "G33 integer id sent as a string",
+                "integer id sent as a string",
                 NAME_A,
                 setColumns(fld("a", prim("long"), false, "1", "col-1")))
             .expectColumns("a"),
         ok(
-                "G46 ids 01 and 2147483648 as strings",
+                "ids 01 and 2147483648 as strings",
                 ID_A,
                 setColumns(
                     fld("a", prim("long"), false, 1, "col-1"),
@@ -3114,26 +3114,26 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
         // carries them. A rename is found only by a physical name that names a stored column, so
         // a new physical name is a drop and an add.
         ok(
-                "G39 enable and rename with a new physical name",
+                "enable and rename with a new physical name",
                 EXTERNAL,
                 setColumns(
                     fld("id", prim("long"), false, 1, "id"),
                     fld("revenue", prim("double"), 2, "revenue")))
             .expectColumns("id", "revenue"),
         ok(
-                "G40 enable and drop a column",
+                "enable and drop a column",
                 EXTERNAL,
                 setColumns(fld("id", prim("long"), false, 1, "id")))
             .expectColumns("id"),
         // The stored mode applies, not the one the request sets.
         ok(
-                "G49 rename while removing column mapping",
+                "rename while removing column mapping",
                 NAME_A,
                 cmMode("none"),
                 setColumns(fld("b", prim("long"), false, 1, "col-1")))
             .expectColumns("b"),
         ok(
-                "G48 set id mode on a table without column mapping",
+                "set id mode on a table without column mapping",
                 EXTERNAL,
                 cmMode("id"),
                 setColumns(
@@ -3142,7 +3142,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
             .expectColumns("id", "amount"),
         // Without keys in the request the columns are read by name.
         ok(
-                "G41 enable without keys",
+                "enable without keys",
                 EXTERNAL,
                 cmMode("name"),
                 setColumns(
@@ -3151,20 +3151,20 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
             .expectColumns("id", "amount"),
         // A stored column without keys has no identity to rename from, so it may gain them.
         ok(
-                "G51 stored column without keys gains them",
+                "stored column without keys gains them",
                 (t, n) -> t.createManaged(n, "name", 1, fld("a", prim("long"), false, null, null)),
                 setColumns(fld("a", prim("long"), false, 1, "a")))
             .expectColumns("a"),
         // A new column may come without keys.
         ok(
-                "G43 new column without keys",
+                "new column without keys",
                 NAME_A,
                 setColumns(
                     fld("a", prim("long"), false, 1, "col-1"), fld("c", prim("long"), null, null)))
             .expectColumns("a", "c"),
         // Replacing every column with new ids and physical names is a drop and an add of each.
         ok(
-                "G53 replace every column of a column-mapped table",
+                "replace every column of a column-mapped table",
                 NAME_AB,
                 setColumns(fld("x", prim("long"), 3, "col-3"), fld("y", prim("long"), 4, "col-4")))
             .expectColumns("x", "y"));

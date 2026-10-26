@@ -445,14 +445,14 @@ public class DeltaUpdateTableMapperTest {
     return Stream.of(
         // Enabling needs a physical name on every column and nested field.
         rejected(
-            "G7 enable without a physical name on one column",
+            "enable without a physical name on one column",
             "requires a physical column name",
             EXTERNAL,
             cmMode("name"),
             setColumns(
                 fld("id", prim("long"), false, 1, "id"), fld("amount", prim("double"), 2, null))),
         rejected(
-            "G8 enable with a null physical name",
+            "enable with a null physical name",
             "requires a physical column name",
             EXTERNAL,
             cmMode("name"),
@@ -460,14 +460,14 @@ public class DeltaUpdateTableMapperTest {
                 fld("id", prim("long"), false, 1, "id"),
                 fld("amount", prim("double"), 2, JSON_NULL))),
         rejected(
-            "G9 enable with a numeric physical name",
+            "enable with a numeric physical name",
             "requires a physical column name",
             EXTERNAL,
             cmMode("name"),
             setColumns(
                 fld("id", prim("long"), false, 1, "id"), fld("amount", prim("double"), 2, 5))),
         rejected(
-            "G10 enable without a nested physical name",
+            "enable without a nested physical name",
             "requires a physical column name",
             EXTERNAL_STRUCT,
             cmMode("name"),
@@ -475,13 +475,13 @@ public class DeltaUpdateTableMapperTest {
 
         // Names differing only by case.
         rejected(
-            "G18 top-level names differing only by case",
+            "top-level names differing only by case",
             "Duplicate field name",
             NAME_AB,
             setColumns(
                 fld("a", prim("long"), false, 1, "col-1"), fld("A", prim("long"), 2, "col-2"))),
         rejected(
-            "G32 nested names differing only by case",
+            "nested names differing only by case",
             "Duplicate field name",
             NAME_S2,
             setColumns(
@@ -494,12 +494,12 @@ public class DeltaUpdateTableMapperTest {
         // A key kept only below the top level is not "column mapping removed"; the per-column
         // check reports the column that lost it.
         rejected(
-            "G28 key kept only in a struct field",
+            "key kept only in a struct field",
             "dropped column mapping metadata for column(s)",
             NAME_S,
             setColumns(fld("s", struct(fld("x", prim("long"), 2, "col-x")), null, null))),
         rejected(
-            "G29 key kept in one of two struct fields",
+            "key kept in one of two struct fields",
             "dropped column mapping metadata for column(s)",
             NAME_S2,
             setColumns(
@@ -509,13 +509,13 @@ public class DeltaUpdateTableMapperTest {
                     null,
                     null))),
         rejected(
-            "G30 key kept only in an array element field",
+            "key kept only in an array element field",
             "dropped column mapping metadata for column(s)",
             managed(
                 "name", 2, fld("e", array(struct(fld("x", prim("long"), 2, "col-x"))), 1, "col-e")),
             setColumns(fld("e", array(struct(fld("x", prim("long"), 2, "col-x"))), null, null))),
         rejected(
-            "G31 key kept only in a map value field",
+            "key kept only in a map value field",
             "dropped column mapping metadata for column(s)",
             managed(
                 "name",
@@ -534,7 +534,7 @@ public class DeltaUpdateTableMapperTest {
 
         // Enabling with a shared id.
         rejected(
-            "G11 enable with a shared id",
+            "enable with a shared id",
             "Duplicate column mapping id",
             EXTERNAL,
             cmMode("name"),
@@ -544,7 +544,7 @@ public class DeltaUpdateTableMapperTest {
 
         // Enabling with a malformed id.
         rejected(
-            "G12 enable with a boolean id",
+            "enable with a boolean id",
             "malformed column mapping identity",
             EXTERNAL,
             cmMode("name"),
@@ -552,7 +552,7 @@ public class DeltaUpdateTableMapperTest {
                 fld("id", prim("long"), false, true, "id"),
                 fld("amount", prim("double"), 2, "amount"))),
         rejected(
-            "G13 enable with an object id",
+            "enable with an object id",
             "malformed column mapping identity",
             EXTERNAL,
             cmMode("name"),
@@ -560,7 +560,7 @@ public class DeltaUpdateTableMapperTest {
                 fld("id", prim("long"), false, Map.of(), "id"),
                 fld("amount", prim("double"), 2, "amount"))),
         rejected(
-            "G14 enable with an empty-string id",
+            "enable with an empty-string id",
             "malformed column mapping identity",
             EXTERNAL,
             cmMode("name"),
@@ -568,7 +568,7 @@ public class DeltaUpdateTableMapperTest {
                 fld("id", prim("long"), false, "", "id"),
                 fld("amount", prim("double"), 2, "amount"))),
         rejected(
-            "G15 enable with a null id",
+            "enable with a null id",
             "malformed column mapping identity",
             EXTERNAL,
             cmMode("name"),
@@ -578,7 +578,7 @@ public class DeltaUpdateTableMapperTest {
 
         // Enabling with a shared physical name.
         rejected(
-            "G16 enable with a shared physical name",
+            "enable with a shared physical name",
             "Duplicate column mapping physicalName",
             EXTERNAL,
             cmMode("name"),
@@ -588,7 +588,7 @@ public class DeltaUpdateTableMapperTest {
 
         // Duplicate physical names are compared without case.
         rejected(
-            "G17 physical names differing only by case",
+            "physical names differing only by case",
             "Duplicate column mapping physicalName",
             NAME_AB,
             setColumns(
@@ -596,44 +596,44 @@ public class DeltaUpdateTableMapperTest {
 
         // A column-mapped table needs usable identity values.
         rejected(
-            "G19 empty physical name",
+            "empty physical name",
             "malformed column mapping identity",
             NAME_A,
             setColumns(fld("a", prim("long"), false, 1, ""))),
         rejected(
-            "G20 numeric physical name",
+            "numeric physical name",
             "malformed column mapping identity",
             NAME_A,
             setColumns(fld("a", prim("long"), false, 1, 5))),
         rejected(
-            "G21 null physical name",
+            "null physical name",
             "dropped column mapping metadata for column(s): a",
             NAME_A,
             setColumns(fld("a", prim("long"), false, 1, JSON_NULL))),
         rejected(
-            "G22 object physical name",
+            "object physical name",
             "malformed column mapping identity",
             NAME_A,
             setColumns(fld("a", prim("long"), false, 1, Map.of()))),
         rejected(
-            "G23 empty-string id",
+            "empty-string id",
             "malformed column mapping identity",
             ID_A,
             setColumns(fld("a", prim("long"), false, "", "col-1"))),
         rejected(
-            "G24 object id",
+            "object id",
             "malformed column mapping identity",
             ID_A,
             setColumns(fld("a", prim("long"), false, Map.of(), "col-1"))),
         rejected(
-            "G25 boolean id",
+            "boolean id",
             "malformed column mapping identity",
             ID_A,
             setColumns(fld("a", prim("long"), false, true, "col-1"))),
 
         // Two empty physical names are malformed, not duplicates.
         rejected(
-            "G26 two empty physical names",
+            "two empty physical names",
             "malformed column mapping identity",
             NAME_AB,
             setColumns(fld("a", prim("long"), false, 1, ""), fld("b", prim("long"), 2, ""))),
@@ -641,7 +641,7 @@ public class DeltaUpdateTableMapperTest {
         // Ids are compared as text: 1 and "1" are one id, while "01" and "2147483648" are other
         // ids.
         rejected(
-            "G45 ids 1 and \"1\"",
+            "ids 1 and \"1\"",
             "Duplicate column mapping id '1'",
             ID_A,
             setColumns(
@@ -649,14 +649,14 @@ public class DeltaUpdateTableMapperTest {
 
         // A schema that has keys keeps them, even with no retained column.
         rejected(
-            "G52 drop every column and the keys",
+            "drop every column and the keys",
             "set-columns dropped column mapping metadata; removing column mapping",
             NAME_A,
             setColumns(fld("z", prim("long"), false, null, null))),
 
         // In id mode renames are found by id.
         rejected(
-            "G54 two renames in id mode",
+            "two renames in id mode",
             "single top-level column rename",
             managed(
                 "id",
@@ -668,7 +668,7 @@ public class DeltaUpdateTableMapperTest {
 
         // Enabling finds renames inside array elements and map values too.
         rejected(
-            "G55 enable and rename an array element field",
+            "enable and rename an array element field",
             "separate statement",
             external(
                 fld("id", prim("long"), false, null, null),
@@ -680,7 +680,7 @@ public class DeltaUpdateTableMapperTest {
                 fld("amount", prim("double"), 2, "amount"),
                 fld("e", array(struct(fld("y", prim("long"), 4, "x"))), 3, "e"))),
         rejected(
-            "G56 enable and rename a map value field",
+            "enable and rename a map value field",
             "separate statement",
             external(
                 fld("id", prim("long"), false, null, null),
