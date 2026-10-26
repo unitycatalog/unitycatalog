@@ -25,15 +25,15 @@ spec:
         - |
           check() {
             {{- if $checkServer }}
-            wget -q -O - --header "Accept: application/json" "{{ $server }}/api/2.1/unity-catalog/catalogs" | grep -q '"catalogs"' || { echo "Server API check failed"; return 1; }
+            wget -q -T 5 -O - --header "Accept: application/json" "{{ $server }}/api/2.1/unity-catalog/catalogs" | grep -q '"catalogs"' || { echo "Server API check failed"; return 1; }
             {{- end }}
             {{- if .Values.ui.enabled }}
             # In proxy mode the UI dev server rejects Service hostnames, so send Host: localhost as a port-forwarded browser does.
-            wget -q -O - --header "Host: localhost" "{{ $ui }}/" | grep -q "<title>Unity Catalog" || { echo "UI page check failed"; return 1; }
+            wget -q -T 5 -O - --header "Host: localhost" "{{ $ui }}/" | grep -q "<title>Unity Catalog" || { echo "UI page check failed"; return 1; }
             {{- end }}
             {{- if $checkProxy }}
             # The UI proxies /api to the server.
-            wget -q -O - --header "Host: localhost" --header "Accept: application/json" "{{ $ui }}/api/2.1/unity-catalog/catalogs" | grep -q '"catalogs"' || { echo "UI /api proxy check failed"; return 1; }
+            wget -q -T 5 -O - --header "Host: localhost" --header "Accept: application/json" "{{ $ui }}/api/2.1/unity-catalog/catalogs" | grep -q '"catalogs"' || { echo "UI /api proxy check failed"; return 1; }
             {{- end }}
           }
           for i in $(seq 1 30); do check && exit 0; sleep 5; done
