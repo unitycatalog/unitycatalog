@@ -603,7 +603,7 @@ server:
 
 ui:
   # -- (bool) Enable the UI
-  enabled: false
+  enabled: true
 
   service:
     # -- (string) Service type for the UI

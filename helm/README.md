@@ -10,7 +10,7 @@ using the [Helm](https://github.com/helm/helm) package manager.
 - Helm 3.1+
 
 ## Features
-- Deploys the Unity Catalog server, and the UI with `ui.enabled=true`
+- Deploys Unity Catalog server and UI
 - Supports OAuth authentication
 - Supports file H2DB and PostgreSQL as a database
 - Customizable configuration for server and UI using Helm values
@@ -1547,7 +1547,7 @@ not set
 			<td>ui.enabled</td>
 			<td>bool</td>
 			<td><pre lang="json">
-false
+true
 </pre>
 </td>
 			<td>Enable the UI</td>

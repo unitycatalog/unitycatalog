@@ -108,7 +108,8 @@ spec:
               jq '.proxy = null' package.json > temp.json
               {{- end }}
               mv temp.json package.json
-              bun run start
+              # The UI runs on bun; the published unitycatalog-ui:main image predates bun and has yarn.
+              if command -v bun >/dev/null; then exec bun run start; else exec yarn start; fi
           env:
           {{- if .Values.auth.enabled }}
             - name: REACT_APP_GOOGLE_AUTH_ENABLED

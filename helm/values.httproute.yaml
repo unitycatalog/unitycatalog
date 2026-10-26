@@ -1,5 +1,4 @@
 ui:
-  enabled: true
   deployment:
     replicaCount: 2
 server:
