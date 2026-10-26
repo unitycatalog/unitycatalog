@@ -2285,10 +2285,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               2,
               fld("a", prim("long"), false, 1, "col-1"),
               fld("b", prim("long"), 2, "col-2"));
-  private static final TableFactory NAME_S =
-      (t, n) ->
-          t.createManaged(
-              n, "name", 2, fld("s", struct(fld("x", prim("long"), 2, "col-x")), 1, "col-s"));
   private static final TableFactory ID_S =
       (t, n) ->
           t.createManaged(
@@ -2708,33 +2704,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                     fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 2, "col-2")))
             .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("a", "b")))
             .expectPartitions("a", "b2"),
-        rejected(
-                "Q2 masked partition drop",
-                "partition column 'b' dropped",
-                NAME_AB,
-                setColumns(fld("b", prim("long"), false, 1, "col-1")))
-            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b"))),
-        rejected(
-                "Q3 partition column without an identity",
-                "has no column mapping identity",
-                (t, n) ->
-                    t.createManaged(
-                        n,
-                        "name",
-                        1,
-                        fld("a", prim("long"), false, 1, "col-1"),
-                        fld("r", prim("long"), null, null)),
-                setColumns(
-                    fld("a", prim("long"), false, 1, "col-1"),
-                    fld("r2", prim("long"), 2, "col-r2")))
-            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("r"))),
-        rejected(
-                "Q4 strip a partition column's key",
-                "dropped column mapping metadata for column(s): b",
-                NAME_AB,
-                setColumns(
-                    fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), null, null)))
-            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b"))),
         ok(
                 "Q5 name mode partition follows the physical name",
                 NAME_AB,
@@ -2749,13 +2718,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                     fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 2, "col-2")))
             .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
             .expectPartitions("b2"),
-        rejected(
-                "Q7 id mode same name with a new id",
-                "partition column 'b' dropped",
-                ID_AB,
-                setColumns(
-                    fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 9, "col-2")))
-            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b"))),
         ok(
                 "Q8 first enable on a partitioned table",
                 (t, n) ->
@@ -2797,19 +2759,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 setColumns(
                     fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 2, "col-2")))
             .expectPartitions("a"),
-        rejected(
-                "Q11 no column mapping: the partition follows the logical name, not a leftover key",
-                "partition column 'b' dropped",
-                (t, n) ->
-                    t.createManaged(
-                        n,
-                        "none",
-                        2,
-                        fld("a", prim("long"), false, 1, "col-1"),
-                        fld("b", prim("long"), 2, "col-2")),
-                setColumns(
-                    fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 2, "col-2")))
-            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b"))),
         ok(
                 "Q12 name mode, stored columns without keys: the partition resolves by name",
                 (t, n) ->

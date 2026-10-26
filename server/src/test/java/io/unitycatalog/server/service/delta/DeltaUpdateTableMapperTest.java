@@ -29,6 +29,7 @@ import io.unitycatalog.server.delta.model.DeltaTableUpdate;
 import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.persist.MutablePropertyMap;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
@@ -425,7 +426,7 @@ public class DeltaUpdateTableMapperTest {
    * keeps one rejection that goes through the server, and the accepted cases.
    */
   @ParameterizedTest(name = "{0}")
-  @MethodSource({"guardRejections", "kernelRejections"})
+  @MethodSource({"guardRejections", "kernelRejections", "partitionRejections"})
   public void testColumnMappingGuardRejections(GuardCase c) {
     assertThatThrownBy(
             () ->
@@ -833,19 +834,72 @@ public class DeltaUpdateTableMapperTest {
             setColumns(fld("b", prim("long"), false, "1", "col-1"))));
   }
 
+  static Stream<GuardCase> partitionRejections() {
+    return Stream.of(
+        rejected(
+            "Q2 masked partition drop",
+            "partition column 'b' dropped",
+            NAME_AB.partitionedBy("b"),
+            setColumns(fld("b", prim("long"), false, 1, "col-1"))),
+        rejected(
+            "Q3 partition column without an identity",
+            "has no column mapping identity",
+            managed(
+                    "name",
+                    1,
+                    fld("a", prim("long"), false, 1, "col-1"),
+                    fld("r", prim("long"), null, null))
+                .partitionedBy("r"),
+            setColumns(
+                fld("a", prim("long"), false, 1, "col-1"), fld("r2", prim("long"), 2, "col-r2"))),
+        rejected(
+            "Q4 strip a partition column's key",
+            "dropped column mapping metadata for column(s): b",
+            NAME_AB.partitionedBy("b"),
+            setColumns(
+                fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), null, null))),
+        rejected(
+            "Q7 id mode same name with a new id",
+            "partition column 'b' dropped",
+            ID_AB.partitionedBy("b"),
+            setColumns(
+                fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 9, "col-2"))),
+        rejected(
+            "Q11 no column mapping: the partition follows the logical name, not a leftover key",
+            "partition column 'b' dropped",
+            managed(
+                    "none",
+                    2,
+                    fld("a", prim("long"), false, 1, "col-1"),
+                    fld("b", prim("long"), 2, "col-2"))
+                .partitionedBy("b"),
+            setColumns(
+                fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 2, "col-2"))));
+  }
+
   /** A column-mapping key sent with an explicit JSON null value (as opposed to left out). */
   private static final Object JSON_NULL = new Object();
 
-  /** A stored table: its type, its properties and its columns. */
+  /** A stored table: its type, its properties, its partition columns and its columns. */
   private record StoredTable(
-      String type, Map<String, String> properties, DeltaStructField... columns) {
+      String type,
+      Map<String, String> properties,
+      List<String> partitions,
+      DeltaStructField... columns) {
+    /** The same table, partitioned by {@code names}. */
+    StoredTable partitionedBy(String... names) {
+      return new StoredTable(type, properties, List.of(names), columns);
+    }
+
     TableInfoDAO dao() {
+      List<ColumnInfo> infos = ColumnUtils.toColumnInfos(List.of(columns));
+      for (ColumnInfo c : infos) {
+        int i = partitions.indexOf(c.getName());
+        c.setPartitionIndex(i < 0 ? null : i);
+      }
       TableInfoDAO dao = managedDao();
       dao.setType(type);
-      dao.setColumns(
-          ColumnUtils.toColumnInfos(List.of(columns)).stream()
-              .map(ColumnInfoDAO::from)
-              .collect(Collectors.toList()));
+      dao.setColumns(infos.stream().map(ColumnInfoDAO::from).collect(Collectors.toList()));
       return dao;
     }
   }
@@ -873,12 +927,13 @@ public class DeltaUpdateTableMapperTest {
             mode,
             "delta.columnMapping.maxColumnId",
             Integer.toString(maxColumnId)),
+        List.of(),
         fields);
   }
 
   /** An EXTERNAL table without column mapping. */
   private static StoredTable external(DeltaStructField... fields) {
-    return new StoredTable("EXTERNAL", Map.of(), fields);
+    return new StoredTable("EXTERNAL", Map.of(), List.of(), fields);
   }
 
   private static final StoredTable EXTERNAL =
@@ -893,6 +948,9 @@ public class DeltaUpdateTableMapperTest {
   private static final StoredTable NAME_AB =
       managed(
           "name", 2, fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 2, "col-2"));
+  private static final StoredTable ID_AB =
+      managed(
+          "id", 2, fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 2, "col-2"));
   private static final StoredTable NAME_S =
       managed("name", 2, fld("s", struct(fld("x", prim("long"), 2, "col-x")), 1, "col-s"));
   private static final StoredTable NAME_S2 =
