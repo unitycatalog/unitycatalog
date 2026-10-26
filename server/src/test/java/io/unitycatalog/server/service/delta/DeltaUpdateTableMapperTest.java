@@ -837,12 +837,12 @@ public class DeltaUpdateTableMapperTest {
   static Stream<GuardCase> partitionRejections() {
     return Stream.of(
         rejected(
-            "Q2 masked partition drop",
+            "masked partition drop",
             "partition column 'b' dropped",
             NAME_AB.partitionedBy("b"),
             setColumns(fld("b", prim("long"), false, 1, "col-1"))),
         rejected(
-            "Q3 partition column without an identity",
+            "partition column without an identity",
             "has no column mapping identity",
             managed(
                     "name",
@@ -853,19 +853,19 @@ public class DeltaUpdateTableMapperTest {
             setColumns(
                 fld("a", prim("long"), false, 1, "col-1"), fld("r2", prim("long"), 2, "col-r2"))),
         rejected(
-            "Q4 strip a partition column's key",
+            "strip a partition column's key",
             "dropped column mapping metadata for column(s): b",
             NAME_AB.partitionedBy("b"),
             setColumns(
                 fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), null, null))),
         rejected(
-            "Q7 id mode same name with a new id",
+            "id mode same name with a new id",
             "partition column 'b' dropped",
             ID_AB.partitionedBy("b"),
             setColumns(
                 fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 9, "col-2"))),
         rejected(
-            "Q11 no column mapping: the partition follows the logical name, not a leftover key",
+            "no column mapping: the partition follows the logical name, not a leftover key",
             "partition column 'b' dropped",
             managed(
                     "none",

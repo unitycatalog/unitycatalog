@@ -2698,28 +2698,28 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
   static Stream<SchemaCase> partitionCases() {
     return Stream.of(
         ok(
-                "Q1 rename one of two partition columns",
+                "rename one of two partition columns",
                 NAME_AB,
                 setColumns(
                     fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 2, "col-2")))
             .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("a", "b")))
             .expectPartitions("a", "b2"),
         ok(
-                "Q5 name mode partition follows the physical name",
+                "name mode partition follows the physical name",
                 NAME_AB,
                 setColumns(
                     fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 9, "col-2")))
             .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
             .expectPartitions("b2"),
         ok(
-                "Q6 id mode partition follows the id",
+                "id mode partition follows the id",
                 ID_AB,
                 setColumns(
                     fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 2, "col-2")))
             .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
             .expectPartitions("b2"),
         ok(
-                "Q8 first enable on a partitioned table",
+                "first enable on a partitioned table",
                 (t, n) ->
                     t.createManaged(
                         n,
@@ -2732,7 +2732,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
             .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
             .expectPartitions("b"),
         rejected(
-                "Q9 partition rename at a taken commit version",
+                "partition rename at a taken commit version",
                 "Commit version already accepted",
                 NAME_AB,
                 setColumns(
@@ -2742,7 +2742,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
             .after(new DeltaAddCommitUpdate().commit(commit(1L, "00000001.json")))
             .asError(DeltaErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION),
         ok(
-                "Q10 stored type of a non-partition column is unreadable",
+                "stored type of a non-partition column is unreadable",
                 (t, n) -> {
                   Handle h = NAME_AB.create(t, n);
                   h =
@@ -2760,7 +2760,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                     fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 2, "col-2")))
             .expectPartitions("a"),
         ok(
-                "Q12 name mode, stored columns without keys: the partition resolves by name",
+                "name mode, stored columns without keys: the partition resolves by name",
                 (t, n) ->
                     t.createManaged(
                         n,
