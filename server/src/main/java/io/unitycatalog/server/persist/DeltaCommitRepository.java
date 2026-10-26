@@ -246,18 +246,44 @@ public class DeltaCommitRepository {
   /**
    * The table's backfilled version: the highest flagged row, or one below the oldest row when
    * nothing is flagged (versions below the oldest row either predate onboarding or were backfilled
-   * and deleted by an earlier server). A page from {@link #getNewestCommits} always holds the
+   * and deleted by an earlier server). A page from {@link #getNewestCommits} normally holds the
    * highest flagged row, because the unflagged rows above it are capped at {@link
-   * #MAX_NUM_COMMITS_PER_TABLE}, below the page size.
+   * #MAX_NUM_COMMITS_PER_TABLE}, below the page size. A full page with nothing flagged means the
+   * table already outgrew that cap, so the answer is read from the whole log instead.
    *
    * @param allDesc a non-empty page of the table's commit rows, newest first
    */
-  private static long backfilledVersionOf(List<DeltaCommitDAO> allDesc) {
-    return allDesc.stream()
-        .filter(DeltaCommitDAO::isBackfilled)
-        .findFirst()
-        .map(DeltaCommitDAO::getCommitVersion)
-        .orElseGet(() -> allDesc.get(allDesc.size() - 1).getCommitVersion() - 1L);
+  private static long backfilledVersionOf(
+      Session session, UUID tableId, List<DeltaCommitDAO> allDesc) {
+    Optional<Long> highestFlagged =
+        allDesc.stream()
+            .filter(DeltaCommitDAO::isBackfilled)
+            .findFirst()
+            .map(DeltaCommitDAO::getCommitVersion);
+    if (highestFlagged.isPresent()) {
+      return highestFlagged.get();
+    }
+    if (allDesc.size() < NUM_COMMITS_PER_BATCH) {
+      return allDesc.get(allDesc.size() - 1).getCommitVersion() - 1L;
+    }
+    Long flagged =
+        session
+            .createQuery(
+                "SELECT MAX(commitVersion) FROM DeltaCommitDAO"
+                    + " WHERE tableId = :tableId AND isBackfilled = true",
+                Long.class)
+            .setParameter("tableId", tableId)
+            .uniqueResult();
+    if (flagged != null) {
+      return flagged;
+    }
+    return session
+            .createQuery(
+                "SELECT MIN(commitVersion) FROM DeltaCommitDAO WHERE tableId = :tableId",
+                Long.class)
+            .setParameter("tableId", tableId)
+            .uniqueResult()
+        - 1L;
   }
 
   /**
@@ -459,7 +485,7 @@ public class DeltaCommitRepository {
       }
       handleOnboardingCommit(session, tableId, tableInfoDAO, commit, uniformFields);
     } else {
-      long backfilledThrough = backfilledVersionOf(newestCommits);
+      long backfilledThrough = backfilledVersionOf(session, tableId, newestCommits);
       DeltaCommitDAO lastCommitDAO = newestCommits.get(0);
       if (commit.getCommitInfo() == null) {
         // latestBackfilledVersion non-null guaranteed upstream (UC REST: validateCommit;
@@ -1204,7 +1230,7 @@ public class DeltaCommitRepository {
           dao,
           commitInfo.getVersion(),
           commitInfo.getFileName(),
-          backfilledVersionOf(newestCommits),
+          backfilledVersionOf(session, dao.getId(), newestCommits),
           lastCommitDAO);
     }
   }

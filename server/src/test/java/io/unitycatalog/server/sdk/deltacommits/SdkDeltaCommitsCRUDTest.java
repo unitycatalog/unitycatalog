@@ -50,6 +50,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.stream.LongStream;
 import org.hibernate.Session;
 import org.hibernate.query.Query;
 import org.junit.jupiter.api.BeforeEach;
@@ -569,6 +570,51 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(retention + 1L));
     // latest == 1001. Version 0 is 1001 behind and is deleted. Version 1 is exactly 1000 behind.
     assertEquals(List.of(retention + 1L, retention, retention - 1L, 1L), commitVersions(tableId));
+  }
+
+  /**
+   * A table that already outgrew the commit limit has unflagged rows below the newest page, so the
+   * page alone cannot name its backfilled version. Reading it from the page would skip verifying
+   * the lower versions and leave them unflagged under the flagged block.
+   */
+  @Test
+  public void testBackfilledVersionOfTableOverTheCommitLimit() throws Exception {
+    UUID tableId = UUID.fromString(tableInfo.getTableId());
+    String loc = tableInfo.getStorageLocation();
+    deltaCommitsApi.commit(createCommitObject(tableInfo.getTableId(), 1L, loc));
+
+    // Nothing flagged: the backfill starts at the table's oldest row, v1, whose file is missing.
+    deleteAllCommitRows(tableId);
+    for (long v = 1; v <= 25; v++) {
+      insertCommitRow(tableId, v, /* isBackfilled= */ false);
+    }
+    writePublishedCommitFiles(2L, 25L);
+    assertApiException(
+        () -> deltaCommitsApi.commit(createBackfillOnlyCommitObject(25L)),
+        ErrorCode.INVALID_ARGUMENT,
+        "published commit file is missing");
+    writePublishedCommitFiles(1L, 1L);
+    deltaCommitsApi.commit(createBackfillOnlyCommitObject(25L));
+    assertEquals(versionsDescending(25L, 1L), backfilledVersions(tableId));
+
+    // Flagged rows below the page: the backfill starts above the highest of them, v103, whose
+    // successor's file is missing.
+    deleteAllCommitRows(tableId);
+    for (long v = 101; v <= 125; v++) {
+      insertCommitRow(tableId, v, /* isBackfilled= */ v <= 103);
+    }
+    writePublishedCommitFiles(105L, 125L);
+    assertApiException(
+        () -> deltaCommitsApi.commit(createBackfillOnlyCommitObject(125L)),
+        ErrorCode.INVALID_ARGUMENT,
+        "published commit file is missing");
+    writePublishedCommitFiles(104L, 104L);
+    deltaCommitsApi.commit(createBackfillOnlyCommitObject(125L));
+    assertEquals(versionsDescending(125L, 101L), backfilledVersions(tableId));
+  }
+
+  private static List<Long> versionsDescending(long from, long to) {
+    return LongStream.iterate(from, v -> v >= to, v -> v - 1).boxed().toList();
   }
 
   /**
