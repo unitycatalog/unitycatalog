@@ -269,8 +269,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
           404,
           NoSuchNamespaceException.class);
 
-      // A name Unity Catalog rejects outright, such as the multi-level name a nested namespace
-      // arrives as, is a bad request rather than a missing namespace.
+      // A name Unity Catalog rejects as invalid, such as one containing a period, is a bad request
+      // rather than a missing namespace.
       assertErrorType(
           client.get(TEST_BASE_PREFIX + "/namespaces/nested.namespace").aggregate().join(),
           400,
@@ -1842,6 +1842,12 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     assertThat(resp.status().code()).isEqualTo(404);
     assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
         .isEqualTo(NoSuchNamespaceException.class.getSimpleName());
+
+    // A nested parent, joined with %1F, matches no schema either, so it is missing as well.
+    assertErrorType(
+        client.get(TEST_BASE_PREFIX + "/namespaces?parent=nested%1Fnamespace").aggregate().join(),
+        404,
+        NoSuchNamespaceException.class);
 
     // An empty parent is not a parent at all, so the listing is the whole one.
     resp = client.get(TEST_BASE_PREFIX + "/namespaces?parent=").aggregate().join();

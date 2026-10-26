@@ -57,7 +57,6 @@ import io.unitycatalog.server.utils.VersionUtils;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 import org.apache.logging.log4j.core.config.Configurator;
@@ -448,12 +447,13 @@ public class UnityCatalogServer implements AutoCloseable {
     }
     UnityCatalogServer unityCatalogServer = serverBuilder.build();
     unityCatalogServer.printArt();
-    // A port that cannot be bound must end the process rather than leave the pool and background
-    // threads holding it open with nothing listening.
+    // A failed start, such as a port that cannot be bound or a cleanup worker that cannot start
+    // after Armeria is listening, must end the process rather than leave the pool, background
+    // threads, or a bound port open.
     try {
       unityCatalogServer.start();
-    } catch (CompletionException e) {
-      LOGGER.error("Failed to start the Unity Catalog server", e.getCause());
+    } catch (RuntimeException e) {
+      LOGGER.error("Failed to start the Unity Catalog server", e);
       unityCatalogServer.close();
       throw e;
     }

@@ -141,7 +141,7 @@ Create the schema.json and replace `<host-name>` with your host ip address.
             "type": "deltalake", 
             "metastore": {
                 "type": "unity", 
-                "host": "http://<host-name>:8081", 
+                "host": "http://<host-name>:8080", 
                 "token": "no-use", 
                 "databricksCatalogName": "puppygraph"
             }
@@ -204,7 +204,7 @@ Create the schema.json and replace `<host-name>` with your host ip address.
 }
 ```
 
-Upload the schema to PuppyGraph. Note here port is 9081 as 8081 is used by Unity Catalog.
+Upload the schema to PuppyGraph. Note that the PuppyGraph port is mapped to 9081 on the host.
 
 ```sh
 curl -XPOST -H "content-type: application/json" --data-binary @./schema.json --user "puppygraph:puppygraph123" localhost:9081/schema

@@ -2,10 +2,13 @@ package io.unitycatalog.server;
 
 import static io.unitycatalog.server.utils.TestUtils.sendRawGet;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.util.BlockingTaskExecutor;
 import com.linecorp.armeria.server.Server;
+import com.linecorp.armeria.server.ServerPortBindException;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.prometheus.PrometheusExpositionService;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
@@ -23,9 +26,28 @@ import java.net.ServerSocket;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.Test;
 
 public class UnityCatalogServerTest extends BaseServerTest {
+
+  @Test
+  public void startFailsWhenThePortIsTaken() throws Exception {
+    try (ServerSocket occupied = new ServerSocket(0)) {
+      UnityCatalogServer server =
+          UnityCatalogServer.builder()
+              .port(occupied.getLocalPort())
+              .serverProperties(new ServerProperties(serverProperties))
+              .hibernateConfigurator(hibernateConfigurator)
+              .build();
+      // BaseServerTest retries only a ServerPortBindException, so the cause is part of the
+      // contract, as is a close() that releases what the failed start left behind.
+      assertThatThrownBy(server::start)
+          .isInstanceOf(CompletionException.class)
+          .hasCauseInstanceOf(ServerPortBindException.class);
+      assertThatCode(server::close).doesNotThrowAnyException();
+    }
+  }
 
   @Test
   public void leavesObservabilityPortUnboundWhenDisabled() throws Exception {

@@ -142,6 +142,8 @@ public abstract class BaseServerTest {
         unityCatalogServer.close();
         unityCatalogServer = null;
         if (!(e.getCause() instanceof ServerPortBindException) || attempt == MAX_START_ATTEMPTS) {
+          // tearDown skips a null server, so release the injected pool here.
+          hibernateConfigurator.close();
           throw e;
         }
         continue;
