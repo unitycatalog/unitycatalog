@@ -1104,9 +1104,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
 
     // -------- set-latest-backfilled-version alone on a table with prior commits --------
     // Exercises the standalone backfill-only branch that the combined add-commit + backfill test
-    // doesn't reach (that one goes through handleNormalCommit). The post-backfill commits list
-    // isn't asserted: markCommitAsLatestBackfilled issues a native SQL UPDATE that the session
-    // cache doesn't reflect in the same-transaction read used to build the response.
+    // doesn't reach (that one goes through handleNormalCommit).
     {
       Handle h = createDeltaManaged("tbl_backfill_only", Map.of());
       DeltaLoadTableResponse r1 =
@@ -1127,6 +1125,9 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               h.withEtag(r1.getMetadata().getEtag()),
               new DeltaSetLatestBackfilledVersionUpdate().latestPublishedVersion(1L));
       assertThat(r2.getLatestTableVersion()).isEqualTo(1L);
+      // The response is built in the same transaction as the backfill, so it must already see v1
+      // as backfilled.
+      assertThat(r2.getCommits()).isEmpty();
       // A backfill notification is not a metadata change, so it must not advance updated-time
       // (and hence must not roll the etag).
       assertThat(r2.getMetadata().getUpdatedTime()).isEqualTo(r1.getMetadata().getUpdatedTime());
