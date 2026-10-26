@@ -439,9 +439,9 @@ public class TransactionManagerTest {
   }
 
   /**
-   * Tests for the isolation level code path using a real H2 database. These verify that the
-   * rollback() call before setTransactionIsolation() correctly flushes stale implicit transactions
-   * from pooled connections, ensuring REPEATABLE_READ gets a fresh MVCC snapshot.
+   * Tests for the isolation level code path using a real database. These verify that the rollback()
+   * call before setTransactionIsolation() correctly flushes stale implicit transactions from pooled
+   * connections, ensuring REPEATABLE_READ gets a fresh MVCC snapshot.
    */
   @Nested
   public class IsolationLevelWithRealDatabaseTest {
@@ -495,7 +495,8 @@ public class TransactionManagerTest {
           "test",
           true);
 
-      // Original isolation level should have been restored (H2 default is READ_COMMITTED)
+      // Original isolation level should have been restored (H2 and PostgreSQL default to
+      // READ_COMMITTED)
       assertThat(isolationAfter[0]).isEqualTo(Connection.TRANSACTION_READ_COMMITTED);
     }
 
@@ -550,6 +551,40 @@ public class TransactionManagerTest {
       assertThat(maxVersion).isEqualTo(2L);
     }
 
+    private DeltaCommitDAO buildCommitDAO(UUID tableId, long version) {
+      return DeltaCommitDAO.builder()
+          .tableId(tableId)
+          .commitVersion(version)
+          .commitFilename(version + ".json")
+          .commitFilesize(100)
+          .commitFileModificationTimestamp(new Date())
+          .commitTimestamp(new Date())
+          .isBackfilledLatestCommit(false)
+          .build();
+    }
+  }
+
+  /** Tests that a database error is reported with the error code it maps to, on a real database. */
+  @Nested
+  public class DatabaseErrorWithRealDatabaseTest {
+
+    private static SessionFactory realSessionFactory;
+    private static TestDatabase testDatabase;
+
+    @BeforeAll
+    public static void setUp() {
+      testDatabase = TestDatabases.newDatabase();
+      realSessionFactory =
+          testDatabase
+              .openHibernateConfigurator(new ServerProperties(new Properties()))
+              .getSessionFactory();
+    }
+
+    @AfterAll
+    public static void tearDown() {
+      testDatabase.close();
+    }
+
     /**
      * PostgreSQL limits a btree index entry to 2,704 bytes. A longer staging location fails the
      * insert into idx_staging_location, which the request caused, so it is INVALID_ARGUMENT.
@@ -591,18 +626,6 @@ public class TransactionManagerTest {
         characters.append((char) (0x0100 + random.nextInt(0x02B0 - 0x0100)));
       }
       return characters.toString();
-    }
-
-    private DeltaCommitDAO buildCommitDAO(UUID tableId, long version) {
-      return DeltaCommitDAO.builder()
-          .tableId(tableId)
-          .commitVersion(version)
-          .commitFilename(version + ".json")
-          .commitFilesize(100)
-          .commitFileModificationTimestamp(new Date())
-          .commitTimestamp(new Date())
-          .isBackfilledLatestCommit(false)
-          .build();
     }
   }
 }
