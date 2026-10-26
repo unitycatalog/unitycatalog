@@ -458,7 +458,8 @@ public class TableRepository {
     // Commits (managed Delta tables only)
     if (TableType.MANAGED.toString().equals(dao.getType())
         && DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
-      populateCommitsForDelta(response, repositories.getDeltaCommitRepository(), session, dao);
+      populateCommitsForDelta(
+          response, repositories.getDeltaCommitRepository(), session, dao.getId());
     }
     response.setAllowedMaintenanceOperations(
         List.of(
@@ -570,10 +571,9 @@ public class TableRepository {
       DeltaLoadTableResponse response,
       DeltaCommitRepository commitRepo,
       Session session,
-      TableInfoDAO dao) {
+      UUID tableId) {
     DeltaCommitRepository.CommitQueryResult result =
-        commitRepo.getUnbackfilledCommits(
-            session, dao.getId(), Optional.ofNullable(dao.getDeltaLatestBackfilledVersion()));
+        commitRepo.getUnbackfilledCommits(session, tableId);
     response.setLatestTableVersion(result.latestTableVersion());
 
     List<DeltaCommit> commits =

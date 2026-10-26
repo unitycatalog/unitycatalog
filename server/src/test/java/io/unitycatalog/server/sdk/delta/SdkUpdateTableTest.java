@@ -1419,9 +1419,9 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           DeltaErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION,
           "already accepted");
 
-      // Drop v2's row to stand in for a version that has aged out of the retention window. From
-      // here the outcome comes from the files.
-      deleteCommitRow(h3.tableId(), 2L);
+      // Drop the rows through v2 to stand in for versions that have aged out of the retention
+      // window. From here the outcome comes from the files.
+      deleteCommitRowsThrough(h3.tableId(), 2L);
 
       // Stage a byte-identical file for v2: the replay is recognized by content and is an
       // idempotent no-op success (table still at v3).
@@ -1474,15 +1474,16 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
   }
 
   /**
-   * Drops the commit row for {@code version}, standing in for a version that has aged out of the
-   * retention window or was backfilled before rows were retained at all.
+   * Drops the commit rows at or below {@code version}, standing in for versions that have aged out
+   * of the retention window or were backfilled before rows were retained at all. Retention prunes
+   * from the bottom, so the flagged rows left behind stay contiguous.
    */
-  private void deleteCommitRow(UUID tableId, long version) {
+  private void deleteCommitRowsThrough(UUID tableId, long version) {
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
       session.beginTransaction();
       session
           .createMutationQuery(
-              "DELETE FROM DeltaCommitDAO WHERE tableId = :tableId AND commitVersion = :version")
+              "DELETE FROM DeltaCommitDAO WHERE tableId = :tableId AND commitVersion <= :version")
           .setParameter("tableId", tableId)
           .setParameter("version", version)
           .executeUpdate();
