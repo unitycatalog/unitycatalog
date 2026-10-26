@@ -1,5 +1,13 @@
 package io.unitycatalog.server.auth.decorator;
 
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+import static io.unitycatalog.server.model.SecurableType.TABLE;
+import static io.unitycatalog.server.persist.model.Privileges.MODIFY;
+import static io.unitycatalog.server.persist.model.Privileges.SELECT;
+import static io.unitycatalog.server.persist.model.Privileges.USE_CATALOG;
+import static io.unitycatalog.server.persist.model.Privileges.USE_SCHEMA;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -26,7 +34,6 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 
 class UnityAccessEvaluatorTest {
@@ -108,34 +115,32 @@ class UnityAccessEvaluatorTest {
     return combinations.stream();
   }
 
-  @ParameterizedTest
-  @CsvSource(
-      textBlock =
-          """
-          , false, false, false, false, false
-          , true,  true,  false, false, false
-          , true,  true,  false, true,  false
-          , true,  false, true,  true,  false
-          , false, true,  true,  true,  false
-          , false, false, true,  true,  false
-          , true,  true,  true,  false, true
-          , true,  true,  true,  true,  true
-          METASTORE, false, false, false, false, true
-          CATALOG,   false, false, false, false, true
-          SCHEMA,    false, true,  true,  true,  false
-          SCHEMA,    true,  false, false, false, true
-          TABLE,     false, false, false, false, false
-          TABLE,     false, true,  false, false, false
-          TABLE,     true,  false, false, false, false
-          TABLE,     true,  true,  false, false, true
-          """)
-  void getTableRequiresSelectOrAnOwnerRule(
+  @Test
+  void getTableRequiresSelectOrAnOwnerRule() throws Exception {
+    assertGetTable(null, Set.of(), false, false);
+    assertGetTable(null, Set.of(USE_CATALOG, USE_SCHEMA), false, false);
+    // MODIFY without SELECT passes only with strict checks off.
+    assertGetTable(null, Set.of(USE_CATALOG, USE_SCHEMA, MODIFY), false, true);
+    assertGetTable(null, Set.of(USE_CATALOG, SELECT, MODIFY), false, false);
+    assertGetTable(null, Set.of(USE_SCHEMA, SELECT, MODIFY), false, false);
+    assertGetTable(null, Set.of(SELECT, MODIFY), false, false);
+    assertGetTable(null, Set.of(USE_CATALOG, USE_SCHEMA, SELECT), true, true);
+    assertGetTable(null, Set.of(USE_CATALOG, USE_SCHEMA, SELECT, MODIFY), true, true);
+    assertGetTable(METASTORE, Set.of(), true, true);
+    assertGetTable(CATALOG, Set.of(), true, true);
+    assertGetTable(SCHEMA, Set.of(USE_SCHEMA, SELECT, MODIFY), false, false);
+    assertGetTable(SCHEMA, Set.of(USE_CATALOG), true, true);
+    assertGetTable(TABLE, Set.of(), false, false);
+    assertGetTable(TABLE, Set.of(USE_SCHEMA), false, false);
+    assertGetTable(TABLE, Set.of(USE_CATALOG), false, false);
+    assertGetTable(TABLE, Set.of(USE_CATALOG, USE_SCHEMA), true, true);
+  }
+
+  private void assertGetTable(
       SecurableType ownedResource,
-      boolean useCatalog,
-      boolean useSchema,
-      boolean select,
-      boolean modify,
-      boolean expected)
+      Set<Privileges> grants,
+      boolean expectedStrict,
+      boolean expectedLegacy)
       throws Exception {
     UUID principal = UUID.randomUUID();
     Map<SecurableType, UUID> resources =
@@ -152,21 +157,21 @@ class UnityAccessEvaluatorTest {
                     && invocation.getArgument(1).equals(resources.get(ownedResource)));
     when(authorizer.authorize(
             principal, resources.get(SecurableType.CATALOG), Privileges.USE_CATALOG))
-        .thenReturn(useCatalog);
+        .thenReturn(grants.contains(USE_CATALOG));
     when(authorizer.authorize(
             principal, resources.get(SecurableType.SCHEMA), Privileges.USE_SCHEMA))
-        .thenReturn(useSchema);
+        .thenReturn(grants.contains(USE_SCHEMA));
     when(authorizer.authorize(principal, resources.get(SecurableType.TABLE), Privileges.MODIFY))
-        .thenReturn(modify);
+        .thenReturn(grants.contains(MODIFY));
 
     Set<Privileges> tableGrants = EnumSet.noneOf(Privileges.class);
     if (ownedResource == SecurableType.TABLE) {
       tableGrants.add(Privileges.OWNER);
     }
-    if (select) {
+    if (grants.contains(SELECT)) {
       tableGrants.add(Privileges.SELECT);
     }
-    if (modify) {
+    if (grants.contains(MODIFY)) {
       tableGrants.add(Privileges.MODIFY);
     }
     when(authorizer.authorizeAny(
@@ -180,8 +185,8 @@ class UnityAccessEvaluatorTest {
       assertThat(
               new UnityAccessEvaluator(authorizer, strictPrivilegeChecks)
                   .evaluate(principal, AuthorizeExpressions.GET_TABLE, resources, Map.of()))
-          .as("strict=%s", strictPrivilegeChecks)
-          .isEqualTo(expected || (!strictPrivilegeChecks && useCatalog && useSchema && modify));
+          .as("owner=%s, grants=%s, strict=%s", ownedResource, grants, strictPrivilegeChecks)
+          .isEqualTo(strictPrivilegeChecks ? expectedStrict : expectedLegacy);
     }
   }
 
