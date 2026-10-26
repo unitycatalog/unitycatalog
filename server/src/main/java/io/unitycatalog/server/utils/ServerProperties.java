@@ -269,6 +269,7 @@ public class ServerProperties {
     CLIENT_SECRET("server.client-secret"),
     REDIRECT_PORT("server.redirect-port", POSITIVE_INTEGER_VALIDATOR),
     ALLOWED_ISSUERS("server.allowed-issuers"),
+    ALLOWED_JWKS_URIS("server.allowed-jwks-uris"),
     AUDIENCES("server.audiences"),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
     ACCESS_TOKEN_TIMEOUT("server.access-token-timeout", "PT24H", DURATION_VALIDATOR),
@@ -772,6 +773,11 @@ public class ServerProperties {
    */
   public List<String> getAllowedIssuers() {
     return getCommaSeparatedList(Property.ALLOWED_ISSUERS.key);
+  }
+
+  /** Returns exact JWKS URLs allowed in addition to each issuer's own origin. */
+  public List<String> getAllowedJwksUris() {
+    return getCommaSeparatedList(Property.ALLOWED_JWKS_URIS.key);
   }
 
   /**

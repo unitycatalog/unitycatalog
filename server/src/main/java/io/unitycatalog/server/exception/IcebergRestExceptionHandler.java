@@ -1,8 +1,10 @@
 package io.unitycatalog.server.exception;
 
+import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.server.ServiceRequestContext;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import lombok.SneakyThrows;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
@@ -17,6 +19,7 @@ import org.apache.iceberg.exceptions.NotAuthorizedException;
 import org.apache.iceberg.exceptions.NotFoundException;
 import org.apache.iceberg.exceptions.RESTException;
 import org.apache.iceberg.exceptions.ServiceFailureException;
+import org.apache.iceberg.exceptions.ServiceUnavailableException;
 import org.apache.iceberg.exceptions.UnprocessableEntityException;
 import org.apache.iceberg.rest.responses.ErrorResponse;
 
@@ -31,6 +34,34 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
   public static final IcebergRestExceptionHandler INSTANCE = new IcebergRestExceptionHandler();
 
   private IcebergRestExceptionHandler() {}
+
+  /**
+   * Reports a missing namespace as a missing table on the routes addressed to one table, which is
+   * what the REST spec answers there. Those are the routes that bind a {@code table} path
+   * parameter: load, exists, drop, commit, credentials and metrics.
+   *
+   * <p>Iceberg's client retries an identifier as a metadata table ({@code db.orders.snapshots} as
+   * the {@code snapshots} table of {@code db.orders}) only when {@code loadTable} raises {@code
+   * NoSuchTableException}. It is decided here rather than in each handler because, with
+   * authorization on, resolving the request's securables looks the schema up before the handler
+   * runs.
+   */
+  @Override
+  public HttpResponse handleException(ServiceRequestContext ctx, HttpRequest req, Throwable cause) {
+    BaseException exception = toBaseException(cause);
+    if (exception.getErrorCode() == ErrorCode.SCHEMA_NOT_FOUND && ctx.pathParam("table") != null) {
+      String table =
+          ctx.pathParam("namespace").replace('\u001f', '.') + "." + ctx.pathParam("table");
+      String message = "Table does not exist: " + table;
+      exception =
+          wrapException(
+              ErrorCode.TABLE_NOT_FOUND,
+              message,
+              new NoSuchTableException(exception, "%s", message));
+    }
+    logIfServerError(ctx, httpStatus(exception), cause);
+    return createErrorResponse(exception);
+  }
 
   /**
    * Walks the cause chain past BaseException wrappers to find the original exception, so the
@@ -103,6 +134,7 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
       // COMMIT_STATE_UNKNOWN is intentionally mapped to ServiceFailureException as it's the Delta's
       // semantic, not the Iceberg CommitStateUnknownException.
       case INTERNAL, DATA_LOSS, COMMIT_STATE_UNKNOWN -> ServiceFailureException.class;
+      case UNAVAILABLE -> ServiceUnavailableException.class;
       case RESOURCE_EXHAUSTED -> RESTException.class;
     };
   }
@@ -155,7 +187,7 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
   @SneakyThrows
   @Override
   protected HttpResponse createErrorResponse(BaseException exception) {
-    HttpStatus status = exception.getErrorCode().getHttpStatus();
+    HttpStatus status = httpStatus(exception);
     return HttpResponse.of(
         status,
         MediaType.JSON,

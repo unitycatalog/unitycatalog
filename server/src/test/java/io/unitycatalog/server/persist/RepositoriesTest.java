@@ -7,22 +7,27 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.observability.UcMetric;
+import io.unitycatalog.server.observability.UcMetricConstants;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.FileOperationsImpl;
-import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TestUtils;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.UnaryOperator;
 import org.apache.iceberg.io.FileIO;
@@ -37,6 +42,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class RepositoriesTest {
 
   private SessionFactory sessionFactory;
+  private TestDatabase testDatabase;
   private ServerProperties serverProperties;
 
   @BeforeEach
@@ -44,16 +50,13 @@ class RepositoriesTest {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
     serverProperties = new ServerProperties(properties);
-    Properties hibernateProperties =
-        HibernateConfigurator.setupHibernateProperties(serverProperties);
-    hibernateProperties.setProperty(
-        "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
-    sessionFactory = new HibernateConfigurator(hibernateProperties).getSessionFactory();
+    testDatabase = TestDatabases.newDatabase();
+    sessionFactory = testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
   }
 
   @AfterEach
   void tearDown() {
-    sessionFactory.close();
+    testDatabase.close();
   }
 
   @Test
@@ -96,12 +99,31 @@ class RepositoriesTest {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
     properties.setProperty("server.storage-credential-cache.enabled", String.valueOf(cacheEnabled));
+    // A static per-bucket credential, so the vend needs no cloud call.
+    properties.setProperty("s3.bucketPath.0", "s3://bucket");
+    properties.setProperty("s3.accessKey.0", "AK");
+    properties.setProperty("s3.secretKey.0", "SK");
+    properties.setProperty("s3.sessionToken.0", "TK");
+    SimpleMeterRegistry registry = new SimpleMeterRegistry();
 
     CloudCredentialVendor vendor =
-        Repositories.defaultCloudCredentialVendor(new ServerProperties(properties));
+        Repositories.defaultCloudCredentialVendor(
+            new ServerProperties(properties), new UnityCatalogMetrics(registry));
+    vendor.vendCredential(
+        CredentialContext.create(
+            NormalizedURL.from("s3://bucket/table"),
+            Set.of(CredentialContext.Privilege.SELECT),
+            Optional.empty()));
 
     assertThat(vendor.getClass())
         .isEqualTo(cacheEnabled ? CachingCloudCredentialVendor.class : CloudCredentialVendor.class);
+    // The cache records into the metrics it was given.
+    assertThat(cacheRequests(registry, UcMetricConstants.MISS)).isEqualTo(cacheEnabled ? 1.0 : 0.0);
+  }
+
+  private static double cacheRequests(SimpleMeterRegistry registry, String result) {
+    return TestUtils.counterCount(
+        registry, UcMetric.STORAGE_CREDENTIAL_CACHE_REQUESTS, UcMetricConstants.RESULT, result);
   }
 
   @Test

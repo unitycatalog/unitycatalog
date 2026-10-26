@@ -21,6 +21,7 @@ import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.observability.TableMetrics;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
@@ -71,11 +72,11 @@ public class TableRepository {
       Repositories repositories,
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
-      TableMetrics tableMetrics) {
+      UnityCatalogMetrics metrics) {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
     this.serverProperties = serverProperties;
-    this.tableMetrics = Objects.requireNonNull(tableMetrics, "tableMetrics");
+    this.tableMetrics = Objects.requireNonNull(metrics, "metrics").getTables();
   }
 
   /**
@@ -317,7 +318,13 @@ public class TableRepository {
   public DeltaLoadTableResponse updateTableForDelta(
       String catalog, String schema, String table, DeltaUpdateTableRequest request) {
     try {
-      return updateTableForDeltaInTransaction(catalog, schema, table, request);
+      // The backfill HEAD runs between transactions: the first attempt rolls back once it knows
+      // the version range, and the retry purges after the files have been checked.
+      return repositories
+          .getDeltaCommitRepository()
+          .withPublishedCommitVerification(
+              filesChecked ->
+                  updateTableForDeltaInTransaction(catalog, schema, table, request, filesChecked));
     } catch (DeltaCommitRepository.CommitAlreadyAcceptedException e) {
       // Idempotent replay: the transaction rolled back to a no-op. Return the current table state
       // (a fresh read, since the rolled-back transaction produced no response).
@@ -332,7 +339,11 @@ public class TableRepository {
   }
 
   private DeltaLoadTableResponse updateTableForDeltaInTransaction(
-      String catalog, String schema, String table, DeltaUpdateTableRequest request) {
+      String catalog,
+      String schema,
+      String table,
+      DeltaUpdateTableRequest request,
+      boolean filesChecked) {
     DeltaUpdateTableMapper.CollectedRequest collected =
         DeltaUpdateTableMapper.collectRequest(request);
     String callerId = IdentityUtils.findPrincipalEmailAddress();
@@ -367,7 +378,8 @@ public class TableRepository {
                               dao,
                               d.commit(),
                               d.uniformFields(),
-                              d.latestBackfilledVersion()));
+                              d.latestBackfilledVersion(),
+                              filesChecked));
           // Non-replay only (a replay already threw out): enforce assert-etag against pre-apply
           // state, rolling back the applied changes on mismatch.
           DeltaUpdateTableMapper.checkEtagRequirement(preApplyEtag, collected);
@@ -1223,6 +1235,10 @@ public class TableRepository {
     if (tableInfoDAO == null) {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
     }
+    // A commit rewrites the table's columns under this lock; waiting for it keeps the cascade below
+    // from deleting column rows the commit is replacing.
+    RepositoryUtils.lockTableForCommit(
+        session, tableInfoDAO, tableInfoDAO.getId(), Optional.of(tableName), ErrorCode.UNAVAILABLE);
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       repositories
           .getStorageCleanupTaskRepository()

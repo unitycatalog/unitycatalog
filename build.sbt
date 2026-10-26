@@ -43,6 +43,7 @@ lazy val armeriaVersion = "1.41.1"
 lazy val micrometerVersion = "1.17.0"
 lazy val nettyVersion = "4.2.18.Final"
 lazy val nettyTcnativeVersion = "2.0.84.Final"
+lazy val postgresqlVersion = "42.7.14"
 // Keep in step with the Caffeine version iceberg-core depends on (2.9.3 in Iceberg 1.11.0).
 lazy val caffeineVersion = "2.9.3"
 lazy val junitJupiterVersion = "5.13.4"
@@ -93,10 +94,12 @@ lazy val commonSettings = Seq(
   excludeDependencies ++= Seq(
     ExclusionRule("org.slf4j", "slf4j-reload4j")
   ),
-  resolvers += Resolver.mavenLocal,
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
+    // Keep the Log4j provider registration that adds request_id to log lines.
+    case PathList("META-INF", "services", "org.apache.logging.log4j.core.util.ContextDataProvider") =>
+      MergeStrategy.concat
     case PathList("META-INF", xs @ _*) => MergeStrategy.discard
     case _ => MergeStrategy.first
   },
@@ -320,7 +323,10 @@ lazy val pythonClient = (project in file("clients/python"))
             OpenApiSpec(
               inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "all.yaml").getAbsolutePath,
               packageName = s"$artifactNamePrefix.client",
-              additionalProperties = commonProps
+              additionalProperties = commonProps,
+              // Overrides python/asyncio/rest.mustache with the v7.11.0 version. See the header of
+              // build/templates/asyncio/rest.mustache for when to remove it.
+              templateDir = (baseDirectory.value / "build" / "templates").getAbsolutePath
             ),
             OpenApiSpec(
               inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "delta.yaml").getAbsolutePath,
@@ -461,6 +467,7 @@ lazy val server = (project in file("server"))
       "org.casbin" % "jdbc-adapter" % "2.13.0"
         exclude("com.microsoft.sqlserver", "mssql-jdbc")
         exclude("com.oracle.database.jdbc", "ojdbc6"),
+      "org.postgresql" % "postgresql" % postgresqlVersion,
       "org.springframework" % "spring-expression" % "6.2.19",
       "com.auth0" % "java-jwt" % "4.6.1",
       "com.auth0" % "jwks-rsa" % "0.24.1",
@@ -478,19 +485,19 @@ lazy val server = (project in file("server"))
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
 
       // Integration testing
-      "org.testcontainers" % "testcontainers" % testcontainersVersion % Test,
-      "org.testcontainers" % "postgresql" % testcontainersVersion % Test,
       "org.testcontainers" % "mysql" % testcontainersVersion % Test,
       "org.testcontainers" % "junit-jupiter" % testcontainersVersion % Test,
-      "org.postgresql" % "postgresql" % "42.7.13" % Test,
       "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
 
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
     ),
+    libraryDependencies ++= testDatabaseDependencies,
     // Iceberg 1.11.0 brings its own Jackson version that conflicts with the project's pinned jackson version.
     // Force AWS SDK v2 onto a single release as well (Iceberg and Hadoop otherwise mix 2.24 / 2.27).
     dependencyOverrides ++= Seq(
+      // One PostgreSQL driver: jdbc-adapter brings 42.7.2. Keep in step with the direct dependency.
+      "org.postgresql" % "postgresql" % postgresqlVersion,
       "software.amazon.awssdk" % "sso" % awsSdkV2Version,
       "software.amazon.awssdk" % "ssooidc" % awsSdkV2Version,
       "software.amazon.awssdk" % "s3" % awsSdkV2Version,
@@ -653,6 +660,14 @@ lazy val cli = (project in file("examples") / "cli")
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
   )
 
+// What the test-database harness needs to run on PostgreSQL: server, and spark and hadoop, which take
+// the harness from server-shaded.
+lazy val testDatabaseDependencies = Seq(
+  "org.testcontainers" % "testcontainers" % testcontainersVersion % Test,
+  "org.testcontainers" % "postgresql" % testcontainersVersion % Test,
+  "org.postgresql" % "postgresql" % postgresqlVersion % Test,
+)
+
 /*
   * This project is a combination of the server and client projects, shaded into a single JAR.
   * It also includes the test classes from the server project.
@@ -763,6 +778,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.antlr" % "antlr4" % "4.13.1",
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
+    libraryDependencies ++= testDatabaseDependencies,
     // netty-codec-native-quic uses ${packaging.type} in its POM which Ivy (used by sbt-license-report) cannot resolve.
     // Exclude it so Ivy never attempts to fetch it; Coursier (used for normal builds) handles it fine.
     excludeDependencies += ExclusionRule("io.netty", "netty-codec-native-quic"),
@@ -819,6 +835,7 @@ lazy val hadoop = (project in file("connectors/hadoop"))
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
+    libraryDependencies ++= testDatabaseDependencies,
   )
 
 lazy val integrationTests = (project in file("integration-tests"))
@@ -876,3 +893,9 @@ def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
 }
 
 val generate = taskKey[Unit]("generate code from APIs")
+
+// Runs every project's tests on one test database. One alias per SupportedDatabase constant except
+// H2 (the default).
+def testOnDatabase(database: String): String =
+  s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database") ; test"""
+addCommandAlias("testPostgres18", testOnDatabase("POSTGRES_18"))

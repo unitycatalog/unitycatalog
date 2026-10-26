@@ -1,5 +1,6 @@
 package io.unitycatalog.server.sdk.access;
 
+import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -16,6 +17,7 @@ import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.UpdateModelVersion;
 import io.unitycatalog.client.model.UpdateRegisteredModel;
 import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
@@ -181,13 +183,17 @@ public class SdkModelAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
             principal2VersionsApi.updateModelVersion(
                 "cat_pr1.sch_pr1.mod_pr1", 1L, updateVersion2));
 
-    // Models are authorized like functions (owner-governed): neither the USE chain nor MODIFY on
-    // the model grants mutation -- only OWNER (on the model, or an ancestor via the cascade). This
-    // matches DB UC, where a registered model is a function and has no MODIFY privilege. So even
-    // with USE_CATALOG + USE_SCHEMA + MODIFY, principal-2 is still denied.
+    // MODIFY applies to tables, not models. Reject the grant and keep model updates denied.
     grantPermissions(PRINCIPAL_2, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
-    grantPermissions(
-        PRINCIPAL_2, SecurableType.REGISTERED_MODEL, "cat_pr1.sch_pr1.mod_pr1", Privileges.MODIFY);
+    assertApiException(
+        () ->
+            grantPermissions(
+                PRINCIPAL_2,
+                SecurableType.REGISTERED_MODEL,
+                "cat_pr1.sch_pr1.mod_pr1",
+                Privileges.MODIFY),
+        ErrorCode.INVALID_ARGUMENT,
+        "Privilege MODIFY cannot be granted on registered_model");
     assertPermissionDenied(
         () ->
             principal2VersionsApi.updateModelVersion(

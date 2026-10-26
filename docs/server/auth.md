@@ -48,6 +48,7 @@ server.token-url=https://oauth2.googleapis.com/token
 server.client-id=<Client ID provided earlier>
 server.client-secret=<Client secret provided earlier>
 server.allowed-issuers=https://accounts.google.com
+server.allowed-jwks-uris=https://www.googleapis.com/oauth2/v3/certs
 server.audiences=<Client ID provided earlier>
 ```
 
@@ -56,6 +57,9 @@ server.audiences=<Client ID provided earlier>
 When authorization is enabled, the server validates incoming identity tokens against configured issuers and audiences:
 
 - **server.allowed-issuers**: Comma-separated list of allowed token issuers (exact match or wildcard with `*`). Tokens from issuers not in this list will be rejected. This prevents attackers from using their own identity provider to forge tokens.
+- **server.allowed-jwks-uris**: Comma-separated list of exact JWKS URLs on other origins. By default, the discovery document's `jwks_uri` must use the issuer's scheme, host, and port. Set this property when the provider publishes keys on another origin. For example, Google requires `https://www.googleapis.com/oauth2/v3/certs`. Match the URL from discovery, including any explicit port; `https://host:443/certs` differs from `https://host/certs`. Wildcards are not supported. HTTPS issuers require HTTPS key URLs, even for configured URLs. HTTP issuers can use HTTP key URLs for local or private providers. Restart the server after changing this property.
+  Each entry must be an absolute HTTP or HTTPS URL without credentials or a fragment.
+  An invalid entry prevents server startup, even when authorization is disabled.
 - **server.audiences**: Comma-separated list of expected JWT audience values. Tokens must contain an `aud` value matching one of these entries (exact match or wildcard with `*`). A single value of `*` disables audience validation (issuer and user checks still apply); that sentinel cannot be combined with other values.
 
 #### Programmatic exchange (service principals)
@@ -73,6 +77,7 @@ You can configure multiple issuers and audiences by separating them with commas:
 
 ```properties
 server.allowed-issuers=https://accounts.google.com,https://login.microsoftonline.com/{tenant-id}/v2.0
+server.allowed-jwks-uris=https://www.googleapis.com/oauth2/v3/certs
 server.audiences=your-google-client-id,your-azure-client-id
 ```
 
@@ -110,13 +115,43 @@ values under that pattern can steer JWKS fetches (an SSRF-style surface).
 Use wildcard issuers only where necessary, only for domains you control, and avoid patterns that
 cover internal or sensitive hosts. Prefer exact issuer URLs and `https://` issuers when possible.
 
+#### Signing-key requests
+
+The server rejects discovery and JWKS redirects and limits response size and wait time. Issuer URLs
+cannot contain credentials, a query, or a fragment. JWKS URLs cannot contain credentials or a fragment.
+
+The server caches external providers and signing keys with size and lifetime limits. Concurrent
+requests for one issuer share discovery. Failed discovery requests have a retry delay. Each provider
+caches the full signing-key set and limits HTTP refreshes, including failed requests. Unknown key IDs
+do not block keys already in that set. A newly published key can require a wait until the next allowed
+refresh. Provider expiry removes the cached keys.
+
+Each distinct wildcard issuer can trigger discovery. The provider cache does not limit discovery
+requests across different issuers, and cache eviction can cause an earlier reload.
+
+The issuer allowlist and extra JWKS URLs define trusted destinations, including their DNS records.
+These settings do not replace network egress rules.
+
+#### Upgrading
+
+When upgrading, set `server.allowed-jwks-uris` for each provider whose keys use another origin.
+For Google deployments that do not use Helm, set
+`server.allowed-jwks-uris=https://www.googleapis.com/oauth2/v3/certs` in `server.properties`
+before starting the new server. Helm includes this URL by default.
+
 ### Permission-check migration
 
 `server.authorization.strict-privilege-checks` is a temporary migration setting. It defaults to
 `true` and will be removed in a future release. Permission fixes that use this setting apply the
 corrected rules by default.
 
+The setting covers:
+
+- [Grant validation](#valid-privilege-grants): Reject new grants on the wrong object type.
+  Existing invalid grants can still be removed.
+
 The access checks apply only when `server.authorization=enable`.
+Grant validation also applies when authorization is disabled.
 
 To keep the previous rules during a migration, set:
 
@@ -153,6 +188,34 @@ Optional tuning:
 Revocations propagate on the poll interval. A stale deny can trigger one `max(id)` probe
 before returning 403. Concurrent denials and list-filter items share a probe that started after the
 request.
+
+### Valid privilege grants
+
+Each privilege can be granted only on the object types below. Catalog and schema grants still
+apply to their matching child objects. For example, catalog `SELECT` applies to the tables in
+that catalog.
+
+Grant validation also runs when `server.authorization=disable`.
+
+| Privilege | Object types |
+| --- | --- |
+| `CREATE CATALOG`, `CREATE STORAGE CREDENTIAL` | Metastore |
+| `USE CATALOG`, `CREATE SCHEMA` | Catalog |
+| `USE SCHEMA`, `CREATE TABLE`, `CREATE FUNCTION`, `CREATE VOLUME`, `CREATE MODEL` | Catalog, schema |
+| `SELECT`, `MODIFY` | Catalog, schema, table |
+| `EXECUTE` | Catalog, schema, function, registered model |
+| `READ VOLUME` | Catalog, schema, volume |
+| `CREATE EXTERNAL LOCATION` | Metastore, storage credential |
+| `READ FILES`, `WRITE FILES`, `CREATE EXTERNAL TABLE` | External location, storage credential |
+| `CREATE EXTERNAL VOLUME`, `CREATE MANAGED STORAGE` | External location |
+
+For example, `USE CATALOG` on a schema is invalid. Grant it on the containing catalog instead.
+If any addition is invalid, the server rejects the full request with `INVALID_ARGUMENT` before
+saving its grants or revokes.
+
+After an upgrade, existing grants stay in place. The server does not remove invalid grants
+automatically. You can still remove them through the permissions API. Update grant scripts
+to use the correct object types before adding or reapplying grants.
 
 ### Restart the UC Server
 

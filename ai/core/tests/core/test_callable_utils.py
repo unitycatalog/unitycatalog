@@ -1851,6 +1851,7 @@ class FakeParam:
         ("ARRAY<INT>", "list[int]"),
         ("MAP<STRING, ARRAY<STRING>>", "dict[str, list[str]]"),
         ("MAP<STRING, MAP<STRING, DOUBLE>>", "dict[str, dict[str, float]]"),
+        ("MAP<STRING, DECIMAL(38, 18)>", "dict[str, decimal(38, 18)]"),
         ("STRUCT<field1:INT, field2:STRING>", "dict"),
     ],
 )

@@ -66,6 +66,18 @@ Example for Microsoft Entra ID: `https://login.microsoftonline.com/{tenant-id}/v
 </td>
 		</tr>
 		<tr>
+			<td>auth.allowedJwksUris</td>
+			<td>string</td>
+			<td><pre lang="">
+https://www.googleapis.com/oauth2/v3/certs
+</pre>
+</td>
+			<td>Comma-separated list of exact JWKS URLs allowed on other origins
+
+Match each provider's discovery URL, including any explicit port. Wildcards are not supported.
+</td>
+		</tr>
+		<tr>
 			<td>auth.audiences</td>
 			<td>string</td>
 			<td><pre lang="">

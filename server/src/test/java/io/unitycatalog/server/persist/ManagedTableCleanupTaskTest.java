@@ -5,24 +5,32 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
+import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
-import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.testdatabase.SupportedDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.function.Function;
+import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.Transaction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,19 +43,18 @@ class ManagedTableCleanupTaskTest {
   @TempDir Path tempDir;
 
   private SessionFactory sessionFactory;
+  private TestDatabase testDatabase;
   private Repositories repositories;
+  private ServerProperties serverProperties;
   private UUID schemaId;
 
   @BeforeEach
   void setUp() {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
-    ServerProperties serverProperties = new ServerProperties(properties);
-    Properties hibernateProperties =
-        HibernateConfigurator.setupHibernateProperties(serverProperties);
-    hibernateProperties.setProperty(
-        "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
-    sessionFactory = new HibernateConfigurator(hibernateProperties).getSessionFactory();
+    serverProperties = new ServerProperties(properties);
+    testDatabase = TestDatabases.newDatabase();
+    sessionFactory = testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
     repositories = new Repositories(sessionFactory, serverProperties);
 
     UUID catalogId = UUID.randomUUID();
@@ -72,7 +79,7 @@ class ManagedTableCleanupTaskTest {
 
   @AfterEach
   void tearDown() {
-    sessionFactory.close();
+    testDatabase.close();
   }
 
   @Test
@@ -189,6 +196,131 @@ class ManagedTableCleanupTaskTest {
     // present, and the pre-existing task keeps its original location.
     assertThat(findTable(table.getId())).isNotNull();
     assertThat(findTask(table.getId()).getStorageLocation()).isEqualTo(existingTaskLocation);
+  }
+
+  @Test
+  void dropBlockedByCommitLockIsUnavailable() {
+    TableInfoDAO table = createTableWithColumn("locked_table");
+    TableRepository impatientTables = impatientRepositories().getTableRepository();
+
+    try (Session commit = sessionFactory.openSession()) {
+      Transaction tx = commit.beginTransaction();
+      lockAndReplaceColumns(commit, table);
+      // The drop stops at the table lock and fails as UNAVAILABLE, which every API reports as a
+      // retriable 503 (see ErrorCodeTest). A drop that deleted the columns before taking the lock
+      // would block on the column rows this commit replaced and fail as INTERNAL instead.
+      assertThatThrownBy(() -> impatientTables.deleteTable(CATALOG, SCHEMA, table.getName()))
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE));
+      tx.rollback();
+    }
+    assertThat(findTable(table.getId())).isNotNull();
+  }
+
+  @Test
+  void forceSchemaDeleteBlockedByCommitLockDeletesNothing() {
+    TableInfoDAO table = createTableWithColumn("locked_table");
+    SchemaRepository impatientSchemas = impatientRepositories().getSchemaRepository();
+
+    try (Session commit = sessionFactory.openSession()) {
+      Transaction tx = commit.beginTransaction();
+      lockAndReplaceColumns(commit, table);
+      // One locked table fails the whole force delete, which runs in a single transaction.
+      assertThatThrownBy(() -> impatientSchemas.deleteSchema(CATALOG + "." + SCHEMA, true))
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE));
+      tx.rollback();
+    }
+    assertThat(findTable(table.getId())).isNotNull();
+    try (Session session = sessionFactory.openSession()) {
+      assertThat(session.get(SchemaInfoDAO.class, schemaId)).isNotNull();
+    }
+  }
+
+  @Test
+  void commitOnATableDroppedAfterItWasReadIsNotFound() {
+    TableInfoDAO table = createTableWithColumn("dropped_table");
+    String fullName = CATALOG + "." + SCHEMA + "." + table.getName();
+
+    try (Session commit = sessionFactory.openSession()) {
+      Transaction tx = commit.beginTransaction();
+      TableInfoDAO read = commit.get(TableInfoDAO.class, table.getId());
+      // The drop commits before this commit takes the lock; reading takes no lock, so it does not
+      // wait.
+      repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, table.getName());
+      assertThatThrownBy(
+              () ->
+                  RepositoryUtils.lockTableForCommit(
+                      commit,
+                      read,
+                      read.getId(),
+                      Optional.of(fullName),
+                      ErrorCode.UPDATE_REQUIREMENT_CONFLICT))
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.TABLE_NOT_FOUND))
+          .hasMessage("Table not found: " + fullName);
+      tx.rollback();
+    }
+  }
+
+  /** Repositories on this database whose connections give up waiting for a lock after 50 ms. */
+  private Repositories impatientRepositories() {
+    Properties impatient = testDatabase.hibernateProperties(serverProperties);
+    impatient.setProperty("hibernate.hbm2ddl.auto", "none");
+    // Set on the URL, not with SET: a PostgreSQL SET is undone when its transaction rolls back.
+    impatient.setProperty(
+        "hibernate.connection.url",
+        testDatabase.jdbcUrl()
+            + switch (SupportedDatabase.selected()) {
+              case H2 -> ";LOCK_TIMEOUT=50";
+              case POSTGRES_18 -> "?options=-c%20lock_timeout%3D50";
+            });
+    return new Repositories(
+        testDatabase.openHibernateConfigurator(impatient).getSessionFactory(), serverProperties);
+  }
+
+  /** Takes the table lock in {@code commit} and, like a commit, replaces the table's columns. */
+  private static void lockAndReplaceColumns(Session commit, TableInfoDAO table) {
+    TableInfoDAO locked = commit.get(TableInfoDAO.class, table.getId());
+    RepositoryUtils.lockTableForCommit(
+        commit, locked, locked.getId(), Optional.empty(), ErrorCode.UPDATE_REQUIREMENT_CONFLICT);
+    locked.getColumns().clear();
+    commit.flush();
+    locked.getColumns().add(column(locked, "replacement"));
+    commit.flush();
+  }
+
+  private TableInfoDAO createTableWithColumn(String name) {
+    TableInfoDAO table =
+        createTable(
+            name,
+            TableType.EXTERNAL,
+            id -> tempDir.resolve("external").resolve(id.toString()).toString());
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          session.persist(column(session.get(TableInfoDAO.class, table.getId()), "original"));
+          return null;
+        },
+        "Failed to add test column",
+        /* readOnly= */ false);
+    return table;
+  }
+
+  private static ColumnInfoDAO column(TableInfoDAO table, String name) {
+    return ColumnInfoDAO.builder()
+        .id(UUID.randomUUID())
+        .name(name)
+        .table(table)
+        .ordinalPosition((short) 0)
+        .typeText("int")
+        .typeJson("{\"name\":\"" + name + "\",\"type\":\"integer\",\"nullable\":true}")
+        .typeName("INT")
+        .nullable(true)
+        .build();
   }
 
   private TableInfoDAO createTable(

@@ -101,6 +101,7 @@ Collector, etc.).
 | `armeria_server_*`, `armeria_executor_*` | Armeria server and executor internals |
 | `http_server_requests_total` | Completed HTTP requests on the API listener, tagged by `hostname_pattern`, `service`, `method`, and `http_status`; includes authentication and authorization rejections |
 | `uc_securable_table_creations_total` | Table securables created after their database transactions commit through UC, Delta, or Iceberg REST, including tables, views, and metric views |
+| `uc_storage_credential_cache_requests_total` | Credential requests to the [storage credential cache](configuration.md#storage-credential-cache), tagged by `result`: `hit` for a credential served from the cache, `miss` for a request the cache could not serve, which vends a new credential; a vend that fails also counts as a miss. Both series are exposed from startup and stay at zero while the cache is disabled |
 
 Within the `http_server_*` family, only `http_server_requests_total` is exposed, without a `result`
 tag. HTTP latency, request/response size, timeout, and in-flight metrics are not exposed. JVM,
@@ -140,6 +141,9 @@ of one committed table-securable creation is exposed as:
 ```text
 uc_securable_table_creations_total 1.0
 ```
+
+The storage credential cache hit ratio over five minutes is
+`sum(rate(uc_storage_credential_cache_requests_total{result="hit"}[5m])) / sum(rate(uc_storage_credential_cache_requests_total[5m]))`.
 
 !!! note "Per-route metrics are lazily populated"
     HTTP request metrics for a given route (`service`/`method` combination) appear in the

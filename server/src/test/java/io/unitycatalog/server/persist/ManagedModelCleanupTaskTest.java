@@ -19,8 +19,9 @@ import io.unitycatalog.server.model.RegisteredModelInfo;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
-import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.net.URI;
 import java.nio.file.Files;
@@ -40,6 +41,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class ManagedModelCleanupTaskTest {
   @TempDir Path tempDir;
   private SessionFactory sessionFactory;
+  private TestDatabase testDatabase;
   private Repositories repositories;
   private SafeCloseable requestContext;
 
@@ -49,11 +51,8 @@ class ManagedModelCleanupTaskTest {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
     ServerProperties serverProperties = new ServerProperties(properties);
-    Properties hibernateProperties =
-        HibernateConfigurator.setupHibernateProperties(serverProperties);
-    hibernateProperties.setProperty(
-        "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
-    sessionFactory = new HibernateConfigurator(hibernateProperties).getSessionFactory();
+    testDatabase = TestDatabases.newDatabase();
+    sessionFactory = testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
     repositories = new Repositories(sessionFactory, serverProperties);
     repositories.getCatalogRepository().addCatalog(new CreateCatalog().name("catalog"));
   }
@@ -61,7 +60,7 @@ class ManagedModelCleanupTaskTest {
   @AfterEach
   void tearDown() {
     try {
-      sessionFactory.close();
+      testDatabase.close();
     } finally {
       requestContext.close();
     }

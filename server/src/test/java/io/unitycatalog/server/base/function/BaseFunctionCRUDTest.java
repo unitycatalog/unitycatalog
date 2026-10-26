@@ -76,7 +76,12 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
                         .name("param1")
                         .typeName(ColumnTypeName.INT)
                         .typeText("int")
-                        .typeJson("{\"type\":\"int\"}")
+                        // Over 255 chars so the CRUD round trip covers a long type_json
+                        .typeJson(
+                            "{\"name\":\"param1\",\"type\":\"int\",\"nullable\":false,"
+                                + "\"metadata\":{\"comment\":\""
+                                + "x".repeat(300)
+                                + "\"}}")
                         .position(0)));
     CreateFunction createFunction =
         new CreateFunction()
