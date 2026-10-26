@@ -29,7 +29,6 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
-import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
@@ -40,6 +39,7 @@ import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.ListSchemasResponse;
 import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
@@ -146,7 +146,6 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
           Endpoint.V1_DELETE_TABLE,
           Endpoint.V1_RENAME_TABLE);
 
-  private final UnityAccessEvaluator accessEvaluator;
   private final TableConfigService tableConfigService;
   private final MetadataService metadataService;
   private final CatalogRepository catalogRepository;
@@ -167,12 +166,6 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       Repositories repositories,
       ServerProperties serverProperties) {
     super(authorizer, repositories, serverProperties);
-    try {
-      this.accessEvaluator =
-          new UnityAccessEvaluator(authorizer, serverProperties.isStrictPrivilegeChecksEnabled());
-    } catch (NoSuchMethodException | IllegalAccessException e) {
-      throw new BaseException(ErrorCode.INTERNAL, "Error initializing access evaluator.", e);
-    }
     this.tableConfigService = tableConfigService;
     this.metadataService = metadataService;
     this.catalogRepository = repositories.getCatalogRepository();
@@ -474,13 +467,19 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       TableRepository.IcebergTableState state) {
     UUID principalId = userRepository.findPrincipalId();
     if (serverProperties.isAuthorizationEnabled()
-        && serverProperties.isStrictPrivilegeChecksEnabled()
-        && !accessEvaluator.evaluate(
-            principalId,
-            AuthorizeExpressions.VEND_TABLE_CREDENTIAL,
-            keyMapper.mapResourceKeys(Map.of(TABLE, state.tableId().toString())),
-            Map.of("operation", "READ"))) {
-      return Set.of();
+        && serverProperties.isStrictPrivilegeChecksEnabled()) {
+      Map<SecurableType, UUID> resourceIds =
+          keyMapper.mapResourceKeys(Map.of(TABLE, state.tableId().toString()));
+      boolean canRead =
+          authorizer.authorizeAny(
+                  principalId, resourceIds.get(CATALOG), Privileges.OWNER, Privileges.USE_CATALOG)
+              && authorizer.authorizeAny(
+                  principalId, resourceIds.get(SCHEMA), Privileges.OWNER, Privileges.USE_SCHEMA)
+              && authorizer.authorizeAny(
+                  principalId, state.tableId(), Privileges.OWNER, Privileges.SELECT);
+      if (!canRead) {
+        return Set.of();
+      }
     }
     if (state.dataSourceFormat() != DataSourceFormat.ICEBERG) {
       return READ_ONLY;
