@@ -51,7 +51,7 @@ CI does not always start automatically. A pull request from a fork (the usual pa
 
 ### Request flow
 
-The server is an [Armeria](https://armeria.dev/) HTTP application. `UnityCatalogServer` (in `server/src/main/java/io/unitycatalog/server/`) is the bootstrap entry point; it builds the server, registers services, and starts a Vert.x URL-transcoder verticle in front. `ArmeriaServerBuilder` registers each service and selects a protocol-specific request/response converter, so the same server speaks several API dialects:
+The server is an [Armeria](https://armeria.dev/) HTTP application. `UnityCatalogServer` (in `server/src/main/java/io/unitycatalog/server/`) is the bootstrap entry point; it builds the server and registers services. `ArmeriaServerBuilder` registers each service and selects a protocol-specific request/response converter, so the same server speaks several API dialects:
 
 - `UC`: the native Unity Catalog REST surface (catalogs, schemas, tables, and so on).
 - `AUTH` and `SCIM`: control-plane auth and identity (SCIM2 user management), served under the control path.

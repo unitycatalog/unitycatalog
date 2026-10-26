@@ -11,8 +11,8 @@ bin/start-uc-server --obs-port 8090
 
 The flag requires a port value. Omitting it keeps observability disabled; there is no separate
 enable property. The endpoints are served on the **dedicated observability port** you supply,
-separate from the catalog API port. In the example above, the client port defaults to `8080`,
-the internal API port is `8081`, and the observability port is `8090`.
+separate from the catalog API port. In the example above, the API port defaults to `8080` and
+the observability port is `8090`.
 
 The observability port is a second port on the *same* server as the API — not a separate server —
 so both listeners share one process and fail together. Serving these endpoints on their own port
@@ -23,7 +23,7 @@ listener: they answer on the observability port and are `404` on the API port. T
 bin/start-uc-server --port 8080 --obs-port 9464
 ```
 
-The supplied port must be between `1` and `65535` and differ from both API ports. `0` is not
+The supplied port must be between `1` and `65535` and differ from the API port. `0` is not
 supported; choose an explicit port. If any required port is already in use, startup fails;
 the server does not select another port.
 
@@ -110,9 +110,8 @@ CPU, Armeria-internal, and UC metrics remain enabled.
 
 #### HTTP request counter labels
 
-- `hostname_pattern`: the API listener's virtual-host pattern, such as `*:8081` with the
-  default client port of `8080`. It identifies the internal API listener, not the client or
-  observability port.
+- `hostname_pattern`: the API listener's virtual-host pattern, such as `*:8080` with the
+  default API port. It identifies the API listener, not the observability port.
 - `service`: the fully qualified Java service class, such as
   `io.unitycatalog.server.service.CatalogService`.
 - `method`: the annotated Java handler name, such as `createCatalog`, **not** the HTTP verb.
@@ -122,14 +121,14 @@ CPU, Armeria-internal, and UC metrics remain enabled.
 
 For example, the following series show a successful catalog creation, a malformed catalog
 creation request, a server error during SCIM user creation, and an unmatched request that
-returns `404`. These examples use the default internal API port of `8081` and an illustrative
+returns `404`. These examples use the default API port of `8080` and an illustrative
 count of one request per series:
 
 ```text
-http_server_requests_total{hostname_pattern="*:8081",http_status="200",method="createCatalog",service="io.unitycatalog.server.service.CatalogService"} 1.0
-http_server_requests_total{hostname_pattern="*:8081",http_status="400",method="createCatalog",service="io.unitycatalog.server.service.CatalogService"} 1.0
-http_server_requests_total{hostname_pattern="*:8081",http_status="500",method="createScimUser",service="io.unitycatalog.server.service.Scim2UserService"} 1.0
-http_server_requests_total{hostname_pattern="*:8081",http_status="404",method="GET",service="com.linecorp.armeria.server.FallbackService"} 1.0
+http_server_requests_total{hostname_pattern="*:8080",http_status="200",method="createCatalog",service="io.unitycatalog.server.service.CatalogService"} 1.0
+http_server_requests_total{hostname_pattern="*:8080",http_status="400",method="createCatalog",service="io.unitycatalog.server.service.CatalogService"} 1.0
+http_server_requests_total{hostname_pattern="*:8080",http_status="500",method="createScimUser",service="io.unitycatalog.server.service.Scim2UserService"} 1.0
+http_server_requests_total{hostname_pattern="*:8080",http_status="404",method="GET",service="com.linecorp.armeria.server.FallbackService"} 1.0
 ```
 
 Requests to `/metrics`, `/livez`, and `/readyz` on the observability listener are not included
