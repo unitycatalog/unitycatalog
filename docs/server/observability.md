@@ -150,6 +150,8 @@ The storage credential cache hit ratio over five minutes is
 Failed cleanups are retried without limit, so a task that keeps failing keeps raising the failure
 count. To alert on failed cleanups, use
 `sum by (resource_type) (increase(uc_storage_cleanup_attempts_total{result="failure"}[2h])) > 0`.
+Keep the window longer than `server.storage-cleanup.retry-backoff` (one hour by default), so a
+task that keeps failing records a failure in every window.
 
 !!! note "Per-route metrics are lazily populated"
     HTTP request metrics for a given route (`service`/`method` combination) appear in the
