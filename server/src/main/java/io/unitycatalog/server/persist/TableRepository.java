@@ -366,6 +366,19 @@ public class TableRepository {
           DeltaUpdateTableMapper.checkTableUuidRequirement(dao, collected);
           String preApplyEtag = DeltaUpdateTableMapper.computeEtag(dao);
           MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
+          // A set-columns request is checked against the table's current state, which would
+          // wrongly reject a replay. Settle a taken add-commit version first, so the replay or
+          // conflict is reported as the commit path would. Other requests need no extra read.
+          if (collected.updates().hasSetSchema()) {
+            collected
+                .updates()
+                .addCommitInfo()
+                .ifPresent(
+                    ci ->
+                        repositories
+                            .getDeltaCommitRepository()
+                            .throwIfCommitVersionTaken(session, dao, ci));
+          }
           // The commit path throws CommitAlreadyAcceptedException on an idempotent replay (caught
           // in updateTableForDelta); everything applied above is rolled back with it.
           DeltaUpdateTableMapper.applyUpdates(session, dao, properties, collected, serverProperties)
