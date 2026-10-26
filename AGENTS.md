@@ -148,7 +148,7 @@ Conventions:
 - **DAOs extend `IdentifiableDAO`** (UUID id plus name), are annotated `@Entity @Table(name = "uc_...")`, use Lombok (`@Getter @Setter @SuperBuilder @NoArgsConstructor @AllArgsConstructor`), and expose static `from(XInfo)` and instance `toXInfo()` converters. Keep business logic out of DAOs.
 - **Backends:** H2 by default (embedded, file-based). MySQL and PostgreSQL are supported for a persistent deployment, configured in `etc/conf/hibernate.properties` (point at your database and add the JDBC driver); see `docs/server/deployment.md`. Hibernate is configured in `persist/utils/HibernateConfigurator`. Tests run on H2 by default; `build/sbt -J-Xmx6G testPostgres18` or `testMySQL8` (or `UC_TEST_DATABASE=POSTGRES_18` / `MYSQL_8`) runs them on PostgreSQL 18 or MySQL 8.4 in Docker, each test on its own database, and fails rather than skips when Docker is not available. A schema change:
   - is a new Flyway step for each database under `server/src/main/resources/db/migration/{h2,postgresql,mysql}/`, numbered after the last one; never edit a merged step;
-  - holds one DDL statement per SQL file;
+  - holds one statement per SQL file, a change `SqlStepsAreSingleDdlTest` allows: create a table, create an index that is not unique, add a column (NOT NULL only with a DEFAULT), change a column's type, or drop its NOT NULL;
   - adds a row to the schema versions table of `docs/server/upgrades.md`;
   - matches the entities: `BaselineMatchesEntitiesTest` compares the schema the steps build with the one Hibernate builds from the entities;
   - updates the sample database: `SampleDatabaseIsCurrentTest` migrates `etc/db/h2db.mv.db` when it is behind; check in the changed file.
