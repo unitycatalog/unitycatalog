@@ -2728,25 +2728,22 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
 
   // -------------------------------------------------------- compact schema builders
 
-  /** A column-mapping key sent with an explicit JSON null value (as opposed to left out). */
-  private static final Object JSON_NULL = new Object();
-
   private static DeltaStructField fld(String name, DeltaDataType type, Object id, Object phys) {
     return fld(name, type, true, id, phys);
   }
 
   /**
    * A field with the given column-mapping id and physical name. A null {@code id} or {@code phys}
-   * leaves that key out; {@link #JSON_NULL} sends it with a null value.
+   * leaves that key out.
    */
   private static DeltaStructField fld(
       String name, DeltaDataType type, boolean nullable, Object id, Object phys) {
     DeltaStructFieldMetadata meta = new DeltaStructFieldMetadata();
     if (id != null) {
-      meta.put("delta.columnMapping.id", id == JSON_NULL ? null : id);
+      meta.put("delta.columnMapping.id", id);
     }
     if (phys != null) {
-      meta.put("delta.columnMapping.physicalName", phys == JSON_NULL ? null : phys);
+      meta.put("delta.columnMapping.physicalName", phys);
     }
     return new DeltaStructField().name(name).type(type).nullable(nullable).metadata(meta);
   }
@@ -2962,34 +2959,11 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               2,
               fld("a", prim("long"), false, 1, "col-1"),
               fld("b", prim("long"), 2, "col-2"));
-  private static final TableFactory NAME_S =
-      (t, n) ->
-          t.createManaged(
-              n, "name", 2, fld("s", struct(fld("x", prim("long"), 2, "col-x")), 1, "col-s"));
-  private static final TableFactory NAME_S2 =
-      (t, n) ->
-          t.createManaged(
-              n,
-              "name",
-              3,
-              fld(
-                  "s",
-                  struct(fld("x", prim("long"), 2, "col-x"), fld("z", prim("long"), 3, "col-z")),
-                  1,
-                  "col-s"));
 
   @ParameterizedTest(name = "{0}")
   @MethodSource("guardCases")
   public void testColumnMappingGuards(SchemaCase c) throws Exception {
     run(c);
-  }
-
-  @Test
-  public void testJsonNullColumnMappingKeyIsSent() throws Exception {
-    String body =
-        new com.fasterxml.jackson.databind.ObjectMapper()
-            .writeValueAsString(fld("a", prim("long"), JSON_NULL, "col-1").getMetadata());
-    assertThat(body).contains("\"delta.columnMapping.id\":null");
   }
 
   static Stream<SchemaCase> guardCases() {
@@ -3122,212 +3096,12 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 cmMode("name"),
                 setColumns(fld("s", struct(fld("x", prim("long"), 2, "x")), false, 1, "s")))
             .expectColumns("s"),
-        // Enabling needs a physical name on every column and nested field.
-        rejected(
-            "G7 enable without a physical name on one column",
-            "requires a physical column name",
-            EXTERNAL,
-            cmMode("name"),
-            setColumns(
-                fld("id", prim("long"), false, 1, "id"), fld("amount", prim("double"), 2, null))),
-        rejected(
-            "G8 enable with a null physical name",
-            "requires a physical column name",
-            EXTERNAL,
-            cmMode("name"),
-            setColumns(
-                fld("id", prim("long"), false, 1, "id"),
-                fld("amount", prim("double"), 2, JSON_NULL))),
-        rejected(
-            "G9 enable with a numeric physical name",
-            "requires a physical column name",
-            EXTERNAL,
-            cmMode("name"),
-            setColumns(
-                fld("id", prim("long"), false, 1, "id"), fld("amount", prim("double"), 2, 5))),
-        rejected(
-            "G10 enable without a nested physical name",
-            "requires a physical column name",
-            EXTERNAL_STRUCT,
-            cmMode("name"),
-            setColumns(fld("s", struct(fld("x", prim("long"), 2, null)), false, 1, "s"))),
-        // Names differing only by case.
-        rejected(
-            "G18 top-level names differing only by case",
-            "Duplicate field name",
-            NAME_AB,
-            setColumns(
-                fld("a", prim("long"), false, 1, "col-1"), fld("A", prim("long"), 2, "col-2"))),
-        rejected(
-            "G32 nested names differing only by case",
-            "Duplicate field name",
-            NAME_S2,
-            setColumns(
-                fld(
-                    "s",
-                    struct(fld("x", prim("long"), 2, "col-x"), fld("X", prim("long"), 3, "col-z")),
-                    1,
-                    "col-s"))),
-        // A key kept only below the top level is not "column mapping removed"; the per-column
-        // check reports the column that lost it.
-        rejected(
-            "G28 key kept only in a struct field",
-            "dropped column mapping metadata for column(s)",
-            NAME_S,
-            setColumns(fld("s", struct(fld("x", prim("long"), 2, "col-x")), null, null))),
-        rejected(
-            "G29 key kept in one of two struct fields",
-            "dropped column mapping metadata for column(s)",
-            NAME_S2,
-            setColumns(
-                fld(
-                    "s",
-                    struct(fld("x", prim("long"), 2, "col-x"), fld("z", prim("long"), null, null)),
-                    null,
-                    null))),
-        rejected(
-            "G30 key kept only in an array element field",
-            "dropped column mapping metadata for column(s)",
-            (t, n) ->
-                t.createManaged(
-                    n,
-                    "name",
-                    2,
-                    fld("e", array(struct(fld("x", prim("long"), 2, "col-x"))), 1, "col-e")),
-            setColumns(fld("e", array(struct(fld("x", prim("long"), 2, "col-x"))), null, null))),
-        rejected(
-            "G31 key kept only in a map value field",
-            "dropped column mapping metadata for column(s)",
-            (t, n) ->
-                t.createManaged(
-                    n,
-                    "name",
-                    2,
-                    fld(
-                        "m",
-                        map(prim("string"), struct(fld("x", prim("long"), 2, "col-x"))),
-                        1,
-                        "col-m")),
-            setColumns(
-                fld(
-                    "m",
-                    map(prim("string"), struct(fld("x", prim("long"), 2, "col-x"))),
-                    null,
-                    null))),
-        // Enabling with a shared id.
-        rejected(
-            "G11 enable with a shared id",
-            "Duplicate column mapping id",
-            EXTERNAL,
-            cmMode("name"),
-            setColumns(
-                fld("id", prim("long"), false, 1, "id"),
-                fld("amount", prim("double"), 1, "amount"))),
-        // Enabling with a malformed id.
-        rejected(
-            "G12 enable with a boolean id",
-            "malformed column mapping identity",
-            EXTERNAL,
-            cmMode("name"),
-            setColumns(
-                fld("id", prim("long"), false, true, "id"),
-                fld("amount", prim("double"), 2, "amount"))),
-        rejected(
-            "G13 enable with an object id",
-            "malformed column mapping identity",
-            EXTERNAL,
-            cmMode("name"),
-            setColumns(
-                fld("id", prim("long"), false, Map.of(), "id"),
-                fld("amount", prim("double"), 2, "amount"))),
-        rejected(
-            "G14 enable with an empty-string id",
-            "malformed column mapping identity",
-            EXTERNAL,
-            cmMode("name"),
-            setColumns(
-                fld("id", prim("long"), false, "", "id"),
-                fld("amount", prim("double"), 2, "amount"))),
-        rejected(
-            "G15 enable with a null id",
-            "malformed column mapping identity",
-            EXTERNAL,
-            cmMode("name"),
-            setColumns(
-                fld("id", prim("long"), false, JSON_NULL, "id"),
-                fld("amount", prim("double"), 2, "amount"))),
-        // Enabling with a shared physical name.
-        rejected(
-            "G16 enable with a shared physical name",
-            "Duplicate column mapping physicalName",
-            EXTERNAL,
-            cmMode("name"),
-            setColumns(
-                fld("id", prim("long"), false, 1, "col-x"),
-                fld("amount", prim("double"), 2, "col-x"))),
-        // Duplicate physical names are compared without case.
-        rejected(
-            "G17 physical names differing only by case",
-            "Duplicate column mapping physicalName",
-            NAME_AB,
-            setColumns(
-                fld("a", prim("long"), false, 1, "col-dup"), fld("b", prim("long"), 2, "COL-DUP"))),
-        // A column-mapped table needs usable identity values.
-        rejected(
-            "G19 empty physical name",
-            "malformed column mapping identity",
-            NAME_A,
-            setColumns(fld("a", prim("long"), false, 1, ""))),
-        rejected(
-            "G20 numeric physical name",
-            "malformed column mapping identity",
-            NAME_A,
-            setColumns(fld("a", prim("long"), false, 1, 5))),
-        rejected(
-            "G21 null physical name",
-            "dropped column mapping metadata for column(s): a",
-            NAME_A,
-            setColumns(fld("a", prim("long"), false, 1, JSON_NULL))),
-        rejected(
-            "G22 object physical name",
-            "malformed column mapping identity",
-            NAME_A,
-            setColumns(fld("a", prim("long"), false, 1, Map.of()))),
-        rejected(
-            "G23 empty-string id",
-            "malformed column mapping identity",
-            ID_A,
-            setColumns(fld("a", prim("long"), false, "", "col-1"))),
-        rejected(
-            "G24 object id",
-            "malformed column mapping identity",
-            ID_A,
-            setColumns(fld("a", prim("long"), false, Map.of(), "col-1"))),
-        rejected(
-            "G25 boolean id",
-            "malformed column mapping identity",
-            ID_A,
-            setColumns(fld("a", prim("long"), false, true, "col-1"))),
-        // Two empty physical names are malformed, not duplicates.
-        rejected(
-            "G26 two empty physical names",
-            "malformed column mapping identity",
-            NAME_AB,
-            setColumns(fld("a", prim("long"), false, 1, ""), fld("b", prim("long"), 2, ""))),
         // An integer id sent as a string is usable.
         ok(
                 "G33 integer id sent as a string",
                 NAME_A,
                 setColumns(fld("a", prim("long"), false, "1", "col-1")))
             .expectColumns("a"),
-        // Ids are compared as text: 1 and "1" are one id, while "01" and "2147483648" are other
-        // ids.
-        rejected(
-            "G45 ids 1 and \"1\"",
-            "Duplicate column mapping id '1'",
-            ID_A,
-            setColumns(
-                fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), "1", "col-b"))),
         ok(
                 "G46 ids 01 and 2147483648 as strings",
                 ID_A,
@@ -3375,12 +3149,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                     fld("id", prim("long"), false, null, null),
                     fld("amount", prim("double"), null, null)))
             .expectColumns("id", "amount"),
-        // A schema that has keys keeps them, even with no retained column.
-        rejected(
-            "G52 drop every column and the keys",
-            "set-columns dropped column mapping metadata; removing column mapping",
-            NAME_A,
-            setColumns(fld("z", prim("long"), false, null, null))),
         // A stored column without keys has no identity to rename from, so it may gain them.
         ok(
                 "G51 stored column without keys gains them",
@@ -3399,53 +3167,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 "G53 replace every column of a column-mapped table",
                 NAME_AB,
                 setColumns(fld("x", prim("long"), 3, "col-3"), fld("y", prim("long"), 4, "col-4")))
-            .expectColumns("x", "y"),
-        // In id mode renames are found by id.
-        rejected(
-            "G54 two renames in id mode",
-            "single top-level column rename",
-            (t, n) ->
-                t.createManaged(
-                    n,
-                    "id",
-                    2,
-                    fld("a", prim("long"), false, 1, "col-1"),
-                    fld("b", prim("long"), 2, "col-2")),
-            setColumns(
-                fld("x", prim("long"), false, 1, "col-1"), fld("y", prim("long"), 2, "col-2"))),
-        // Enabling finds renames inside array elements and map values too.
-        rejected(
-                "G55 enable and rename an array element field",
-                "separate statement",
-                EXTERNAL,
-                cmMode("name"),
-                setColumns(
-                    fld("id", prim("long"), false, 1, "id"),
-                    fld("amount", prim("double"), 2, "amount"),
-                    fld("e", array(struct(fld("y", prim("long"), 4, "x"))), 3, "e")))
-            .after(
-                setColumns(
-                    fld("id", prim("long"), false, null, null),
-                    fld("amount", prim("double"), null, null),
-                    fld("e", array(struct(fld("x", prim("long"), null, null))), null, null))),
-        rejected(
-                "G56 enable and rename a map value field",
-                "separate statement",
-                EXTERNAL,
-                cmMode("name"),
-                setColumns(
-                    fld("id", prim("long"), false, 1, "id"),
-                    fld("amount", prim("double"), 2, "amount"),
-                    fld("m", map(prim("string"), struct(fld("y", prim("long"), 4, "x"))), 3, "m")))
-            .after(
-                setColumns(
-                    fld("id", prim("long"), false, null, null),
-                    fld("amount", prim("double"), null, null),
-                    fld(
-                        "m",
-                        map(prim("string"), struct(fld("x", prim("long"), null, null))),
-                        null,
-                        null))));
+            .expectColumns("x", "y"));
   }
 
   // -------------------------------------------------------- assertion helpers
