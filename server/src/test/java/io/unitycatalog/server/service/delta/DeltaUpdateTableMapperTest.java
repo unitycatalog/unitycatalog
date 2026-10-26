@@ -425,7 +425,7 @@ public class DeltaUpdateTableMapperTest {
    * keeps one rejection that goes through the server, and the accepted cases.
    */
   @ParameterizedTest(name = "{0}")
-  @MethodSource("guardRejections")
+  @MethodSource({"guardRejections", "kernelRejections"})
   public void testColumnMappingGuardRejections(GuardCase c) {
     assertThatThrownBy(
             () ->
@@ -763,6 +763,74 @@ public class DeltaUpdateTableMapperTest {
                 fld("id", prim("long"), false, 1, "id"),
                 fld("amount", prim("double"), 2, "amount"),
                 fld("m", map(prim("string"), struct(fld("y", prim("long"), 4, "x"))), 3, "m"))));
+  }
+
+  static Stream<GuardCase> kernelRejections() {
+    return Stream.of(
+        rejected(
+            "K1 rename and type change",
+            "Cannot change the type of existing field",
+            NAME_A,
+            setColumns(fld("b", prim("double"), false, 1, "col-1"))),
+        rejected(
+            "K2 same id, new physical name",
+            "which is different from col-99",
+            NAME_A,
+            setColumns(fld("a", prim("long"), false, 1, "col-99"))),
+        rejected(
+            "K3 nested same id, new physical name",
+            "which is different from col-z",
+            NAME_S,
+            setColumns(fld("s", struct(fld("x", prim("long"), 2, "col-z")), 1, "col-s"))),
+        rejected(
+            "K6 nested rename with a sibling's new physical name",
+            "which is different from col-x2",
+            managed(
+                "name",
+                3,
+                fld(
+                    "s",
+                    struct(
+                        fld("inner", prim("long"), 2, "col-in"),
+                        fld("x", prim("long"), 3, "col-x")),
+                    1,
+                    "col-s")),
+            setColumns(
+                fld(
+                    "s",
+                    struct(
+                        fld("renamed_inner", prim("long"), 2, "col-in"),
+                        fld("x", prim("long"), 3, "col-x2")),
+                    1,
+                    "col-s"))),
+        rejected(
+            "K11 nested rename keeps the id and drops the physical name",
+            "Field y is missing physical name",
+            NAME_S,
+            setColumns(fld("s", struct(fld("y", prim("long"), 2, null)), 1, "col-s"))),
+        rejected(
+            "K12 id mode keeps the id with a new physical name",
+            "which is different from col-new",
+            ID_A,
+            setColumns(fld("a", prim("long"), false, 1, "col-new"))),
+        rejected(
+            "K13 the stored maxColumnId applies, not the request's own set-properties",
+            "fieldId <= maxFieldId",
+            managed(
+                "name",
+                3,
+                fld("a", prim("long"), false, 1, "col-1"),
+                fld("d", prim("long"), 2, "col-d")),
+            setColumns(
+                fld("b", prim("long"), false, 1, "col-1"),
+                fld("d", prim("long"), 2, "col-d"),
+                fld("c", prim("long"), 3, "col-c")),
+            new DeltaSetPropertiesUpdate().updates(Map.of("delta.columnMapping.maxColumnId", "0"))),
+        rejected(
+            "K14 rename with a string column mapping id",
+            "to be of type",
+            NAME_A,
+            setColumns(fld("b", prim("long"), false, "1", "col-1"))));
   }
 
   /** A column-mapping key sent with an explicit JSON null value (as opposed to left out). */
