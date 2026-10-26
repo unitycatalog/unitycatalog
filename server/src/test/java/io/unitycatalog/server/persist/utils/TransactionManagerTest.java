@@ -593,7 +593,8 @@ public class TransactionManagerTest {
     /**
      * PostgreSQL limits a btree index entry to 2,704 bytes. A longer staging location fails the
      * insert into idx_staging_location, which the request caused, so it is INVALID_ARGUMENT. H2 has
-     * no such limit, so the insert succeeds there.
+     * no such limit, and MySQL has no idx_staging_location (InnoDB rejects it), so the insert
+     * succeeds there.
      */
     @Test
     public void testValueOverIndexLimitIsInvalidArgument() {
@@ -601,6 +602,7 @@ public class TransactionManagerTest {
           switch (SupportedDatabase.selected()) {
             case H2 -> false;
             case POSTGRES_18 -> true;
+            case MYSQL_8 -> false;
           };
       StagingTableDAO stagingTableDAO = new StagingTableDAO();
       stagingTableDAO.setDefaultFields();
