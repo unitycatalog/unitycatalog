@@ -208,6 +208,7 @@ class CredPropsRoundTripTest {
         mockStatic(GenericCredentialFetcher.class)) {
       mockedFetcher.when(() -> GenericCredentialFetcher.create(delegateConf)).thenReturn(fetcher);
       cloud.assertResolvedCreds(cloud.provider(delegateConf), child, cloud.location());
+      verify(fetcher).createCredentials();
     }
 
     // The selected child credential re-fetches and re-selects when it enters the renewal window.
@@ -245,8 +246,6 @@ class CredPropsRoundTripTest {
     Configuration delegateConf =
         getDelegateFileSystemConf(
             new URI(cloud.location() + "/part-0.parquet"), createTableCredProps(cloud));
-    // The encoder cache setting is not propagated to the decoded provider configuration.
-    delegateConf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
     assertThat(delegateConf.get(cloud.expirationKey)).isNull();
     cloud.initialCredentialKeys.forEach(key -> assertThat(delegateConf.get(key)).isNotNull());
 
@@ -371,7 +370,10 @@ class CredPropsRoundTripTest {
       throws Exception {
     CredScopedFileSystem fs = new CredScopedFileSystem();
     fs.initialize(uri, conf);
-    return fs.getDelegate().getConf();
+    Configuration delegateConf = fs.getDelegate().getConf();
+    // The encoder cache setting is not propagated to the decoded provider configuration.
+    delegateConf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
+    return delegateConf;
   }
 
   private static void mockFetcher(GenericCredential... credentials) {
