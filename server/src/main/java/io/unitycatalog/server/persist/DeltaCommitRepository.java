@@ -245,9 +245,10 @@ public class DeltaCommitRepository {
 
   /**
    * The table's backfilled version: the highest flagged row, or one below the oldest row when
-   * nothing is flagged (versions below the oldest row were never committed through Unity Catalog).
-   * A page from {@link #getNewestCommits} always holds the highest flagged row, because the
-   * unflagged rows above it are capped at {@link #MAX_NUM_COMMITS_PER_TABLE}, below the page size.
+   * nothing is flagged (versions below the oldest row either predate onboarding or were backfilled
+   * and deleted by an earlier server). A page from {@link #getNewestCommits} always holds the
+   * highest flagged row, because the unflagged rows above it are capped at {@link
+   * #MAX_NUM_COMMITS_PER_TABLE}, below the page size.
    *
    * @param allDesc a non-empty page of the table's commit rows, newest first
    */
