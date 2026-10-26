@@ -39,7 +39,7 @@ credentials from `docker login`, so `helm registry logout` alone isn't enough.
 
 ```sh
 images=$(HELM_REGISTRY_CONFIG="$(mktemp -d)/config.json" DOCKER_CONFIG="$(mktemp -d)" \
-  helm template uc oci://registry-1.docker.io/unitycatalog/unitycatalog-chart --version X.Y.Z --set ui.enabled=true \
+  helm template uc oci://registry-1.docker.io/unitycatalog/unitycatalog-chart --version X.Y.Z \
   | sed -n 's/^ *image: "\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' | sort -u)
 missing=0
 while read -r image; do

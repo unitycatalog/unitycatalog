@@ -29,9 +29,8 @@ kubectl port-forward --namespace unitycatalog svc/unitycatalog-unitycatalog-char
 
 The API is then at `http://localhost:8080/api/2.1/unity-catalog`.
 
-The UI is off by default, because it runs a development server. To run it, add `--set ui.enabled=true` to the install
-command. `helm test` then also checks the UI; with authentication on, it checks the UI only. By default, the UI forwards
-API requests to the server, and in this mode you open it through `kubectl port-forward`:
+`helm test` also checks the UI; with authentication on, it checks the UI only. By default, the UI forwards API requests
+to the server, and in this mode you open it through `kubectl port-forward`:
 
 ```sh
 kubectl port-forward --namespace unitycatalog svc/unitycatalog-unitycatalog-chart-ui 3000:3000
@@ -86,8 +85,7 @@ To upgrade, read the release notes, then run `helm upgrade` with the new `--vers
 
 If you installed the chart from a source checkout before 0.8.0, set `nameOverride: unitycatalog` in your values.
 The chart is now named `unitycatalog-chart`, which changes the resource names. The override keeps the old names, so
-the release keeps its database volume and signing key. The UI is now off by default, so also set `ui.enabled: true`
-to keep it.
+the release keeps its database volume and signing key.
 
 `helm uninstall unitycatalog --namespace unitycatalog` removes the release. It keeps the H2 database
 PersistentVolumeClaim and the token signing key Secret, and a later install with the same release name and
