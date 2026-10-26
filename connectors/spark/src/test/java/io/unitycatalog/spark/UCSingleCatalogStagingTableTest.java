@@ -173,13 +173,15 @@ public class UCSingleCatalogStagingTableTest {
   }
 
   @Test
-  public void testAlterTableRejectsRenameColumn() throws Exception {
+  public void testAlterTableDelegatesRenameColumn() throws Exception {
+    Table table = mock(Table.class);
     TableChange change = TableChange.renameColumn(new String[] {"old_name"}, "new_name");
+    when(mockDelegate.alterTable(IDENT, change)).thenReturn(table);
 
-    assertThatThrownBy(() -> catalog.alterTable(IDENT, new TableChange[] {change}))
-        .isInstanceOf(UnsupportedOperationException.class)
-        .hasMessageContaining("RENAME COLUMN");
-    verify(mockDelegate, never()).alterTable(eq(IDENT), any(TableChange.class));
+    Table result = catalog.alterTable(IDENT, new TableChange[] {change});
+
+    verify(mockDelegate).alterTable(IDENT, change);
+    assertThat(result).isSameAs(table);
   }
 
   @Test
