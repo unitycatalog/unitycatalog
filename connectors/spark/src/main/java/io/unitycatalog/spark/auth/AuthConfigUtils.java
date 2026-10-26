@@ -2,8 +2,8 @@ package io.unitycatalog.spark.auth;
 
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.spark.utils.OptionsUtil;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 
 public class AuthConfigUtils {
@@ -16,7 +16,10 @@ public class AuthConfigUtils {
   private AuthConfigUtils() {}
 
   public static Map<String, String> buildAuthConfigs(Map<String, String> configs) {
-    Map<String, String> newConfigs = new HashMap<>();
+    // Spark lowercases option keys, so 'auth.catalogUri' arrives as 'cataloguri'. A
+    // case-insensitive
+    // map keeps it and the 'catalogUri' added below from becoming two keys.
+    Map<String, String> newConfigs = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
     for (Map.Entry<String, String> e : configs.entrySet()) {
       if (e.getKey().startsWith(AuthConfigUtils.AUTH_PREFIX)) {
@@ -44,12 +47,31 @@ public class AuthConfigUtils {
     }
 
     // Token providers that call the UC server themselves (e.g. the OAuth token exchange) need the
-    // catalog URI, which is a catalog option rather than an 'auth.' one.
+    // catalog URI, and the exchange sends the OAuth token to it, so the catalog 'uri' option is its
+    // only source. 'auth.catalogUri' is still accepted when it names the same URI: Delta's UC
+    // commit
+    // coordinator builds its token provider from the 'auth.' options alone, so that is how it gets
+    // the catalog URI.
     String uri = configs.get(OptionsUtil.URI);
+    String authCatalogUri = newConfigs.remove(CATALOG_URI);
+    if (authCatalogUri != null) {
+      Preconditions.checkArgument(
+          uri != null && withoutTrailingSlashes(authCatalogUri).equals(withoutTrailingSlashes(uri)),
+          "'%s%s' (%s) must match the catalog '%s' option (%s).",
+          AUTH_PREFIX,
+          CATALOG_URI,
+          authCatalogUri,
+          OptionsUtil.URI,
+          uri);
+    }
     if (uri != null) {
-      newConfigs.putIfAbsent(CATALOG_URI, uri);
+      newConfigs.put(CATALOG_URI, uri);
     }
 
     return new CaseInsensitiveStringMap(newConfigs);
+  }
+
+  private static String withoutTrailingSlashes(String uri) {
+    return uri.replaceAll("/+$", "");
   }
 }

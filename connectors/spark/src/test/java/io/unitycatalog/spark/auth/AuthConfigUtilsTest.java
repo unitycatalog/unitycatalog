@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.client.auth.TokenProvider;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 import org.junit.jupiter.api.Test;
 
 public class AuthConfigUtilsTest {
@@ -15,7 +16,8 @@ public class AuthConfigUtilsTest {
     for (int i = 0; i < keyValues.length; i += 2) {
       configs.put(keyValues[i], keyValues[i + 1]);
     }
-    return AuthConfigUtils.buildAuthConfigs(configs);
+    // Spark passes catalog options as a CaseInsensitiveStringMap, which lowercases keys.
+    return AuthConfigUtils.buildAuthConfigs(new CaseInsensitiveStringMap(configs));
   }
 
   @Test
@@ -147,6 +149,38 @@ public class AuthConfigUtilsTest {
     assertThat(TokenProvider.create(configs).configs())
         .containsEntry("catalogUri", "https://uc.example.com")
         .containsEntry("oauth.exchangeForUcToken", "true");
+  }
+
+  @Test
+  public void testAuthCatalogUriMustMatchCatalogUri() {
+    // Accepted when it names the catalog URI, trailing slashes aside, and kept as a single key.
+    for (String authCatalogUri :
+        new String[] {"https://uc.example.com", "https://uc.example.com/"}) {
+      Map<String, String> configs =
+          normalizeConfigs(
+              "uri", "https://uc.example.com",
+              "auth.type", "oauth",
+              "auth.catalogUri", authCatalogUri);
+      assertThat(configs)
+          .as(authCatalogUri)
+          .hasSize(2)
+          .containsEntry("catalogUri", "https://uc.example.com");
+    }
+
+    // Rejected when it names a different URI, or when there is no catalog URI to match.
+    assertThatThrownBy(
+            () ->
+                normalizeConfigs(
+                    "uri", "https://uc.example.com",
+                    "auth.type", "oauth",
+                    "auth.catalogUri", "https://elsewhere.example.com"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'auth.catalogUri' (https://elsewhere.example.com) must match");
+    assertThatThrownBy(
+            () ->
+                normalizeConfigs("auth.type", "oauth", "auth.catalogUri", "https://uc.example.com"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("must match the catalog 'uri' option (null)");
   }
 
   @Test

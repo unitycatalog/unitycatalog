@@ -585,8 +585,19 @@ Catalog server with authorization enabled, set `oauth.exchangeForUcToken=true`. 
 exchanges the Identity Provider's token at the server's token exchange endpoint
 (`<catalogUri>/api/1.0/unity-control/auth/tokens`, see
 [Programmatic exchange](#programmatic-exchange-service-principals)) and caches and renews the
-Unity Catalog token instead. The server must allow the token's issuer and audience, and the OAuth
-client ID must map to a Unity Catalog user's `externalId`.
+Unity Catalog token instead.
+
+The exchange requires `server.authorization=enable`; otherwise the endpoint rejects it with
+"Authorization is disabled". The server must also allow the token's issuer and audience. It then
+picks an enabled Unity Catalog user from the token's claims:
+
+- If the token has an `email` claim, the user with that email; failing that, the user whose
+  `externalId` matches the token's `azp` (or `client_id`).
+- Otherwise, the user whose `externalId` matches `azp` (or `client_id`); failing that, the user
+  whose email is the token's `sub`.
+
+So if your Identity Provider puts an `email` claim in client-credentials tokens and a user has that
+email, that user is chosen even if another user's `externalId` matches the client ID.
 
 The exchange endpoint is derived from the catalog URI, set with the `catalogUri` key. Spark sets it
 from the catalog `uri` option automatically:
@@ -599,6 +610,17 @@ from the catalog `uri` option automatically:
 --conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientSecret=<client secret>" \
 --conf "spark.sql.catalog.<catalog_name>.auth.oauth.exchangeForUcToken=true"
 ```
+
+Delta's Unity Catalog commit coordinator, used for catalog-managed Delta tables, builds its own
+token provider from the catalog's `auth.` options only, so it does not get `catalogUri` from `uri`.
+For those tables, also set `auth.catalogUri` to the same URI:
+
+```sh
+--conf "spark.sql.catalog.<catalog_name>.auth.catalogUri=https://uc.example.com"
+```
+
+`auth.catalogUri` must match the catalog `uri` (a trailing slash aside); a different value is
+rejected, so the token exchange can only go to the catalog's own server.
 
 Java clients set `catalogUri` themselves:
 
