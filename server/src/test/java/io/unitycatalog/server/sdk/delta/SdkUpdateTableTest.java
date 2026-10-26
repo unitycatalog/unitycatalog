@@ -3001,18 +3001,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                     fld("id", prim("long"), false, null, null),
                     fld("flag", prim("boolean"), null, null)))
             .expectColumns("id", "flag"),
-        // Mode none, but the stored fields still carry keys: they are matched by physical name.
-        ok(
-                "rename on a mode-none table that stores keys",
-                EXTERNAL,
-                setColumns(
-                    fld("ident", prim("long"), false, 1, "col-1"),
-                    fld("amount", prim("double"), 2, "col-2")))
-            .after(
-                setColumns(
-                    fld("id", prim("long"), false, 1, "col-1"),
-                    fld("amount", prim("double"), 2, "col-2")))
-            .expectColumns("ident", "amount"),
         // Nested renames and shape changes without column mapping.
         ok(
                 "nested struct rename without column mapping",

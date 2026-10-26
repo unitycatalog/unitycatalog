@@ -443,6 +443,22 @@ public class DeltaUpdateTableMapperTest {
 
   static Stream<GuardCase> guardRejections() {
     return Stream.of(
+        // Mode none, but the stored fields still carry keys: the table reads data by name, so a
+        // rename that keeps a physical name is rejected.
+        rejected(
+            "rename on a mode-none table that stores keys",
+            "column mapping is required to rename a column; the rename [id -> ident]",
+            external(
+                fld("id", prim("long"), false, 1, "col-1"),
+                fld("amount", prim("double"), 2, "col-2")),
+            setColumns(
+                fld("ident", prim("long"), false, 1, "col-1"),
+                fld("amount", prim("double"), 2, "col-2"))),
+        rejected(
+            "nested rename on a mode-none table that stores keys",
+            "column mapping is required to rename a column; the rename [x -> y]",
+            external(fld("s", struct(fld("x", prim("long"), 2, "col-x")), false, 1, "col-s")),
+            setColumns(fld("s", struct(fld("y", prim("long"), 2, "col-x")), false, 1, "col-s"))),
         // Enabling needs a physical name on every column and nested field.
         rejected(
             "enable without a physical name on one column",
