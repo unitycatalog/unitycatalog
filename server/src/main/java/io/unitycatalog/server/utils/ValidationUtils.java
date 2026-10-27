@@ -5,8 +5,8 @@ import io.unitycatalog.server.exception.ErrorCode;
 import java.util.regex.Pattern;
 
 public class ValidationUtils {
-  // Regex to allow only alphanumeric characters, underscores, hyphens, and @ signs
-  private static final Pattern VALID_FORMAT = Pattern.compile("[a-zA-Z0-9_@-]+");
+  // Same blocklist as Databricks: period, space, forward slash, and ASCII control characters
+  private static final Pattern INVALID_CHARACTERS = Pattern.compile("[. /\\x00-\\x1F\\x7F]");
   private static final Integer MAX_NAME_LENGTH = 255;
 
   public static void validateSqlObjectName(String name) {
@@ -18,7 +18,7 @@ public class ValidationUtils {
           ErrorCode.INVALID_ARGUMENT,
           "Name cannot be longer than " + MAX_NAME_LENGTH + " characters");
     }
-    if (!VALID_FORMAT.matcher(name).matches()) {
+    if (INVALID_CHARACTERS.matcher(name).find()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           "Name cannot contain a period, space, forward-slash, or control characters");

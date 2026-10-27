@@ -11,6 +11,7 @@ import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdateSchema;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -56,6 +57,27 @@ public abstract class BaseTableCRUDTest extends BaseTableCRUDTestEnv {
 
     // Test schema update and deletion scenarios
     testTableAfterSchemaUpdateAndDeletion();
+  }
+
+  @Test
+  public void testTableNameWithSpecialCharacters() throws IOException, ApiException {
+    String tableName = "issue$components";
+    String tableFullName = TestUtils.SCHEMA_FULL_NAME + "." + tableName;
+    TableInfo createdTable =
+        createTestingTable(
+            tableName,
+            TableType.EXTERNAL,
+            Optional.of(Files.createTempDirectory(testDirectoryRoot, "table").toString()),
+            tableOperations);
+    assertThat(createdTable.getName()).isEqualTo(tableName);
+
+    // The full name is a path parameter, so the '$' has to survive URL encoding
+    TableInfo retrievedTable = tableOperations.getTable(tableFullName);
+    assertThat(retrievedTable.getTableId()).isEqualTo(createdTable.getTableId());
+    assertThat(retrievedTable.getName()).isEqualTo(tableName);
+
+    tableOperations.deleteTable(tableFullName);
+    assertThatThrownBy(() -> tableOperations.getTable(tableFullName)).isInstanceOf(Exception.class);
   }
 
   private void verifyTableInfo(TableInfo retrievedTable, TableInfo expectedTable) {
