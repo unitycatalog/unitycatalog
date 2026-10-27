@@ -153,11 +153,6 @@ public final class Auditor implements AutoCloseable {
     }
   }
 
-  /** Failures counted but not yet logged; visible for tests. */
-  long unreportedFailures() {
-    return unreported.get();
-  }
-
   private AuditRecord.AuditRecordBuilder base(AuditRecord.Action action, Purpose purpose) {
     ServiceRequestContext ctx = ServiceRequestContext.currentOrNull();
     return AuditRecord.builder()
