@@ -213,7 +213,7 @@ users:
 			<td>fullnameOverride</td>
 			<td>string</td>
 			<td><pre lang="">
-derived from the chart parameters and metadata
+derived from the release name and nameOverride
 </pre>
 </td>
 			<td>Override the full name of the chart</td>
