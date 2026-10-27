@@ -51,6 +51,9 @@ class AuditorTest {
     assertThat(r.getResourceId()).isEqualTo(ID);
     assertThat(r.getAccess()).isEqualTo(TableOperation.READ_WRITE);
     assertThat(r.getLocation()).isEqualTo("s3://bkt/root/tables/" + ID); // no secrets
+    // ABFS keeps its container@account authority.
+    assertThat(auditor.sanitizeLocation("abfss://ctr@acct.dfs.core.windows.net/p?sv=x"))
+        .isEqualTo("abfss://ctr@acct.dfs.core.windows.net/p");
     assertThat(FileAuditSink.toJson(r))
         .isEqualTo(
             "{\"time\":\"2026-10-20T10:00:00.000Z\",\"action\":\"ISSUE_CREDENTIAL\","
@@ -115,6 +118,20 @@ class AuditorTest {
     Files.writeString(noAuditLogger, "rootLogger.level = info\n");
     assertThatThrownBy(() -> FileAuditSink.validate(load(noAuditLogger.toString())))
         .hasMessageContaining("logger.audit");
+    Path ignoringFailures = Files.createTempFile("log4j2", ".properties");
+    Files.writeString(
+        ignoringFailures,
+        String.join(
+            "\n",
+            "appender.a.type = Console",
+            "appender.a.name = A",
+            "appender.a.ignoreExceptions = true",
+            "logger.audit.name = audit",
+            "logger.audit.level = info",
+            "logger.audit.additivity = false",
+            "logger.audit.appenderRef.a.ref = A"));
+    assertThatThrownBy(() -> FileAuditSink.validate(load(ignoringFailures.toString())))
+        .hasMessageContaining("ignoreExceptions");
   }
 
   private static Configuration load(String file) throws Exception {

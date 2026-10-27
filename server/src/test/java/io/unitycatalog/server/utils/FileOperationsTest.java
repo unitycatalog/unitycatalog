@@ -607,6 +607,7 @@ public class FileOperationsTest {
       assertThat(operations).isInstanceOf(SimpleLocalFileIO.class);
     }
     verify(vendor, never()).vendCredential(any(), any(), any());
+    verify(vendor, never()).vendCredential(any(), any());
   }
 
   @Test
