@@ -20,10 +20,10 @@ If the build reports that multi-platform builds aren't supported, run `docker bu
 
 ## Bump the pinned helper images
 
-The chart's helper images are pinned by digest in `helm/values.yaml`: Alpine for the config init container and the
-create-users job, and busybox for the UI init container and the `helm test` pod. Before the release, check for a newer
-patch release of each, for example with `docker buildx imagetools inspect alpine:3.24`, and update the tag and digest
-in a pull request, so their security fixes reach users.
+The chart's helper images are pinned by digest in `helm/values.yaml`, so a release always runs the same images: Alpine
+for the config init container and the create-users job, and busybox for the UI init container and the `helm test` pod.
+Before each release, update both to their latest stable release in a pull request. `docker buildx imagetools inspect
+alpine:3` prints the digest.
 
 ## Publish the chart
 
