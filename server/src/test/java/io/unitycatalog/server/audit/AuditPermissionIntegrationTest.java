@@ -120,7 +120,7 @@ class AuditPermissionIntegrationTest extends SdkAccessControlBaseCRUDTest {
             r -> {
               assertThat(r.getAction()).isEqualTo(AuditRecord.Action.GRANT);
               assertThat(r.getPrivilege()).isEqualTo("OWNER");
-              assertThat(r.getUser()).isEqualTo(Auditor.BOOTSTRAP_USER);
+              assertThat(r.getUser()).isEqualTo(Auditor.SERVER_USER);
             });
     assertThat(records)
         .anySatisfy(

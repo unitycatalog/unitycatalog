@@ -32,7 +32,9 @@ import org.slf4j.LoggerFactory;
  */
 public final class Auditor implements AutoCloseable {
   static final String CLEANUP_USER = "system:storage-cleanup";
-  static final String BOOTSTRAP_USER = "system:bootstrap";
+
+  /** Work the server does outside any request, such as the admin grant at first start. */
+  static final String SERVER_USER = "system:server";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(Auditor.class);
   private static final long REPORT_INTERVAL_MS = 60_000;
@@ -193,7 +195,7 @@ public final class Auditor implements AutoCloseable {
       return CLEANUP_USER;
     }
     if (ctx == null) {
-      return BOOTSTRAP_USER;
+      return SERVER_USER;
     }
     DecodedJWT jwt = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
     return jwt == null ? null : jwt.getClaim(JwtClaim.SUBJECT.key()).asString();

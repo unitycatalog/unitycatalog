@@ -158,8 +158,8 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 - `action`: `ISSUE_CREDENTIAL`, `GRANT`, `REVOKE`, `CLEAR_RESOURCE_GRANTS` (a dropped object's
   grants), or `CLEAR_PRINCIPAL_GRANTS` (a deleted user's grants).
 - `user`: the caller's email. It is `system:storage-cleanup` for the background storage cleanup,
-  `system:bootstrap` for the admin grant made at first start, and absent when authorization is
-  off. Permission changes are recorded only when authorization is on.
+  `system:server` for work the server does outside a request, such as the admin grant made at
+  first start, and absent when authorization is off. Permission changes are recorded only when authorization is on.
 - `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
   itself while handling the request, and `CLEANUP` for the background storage cleanup.
 - `resource_id`: the object's ID. A `CLEANUP` credential carries the ID of the dropped object.
