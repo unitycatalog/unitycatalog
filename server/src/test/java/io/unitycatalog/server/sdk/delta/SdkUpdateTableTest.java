@@ -3001,6 +3001,47 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                     fld("id", prim("long"), false, null, null),
                     fld("flag", prim("boolean"), null, null)))
             .expectColumns("id", "flag"),
+        // Mode none, but the stored fields still carry keys: the table reads by name, so a changed
+        // name is a drop and an add even when it keeps a physical name.
+        ok(
+                "changed name on a mode-none table that stores keys",
+                EXTERNAL,
+                setColumns(
+                    fld("ident", prim("long"), false, 1, "col-1"),
+                    fld("amount", prim("double"), 2, "col-2")))
+            .after(
+                setColumns(
+                    fld("id", prim("long"), false, 1, "col-1"),
+                    fld("amount", prim("double"), 2, "col-2")))
+            .expectColumns("ident", "amount"),
+        ok(
+                "changed nested name on a mode-none table that stores keys",
+                EXTERNAL,
+                setColumns(
+                    fld("id", prim("long"), false, 1, "col-i"),
+                    fld("amount", prim("double"), 2, "col-a"),
+                    fld(
+                        "person",
+                        struct(fld("full_name", prim("string"), 4, "col-1")),
+                        3,
+                        "col-p")))
+            .after(
+                setColumns(
+                    fld("id", prim("long"), false, 1, "col-i"),
+                    fld("amount", prim("double"), 2, "col-a"),
+                    fld("person", struct(fld("name", prim("string"), 4, "col-1")), 3, "col-p")))
+            .expectColumns("id", "amount", "person"),
+        ok(
+                "keys removed on a mode-none table that stores keys",
+                EXTERNAL,
+                setColumns(
+                    fld("id", prim("long"), false, null, null),
+                    fld("amount", prim("double"), null, null)))
+            .after(
+                setColumns(
+                    fld("id", prim("long"), false, 1, "col-1"),
+                    fld("amount", prim("double"), 2, "col-2")))
+            .expectColumns("id", "amount"),
         // Nested renames and shape changes without column mapping.
         ok(
                 "nested struct rename without column mapping",

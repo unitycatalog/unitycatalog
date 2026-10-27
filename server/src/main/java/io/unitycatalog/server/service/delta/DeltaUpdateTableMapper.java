@@ -652,9 +652,9 @@ public final class DeltaUpdateTableMapper {
 
   /**
    * Checks a {@code set-columns} against the table's stored column-mapping mode. Columns are
-   * matched by the mode's identity key: the column mapping id in id mode, the physical name
-   * otherwise. A table without column mapping can only be upgraded to name mode, and the upgrade
-   * keeps each column's name as its physical name, so its columns are matched by physical name.
+   * matched by the mode's identity key: the column mapping id in id mode, the physical name in name
+   * mode. A table without column mapping reads its data by name, so physical names its fields carry
+   * are not identities; a request that sends them enables column mapping.
    *
    * <ul>
    *   <li>A retained field keeps the identity key it has, and a schema that has identity keys keeps
@@ -663,11 +663,9 @@ public final class DeltaUpdateTableMapper {
    *       physical names are unique ignoring case. In id mode, ids are unique across the schema.
    *   <li>A request without identity keys has no rename to find: a missing name is a drop and an
    *       add, as when a table is replaced.
-   *   <li>Enabling column mapping (the stored schema has no identity key): every field needs a
-   *       physical name, top-level physical names and ids must be usable and unique, and no column
-   *       may be renamed in the same request.
-   *   <li>A table without column mapping whose fields still carry physical names reads its data by
-   *       name, so no field may be renamed, at any depth.
+   *   <li>Enabling column mapping (a table without column mapping, or a stored schema without
+   *       identity keys): every field needs a physical name, top-level physical names and ids
+   *       must be usable and unique, and no column may be renamed in the same request.
    *   <li>Otherwise at most one top-level column is renamed per request.
    * </ul>
    */
@@ -676,7 +674,8 @@ public final class DeltaUpdateTableMapper {
     ColumnMappingMode mode =
         tableMode == ColumnMappingMode.NONE ? ColumnMappingMode.NAME : tableMode;
     List<DeltaStructField> current = readableStoredFields(dao);
-    boolean currentHasKeys = carriesKey(current, mode.metadataKey());
+    boolean currentHasKeys =
+        tableMode != ColumnMappingMode.NONE && carriesKey(current, mode.metadataKey());
     boolean incomingHasKeys = carriesKey(incoming, mode.metadataKey());
     if (currentHasKeys) {
       validateNoCmIdentityStripped(current, incoming, mode);
@@ -701,18 +700,6 @@ public final class DeltaUpdateTableMapper {
     }
     if (!currentHasKeys) {
       validateEnablingColumnMapping(current, incoming);
-      return;
-    }
-    if (tableMode == ColumnMappingMode.NONE) {
-      Optional<String> rename = firstRenameByPhysicalName(current, incoming);
-      if (rename.isPresent()) {
-        throw new BaseException(
-            ErrorCode.INVALID_ARGUMENT,
-            "set-columns: column mapping is required to rename a column; the rename ["
-                + rename.get()
-                + "] keeps the column's physical name while column mapping is disabled. Enable"
-                + " column mapping first.");
-      }
       return;
     }
     List<TopLevelRename> topLevelRenames = detectTopLevelRenames(current, incoming, mode);
@@ -852,57 +839,6 @@ public final class DeltaUpdateTableMapper {
       }
     }
     return false;
-  }
-
-  /**
-   * The first field, at any depth, whose physical name names a stored field of the same parent
-   * under a different name, as {@code "old -> new"}.
-   */
-  private static Optional<String> firstRenameByPhysicalName(
-      List<DeltaStructField> current, List<DeltaStructField> incoming) {
-    Map<String, DeltaStructField> currentByPhysicalName = new HashMap<>();
-    for (DeltaStructField f : current) {
-      if (f.getMetadata() != null
-          && f.getMetadata().get(TableProperties.COLUMN_MAPPING_PHYSICAL_NAME)
-              instanceof String p) {
-        currentByPhysicalName.putIfAbsent(p.toLowerCase(Locale.ROOT), f);
-      }
-    }
-    for (DeltaStructField inc : incoming) {
-      if (!(inc.getMetadata().get(TableProperties.COLUMN_MAPPING_PHYSICAL_NAME)
-          instanceof String p)) {
-        continue;
-      }
-      DeltaStructField cur = currentByPhysicalName.get(p.toLowerCase(Locale.ROOT));
-      if (cur == null) {
-        continue;
-      }
-      if (!cur.getName().equalsIgnoreCase(inc.getName())) {
-        return Optional.of(cur.getName() + " -> " + inc.getName());
-      }
-      Optional<String> nested = firstTypeRenameByPhysicalName(cur.getType(), inc.getType());
-      if (nested.isPresent()) {
-        return nested;
-      }
-    }
-    return Optional.empty();
-  }
-
-  private static Optional<String> firstTypeRenameByPhysicalName(
-      DeltaDataType current, DeltaDataType incoming) {
-    if (current instanceof DeltaStructType cur && incoming instanceof DeltaStructType inc) {
-      return cur.getFields() != null && inc.getFields() != null
-          ? firstRenameByPhysicalName(cur.getFields(), inc.getFields())
-          : Optional.empty();
-    } else if (current instanceof DeltaArrayType cur && incoming instanceof DeltaArrayType inc) {
-      return firstTypeRenameByPhysicalName(cur.getElementType(), inc.getElementType());
-    } else if (current instanceof DeltaMapType cur && incoming instanceof DeltaMapType inc) {
-      Optional<String> key = firstTypeRenameByPhysicalName(cur.getKeyType(), inc.getKeyType());
-      return key.isPresent()
-          ? key
-          : firstTypeRenameByPhysicalName(cur.getValueType(), inc.getValueType());
-    }
-    return Optional.empty();
   }
 
   private static boolean typeRenamesWhileEnabling(DeltaDataType current, DeltaDataType incoming) {
