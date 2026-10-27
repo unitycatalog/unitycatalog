@@ -121,11 +121,11 @@ public class RepositoryUtilsTest {
             e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN));
   }
 
-  @ParameterizedTest
-  @CsvSource({"a.b.c, 3", "a.b, 2"})
-  public void splitFullNameAcceptsExactlyTheExpectedNonEmptyParts(String name, int parts) {
-    assertThat(RepositoryUtils.splitFullName(name, parts, "Invalid name: " + name))
-        .containsExactly(name.split("\\."));
+  @Test
+  public void splitFullNameReturnsTheParts() {
+    assertThat(RepositoryUtils.splitFullName("a.b.c", 3, "Invalid name"))
+        .containsExactly("a", "b", "c");
+    assertThat(RepositoryUtils.splitFullName("a.b", 2, "Invalid name")).containsExactly("a", "b");
   }
 
   @ParameterizedTest

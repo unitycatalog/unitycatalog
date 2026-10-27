@@ -172,6 +172,10 @@ public class RepositoryUtils {
     return parts;
   }
 
+  public static String[] parseFullName(String fullName) {
+    return splitFullName(fullName, 3, "Invalid registered model name: " + fullName);
+  }
+
   public static String getAssetFullName(String catalogName, String schemaName, String assetName) {
     return catalogName + "." + schemaName + "." + assetName;
   }
