@@ -3,6 +3,8 @@ package io.unitycatalog.server.persist;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.server.audit.AuditRecord;
+import io.unitycatalog.server.audit.CapturingAuditSink;
 import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -168,13 +170,18 @@ class ManagedTableCleanupTaskTest {
 
   @Test
   void taskInsertFailureRollsBackTableDeletion() {
+    Properties auditOn = new Properties();
+    auditOn.setProperty("server.env", "test");
+    auditOn.setProperty("server.audit.sink", CapturingAuditSink.class.getName());
+    CapturingAuditSink.reset();
+    Repositories audited = new Repositories(sessionFactory, new ServerProperties(auditOn));
     TableInfoDAO table =
         createTable("rollback_table", TableType.MANAGED, id -> "s3://bucket/root/tables/" + id);
     String existingTaskLocation = "s3://bucket/existing/tables/" + table.getId();
     TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          repositories
+          audited
               .getStorageCleanupTaskRepository()
               .create(
                   session,
@@ -188,7 +195,7 @@ class ManagedTableCleanupTaskTest {
         /* readOnly= */ false);
 
     assertThatThrownBy(
-            () -> repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, table.getName()))
+            () -> audited.getTableRepository().deleteTable(CATALOG, SCHEMA, table.getName()))
         .isInstanceOf(BaseException.class);
 
     // The rollback is what these assertions prove: the table delete and the duplicate task insert
@@ -196,6 +203,11 @@ class ManagedTableCleanupTaskTest {
     // present, and the pre-existing task keeps its original location.
     assertThat(findTable(table.getId())).isNotNull();
     assertThat(findTask(table.getId()).getStorageLocation()).isEqualTo(existingTaskLocation);
+    // Only the committed setup task is recorded; the rolled-back drop records no QUEUE_CLEANUP.
+    assertThat(CapturingAuditSink.RECORDS)
+        .filteredOn(r -> r.getAction() == AuditRecord.Action.QUEUE_CLEANUP)
+        .extracting(AuditRecord::getLocation)
+        .containsExactly(existingTaskLocation);
   }
 
   @Test
