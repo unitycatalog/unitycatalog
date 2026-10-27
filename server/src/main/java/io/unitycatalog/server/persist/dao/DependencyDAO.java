@@ -115,7 +115,7 @@ public class DependencyDAO {
 
   /**
    * Splits a {@code catalog.schema.name} three-part name into its three components. Throws if the
-   * input is null/empty or does not contain exactly three parts.
+   * input is null/empty or does not contain exactly three non-empty parts.
    *
    * <p>Returns plain {@code String[]} (rather than mutating a {@code DependencyDAOBuilder}) so the
    * helper signature does not reference any Lombok-generated builder type. Javadoc does not run
