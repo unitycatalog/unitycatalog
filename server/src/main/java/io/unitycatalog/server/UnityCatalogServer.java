@@ -59,11 +59,21 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class UnityCatalogServer implements AutoCloseable {
+  static {
+    // main() stops Log4j after Armeria's shutdown drain. Log4j's own JVM hook would run alongside
+    // the drain and drop the drained requests' log lines. This runs before LOGGER starts Log4j; an
+    // explicit setting wins.
+    if (System.getProperty("log4j2.shutdownHookEnabled") == null) {
+      System.setProperty("log4j2.shutdownHookEnabled", "false");
+    }
+  }
+
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityCatalogServer.class);
   private static final String BASE_PATH = "/api/2.1/unity-catalog/";
   private static final String CONTROL_PATH = "/api/1.0/unity-control/";
@@ -462,8 +472,8 @@ public class UnityCatalogServer implements AutoCloseable {
       throw e;
     }
     // On SIGTERM, stop accepting requests and let in-flight ones finish, for up to
-    // server.shutdown-timeout, before the JVM exits.
-    unityCatalogServer.server.closeOnJvmShutdown();
+    // server.shutdown-timeout, then stop Log4j before the JVM exits.
+    unityCatalogServer.server.closeOnJvmShutdown().thenRun(LogManager::shutdown);
   }
 
   public void start() {
