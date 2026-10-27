@@ -166,6 +166,9 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- $obsPort := .Values.server.deployment.obsPort }}
+      {{- if and $obsPort (eq (toString $obsPort) (toString .Values.server.deployment.port)) }}
+      {{- fail "server.deployment.obsPort must differ from server.deployment.port" }}
+      {{- end }}
       containers:
         - name: server
           {{- with .Values.server.deployment.securityContext }}

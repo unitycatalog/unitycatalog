@@ -910,7 +910,7 @@ on this port, without authentication. The readiness and liveness probes, when tu
 then check `/readyz` and `/livez`; without it they check that the API port accepts a
 connection. The Service doesn't expose the port, but other pods can reach it
 on the pod IP; restrict it with a NetworkPolicy if needed, and allow the kubelet to reach it
-for the probes. Needs server image v0.7.0 or later.
+for the probes. Must differ from `port`. Needs server image v0.7.0 or later.
 </td>
 		</tr>
 		<tr>
