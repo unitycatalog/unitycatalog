@@ -19,7 +19,8 @@ public interface StorageCredentialVendor {
       NormalizedURL path, Set<CredentialContext.Privilege> privileges);
 
   /**
-   * Vends temporary credentials for the given purpose. The two-argument form is for {@link
+   * Vends temporary credentials, as the two-argument form does. {@code purpose} only labels the
+   * audit record; it does not change what is vended. The two-argument form is for {@link
    * Purpose#CLIENT}.
    */
   default TemporaryCredentials vendCredential(
