@@ -32,7 +32,7 @@ later release migrates older schemas too.
 Use these steps for every database (H2, PostgreSQL, MySQL).
 
 1. Stop all servers.
-2. Back up the database.
+2. Back up the database (see [Backing up the database](#backing-up-the-database)).
 3. Start the new release:
 
     ```sh
@@ -48,9 +48,27 @@ Use these steps for every database (H2, PostgreSQL, MySQL).
 On PostgreSQL and MySQL, when several servers start at the same time, one applies the steps and
 the others wait for it, then start.
 
+A step waits for locks that other sessions hold on its table, for example an open transaction of
+a reporting tool. If a start stays at the steps for long, look for such sessions and end them:
+`SELECT pid, state, query FROM pg_stat_activity WHERE datname = current_database()` on
+PostgreSQL, `SHOW PROCESSLIST` on MySQL.
+
 The server opens its API port only after the steps finish, so a long step on a large table can
 outlast a startup or liveness probe. During an upgrade, lengthen or turn off those probes, or
 start one server first.
+
+## Backing up the database
+
+Take the backup with all servers stopped, so that it holds no half-written change. The examples use
+the database `ucdb`.
+
+- PostgreSQL: `pg_dump -Fc -d ucdb -f uc-backup.dump`. To restore it, create an empty database and
+  run `pg_restore -d ucdb uc-backup.dump`.
+- MySQL: `mysqldump --single-transaction --databases ucdb > uc-backup.sql`. To restore it, drop the
+  database and run `mysql < uc-backup.sql`.
+- H2: copy the database file, `etc/db/h2db.mv.db` with the default
+  `hibernate.connection.url`. To restore it, copy it back.
+- A managed database (for example Amazon RDS or Cloud SQL): a snapshot of the instance works too.
 
 ## Going back to the baseline release
 
