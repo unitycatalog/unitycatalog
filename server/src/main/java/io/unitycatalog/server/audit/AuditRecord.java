@@ -32,7 +32,7 @@ public class AuditRecord {
   @NonNull Instant time;
   @NonNull Action action;
 
-  /** Acting user's email, {@code system:storage-cleanup}, {@code system:bootstrap}, or null. */
+  /** Acting user's email, {@code system:storage-cleanup}, or null. */
   String user;
 
   String requestId;

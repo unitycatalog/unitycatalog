@@ -159,7 +159,7 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
   and absent when authorization is off.
 - `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
   itself while handling the request, and `CLEANUP` for the background storage cleanup.
-- `resource_id`: the object's ID. A `CLEANUP` credential carries the ID of the dropped object.
+- `resource_id`: on a `CLEANUP` credential, the ID of the dropped object.
 - `access` is `READ` or `READ_WRITE`. Records never contain credential values, and `location` never contains a query
   string or user info.
 
@@ -174,7 +174,7 @@ the records.
 To send records somewhere else, set `server.audit.sink` to your own class that implements
 `io.unitycatalog.server.audit.AuditSink` and has a public no-arg constructor. It must be on the
 server classpath, and the server does not start if it can't be loaded. `record` is called
-concurrently on request threads, so it must be thread-safe and should hand records to a queue
+concurrently, from request threads and the server's own threads, so it must be thread-safe and should hand records to a queue
 instead of sending them inline. `close` is called once at shutdown. A failure thrown from either
 method is logged in `server.log` and never fails a request.
 
