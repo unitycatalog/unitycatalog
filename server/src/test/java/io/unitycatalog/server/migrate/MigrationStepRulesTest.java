@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
  * migrations ({@code B<version>__*.sql}, next to the steps, run only on a new database), which this
  * test does not read.
  */
-public class SqlStepsAreSingleDdlTest {
+public class MigrationStepRulesTest {
 
   private static final Path STEPS = Path.of("server/src/main/resources/db/migration");
 
