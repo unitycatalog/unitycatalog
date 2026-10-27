@@ -1278,11 +1278,14 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     try (Session commit = sessionFactory.openSession()) {
       Transaction tx = commit.beginTransaction();
-      if (SupportedDatabase.selected() == SupportedDatabase.MYSQL_8) {
-        // Without REPEATABLE READ this test would pass without testing anything.
-        assertThat(commit.doReturningWork(Connection::getTransactionIsolation))
-            .isEqualTo(Connection.TRANSACTION_REPEATABLE_READ);
-      }
+      // Each database's default isolation level. Only REPEATABLE READ answers the plain read below
+      // from the transaction's first snapshot, so only MySQL can catch a missing locking read.
+      assertThat(commit.doReturningWork(Connection::getTransactionIsolation))
+          .isEqualTo(
+              switch (SupportedDatabase.selected()) {
+                case H2, POSTGRES_18 -> Connection.TRANSACTION_READ_COMMITTED;
+                case MYSQL_8 -> Connection.TRANSACTION_REPEATABLE_READ;
+              });
       // The first read takes this transaction's snapshot: m0.
       TableInfoDAO dao = commit.get(TableInfoDAO.class, tableId);
       assertThat(dao.getIcebergMetadataLocation()).isEqualTo("m0");
