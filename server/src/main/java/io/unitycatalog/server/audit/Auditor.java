@@ -177,7 +177,7 @@ public final class Auditor implements AutoCloseable {
       reportFailure(t);
       return;
     }
-    if (unreported.get() > 0) {
+    if (unreported.get() > 0 && claimReportSlot()) {
       reportLostRecords();
     }
   }
@@ -193,10 +193,15 @@ public final class Auditor implements AutoCloseable {
     }
   }
 
-  private void reportFailure(Throwable t) {
+  /** True for at most one caller per minute; that caller writes the report. */
+  private boolean claimReportSlot() {
     long now = clock.millis();
     long last = lastReportMs.get();
-    if (now - last >= REPORT_INTERVAL_MS && lastReportMs.compareAndSet(last, now)) {
+    return now - last >= REPORT_INTERVAL_MS && lastReportMs.compareAndSet(last, now);
+  }
+
+  private void reportFailure(Throwable t) {
+    if (claimReportSlot()) {
       LOGGER.error(
           "Audit sink {} failed; {} more failure(s) since the last report",
           sink.getClass().getName(),
