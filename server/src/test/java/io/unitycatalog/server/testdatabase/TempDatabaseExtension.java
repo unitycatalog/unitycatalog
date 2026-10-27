@@ -10,8 +10,9 @@ import org.junit.platform.commons.support.AnnotationSupport;
 /**
  * Creates the {@link TestDatabase} for each {@link TempDatabase} field and puts it in the JUnit
  * store. BeforeEachCallback runs before any {@code @BeforeEach}, and the store closes its {@link
- * AutoCloseable} values after every {@code @AfterEach}, so a test's server closes before its
- * database is dropped, and a failing setUp still drops the database.
+ * AutoCloseable} values after every {@code @AfterEach} (after {@code @AfterAll} for a static
+ * field), so a test's server closes before its database is dropped, and a failing setUp still drops
+ * the database.
  */
 final class TempDatabaseExtension implements BeforeAllCallback, BeforeEachCallback {
 
