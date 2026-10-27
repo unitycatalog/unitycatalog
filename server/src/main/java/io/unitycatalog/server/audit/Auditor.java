@@ -119,9 +119,10 @@ public final class Auditor implements AutoCloseable {
 
   /**
    * Keeps scheme, authority and path, so query strings, fragments and user info (which can carry
-   * secrets) never reach a sink. ABFS keeps its {@code container@account} authority.
+   * secrets) never reach a sink. ABFS keeps its {@code container@account} authority. A location
+   * that can't be parsed is reported and left out of the record.
    */
-  static String sanitizeLocation(String url) {
+  String sanitizeLocation(String url) {
     if (url == null) {
       return null;
     }
@@ -134,7 +135,7 @@ public final class Auditor implements AutoCloseable {
       String path = uri.getRawPath() == null ? "" : uri.getRawPath();
       return uri.getScheme() + "://" + (authority == null ? "" : authority) + path;
     } catch (RuntimeException e) {
-      // Vended paths are already parsed by NormalizedURL, so this only drops the field.
+      reportFailure(e);
       return null;
     }
   }
