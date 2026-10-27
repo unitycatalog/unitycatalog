@@ -26,6 +26,10 @@ import java.util.Map;
  * <p>This provider uses the OAuth 2.0 client credentials flow to obtain access tokens. It
  * automatically renews tokens before they expire (default: 30 seconds before expiration). Token
  * requests are retried automatically for resilience against transient network failures.
+ *
+ * <p>The token request carries {@code oauth.scope}, or {@code all-apis} when it is unset. An empty
+ * {@code oauth.scope} sends no scope, which OAuth allows (RFC 6749 section 4.4), so the identity
+ * provider applies its own default.
  */
 class OAuthTokenProvider implements TokenProvider {
   private static final long DEFAULT_LEAD_RENEWAL_TIME_SECONDS = 30L;
@@ -34,6 +38,7 @@ class OAuthTokenProvider implements TokenProvider {
   private String oauthUri;
   private String oauthClientId;
   private String oauthClientSecret;
+  // Empty when the request carries no scope.
   private String oauthScope;
   private long leadRenewalTimeSeconds;
   private HttpClient httpClient;
@@ -98,7 +103,7 @@ class OAuthTokenProvider implements TokenProvider {
         AuthConfigs.OAUTH_CLIENT_SECRET);
     this.oauthClientSecret = oauthClientSecret;
 
-    // Optional OAuth scope; defaults to all-apis when unset.
+    // Optional OAuth scope; defaults to all-apis when unset, and is left out when empty.
     this.oauthScope = normalizeOAuthScope(configs.get(AuthConfigs.OAUTH_SCOPE));
 
     this.leadRenewalTimeSeconds = DEFAULT_LEAD_RENEWAL_TIME_SECONDS;
@@ -137,9 +142,10 @@ class OAuthTokenProvider implements TokenProvider {
           Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
 
       // Prepare form data
-      String formData =
-          "grant_type=client_credentials&scope="
-              + URLEncoder.encode(oauthScope, StandardCharsets.UTF_8);
+      String formData = "grant_type=client_credentials";
+      if (!oauthScope.isEmpty()) {
+        formData += "&scope=" + URLEncoder.encode(oauthScope, StandardCharsets.UTF_8);
+      }
 
       // Build HTTP request
       HttpRequest request =
@@ -177,12 +183,7 @@ class OAuthTokenProvider implements TokenProvider {
       return AuthConfigs.DEFAULT_OAUTH_SCOPE;
     }
 
-    String normalizedScope = oauthScope.trim().replaceAll("\\s+", " ");
-    Preconditions.checkArgument(
-        !normalizedScope.isEmpty(),
-        "Configuration key '%s' must not be empty",
-        AuthConfigs.OAUTH_SCOPE);
-    return normalizedScope;
+    return oauthScope.trim().replaceAll("\\s+", " ");
   }
 
   private class TempToken {

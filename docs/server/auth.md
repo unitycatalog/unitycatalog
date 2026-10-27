@@ -537,6 +537,16 @@ The value can contain one or more space-separated scopes defined by the Identity
 Microsoft Entra ID, a resource's default scope typically has the form
 `<resource-application-id-uri>/.default`.
 
+To send no scope at all, set `oauth.scope` to an empty value. OAuth makes the scope optional for
+client credentials, and the Identity Provider then applies its own default scopes (for example
+Amazon Cognito grants all the scopes the app client is allowed). Use this when your Identity
+Provider rejects `all-apis` with `invalid_scope` and you want its defaults rather than naming a
+scope:
+
+```sh
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.scope="
+```
+
 ## Using Google Identity with Unity Catalog UI
 
 We previously configured Google as the Identity Provider and configured UC Server settings for CLI access. However, we

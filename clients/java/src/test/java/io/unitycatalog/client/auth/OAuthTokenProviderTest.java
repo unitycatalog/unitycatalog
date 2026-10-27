@@ -234,10 +234,18 @@ public class OAuthTokenProviderTest {
   }
 
   @Test
-  public void testBlankScopeIsRejected() {
-    assertThatThrownBy(() -> oauthTokenProvider("   "))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Configuration key 'oauth.scope' must not be empty");
+  public void testEmptyScopeSendsNoScope() throws Exception {
+    // Empty, or empty after trimming: the request carries no scope, and the identity provider
+    // applies its own default.
+    mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
+    oauthTokenProvider("").accessToken();
+    oauthTokenProvider("   ").accessToken();
+
+    ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+    verify(mockHttpClient, times(2)).send(requestCaptor.capture(), any());
+    for (HttpRequest request : requestCaptor.getAllValues()) {
+      assertThat(requestBody(request)).isEqualTo("grant_type=client_credentials");
+    }
   }
 
   @Test
