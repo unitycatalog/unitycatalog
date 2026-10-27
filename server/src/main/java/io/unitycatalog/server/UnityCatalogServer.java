@@ -459,13 +459,19 @@ public class UnityCatalogServer implements AutoCloseable {
       unityCatalogServer.start();
     } catch (RuntimeException e) {
       LOGGER.error("Failed to start the Unity Catalog server", e);
-      unityCatalogServer.close();
+      try {
+        unityCatalogServer.close();
+      } finally {
+        LogManager.shutdown();
+      }
       throw e;
     }
     // On SIGTERM, close() runs on Armeria's shutdown thread: it stops the storage cleanup, lets
     // in-flight requests finish for up to server.shutdown-timeout, then closes everything else.
     // Log4j stops last, even when close() fails (Armeria logs that failure). Its own shutdown hook
-    // is off in log4j2.component.properties, so it doesn't stop logging during the drain.
+    // is off in log4j2.component.properties, so it doesn't stop logging during the drain. The hook
+    // is registered after start() so that close() can't run during a start; a SIGTERM while
+    // starting exits without it.
     unityCatalogServer
         .server
         .closeOnJvmShutdown(unityCatalogServer::close)
