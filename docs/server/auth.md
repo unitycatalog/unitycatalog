@@ -151,8 +151,9 @@ The setting covers:
   Existing invalid grants can still be removed.
 - [Iceberg credentials](#table-credential-permissions): returning credentials from `loadTable`
   or `loadCredentials` requires `USE CATALOG`, `USE SCHEMA`, and `SELECT`, or ownership at each level.
-- Table details: `MODIFY` no longer substitutes for `SELECT`
-  when getting table details or listing tables. Existing usage and ownership rules still apply.
+- Table metadata: `MODIFY` no longer substitutes for `SELECT` for table details, listings,
+  and existence checks across the UC REST, Delta, and Iceberg REST APIs. Existing usage and
+  ownership rules still apply.
 
 The access checks apply only when `server.authorization=enable`.
 Grant validation also applies when authorization is disabled.
@@ -441,7 +442,8 @@ tables remain read-only.
 
 Iceberg `loadTable` returns metadata to callers with metadata access. Credentials and their
 refresh endpoint are included only when the caller has read access. `loadCredentials` rejects
-requests without read access. Table listings and `tableExists` keep their existing permission checks.
+requests without read access. Table listings and `tableExists` use the same metadata permission rule
+as `loadTable`; see [Permission-check migration](#permission-check-migration).
 
 ## Spark and Java client authentication types
 
