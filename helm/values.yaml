@@ -845,7 +845,7 @@ test:
   imagePullSecrets:
 
 # -- (string) Override the name used in resource names
-# @default -- `unitycatalog`
+# @default -- unitycatalog
 nameOverride:
 # -- (string) Override the full name of the chart
 # @default -- derived from the chart parameters and metadata

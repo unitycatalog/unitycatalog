@@ -321,8 +321,8 @@ If set, TLS will be enabled for the ingress
 		<tr>
 			<td>nameOverride</td>
 			<td>string</td>
-			<td><pre lang="json">
-null
+			<td><pre lang="">
+unitycatalog
 </pre>
 </td>
 			<td>Override the name used in resource names</td>

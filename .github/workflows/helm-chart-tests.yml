@@ -73,6 +73,12 @@ jobs:
       - name: Package the chart as a release, install it and run helm test
         run: |
           helm/package-chart.sh 0.0.0-ci "$RUNNER_TEMP"
+          # Upgrades rely on unchanged resource names: the PVC and signing key Secret are pre-install
+          # hooks, so nothing recreates them under a new name.
+          helm template unitycatalog "$RUNNER_TEMP/unitycatalog-chart-0.0.0-ci.tgz" > "$RUNNER_TEMP/names.yaml"
+          for name in unitycatalog-server unitycatalog-server-db unitycatalog-server-jwt-key unitycatalog-ui; do
+            grep -qE "^  name: \"?$name\"?\$" "$RUNNER_TEMP/names.yaml" || { echo "::error::No resource named $name"; exit 1; }
+          done
           helm install uc "$RUNNER_TEMP/unitycatalog-chart-0.0.0-ci.tgz" --namespace uc --create-namespace --wait --timeout 600s \
             --set server.deployment.image.repository=unitycatalog \
             --set server.deployment.image.pullPolicy=Never \
