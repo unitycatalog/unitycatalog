@@ -68,11 +68,10 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
  *
  * <p>Flagged rows are kept for {@link #NUM_BACKFILLED_COMMITS_RETAINED} more versions, purely so
  * that a client retrying {@code add-commit} at an already-published version can be answered from
- * its file name: same name is a replay, a different name is a conflict. Without them the server
- * would have to compare the staged commit file against the published one, and backfill is exactly
- * what deletes the staged file -- which is how a retry ends up stuck on {@code
- * COMMIT_STATE_UNKNOWN}. A retry older than the retention window still falls back to that content
- * check.
+ * its file name: same name is a replay, a different name is a conflict. That answers it from the
+ * database alone: no storage read, and no {@code COMMIT_STATE_UNKNOWN} when storage can't be read.
+ * A retry older than the retention window still falls back to comparing the staged commit file
+ * against the published one.
  *
  * <p>For example, with a retention window of 2 versions (flagged rows marked *):
  *
@@ -148,8 +147,8 @@ public class DeltaCommitRepository {
   private static final int MAX_NUM_COMMITS_PER_TABLE = 10;
 
   /**
-   * The batch size limit for commit delete and select operations. This limit is set to be larger
-   * than MAX_NUM_COMMITS_PER_TABLE so that it should never hit this limit at all. But it serves the
+   * The batch size limit for commit delete operations. This limit is set to be larger than
+   * MAX_NUM_COMMITS_PER_TABLE so that it should never hit this limit at all. But it serves the
    * purpose of another safety measure to avoid a huge query execution IF both the server and client
    * are not implemented correct and commits per table grow unbounded. TODO: turn this into a
    * configurable server property.
@@ -157,13 +156,20 @@ public class DeltaCommitRepository {
   private static final int NUM_COMMITS_PER_BATCH = 20;
 
   /**
-   * How many versions below the latest backfilled one keep their commit row. A retained row only
-   * has to outlive the window in which a client may retry that version -- Delta gives up after a
-   * few minutes -- so this is generous by orders of magnitude while bounding {@code
-   * uc_delta_commits} at roughly this many rows per table rather than one row per version ever
-   * committed. TODO: turn this into a configurable server property.
+   * How many of the newest commit rows {@link #getNewestCommits} reads: the whole live window plus
+   * the row below it, which is the highest flagged one whenever the table is within its limit.
    */
-  private static final long NUM_BACKFILLED_COMMITS_RETAINED = 1000L;
+  private static final int NUM_NEWEST_COMMITS = MAX_NUM_COMMITS_PER_TABLE + 1;
+
+  /**
+   * How many versions below the latest backfilled one keep their commit row. A retry targets the
+   * version its writer just committed, and Delta gives up retrying within minutes, so by then the
+   * backfilled version has usually moved only a few versions on. A retry older than this still gets
+   * the right answer from the content check, at the cost of one storage read. Rows stay until the
+   * table's next backfill, so every table keeps up to this many, idle or not. TODO: turn this into
+   * a configurable server property.
+   */
+  private static final long NUM_BACKFILLED_COMMITS_RETAINED = 100L;
 
   /**
    * Upper bound on delete batches, sized from the retention window (plus the live window) with a
@@ -263,7 +269,7 @@ public class DeltaCommitRepository {
     if (highestFlagged.isPresent()) {
       return highestFlagged.get();
     }
-    if (allDesc.size() < NUM_COMMITS_PER_BATCH) {
+    if (allDesc.size() < NUM_NEWEST_COMMITS) {
       return allDesc.get(allDesc.size() - 1).getCommitVersion() - 1L;
     }
     Long flagged =
@@ -386,7 +392,7 @@ public class DeltaCommitRepository {
     } catch (CommitAlreadyAcceptedException e) {
       // Idempotent replay: the transaction rolled back to a no-op. Report success.
     } catch (CommitContentCheckRequiredException e) {
-      // Version was purged, so the DB couldn't decide: settle it out of the (rolled-back)
+      // Version no longer retained, so the DB couldn't decide: settle it out of the (rolled-back)
       // transaction by comparing file content. A match is a no-op success; a difference throws.
       verifyContentReplayOrThrowConflict(fileOperations, e);
     }
@@ -667,8 +673,9 @@ public class DeltaCommitRepository {
    *
    * <p>A commit at an already-taken version is resolved by {@link
    * #exceptionForAlreadyTakenVersion}: a recognized replay throws {@link
-   * CommitAlreadyAcceptedException}; a purged version that needs an out-of-transaction content
-   * check throws {@link CommitContentCheckRequiredException}; anything else is a genuine conflict.
+   * CommitAlreadyAcceptedException}; a version no longer retained, which needs an
+   * out-of-transaction content check, throws {@link CommitContentCheckRequiredException}; anything
+   * else is a genuine conflict.
    *
    * @param session the Hibernate session for database operations
    * @param tableId the unique identifier of the table
@@ -1117,17 +1124,15 @@ public class DeltaCommitRepository {
    * retry at an older version goes back to the staged-vs-published content check, which is the
    * behaviour from before rows were retained.
    *
-   * <p>Called on every backfill that flags new rows, so in steady state there are only a handful of
-   * newly aged-out rows and a single batch clears them. A large jump may leave some behind; the
-   * next backfill picks them up, so this does not need to run to completion.
+   * <p>Called on every backfill that flags new rows, so in steady state only a handful of rows have
+   * newly aged out. Deletes in batches, up to {@link #MAX_DELETE_BATCHES}; anything left after that
+   * is picked up by the next backfill, so this does not need to run to completion.
    *
    * @return the number of rows deleted
    */
   private static int pruneRetainedCommits(
       Session session, UUID tableId, long latestBackfilledVersion) {
-    // latest - retention is still inside the window. Subtract one more, but only once latest is
-    // past the window: otherwise latest - retention - 1 underflows through the non-negative
-    // versions and would delete rows that must be kept.
+    // Nothing can be older than the window yet, so skip the DELETE.
     if (latestBackfilledVersion <= NUM_BACKFILLED_COMMITS_RETAINED) {
       return 0;
     }
@@ -1187,9 +1192,8 @@ public class DeltaCommitRepository {
   }
 
   /**
-   * The newest {@link #NUM_COMMITS_PER_BATCH} commit rows for a table, newest first, or empty if
-   * the table has no commits yet (it has not been onboarded to Unity Catalog as commit
-   * coordinator).
+   * The newest {@link #NUM_NEWEST_COMMITS} commit rows for a table, newest first, or empty if the
+   * table has no commits yet (it has not been onboarded to Unity Catalog as commit coordinator).
    *
    * <p>The first row is the table's current version. Unfiltered on purpose: the live window is the
    * top of the log, and the backfilled row just below it is what {@link #backfilledVersionOf}
@@ -1201,7 +1205,7 @@ public class DeltaCommitRepository {
             "FROM DeltaCommitDAO WHERE tableId = :tableId ORDER BY commitVersion DESC",
             DeltaCommitDAO.class);
     query.setParameter("tableId", tableId);
-    query.setMaxResults(NUM_COMMITS_PER_BATCH);
+    query.setMaxResults(NUM_NEWEST_COMMITS);
     return query.list();
   }
 
@@ -1539,7 +1543,8 @@ public class DeltaCommitRepository {
     }
     // Retained backfilled rows are expected here, so the live-window limit is not the yardstick:
     // only a table that outgrew the retention window is worth reporting.
-    if (numDeleted > NUM_BACKFILLED_COMMITS_RETAINED + MAX_NUM_COMMITS_PER_TABLE) {
+    // Retention keeps versions [B - RETAINED, B], one more than RETAINED, plus the live window.
+    if (numDeleted > NUM_BACKFILLED_COMMITS_RETAINED + 1 + MAX_NUM_COMMITS_PER_TABLE) {
       LOGGER.error(
           "Purged {} commits for table {}, which exceeds the retained commit window",
           numDeleted,

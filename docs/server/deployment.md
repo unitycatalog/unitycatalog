@@ -148,17 +148,18 @@ ALTER TABLE uc_properties ALTER COLUMN property_value SET DATA TYPE VARCHAR(1677
 
 ### Retained Delta commits: upgrade and downgrade
 
-For managed Delta tables, `uc_delta_commits` keeps a backfilled commit's row for the last 1000
+For managed Delta tables, `uc_delta_commits` keeps a backfilled commit's row for the last 100
 versions instead of deleting it, so a client retrying an already-published commit is answered from
-the recorded file name. Expect roughly 1000 rows per actively written managed Delta table, where
-earlier versions kept 1 to 10.
+the recorded file name. Expect up to about 100 rows per managed Delta table, where earlier versions
+kept 1 to 10. Rows are only pruned when the table is next backfilled, so an idle table keeps its
+rows.
 
 No migration is needed: tables written by earlier versions are read correctly as they are. Earlier
 versions, however, misread the retained rows, so:
 
 - **Upgrade every server that shares the database together.** Do not run old and new servers side
   by side. An old server serving a table that a new server has backfilled can reject commits with
-  `RESOURCE_EXHAUSTED`, check up to 1000 published commit files in storage on a backfill (failing
+  `RESOURCE_EXHAUSTED`, check up to 100 published commit files in storage on a backfill (failing
   if any of them were removed by Delta log cleanup), and omit the newest commit from some
   get-commits responses.
 - **Before downgrading**, stop all servers and delete the retained rows. The statements below keep

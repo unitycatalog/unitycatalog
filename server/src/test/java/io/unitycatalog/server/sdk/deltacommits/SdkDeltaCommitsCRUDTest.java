@@ -541,14 +541,13 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   }
 
   /**
-   * The version exactly {@code NUM_BACKFILLED_COMMITS_RETAINED} (1000) behind the latest backfilled
-   * one stays. The next older version is deleted. {@code latest - 1000} is inside the window, so it
-   * must not be used as a {@code DELETE <=} bound, and that subtraction must not run while {@code
-   * latest} is still within the window.
+   * The version exactly {@code NUM_BACKFILLED_COMMITS_RETAINED} (100) behind the latest backfilled
+   * one stays, and the next older version is deleted: {@code latest - 100} is inside the window, so
+   * it must not be used as a {@code DELETE <=} bound.
    */
   @Test
   public void testRetentionKeepsTheVersionExactlyAtTheWindowBoundary() throws Exception {
-    final long retention = 1000L;
+    final long retention = 100L;
     UUID tableId = UUID.fromString(tableInfo.getTableId());
     String loc = tableInfo.getStorageLocation();
 
@@ -561,14 +560,14 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     writePublishedCommitFiles(retention, retention);
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(retention));
-    // latest == retention, so version 0 is exactly 1000 behind and every row is still inside the
-    // window. Pruning here would require a negative bound.
+    // latest == retention, so version 0 is exactly 100 behind and every row is still inside the
+    // window.
     assertEquals(List.of(retention, retention - 1L, 1L, 0L), commitVersions(tableId));
 
     insertCommitRow(tableId, retention + 1L, /* isBackfilled= */ false);
     writePublishedCommitFiles(retention + 1L, retention + 1L);
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(retention + 1L));
-    // latest == 1001. Version 0 is 1001 behind and is deleted. Version 1 is exactly 1000 behind.
+    // latest == 101. Version 0 is 101 behind and is deleted. Version 1 is exactly 100 behind.
     assertEquals(List.of(retention + 1L, retention, retention - 1L, 1L), commitVersions(tableId));
   }
 
