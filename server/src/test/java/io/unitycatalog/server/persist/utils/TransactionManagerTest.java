@@ -18,6 +18,8 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.TransactionRollbackException;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
+import io.unitycatalog.server.persist.dao.StagingTableDAO;
+import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -28,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Random;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.hibernate.Session;
@@ -435,9 +438,9 @@ public class TransactionManagerTest {
   }
 
   /**
-   * Tests for the isolation level code path using a real H2 database. These verify that the
-   * rollback() call before setTransactionIsolation() correctly flushes stale implicit transactions
-   * from pooled connections, ensuring REPEATABLE_READ gets a fresh MVCC snapshot.
+   * Tests for the isolation level code path using a real database. These verify that the rollback()
+   * call before setTransactionIsolation() correctly flushes stale implicit transactions from pooled
+   * connections, ensuring REPEATABLE_READ gets a fresh MVCC snapshot.
    */
   @Nested
   public class IsolationLevelWithRealDatabaseTest {
@@ -491,7 +494,8 @@ public class TransactionManagerTest {
           "test",
           true);
 
-      // Original isolation level should have been restored (H2 default is READ_COMMITTED)
+      // Original isolation level should have been restored (H2 and PostgreSQL default to
+      // READ_COMMITTED)
       assertThat(isolationAfter[0]).isEqualTo(Connection.TRANSACTION_READ_COMMITTED);
     }
 
@@ -556,6 +560,83 @@ public class TransactionManagerTest {
           .commitTimestamp(new Date())
           .isBackfilledLatestCommit(false)
           .build();
+    }
+  }
+
+  /** Tests that a database error is reported with the error code it maps to, on a real database. */
+  @Nested
+  public class DatabaseErrorWithRealDatabaseTest {
+
+    private static SessionFactory realSessionFactory;
+    private static TestDatabase testDatabase;
+
+    @BeforeAll
+    public static void setUp() {
+      testDatabase = TestDatabases.newDatabase();
+      realSessionFactory =
+          testDatabase
+              .openHibernateConfigurator(new ServerProperties(new Properties()))
+              .getSessionFactory();
+    }
+
+    @AfterAll
+    public static void tearDown() {
+      testDatabase.close();
+    }
+
+    /**
+     * PostgreSQL limits a btree index entry to 2,704 bytes. A longer staging location fails the
+     * insert into idx_staging_location, which the request caused, so it is INVALID_ARGUMENT. H2 has
+     * no such limit, so the insert succeeds there.
+     */
+    @Test
+    public void testValueOverIndexLimitIsInvalidArgument() {
+      boolean overIndexLimit =
+          switch (SupportedDatabase.selected()) {
+            case H2 -> false;
+            case POSTGRES_18 -> true;
+          };
+      StagingTableDAO stagingTableDAO = new StagingTableDAO();
+      stagingTableDAO.setDefaultFields();
+      stagingTableDAO.setId(UUID.randomUUID());
+      stagingTableDAO.setName("staging_table");
+      // 1,917 characters and 3,817 bytes: fits varchar(2048) but not an index entry.
+      stagingTableDAO.setStagingLocation("s3://test-bucket/" + randomTwoByteCharacters(1900));
+
+      Throwable failure =
+          catchThrowable(
+              () ->
+                  TransactionManager.executeWithTransaction(
+                      realSessionFactory,
+                      session -> {
+                        session.persist(stagingTableDAO);
+                        return null;
+                      },
+                      "Error creating staging table",
+                      /* readOnly= */ false));
+
+      if (overIndexLimit) {
+        assertThat(failure)
+            .isInstanceOf(BaseException.class)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_ARGUMENT)
+            .hasMessageContaining("index row size");
+      } else {
+        assertThat(failure).isNull();
+      }
+    }
+
+    /**
+     * Returns random letters that each take 2 bytes in UTF-8. They are random because PostgreSQL
+     * compresses an index entry before it checks the size.
+     */
+    private static String randomTwoByteCharacters(int count) {
+      // Latin Extended-A, Latin Extended-B and IPA Extensions: U+0100 to U+02AF.
+      Random random = new Random(/* seed= */ 0);
+      StringBuilder characters = new StringBuilder();
+      for (int i = 0; i < count; i++) {
+        characters.append((char) (0x0100 + random.nextInt(0x02B0 - 0x0100)));
+      }
+      return characters.toString();
     }
   }
 }
