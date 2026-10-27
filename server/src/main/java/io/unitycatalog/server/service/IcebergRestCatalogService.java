@@ -470,6 +470,8 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
         && serverProperties.isStrictPrivilegeChecksEnabled()) {
       Map<SecurableType, UUID> resourceIds =
           keyMapper.mapResourceKeys(Map.of(TABLE, state.tableId().toString()));
+      // Missing read access gives loadTable a metadata-only response.
+      // Check cached permissions directly to avoid UnityAccessEvaluator's policy refresh.
       boolean canRead =
           authorizer.authorizeAny(
                   principalId, resourceIds.get(CATALOG), Privileges.OWNER, Privileges.USE_CATALOG)
