@@ -857,7 +857,8 @@ not set
 			<td>Lifecycle hooks for the server container
 
 On SIGTERM the server stops taking new requests and finishes the ones in flight, for up to
-`server.shutdown-timeout` (5s by default). Kubernetes can still route requests to the pod for
+the `server.shutdown-timeout` server property (`PT5S` by default, set under
+`server.config.extraProperties`). Kubernetes can still route requests to the pod for
 a few seconds after it starts terminating, so a `preStop` sleep keeps the server serving until
 they stop arriving:
 
@@ -990,7 +991,7 @@ not set (Kubernetes uses 30)
 </td>
 			<td>Seconds Kubernetes waits for the pod to stop before killing it
 
-Set it to at least the `preStop` sleep plus `server.shutdown-timeout`.
+Set it to at least the `preStop` sleep plus the `server.shutdown-timeout` server property.
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-termination)
 </td>

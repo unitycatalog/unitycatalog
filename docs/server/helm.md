@@ -97,8 +97,11 @@ PersistentVolumeClaim and token signing key Secret, and a later install with the
 namespace reuses them. Delete both to remove the data.
 
 During an upgrade or scale-down, Kubernetes sends the server SIGTERM, and the server finishes requests in flight
-for up to `server.shutdown-timeout`. Requests can still arrive for a few seconds after that, so for zero-downtime
-rollouts set a `preStop` sleep and a matching grace period:
+for up to the `server.shutdown-timeout` server property (`PT5S` by default; set it under
+`server.config.extraProperties`). Kubernetes can keep routing requests to the pod for a few seconds after it starts
+terminating, so set a `preStop` sleep and a matching grace period. This avoids downtime only with a rolling update,
+which the chart uses with PostgreSQL or more than one replica. The default single replica on the file database is
+recreated, so it is briefly unavailable during an upgrade.
 
 ```yaml
 server:
