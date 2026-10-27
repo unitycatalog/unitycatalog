@@ -24,8 +24,6 @@ helm install unitycatalog oci://registry-1.docker.io/unitycatalog/unitycatalog-c
 
 Chart version X.Y.Z runs the server image `unitycatalog/unitycatalog:vX.Y.Z` and the UI image `unitycatalog/unitycatalog-ui:vX.Y.Z`.
 
-A chart installed from a source checkout uses the image tag `main` by default. That server image is older than v0.7.0 and rejects `--obs-port`, so set `server.deployment.image.tag` to v0.7.0 or later.
-
 ## Uninstalling the Chart
 To uninstall the `unitycatalog` chart:
 

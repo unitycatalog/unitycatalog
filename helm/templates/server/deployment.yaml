@@ -165,8 +165,7 @@ spec:
       {{- with .Values.server.deployment.extraInitContainers }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- /* The default covers `helm upgrade --reuse-values` from a release without obsPort. */}}
-      {{- $obsPort := .Values.server.deployment.obsPort | default 8090 }}
+      {{- $obsPort := .Values.server.deployment.obsPort }}
       containers:
         - name: server
           {{- with .Values.server.deployment.securityContext }}
@@ -177,27 +176,36 @@ spec:
           {{- end }}
           image: "{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
+          {{- with $obsPort }}
           command:
             - ./bin/start-uc-server
           args:
             - --obs-port
-            - {{ $obsPort | quote }}
+            - {{ . | quote }}
+          {{- end }}
           ports:
             - name: api
               containerPort: {{ .Values.server.deployment.port }}
               protocol: TCP
+            {{- with $obsPort }}
             - name: obs
-              containerPort: {{ $obsPort }}
+              containerPort: {{ . }}
               protocol: TCP
+            {{- end }}
 
           {{- if .Values.server.deployment.enableLivenessProbe }}
           {{- with .Values.server.deployment.livenessProbe }}
           livenessProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           livenessProbe:
+            {{- if $obsPort }}
             httpGet:
               path: /livez
               port: obs
+            {{- else }}
+            tcpSocket:
+              port: api
+            {{- end }}
             timeoutSeconds: 10
             periodSeconds: 10
             failureThreshold: 30 # 5 minutes
@@ -209,12 +217,20 @@ spec:
           readinessProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           readinessProbe:
+            {{- if $obsPort }}
             httpGet:
               path: /readyz
               port: obs
             timeoutSeconds: 10
             periodSeconds: 10
             failureThreshold: 3
+            {{- else }}
+            tcpSocket:
+              port: api
+            timeoutSeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30 # 5 minutes
+            {{- end }}
           {{- end }}
           {{- end }}
 

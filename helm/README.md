@@ -23,8 +23,6 @@ helm install unitycatalog oci://registry-1.docker.io/unitycatalog/unitycatalog-c
 
 Chart version X.Y.Z runs the server image `unitycatalog/unitycatalog:vX.Y.Z` and the UI image `unitycatalog/unitycatalog-ui:vX.Y.Z`.
 
-A chart installed from a source checkout uses the image tag `main` by default. That server image is older than v0.7.0 and rejects `--obs-port`, so set `server.deployment.image.tag` to v0.7.0 or later.
-
 ## Uninstalling the Chart
 To uninstall the `unitycatalog` chart:
 
@@ -878,7 +876,7 @@ lifecycle:
 			<td>server.deployment.livenessProbe</td>
 			<td>object</td>
 			<td><pre lang="">
-httpGet:<br>  path: /livez<br>  port: obs<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 30 # 5 minutes
+with obsPort: httpGet `/livez` on port obs; otherwise tcpSocket on port api. timeoutSeconds: 10, periodSeconds: 10, failureThreshold: 30 (5 minutes)
 </pre>
 </td>
 			<td>Liveness probe
@@ -901,17 +899,18 @@ not set
 		<tr>
 			<td>server.deployment.obsPort</td>
 			<td>int</td>
-			<td><pre lang="json">
-8090
+			<td><pre lang="">
+not set (observability off)
 </pre>
 </td>
 			<td>Observability port for the server deployment
 
-The server serves `/livez`, `/readyz` and `/metrics` on this port, without authentication.
-The readiness probe uses it, and so does the liveness probe when turned on. The Service
-doesn't expose it, but other pods can reach it on the pod IP; restrict it with a
-NetworkPolicy if needed, and allow the kubelet to reach it for the probes. Needs server
-image v0.7.0 or later.
+When set, the server starts with `--obs-port` and serves `/livez`, `/readyz` and `/metrics`
+on this port, without authentication. The default readiness probe then checks `/readyz`,
+and the liveness probe, when turned on, checks `/livez`; without it they check that the API
+port accepts a connection. The Service doesn't expose the port, but other pods can reach it
+on the pod IP; restrict it with a NetworkPolicy if needed, and allow the kubelet to reach it
+for the probes. Needs server image v0.7.0 or later.
 </td>
 		</tr>
 		<tr>
@@ -944,7 +943,7 @@ to write to the mounted volumes.
 			<td>server.deployment.readinessProbe</td>
 			<td>object</td>
 			<td><pre lang="">
-httpGet:<br>  path: /readyz<br>  port: obs<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 3
+with obsPort: httpGet `/readyz` on port obs, failureThreshold: 3; otherwise tcpSocket on port api, failureThreshold: 30 (5 minutes). timeoutSeconds: 10, periodSeconds: 10
 </pre>
 </td>
 			<td>Readiness probe
