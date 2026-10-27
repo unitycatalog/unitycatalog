@@ -2,7 +2,9 @@ package io.unitycatalog.server.audit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.model.CreateCatalog;
+import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
@@ -15,6 +17,7 @@ import io.unitycatalog.server.utils.LocalMappingFileOperations;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
+import java.util.UUID;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.types.Types;
@@ -77,11 +80,22 @@ class AuditCredentialVendingIntegrationTest extends BaseCRUDTestWithMockCredenti
               assertThat(r.getLocation()).startsWith("s3://");
             });
 
+    TableInfo table =
+        new TablesApi(TestUtils.createApiClient(serverConfig))
+            .getTable(
+                CLOUD_CATALOG + "." + TestUtils.SCHEMA_NAME + "." + TestUtils.TABLE_NAME,
+                /* readStreamingTableAsManaged= */ true,
+                /* readMaterializedViewAsManaged= */ true);
     iceberg.dropTable(CLOUD_CATALOG, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
+    // The cleanup's CLEANUP credentials carry this ID, so the two join on resource_id.
     assertThat(CapturingAuditSink.RECORDS)
         .filteredOn(r -> r.getAction() == AuditRecord.Action.QUEUE_CLEANUP)
         .singleElement()
-        .satisfies(r -> assertThat(r.getLocation()).startsWith("s3://"));
+        .satisfies(
+            r -> {
+              assertThat(r.getResourceId()).isEqualTo(UUID.fromString(table.getTableId()));
+              assertThat(r.getLocation()).isEqualTo(table.getStorageLocation());
+            });
   }
 
   @Test

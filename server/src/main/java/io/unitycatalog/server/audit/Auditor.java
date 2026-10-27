@@ -164,6 +164,8 @@ public final class Auditor implements AutoCloseable {
                   // Hibernate rethrows from commit() anything thrown here, which would turn a
                   // committed drop into an error, so everything stays inside the guard.
                   try {
+                    // Only on commit: with resource-local transactions Hibernate reports a
+                    // rollback as STATUS_UNKNOWN, not STATUS_ROLLEDBACK.
                     if (status == Status.STATUS_COMMITTED) {
                       action.run();
                     }
