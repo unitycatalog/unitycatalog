@@ -19,6 +19,7 @@ import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
 import io.unitycatalog.client.delta.model.DeltaRemoveDomainMetadataUpdate;
 import io.unitycatalog.client.delta.model.DeltaRemovePropertiesUpdate;
+import io.unitycatalog.client.delta.model.DeltaRenameTableRequest;
 import io.unitycatalog.client.delta.model.DeltaRowTrackingDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaSetDomainMetadataUpdate;
 import io.unitycatalog.client.delta.model.DeltaSetLatestBackfilledVersionUpdate;
@@ -594,6 +595,26 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                       new DeltaSetPropertiesUpdate().updates(Map.of("k", "v")))),
           DeltaErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
           "Table is not a Delta table");
+
+      // Drop and rename apply the same Delta-format check, and leave the table untouched.
+      TestUtils.assertDeltaApiException(
+          () ->
+              deltaTablesApi.deleteTable(
+                  TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, external.getName()),
+          DeltaErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
+          "Table is not a Delta table");
+      TestUtils.assertDeltaApiException(
+          () ->
+              deltaTablesApi.renameTable(
+                  TestUtils.CATALOG_NAME,
+                  TestUtils.SCHEMA_NAME,
+                  external.getName(),
+                  new DeltaRenameTableRequest().newName("tbl_external_parquet_renamed")),
+          DeltaErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
+          "Table is not a Delta table");
+      String fullName =
+          String.join(".", TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, external.getName());
+      assertThat(tableOperations.getTable(fullName).getTableId()).isEqualTo(external.getTableId());
     }
 
     // -------- add-commit on managed Delta (+ version conflict) --------

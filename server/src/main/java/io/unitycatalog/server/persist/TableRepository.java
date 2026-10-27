@@ -416,10 +416,10 @@ public class TableRepository {
   /**
    * Reject non-Delta entries (metric views, parquet, etc.) at the Delta REST surface so downstream
    * Delta-shaped reads don't throw misleading errors, and so update-path mutations can't commit
-   * against a row whose response would then fail on the way out. Sibling guard to {@code
-   * DeltaCommitRepository.validateTable}.
+   * against a row whose response would then fail on the way out. Also used by the Delta drop and
+   * rename endpoints. Sibling guard to {@code DeltaCommitRepository.validateTable}.
    */
-  private static void requireDeltaTable(
+  public static void requireDeltaTable(
       TableInfoDAO dao, String catalog, String schema, String table) {
     if (dao.getDataSourceFormat() == null
         || !DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {

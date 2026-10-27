@@ -168,6 +168,10 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table) {
+    // Check the format here, like the Iceberg REST service: the shared repository delete is
+    // format-agnostic.
+    TableRepository.requireDeltaTable(
+        tableRepository.findTableOrThrow(catalog, schema, table), catalog, schema, table);
     TableInfoDAO deleted = tableRepository.deleteTable(catalog, schema, table);
     removeHierarchicalAuthorizations(deleted.getId().toString(), deleted.getSchemaId().toString());
     return HttpResponse.of(HttpStatus.NO_CONTENT);
@@ -292,6 +296,8 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
     if (request == null || request.getNewName() == null || request.getNewName().isBlank()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "New table name is required.");
     }
+    TableRepository.requireDeltaTable(
+        tableRepository.findTableOrThrow(catalog, schema, table), catalog, schema, table);
     tableRepository.renameTable(catalog, schema, table, request.getNewName());
     return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
