@@ -24,6 +24,7 @@ import org.hibernate.internal.ExceptionConverterImpl;
 import org.hibernate.query.SelectionQuery;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 
 public class RepositoryUtilsTest {
@@ -118,6 +119,35 @@ public class RepositoryUtilsTest {
         .isInstanceOfSatisfying(
             BaseException.class,
             e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.COMMIT_STATE_UNKNOWN));
+  }
+
+  @ParameterizedTest
+  @CsvSource({"a.b.c, 3", "a.b, 2"})
+  public void splitFullNameAcceptsExactlyTheExpectedNonEmptyParts(String name, int parts) {
+    assertThat(RepositoryUtils.splitFullName(name, parts, "Invalid name: " + name))
+        .hasSize(parts)
+        .doesNotContain("");
+  }
+
+  /** The first four have the right count but an empty part; the rest have the wrong count. */
+  @ParameterizedTest
+  @CsvSource({
+    ".b.c, 3",
+    "a..c, 3",
+    "a.b., 3",
+    "a., 2",
+    "a.b, 3",
+    "a.b.c.d, 3",
+    "a.b.c., 3",
+    "'', 3",
+    "a.b.c, 2"
+  })
+  public void splitFullNameRejectsAWrongCountOrAnEmptyPart(String name, int parts) {
+    assertThatThrownBy(() -> RepositoryUtils.splitFullName(name, parts, "Invalid name: " + name))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+        .hasMessage("Invalid name: " + name);
   }
 
   /**

@@ -9,7 +9,6 @@ import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdateSchema;
-import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -40,17 +39,6 @@ public abstract class BaseTableCRUDTest extends BaseTableCRUDTestEnv {
     // Get table and verify columns
     TableInfo retrievedTable = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
     verifyTableInfo(retrievedTable, createdTable);
-
-    // A full name with an empty part is rejected, even if dropping the empty part would match.
-    for (String badName :
-        List.of(
-            TestUtils.TABLE_FULL_NAME + ".",
-            TestUtils.CATALOG_NAME + ".." + TestUtils.TABLE_NAME)) {
-      TestUtils.assertApiException(
-          () -> tableOperations.getTable(badName),
-          ErrorCode.INVALID_ARGUMENT,
-          "Invalid table name");
-    }
 
     // Create multiple tables and verify pagination
     List<TableInfo> createdTables = createMultipleTestingTables(111);
