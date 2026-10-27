@@ -30,8 +30,9 @@ spec:
       {{- with .Values.server.deployment.podSecurityContext }}
       securityContext: {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.server.deployment.terminationGracePeriodSeconds }}
-      terminationGracePeriodSeconds: {{ . }}
+      {{- /* kindIs keeps an explicit 0, which "with" would drop. */}}
+      {{- if not (kindIs "invalid" .Values.server.deployment.terminationGracePeriodSeconds) }}
+      terminationGracePeriodSeconds: {{ .Values.server.deployment.terminationGracePeriodSeconds }}
       {{- end }}
       initContainers:
         - name: init
