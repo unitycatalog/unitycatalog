@@ -442,7 +442,7 @@ tables remain read-only.
 
 Iceberg `loadTable` returns metadata to callers with metadata access. Credentials and their
 refresh endpoint are included only when the caller has read access. `loadCredentials` rejects
-requests without read access. Table listings and `tableExists` keep their existing permission checks.
+requests without read access.
 
 ## Spark and Java client authentication types
 
