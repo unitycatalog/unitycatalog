@@ -461,6 +461,9 @@ public class UnityCatalogServer implements AutoCloseable {
       unityCatalogServer.close();
       throw e;
     }
+    // On SIGTERM, stop accepting requests and let in-flight ones finish, for up to
+    // server.shutdown-timeout, before the JVM exits.
+    unityCatalogServer.server.closeOnJvmShutdown();
   }
 
   public void start() {
