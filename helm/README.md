@@ -321,11 +321,11 @@ If set, TLS will be enabled for the ingress
 		<tr>
 			<td>nameOverride</td>
 			<td>string</td>
-			<td><pre lang="">
-derived from the chart parameters and metadata
+			<td><pre lang="json">
+null
 </pre>
 </td>
-			<td>Override the name of the chart</td>
+			<td>Override the name used in resource names</td>
 		</tr>
 		<tr>
 			<td>server.config.extraProperties</td>

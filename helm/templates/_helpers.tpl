@@ -1,8 +1,9 @@
 {{/*
-Expand the name of the chart.
+Expand the name of the chart. Resource names use "unitycatalog", the chart's name before it was
+published as unitycatalog-chart, so an upgrade keeps them, even with --reuse-values.
 */}}
 {{- define "unitycatalog.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 56 | trimSuffix "-" }}
+{{- default "unitycatalog" .Values.nameOverride | trunc 56 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
@@ -15,7 +16,7 @@ If release name contains chart name it will be used as a full name.
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 56 | trimSuffix "-" }}
 {{- else }}
-{{- $name := default .Chart.Name .Values.nameOverride }}
+{{- $name := default "unitycatalog" .Values.nameOverride }}
 {{- if contains $name .Release.Name }}
 {{- .Release.Name | trunc 56 | trimSuffix "-" }}
 {{- else }}
