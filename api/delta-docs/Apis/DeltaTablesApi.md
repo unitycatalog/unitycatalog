@@ -78,7 +78,7 @@ No authorization required
 
 Delete a table
 
-    Delete a table from the catalog. 
+    Delete a table from the catalog. Returns 400 &#x60;UnsupportedTableFormatException&#x60; if the table is not a Delta table. 
 
 ### Parameters
 
@@ -136,7 +136,7 @@ No authorization required
 
 Rename a table
 
-    Rename a table within the same catalog and schema. Cross-schema and cross-catalog moves are not supported. 
+    Rename a table within the same catalog and schema. Cross-schema and cross-catalog moves are not supported. Returns 400 &#x60;UnsupportedTableFormatException&#x60; if the table is not a Delta table. 
 
 ### Parameters
 
