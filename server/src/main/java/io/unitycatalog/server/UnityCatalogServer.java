@@ -503,7 +503,8 @@ public class UnityCatalogServer implements AutoCloseable {
    * <p>The blocking executor is drained before anything else is closed, using the time remaining
    * from {@code server.shutdown-timeout}, so a handler that outlived {@link #stop()} does not see a
    * closed authorizer or cleanup worker. This is not a total shutdown deadline: other resource
-   * cleanup and Armeria's final shutdown can add time.
+   * cleanup and Armeria's final shutdown can add time. A resource that fails to close is logged and
+   * the rest still close; only a failure from {@link #stop()} is thrown.
    */
   @Override
   public void close() {
