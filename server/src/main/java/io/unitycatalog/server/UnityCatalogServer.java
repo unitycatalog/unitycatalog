@@ -462,13 +462,13 @@ public class UnityCatalogServer implements AutoCloseable {
       unityCatalogServer.close();
       throw e;
     }
-    // On SIGTERM, stop the storage cleanup first, as stop() does, then stop accepting requests and
-    // let in-flight ones finish, for up to server.shutdown-timeout. Log4j stops last, even when the
-    // server fails to close (Armeria logs that failure); bin/start-uc-server turns off Log4j's own
-    // shutdown hook so it doesn't stop logging during the drain.
+    // On SIGTERM, close() runs on Armeria's shutdown thread: it stops the storage cleanup, lets
+    // in-flight requests finish for up to server.shutdown-timeout, then closes everything else.
+    // Log4j stops last, even when close() fails (Armeria logs that failure). Its own shutdown hook
+    // is off in log4j2.component.properties, so it doesn't stop logging during the drain.
     unityCatalogServer
         .server
-        .closeOnJvmShutdown(unityCatalogServer.cleanupWorker::stop)
+        .closeOnJvmShutdown(unityCatalogServer::close)
         .whenComplete((unused, failure) -> LogManager.shutdown());
   }
 
