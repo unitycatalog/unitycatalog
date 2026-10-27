@@ -58,34 +58,26 @@ public final class Auditor implements AutoCloseable {
   }
 
   private static AuditSink loadSink(String className) {
-    Class<?> type;
     try {
-      type = Class.forName(className);
-    } catch (ClassNotFoundException | LinkageError e) {
-      throw new IllegalStateException(
-          "Cannot load audit sink class '" + className + "' (server.audit.sink)", e);
-    }
-    if (!AuditSink.class.isAssignableFrom(type)) {
-      throw new IllegalStateException(
-          "Audit sink class '"
-              + className
-              + "' (server.audit.sink) does not implement "
-              + AuditSink.class.getName());
-    }
-    try {
-      return (AuditSink) type.getDeclaredConstructor().newInstance();
+      return Class.forName(className)
+          .asSubclass(AuditSink.class)
+          .getDeclaredConstructor()
+          .newInstance();
     } catch (InvocationTargetException e) {
+      // The sink's own message says what to fix, e.g. FileAuditSink names the Log4j settings.
       throw new IllegalStateException(
           "Audit sink '"
               + className
               + "' (server.audit.sink) failed to start: "
               + e.getCause().getMessage(),
           e.getCause());
-    } catch (ReflectiveOperationException | LinkageError e) {
+    } catch (ReflectiveOperationException | LinkageError | ClassCastException e) {
       throw new IllegalStateException(
-          "Cannot create audit sink '"
+          "Cannot load audit sink '"
               + className
-              + "' (server.audit.sink); it needs a public no-arg constructor",
+              + "' (server.audit.sink): it must be on the server classpath, implement "
+              + AuditSink.class.getName()
+              + " and have a public no-arg constructor",
           e);
     }
   }
