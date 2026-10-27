@@ -865,8 +865,8 @@ public class DeltaUpdateTableMapperTest {
             setColumns(
                 fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 9, "col-2"))),
         rejected(
-            "rename of a partition column on a mode-none table that stores keys",
-            "column mapping is required to rename a column; the rename [b -> b2]",
+            "no column mapping: the partition follows the logical name, not a leftover key",
+            "partition column 'b' dropped",
             managed(
                     "none",
                     2,
