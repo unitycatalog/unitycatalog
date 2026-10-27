@@ -38,27 +38,13 @@ delete both to remove the data.
 The server can write one JSON audit record per issued storage credential to
 `/home/unitycatalog/etc/logs/audit.log` (see the server configuration
 docs). The chart's log configuration already has the `audit` logger; turn records on and ship the
-file with the existing extension points:
+file with your log shipper (for example a sidecar in `server.deployment.extraContainers`):
 
 ```yaml
 server:
   config:
     extraProperties:
       server.audit.sink: io.unitycatalog.server.audit.FileAuditSink
-  deployment:
-    extraVolumes:
-      - name: audit-logs
-        emptyDir: {}
-    extraVolumeMounts:
-      - name: audit-logs
-        mountPath: /home/unitycatalog/etc/logs
-    extraContainers:
-      - name: audit-shipper # your log shipper, reading /home/unitycatalog/etc/logs/audit.log
-        image: <your-log-shipper-image>
-        volumeMounts:
-          - name: audit-logs
-            mountPath: /home/unitycatalog/etc/logs
-            readOnly: true
 ```
 
 ## Configuration
