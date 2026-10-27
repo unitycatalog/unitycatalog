@@ -10,7 +10,6 @@ license = { text="Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
     "langchain>=1.0.0,<=1.2.10",
-    "langchain-community>=0.4.0,<=0.4.1",
     "unitycatalog-ai>=0.4.0,<0.5.0",
 ]
 
