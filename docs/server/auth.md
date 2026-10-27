@@ -475,7 +475,7 @@ Key names differ by client:
 | Server | Client |
 | --- | --- |
 | `server.authorization=disable` (default) | Java: `type=static` with `token=""`. Spark: legacy `token=""` (`export UC_TOKEN=`), or `auth.type=static` with `auth.token=""`. The client may send `Authorization: Bearer ` with an empty token; the server ignores it. |
-| `server.authorization=enable` | Java: `type=static` with a real token, or `type=oauth` with `oauth.uri`, `oauth.clientId`, and `oauth.clientSecret`. Spark: the same keys under the `auth.` prefix, or a non-empty legacy `token`. See the sections below. |
+| `server.authorization=enable` | Java: `type=static` with a real Unity Catalog token, or `type=oauth` with `oauth.uri`, `oauth.clientId`, `oauth.clientSecret`, `oauth.exchangeForUcToken=true` and `catalogUri`, because the server only accepts tokens it issued (see [Exchanging the OAuth token for a Unity Catalog token](#exchanging-the-oauth-token-for-a-unity-catalog-token)). Spark: the same keys under the `auth.` prefix, without `catalogUri`, which comes from the catalog `uri`; or a non-empty legacy `token`. See the sections below. |
 
 Spark maps a present `token` catalog property to `type=static` even when the value is empty.
 Hive JDBC / Beeline URLs that omit empty query parameters cannot express an empty token;
@@ -610,17 +610,6 @@ from the catalog `uri` option automatically:
 --conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientSecret=<client secret>" \
 --conf "spark.sql.catalog.<catalog_name>.auth.oauth.exchangeForUcToken=true"
 ```
-
-Delta's Unity Catalog commit coordinator, used for catalog-managed Delta tables, builds its own
-token provider from the catalog's `auth.` options only, so it does not get `catalogUri` from `uri`.
-For those tables, also set `auth.catalogUri` to the same URI:
-
-```sh
---conf "spark.sql.catalog.<catalog_name>.auth.catalogUri=https://uc.example.com"
-```
-
-`auth.catalogUri` must match the catalog `uri` (a trailing slash aside); a different value is
-rejected, so the token exchange can only go to the catalog's own server.
 
 Java clients set `catalogUri` themselves:
 

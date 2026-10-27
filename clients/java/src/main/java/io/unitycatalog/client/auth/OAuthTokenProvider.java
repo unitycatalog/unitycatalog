@@ -20,7 +20,6 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * Internal class - not intended for direct use.
@@ -39,15 +38,10 @@ import java.util.Optional;
  * Catalog directly. It is exchanged (RFC 8693) at the server's {@code auth/tokens} endpoint,
  * derived from {@code catalogUri}, and the UC-issued token is cached and renewed instead. This is
  * required by Unity Catalog servers that only accept their own tokens on API calls.
- *
- * <p>A token is cached until it is about to expire. The expiry comes from the response's {@code
- * expires_in}, which OAuth makes optional, or else from the token's own {@code exp} claim when it
- * is a JWT. A token with neither is used for one request only and not cached.
  */
 class OAuthTokenProvider implements TokenProvider {
   private static final long DEFAULT_LEAD_RENEWAL_TIME_SECONDS = 30L;
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-  private static final System.Logger LOGGER = System.getLogger(OAuthTokenProvider.class.getName());
   private static final String TOKEN_EXCHANGE_PATH = "/api/1.0/unity-control/auth/tokens";
   private static final String TOKEN_EXCHANGE_GRANT_TYPE =
       "urn:ietf:params:oauth:grant-type:token-exchange";
@@ -66,7 +60,6 @@ class OAuthTokenProvider implements TokenProvider {
   private Clock clock;
 
   private volatile TempToken tempToken;
-  private volatile boolean hasWarnedUncacheableToken;
 
   OAuthTokenProvider() {}
 
@@ -289,48 +282,18 @@ class OAuthTokenProvider implements TokenProvider {
   }
 
   /**
-   * Caches the token until {@code expires_in}, else until its JWT {@code exp} claim. A token with
-   * neither is used once: it gets no expiry, so the next request fetches a new one.
+   * Caches the token until {@code expires_in}. OAuth makes it optional, but the provider needs it
+   * to know when to renew, so a response without it is rejected with a clear error.
    */
   private TempToken tempTokenOf(JsonNode response) throws IOException {
     String accessToken = accessTokenOf(response);
     // asLong also parses a numeric string, which some identity providers send.
     JsonNode expiresIn = response.get("expires_in");
     long expiresInSeconds = expiresIn == null ? -1L : expiresIn.asLong(-1L);
-    if (expiresInSeconds >= 0) {
-      return new TempToken(accessToken, clock.now().plusSeconds(expiresInSeconds));
+    if (expiresInSeconds < 0) {
+      throw new IOException("Token response has no valid 'expires_in'");
     }
-    Optional<Instant> jwtExpiration = jwtExpirationOf(accessToken);
-    if (jwtExpiration.isPresent()) {
-      return new TempToken(accessToken, jwtExpiration.get());
-    }
-    if (!hasWarnedUncacheableToken) {
-      hasWarnedUncacheableToken = true;
-      LOGGER.log(
-          System.Logger.Level.WARNING,
-          "Token response has no 'expires_in' and the token has no 'exp' claim, so it cannot be"
-              + " cached: a new token is fetched for every request.");
-    }
-    return new TempToken(accessToken, /* expirationTime= */ null);
-  }
-
-  /**
-   * The {@code exp} claim of a JWT, or empty if the token is not a JWT or has none. The signature
-   * is not checked: this only decides how long to cache the token, and the server verifies it.
-   */
-  static Optional<Instant> jwtExpirationOf(String token) {
-    String[] parts = token.split("\\.");
-    if (parts.length != 3) {
-      return Optional.empty();
-    }
-    try {
-      JsonNode exp = OBJECT_MAPPER.readTree(Base64.getUrlDecoder().decode(parts[1])).get("exp");
-      return exp != null && exp.canConvertToLong()
-          ? Optional.of(Instant.ofEpochSecond(exp.asLong()))
-          : Optional.empty();
-    } catch (IllegalArgumentException | IOException e) {
-      return Optional.empty();
-    }
+    return new TempToken(accessToken, clock.now().plusSeconds(expiresInSeconds));
   }
 
   private static String normalizeOAuthScope(String oauthScope) {
@@ -343,7 +306,6 @@ class OAuthTokenProvider implements TokenProvider {
 
   private class TempToken {
     private final String token;
-    // Null for a token that cannot be cached.
     private final Instant expirationTime;
 
     TempToken(String token, Instant expirationTime) {
@@ -356,9 +318,6 @@ class OAuthTokenProvider implements TokenProvider {
     }
 
     public boolean isReadyToRenew() {
-      if (expirationTime == null) {
-        return true;
-      }
       Instant renewalTime = expirationTime.minusSeconds(leadRenewalTimeSeconds);
       return clock.now().isAfter(renewalTime);
     }

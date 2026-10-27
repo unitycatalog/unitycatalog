@@ -47,23 +47,10 @@ public class AuthConfigUtils {
     }
 
     // Token providers that call the UC server themselves (e.g. the OAuth token exchange) need the
-    // catalog URI, and the exchange sends the OAuth token to it, so the catalog 'uri' option is its
-    // only source. 'auth.catalogUri' is still accepted when it names the same URI: Delta's UC
-    // commit
-    // coordinator builds its token provider from the 'auth.' options alone, so that is how it gets
-    // the catalog URI.
+    // catalog URI. It always comes from the catalog 'uri' option, replacing any 'auth.catalogUri',
+    // so the exchange can only go to the catalog's server.
+    newConfigs.remove(CATALOG_URI);
     String uri = configs.get(OptionsUtil.URI);
-    String authCatalogUri = newConfigs.remove(CATALOG_URI);
-    if (authCatalogUri != null) {
-      Preconditions.checkArgument(
-          uri != null && withoutTrailingSlashes(authCatalogUri).equals(withoutTrailingSlashes(uri)),
-          "'%s%s' (%s) must match the catalog '%s' option (%s).",
-          AUTH_PREFIX,
-          CATALOG_URI,
-          authCatalogUri,
-          OptionsUtil.URI,
-          uri);
-    }
     if (uri != null) {
       newConfigs.put(CATALOG_URI, uri);
     }
@@ -71,7 +58,24 @@ public class AuthConfigUtils {
     return new CaseInsensitiveStringMap(newConfigs);
   }
 
-  private static String withoutTrailingSlashes(String uri) {
-    return uri.replaceAll("/+$", "");
+  /**
+   * Returns the catalog options for Delta's catalog, which builds its own UC token provider from
+   * the 'auth.' options alone. When there are 'auth.' options, 'auth.catalogUri' is set to the
+   * catalog 'uri' so that provider can reach the server too. Otherwise the options are returned
+   * unchanged: Delta then falls back to the legacy 'token' option, which a lone 'auth.catalogUri'
+   * would hide.
+   */
+  public static CaseInsensitiveStringMap withAuthCatalogUri(CaseInsensitiveStringMap options) {
+    String uri = options.get(OptionsUtil.URI);
+    boolean hasAuthOptions = options.keySet().stream().anyMatch(k -> k.startsWith(AUTH_PREFIX));
+    if (uri == null || !hasAuthOptions) {
+      return options;
+    }
+    // Case-insensitive, so a user-set 'auth.catalogUri' (lowercased by Spark) is replaced rather
+    // than left beside it.
+    Map<String, String> delegateOptions = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+    delegateOptions.putAll(options);
+    delegateOptions.put(AUTH_PREFIX + CATALOG_URI, uri);
+    return new CaseInsensitiveStringMap(delegateOptions);
   }
 }

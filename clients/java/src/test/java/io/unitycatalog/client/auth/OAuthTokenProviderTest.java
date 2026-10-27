@@ -18,7 +18,6 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Flow;
@@ -368,18 +367,6 @@ public class OAuthTokenProviderTest {
   }
 
   @Test
-  public void testTokenExpiryFallsBackToJwtExpClaim() throws Exception {
-    String jwt = jwtWithExp(clock.now().plusSeconds(EXPIRES_IN_SECONDS).getEpochSecond());
-    mockTokenResponses(tokenResponse("{\"access_token\":\"" + jwt + "\"}"));
-    OAuthTokenProvider provider = defaultOAuthTokenProvider();
-
-    assertThat(provider.accessToken()).isEqualTo(jwt);
-    clock.sleep(Duration.ofSeconds(EXPIRES_IN_SECONDS - 60));
-    assertThat(provider.accessToken()).isEqualTo(jwt);
-    verifyOAuthRequest(1);
-  }
-
-  @Test
   public void testTokenExpiryAcceptsNumericString() throws Exception {
     mockTokenResponses(
         tokenResponse("{\"access_token\":\"" + ACCESS_TOKEN_1 + "\",\"expires_in\":\"3600\"}"));
@@ -388,18 +375,6 @@ public class OAuthTokenProviderTest {
     provider.accessToken();
     provider.accessToken();
     verifyOAuthRequest(1);
-  }
-
-  @Test
-  public void testTokenWithoutAnyExpiryIsNotCached() throws Exception {
-    mockTokenResponses(
-        tokenResponse("{\"access_token\":\"" + ACCESS_TOKEN_1 + "\"}"),
-        tokenResponse("{\"access_token\":\"" + ACCESS_TOKEN_2 + "\"}"));
-    OAuthTokenProvider provider = defaultOAuthTokenProvider();
-
-    assertThat(provider.accessToken()).isEqualTo(ACCESS_TOKEN_1);
-    assertThat(provider.accessToken()).isEqualTo(ACCESS_TOKEN_2);
-    verifyOAuthRequest(2);
   }
 
   @Test
@@ -415,6 +390,18 @@ public class OAuthTokenProviderTest {
   }
 
   @Test
+  public void testMissingExpiresInIsReported() throws Exception {
+    mockTokenResponses(tokenResponse("{\"access_token\":\"" + ACCESS_TOKEN_1 + "\"}"));
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
+
+    assertThatThrownBy(provider::accessToken)
+        .isInstanceOf(RuntimeException.class)
+        .cause()
+        .isInstanceOf(IOException.class)
+        .hasMessageContaining("Token response has no valid 'expires_in'");
+  }
+
+  @Test
   public void testMissingAccessTokenIsReported() throws Exception {
     mockTokenResponses(tokenResponse("{\"expires_in\":3600}"));
     OAuthTokenProvider provider = defaultOAuthTokenProvider();
@@ -426,15 +413,6 @@ public class OAuthTokenProviderTest {
         .hasMessageContaining("Token response has no 'access_token'");
   }
 
-  @Test
-  public void testJwtExpirationOf() {
-    assertThat(OAuthTokenProvider.jwtExpirationOf(jwtWithExp(1700000000L)))
-        .contains(Instant.ofEpochSecond(1700000000L));
-    assertThat(OAuthTokenProvider.jwtExpirationOf(ACCESS_TOKEN_1)).isEmpty();
-    assertThat(OAuthTokenProvider.jwtExpirationOf("a.not-base64!.c")).isEmpty();
-    assertThat(OAuthTokenProvider.jwtExpirationOf(jwt("{\"sub\":\"x\"}"))).isEmpty();
-  }
-
   private static Map<String, String> exchangeConfigs(String catalogUri) {
     return Map.of(
         AuthConfigs.OAUTH_URI, OAUTH_URI,
@@ -442,19 +420,6 @@ public class OAuthTokenProviderTest {
         AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET,
         AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN, "true",
         AuthConfigs.CATALOG_URI, catalogUri);
-  }
-
-  private static String jwtWithExp(long exp) {
-    return jwt("{\"exp\":" + exp + "}");
-  }
-
-  /** An unsigned JWT with the given claims; the provider only reads it, it does not verify it. */
-  private static String jwt(String claimsJson) {
-    Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
-    return encoder.encodeToString("{\"alg\":\"none\"}".getBytes(StandardCharsets.UTF_8))
-        + "."
-        + encoder.encodeToString(claimsJson.getBytes(StandardCharsets.UTF_8))
-        + ".signature";
   }
 
   private OAuthTokenProvider exchangingOAuthTokenProvider() {
