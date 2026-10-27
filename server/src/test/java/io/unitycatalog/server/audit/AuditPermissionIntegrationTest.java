@@ -19,6 +19,7 @@ import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdatePermissions;
+import io.unitycatalog.control.model.UserResource;
 import io.unitycatalog.server.audit.AuditRecord.Purpose;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.sdk.access.SdkAccessControlBaseCRUDTest;
@@ -71,9 +72,10 @@ class AuditPermissionIntegrationTest extends SdkAccessControlBaseCRUDTest {
   }
 
   @Test
-  void recordsGrantsDuplicateGrantRevokeAndDrop() throws Exception {
+  void recordsGrantsRevokeDropAndUserDelete() throws Exception {
     String admin = JWT.decode(adminConfig.getAuthToken()).getSubject();
-    createTestUser(REGULAR_1);
+    UserResource user = createTestUser(REGULAR_1);
+    UUID userId = UUID.fromString(user.getId());
     grantPermissions(
         REGULAR_1, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
     // The second grant changes nothing, so it records nothing.
@@ -89,6 +91,9 @@ class AuditPermissionIntegrationTest extends SdkAccessControlBaseCRUDTest {
                         .principal(REGULAR_1)
                         .add(List.of())
                         .remove(List.of(Privilege.USE_CATALOG)))));
+    // A grant left for the user delete to clear.
+    grantPermissions(
+        REGULAR_1, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.CREATE_SCHEMA);
     TableInfo table = createManagedTable();
     UUID tableId = UUID.fromString(table.getTableId());
     new TemporaryCredentialsApi(adminApiClient)
@@ -98,6 +103,7 @@ class AuditPermissionIntegrationTest extends SdkAccessControlBaseCRUDTest {
                 .operation(TableOperation.READ));
     new TablesApi(adminApiClient)
         .deleteTable(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + TABLE);
+    usersApi.deleteUser(user.getId());
 
     List<AuditRecord> records = List.copyOf(CapturingAuditSink.RECORDS);
     assertThat(records)
@@ -105,13 +111,29 @@ class AuditPermissionIntegrationTest extends SdkAccessControlBaseCRUDTest {
             r ->
                 r.getAction() == AuditRecord.Action.GRANT && "USE CATALOG".equals(r.getPrivilege()))
         .singleElement()
-        .satisfies(r -> assertThat(r.getUser()).isEqualTo(admin));
+        .satisfies(
+            r -> {
+              assertThat(r.getUser()).isEqualTo(admin);
+              assertThat(r.getPrincipalId()).isEqualTo(userId);
+              assertThat(FileAuditSink.toJson(r))
+                  .contains("\"principal_id\":\"" + userId + "\"", "\"privilege\":\"USE CATALOG\"");
+            });
     assertThat(records)
         .filteredOn(r -> r.getAction() == AuditRecord.Action.REVOKE)
         .singleElement()
         .satisfies(
             r -> {
               assertThat(r.getPrivilege()).isEqualTo("USE CATALOG");
+              assertThat(r.getPrincipalId()).isEqualTo(userId);
+              assertThat(r.getUser()).isEqualTo(admin);
+            });
+    assertThat(records)
+        .filteredOn(r -> r.getAction() == AuditRecord.Action.CLEAR_PRINCIPAL_GRANTS)
+        .singleElement()
+        .satisfies(
+            r -> {
+              assertThat(r.getPrincipalId()).isEqualTo(userId);
+              assertThat(r.getResourceId()).isNull();
               assertThat(r.getUser()).isEqualTo(admin);
             });
     // The admin's OWNER grant made when the server first starts.
