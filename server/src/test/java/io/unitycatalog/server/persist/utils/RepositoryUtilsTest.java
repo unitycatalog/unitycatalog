@@ -125,24 +125,22 @@ public class RepositoryUtilsTest {
   @CsvSource({"a.b.c, 3", "a.b, 2"})
   public void splitFullNameAcceptsExactlyTheExpectedNonEmptyParts(String name, int parts) {
     assertThat(RepositoryUtils.splitFullName(name, parts, "Invalid name: " + name))
-        .hasSize(parts)
-        .doesNotContain("");
+        .containsExactly(name.split("\\."));
   }
 
-  /** The first four have the right count but an empty part; the rest have the wrong count. */
   @ParameterizedTest
-  @CsvSource({
-    ".b.c, 3",
-    "a..c, 3",
-    "a.b., 3",
-    "a., 2",
-    "a.b, 3",
-    "a.b.c.d, 3",
-    "a.b.c., 3",
-    "'', 3",
-    "a.b.c, 2"
-  })
-  public void splitFullNameRejectsAWrongCountOrAnEmptyPart(String name, int parts) {
+  @CsvSource({".b.c, 3", "a..c, 3", "a.b., 3", "a., 2"})
+  public void splitFullNameRejectsAnEmptyPart(String name, int parts) {
+    assertRejected(name, parts);
+  }
+
+  @ParameterizedTest
+  @CsvSource({"a.b, 3", "a.b.c.d, 3", "a.b.c., 3", "'', 3", "a.b.c, 2"})
+  public void splitFullNameRejectsTheWrongNumberOfParts(String name, int parts) {
+    assertRejected(name, parts);
+  }
+
+  private static void assertRejected(String name, int parts) {
     assertThatThrownBy(() -> RepositoryUtils.splitFullName(name, parts, "Invalid name: " + name))
         .isInstanceOfSatisfying(
             BaseException.class,
