@@ -19,6 +19,7 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -303,6 +304,29 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
                 "REPLACE TABLE %s USING DELTA AS SELECT 1 AS i, 2 AS extra_col", fullTableName),
             String.format(
                 "CREATE OR REPLACE TABLE %s (i INT, extra_col INT) USING DELTA", fullTableName)));
+  }
+
+  /**
+   * CREATE OR REPLACE TABLE without a COMMENT clause succeeds on a table that has a comment and
+   * removes the comment. Delta sends the removal as a set-table-comment without a comment.
+   */
+  @Test
+  public void testManagedDeltaReplaceRemovesTableComment() throws ApiException {
+    // Only Delta >= 4.3.0 replaces managed tables through the UC Delta API that sends the comment.
+    Assumptions.assumeTrue(DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API));
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String fullTableName =
+        setupTable(
+            new TableSetupOptions()
+                .setCatalogName(CATALOG_NAME)
+                .setTableName(TEST_TABLE)
+                .setComment("a comment"));
+    assertThat(loadTableInfo(fullTableName).getComment()).isEqualTo("a comment");
+
+    sql("CREATE OR REPLACE TABLE %s USING DELTA AS SELECT 2 AS i, 'b' AS s", fullTableName);
+    assertThat(loadTableInfo(fullTableName).getComment()).isNull();
+    validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(2, "b"));
   }
 
   @Test
