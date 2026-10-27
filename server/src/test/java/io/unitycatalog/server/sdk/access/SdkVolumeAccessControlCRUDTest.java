@@ -1,5 +1,9 @@
 package io.unitycatalog.server.sdk.access;
 
+import static io.unitycatalog.client.model.SecurableType.CATALOG;
+import static io.unitycatalog.client.model.SecurableType.METASTORE;
+import static io.unitycatalog.client.model.SecurableType.SCHEMA;
+import static io.unitycatalog.client.model.SecurableType.VOLUME;
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -21,10 +25,9 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.UUID;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
 
 /**
  * SDK-based access control tests for Volume CRUD operations.
@@ -41,62 +44,75 @@ import org.junit.jupiter.params.provider.CsvSource;
  */
 public class SdkVolumeAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest {
 
-  @ParameterizedTest
-  @CsvSource({
-    "VOLUME, true, true, , true, false",
-    "VOLUME, true, true, SCHEMA, true, true",
-    "VOLUME, true, true, CATALOG, true, true",
-    "VOLUME, false, true, SCHEMA, false, false",
-    "VOLUME, true, false, SCHEMA, false, false",
-    "SCHEMA, true, false, , true, true",
-    "SCHEMA, false, false, , false, false",
-    "CATALOG, false, false, , true, false",
-    "CATALOG, false, false, SCHEMA, true, false",
-    "CATALOG, false, true, SCHEMA, true, true",
-    "METASTORE, false, false, , false, false",
-    "METASTORE, true, true, SCHEMA, false, false",
-    ", true, true, SCHEMA, false, false"
-  })
+  @Test
   @SneakyThrows
-  public void testVolumeRenamePermissions(
+  public void testVolumeRenamePermissions() {
+    createCommonTestUsers();
+    for (boolean useCatalog : new boolean[] {false, true}) {
+      for (boolean useSchema : new boolean[] {false, true}) {
+        boolean hasUsage = useCatalog && useSchema;
+        for (SecurableType createGrantType : new SecurableType[] {null, SCHEMA, CATALOG}) {
+          boolean hasCreateVolume = createGrantType != null;
+          assertVolumeRename(
+              VOLUME,
+              useCatalog,
+              useSchema,
+              createGrantType,
+              hasUsage,
+              hasUsage && hasCreateVolume);
+          assertVolumeRename(
+              SCHEMA, useCatalog, useSchema, createGrantType, useCatalog, useCatalog);
+          assertVolumeRename(
+              CATALOG, useCatalog, useSchema, createGrantType, true, useSchema && hasCreateVolume);
+          assertVolumeRename(METASTORE, useCatalog, useSchema, createGrantType, false, false);
+          assertVolumeRename(null, useCatalog, useSchema, createGrantType, false, false);
+        }
+      }
+    }
+  }
+
+  @SneakyThrows
+  private void assertVolumeRename(
       SecurableType ownerType,
       boolean useCatalog,
       boolean useSchema,
       SecurableType createGrantType,
       boolean canComment,
       boolean canRename) {
-    createCommonTestUsers();
-    setupCommonCatalogAndSchema();
+    String catalogName = "cat_rename_" + UUID.randomUUID().toString().replace("-", "");
+    String schemaFullName = catalogName + ".sch_rename";
+    setupCommonCatalogAndSchema(catalogName, "sch_pr1");
     SchemasApi schemaCreatorApi =
         new SchemasApi(TestUtils.createApiClient(createTestUserServerConfig(PRINCIPAL_2)));
     grantPermissions(
         PRINCIPAL_2,
         SecurableType.CATALOG,
-        "cat_pr1",
+        catalogName,
         Privileges.USE_CATALOG,
         Privileges.CREATE_SCHEMA);
-    schemaCreatorApi.createSchema(new CreateSchema().name("sch_rename").catalogName("cat_pr1"));
+    schemaCreatorApi.createSchema(new CreateSchema().name("sch_rename").catalogName(catalogName));
     VolumesApi volumeOwnerApi =
         new VolumesApi(TestUtils.createApiClient(createTestUserServerConfig(REGULAR_1)));
     VolumesApi observerApi = new VolumesApi(adminApiClient);
-    grantPermissions(REGULAR_1, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    grantPermissions(REGULAR_1, SecurableType.CATALOG, catalogName, Privileges.USE_CATALOG);
     grantPermissions(
         REGULAR_1,
         SecurableType.SCHEMA,
-        "cat_pr1.sch_rename",
+        schemaFullName,
         Privileges.USE_SCHEMA,
         Privileges.CREATE_VOLUME);
     VolumeInfo original =
         volumeOwnerApi.createVolume(
             new CreateVolumeRequestContent()
                 .name("volume")
-                .catalogName("cat_pr1")
+                .catalogName(catalogName)
                 .schemaName("sch_rename")
                 .volumeType(VolumeType.EXTERNAL)
-                .storageLocation(testDirectoryRoot.resolve("volume").toString()));
+                .storageLocation(
+                    testDirectoryRoot.resolve(catalogName).resolve("volume").toString()));
     grantsApi.update(
         SecurableType.CATALOG,
-        "cat_pr1",
+        catalogName,
         new UpdatePermissions()
             .changes(
                 List.of(
@@ -111,14 +127,14 @@ public class SdkVolumeAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest
                         .remove(List.of(Privilege.USE_CATALOG)))));
     grantsApi.update(
         SecurableType.SCHEMA,
-        "cat_pr1.sch_rename",
+        schemaFullName,
         new UpdatePermissions()
             .changes(
                 List.of(
                     new PermissionsChange()
                         .principal(REGULAR_1)
                         .remove(List.of(Privilege.USE_SCHEMA, Privilege.CREATE_VOLUME)))));
-    String fullName = "cat_pr1.sch_rename.volume";
+    String fullName = schemaFullName + ".volume";
     String principal =
         ownerType == null
             ? REGULAR_2
@@ -133,17 +149,16 @@ public class SdkVolumeAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest
             ? new VolumesApi(adminApiClient)
             : new VolumesApi(TestUtils.createApiClient(createTestUserServerConfig(principal)));
     if (useCatalog) {
-      grantPermissions(principal, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+      grantPermissions(principal, SecurableType.CATALOG, catalogName, Privileges.USE_CATALOG);
     }
     if (useSchema) {
-      grantPermissions(
-          principal, SecurableType.SCHEMA, "cat_pr1.sch_rename", Privileges.USE_SCHEMA);
+      grantPermissions(principal, SecurableType.SCHEMA, schemaFullName, Privileges.USE_SCHEMA);
     }
     if (createGrantType != null) {
       grantPermissions(
           principal,
           createGrantType,
-          createGrantType == SecurableType.CATALOG ? "cat_pr1" : "cat_pr1.sch_rename",
+          createGrantType == SecurableType.CATALOG ? catalogName : schemaFullName,
           Privileges.CREATE_VOLUME);
     }
 
@@ -171,12 +186,12 @@ public class SdkVolumeAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest
           new UpdateVolumeRequestContent().newName("renamed").comment(comment);
       if (canRename) {
         callerApi.updateVolume(fullName, rename);
-        VolumeInfo renamed = observerApi.getVolume("cat_pr1.sch_rename.renamed");
+        VolumeInfo renamed = observerApi.getVolume(schemaFullName + ".renamed");
         assertThat(renamed.getVolumeId()).isEqualTo(original.getVolumeId());
         assertThat(renamed.getName()).isEqualTo("renamed");
         assertThat(renamed.getComment()).isEqualTo(comment == null ? "comment" : comment);
         callerApi.updateVolume(
-            "cat_pr1.sch_rename.renamed", new UpdateVolumeRequestContent().newName("volume"));
+            schemaFullName + ".renamed", new UpdateVolumeRequestContent().newName("volume"));
       } else {
         assertPermissionDenied(() -> callerApi.updateVolume(fullName, rename));
         VolumeInfo unchanged = observerApi.getVolume(fullName);
