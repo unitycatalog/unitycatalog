@@ -14,9 +14,10 @@ generate_jar() {
 }
 
 # This function starts the unity catalog server. exec makes the JVM this process, so it receives
-# SIGTERM itself (as PID 1 in a container) and drains before exiting.
+# SIGTERM itself (as PID 1 in a container) and drains before exiting. The server stops Log4j after
+# that drain, so Log4j's own shutdown hook, which would stop logging during it, is off.
 run_uc_server_java_command() {
-  SERVER_JAVA_COMMAND="java -cp $(cat "$1") io.unitycatalog.server.UnityCatalogServer"
+  SERVER_JAVA_COMMAND="java -Dlog4j2.shutdownHookEnabled=false -cp $(cat "$1") io.unitycatalog.server.UnityCatalogServer"
   shift
   exec $SERVER_JAVA_COMMAND "$@"
 }
