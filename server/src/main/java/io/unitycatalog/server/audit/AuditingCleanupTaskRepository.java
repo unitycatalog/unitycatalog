@@ -1,9 +1,9 @@
 package io.unitycatalog.server.audit;
 
 import io.unitycatalog.server.persist.CleanupTaskRepository;
+import io.unitycatalog.server.persist.CleanupTaskRepository.Claim;
+import io.unitycatalog.server.persist.CleanupTaskRepository.CleanupFailureReport;
 import io.unitycatalog.server.persist.ManagedResourceType;
-import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
-import io.unitycatalog.server.persist.StorageCleanupTaskRepository.CleanupFailureReport;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import java.time.Duration;
 import java.util.Optional;

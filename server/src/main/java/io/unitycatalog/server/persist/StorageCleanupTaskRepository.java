@@ -17,17 +17,6 @@ import org.hibernate.SessionFactory;
 public class StorageCleanupTaskRepository implements CleanupTaskRepository {
   private final SessionFactory sessionFactory;
 
-  public record Claim(
-      ManagedResourceType resourceType, UUID resourceId, String storageLocation, UUID leaseToken) {}
-
-  public record CleanupFailureReport(String sanitizedError, Duration retryBackoff) {
-    public CleanupFailureReport {
-      Objects.requireNonNull(sanitizedError, "sanitizedError");
-      Objects.requireNonNull(retryBackoff, "retryBackoff");
-      ValidationUtils.checkArgument(!retryBackoff.isNegative(), "Retry backoff cannot be negative");
-    }
-  }
-
   public StorageCleanupTaskRepository(SessionFactory sessionFactory) {
     this.sessionFactory = sessionFactory;
   }

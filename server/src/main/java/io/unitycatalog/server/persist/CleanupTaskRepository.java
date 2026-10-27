@@ -1,15 +1,26 @@
 package io.unitycatalog.server.persist;
 
-import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
-import io.unitycatalog.server.persist.StorageCleanupTaskRepository.CleanupFailureReport;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
+import io.unitycatalog.server.utils.ValidationUtils;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
 
 /** Stores storage cleanup tasks; {@link StorageCleanupTaskRepository} is the database one. */
 public interface CleanupTaskRepository {
+  record Claim(
+      ManagedResourceType resourceType, UUID resourceId, String storageLocation, UUID leaseToken) {}
+
+  record CleanupFailureReport(String sanitizedError, Duration retryBackoff) {
+    public CleanupFailureReport {
+      Objects.requireNonNull(sanitizedError, "sanitizedError");
+      Objects.requireNonNull(retryBackoff, "retryBackoff");
+      ValidationUtils.checkArgument(!retryBackoff.isNegative(), "Retry backoff cannot be negative");
+    }
+  }
+
   /**
    * Creates a cleanup task in the caller's current database transaction. If the resource deletion
    * or task creation fails, both changes are rolled back. The task keeps the deleted resource's ID

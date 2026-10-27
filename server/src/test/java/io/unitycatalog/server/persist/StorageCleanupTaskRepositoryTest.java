@@ -8,8 +8,8 @@ import static org.mockito.Mockito.spy;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
-import io.unitycatalog.server.persist.StorageCleanupTaskRepository.CleanupFailureReport;
+import io.unitycatalog.server.persist.CleanupTaskRepository.Claim;
+import io.unitycatalog.server.persist.CleanupTaskRepository.CleanupFailureReport;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.testdatabase.TestDatabase;
