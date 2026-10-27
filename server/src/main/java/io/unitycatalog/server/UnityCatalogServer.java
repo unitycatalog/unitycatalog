@@ -88,8 +88,6 @@ public class UnityCatalogServer implements AutoCloseable {
   private UnityCatalogAuthorizer authorizer;
 
   private Auditor auditor;
-  // With audit on, JVM exit closes the server in order, so the sink closes after serving stops.
-  private Thread auditShutdownHook;
 
   /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private StorageCleanupWorker cleanupWorker;
@@ -129,10 +127,6 @@ public class UnityCatalogServer implements AutoCloseable {
               .build();
       this.blockingTaskExecutor = createdBlockingTaskExecutor;
       this.server = initializeServer(unityCatalogServerBuilder);
-      if (auditor != null) {
-        auditShutdownHook = new Thread(this::close, "unitycatalog-audit-shutdown");
-        Runtime.getRuntime().addShutdownHook(auditShutdownHook);
-      }
     } catch (Throwable t) {
       // Construction failed after the SessionFactory was built; close it so a failed boot does
       // not leak its connection pool. Errors matter as much as RuntimeExceptions here: a
@@ -530,13 +524,6 @@ public class UnityCatalogServer implements AutoCloseable {
   @Override
   public void close() {
     long deadlineNanos = System.nanoTime() + shutdownTimeout.toNanos();
-    if (auditShutdownHook != null && Thread.currentThread() != auditShutdownHook) {
-      try {
-        Runtime.getRuntime().removeShutdownHook(auditShutdownHook);
-      } catch (IllegalStateException e) {
-        // The JVM is already shutting down and will run the hook.
-      }
-    }
     try {
       stop();
     } finally {
