@@ -80,6 +80,7 @@ convention = "google"
 
 [tool.uv]
 exclude-newer = "2026-03-10T00:00:00Z"
+exclude-newer-package = { certifi = "2026-10-23T00:00:00Z", uv = "2026-10-23T00:00:00Z" }
 
 [tool.uv.sources]
 unitycatalog-ai = { path = "../../core", editable = true }

@@ -3,6 +3,7 @@ package io.unitycatalog.server.auth.decorator;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
@@ -35,7 +36,10 @@ public class UnityAccessUtil {
       userRepository.getUserByEmail("admin");
       return;
     } catch (BaseException e) {
-      // IGNORE - this should be user not found exception.
+      // Any other lookup error, such as an unreachable database, fails startup.
+      if (e.getErrorCode() != ErrorCode.NOT_FOUND) {
+        throw e;
+      }
     }
 
     CreateUser createUser = CreateUser.builder().email("admin").name("Admin").build();

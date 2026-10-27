@@ -51,7 +51,7 @@ CI does not always start automatically. A pull request from a fork (the usual pa
 
 ### Request flow
 
-The server is an [Armeria](https://armeria.dev/) HTTP application. `UnityCatalogServer` (in `server/src/main/java/io/unitycatalog/server/`) is the bootstrap entry point; it builds the server, registers services, and starts a Vert.x URL-transcoder verticle in front. `ArmeriaServerBuilder` registers each service and selects a protocol-specific request/response converter, so the same server speaks several API dialects:
+The server is an [Armeria](https://armeria.dev/) HTTP application. `UnityCatalogServer` (in `server/src/main/java/io/unitycatalog/server/`) is the bootstrap entry point; it builds the server and registers services. `ArmeriaServerBuilder` registers each service and selects a protocol-specific request/response converter, so the same server speaks several API dialects:
 
 - `UC`: the native Unity Catalog REST surface (catalogs, schemas, tables, and so on).
 - `AUTH` and `SCIM`: control-plane auth and identity (SCIM2 user management), served under the control path.
@@ -144,7 +144,7 @@ public CatalogInfo addCatalog(CreateCatalog createCatalog) {
 
 Conventions:
 
-- **Read paths pass `readOnly = true`; write paths pass `false`.** A path that needs a specific isolation level passes it explicitly; `TransactionManager` saves and restores the connection's isolation so it does not pollute the pooled connection.
+- **Read paths pass `readOnly = true`; write paths pass `false`.** A path that needs a specific isolation level passes it explicitly; it applies to that transaction only, and Hikari resets it when the connection returns to the pool.
 - **DAOs extend `IdentifiableDAO`** (UUID id plus name), are annotated `@Entity @Table(name = "uc_...")`, use Lombok (`@Getter @Setter @SuperBuilder @NoArgsConstructor @AllArgsConstructor`), and expose static `from(XInfo)` and instance `toXInfo()` converters. Keep business logic out of DAOs.
 - **Backends:** H2 by default (embedded, file-based). MySQL and PostgreSQL are supported for a persistent deployment, configured in `etc/conf/hibernate.properties` (point at your database and add the JDBC driver); see `docs/server/deployment.md`. Hibernate is configured in `persist/utils/HibernateConfigurator`. Tests run on H2 by default; `build/sbt -J-Xmx6G testPostgres18` or `testMySQL8` (or `UC_TEST_DATABASE=POSTGRES_18` / `MYSQL_8`) runs them on PostgreSQL 18 or MySQL 8.4 in Docker, each test on its own database, and fails rather than skips when Docker is not available. A schema change:
   - is a new Flyway step for each database under `server/src/main/resources/db/migration/{h2,postgresql,mysql}/`, numbered after the last one; never edit a merged step;
