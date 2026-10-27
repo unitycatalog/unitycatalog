@@ -3168,7 +3168,7 @@ wheels = [
 
 [[package]]
 name = "unitycatalog-ai"
-version = "0.4.0"
+version = "0.4.1"
 source = { editable = "../../core" }
 dependencies = [
     { name = "cloudpickle" },
@@ -3243,7 +3243,7 @@ wheels = [
 
 [[package]]
 name = "unitycatalog-litellm"
-version = "0.2.0"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "litellm" },
