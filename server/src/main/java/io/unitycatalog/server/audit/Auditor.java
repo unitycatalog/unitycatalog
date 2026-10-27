@@ -14,6 +14,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -102,7 +103,10 @@ public final class Auditor implements AutoCloseable {
                     privileges.contains(CredentialContext.Privilege.UPDATE)
                         ? TableOperation.READ_WRITE
                         : TableOperation.READ)
-                .expiresAt(credential.getExpirationTime())
+                .expiresAt(
+                    credential.getExpirationTime() == null
+                        ? null
+                        : Instant.ofEpochMilli(credential.getExpirationTime()))
                 .build());
   }
 

@@ -78,14 +78,14 @@ public class FileAuditSink implements AuditSink {
   /** One JSON line with a fixed field order; null fields are omitted. */
   static String toJson(AuditRecord r) {
     Map<String, Object> m = new LinkedHashMap<>();
-    put(m, "time", r.getTime() == null ? null : TIME.format(r.getTime()));
+    put(m, "time", TIME.format(r.getTime()));
     put(m, "action", r.getAction());
     put(m, "user", r.getUser());
     put(m, "request_id", r.getRequestId());
     put(m, "purpose", r.getPurpose());
     put(m, "location", r.getLocation());
     put(m, "access", r.getAccess());
-    put(m, "expires_at", r.getExpiresAt());
+    put(m, "expires_at", r.getExpiresAt() == null ? null : TIME.format(r.getExpiresAt()));
     put(m, "resource_id", r.getResourceId());
     try {
       return MAPPER.writeValueAsString(m);
@@ -96,7 +96,7 @@ public class FileAuditSink implements AuditSink {
 
   private static void put(Map<String, Object> m, String key, Object value) {
     if (value != null) {
-      // Enums and UUIDs as strings; numbers stay JSON numbers.
+      // Enums and UUIDs as strings.
       m.put(key, value instanceof Enum<?> || value instanceof UUID ? value.toString() : value);
     }
   }

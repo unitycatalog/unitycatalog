@@ -4,6 +4,7 @@ import io.unitycatalog.server.model.TableOperation;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.Builder;
+import lombok.NonNull;
 import lombok.Value;
 
 /**
@@ -28,8 +29,8 @@ public class AuditRecord {
     CLEANUP
   }
 
-  Instant time;
-  Action action;
+  @NonNull Instant time;
+  @NonNull Action action;
 
   /** Acting user's email, {@code system:storage-cleanup}, {@code system:bootstrap}, or null. */
   String user;
@@ -41,8 +42,8 @@ public class AuditRecord {
   /** {@code READ} or {@code READ_WRITE}. */
   TableOperation access;
 
-  /** Credential expiry in epoch milliseconds. */
-  Long expiresAt;
+  /** When the credential expires. */
+  Instant expiresAt;
 
   UUID resourceId;
 

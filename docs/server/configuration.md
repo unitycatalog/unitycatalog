@@ -151,7 +151,7 @@ The server can write an audit record for each storage credential it issues. Audi
 Each record is one JSON line. Fields that don't apply to a record are left out:
 
 ```json
-{"time":"2026-10-20T10:02:00.000Z","action":"ISSUE_CREDENTIAL","user":"bob@example.com","request_id":"…","purpose":"CLIENT","location":"s3://bucket/root/tables/7f3a…","access":"READ","expires_at":1792500120000}
+{"time":"2026-10-20T10:02:00.000Z","action":"ISSUE_CREDENTIAL","user":"bob@example.com","request_id":"…","purpose":"CLIENT","location":"s3://bucket/root/tables/7f3a…","access":"READ","expires_at":"2026-10-20T11:02:00.000Z"}
 ```
 
 - `action`: `ISSUE_CREDENTIAL`.

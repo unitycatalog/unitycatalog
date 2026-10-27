@@ -57,7 +57,7 @@ class AuditorTest {
                 + "\"user\":\"system:storage-cleanup\",\"purpose\":\"CLEANUP\","
                 + "\"location\":\"s3://bkt/root/tables/"
                 + ID
-                + "\",\"access\":\"READ_WRITE\",\"expires_at\":1792500120000,"
+                + "\",\"access\":\"READ_WRITE\",\"expires_at\":\"2026-10-20T12:42:00.000Z\","
                 + "\"resource_id\":\""
                 + ID
                 + "\"}");
