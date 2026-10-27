@@ -991,7 +991,9 @@ not set (Kubernetes uses 30)
 </td>
 			<td>Seconds Kubernetes waits for the pod to stop before killing it
 
-Set it to at least the `preStop` sleep plus the `server.shutdown-timeout` server property.
+Set it to more than the `preStop` sleep plus the `server.shutdown-timeout` server property,
+with a few seconds of headroom: the rest of shutdown (storage cleanup, closing connections)
+takes extra time.
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-termination)
 </td>
