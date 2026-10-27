@@ -1,9 +1,10 @@
 {{/*
 Base name for resources: nameOverride, else "unitycatalog". Resource names default to "unitycatalog",
-not .Chart.Name, so they stay the same across chart renames and --reuse-values upgrades.
+not .Chart.Name, so they stay the same across chart renames and --reuse-values upgrades. Not
+truncated: unitycatalog.fullname compares it with the release name, then truncates the result.
 */}}
 {{- define "unitycatalog.name" -}}
-{{- default "unitycatalog" .Values.nameOverride | trunc 56 | trimSuffix "-" }}
+{{- default "unitycatalog" .Values.nameOverride }}
 {{- end }}
 
 {{/*
