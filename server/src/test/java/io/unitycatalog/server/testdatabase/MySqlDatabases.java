@@ -81,10 +81,10 @@ final class MySqlDatabases extends TemplateDatabases {
   void configureTemplate(Properties hibernateProperties) {
     // Hibernate's DDL always includes one index MySQL rejects: staging_location is 2048
     // characters, 8192 bytes in utf8mb4, over InnoDB's 3072-byte key limit. With halt_on_error the
-    // template build would fail on every run, so carry on without that index, as a real MySQL
-    // install does. templateBuilt then checks that every table was created.
-    // TODO: remove once the template is built by the schema migration steps, which leave this
-    // index out and stop on any error.
+    // template build would fail on every run, so carry on without that index, as the server does
+    // by default (it leaves halt_on_error at Hibernate's default, false). templateBuilt then checks
+    // that every table was created. TODO: remove once the template is built by the schema
+    // migration steps (#2045), which leave this index out and stop on any error.
     hibernateProperties.setProperty("hibernate.hbm2ddl.halt_on_error", "false");
   }
 
