@@ -172,6 +172,7 @@ public class RepositoryUtils {
     return parts;
   }
 
+  /** Splits a registered model full name (catalog.schema.model) into its three parts. */
   public static String[] parseFullName(String fullName) {
     return splitFullName(fullName, 3, "Invalid registered model name: " + fullName);
   }
