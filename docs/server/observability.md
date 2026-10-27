@@ -11,8 +11,8 @@ bin/start-uc-server --obs-port 8090
 
 The flag requires a port value. Omitting it keeps observability disabled; there is no separate
 enable property. The endpoints are served on the **dedicated observability port** you supply,
-separate from the catalog API port. In the example above, the client port defaults to `8080`,
-the internal API port is `8081`, and the observability port is `8090`.
+separate from the catalog API port. In the example above, the API port defaults to `8080` and
+the observability port is `8090`.
 
 The observability port is a second port on the *same* server as the API — not a separate server —
 so both listeners share one process and fail together. Serving these endpoints on their own port
@@ -23,7 +23,7 @@ listener: they answer on the observability port and are `404` on the API port. T
 bin/start-uc-server --port 8080 --obs-port 9464
 ```
 
-The supplied port must be between `1` and `65535` and differ from both API ports. `0` is not
+The supplied port must be between `1` and `65535` and differ from the API port. `0` is not
 supported; choose an explicit port. If any required port is already in use, startup fails;
 the server does not select another port.
 
@@ -102,6 +102,7 @@ Collector, etc.).
 | `http_server_requests_total` | Completed HTTP requests on the API listener, tagged by `hostname_pattern`, `service`, `method`, and `http_status`; includes authentication and authorization rejections |
 | `uc_securable_table_creations_total` | Table securables created after their database transactions commit through UC, Delta, or Iceberg REST, including tables, views, and metric views |
 | `uc_storage_credential_cache_requests_total` | Credential requests to the [storage credential cache](configuration.md#storage-credential-cache), tagged by `result`: `hit` for a credential served from the cache, `miss` for a request the cache could not serve, which vends a new credential; a vend that fails also counts as a miss. Both series are exposed from startup and stay at zero while the cache is disabled |
+| `uc_storage_cleanup_attempts_total` | Attempts by the storage cleanup worker to delete a dropped managed resource's files, tagged by `result` and `resource_type`. `success` means the attempt deleted the files; `failure` means the attempt failed, either deleting the files or saving the result to the database, and the task will be retried. It counts attempts, not dropped resources: when a lease expires and another attempt runs, one resource can record more than one success. `resource_type` is `table`, `volume`, `registered_model`, `model_version`, or `staging_table`. Every series is exposed from startup |
 
 Within the `http_server_*` family, only `http_server_requests_total` is exposed, without a `result`
 tag. HTTP latency, request/response size, timeout, and in-flight metrics are not exposed. JVM,
@@ -109,9 +110,8 @@ CPU, Armeria-internal, and UC metrics remain enabled.
 
 #### HTTP request counter labels
 
-- `hostname_pattern`: the API listener's virtual-host pattern, such as `*:8081` with the
-  default client port of `8080`. It identifies the internal API listener, not the client or
-  observability port.
+- `hostname_pattern`: the API listener's virtual-host pattern, such as `*:8080` with the
+  default API port. It identifies the API listener, not the observability port.
 - `service`: the fully qualified Java service class, such as
   `io.unitycatalog.server.service.CatalogService`.
 - `method`: the annotated Java handler name, such as `createCatalog`, **not** the HTTP verb.
@@ -121,14 +121,14 @@ CPU, Armeria-internal, and UC metrics remain enabled.
 
 For example, the following series show a successful catalog creation, a malformed catalog
 creation request, a server error during SCIM user creation, and an unmatched request that
-returns `404`. These examples use the default internal API port of `8081` and an illustrative
+returns `404`. These examples use the default API port of `8080` and an illustrative
 count of one request per series:
 
 ```text
-http_server_requests_total{hostname_pattern="*:8081",http_status="200",method="createCatalog",service="io.unitycatalog.server.service.CatalogService"} 1.0
-http_server_requests_total{hostname_pattern="*:8081",http_status="400",method="createCatalog",service="io.unitycatalog.server.service.CatalogService"} 1.0
-http_server_requests_total{hostname_pattern="*:8081",http_status="500",method="createScimUser",service="io.unitycatalog.server.service.Scim2UserService"} 1.0
-http_server_requests_total{hostname_pattern="*:8081",http_status="404",method="GET",service="com.linecorp.armeria.server.FallbackService"} 1.0
+http_server_requests_total{hostname_pattern="*:8080",http_status="200",method="createCatalog",service="io.unitycatalog.server.service.CatalogService"} 1.0
+http_server_requests_total{hostname_pattern="*:8080",http_status="400",method="createCatalog",service="io.unitycatalog.server.service.CatalogService"} 1.0
+http_server_requests_total{hostname_pattern="*:8080",http_status="500",method="createScimUser",service="io.unitycatalog.server.service.Scim2UserService"} 1.0
+http_server_requests_total{hostname_pattern="*:8080",http_status="404",method="GET",service="com.linecorp.armeria.server.FallbackService"} 1.0
 ```
 
 Requests to `/metrics`, `/livez`, and `/readyz` on the observability listener are not included
@@ -145,6 +145,12 @@ uc_securable_table_creations_total 1.0
 
 The storage credential cache hit ratio over five minutes is
 `sum(rate(uc_storage_credential_cache_requests_total{result="hit"}[5m])) / sum(rate(uc_storage_credential_cache_requests_total[5m]))`.
+
+Failed cleanups are retried without limit, so a task that keeps failing keeps raising the failure
+count. To alert on failed cleanups, use
+`sum by (resource_type) (increase(uc_storage_cleanup_attempts_total{result="failure"}[2h])) > 0`.
+Keep the window longer than `server.storage-cleanup.retry-backoff` (one hour by default), so a
+task that keeps failing records a failure in every window.
 
 !!! note "Per-route metrics are lazily populated"
     HTTP request metrics for a given route (`service`/`method` combination) appear in the

@@ -54,12 +54,9 @@ import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
-import io.vertx.core.Verticle;
-import io.vertx.core.Vertx;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 import org.apache.logging.log4j.core.config.Configurator;
@@ -76,12 +73,6 @@ public class UnityCatalogServer implements AutoCloseable {
   private final SecurityContext securityContext;
   private final HibernateConfigurator hibernateConfigurator;
   private final BlockingTaskExecutor blockingTaskExecutor;
-
-  /**
-   * Blocking threads, one per JDBC connection. Also the URL transcoder's connection limit, since
-   * HTTP/1.1 carries one request per connection.
-   */
-  private final int blockingThreads;
 
   private final Duration shutdownTimeout;
 
@@ -120,12 +111,11 @@ public class UnityCatalogServer implements AutoCloseable {
         ownsHibernateConfigurator
             ? new HibernateConfigurator(unityCatalogServerBuilder.serverProperties)
             : unityCatalogServerBuilder.hibernateConfigurator;
-    this.blockingThreads = hibernateConfigurator.getDataSource().getMaximumPoolSize();
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
       createdBlockingTaskExecutor =
           BlockingTaskExecutor.builder()
-              .numThreads(blockingThreads)
+              .numThreads(hibernateConfigurator.getDataSource().getMaximumPoolSize())
               .threadNamePrefix("unity-catalog-blocking")
               .build();
       this.blockingTaskExecutor = createdBlockingTaskExecutor;
@@ -235,7 +225,7 @@ public class UnityCatalogServer implements AutoCloseable {
             unityCatalogServerBuilder.serverProperties,
             blockingTaskExecutor);
 
-    UnityCatalogMetrics domainMetrics = null;
+    UnityCatalogMetrics domainMetrics = UnityCatalogMetrics.noop();
     if (unityCatalogServerBuilder.observabilityPort != null) {
       domainMetrics =
           initializeObservability(
@@ -269,7 +259,7 @@ public class UnityCatalogServer implements AutoCloseable {
     if (metrics != null) {
       armeriaServerBuilder.meterRegistry(metrics.registry());
     }
-    initializeCleanup(unityCatalogServerBuilder.serverProperties, repositories);
+    initializeCleanup(unityCatalogServerBuilder.serverProperties, repositories, domainMetrics);
 
     return armeriaServerBuilder.build();
   }
@@ -310,13 +300,17 @@ public class UnityCatalogServer implements AutoCloseable {
     return new UnityCatalogMetrics(meterRegistry);
   }
 
-  private void initializeCleanup(ServerProperties serverProperties, Repositories repositories) {
+  private void initializeCleanup(
+      ServerProperties serverProperties,
+      Repositories repositories,
+      UnityCatalogMetrics domainMetrics) {
     cleanupWorker =
         new StorageCleanupWorker(
             repositories.getStorageCleanupTaskRepository(),
             repositories.getFileOperations(),
             Clock.systemUTC(),
-            serverProperties);
+            serverProperties,
+            domainMetrics);
   }
 
   private UnityCatalogAuthorizer initializeAuthorizer(
@@ -448,39 +442,24 @@ public class UnityCatalogServer implements AutoCloseable {
   public static void main(String[] args) {
     OptionParser options = new OptionParser();
     options.parse(args);
-    int clientPort = options.getPort();
+    int port = options.getPort();
     ServerProperties serverProperties = new ServerProperties(SERVER_PROPERTIES_FILE);
     UnityCatalogServer.Builder serverBuilder =
-        UnityCatalogServer.builder().port(clientPort + 1).serverProperties(serverProperties);
+        UnityCatalogServer.builder().port(port).serverProperties(serverProperties);
     if (options.getObservabilityPort() != null) {
-      validateObservabilityPort(clientPort, options.getObservabilityPort());
       serverBuilder.observabilityPort(options.getObservabilityPort());
     }
-    // Start Unity Catalog server
     UnityCatalogServer unityCatalogServer = serverBuilder.build();
     unityCatalogServer.printArt();
-    unityCatalogServer.start();
-    // Start URL transcoder. Clients use its port, not Armeria's, so wait for it to be listening
-    // before this process reports itself started, and fail rather than serve only the internal
-    // port if it cannot bind.
-    Vertx vertx = Vertx.vertx();
-    Verticle transcodeVerticle =
-        new URLTranscoderVerticle(clientPort, clientPort + 1, unityCatalogServer.blockingThreads);
+    // A failed start, such as a port that cannot be bound or a cleanup worker that cannot start
+    // after Armeria is listening, must end the process rather than leave the pool, background
+    // threads, or a bound port open.
     try {
-      vertx.deployVerticle(transcodeVerticle).toCompletionStage().toCompletableFuture().join();
-    } catch (CompletionException e) {
-      LOGGER.error("Failed to start the URL transcoder on port {}", clientPort, e.getCause());
-      vertx.close();
+      unityCatalogServer.start();
+    } catch (RuntimeException e) {
+      LOGGER.error("Failed to start the Unity Catalog server", e);
       unityCatalogServer.close();
       throw e;
-    }
-  }
-
-  static void validateObservabilityPort(int clientPort, int observabilityPort) {
-    ArmeriaServerBuilder.validateObservabilityPort(clientPort + 1, observabilityPort);
-    if (observabilityPort == clientPort) {
-      throw new IllegalArgumentException(
-          "Observability port is already used by the client-facing listener: " + clientPort);
     }
   }
 
