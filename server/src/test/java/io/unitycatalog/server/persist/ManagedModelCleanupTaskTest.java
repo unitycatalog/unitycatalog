@@ -50,6 +50,7 @@ class ManagedModelCleanupTaskTest {
     requestContext = ServiceRequestContext.of(HttpRequest.of(HttpMethod.POST, "/")).push();
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
+    StorageCleanupTestSupport.captureAuditRecords(properties);
     ServerProperties serverProperties = new ServerProperties(properties);
     testDatabase = TestDatabases.newDatabase();
     sessionFactory = testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
@@ -60,9 +61,14 @@ class ManagedModelCleanupTaskTest {
   @AfterEach
   void tearDown() {
     try {
-      testDatabase.close();
+      // Every test here, including the rolled-back and cascading drops, records exactly its tasks.
+      StorageCleanupTestSupport.assertQueueCleanupRecordsMatchTasks(sessionFactory);
     } finally {
-      requestContext.close();
+      try {
+        testDatabase.close();
+      } finally {
+        requestContext.close();
+      }
     }
   }
 

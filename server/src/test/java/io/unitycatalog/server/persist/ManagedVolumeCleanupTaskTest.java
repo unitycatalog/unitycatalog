@@ -42,6 +42,7 @@ class ManagedVolumeCleanupTaskTest {
   void setUp() {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
+    StorageCleanupTestSupport.captureAuditRecords(properties);
     ServerProperties serverProperties = new ServerProperties(properties);
     testDatabase = TestDatabases.newDatabase();
     sessionFactory = testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
@@ -69,7 +70,12 @@ class ManagedVolumeCleanupTaskTest {
 
   @AfterEach
   void tearDown() {
-    testDatabase.close();
+    try {
+      // Every test here, including the rolled-back and cascading drops, records exactly its tasks.
+      StorageCleanupTestSupport.assertQueueCleanupRecordsMatchTasks(sessionFactory);
+    } finally {
+      testDatabase.close();
+    }
   }
 
   @Test

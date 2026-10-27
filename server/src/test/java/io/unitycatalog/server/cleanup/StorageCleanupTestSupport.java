@@ -1,7 +1,10 @@
 package io.unitycatalog.server.cleanup;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
+import io.unitycatalog.server.audit.AuditRecord;
+import io.unitycatalog.server.audit.CapturingAuditSink;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.nio.file.Files;
@@ -28,6 +31,26 @@ public final class StorageCleanupTestSupport {
     try (var session = sessionFactory.openSession()) {
       return session.createQuery("FROM StorageCleanupTaskDAO", StorageCleanupTaskDAO.class).list();
     }
+  }
+
+  /** Routes audit records to {@link CapturingAuditSink}, starting with none recorded. */
+  public static void captureAuditRecords(Properties serverProperties) {
+    serverProperties.setProperty(Property.AUDIT_SINK.getKey(), CapturingAuditSink.class.getName());
+    CapturingAuditSink.reset();
+  }
+
+  /**
+   * Asserts that every queued task has exactly one {@code QUEUE_CLEANUP} record with its ID and
+   * location, and that no record exists for a drop that rolled back or queued no task.
+   */
+  public static void assertQueueCleanupRecordsMatchTasks(SessionFactory sessionFactory) {
+    assertThat(CapturingAuditSink.RECORDS)
+        .filteredOn(r -> r.getAction() == AuditRecord.Action.QUEUE_CLEANUP)
+        .extracting(AuditRecord::getResourceId, AuditRecord::getLocation)
+        .containsExactlyInAnyOrderElementsOf(
+            allTasks(sessionFactory).stream()
+                .map(task -> tuple(task.getId(), task.getStorageLocation()))
+                .toList());
   }
 
   /**

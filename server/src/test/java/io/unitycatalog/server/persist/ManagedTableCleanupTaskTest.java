@@ -3,18 +3,18 @@ package io.unitycatalog.server.persist;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.unitycatalog.server.audit.AuditRecord;
-import io.unitycatalog.server.audit.CapturingAuditSink;
 import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.model.VolumeType;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.testdatabase.SupportedDatabase;
@@ -54,6 +54,7 @@ class ManagedTableCleanupTaskTest {
   void setUp() {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
+    StorageCleanupTestSupport.captureAuditRecords(properties);
     serverProperties = new ServerProperties(properties);
     testDatabase = TestDatabases.newDatabase();
     sessionFactory = testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
@@ -81,7 +82,12 @@ class ManagedTableCleanupTaskTest {
 
   @AfterEach
   void tearDown() {
-    testDatabase.close();
+    try {
+      // Every test here, including the rolled-back and cascading drops, records exactly its tasks.
+      StorageCleanupTestSupport.assertQueueCleanupRecordsMatchTasks(sessionFactory);
+    } finally {
+      testDatabase.close();
+    }
   }
 
   @Test
@@ -170,18 +176,13 @@ class ManagedTableCleanupTaskTest {
 
   @Test
   void taskInsertFailureRollsBackTableDeletion() {
-    Properties auditOn = new Properties();
-    auditOn.setProperty("server.env", "test");
-    auditOn.setProperty("server.audit.sink", CapturingAuditSink.class.getName());
-    CapturingAuditSink.reset();
-    Repositories audited = new Repositories(sessionFactory, new ServerProperties(auditOn));
     TableInfoDAO table =
         createTable("rollback_table", TableType.MANAGED, id -> "s3://bucket/root/tables/" + id);
     String existingTaskLocation = "s3://bucket/existing/tables/" + table.getId();
     TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          audited
+          repositories
               .getStorageCleanupTaskRepository()
               .create(
                   session,
@@ -195,7 +196,7 @@ class ManagedTableCleanupTaskTest {
         /* readOnly= */ false);
 
     assertThatThrownBy(
-            () -> audited.getTableRepository().deleteTable(CATALOG, SCHEMA, table.getName()))
+            () -> repositories.getTableRepository().deleteTable(CATALOG, SCHEMA, table.getName()))
         .isInstanceOf(BaseException.class);
 
     // The rollback is what these assertions prove: the table delete and the duplicate task insert
@@ -203,11 +204,49 @@ class ManagedTableCleanupTaskTest {
     // present, and the pre-existing task keeps its original location.
     assertThat(findTable(table.getId())).isNotNull();
     assertThat(findTask(table.getId()).getStorageLocation()).isEqualTo(existingTaskLocation);
-    // Only the committed setup task is recorded; the rolled-back drop records no QUEUE_CLEANUP.
-    assertThat(CapturingAuditSink.RECORDS)
-        .filteredOn(r -> r.getAction() == AuditRecord.Action.QUEUE_CLEANUP)
-        .extracting(AuditRecord::getLocation)
-        .containsExactly(existingTaskLocation);
+  }
+
+  @Test
+  void forceSchemaDeleteFailingAfterQueueingATaskRecordsNothing() {
+    TableInfoDAO table =
+        createTable("first_child", TableType.MANAGED, id -> "s3://bucket/root/tables/" + id);
+    UUID volumeId = UUID.randomUUID();
+    String existingTaskLocation = "s3://bucket/existing/volumes/" + volumeId;
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          session.persist(
+              VolumeInfoDAO.builder()
+                  .id(volumeId)
+                  .schemaId(schemaId)
+                  .name("later_child")
+                  .volumeType(VolumeType.MANAGED.getValue())
+                  .storageLocation("s3://bucket/root/volumes/" + volumeId)
+                  .createdAt(new Date())
+                  .build());
+          repositories
+              .getStorageCleanupTaskRepository()
+              .create(
+                  session,
+                  ManagedResourceType.VOLUME,
+                  volumeId,
+                  "later_child",
+                  existingTaskLocation);
+          return null;
+        },
+        "Failed to create the volume and its existing cleanup task",
+        /* readOnly= */ false);
+
+    // The force delete drops tables before volumes, so the table queues its task first; the
+    // volume's duplicate task then rolls the whole transaction back. tearDown checks the table's
+    // pending QUEUE_CLEANUP record was not written.
+    assertThatThrownBy(
+            () -> repositories.getSchemaRepository().deleteSchema(CATALOG + "." + SCHEMA, true))
+        .isInstanceOf(RuntimeException.class);
+
+    assertThat(findTable(table.getId())).isNotNull();
+    assertThat(findTask(table.getId())).isNull();
+    assertThat(findTask(volumeId).getStorageLocation()).isEqualTo(existingTaskLocation);
   }
 
   @Test
