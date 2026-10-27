@@ -96,6 +96,20 @@ Without `--values`, Helm resets your custom values to the chart's defaults.
 PersistentVolumeClaim and token signing key Secret, and a later install with the same release name and
 namespace reuses them. Delete both to remove the data.
 
+During an upgrade or scale-down, Kubernetes sends the server SIGTERM, and the server finishes requests in flight
+for up to `server.shutdown-timeout`. Requests can still arrive for a few seconds after that, so for zero-downtime
+rollouts set a `preStop` sleep and a matching grace period:
+
+```yaml
+server:
+  deployment:
+    lifecycle:
+      preStop:
+        exec:
+          command: ["sleep", "10"]
+    terminationGracePeriodSeconds: 30
+```
+
 ## Configuration
 
 Run `helm show readme oci://registry-1.docker.io/unitycatalog/unitycatalog-chart --version X.Y.Z` for the chart README

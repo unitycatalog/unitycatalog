@@ -445,6 +445,36 @@ server:
     #
     resources:
 
+    # -- (object) Lifecycle hooks for the server container
+    # @default -- not set
+    # @raw
+    #
+    # On SIGTERM the server stops taking new requests and finishes the ones in flight, for up to
+    # `server.shutdown-timeout` (5s by default). Kubernetes can still route requests to the pod for
+    # a few seconds after it starts terminating, so a `preStop` sleep keeps the server serving until
+    # they stop arriving:
+    #
+    # ```yaml
+    # lifecycle:
+    #   preStop:
+    #     exec:
+    #       command: ["sleep", "10"]
+    # ```
+    #
+    # [Kubernetes docs](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/)
+    #
+    lifecycle:
+
+    # -- (int) Seconds Kubernetes waits for the pod to stop before killing it
+    # @default -- not set (Kubernetes uses 30)
+    # @raw
+    #
+    # Set it to at least the `preStop` sleep plus `server.shutdown-timeout`.
+    #
+    # [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-termination)
+    #
+    terminationGracePeriodSeconds:
+
     # -- (array) List of additional volumes to be mounted in the pod
     # @default -- not set
     # @raw
