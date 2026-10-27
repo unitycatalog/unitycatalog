@@ -315,6 +315,8 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     // Only Delta >= 4.3.0 replaces managed tables through the UC Delta API that sends the comment.
     Assumptions.assumeTrue(DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API));
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    // Newer Delta versions keep the old comment on replace unless this is disabled.
+    session.conf().set("spark.databricks.delta.retainCommentsDuringReplace", "false");
     ensureSparkCatalogSchemaExists();
     String fullTableName =
         setupTable(
