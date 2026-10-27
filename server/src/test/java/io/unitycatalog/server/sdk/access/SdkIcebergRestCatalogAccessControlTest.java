@@ -1,11 +1,21 @@
 package io.unitycatalog.server.sdk.access;
 
+import static io.unitycatalog.server.service.credential.CredentialContext.READ_WRITE;
 import static io.unitycatalog.server.utils.TestUtils.assertApiExceptionStatusOnly;
 import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.spy;
 
+import com.linecorp.armeria.client.WebClient;
+import com.linecorp.armeria.common.AggregatedHttpResponse;
+import com.linecorp.armeria.common.HttpHeaderNames;
+import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.RequestHeaders;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.TestUtils;
@@ -20,6 +30,7 @@ import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.UpdateRequirement;
+import org.apache.iceberg.aws.s3.S3FileIOProperties;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.expressions.Expressions;
@@ -32,6 +43,7 @@ import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
 import org.apache.iceberg.rest.responses.ListTablesResponse;
+import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -49,6 +61,24 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
   private static final String SCHEMA_P2 = "sch_p2"; // created via createNamespace, owned by p2
   private static final String SCHEMA_R2 = "sch_r2"; // created via createNamespace, owned by r2
   private static final String CREATOR_ONLY = "creator-only@localhost";
+  private static final Map<String, String> CREDENTIAL_CONFIG =
+      Map.of(S3FileIOProperties.ACCESS_KEY_ID, "test-key");
+  private static final Map<String, String> READ_WRITE_CREDENTIAL_CONFIG =
+      Map.of(S3FileIOProperties.ACCESS_KEY_ID, "test-write-key");
+
+  @Override
+  protected FileOperations decorateFileOperations(FileOperations fileOperations) {
+    FileOperations operations = spy(fileOperations);
+    // Keep metadata files local and make successful credential responses visible.
+    doAnswer(
+            invocation ->
+                READ_WRITE.equals(invocation.getArgument(1))
+                    ? READ_WRITE_CREDENTIAL_CONFIG
+                    : CREDENTIAL_CONFIG)
+        .when(operations)
+        .getFileIOConfig(any(), any(), any());
+    return operations;
+  }
 
   @Test
   @SneakyThrows
@@ -154,34 +184,75 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     // unregistered path, with CREATE_EXTERNAL_TABLE -> still allowed (#external_location == null)
     createTable(r1, SCHEMA, "ct_unreg_ok", tmpLocation("ct_unreg_ok"));
 
-    // ===== loadTable / tableExists (GET_TABLE) =====
-    // Each owner reads a table it does NOT own (OWNER is exact-match, no cascade), so each read
-    // maps to a single GET_TABLE disjunct.
-
-    // tbl_none in SCHEMA (owned by principal-1): the metastore owner reads it (no cascade needed);
-    // regular-1 (USE_CATALOG + USE_SCHEMA, no table privilege) is denied on both loadTable and
-    // the HEAD tableExists.
+    // ===== loadTable / tableExists (GET_TABLE), with a separate credential read check =====
+    // Metadata access does not authorize storage credentials.
     createTable(p1, SCHEMA, "tbl_none");
-    admin.loadTable(CAT, SCHEMA, "tbl_none"); // metastore OWNER
+    assertMetadataOnly(admin.loadTable(CAT, SCHEMA, "tbl_none"));
+    assertDenied(() -> admin.loadCredentials(CAT, SCHEMA, "tbl_none"));
+    assertThat(admin.tableExists(CAT, SCHEMA, "tbl_none")).isTrue(); // metadata access remains
     assertDenied(() -> r1.loadTable(CAT, SCHEMA, "tbl_none")); // no table privilege
     // tableExists is a HEAD request, so its denial is body-less (no Iceberg ErrorResponse).
     assertApiExceptionStatusOnly(() -> r1.tableExists(CAT, SCHEMA, "tbl_none"), 403);
 
-    // tbl_p2 in SCHEMA_P2 (owned by principal-2): principal-1 owns CAT but neither SCHEMA_P2 nor
-    // tbl_p2, so catalog OWNER is the only matching disjunct.
-    p1.loadTable(CAT, SCHEMA_P2, "tbl_p2"); // catalog OWNER
+    // Catalog ownership satisfies the catalog tier, not the schema or table tiers.
+    assertMetadataOnly(p1.loadTable(CAT, SCHEMA_P2, "tbl_p2"));
+    assertDenied(() -> p1.loadCredentials(CAT, SCHEMA_P2, "tbl_p2"));
     assertThat(p1.tableExists(CAT, SCHEMA_P2, "tbl_p2")).isTrue();
+    grantPermissions(
+        PRINCIPAL_1, SecurableType.SCHEMA, CAT + "." + SCHEMA_P2, Privileges.USE_SCHEMA);
+    assertMetadataOnly(p1.loadTable(CAT, SCHEMA_P2, "tbl_p2"));
+    assertDenied(() -> p1.loadCredentials(CAT, SCHEMA_P2, "tbl_p2"));
 
-    // tbl_p2_r1 in SCHEMA_P2, created (hence owned) by regular-1: principal-2 owns SCHEMA_P2 but
-    // not this table, so schema OWNER + catalog USE_CATALOG is the only match.
+    WebClient conditionalClient =
+        WebClient.builder(serverConfig.getServerUrl())
+            .addHeader(HttpHeaderNames.AUTHORIZATION, "Bearer " + createTestJwtToken(PRINCIPAL_1))
+            .build();
+    String tablePath =
+        "/api/2.1/unity-catalog/iceberg/v1/catalogs/"
+            + CAT
+            + "/namespaces/"
+            + SCHEMA_P2
+            + "/tables/tbl_p2";
+    String metadataETag =
+        conditionalClient.get(tablePath).aggregate().join().headers().get(HttpHeaderNames.ETAG);
+    assertThat(metadataETag).isNotNull();
+
+    // Each grant must update the response: metadata-only, then read-only, then read/write.
+    for (Privileges privilege : List.of(Privileges.SELECT, Privileges.MODIFY)) {
+      grantPermissions(
+          PRINCIPAL_1, SecurableType.TABLE, CAT + "." + SCHEMA_P2 + ".tbl_p2", privilege);
+      AggregatedHttpResponse withCredentials =
+          conditionalClient
+              .execute(
+                  RequestHeaders.of(
+                      HttpMethod.GET, tablePath, HttpHeaderNames.IF_NONE_MATCH, metadataETag))
+              .aggregate()
+              .join();
+      assertThat(withCredentials.status().code()).as("grant=%s", privilege).isEqualTo(200);
+      String credentialETag = withCredentials.headers().get(HttpHeaderNames.ETAG);
+      assertThat(credentialETag).isNotNull().isNotEqualTo(metadataETag);
+      Map<String, String> expectedConfig =
+          privilege == Privileges.SELECT ? CREDENTIAL_CONFIG : READ_WRITE_CREDENTIAL_CONFIG;
+      assertThat(p1.loadTable(CAT, SCHEMA_P2, "tbl_p2").config()).isEqualTo(expectedConfig);
+      assertThat(p1.loadCredentials(CAT, SCHEMA_P2, "tbl_p2").credentials())
+          .singleElement()
+          .satisfies(credential -> assertThat(credential.config()).isEqualTo(expectedConfig));
+      metadataETag = credentialETag;
+    }
+
+    // Schema ownership satisfies the schema tier, not the table tier.
     grantPermissions(REGULAR_1, SecurableType.SCHEMA, CAT + "." + SCHEMA_P2, Privileges.USE_SCHEMA);
     grantPermissions(
         REGULAR_1, SecurableType.SCHEMA, CAT + "." + SCHEMA_P2, Privileges.CREATE_TABLE);
     createTable(r1, SCHEMA_P2, "tbl_p2_r1");
-    p2.loadTable(CAT, SCHEMA_P2, "tbl_p2_r1"); // schema OWNER + catalog USE_CATALOG
+    assertMetadataOnly(p2.loadTable(CAT, SCHEMA_P2, "tbl_p2_r1"));
+    assertDenied(() -> p2.loadCredentials(CAT, SCHEMA_P2, "tbl_p2_r1"));
+    grantPermissions(
+        PRINCIPAL_2, SecurableType.TABLE, CAT + "." + SCHEMA_P2 + ".tbl_p2_r1", Privileges.SELECT);
+    p2.loadTable(CAT, SCHEMA_P2, "tbl_p2_r1");
+    p2.loadCredentials(CAT, SCHEMA_P2, "tbl_p2_r1");
 
-    // tbl_sel / tbl_mod in SCHEMA (owned by principal-1): regular-1 reads each via its granted
-    // table privilege (with USE_CATALOG + USE_SCHEMA).
+    // SELECT permits reads; MODIFY alone still permits metadata checks, but not credentials.
     createTable(p1, SCHEMA, "tbl_sel");
     grantPermissions(
         REGULAR_1, SecurableType.TABLE, CAT + "." + SCHEMA + ".tbl_sel", Privileges.SELECT);
@@ -190,7 +261,9 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     createTable(p1, SCHEMA, "tbl_mod");
     grantPermissions(
         REGULAR_1, SecurableType.TABLE, CAT + "." + SCHEMA + ".tbl_mod", Privileges.MODIFY);
-    r1.loadTable(CAT, SCHEMA, "tbl_mod"); // table MODIFY
+    assertMetadataOnly(r1.loadTable(CAT, SCHEMA, "tbl_mod"));
+    assertDenied(() -> r1.loadCredentials(CAT, SCHEMA, "tbl_mod"));
+    assertThat(r1.tableExists(CAT, SCHEMA, "tbl_mod")).isTrue();
 
     // A metadata-table identifier (schema.tbl_sel.snapshots) arrives as namespace
     // "schema<0x1F>tbl_sel", which does not exist. With authorization on, the answer is still the
@@ -204,11 +277,35 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
     // tbl_r1own in SCHEMA, created (hence owned) by regular-1: read via table OWNER.
     r1.loadTable(CAT, SCHEMA, "tbl_r1own"); // table OWNER (creator)
 
-    // ===== loadCredentials (GET_TABLE) -- same gate as loadTable; renews a table's vended creds
-    // =====
-    p1.loadCredentials(CAT, SCHEMA, "tbl_none"); // catalog OWNER
+    // ===== loadCredentials (VEND_ICEBERG_TABLE_CREDENTIAL) =====
+    p1.loadCredentials(CAT, SCHEMA, "tbl_none"); // table OWNER
     r1.loadCredentials(CAT, SCHEMA, "tbl_sel"); // table SELECT (+ USE_CATALOG + USE_SCHEMA)
+    r1.loadCredentials(CAT, SCHEMA, "tbl_r1own"); // table OWNER (+ USE_CATALOG + USE_SCHEMA)
     assertDenied(() -> r1.loadCredentials(CAT, SCHEMA, "tbl_none")); // no table privilege -> 403
+
+    // A metastore administrator must pass all three data-access tiers too.
+    grantPermissions(
+        "admin", SecurableType.TABLE, CAT + "." + SCHEMA + ".tbl_none", Privileges.SELECT);
+    assertMetadataOnly(admin.loadTable(CAT, SCHEMA, "tbl_none"));
+    assertDenied(() -> admin.loadCredentials(CAT, SCHEMA, "tbl_none"));
+    grantPermissions("admin", SecurableType.CATALOG, CAT, Privileges.USE_CATALOG);
+    assertMetadataOnly(admin.loadTable(CAT, SCHEMA, "tbl_none"));
+    assertDenied(() -> admin.loadCredentials(CAT, SCHEMA, "tbl_none"));
+    grantPermissions("admin", SecurableType.SCHEMA, CAT + "." + SCHEMA, Privileges.USE_SCHEMA);
+    admin.loadTable(CAT, SCHEMA, "tbl_none");
+    admin.loadCredentials(CAT, SCHEMA, "tbl_none");
+
+    // SELECT inherited from a catalog or schema still needs both usage checks.
+    grantPermissions(REGULAR_2, SecurableType.CATALOG, CAT, Privileges.SELECT);
+    assertDenied(() -> r2.loadTable(CAT, SCHEMA, "tbl_none"));
+    grantPermissions(REGULAR_2, SecurableType.SCHEMA, CAT + "." + SCHEMA, Privileges.USE_SCHEMA);
+    r2.loadTable(CAT, SCHEMA, "tbl_none");
+    r2.loadCredentials(CAT, SCHEMA, "tbl_none");
+    grantPermissions(CREATOR_ONLY, SecurableType.SCHEMA, CAT + "." + SCHEMA, Privileges.SELECT);
+    assertDenied(() -> creatorOnly.loadTable(CAT, SCHEMA, "tbl_none"));
+    grantPermissions(CREATOR_ONLY, SecurableType.CATALOG, CAT, Privileges.USE_CATALOG);
+    creatorOnly.loadTable(CAT, SCHEMA, "tbl_none");
+    creatorOnly.loadCredentials(CAT, SCHEMA, "tbl_none");
 
     // ===== listTables filter (GET_TABLE) =====
     // regular-1 sees only tables it has a table privilege on; tbl_none is filtered out
@@ -343,6 +440,12 @@ public class SdkIcebergRestCatalogAccessControlTest extends SdkAccessControlBase
 
   private IcebergRestClient icebergClientFor(String userEmail) {
     return new IcebergRestClient(createTestUserServerConfig(userEmail));
+  }
+
+  private static void assertMetadataOnly(LoadTableResponse response) {
+    assertThat(response.tableMetadata()).isNotNull();
+    assertThat(response.tableMetadata().schema().columns()).isNotEmpty();
+    assertThat(response.config()).isEmpty();
   }
 
   /**
