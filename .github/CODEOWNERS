@@ -52,3 +52,6 @@
 
 # Helm
 /helm/ @tdas @yili-db
+
+# Helper scripts
+/bin/ @tdas @openinx @yili-db @TimothyW553
