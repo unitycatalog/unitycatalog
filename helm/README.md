@@ -673,7 +673,7 @@ If set to true, the liveness probe will be enabled.
 			<td>server.deployment.enableReadinessProbe</td>
 			<td>bool</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 			<td>Enable readiness probe
@@ -906,9 +906,9 @@ not set (observability off)
 			<td>Observability port for the server deployment
 
 When set, the server starts with `--obs-port` and serves `/livez`, `/readyz` and `/metrics`
-on this port, without authentication. The default readiness probe then checks `/readyz`,
-and the liveness probe, when turned on, checks `/livez`; without it they check that the API
-port accepts a connection. The Service doesn't expose the port, but other pods can reach it
+on this port, without authentication. The readiness and liveness probes, when turned on,
+then check `/readyz` and `/livez`; without it they check that the API port accepts a
+connection. The Service doesn't expose the port, but other pods can reach it
 on the pod IP; restrict it with a NetworkPolicy if needed, and allow the kubelet to reach it
 for the probes. Needs server image v0.7.0 or later.
 </td>

@@ -55,11 +55,12 @@ jobs:
         run: |
           set -euo pipefail
           # Without obsPort the server gets no --obs-port and the probes check the API port.
-          out="$(helm template uc helm)"
+          out="$(helm template uc helm --set server.deployment.enableReadinessProbe=true)"
           ! grep -qF -- '--obs-port' <<<"$out" || exit 1
           grep -A1 'readinessProbe:' <<<"$out" | grep -qF 'tcpSocket:'
           # With obsPort, the flag, the container port and the probes all use it.
           out="$(helm template uc helm --set server.deployment.obsPort=9099 \
+            --set server.deployment.enableReadinessProbe=true \
             --set server.deployment.enableLivenessProbe=true)"
           grep -qF -- '- "9099"' <<<"$out"
           grep -qF 'containerPort: 9099' <<<"$out"
@@ -67,6 +68,7 @@ jobs:
           grep -qF 'path: /livez' <<<"$out"
           # Custom probes render as given, not as the whole chart context.
           out="$(helm template uc helm --set ui.enabled=true \
+            --set server.deployment.enableReadinessProbe=true \
             --set server.deployment.readinessProbe.httpGet.path=/custom-ready \
             --set server.deployment.readinessProbe.httpGet.port=api \
             --set ui.deployment.enableReadinessProbe=true \
@@ -111,6 +113,7 @@ jobs:
             --set server.deployment.image.repository=unitycatalog \
             --set server.deployment.image.pullPolicy=Never \
             --set server.deployment.obsPort=8090 \
+            --set server.deployment.enableReadinessProbe=true \
             --set ui.deployment.image.repository=unitycatalog-ui \
             --set ui.deployment.image.pullPolicy=Never
           helm test uc --namespace uc --logs

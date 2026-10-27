@@ -357,9 +357,9 @@ server:
     # @raw
     #
     # When set, the server starts with `--obs-port` and serves `/livez`, `/readyz` and `/metrics`
-    # on this port, without authentication. The default readiness probe then checks `/readyz`,
-    # and the liveness probe, when turned on, checks `/livez`; without it they check that the API
-    # port accepts a connection. The Service doesn't expose the port, but other pods can reach it
+    # on this port, without authentication. The readiness and liveness probes, when turned on,
+    # then check `/readyz` and `/livez`; without it they check that the API port accepts a
+    # connection. The Service doesn't expose the port, but other pods can reach it
     # on the pod IP; restrict it with a NetworkPolicy if needed, and allow the kubelet to reach it
     # for the probes. Needs server image v0.7.0 or later.
     #
@@ -563,7 +563,7 @@ server:
     #
     # [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
     #
-    enableReadinessProbe: true
+    enableReadinessProbe: false
 
     # -- (object) Readiness probe
     # @default -- with obsPort: httpGet `/readyz` on port obs, failureThreshold: 3; otherwise tcpSocket on port api, failureThreshold: 30 (5 minutes). timeoutSeconds: 10, periodSeconds: 10
