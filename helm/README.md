@@ -673,7 +673,7 @@ If set to true, the liveness probe will be enabled.
 			<td>server.deployment.enableReadinessProbe</td>
 			<td>bool</td>
 			<td><pre lang="json">
-false
+true
 </pre>
 </td>
 			<td>Enable readiness probe
@@ -876,7 +876,7 @@ lifecycle:
 			<td>server.deployment.livenessProbe</td>
 			<td>object</td>
 			<td><pre lang="">
-tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 30 # 5 minutes
+httpGet:<br>  path: /livez<br>  port: obs<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 30 # 5 minutes
 </pre>
 </td>
 			<td>Liveness probe
@@ -894,6 +894,21 @@ not set
 			<td>Node selector for the deployment
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/)
+</td>
+		</tr>
+		<tr>
+			<td>server.deployment.obsPort</td>
+			<td>int</td>
+			<td><pre lang="json">
+8090
+</pre>
+</td>
+			<td>Observability port for the server deployment
+
+The server serves `/livez`, `/readyz` and `/metrics` on this port, without authentication.
+The readiness probe uses it, and so does the liveness probe when turned on. The Service
+doesn't expose it, but other pods can reach it on the pod IP; restrict it with a
+NetworkPolicy if needed.
 </td>
 		</tr>
 		<tr>
@@ -926,7 +941,7 @@ to write to the mounted volumes.
 			<td>server.deployment.readinessProbe</td>
 			<td>object</td>
 			<td><pre lang="">
-tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 30 # 5 minutes
+httpGet:<br>  path: /readyz<br>  port: obs<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 3
 </pre>
 </td>
 			<td>Readiness probe

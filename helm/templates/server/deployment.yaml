@@ -175,18 +175,27 @@ spec:
           {{- end }}
           image: "{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
+          command:
+            - ./bin/start-uc-server
+          args:
+            - --obs-port
+            - {{ .Values.server.deployment.obsPort | quote }}
           ports:
             - name: api
               containerPort: {{ .Values.server.deployment.port }}
               protocol: TCP
+            - name: obs
+              containerPort: {{ .Values.server.deployment.obsPort }}
+              protocol: TCP
 
           {{- if .Values.server.deployment.enableLivenessProbe }}
-          {{- if .Values.server.deployment.livenessProbe }}
+          {{- with .Values.server.deployment.livenessProbe }}
           livenessProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           livenessProbe:
-            tcpSocket:
-              port: api
+            httpGet:
+              path: /livez
+              port: obs
             timeoutSeconds: 10
             periodSeconds: 10
             failureThreshold: 30 # 5 minutes
@@ -194,20 +203,21 @@ spec:
           {{- end }}
 
           {{- if .Values.server.deployment.enableReadinessProbe }}
-          {{- if .Values.server.deployment.readinessProbe }}
+          {{- with .Values.server.deployment.readinessProbe }}
           readinessProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           readinessProbe:
-            tcpSocket:
-              port: api
+            httpGet:
+              path: /readyz
+              port: obs
             timeoutSeconds: 10
             periodSeconds: 10
-            failureThreshold: 30 # 5 minutes
+            failureThreshold: 3
           {{- end }}
           {{- end }}
 
           {{- if .Values.server.deployment.enableStartupProbe }}
-          {{- if .Values.server.deployment.startupProbe }}
+          {{- with .Values.server.deployment.startupProbe }}
           startupProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           startupProbe:
