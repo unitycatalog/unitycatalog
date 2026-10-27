@@ -12,8 +12,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The sample H2 database shipped in etc/db is on this build's latest schema version. When it is
- * behind, the test migrates it in place, so committing it is all that is left to do.
+ * The sample H2 database shipped in etc/db is on this build's latest schema version and has the
+ * schema the steps build. When it is behind, the test migrates it in place, so committing it is all
+ * that is left to do.
  */
 public class SampleDatabaseIsCurrentTest {
 
@@ -46,6 +47,13 @@ public class SampleDatabaseIsCurrentTest {
                 ? "the test migrated it, commit etc/db/h2db.mv.db"
                 : "restore it with `git checkout HEAD -- etc/db/h2db.mv.db`")
         .isEqualTo(SchemaState.CURRENT);
+    try (SchemaMigrator fresh = new SchemaMigrator(h2(dir.resolve("fresh")))) {
+      fresh.migrate();
+    }
+    // On a mismatch, AssertJ also lists the missing and unexpected entries.
+    assertThat(SchemaSnapshot.of(h2(dir.resolve("h2db"))).entries())
+        .as("etc/db/h2db.mv.db has the schema that the steps build on an empty H2 database")
+        .containsExactlyElementsOf(SchemaSnapshot.of(h2(dir.resolve("fresh"))).entries());
   }
 
   private static DataSource h2(Path database) {
