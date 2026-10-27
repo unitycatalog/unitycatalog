@@ -511,9 +511,8 @@ public class UnityCatalogServer implements AutoCloseable {
       closeQuietly(metrics, null, "the metrics registry");
       closeQuietly(cleanupWorker, null, "the storage cleanup worker");
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, null, "the authorizer");
-      if (ownsHibernateConfigurator) {
-        hibernateConfigurator.close();
-      }
+      closeQuietly(
+          ownsHibernateConfigurator ? hibernateConfigurator : null, null, "the database pool");
     }
   }
 
