@@ -908,7 +908,8 @@ not set
 The server serves `/livez`, `/readyz` and `/metrics` on this port, without authentication.
 The readiness probe uses it, and so does the liveness probe when turned on. The Service
 doesn't expose it, but other pods can reach it on the pod IP; restrict it with a
-NetworkPolicy if needed.
+NetworkPolicy if needed, and allow the kubelet to reach it for the probes. Needs server
+image v0.7.0 or later.
 </td>
 		</tr>
 		<tr>

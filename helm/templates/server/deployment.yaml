@@ -165,6 +165,8 @@ spec:
       {{- with .Values.server.deployment.extraInitContainers }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- /* The default covers `helm upgrade --reuse-values` from a release without obsPort. */}}
+      {{- $obsPort := .Values.server.deployment.obsPort | default 8090 }}
       containers:
         - name: server
           {{- with .Values.server.deployment.securityContext }}
@@ -179,13 +181,13 @@ spec:
             - ./bin/start-uc-server
           args:
             - --obs-port
-            - {{ .Values.server.deployment.obsPort | quote }}
+            - {{ $obsPort | quote }}
           ports:
             - name: api
               containerPort: {{ .Values.server.deployment.port }}
               protocol: TCP
             - name: obs
-              containerPort: {{ .Values.server.deployment.obsPort }}
+              containerPort: {{ $obsPort }}
               protocol: TCP
 
           {{- if .Values.server.deployment.enableLivenessProbe }}
