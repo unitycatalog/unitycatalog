@@ -163,6 +163,7 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 - `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
   itself while handling the request, and `CLEANUP` for the background storage cleanup.
 - `resource_id`: the object's ID. A `CLEANUP` credential carries the ID of the dropped object.
+- `principal_id`: on a permission change, the ID of the user whose grants changed.
 - `privilege` uses the API's privilege names (for example `USE CATALOG`), and `access` is `READ` or
   `READ_WRITE`. Records never contain credential values, and `location` never contains a query
   string or user info.
