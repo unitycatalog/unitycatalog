@@ -42,8 +42,8 @@ public final class TestDatabase implements AutoCloseable {
   }
 
   /**
-   * The server's Hibernate properties pointed at this database. Overrides what {@code
-   * server.env=test} forces, and makes a failed schema statement throw instead of logging.
+   * The server's Hibernate properties from {@code etc/conf/hibernate.properties}, pointed at this
+   * database, with a failed schema statement made to throw instead of being logged.
    */
   public Properties hibernateProperties() {
     Properties properties =
