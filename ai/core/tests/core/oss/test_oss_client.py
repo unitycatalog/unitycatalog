@@ -2,6 +2,7 @@ import datetime
 import decimal
 import json
 import logging
+import multiprocessing
 import re
 import textwrap
 from contextlib import contextmanager
@@ -20,6 +21,7 @@ from unitycatalog.ai.core.client import (
     validate_input_parameter,
     validate_param,
 )
+from unitycatalog.ai.core.executor.common import SANDBOX_UNSUPPORTED_MESSAGE
 from unitycatalog.ai.core.executor.local import run_in_sandbox, run_in_sandbox_async
 from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
@@ -156,6 +158,35 @@ async def core_client():
 async def test_handle_invalid_client():
     with pytest.raises(ValueError, match="The 'api_client' must be an instance of"):
         UnitycatalogFunctionClient(api_client="client")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("execution_mode", "start_methods", "should_warn"),
+    [
+        (None, ["spawn"], True),
+        ("sandbox", ["spawn"], True),
+        ("sandbox", ["fork", "spawn"], False),
+        ("local", ["spawn"], False),
+    ],
+)
+async def test_init_warns_when_sandbox_is_unsupported(
+    monkeypatch, caplog, execution_mode, start_methods, should_warn
+):
+    monkeypatch.setattr(multiprocessing, "get_all_start_methods", lambda: start_methods)
+    kwargs = {} if execution_mode is None else {"execution_mode": execution_mode}
+    with caplog.at_level(logging.WARNING):
+        client = UnitycatalogFunctionClient(
+            api_client=ApiClient(configuration=Configuration()), **kwargs
+        )
+    await client.close_async()
+
+    warnings = [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == "unitycatalog.ai.core.client" and r.levelno == logging.WARNING
+    ]
+    assert warnings == ([SANDBOX_UNSUPPORTED_MESSAGE] if should_warn else [])
 
 
 @pytest.mark.asyncio

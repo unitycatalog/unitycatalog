@@ -108,5 +108,7 @@ jobs:
           spark-version: ${{ matrix.spark-version }}
           delta-version: ${{ matrix.delta-version }}
           validation-mode: ${{ matrix.validation-mode }}
+          # Rows without test-database pass an empty string, not the action's default, so fall back
+          # to H2 here; an empty value would skip the license check and fail the database lookup.
           test-database: ${{ matrix.test-database || 'H2' }}
           use-spark-source-cache: ${{ matrix.spark-source-build }}

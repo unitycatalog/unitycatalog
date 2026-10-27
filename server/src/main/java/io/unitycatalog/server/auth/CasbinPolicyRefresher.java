@@ -219,7 +219,10 @@ public class CasbinPolicyRefresher implements AutoCloseable {
                 new long[] {((Number) row[0]).longValue(), ((Number) row[1]).longValue()});
           });
     } catch (Exception e) {
-      LOGGER.debug("Could not read the Casbin policy version", e);
+      LOGGER.warn(
+          "Could not read the Casbin policy version; changes from other instances are not applied"
+              + " until a read succeeds",
+          e);
       return Optional.empty();
     }
   }
@@ -233,7 +236,10 @@ public class CasbinPolicyRefresher implements AutoCloseable {
             return Optional.of(((Number) result).longValue());
           });
     } catch (Exception e) {
-      LOGGER.debug("Could not read the Casbin policy max id", e);
+      LOGGER.warn(
+          "Could not read the Casbin policy max id; changes from other instances are not applied"
+              + " until a read succeeds",
+          e);
       return Optional.empty();
     }
   }

@@ -43,7 +43,6 @@ lazy val armeriaVersion = "1.41.1"
 lazy val micrometerVersion = "1.17.0"
 lazy val nettyVersion = "4.2.18.Final"
 lazy val nettyTcnativeVersion = "2.0.84.Final"
-lazy val vertxVersion = "4.5.34"
 lazy val postgresqlVersion = "42.7.14"
 lazy val flywayVersion = "13.10.3"
 // Keep in step with the Caffeine version iceberg-core depends on (2.9.3 in Iceberg 1.11.0).
@@ -101,6 +100,9 @@ lazy val commonSettings = Seq(
   assembly / assemblyMergeStrategy := {
     // Merged, not dropped: Flyway finds its database support through its ServiceLoader file.
     case PathList("META-INF", "services", f) if f.startsWith("org.flywaydb") => MergeStrategy.filterDistinctLines
+    // Keep the Log4j provider registration that adds request_id to log lines.
+    case PathList("META-INF", "services", "org.apache.logging.log4j.core.util.ContextDataProvider") =>
+      MergeStrategy.concat
     case PathList("META-INF", xs @ _*) => MergeStrategy.discard
     case _ => MergeStrategy.first
   },
@@ -464,9 +466,6 @@ lazy val server = (project in file("server"))
       // Iceberg's S3FileIO loads the "apache" HTTP client by default, but AWS SDK v2 now pulls in
       // apache5-client instead, so declare apache-client explicitly
       "software.amazon.awssdk" % "apache-client" % awsSdkV2Version,
-      "io.vertx" % "vertx-core" % vertxVersion,
-      "io.vertx" % "vertx-web" % vertxVersion,
-      "io.vertx" % "vertx-web-client" % vertxVersion,
 
       // Hadoop dependencies for ExternalLocationUtils
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
@@ -493,6 +492,8 @@ lazy val server = (project in file("server"))
         exclude("ch.qos.logback", "logback-classic")
         exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
+      // The upgrade tests run older releases, whose servers read Vert.x's version file at start.
+      "io.vertx" % "vertx-core" % "4.5.34" % Test,
 
       // Integration testing
       "org.testcontainers" % "junit-jupiter" % testcontainersVersion % Test,

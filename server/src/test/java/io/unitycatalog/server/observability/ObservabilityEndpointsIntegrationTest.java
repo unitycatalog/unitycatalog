@@ -213,6 +213,9 @@ public class ObservabilityEndpointsIntegrationTest extends DeltaBaseTableCRUDTes
             // here.
             "uc_storage_credential_cache_requests_total{result=\"hit\"} 0.0",
             "uc_storage_credential_cache_requests_total{result=\"miss\"} 0.0",
+            // Every cleanup series is registered at startup too.
+            "uc_storage_cleanup_attempts_total{resource_type=\"staging_table\",result=\"failure\"}"
+                + " 0.0",
             "http_server_requests_total");
     assertThat(response.body().lines().filter(line -> line.startsWith("http_server_")).toList())
         .isNotEmpty()

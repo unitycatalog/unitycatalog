@@ -59,6 +59,7 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
               message,
               new NoSuchTableException(exception, "%s", message));
     }
+    logIfServerError(ctx, httpStatus(exception), cause);
     return createErrorResponse(exception);
   }
 
@@ -186,7 +187,7 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
   @SneakyThrows
   @Override
   protected HttpResponse createErrorResponse(BaseException exception) {
-    HttpStatus status = exception.getErrorCode().getHttpStatus();
+    HttpStatus status = httpStatus(exception);
     return HttpResponse.of(
         status,
         MediaType.JSON,

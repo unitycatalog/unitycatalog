@@ -122,8 +122,8 @@ final class OldServer {
       Path conf = Files.createDirectories(home.resolve("etc/conf"));
       Files.writeString(conf.resolve("server.properties"), serverProperties());
       Files.writeString(conf.resolve("hibernate.properties"), hibernateProperties(db));
-      // The shaded jar leaves out Vert.x's version file, which the server reads at start; the
-      // test's own Vert.x jar, after it, supplies the file.
+      // The shaded jar leaves out Vert.x's version file, which releases that still use Vert.x read
+      // at start; the test's own Vert.x jar, after it, supplies the file.
       String classpath =
           jar(tag, workDir)
               + File.pathSeparator
