@@ -27,6 +27,7 @@ public final class AuthorizeExpressions {
    * SELECT} on the table. With strict privilege checks disabled, {@code MODIFY} also permits
    * metadata access.
    */
+  // TODO(#2024): Remove the MODIFY fallback when the migration flag is removed.
   public static final String GET_TABLE =
       """
       #authorize(#principal, #metastore, OWNER) ||

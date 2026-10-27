@@ -32,6 +32,7 @@ import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.Test;
 
+// TODO(#2024): Remove this test when the migration flag is removed.
 public class SdkTableMetadataMigrationTest extends SdkAccessControlBaseCRUDTest {
 
   private static final String CATALOG = "cat_pr1";
