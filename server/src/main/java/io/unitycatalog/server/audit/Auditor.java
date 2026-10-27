@@ -188,9 +188,9 @@ public final class Auditor implements AutoCloseable {
     long lost = unreported.getAndSet(0);
     if (lost > 0) {
       LOGGER.error(
-          "Audit sink {} failed {} more time(s) since the last report",
-          sink.getClass().getName(),
-          lost);
+          "Writing an audit record failed {} more time(s) since the last report (sink {})",
+          lost,
+          sink.getClass().getName());
     }
   }
 
@@ -204,7 +204,7 @@ public final class Auditor implements AutoCloseable {
   private void reportFailure(Throwable t) {
     if (claimReportSlot()) {
       LOGGER.error(
-          "Audit sink {} failed; {} more failure(s) since the last report",
+          "Writing an audit record failed (sink {}); {} more failure(s) since the last report",
           sink.getClass().getName(),
           unreported.getAndSet(0),
           t);
