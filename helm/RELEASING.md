@@ -18,6 +18,13 @@ docker buildx build --platform linux/amd64,linux/arm64 -t unitycatalog/unitycata
 
 If the build reports that multi-platform builds aren't supported, run `docker buildx create --use` first.
 
+## Bump the pinned helper images
+
+The chart's helper images are pinned by digest in `helm/values.yaml`: Alpine for the config init container and the
+create-users job, and busybox for the UI init container and the `helm test` pod. Before the release, check for a newer
+patch release of each, for example with `docker buildx imagetools inspect alpine:3.24`, and update the tag and digest
+in a pull request, so their security fixes reach users.
+
 ## Publish the chart
 
 From the release tag, after the images are on Docker Hub:
@@ -33,7 +40,7 @@ release.
 
 ## Verify
 
-Check that every image the published chart runs exists, including the optional UI. The check runs Helm with empty
+Check that every image the published chart runs exists, including the UI. The check runs Helm with empty
 credential files, so it fetches the chart logged out and also confirms the chart is public. Helm also uses the
 credentials from `docker login`, so `helm registry logout` alone isn't enough.
 
