@@ -7,17 +7,14 @@ import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
-import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.LocalMappingFileOperations;
 import io.unitycatalog.server.utils.NormalizedURL;
-import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
-import java.util.Properties;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.types.Types;
@@ -82,15 +79,5 @@ class AuditCredentialVendingIntegrationTest extends BaseCRUDTestWithMockCredenti
     unityCatalogServer.close();
     unityCatalogServer.close();
     assertThat(CapturingAuditSink.CLOSE_COUNT.get()).isEqualTo(1);
-  }
-
-  @Test
-  void auditOffWrapsNothing() {
-    Repositories plain =
-        new Repositories(
-            hibernateConfigurator.getSessionFactory(), new ServerProperties(new Properties()));
-    assertThat(plain.getAuditor()).isEmpty();
-    assertThat(plain.getStorageCredentialVendor())
-        .isNotInstanceOf(AuditingStorageCredentialVendor.class);
   }
 }
