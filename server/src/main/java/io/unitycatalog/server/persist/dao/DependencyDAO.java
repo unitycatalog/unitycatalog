@@ -5,6 +5,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.Dependency;
 import io.unitycatalog.server.model.FunctionDependency;
 import io.unitycatalog.server.model.TableDependency;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -128,18 +129,15 @@ public class DependencyDAO {
           ErrorCode.INVALID_ARGUMENT,
           "Dependency " + kind + " full name must not be null or empty");
     }
-    String[] parts = fullName.split("\\.");
-    if (parts.length != 3) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "Dependency "
-              + kind
-              + " full name must be a three-part name (catalog.schema."
-              + kind
-              + "); got: "
-              + fullName);
-    }
-    return parts;
+    return RepositoryUtils.splitFullName(
+        fullName,
+        3,
+        "Dependency "
+            + kind
+            + " full name must be a three-part name (catalog.schema."
+            + kind
+            + "); got: "
+            + fullName);
   }
 
   /** Converts this DAO to a Dependency API model. */

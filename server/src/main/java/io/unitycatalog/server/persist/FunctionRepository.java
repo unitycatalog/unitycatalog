@@ -173,10 +173,7 @@ public class FunctionRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          String[] parts = name.split("\\.");
-          if (parts.length != 3) {
-            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid function name: " + name);
-          }
+          String[] parts = RepositoryUtils.splitFullName(name, 3, "Invalid function name: " + name);
           String catalogName = parts[0], schemaName = parts[1], functionName = parts[2];
           FunctionInfoDAO functionInfoDAO =
               getFunctionDAO(session, catalogName, schemaName, functionName);
@@ -219,10 +216,7 @@ public class FunctionRepository {
     TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          String[] parts = name.split("\\.");
-          if (parts.length != 3) {
-            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid function name: " + name);
-          }
+          String[] parts = RepositoryUtils.splitFullName(name, 3, "Invalid function name: " + name);
           String catalogName = parts[0], schemaName = parts[1], functionName = parts[2];
           UUID schemaId =
               repositories
