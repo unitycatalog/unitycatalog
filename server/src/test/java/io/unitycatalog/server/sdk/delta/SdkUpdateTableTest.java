@@ -2554,38 +2554,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 "replace every column of a column-mapped table",
                 NAME_AB,
                 setColumns(fld("x", prim("long"), 3, "col-3"), fld("y", prim("long"), 4, "col-4")))
-            .expectColumns("x", "y"));
-  }
-
-  private static DeltaStructField withTypeChange(DeltaStructField field, String from, String to) {
-    field.getMetadata().put("delta.typeChanges", List.of(Map.of("fromType", from, "toType", to)));
-    return field;
-  }
-
-  /** Makes the stored type of one column unreadable. */
-  private void corruptStoredType(Handle h, String columnName) {
-    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
-      Transaction tx = session.beginTransaction();
-      session
-          .createMutationQuery(
-              "update ColumnInfoDAO c set c.typeJson = :json"
-                  + " where c.table.id = :id and c.name = :name")
-          .setParameter("json", "not json")
-          .setParameter("id", h.tableId())
-          .setParameter("name", columnName)
-          .executeUpdate();
-      tx.commit();
-    }
-  }
-
-  @ParameterizedTest(name = "{0}")
-  @MethodSource("kernelCases")
-  public void testKernelValidatesRenames(SchemaCase c) throws Exception {
-    run(c);
-  }
-
-  static Stream<SchemaCase> kernelCases() {
-    return Stream.of(
+            .expectColumns("x", "y"),
+        // Delta Kernel checks what the guards above leave: renames, type changes, physical names.
         ok(
                 "same name with a new id is a drop and add",
                 ID_A,
@@ -2648,6 +2618,27 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
             },
             setColumns(
                 fld("b", prim("long"), false, 1, "col-1"), fld("v", prim("long"), 2, "col-v"))));
+  }
+
+  private static DeltaStructField withTypeChange(DeltaStructField field, String from, String to) {
+    field.getMetadata().put("delta.typeChanges", List.of(Map.of("fromType", from, "toType", to)));
+    return field;
+  }
+
+  /** Makes the stored type of one column unreadable. */
+  private void corruptStoredType(Handle h, String columnName) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction tx = session.beginTransaction();
+      session
+          .createMutationQuery(
+              "update ColumnInfoDAO c set c.typeJson = :json"
+                  + " where c.table.id = :id and c.name = :name")
+          .setParameter("json", "not json")
+          .setParameter("id", h.tableId())
+          .setParameter("name", columnName)
+          .executeUpdate();
+      tx.commit();
+    }
   }
 
   // -------------------------------------------------------- assertion helpers
