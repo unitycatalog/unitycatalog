@@ -233,6 +233,19 @@ public class DeltaCommitRepository {
 
     long latestVersion = allDesc.get(0).getCommitVersion();
     List<DeltaCommitDAO> unbackfilled = allDesc.stream().filter(c -> !c.isBackfilled()).toList();
+    if (unbackfilled.size() == NUM_NEWEST_COMMITS) {
+      // A full page with nothing flagged: the table already outgrew the commit limit, so older
+      // unbackfilled rows may lie below the page. Read every row above the backfilled version.
+      unbackfilled =
+          session
+              .createQuery(
+                  "FROM DeltaCommitDAO WHERE tableId = :tableId"
+                      + " AND commitVersion > :backfilledVersion ORDER BY commitVersion DESC",
+                  DeltaCommitDAO.class)
+              .setParameter("tableId", tableId)
+              .setParameter("backfilledVersion", backfilledVersionOf(session, tableId, allDesc))
+              .list();
+    }
 
     if (unbackfilled.size() > MAX_NUM_COMMITS_PER_TABLE) {
       LOGGER.error(

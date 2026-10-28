@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.DeltaCommitsApi;
+import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnInfos;
 import io.unitycatalog.client.model.ColumnTypeName;
@@ -43,6 +45,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -610,6 +613,73 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     writePublishedCommitFiles(104L, 104L);
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(125L));
     assertEquals(versionsDescending(125L, 101L), backfilledVersions(tableId));
+  }
+
+  /**
+   * A table that already outgrew the commit limit has unbackfilled rows below the newest page. Both
+   * get-commits and load-table must still return them, not only the newest page.
+   */
+  @Test
+  public void testUnbackfilledCommitsOfTableOverTheCommitLimit() throws Exception {
+    UUID tableId = UUID.fromString(tableInfo.getTableId());
+    String loc = tableInfo.getStorageLocation();
+    deltaCommitsApi.commit(createCommitObject(tableInfo.getTableId(), 1L, loc));
+
+    // Nothing flagged: every row is unbackfilled.
+    deleteAllCommitRows(tableId);
+    for (long v = 1; v <= 25; v++) {
+      insertCommitRow(tableId, v, /* isBackfilled= */ false);
+    }
+    assertEquals(versionsDescending(25L, 1L), pagedCommitVersions(loc, 25L));
+    assertEquals(versionsDescending(25L, 1L), loadTableCommitVersions(25L));
+
+    // Flagged rows below the page: every row above the highest of them is unbackfilled.
+    deleteAllCommitRows(tableId);
+    for (long v = 101; v <= 125; v++) {
+      insertCommitRow(tableId, v, /* isBackfilled= */ v <= 103);
+    }
+    assertEquals(versionsDescending(125L, 104L), pagedCommitVersions(loc, 125L));
+    assertEquals(versionsDescending(125L, 104L), loadTableCommitVersions(125L));
+
+    // Within the limit, the page holds the highest flagged row and the rows above it.
+    deleteAllCommitRows(tableId);
+    for (long v = 1; v <= 20; v++) {
+      insertCommitRow(tableId, v, /* isBackfilled= */ v <= 15);
+    }
+    assertEquals(versionsDescending(20L, 16L), pagedCommitVersions(loc, 20L));
+    assertEquals(versionsDescending(20L, 16L), loadTableCommitVersions(20L));
+  }
+
+  /**
+   * Pages through get-commits from version 0, the way a client reads the whole log, and returns the
+   * versions newest first.
+   */
+  private List<Long> pagedCommitVersions(String loc, long expectedLatestTableVersion)
+      throws ApiException {
+    List<Long> versions = new ArrayList<>();
+    long startVersion = 0L;
+    while (true) {
+      DeltaGetCommitsResponse response =
+          getAllCommits(tableInfo.getTableId(), loc, startVersion, Optional.empty());
+      assertEquals(expectedLatestTableVersion, response.getLatestTableVersion());
+      if (response.getCommits().isEmpty()) {
+        break;
+      }
+      List<Long> page = response.getCommits().stream().map(DeltaCommitInfo::getVersion).toList();
+      versions.addAll(0, page);
+      startVersion = page.get(0) + 1;
+    }
+    return versions;
+  }
+
+  private List<Long> loadTableCommitVersions(long expectedLatestTableVersion) throws ApiException {
+    DeltaLoadTableResponse response =
+        new DeltaTablesApi(TestUtils.createApiClient(serverConfig))
+            .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
+    assertEquals(expectedLatestTableVersion, response.getLatestTableVersion());
+    return response.getCommits().stream()
+        .map(io.unitycatalog.client.delta.model.DeltaCommit::getVersion)
+        .toList();
   }
 
   /**
