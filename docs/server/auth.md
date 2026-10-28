@@ -475,7 +475,7 @@ Key names differ by client:
 | Server | Client |
 | --- | --- |
 | `server.authorization=disable` (default) | Java: `type=static` with `token=""`. Spark: legacy `token=""` (`export UC_TOKEN=`), or `auth.type=static` with `auth.token=""`. The client may send `Authorization: Bearer ` with an empty token; the server ignores it. |
-| `server.authorization=enable` | Java: `type=static` with a real Unity Catalog token, or `type=oauth` with `oauth.uri`, `oauth.clientId`, `oauth.clientSecret`, `oauth.exchangeForUcToken=true` and `catalogUri`, because the server only accepts tokens it issued (see [Exchanging the OAuth token for a Unity Catalog token](#exchanging-the-oauth-token-for-a-unity-catalog-token)). Spark: the same keys under the `auth.` prefix, without `catalogUri`, which comes from the catalog `uri`; or a non-empty legacy `token`. See the sections below. |
+| `server.authorization=enable` | Java: `type=static` with a real Unity Catalog token, or `type=oauth` with `oauth.uri`, `oauth.clientId`, `oauth.clientSecret`, `oauth.exchangeForUcToken=true` and `catalogUri`, because the server only accepts tokens it issued (see [Exchanging the OAuth token for a Unity Catalog token](#exchanging-the-oauth-token-for-a-unity-catalog-token)). Spark: the same keys under the `auth.` prefix, with `catalogUri` taken from the catalog `uri` (catalog-managed Delta tables also need `auth.catalogUri` for now, see the same section); or a non-empty legacy `token`. See the sections below. |
 
 Spark maps a present `token` catalog property to `type=static` even when the value is empty.
 Hive JDBC / Beeline URLs that omit empty query parameters cannot express an empty token;
@@ -599,8 +599,8 @@ picks an enabled Unity Catalog user from the token's claims:
 So if your Identity Provider puts an `email` claim in client-credentials tokens and a user has that
 email, that user is chosen even if another user's `externalId` matches the client ID.
 
-The exchange endpoint is derived from the catalog URI, set with the `catalogUri` key. Spark sets it
-from the catalog `uri` option automatically:
+The exchange endpoint is derived from the catalog URI, set with the `catalogUri` key. Spark takes
+it from the catalog `uri` option:
 
 ```sh
 --conf "spark.sql.catalog.<catalog_name>.uri=https://uc.example.com" \
@@ -610,6 +610,18 @@ from the catalog `uri` option automatically:
 --conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientSecret=<client secret>" \
 --conf "spark.sql.catalog.<catalog_name>.auth.oauth.exchangeForUcToken=true"
 ```
+
+!!! note "Catalog-managed Delta tables"
+    With Delta 4.3.1, the Delta commit coordinator and server-side planning build their own token
+    provider from the Spark configuration and do not get the catalog `uri`. For catalog-managed
+    tables, also set `auth.catalogUri` to the same value as `uri`:
+
+    ```sh
+    --conf "spark.sql.catalog.<catalog_name>.auth.catalogUri=https://uc.example.com"
+    ```
+
+    Unity Catalog itself ignores this key and always uses `uri`. It is no longer needed once Delta
+    includes [delta-io/delta#7951](https://github.com/delta-io/delta/pull/7951).
 
 Java clients set `catalogUri` themselves:
 

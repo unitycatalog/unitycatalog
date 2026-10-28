@@ -18,6 +18,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Flow;
@@ -363,6 +364,29 @@ public class OAuthTokenProviderTest {
           .as(catalogUri)
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("is not a valid URI");
+    }
+  }
+
+  @Test
+  public void testExchangeFlagAcceptsOnlyTrueOrFalse() {
+    Map<String, String> configs = new HashMap<>(exchangeConfigs(CATALOG_URI));
+    for (String value : new String[] {"TRUE", "False"}) {
+      configs.put(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN, value);
+      OAuthTokenProvider provider = new OAuthTokenProvider();
+      provider.initialize(configs);
+      assertThat(provider.configs().containsKey(AuthConfigs.CATALOG_URI))
+          .as(value)
+          .isEqualTo(Boolean.parseBoolean(value));
+    }
+    for (String value : new String[] {"yes", "1", "ture", ""}) {
+      configs.put(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN, value);
+      assertThatThrownBy(() -> new OAuthTokenProvider().initialize(configs))
+          .as(value)
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining(
+              "Configuration key 'oauth.exchangeForUcToken' must be 'true' or 'false', but got '"
+                  + value
+                  + "'");
     }
   }
 

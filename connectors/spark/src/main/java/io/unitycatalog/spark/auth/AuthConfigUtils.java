@@ -17,8 +17,7 @@ public class AuthConfigUtils {
 
   public static Map<String, String> buildAuthConfigs(Map<String, String> configs) {
     // Spark lowercases option keys, so 'auth.catalogUri' arrives as 'cataloguri'. A
-    // case-insensitive
-    // map keeps it and the 'catalogUri' added below from becoming two keys.
+    // case-insensitive map keeps it and the 'catalogUri' added below from becoming two keys.
     Map<String, String> newConfigs = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
     for (Map.Entry<String, String> e : configs.entrySet()) {

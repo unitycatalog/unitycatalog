@@ -125,7 +125,7 @@ class OAuthTokenProvider implements TokenProvider {
     this.oauthScope = normalizeOAuthScope(configs.get(AuthConfigs.OAUTH_SCOPE));
 
     // Optional exchange of the OAuth token for a UC token; needs the catalog URI to reach UC.
-    if (Boolean.parseBoolean(configs.get(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN))) {
+    if (parseExchangeForUcToken(configs.get(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN))) {
       String catalogUri = configs.get(AuthConfigs.CATALOG_URI);
       Preconditions.checkArgument(
           catalogUri != null && !catalogUri.isEmpty(),
@@ -294,6 +294,22 @@ class OAuthTokenProvider implements TokenProvider {
       throw new IOException("Token response has no valid 'expires_in'");
     }
     return new TempToken(accessToken, clock.now().plusSeconds(expiresInSeconds));
+  }
+
+  /**
+   * Accepts only {@code true} or {@code false} (any case), like Spark's boolean options, so a typo
+   * fails here rather than silently turning the exchange off.
+   */
+  private static boolean parseExchangeForUcToken(String value) {
+    if (value == null) {
+      return false;
+    }
+    Preconditions.checkArgument(
+        value.equalsIgnoreCase("true") || value.equalsIgnoreCase("false"),
+        "Configuration key '%s' must be 'true' or 'false', but got '%s'",
+        AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN,
+        value);
+    return Boolean.parseBoolean(value);
   }
 
   private static String normalizeOAuthScope(String oauthScope) {
