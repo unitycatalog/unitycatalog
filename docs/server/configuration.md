@@ -166,8 +166,10 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
   itself while handling the request, and `CLEANUP` for the background storage cleanup.
 - `resource_id`: the object's ID. A `CLEANUP` credential carries the ID of the dropped object, so
   match it to that object's `QUEUE_CLEANUP` record on `resource_id`; the two can be written in
-  either order. Records are best effort: a drop whose record fails to write, or one queued before
-  audit records were turned on, has no `QUEUE_CLEANUP` record.
+  either order. Records are best effort: a drop whose record fails to write, whose commit reports
+  an error after the database applied it, or that was queued before audit records were turned on,
+  has no `QUEUE_CLEANUP` record. Cleanup of local `file:` storage vends no credential, so it has no
+  `CLEANUP` record.
 - `principal_id`: on a permission change, the ID of the user whose grants changed.
 - `privilege` uses the API's privilege names (for example `USE CATALOG`), and `access` is `READ` or
   `READ_WRITE`. Records never contain credential values, and `location` never contains a query

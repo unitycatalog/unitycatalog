@@ -11,6 +11,8 @@ import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.CleanupTaskRepository;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.Method;
@@ -22,10 +24,13 @@ import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.ConfigurationSource;
 import org.apache.logging.log4j.core.config.properties.PropertiesConfigurationFactory;
+import org.hibernate.Session;
+import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -144,6 +149,36 @@ class AuditorTest {
                 ConfigurationSource.fromUri(Path.of(file).toUri()));
     config.initialize();
     return config;
+  }
+
+  @Test
+  void afterCommitRunsOnlyOnCommitAndNeverFailsIt() {
+    AtomicInteger runs = new AtomicInteger();
+    Properties test = new Properties();
+    test.setProperty("server.env", "test");
+    try (TestDatabase database = TestDatabases.newDatabase();
+        Session session =
+            database
+                .openHibernateConfigurator(new ServerProperties(test))
+                .getSessionFactory()
+                .openSession()) {
+      Transaction rolledBack = session.beginTransaction();
+      auditor.afterCommit(session, runs::incrementAndGet);
+      rolledBack.rollback();
+      assertThat(runs).hasValue(0);
+
+      Transaction committed = session.beginTransaction();
+      auditor.afterCommit(session, runs::incrementAndGet);
+      // Hibernate rethrows from commit() what an after-completion callback throws; the guard
+      // keeps a failing action from failing a commit that already happened.
+      auditor.afterCommit(
+          session,
+          () -> {
+            throw new IllegalStateException("audit action failed");
+          });
+      assertThatCode(committed::commit).doesNotThrowAnyException();
+      assertThat(runs).hasValue(1);
+    }
   }
 
   /**
