@@ -18,6 +18,7 @@ class HttpRetryHandler {
   private static final Set<Class<? extends Throwable>> RECOVERABLE_EXCEPTIONS =
       Set.of(
           java.net.SocketTimeoutException.class,
+          java.net.http.HttpTimeoutException.class,
           java.net.SocketException.class,
           java.net.UnknownHostException.class);
 
