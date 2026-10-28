@@ -459,7 +459,7 @@ public final class DeltaUpdateTableMapper {
    * clean up the old rows; the intervening flush ensures the deletes hit the DB before the inserts,
    * so the {@code (table_id, ordinal_position, name)} unique constraint doesn't trip.
    *
-   * <p>The column-mapping checks in {@link #validateColumnRenameAndDropGuards} run on the request's
+   * <p>The column-mapping checks in {@link #validateColumnMappingGuards} run on the request's
    * fields before the swap.
    */
   private static void applySchemaAndPartitionColumns(
@@ -485,7 +485,7 @@ public final class DeltaUpdateTableMapper {
             ErrorCode.INVALID_ARGUMENT, "set-columns requires at least one column.");
       }
       ColumnUtils.validateStructType(columns, "columns");
-      validateColumnRenameAndDropGuards(dao, fields, columnMappingMode);
+      validateColumnMappingGuards(dao, fields, columnMappingMode);
       newColumns = ColumnUtils.toColumnInfos(fields);
     } else {
       newColumns = ColumnInfoDAO.toList(dao.getColumns());
@@ -670,7 +670,7 @@ public final class DeltaUpdateTableMapper {
    *   <li>Otherwise at most one top-level column is renamed per request.
    * </ul>
    */
-  private static void validateColumnRenameAndDropGuards(
+  private static void validateColumnMappingGuards(
       TableInfoDAO dao, List<DeltaStructField> incoming, ColumnMappingMode tableMode) {
     ColumnMappingMode mode =
         tableMode == ColumnMappingMode.NONE ? ColumnMappingMode.NAME : tableMode;
