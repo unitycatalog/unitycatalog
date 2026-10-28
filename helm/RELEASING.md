@@ -5,7 +5,8 @@ the server image `unitycatalog/unitycatalog:vX.Y.Z` and the UI image `unitycatal
 images must be on Docker Hub before the chart is pushed.
 
 Only the release managers push to the `unitycatalog` Docker Hub organization, and only they should have write access to
-its repositories. The release managers are the owners of that organization.
+its repositories. The release managers are the members of the organization's
+[Owners team](https://hub.docker.com/orgs/unitycatalog/groups/owners).
 
 ## Bump the pinned helper images
 
