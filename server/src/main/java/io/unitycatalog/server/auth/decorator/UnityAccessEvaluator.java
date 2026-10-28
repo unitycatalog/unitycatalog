@@ -1,6 +1,8 @@
 package io.unitycatalog.server.auth.decorator;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
 import java.lang.invoke.MethodHandle;
@@ -14,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.expression.Expression;
 import org.springframework.expression.ExpressionParser;
+import org.springframework.expression.spel.SpelEvaluationException;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
 
@@ -213,8 +216,16 @@ public class UnityAccessEvaluator {
     }
 
     private boolean eval(StandardEvaluationContext context) {
-      Boolean result = expression.getValue(context, Boolean.class);
-      return result != null && result;
+      try {
+        Boolean result = expression.getValue(context, Boolean.class);
+        return result != null && result;
+      } catch (SpelEvaluationException e) {
+        if (e.getCause() instanceof BaseException failure
+            && failure.getErrorCode() == ErrorCode.UNAVAILABLE) {
+          throw failure;
+        }
+        throw e;
+      }
     }
 
     boolean authorize(UUID principalId, Resource resource, Privileges privilege) {
