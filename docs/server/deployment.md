@@ -89,9 +89,9 @@ This guide outlines how to deploy the Unity Catalog server.
     docker-compose -f etc/db/mysql-example.yml up -d
     ```
 
-- Unity Catalog treats storage paths and names as case-sensitive. PostgreSQL and H2 compare text
-  case-sensitively by default, but MySQL's default collation is case-insensitive. Create the
-  database with a binary collation. The example file already does this for `ucdb` when it creates a
+- Unity Catalog compares storage paths exactly, so two paths that differ only in case are
+  different locations. PostgreSQL and H2 compare text exactly by default, but MySQL's default
+  collation ignores case. Create the database with a binary collation. The example file already does this for `ucdb` when it creates a
   new data volume; for your own server run:
 
     ```sql
