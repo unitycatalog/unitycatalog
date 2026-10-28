@@ -74,6 +74,11 @@ The server config file is at the location `etc/conf/server.properties` (relative
     any principal who can create a table can use it. Each entry must be a local path; an entry such as an `s3://` URL
     fails server startup. As with `storage-root.*`, a relative path containing `/` (for example `./uc-external`) is
     resolved against the server's working directory, and a directory that does not exist yet is accepted.
+- `server.shutdown-timeout`: How long the server waits for in-flight requests when it stops, for example on SIGTERM.
+    Defaults to `PT5S`. Stopping takes longer than this: up to 5 seconds more if a storage cleanup attempt is
+    running, plus about 2 seconds to stop the HTTP server. With the default, give `docker stop` 15 seconds or more
+    (`--time`, or `--stop-timeout` on `docker run`), and keep Kubernetes' `terminationGracePeriodSeconds` above it
+    too; raise both when you raise this setting.
 
 !!! note "Local `file:` locations"
     A local `file:` location must name one plain path. The server rejects with `400` a location that has an encoded
