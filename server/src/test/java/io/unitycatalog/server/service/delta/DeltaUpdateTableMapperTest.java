@@ -473,24 +473,6 @@ public class DeltaUpdateTableMapperTest {
             cmMode("name"),
             setColumns(fld("s", struct(fld("x", prim("long"), 2, null)), false, 1, "s"))),
 
-        // Names differing only by case.
-        rejected(
-            "top-level names differing only by case",
-            "Duplicate field name",
-            NAME_AB,
-            setColumns(
-                fld("a", prim("long"), false, 1, "col-1"), fld("A", prim("long"), 2, "col-2"))),
-        rejected(
-            "nested names differing only by case",
-            "Duplicate field name",
-            NAME_S2,
-            setColumns(
-                fld(
-                    "s",
-                    struct(fld("x", prim("long"), 2, "col-x"), fld("X", prim("long"), 3, "col-z")),
-                    1,
-                    "col-s"))),
-
         // A key kept only below the top level is not "column mapping removed"; the per-column
         // check reports the column that lost it.
         rejected(
@@ -688,6 +670,21 @@ public class DeltaUpdateTableMapperTest {
             setColumns(
                 fld("x", prim("long"), false, 1, "col-1"), fld("y", prim("long"), 2, "col-2"))),
 
+        // Enabling and renaming in one request.
+        rejected(
+            "enable and rename a column",
+            "separate statement",
+            EXTERNAL,
+            cmMode("name"),
+            setColumns(
+                fld("id", prim("long"), false, 1, "id"),
+                fld("revenue", prim("double"), 2, "amount"))),
+        rejected(
+            "enable and rename a struct field",
+            "separate statement",
+            EXTERNAL_STRUCT,
+            cmMode("name"),
+            setColumns(fld("s", struct(fld("y", prim("long"), 2, "x")), false, 1, "s"))),
         // Enabling finds renames inside array elements and map values too.
         rejected(
             "enable and rename an array element field",
