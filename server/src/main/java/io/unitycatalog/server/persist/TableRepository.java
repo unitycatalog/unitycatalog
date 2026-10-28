@@ -18,6 +18,7 @@ import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.DependencyList;
 import io.unitycatalog.server.model.ListTablesResponse;
+import io.unitycatalog.server.model.ReplaceView;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.observability.TableMetrics;
@@ -244,10 +245,7 @@ public class TableRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          String[] parts = fullName.split("\\.");
-          if (parts.length != 3) {
-            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
-          }
+          String[] parts = parseTableFullName(fullName);
           String catalogName = parts[0];
           String schemaName = parts[1];
           String tableName = parts[2];
@@ -825,14 +823,7 @@ public class TableRepository {
     // normalize before streaming. Whether an empty column list is acceptable is a per-table-type
     // rule decided in the create branches below, and those checks must be the ones that reject the
     // request so the caller gets INVALID_ARGUMENT instead of an NPE here.
-    List<ColumnInfo> columnInfos =
-        Optional.ofNullable(createTable.getColumns()).orElse(List.of()).stream()
-            .map(
-                c -> {
-                  ColumnUtils.validateTypeJson(c, format);
-                  return c.typeText(c.getTypeText().toLowerCase(Locale.ROOT));
-                })
-            .toList();
+    List<ColumnInfo> columnInfos = normalizeColumns(createTable.getColumns(), format);
     Long createTime = System.currentTimeMillis();
     String fullName = getTableFullName(createTable);
     LOGGER.debug("Creating table: {}", fullName);
@@ -970,6 +961,135 @@ public class TableRepository {
         },
         "Error creating table: " + fullName,
         /* readOnly= */ false);
+  }
+
+  /**
+   * Atomically replaces the definition and metadata of an existing view while preserving its ID,
+   * owner, creation time, and grants. Omitted comment, properties, and dependencies are cleared.
+   *
+   * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if no table exists at the given name,
+   *     ErrorCode.FAILED_PRECONDITION if it is not a view, or ErrorCode.INVALID_ARGUMENT if the
+   *     request is invalid or changes the view's table type.
+   */
+  public TableInfo replaceView(String fullName, ReplaceView replaceView) {
+    String[] parts = parseTableFullName(fullName);
+    TableType tableType = replaceView.getTableType();
+    if (tableType == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "table_type is required for replacing a view");
+    }
+    List<ColumnInfo> columns = normalizeColumns(replaceView.getColumns(), null);
+    CreateTable validationRequest =
+        new CreateTable()
+            .name(parts[2])
+            .catalogName(parts[0])
+            .schemaName(parts[1])
+            .tableType(tableType)
+            .columns(columns)
+            .comment(replaceView.getComment())
+            .properties(replaceView.getProperties())
+            .viewDefinition(replaceView.getViewDefinition())
+            .viewDependencies(replaceView.getViewDependencies());
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
+
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          TableInfoDAO dao = findTableOrThrow(session, parts[0], parts[1], parts[2]);
+          // FAILED_PRECONDITION rather than INVALID_ARGUMENT: the request is valid, but the target
+          // is not a view. Clients (e.g. the Spark connector) rely on the distinct code.
+          if (!RepositoryUtils.isViewLike(dao.getType())) {
+            throw new BaseException(
+                ErrorCode.FAILED_PRECONDITION,
+                "Cannot replace " + fullName + ": it is a " + dao.getType() + ", not a view");
+          }
+          if (!tableType.getValue().equals(dao.getType())) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT,
+                "Cannot replace "
+                    + dao.getType()
+                    + " "
+                    + fullName
+                    + " with table_type "
+                    + tableType
+                    + "; drop and recreate it instead");
+          }
+          // A replace carries the complete new state, so a retry after lock contention is safe.
+          RepositoryUtils.lockTableForCommit(
+              session, dao, dao.getId(), Optional.of(fullName), ErrorCode.ABORTED);
+          if (tableType == TableType.METRIC_VIEW) {
+            validateMetricView(session, validationRequest);
+          } else {
+            validateView(session, validationRequest);
+          }
+
+          List<ColumnInfoDAO> replacementColumns = ColumnInfoDAO.fromList(columns);
+          replacementColumns.forEach(
+              column -> {
+                column.setId(UUID.randomUUID());
+                column.setTable(dao);
+              });
+          dao.getColumns().clear();
+          session.flush();
+          dao.getColumns().addAll(replacementColumns);
+
+          MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
+          properties.removeAll(new ArrayList<>(properties.asMap().keySet()));
+          properties.putAll(Optional.ofNullable(replaceView.getProperties()).orElse(Map.of()));
+          properties.flush(session, dao.getId());
+
+          // Dependencies belong to the definition, so they are always replaced with it. A null
+          // list (lineage the client could not derive) stores none, the same as on create.
+          DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
+          repositories
+              .getDependencyRepository()
+              .deleteDependencies(session, dao.getId(), dependentType);
+          List<DependencyDAO> dependencies =
+              Optional.ofNullable(replaceView.getViewDependencies())
+                  .map(DependencyList::getDependencies)
+                  .orElse(List.of())
+                  .stream()
+                  .map(dep -> DependencyDAO.from(dep, dao.getId(), dependentType))
+                  .toList();
+          repositories
+              .getDependencyRepository()
+              .createDependencies(session, dao.getId(), dependentType, dependencies);
+
+          dao.setViewDefinition(replaceView.getViewDefinition());
+          dao.setComment(replaceView.getComment());
+          dao.setColumnCount(columns.size());
+          dao.setUpdatedAt(new Date());
+          dao.setUpdatedBy(callerId);
+          session.merge(dao);
+          session.flush();
+
+          TableInfo result = dao.toTableInfo(true, parts[0], parts[1]);
+          result.setProperties(properties.asMap());
+          RepositoryUtils.attachDependencies(
+              result, dao, session, repositories.getDependencyRepository());
+          return result;
+        },
+        "Failed to replace view: " + fullName,
+        /* readOnly= */ false);
+  }
+
+  private static String[] parseTableFullName(String fullName) {
+    String[] parts = fullName.split("\\.");
+    if (parts.length != 3) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
+    }
+    return parts;
+  }
+
+  private static List<ColumnInfo> normalizeColumns(
+      List<ColumnInfo> columns, DataSourceFormat format) {
+    return Optional.ofNullable(columns).orElse(List.of()).stream()
+        .map(
+            column -> {
+              ColumnUtils.validateTypeJson(column, format);
+              return column.typeText(column.getTypeText().toLowerCase(Locale.ROOT));
+            })
+        .toList();
   }
 
   @FunctionalInterface
@@ -1220,10 +1340,7 @@ public class TableRepository {
    * single dotted string.
    */
   public TableInfoDAO deleteTable(String fullName) {
-    String[] parts = fullName.split("\\.");
-    if (parts.length != 3) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
-    }
+    String[] parts = parseTableFullName(fullName);
     return deleteTable(parts[0], parts[1], parts[2]);
   }
 

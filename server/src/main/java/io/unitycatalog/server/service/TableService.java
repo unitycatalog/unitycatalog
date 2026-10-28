@@ -12,6 +12,7 @@ import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
+import com.linecorp.armeria.server.annotation.Put;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -21,6 +22,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.ListTablesResponse;
+import io.unitycatalog.server.model.ReplaceView;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
@@ -103,6 +105,14 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
     assert fullName != null;
     TableInfo tableInfo = tableRepository.getTable(fullName);
     return HttpResponse.ofJson(tableInfo);
+  }
+
+  @Put("/{full_name}")
+  @AuthorizeExpression(AuthorizeExpressions.REPLACE_VIEW)
+  public HttpResponse replaceView(
+      @Param("full_name") @AuthorizeResourceKey(TABLE) String fullName, ReplaceView replaceView) {
+    assert replaceView != null;
+    return HttpResponse.ofJson(tableRepository.replaceView(fullName, replaceView));
   }
 
   @Get("")

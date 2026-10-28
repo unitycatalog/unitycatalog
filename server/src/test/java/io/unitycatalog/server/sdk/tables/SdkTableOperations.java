@@ -5,10 +5,12 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.CreateTable;
+import io.unitycatalog.client.model.ReplaceView;
 import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.base.table.ViewOperations;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import java.util.HashMap;
 import java.util.List;
@@ -16,7 +18,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-public class SdkTableOperations implements TableOperations {
+public class SdkTableOperations implements TableOperations, ViewOperations {
   private final TablesApi tablesApi;
 
   public SdkTableOperations(ApiClient apiClient) {
@@ -62,6 +64,11 @@ public class SdkTableOperations implements TableOperations {
         tableFullName,
         /* readStreamingTableAsManaged= */ true,
         /* readMaterializedViewAsManaged= */ true);
+  }
+
+  @Override
+  public TableInfo replaceView(String tableFullName, ReplaceView replaceView) throws ApiException {
+    return tablesApi.replaceView(tableFullName, replaceView);
   }
 
   @Override
