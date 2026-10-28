@@ -16,6 +16,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.DateTimeException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Collections;
@@ -49,6 +50,10 @@ import org.slf4j.LoggerFactory;
  */
 class OAuthTokenProvider implements TokenProvider {
   private static final long DEFAULT_LEAD_RENEWAL_TIME_SECONDS = 30L;
+  // Renewal holds the provider's lock, so a hung token request must not block every caller. A
+  // timed-out request is retried like other transient errors, so renewal gives up after about
+  // 30 seconds with the default retry policy.
+  static final Duration TOKEN_REQUEST_TIMEOUT = Duration.ofSeconds(10);
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
   private static final Logger LOGGER = LoggerFactory.getLogger(OAuthTokenProvider.class);
   private static final String TOKEN_EXCHANGE_PATH = "/api/1.0/unity-control/auth/tokens";
@@ -135,7 +140,7 @@ class OAuthTokenProvider implements TokenProvider {
     this.oauthScope = normalizeOAuthScope(configs.get(AuthConfigs.OAUTH_SCOPE));
 
     // Optional exchange of the OAuth token for a UC token; needs the catalog URI to reach UC.
-    if (parseExchangeForUcToken(configs.get(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN))) {
+    if (parseBooleanConfig(configs, AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN)) {
       String catalogUri = configs.get(AuthConfigs.CATALOG_URI);
       Preconditions.checkArgument(
           catalogUri != null && !catalogUri.isEmpty(),
@@ -211,6 +216,7 @@ class OAuthTokenProvider implements TokenProvider {
     HttpRequest request =
         HttpRequest.newBuilder()
             .uri(URI.create(oauthUri))
+            .timeout(TOKEN_REQUEST_TIMEOUT)
             .header("Authorization", "Basic " + encodedCredentials)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .POST(HttpRequest.BodyPublishers.ofString(formData))
@@ -234,6 +240,7 @@ class OAuthTokenProvider implements TokenProvider {
     HttpRequest request =
         HttpRequest.newBuilder()
             .uri(tokenExchangeUri)
+            .timeout(TOKEN_REQUEST_TIMEOUT)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .POST(HttpRequest.BodyPublishers.ofString(formData))
             .build();
@@ -340,17 +347,19 @@ class OAuthTokenProvider implements TokenProvider {
   }
 
   /**
-   * Accepts only {@code true} or {@code false} (any case), like Spark's boolean options, so a typo
-   * fails here rather than silently turning the exchange off.
+   * Reads an optional boolean config, false when unset. Accepts only {@code true} or {@code false}
+   * (any case), like Spark's boolean options, so a typo fails here rather than silently turning the
+   * feature off.
    */
-  private static boolean parseExchangeForUcToken(String value) {
+  static boolean parseBooleanConfig(Map<String, String> configs, String key) {
+    String value = configs.get(key);
     if (value == null) {
       return false;
     }
     Preconditions.checkArgument(
         value.equalsIgnoreCase("true") || value.equalsIgnoreCase("false"),
         "Configuration key '%s' must be 'true' or 'false', but got '%s'",
-        AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN,
+        key,
         value);
     return Boolean.parseBoolean(value);
   }

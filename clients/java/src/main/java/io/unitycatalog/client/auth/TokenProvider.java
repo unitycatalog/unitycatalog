@@ -64,6 +64,11 @@ public interface TokenProvider {
    *       custom {@link TokenProvider} implementation
    * </ul>
    *
+   * <p>For OAuth, set {@code "oauth.shared"} to {@code "true"} to get one provider shared JVM-wide
+   * by every caller with the same configuration instead of a new instance. Use this when a client
+   * is built per operation, so its token is reused instead of fetched again each time.
+   * Configurations that differ in any entry, such as the client secret, get separate providers.
+   *
    * <p>Example usage with static token:
    *
    * <pre>{@code
@@ -120,6 +125,11 @@ public interface TokenProvider {
         "Required configuration key '%s' is missing or empty. "
             + "Must be 'static', 'oauth', or a fully qualified TokenProvider class name.",
         AuthConfigs.TYPE);
+
+    if (AuthConfigs.OAUTH_TYPE_VALUE.equals(authType)
+        && OAuthTokenProvider.parseBooleanConfig(normalizedConfigs, AuthConfigs.OAUTH_SHARED)) {
+      return SharedTokenProviders.instance().get(normalizedConfigs);
+    }
 
     TokenProvider tokenProvider;
     switch (authType) {
