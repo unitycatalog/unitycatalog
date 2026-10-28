@@ -71,8 +71,10 @@ class ManagedVolumeCleanupTaskTest {
   @AfterEach
   void tearDown() {
     try {
-      // Every test here, including the rolled-back and cascading drops, records exactly its tasks.
+      // Every test here, including the rolled-back and cascading drops, records exactly its tasks,
+      // and each cloud task's cleanup credential record carries the task's ID.
       StorageCleanupTestSupport.assertQueueCleanupRecordsMatchTasks(sessionFactory);
+      StorageCleanupTestSupport.assertCleanupCredentialsJoinTasks(repositories, sessionFactory);
     } finally {
       testDatabase.close();
     }

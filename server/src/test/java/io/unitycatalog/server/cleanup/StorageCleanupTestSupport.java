@@ -2,14 +2,26 @@ package io.unitycatalog.server.cleanup;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.audit.AuditRecord;
 import io.unitycatalog.server.audit.Auditor;
 import io.unitycatalog.server.audit.CapturingAuditSink;
+import io.unitycatalog.server.model.AwsCredentials;
+import io.unitycatalog.server.model.AzureUserDelegationSAS;
+import io.unitycatalog.server.model.GcpOauthToken;
+import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
+import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.utils.CooperativeDeadline;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import io.unitycatalog.server.utils.UriScheme;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -17,6 +29,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.function.UnaryOperator;
+import org.apache.iceberg.io.SupportsPrefixOperations;
 import org.hibernate.SessionFactory;
 
 /** Shared helpers for storage-cleanup tests across the repository, worker, and SDK suites. */
@@ -37,22 +50,77 @@ public final class StorageCleanupTestSupport {
     }
   }
 
-  /** Routes audit records to {@link CapturingAuditSink}, starting with none recorded. */
+  /**
+   * Routes audit records to {@link CapturingAuditSink}, starting with none recorded. Also gives the
+   * tests' {@code s3://bucket} a region, so building its cleanup FileIO doesn't look the region up.
+   */
   public static void captureAuditRecords(Properties serverProperties) {
     serverProperties.setProperty(Property.AUDIT_SINK.getKey(), CapturingAuditSink.class.getName());
+    serverProperties.setProperty("s3.bucketPath.0", "s3://bucket");
+    serverProperties.setProperty("s3.region.0", "us-west-2");
+    serverProperties.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/cleanup-test");
     CapturingAuditSink.reset();
   }
 
-  /** Repositories that audit to the sink in {@code server.audit.sink}, as the server's do. */
+  /**
+   * Repositories that audit to the sink in {@code server.audit.sink}, as the server's do. Cloud
+   * credentials are placeholders: the tests build cleanup FileIOs but never use them.
+   */
   public static Repositories auditedRepositories(
       SessionFactory sessionFactory, ServerProperties serverProperties) {
+    CloudCredentialVendor cloud = mock(CloudCredentialVendor.class);
+    when(cloud.vendCredential(any()))
+        .thenAnswer(
+            invocation ->
+                switch (invocation.<CredentialContext>getArgument(0).getStorageScheme()) {
+                  case S3 ->
+                      new TemporaryCredentials()
+                          .awsTempCredentials(
+                              new AwsCredentials()
+                                  .accessKeyId("AK")
+                                  .secretAccessKey("SK")
+                                  .sessionToken("TK"));
+                  case GS ->
+                      new TemporaryCredentials().gcpOauthToken(new GcpOauthToken().oauthToken("T"));
+                  case ABFS, ABFSS ->
+                      new TemporaryCredentials()
+                          .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("SAS"));
+                  case FILE, NULL -> new TemporaryCredentials();
+                });
     return new Repositories(
         sessionFactory,
         serverProperties,
-        /* cloudCredentialVendor= */ null,
+        cloud,
         UnaryOperator.identity(),
         /* metrics= */ null,
         Auditor.fromProperties(serverProperties));
+  }
+
+  /**
+   * Builds each cloud task's cleanup FileIO, as the worker does, and asserts the {@code CLEANUP}
+   * credential it vends is recorded with the task's ID, so it joins the task's {@code
+   * QUEUE_CLEANUP} record. Local tasks are skipped: their cleanup vends no credential.
+   */
+  public static void assertCleanupCredentialsJoinTasks(
+      Repositories repositories, SessionFactory sessionFactory) {
+    for (StorageCleanupTaskDAO task : allTasks(sessionFactory)) {
+      NormalizedURL location = NormalizedURL.from(task.getStorageLocation());
+      if (UriScheme.fromURI(location.toUri()) == UriScheme.FILE) {
+        continue;
+      }
+      try (SupportsPrefixOperations ignored =
+          repositories
+              .getFileOperations()
+              .getCleanupFileIO(location, CooperativeDeadline.NO_DEADLINE)) {
+        assertThat(CapturingAuditSink.RECORDS)
+            .filteredOn(
+                r ->
+                    r.getPurpose() == AuditRecord.Purpose.CLEANUP
+                        && location.toString().equals(r.getLocation()))
+            .isNotEmpty()
+            .allSatisfy(r -> assertThat(r.getResourceId()).isEqualTo(task.getId()));
+      }
+    }
   }
 
   /**
