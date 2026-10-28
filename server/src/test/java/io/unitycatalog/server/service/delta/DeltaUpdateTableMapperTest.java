@@ -670,6 +670,55 @@ public class DeltaUpdateTableMapperTest {
             setColumns(
                 fld("x", prim("long"), false, 1, "col-1"), fld("y", prim("long"), 2, "col-2"))),
 
+        // With column mapping, stored or being enabled, every field has a physical name and an id.
+        rejected(
+            "enable without keys",
+            "requires a physical column name and a column mapping id",
+            EXTERNAL,
+            cmMode("name"),
+            setColumns(
+                fld("id", prim("long"), false, null, null),
+                fld("amount", prim("double"), null, null))),
+        rejected(
+            "enable with ids and no physical names",
+            "requires a physical column name and a column mapping id",
+            EXTERNAL,
+            cmMode("name"),
+            setColumns(
+                fld("id", prim("long"), false, 1, null), fld("amount", prim("double"), 2, null))),
+        rejected(
+            "enable without an id on one column",
+            "requires a physical column name and a column mapping id",
+            EXTERNAL,
+            setColumns(
+                fld("id", prim("long"), false, 1, "id"),
+                fld("amount", prim("double"), null, "amount"))),
+        rejected(
+            "new column without keys in name mode",
+            "requires a physical column name and a column mapping id",
+            NAME_A,
+            setColumns(
+                fld("a", prim("long"), false, 1, "col-1"), fld("c", prim("long"), null, null))),
+        rejected(
+            "new nested field without a physical name in name mode",
+            "requires a physical column name and a column mapping id",
+            NAME_S,
+            setColumns(
+                fld(
+                    "s",
+                    struct(fld("x", prim("long"), 2, "col-x"), fld("y", prim("long"), 3, null)),
+                    1,
+                    "col-s"))),
+        rejected(
+            "new column without a physical name in id mode",
+            "requires a physical column name and a column mapping id",
+            ID_A,
+            setColumns(fld("a", prim("long"), false, 1, "col-1"), fld("c", prim("long"), 2, null))),
+        rejected(
+            "no keys on a name-mode table that stores none",
+            "requires a physical column name and a column mapping id",
+            managed("name", 1, fld("a", prim("long"), false, null, null)),
+            setColumns(fld("a", prim("long"), false, null, null))),
         // Enabling and renaming in one request.
         rejected(
             "enable and rename a column",

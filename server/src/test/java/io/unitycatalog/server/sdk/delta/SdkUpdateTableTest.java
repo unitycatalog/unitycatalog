@@ -1898,14 +1898,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
         DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
         "Invalid column mapping mode");
 
-    // The stored name mode applies, not the id mode the request sets: keeping the physical name
-    // keeps the column's identity.
-    Handle nameTable = createCmNameModeManaged("tbl_request_sets_mode");
-    updateTable(
-        nameTable,
-        new DeltaSetPropertiesUpdate().updates(Map.of("delta.columnMapping.mode", "id")),
-        setColumns(fld("a", prim("long"), false, null, "col-1")));
-
     // Removing the mode in the same request still checks the stored name mode.
     Handle removeMode = createCmNameModeManaged("tbl_request_removes_mode");
     TestUtils.assertDeltaApiException(
@@ -2547,37 +2539,12 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                     fld("id", prim("long"), false, 1, "id"),
                     fld("amount", prim("double"), 2, "amount")))
             .expectColumns("id", "amount"),
-        // Without physical names the ids identify nothing on a table without column mapping.
-        ok(
-                "ids without physical names on a table without column mapping",
-                EXTERNAL,
-                cmMode("name"),
-                setColumns(
-                    fld("id", prim("long"), false, 1, null),
-                    fld("amount", prim("double"), 2, null)))
-            .expectColumns("id", "amount"),
-        // Without keys in the request the columns are read by name.
-        ok(
-                "enable without keys",
-                EXTERNAL,
-                cmMode("name"),
-                setColumns(
-                    fld("id", prim("long"), false, null, null),
-                    fld("amount", prim("double"), null, null)))
-            .expectColumns("id", "amount"),
         // A stored column without keys has no identity to rename from, so it may gain them.
         ok(
                 "stored column without keys gains them",
                 (t, n) -> t.createManaged(n, "name", 1, fld("a", prim("long"), false, null, null)),
                 setColumns(fld("a", prim("long"), false, 1, "a")))
             .expectColumns("a"),
-        // A new column may come without keys.
-        ok(
-                "new column without keys",
-                NAME_A,
-                setColumns(
-                    fld("a", prim("long"), false, 1, "col-1"), fld("c", prim("long"), null, null)))
-            .expectColumns("a", "c"),
         // Replacing every column with new ids and physical names is a drop and an add of each.
         ok(
                 "replace every column of a column-mapped table",

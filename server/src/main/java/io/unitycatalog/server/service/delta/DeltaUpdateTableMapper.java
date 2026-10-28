@@ -384,14 +384,22 @@ public final class DeltaUpdateTableMapper {
       ServerProperties serverProperties) {
     CollectedUpdates c = collected.updates();
     // set-columns is validated against the table's stored mode, before this request's property
-    // changes apply. The mode is read only for set-columns, so a stored mode value never blocks
-    // other updates.
+    // changes apply, and against the mode the request sets, which only enabling reads. The modes
+    // are read only for set-columns, so a mode value never blocks other updates.
     ColumnMappingMode columnMappingMode =
         c.setSchema.isPresent()
             ? ColumnMappingMode.parse(properties.get(TableProperties.COLUMN_MAPPING_MODE))
             : ColumnMappingMode.NONE;
+    ColumnMappingMode requestedMode =
+        c.setSchema.isPresent()
+            ? ColumnMappingMode.parse(
+                c.setProperties
+                    .map(DeltaSetPropertiesUpdate::getUpdates)
+                    .map(u -> u.get(TableProperties.COLUMN_MAPPING_MODE))
+                    .orElse(null))
+            : ColumnMappingMode.NONE;
     applySchemaAndPartitionColumns(
-        session, dao, c.setSchema, c.setPartitionColumns, columnMappingMode);
+        session, dao, c.setSchema, c.setPartitionColumns, columnMappingMode, requestedMode);
     c.setProtocol.ifPresent(u -> applySetProtocol(properties, u.getProtocol()));
     c.setProperties.ifPresent(u -> applySetProperties(properties, u.getUpdates()));
     c.removeProperties.ifPresent(u -> applyRemoveProperties(properties, u.getRemovals()));
@@ -467,7 +475,8 @@ public final class DeltaUpdateTableMapper {
       TableInfoDAO dao,
       Optional<DeltaSetSchemaUpdate> setSchema,
       Optional<DeltaSetPartitionColumnsUpdate> setPartition,
-      ColumnMappingMode columnMappingMode) {
+      ColumnMappingMode columnMappingMode,
+      ColumnMappingMode requestedMode) {
     if (setSchema.isEmpty() && setPartition.isEmpty()) {
       return;
     }
@@ -485,7 +494,7 @@ public final class DeltaUpdateTableMapper {
             ErrorCode.INVALID_ARGUMENT, "set-columns requires at least one column.");
       }
       ColumnUtils.validateStructType(columns, "columns");
-      validateColumnMappingGuards(dao, fields, columnMappingMode);
+      validateColumnMappingGuards(dao, fields, columnMappingMode, requestedMode);
       newColumns = ColumnUtils.toColumnInfos(fields);
     } else {
       newColumns = ColumnInfoDAO.toList(dao.getColumns());
@@ -654,7 +663,8 @@ public final class DeltaUpdateTableMapper {
    * Checks a {@code set-columns} against the table's stored column-mapping mode. Columns are
    * matched by the mode's identity key: the column mapping id in id mode, the physical name in name
    * mode. A table without column mapping reads its data by name, so physical names its fields carry
-   * are not identities; a request that sends them enables column mapping.
+   * are not identities; a request that sends them, or sets the mode to name or id, enables column
+   * mapping.
    *
    * <ul>
    *   <li>A retained field keeps the identity key it has, and a schema that has identity keys keeps
@@ -662,16 +672,23 @@ public final class DeltaUpdateTableMapper {
    *   <li>An identity value that is present must be usable: the mode's key on a top-level column,
    *       and a column mapping id on any field. In name mode, top-level physical names are unique
    *       ignoring case. In id mode, ids are unique across the schema.
-   *   <li>A request without identity keys has no rename to find: a missing name is a drop and an
-   *       add, as when a table is replaced.
+   *   <li>With column mapping, stored or being enabled, every field at any depth has a physical
+   *       name and a column mapping id, as the Delta protocol requires in both modes.
+   *   <li>Without column mapping there is no rename to find: a missing name is a drop and an add,
+   *       as when a table is replaced.
    *   <li>Enabling column mapping (a table without column mapping, or a stored schema without
-   *       identity keys): every field needs a physical name, top-level physical names and all ids
-   *       must be usable and unique, and no column may be renamed in the same request.
+   *       identity keys): top-level physical names and all ids must be unique, and no column may be
+   *       renamed in the same request.
    *   <li>Otherwise at most one top-level column is renamed per request.
    * </ul>
+   *
+   * @param requestedMode the mode this request sets, {@code NONE} when it sets none
    */
   private static void validateColumnMappingGuards(
-      TableInfoDAO dao, List<DeltaStructField> incoming, ColumnMappingMode tableMode) {
+      TableInfoDAO dao,
+      List<DeltaStructField> incoming,
+      ColumnMappingMode tableMode,
+      ColumnMappingMode requestedMode) {
     ColumnMappingMode mode =
         tableMode == ColumnMappingMode.NONE ? ColumnMappingMode.NAME : tableMode;
     List<DeltaStructField> current = readableStoredFields(dao);
@@ -696,6 +713,15 @@ public final class DeltaUpdateTableMapper {
     }
     if (mode == ColumnMappingMode.ID) {
       rejectDuplicateIds(incoming);
+    }
+    boolean enabling =
+        tableMode == ColumnMappingMode.NONE
+            && (requestedMode != ColumnMappingMode.NONE || incomingHasKeys);
+    if (enabling) {
+      rejectMalformedIdentities(allFields(incoming), TableProperties.COLUMN_MAPPING_ID);
+    }
+    if (tableMode != ColumnMappingMode.NONE || enabling) {
+      rejectFieldsWithoutIdentity(incoming);
     }
     if (!incomingHasKeys) {
       return; // no identity to find a rename by: a missing name is a drop and an add
@@ -722,25 +748,12 @@ public final class DeltaUpdateTableMapper {
   }
 
   /**
-   * Checks a request that enables column mapping. A field without a physical name could hide a
-   * rename, and a rename has to be its own request after column mapping is enabled.
+   * Checks a request that enables column mapping; every field has a usable physical name and id. A
+   * rename has to be its own request after column mapping is enabled.
    */
   private static void validateEnablingColumnMapping(
       List<DeltaStructField> current, List<DeltaStructField> incoming) {
-    if (allFields(incoming).stream()
-        .anyMatch(
-            f ->
-                !isUsableIdentity(
-                    f.getMetadata().get(TableProperties.COLUMN_MAPPING_PHYSICAL_NAME),
-                    TableProperties.COLUMN_MAPPING_PHYSICAL_NAME))) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "set-columns: enabling column mapping requires a physical column name for every column"
-              + " and nested field; this request omits one, so a rename cannot be safely ruled"
-              + " out.");
-    }
     rejectDuplicateTopLevelPhysicalNames(incoming);
-    rejectMalformedIdentities(allFields(incoming), TableProperties.COLUMN_MAPPING_ID);
     rejectDuplicateIds(incoming);
     if (renamesWhileEnabling(current, incoming)) {
       throw new BaseException(
@@ -781,6 +794,30 @@ public final class DeltaUpdateTableMapper {
           "set-columns has column(s) "
               + malformed
               + " with malformed column mapping identity metadata.");
+    }
+  }
+
+  /** Rejects fields, at any depth, without a usable physical name and column mapping id. */
+  private static void rejectFieldsWithoutIdentity(List<DeltaStructField> incoming) {
+    List<String> missing =
+        allFields(incoming).stream()
+            .filter(
+                f ->
+                    !isUsableIdentity(
+                            f.getMetadata().get(TableProperties.COLUMN_MAPPING_PHYSICAL_NAME),
+                            TableProperties.COLUMN_MAPPING_PHYSICAL_NAME)
+                        || !isUsableIdentity(
+                            f.getMetadata().get(TableProperties.COLUMN_MAPPING_ID),
+                            TableProperties.COLUMN_MAPPING_ID))
+            .map(DeltaStructField::getName)
+            .collect(Collectors.toList());
+    if (!missing.isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "set-columns: column mapping requires a physical column name and a column mapping id"
+              + " for every column and nested field; column(s) "
+              + missing
+              + " omit one.");
     }
   }
 
