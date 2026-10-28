@@ -107,7 +107,8 @@ public class ResultFilter {
    * </ol>
    *
    * <p>If an error occurs during authorization evaluation for an item, that item is filtered out
-   * (removed from the list) as a security precaution.
+   * (removed from the list) as a security precaution. An {@link ErrorCode#UNAVAILABLE} error is
+   * propagated instead so the request can be retried.
    *
    * @param securableType The type of resources being filtered (TABLE, VOLUME, FUNCTION, etc.)
    * @param items The list of items to filter in-place. This list is modified by removing
@@ -157,6 +158,10 @@ public class ResultFilter {
           iterator.set(result);
         }
       } catch (Exception e) {
+        if (e instanceof BaseException failure
+            && failure.getErrorCode() == ErrorCode.UNAVAILABLE) {
+          throw failure;
+        }
         LOGGER.warn("Error evaluating authorization for item, filtering out: {}", e.getMessage());
         iterator.remove();
       }

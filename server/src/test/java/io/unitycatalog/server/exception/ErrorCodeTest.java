@@ -18,6 +18,9 @@ import static io.unitycatalog.server.delta.model.DeltaErrorType.SERVICE_UNAVAILA
 import static io.unitycatalog.server.delta.model.DeltaErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION;
 import static io.unitycatalog.server.delta.model.DeltaErrorType.UPDATE_REQUIREMENT_CONFLICT_EXCEPTION;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,7 +28,15 @@ import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.server.ServiceRequestContext;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.delta.model.DeltaErrorType;
+import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.persist.model.Privileges;
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.CommitFailedException;
@@ -40,6 +51,7 @@ import org.apache.iceberg.exceptions.ServiceUnavailableException;
 import org.apache.iceberg.exceptions.UnprocessableEntityException;
 import org.apache.iceberg.rest.responses.ErrorResponse;
 import org.apache.iceberg.rest.responses.ErrorResponseParser;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
@@ -144,6 +156,40 @@ public class ErrorCodeTest {
     assertThat(delta.status().code()).isEqualTo(expected.deltaStatus());
     assertThat(deltaError.path("code").asInt()).isEqualTo(expected.deltaStatus());
     assertThat(deltaError.path("type").asText()).isEqualTo(expected.deltaType().getValue());
+  }
+
+  @Test
+  public void everyApiReportsAuthorizationUnavailable() throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    UUID principal = UUID.randomUUID();
+    UUID table = UUID.randomUUID();
+    BaseException unavailable =
+        new BaseException(
+            ErrorCode.UNAVAILABLE,
+            "Authorization service is unavailable",
+            new IOException("timeout"));
+    when(authorizer.authorize(principal, SecurableType.TABLE, table, Privileges.OWNER))
+        .thenThrow(unavailable);
+    UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer, true);
+    Throwable failure =
+        catchThrowable(
+            () ->
+                evaluator.evaluate(
+                    principal,
+                    "#authorize(#principal, #table, OWNER)",
+                    Map.of(SecurableType.TABLE, table),
+                    Map.of()));
+    assertThat(failure).isSameAs(unavailable);
+
+    for (BaseExceptionHandler handler :
+        List.of(
+            GlobalExceptionHandler.INSTANCE,
+            IcebergRestExceptionHandler.INSTANCE,
+            DeltaApiExceptionHandler.INSTANCE)) {
+      AggregatedHttpResponse response = errorResponse(handler, failure);
+      assertThat(response.status().code()).isEqualTo(503);
+      assertThat(response.contentUtf8()).contains(unavailable.getErrorMessage());
+    }
   }
 
   private static AggregatedHttpResponse errorResponse(
