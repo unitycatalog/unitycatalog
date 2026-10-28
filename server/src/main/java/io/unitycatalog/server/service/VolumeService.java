@@ -146,16 +146,20 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
   @Patch("/{full_name}")
   @AuthorizeExpression(
       """
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #volume, OWNER))
+      (#authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+              #authorize(#principal, #schema, OWNER)) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+              #authorize(#principal, #schema, USE_SCHEMA) &&
+              #authorize(#principal, #volume, OWNER))) &&
+      (!#strict_privilege_checks || #new_name == null ||
+          #authorize(#principal, #schema, OWNER) ||
+          #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_VOLUME))
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateVolume(
       @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName,
-      UpdateVolumeRequestContent updateVolumeRequest) {
+      @AuthorizeKey(key = "new_name") UpdateVolumeRequestContent updateVolumeRequest) {
     return HttpResponse.ofJson(volumeRepository.updateVolume(fullName, updateVolumeRequest));
   }
 
