@@ -72,8 +72,8 @@ final class MySqlDatabases extends TemplateDatabases {
 
   @Override
   void createDatabase(String name) {
-    // utf8mb4_0900_bin compares text case-sensitively, like PostgreSQL and H2. Storage paths and
-    // names are case-sensitive; MySQL's default collation is not. Tables take the database's.
+    // utf8mb4_0900_bin compares text exactly, like PostgreSQL and H2. Storage paths compare
+    // exactly; MySQL's default collation ignores case. Tables take the database's.
     execute("CREATE DATABASE " + name + " CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin");
   }
 
