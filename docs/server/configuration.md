@@ -141,8 +141,9 @@ The server logs are located at `etc/logs/server.log`. The log level and log roll
 file: `etc/conf/server.log4j2.properties`.
 
 With the default log4j2 config, the log rolls over every hour, and within an hour each time it reaches 10MB. Each
-rolled-over file is compressed into `etc/logs/server-<yyyy-MM-dd-HH>-<n>.log.gz`. At each rollover, archives last
-written more than 7 days ago are deleted.
+rolled-over file is compressed into `etc/logs/server-<yyyy-MM-dd-HH>-<n>.log.gz`, where `<n>` numbers the archives of
+that hour, starting at 1, up to 20. At each rollover, archives last written more than 7 days ago are deleted, and so are
+the oldest archives once all archives together exceed 1GB.
 
 With the default log4j2 config, each log line names the host that wrote it. A line written while serving a request
 also carries an ID the server generates for that request, as `request_id=<id>`, so all the lines one request writes
