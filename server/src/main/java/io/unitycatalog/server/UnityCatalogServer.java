@@ -10,6 +10,7 @@ import com.linecorp.armeria.server.prometheus.PrometheusExpositionService;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
+import io.unitycatalog.server.auth.OpaAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
@@ -328,6 +329,15 @@ public class UnityCatalogServer implements AutoCloseable {
       ServerProperties serverProperties,
       HibernateConfigurator hibernateConfigurator,
       Repositories repositories) {
+    String opaDecisionUrl = null;
+    if (serverProperties.isOpaAuthorizationEnabled()) {
+      if (!serverProperties.isAuthorizationEnabled()) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "server.authorization=enable is required when server.authorization.provider=opa");
+      }
+      opaDecisionUrl = serverProperties.getOpaDecisionUrl();
+    }
     if (serverProperties.isAuthorizationEnabled()) {
       try {
         LOGGER.info("Initializing JCasbinAuthorizer...");
@@ -335,6 +345,14 @@ public class UnityCatalogServer implements AutoCloseable {
             new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
         try {
           new UnityAccessUtil(repositories).initializeAdmin(authorizer);
+          if (opaDecisionUrl != null) {
+            LOGGER.info("Using OPA for authorization decisions.");
+            return new OpaAuthorizer(
+                authorizer,
+                hibernateConfigurator.getSessionFactory(),
+                opaDecisionUrl,
+                serverProperties.getOpaResponseTimeout());
+          }
           return authorizer;
         } catch (Exception e) {
           authorizer.close();

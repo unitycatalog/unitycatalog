@@ -5,6 +5,8 @@ import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.ExternalLocationInfo;
@@ -100,7 +102,8 @@ public class ResultFilter {
    * </ol>
    *
    * <p>If an error occurs during authorization evaluation for an item, that item is filtered out
-   * (removed from the list) as a security precaution.
+   * (removed from the list) as a security precaution. An {@link ErrorCode#UNAVAILABLE} error is
+   * propagated instead so the request can be retried.
    *
    * @param securableType The type of resources being filtered (TABLE, VOLUME, FUNCTION, etc.)
    * @param items The list of items to filter in-place. This list is modified by removing
@@ -143,6 +146,10 @@ public class ResultFilter {
             }
             return !authorized;
           } catch (Exception e) {
+            if (e instanceof BaseException failure
+                && failure.getErrorCode() == ErrorCode.UNAVAILABLE) {
+              throw failure;
+            }
             LOGGER.warn(
                 "Error evaluating authorization for item, filtering out: {}", e.getMessage());
             return true;

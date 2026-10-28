@@ -9,6 +9,7 @@ import static io.unitycatalog.server.persist.model.Privileges.SELECT;
 import static io.unitycatalog.server.persist.model.Privileges.USE_CATALOG;
 import static io.unitycatalog.server.persist.model.Privileges.USE_SCHEMA;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -21,9 +22,12 @@ import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.model.Privileges;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -39,6 +43,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.expression.spel.SpelEvaluationException;
 
 class UnityAccessEvaluatorTest {
 
@@ -77,6 +83,68 @@ class UnityAccessEvaluatorTest {
         .authorizeAll(principal, type, resource, Privileges.SELECT, Privileges.MODIFY);
   }
 
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "#authorize(#principal, #table, OWNER)",
+        "#authorizeAny(#principal, #table, OWNER, SELECT)",
+        "#authorizeAll(#principal, #table, SELECT, MODIFY)"
+      })
+  void unavailableDecisionsPropagateWithoutRefresh(String expression) throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    UUID principal = UUID.randomUUID();
+    UUID table = UUID.randomUUID();
+    BaseException failure =
+        new BaseException(
+            ErrorCode.UNAVAILABLE,
+            "Authorization service is unavailable",
+            new IOException("timeout"));
+    when(authorizer.authorize(principal, TABLE, table, Privileges.OWNER)).thenThrow(failure);
+    when(authorizer.authorizeAny(principal, TABLE, table, Privileges.OWNER, Privileges.SELECT))
+        .thenThrow(failure);
+    when(authorizer.authorizeAll(principal, TABLE, table, Privileges.SELECT, Privileges.MODIFY))
+        .thenThrow(failure);
+    UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer, true);
+
+    assertThatThrownBy(
+            () -> evaluator.evaluate(principal, expression, Map.of(TABLE, table), Map.of()))
+        .isSameAs(failure);
+
+    List<TableInfo> items = new ArrayList<>(List.of(new TableInfo().tableId(table.toString())));
+    ResultFilter filter =
+        new ResultFilter(
+            evaluator, principal, expression, Map.of(), Map.of(), mock(KeyMapper.class));
+    assertThatThrownBy(() -> filter.filter(TABLE, items)).isSameAs(failure);
+    verify(authorizer, never()).refreshAuthorizations(anyLong());
+  }
+
+  @ParameterizedTest
+  @MethodSource("unrelatedAuthorizationFailures")
+  void otherDecisionFailuresRemainWrapped(RuntimeException failure) throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    UUID principal = UUID.randomUUID();
+    UUID table = UUID.randomUUID();
+    when(authorizer.authorize(principal, TABLE, table, Privileges.OWNER)).thenThrow(failure);
+    UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer, true);
+
+    assertThatThrownBy(
+            () ->
+                evaluator.evaluate(
+                    principal,
+                    "#authorize(#principal, #table, OWNER)",
+                    Map.of(TABLE, table),
+                    Map.of()))
+        .isInstanceOf(SpelEvaluationException.class)
+        .hasCause(failure);
+    verify(authorizer, never()).refreshAuthorizations(anyLong());
+  }
+
+  static Stream<RuntimeException> unrelatedAuthorizationFailures() {
+    return Stream.of(
+        new BaseException(ErrorCode.INTERNAL, "Authorization failed"),
+        new IllegalStateException("Authorization failed"));
+  }
+
   @Test
   void missingResourcesRemainNullAndShortCircuit() throws Exception {
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
@@ -101,8 +169,14 @@ class UnityAccessEvaluatorTest {
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
     UUID principal = UUID.randomUUID();
     UUID table = UUID.randomUUID();
+    UUID deniedTable = UUID.randomUUID();
     when(authorizer.authorize(principal, TABLE, table, Privileges.OWNER)).thenReturn(true);
-    List<TableInfo> items = new ArrayList<>(List.of(new TableInfo().tableId(table.toString())));
+    when(authorizer.authorize(principal, TABLE, deniedTable, Privileges.OWNER)).thenReturn(false);
+    List<TableInfo> items =
+        new ArrayList<>(
+            List.of(
+                new TableInfo().tableId(table.toString()),
+                new TableInfo().tableId(deniedTable.toString())));
 
     new ResultFilter(
             new UnityAccessEvaluator(authorizer, true),
@@ -113,8 +187,29 @@ class UnityAccessEvaluatorTest {
             mock(KeyMapper.class))
         .filter(TABLE, items);
 
-    assertThat(items).hasSize(1);
+    assertThat(items).extracting(TableInfo::getTableId).containsExactly(table.toString());
     verify(authorizer).authorize(principal, TABLE, table, Privileges.OWNER);
+    verify(authorizer).authorize(principal, TABLE, deniedTable, Privileges.OWNER);
+  }
+
+  @ParameterizedTest
+  @MethodSource("unrelatedAuthorizationFailures")
+  void listFilteringKeepsOtherFailuresAsDenials(RuntimeException failure) {
+    UnityAccessEvaluator evaluator = mock(UnityAccessEvaluator.class);
+    when(evaluator.evaluate(any(), any(), any(), any(), anyLong())).thenThrow(failure);
+    List<TableInfo> items =
+        new ArrayList<>(List.of(new TableInfo().tableId(UUID.randomUUID().toString())));
+
+    new ResultFilter(
+            evaluator,
+            UUID.randomUUID(),
+            "#authorize(#principal, #table, OWNER)",
+            Map.of(),
+            Map.of(),
+            mock(KeyMapper.class))
+        .filter(TABLE, items);
+
+    assertThat(items).isEmpty();
   }
 
   @ParameterizedTest
