@@ -123,17 +123,20 @@ final class MySqlDatabases extends TemplateDatabases {
         Statement statement = connection.createStatement()) {
       // Foreign keys may point at tables created later.
       statement.addBatch("SET FOREIGN_KEY_CHECKS=0");
-      templateDdl.forEach(
-          ddl -> {
-            try {
-              statement.addBatch(ddl);
-            } catch (SQLException e) {
-              throw new IllegalStateException(e);
-            }
-          });
+      for (String ddl : templateDdl) {
+        statement.addBatch(ddl);
+      }
       statement.executeBatch();
     } catch (SQLException e) {
-      throw new IllegalStateException("Could not clone the template into " + name, e);
+      // newDatabase has no TestDatabase to close yet, so drop the half-built database here.
+      IllegalStateException failure =
+          new IllegalStateException("Could not clone the template into " + name, e);
+      try {
+        execute(dropSql(name));
+      } catch (RuntimeException dropFailure) {
+        failure.addSuppressed(dropFailure);
+      }
+      throw failure;
     }
   }
 
