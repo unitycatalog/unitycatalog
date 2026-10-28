@@ -68,7 +68,10 @@ public class Repositories {
     this(sessionFactory, serverProperties, cloudCredentialVendor, fileOperationsDecorator, null);
   }
 
-  /** Creates repositories with the audit sink set in {@code server.audit.sink}, if any. */
+  /**
+   * Creates repositories that record no audit events: {@code server.audit.sink} is not read here.
+   * To audit, pass an {@link Auditor} to the full constructor, and close it when done.
+   */
   public Repositories(
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
@@ -81,7 +84,7 @@ public class Repositories {
         cloudCredentialVendor,
         fileOperationsDecorator,
         metrics,
-        Auditor.fromProperties(serverProperties));
+        Optional.empty());
   }
 
   /**
