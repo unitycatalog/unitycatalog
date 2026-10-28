@@ -621,7 +621,8 @@ it from the catalog `uri` option:
     ```
 
     Unity Catalog itself ignores this key and always uses `uri`. It is no longer needed once Delta
-    includes [delta-io/delta#7951](https://github.com/delta-io/delta/pull/7951).
+    includes [delta-io/delta#7951](https://github.com/delta-io/delta/pull/7951) (tracked in
+    [#2074](https://github.com/unitycatalog/unitycatalog/issues/2074)).
 
 Java clients set `catalogUri` themselves:
 
