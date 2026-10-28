@@ -149,8 +149,12 @@ public class UnityCatalogServer implements AutoCloseable {
       executor.shutdown();
       try {
         if (!executor.awaitTermination(timeout.toNanos(), TimeUnit.NANOSECONDS)) {
+          // Interrupt what is left, so a task blocked on a lock, a sleep or interruptible I/O
+          // stops before the resources it uses are closed. A task that ignores interrupts keeps
+          // running until the process exits.
           LOGGER.warn(
-              "Blocking task executor did not stop within {}; continuing shutdown", timeout);
+              "Blocking task executor did not stop within {}; interrupting its tasks", timeout);
+          executor.shutdownNow();
         }
       } catch (InterruptedException ignored) {
         interrupted = true;
