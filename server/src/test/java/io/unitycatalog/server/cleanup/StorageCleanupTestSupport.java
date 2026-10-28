@@ -4,8 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
 import io.unitycatalog.server.audit.AuditRecord;
+import io.unitycatalog.server.audit.Auditor;
 import io.unitycatalog.server.audit.CapturingAuditSink;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,6 +16,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 import org.hibernate.SessionFactory;
 
 /** Shared helpers for storage-cleanup tests across the repository, worker, and SDK suites. */
@@ -37,6 +41,18 @@ public final class StorageCleanupTestSupport {
   public static void captureAuditRecords(Properties serverProperties) {
     serverProperties.setProperty(Property.AUDIT_SINK.getKey(), CapturingAuditSink.class.getName());
     CapturingAuditSink.reset();
+  }
+
+  /** Repositories that audit to the sink in {@code server.audit.sink}, as the server's do. */
+  public static Repositories auditedRepositories(
+      SessionFactory sessionFactory, ServerProperties serverProperties) {
+    return new Repositories(
+        sessionFactory,
+        serverProperties,
+        /* cloudCredentialVendor= */ null,
+        UnaryOperator.identity(),
+        /* metrics= */ null,
+        Auditor.fromProperties(serverProperties));
   }
 
   /**

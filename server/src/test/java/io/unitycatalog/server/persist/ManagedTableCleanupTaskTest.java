@@ -58,7 +58,7 @@ class ManagedTableCleanupTaskTest {
     serverProperties = new ServerProperties(properties);
     testDatabase = TestDatabases.newDatabase();
     sessionFactory = testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
-    repositories = new Repositories(sessionFactory, serverProperties);
+    repositories = StorageCleanupTestSupport.auditedRepositories(sessionFactory, serverProperties);
 
     UUID catalogId = UUID.randomUUID();
     schemaId = UUID.randomUUID();
@@ -329,7 +329,7 @@ class ManagedTableCleanupTaskTest {
               case H2 -> ";LOCK_TIMEOUT=50";
               case POSTGRES_18 -> "?options=-c%20lock_timeout%3D50";
             });
-    return new Repositories(
+    return StorageCleanupTestSupport.auditedRepositories(
         testDatabase.openHibernateConfigurator(impatient).getSessionFactory(), serverProperties);
   }
 

@@ -54,7 +54,7 @@ class ManagedModelCleanupTaskTest {
     ServerProperties serverProperties = new ServerProperties(properties);
     testDatabase = TestDatabases.newDatabase();
     sessionFactory = testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
-    repositories = new Repositories(sessionFactory, serverProperties);
+    repositories = StorageCleanupTestSupport.auditedRepositories(sessionFactory, serverProperties);
     repositories.getCatalogRepository().addCatalog(new CreateCatalog().name("catalog"));
   }
 
