@@ -315,7 +315,6 @@ paths:
       summary: Delete a table
       description: |
         Delete a table from the catalog.
-        Returns 400 `UnsupportedTableFormatException` if the table is not a Delta table.
       responses:
         '204':
           description: Table deleted successfully
@@ -456,7 +455,6 @@ paths:
       description: |
         Rename a table within the same catalog and schema.
         Cross-schema and cross-catalog moves are not supported.
-        Returns 400 `UnsupportedTableFormatException` if the table is not a Delta table.
       requestBody:
         required: true
         content:
