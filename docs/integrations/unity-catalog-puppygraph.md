@@ -128,79 +128,221 @@ Start PuppyGraph using Docker. Here we map the PuppyGraph port `8081` to `9081` 
 ```sh
 docker run -p 9081:8081 -p 8182:8182 -p 7687:7687 \
 -v /tmp/puppygraph:/tmp/puppygraph \
---name puppy --rm -itd puppygraph/puppygraph:stable
+--name puppy --rm -itd puppygraph/puppygraph:latest
 ```
 
-Create the schema.json and replace `<host-name>` with your host ip address.
+Create `schema.json` using the PuppyGraph 1.x format below and replace `<host-name>` with your host IP address.
 
-```schema.json
+```json
 {
-    "catalogs": [
-        {
-            "name": "puppygraph", 
-            "type": "deltalake", 
-            "metastore": {
-                "type": "unity", 
-                "host": "http://<host-name>:8080", 
-                "token": "no-use", 
-                "databricksCatalogName": "puppygraph"
+  "catalog": [
+    {
+      "name": "puppygraph",
+      "type": "deltalake",
+      "metastore": {
+        "type": "unity",
+        "host": "http://<host-name>:8080",
+        "token": "no-use",
+        "databricksCatalogName": "puppygraph"
+      }
+    }
+  ],
+  "node": [
+    {
+      "label": "person",
+      "dataSourceGroup": {
+        "externalDataSource": {
+          "enabled": true,
+          "catalog": "puppygraph",
+          "schema": "modern",
+          "table": "person",
+          "mappedField": [
+            {
+              "sourceFieldName": "id",
+              "targetFieldName": "id"
+            },
+            {
+              "sourceFieldName": "name",
+              "targetFieldName": "name"
+            },
+            {
+              "sourceFieldName": "age",
+              "targetFieldName": "age"
             }
+          ]
         }
-    ], 
-    "vertices": [
+      },
+      "id": [
         {
-            "label": "person", 
-            "attributes": [
-                { "type": "String", "name": "name" }, 
-                { "type": "Int"   , "name": "age"  }
-            ], 
-            "mappedTableSource": {
-                "catalog": "puppygraph", 
-                "schema": "modern", 
-                "table": "person", 
-                "metaFields": {"id": "id"}
-            }
-        }, 
-        {
-            "label": "software", 
-            "attributes": [
-                { "type": "String", "name": "name" }, 
-                { "type": "String", "name": "lang" }
-            ], 
-            "mappedTableSource": {
-                "catalog": "puppygraph", 
-                "schema": "modern", 
-                "table": "software", 
-                "metaFields": {"id": "id"}
-            }
+          "name": "id",
+          "type": "String"
         }
-    ], 
-    "edges": [
+      ],
+      "attribute": [
         {
-            "label": "knows",
-            "from": "person", 
-            "to": "person", 
-            "attributes": [ {"type": "Double", "name": "weight"} ], 
-            "mappedTableSource": {
-                "catalog": "puppygraph", 
-                "schema": "modern", 
-                "table": "knows",
-                "metaFields": {"from": "from_id", "id": "id", "to": "to_id"}
-            }
-        }, 
+          "name": "name",
+          "type": "String"
+        },
         {
-            "label": "created", 
-            "from": "person", 
-            "to": "software", 
-            "attributes": [ {"type": "Double", "name": "weight"} ], 
-            "mappedTableSource": {
-                "catalog": "puppygraph", 
-                "schema": "modern", 
-                "table": "created", 
-                "metaFields": {"from": "from_id", "id": "id", "to": "to_id"}
-            }
+          "name": "age",
+          "type": "Int"
         }
-    ]
+      ]
+    },
+    {
+      "label": "software",
+      "dataSourceGroup": {
+        "externalDataSource": {
+          "enabled": true,
+          "catalog": "puppygraph",
+          "schema": "modern",
+          "table": "software",
+          "mappedField": [
+            {
+              "sourceFieldName": "id",
+              "targetFieldName": "id"
+            },
+            {
+              "sourceFieldName": "name",
+              "targetFieldName": "name"
+            },
+            {
+              "sourceFieldName": "lang",
+              "targetFieldName": "lang"
+            }
+          ]
+        }
+      },
+      "id": [
+        {
+          "name": "id",
+          "type": "String"
+        }
+      ],
+      "attribute": [
+        {
+          "name": "name",
+          "type": "String"
+        },
+        {
+          "name": "lang",
+          "type": "String"
+        }
+      ]
+    }
+  ],
+  "edge": [
+    {
+      "label": "knows",
+      "fromNodeLabel": "person",
+      "toNodeLabel": "person",
+      "dataSourceGroup": {
+        "externalDataSource": {
+          "enabled": true,
+          "catalog": "puppygraph",
+          "schema": "modern",
+          "table": "knows",
+          "mappedField": [
+            {
+              "sourceFieldName": "id",
+              "targetFieldName": "id"
+            },
+            {
+              "sourceFieldName": "from_id",
+              "targetFieldName": "from_id"
+            },
+            {
+              "sourceFieldName": "to_id",
+              "targetFieldName": "to_id"
+            },
+            {
+              "sourceFieldName": "weight",
+              "targetFieldName": "weight"
+            }
+          ]
+        }
+      },
+      "id": [
+        {
+          "name": "id",
+          "type": "String"
+        }
+      ],
+      "fromKey": [
+        {
+          "name": "from_id",
+          "type": "String"
+        }
+      ],
+      "toKey": [
+        {
+          "name": "to_id",
+          "type": "String"
+        }
+      ],
+      "attribute": [
+        {
+          "name": "weight",
+          "type": "Double"
+        }
+      ]
+    },
+    {
+      "label": "created",
+      "fromNodeLabel": "person",
+      "toNodeLabel": "software",
+      "dataSourceGroup": {
+        "externalDataSource": {
+          "enabled": true,
+          "catalog": "puppygraph",
+          "schema": "modern",
+          "table": "created",
+          "mappedField": [
+            {
+              "sourceFieldName": "id",
+              "targetFieldName": "id"
+            },
+            {
+              "sourceFieldName": "from_id",
+              "targetFieldName": "from_id"
+            },
+            {
+              "sourceFieldName": "to_id",
+              "targetFieldName": "to_id"
+            },
+            {
+              "sourceFieldName": "weight",
+              "targetFieldName": "weight"
+            }
+          ]
+        }
+      },
+      "id": [
+        {
+          "name": "id",
+          "type": "String"
+        }
+      ],
+      "fromKey": [
+        {
+          "name": "from_id",
+          "type": "String"
+        }
+      ],
+      "toKey": [
+        {
+          "name": "to_id",
+          "type": "String"
+        }
+      ],
+      "attribute": [
+        {
+          "name": "weight",
+          "type": "Double"
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -213,7 +355,7 @@ curl -XPOST -H "content-type: application/json" --data-binary @./schema.json --u
 Start a PuppyGraph Gremlin Console to query the graph.
 
 ```sh
-docker exec -it puppygraph ./bin/console
+docker exec -it puppy ./bin/console
 ```
 
 Input the following query string to get all the software created by people that marko knows.
