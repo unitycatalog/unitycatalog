@@ -1264,10 +1264,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   }
 
   // MySQL's REPEATABLE READ answers a plain read from the transaction's first snapshot, so this
-  // catches a commit that re-reads the locked table row without a locking read. (The batch DELETE
-  // in DeltaCommitRepository is a derived table because MySQL rejects LIMIT directly inside an
-  // IN(...) subquery, error 1235, and a subquery selecting from the table being deleted from, error
-  // 1093; every test here that deletes commits covers that.)
+  // catches a commit that re-reads the locked table row without a locking read.
   @Test
   public void testCommitThatWaitedForTheLockReadsTheOtherCommit() {
     TableInfo table =
