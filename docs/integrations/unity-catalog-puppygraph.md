@@ -28,7 +28,7 @@ Run one of the following from the cloned repository root directory, depending on
 === "Spark 4.2.x"
 
     ```sh
-    build/sbt -DsparkVersion=4.2 clean package publishLocal spark/publishLocal
+    build/sbt -DsparkVersion=4.2 -DdeltaVersion=4.4.1 clean package publishLocal spark/publishLocal
     ```
 
 ## Run the Unity Catalog Server
