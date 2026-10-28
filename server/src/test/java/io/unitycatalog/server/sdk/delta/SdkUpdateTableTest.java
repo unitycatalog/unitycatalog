@@ -1918,702 +1918,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
         "set-columns dropped column mapping metadata for column(s): a");
   }
 
-  /**
-   * Comprehensive test for all column-mapping validation guards and supported use cases. Each
-   * section runs against a fresh table so the test cases do not interfere with each other. Tests
-   * both supported scenarios (rename, drop, add, reorder) and rejection cases.
-   */
-  @Test
-  public void testRenameColumnGuards() throws Exception {
-
-    // -------- Support: first-enable WITHOUT rename --------
-    // Non-CM external table; send set-columns that adds CM metadata but keeps the same logical
-    // names (physicalName == old logical name by convention). Should succeed with no rename error.
-    {
-      Handle h = createDeltaExternal("tbl_guards_first_enable_ok");
-      DeltaStructFieldMetadata idMeta = new DeltaStructFieldMetadata();
-      idMeta.put("delta.columnMapping.id", 1);
-      idMeta.put("delta.columnMapping.physicalName", "id");
-      DeltaStructFieldMetadata amtMeta = new DeltaStructFieldMetadata();
-      amtMeta.put("delta.columnMapping.id", 2);
-      amtMeta.put("delta.columnMapping.physicalName", "amount");
-      DeltaLoadTableResponse r =
-          updateTable(
-              h,
-              cmMode("name"),
-              new DeltaSetSchemaUpdate()
-                  .columns(
-                      new DeltaStructType()
-                          .type("struct")
-                          .fields(
-                              List.of(
-                                  new DeltaStructField()
-                                      .name("id")
-                                      .type(new DeltaPrimitiveType().type("long"))
-                                      .nullable(false)
-                                      .metadata(idMeta),
-                                  new DeltaStructField()
-                                      .name("amount")
-                                      .type(new DeltaPrimitiveType().type("double"))
-                                      .nullable(true)
-                                      .metadata(amtMeta)))));
-      assertThat(columnNames(r)).containsExactly("id", "amount");
-    }
-
-    // -------- Support: add column (CM table) --------
-    {
-      Handle h = createCmNameModeManaged("tbl_guards_add_col");
-      DeltaStructFieldMetadata aMeta = new DeltaStructFieldMetadata();
-      aMeta.put("delta.columnMapping.id", 1);
-      aMeta.put("delta.columnMapping.physicalName", "col-1");
-      DeltaStructFieldMetadata newMeta = new DeltaStructFieldMetadata();
-      newMeta.put("delta.columnMapping.id", 3);
-      newMeta.put("delta.columnMapping.physicalName", "col-3");
-      DeltaLoadTableResponse r =
-          updateTable(
-              h,
-              new DeltaSetSchemaUpdate()
-                  .columns(
-                      new DeltaStructType()
-                          .type("struct")
-                          .fields(
-                              List.of(
-                                  new DeltaStructField()
-                                      .name("a")
-                                      .type(new DeltaPrimitiveType().type("long"))
-                                      .nullable(false)
-                                      .metadata(aMeta),
-                                  new DeltaStructField()
-                                      .name("new_col")
-                                      .type(new DeltaPrimitiveType().type("string"))
-                                      .nullable(true)
-                                      .metadata(newMeta)))));
-      assertThat(columnNames(r)).containsExactly("a", "new_col");
-    }
-
-    // -------- Support: drop non-partition column (CM table with 2 columns) --------
-    // Create a CM table with 2 columns, then send set-columns with only 1 (drop the other).
-    {
-      Handle h = createTwoColCmNameModeManaged("tbl_guards_drop_col");
-      DeltaStructFieldMetadata aMeta = new DeltaStructFieldMetadata();
-      aMeta.put("delta.columnMapping.id", 1);
-      aMeta.put("delta.columnMapping.physicalName", "col-1");
-      DeltaLoadTableResponse r =
-          updateTable(
-              h,
-              new DeltaSetSchemaUpdate()
-                  .columns(
-                      new DeltaStructType()
-                          .type("struct")
-                          .fields(
-                              List.of(
-                                  new DeltaStructField()
-                                      .name("a")
-                                      .type(new DeltaPrimitiveType().type("long"))
-                                      .nullable(false)
-                                      .metadata(aMeta)))));
-      assertThat(columnNames(r)).containsExactly("a");
-    }
-
-    // -------- Support: reorder columns (CM table with 2 columns) --------
-    {
-      Handle h = createTwoColCmNameModeManaged("tbl_guards_reorder");
-      DeltaStructFieldMetadata aMeta = new DeltaStructFieldMetadata();
-      aMeta.put("delta.columnMapping.id", 1);
-      aMeta.put("delta.columnMapping.physicalName", "col-1");
-      DeltaStructFieldMetadata bMeta = new DeltaStructFieldMetadata();
-      bMeta.put("delta.columnMapping.id", 2);
-      bMeta.put("delta.columnMapping.physicalName", "col-2");
-      DeltaLoadTableResponse r =
-          updateTable(
-              h,
-              new DeltaSetSchemaUpdate()
-                  .columns(
-                      new DeltaStructType()
-                          .type("struct")
-                          .fields(
-                              List.of(
-                                  new DeltaStructField()
-                                      .name("b")
-                                      .type(new DeltaPrimitiveType().type("string"))
-                                      .nullable(true)
-                                      .metadata(bMeta),
-                                  new DeltaStructField()
-                                      .name("a")
-                                      .type(new DeltaPrimitiveType().type("long"))
-                                      .nullable(false)
-                                      .metadata(aMeta)))));
-      assertThat(columnNames(r)).containsExactly("b", "a");
-    }
-
-    // -------- Support: case-only change on non-CM table --------
-    // Names match ignoring case, so "id" and "ID" are the same logical name.
-    {
-      Handle h = createDeltaExternal("tbl_guards_case_only");
-      DeltaLoadTableResponse r =
-          updateTable(
-              h,
-              new DeltaSetSchemaUpdate()
-                  .columns(
-                      new DeltaStructType()
-                          .type("struct")
-                          .fields(
-                              List.of(
-                                  new DeltaStructField()
-                                      .name("ID")
-                                      .type(new DeltaPrimitiveType().type("long"))
-                                      .nullable(false)
-                                      .metadata(new DeltaStructFieldMetadata()),
-                                  new DeltaStructField()
-                                      .name("amount")
-                                      .type(new DeltaPrimitiveType().type("double"))
-                                      .nullable(true)
-                                      .metadata(new DeltaStructFieldMetadata())))));
-      assertThat(columnNames(r)).containsExactly("ID", "amount");
-    }
-
-    // -------- Support: type change on CM column --------
-    {
-      Handle h = createCmNameModeManaged("tbl_guards_type_change");
-      DeltaStructFieldMetadata meta = new DeltaStructFieldMetadata();
-      meta.put("delta.columnMapping.id", 1);
-      meta.put("delta.columnMapping.physicalName", "col-1");
-      DeltaLoadTableResponse r =
-          updateTable(
-              h,
-              new DeltaSetSchemaUpdate()
-                  .columns(
-                      new DeltaStructType()
-                          .type("struct")
-                          .fields(
-                              List.of(
-                                  new DeltaStructField()
-                                      .name("a")
-                                      .type(new DeltaPrimitiveType().type("double"))
-                                      .nullable(false)
-                                      .metadata(meta)))));
-      assertThat(columnNames(r)).containsExactly("a");
-      assertThat(r.getMetadata().getColumns().getFields().get(0).getType().getType())
-          .isEqualTo("double");
-    }
-
-    // -------- Support: mixed 1-rename + add + drop in one request (name-mode) --------
-    // Two-column CM table: rename "a"→"c" (same physicalName "col-1"), drop "b", add "d".
-    {
-      Handle h = createTwoColCmNameModeManaged("tbl_guards_mixed_ops");
-      DeltaStructFieldMetadata cMeta = new DeltaStructFieldMetadata();
-      cMeta.put("delta.columnMapping.id", 1);
-      cMeta.put(
-          "delta.columnMapping.physicalName", "col-1"); // old column "a" retains this physicalName
-      DeltaStructFieldMetadata dMeta = new DeltaStructFieldMetadata();
-      dMeta.put("delta.columnMapping.id", 5);
-      dMeta.put("delta.columnMapping.physicalName", "col-5");
-      DeltaLoadTableResponse r =
-          updateTable(
-              h,
-              new DeltaSetSchemaUpdate()
-                  .columns(
-                      new DeltaStructType()
-                          .type("struct")
-                          .fields(
-                              List.of(
-                                  new DeltaStructField()
-                                      .name("c")
-                                      .type(new DeltaPrimitiveType().type("long"))
-                                      .nullable(false)
-                                      .metadata(cMeta),
-                                  new DeltaStructField()
-                                      .name("d")
-                                      .type(new DeltaPrimitiveType().type("string"))
-                                      .nullable(true)
-                                      .metadata(dMeta)))));
-      assertThat(columnNames(r)).containsExactly("c", "d");
-    }
-
-    // -------- Support: partition-column rename with explicit set-partition-columns --------
-    // Rename "a"→"b" (same physicalName) AND send set-partition-columns(["b"]); should succeed.
-    {
-      Handle h = createCmNameModeManaged("tbl_guards_part_rename_explicit");
-      // First make "a" a partition column.
-      Handle h1 =
-          h.withEtag(
-              updateTable(h, new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("a")))
-                  .getMetadata()
-                  .getEtag());
-      // Now rename "a" → "b" and update partition list in the same request.
-      DeltaStructFieldMetadata meta = new DeltaStructFieldMetadata();
-      meta.put("delta.columnMapping.id", 1);
-      meta.put("delta.columnMapping.physicalName", "col-1");
-      DeltaLoadTableResponse r =
-          updateTable(
-              h1,
-              new DeltaSetSchemaUpdate()
-                  .columns(
-                      new DeltaStructType()
-                          .type("struct")
-                          .fields(
-                              List.of(
-                                  new DeltaStructField()
-                                      .name("b")
-                                      .type(new DeltaPrimitiveType().type("long"))
-                                      .nullable(false)
-                                      .metadata(meta)))),
-              new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")));
-      assertThat(columnNames(r)).containsExactly("b");
-      assertThat(r.getMetadata().getPartitionColumns()).containsExactly("b");
-    }
-
-    // -------- Support: drop without column mapping --------
-    // External (non-CM) table; set-columns removes "amount". Without column-mapping identities no
-    // rename can be found, so this is a drop.
-    {
-      Handle h = createDeltaExternal("tbl_guards_g1");
-      updateTable(
-          h,
-          new DeltaSetSchemaUpdate()
-              .columns(
-                  new DeltaStructType()
-                      .type("struct")
-                      .fields(
-                          List.of(
-                              new DeltaStructField()
-                                  .name("id")
-                                  .type(new DeltaPrimitiveType().type("long"))
-                                  .nullable(false)
-                                  .metadata(new DeltaStructFieldMetadata())))));
-    }
-
-    // -------- Reject: drop active mode key (id-mode table keeps physicalName, drops id) --------
-    // id-mode table; incoming schema keeps physicalName but drops delta.columnMapping.id.
-    {
-      Handle h = createCmIdModeManaged("tbl_guards_g2_id_mode");
-      DeltaStructFieldMetadata physOnly = new DeltaStructFieldMetadata();
-      physOnly.put("delta.columnMapping.physicalName", "col-1"); // id dropped!
-      TestUtils.assertDeltaApiException(
-          () ->
-              updateTable(
-                  h,
-                  new DeltaSetSchemaUpdate()
-                      .columns(
-                          new DeltaStructType()
-                              .type("struct")
-                              .fields(
-                                  List.of(
-                                      new DeltaStructField()
-                                          .name("a")
-                                          .type(new DeltaPrimitiveType().type("long"))
-                                          .nullable(false)
-                                          .metadata(physOnly))))),
-          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-          "dropped column mapping metadata");
-    }
-
-    // -----
-    // name-mode table; incoming schema keeps id but drops delta.columnMapping.physicalName.
-    {
-      Handle h = createCmNameModeManaged("tbl_guards_g2_name_mode");
-      DeltaStructFieldMetadata idOnly = new DeltaStructFieldMetadata();
-      idOnly.put("delta.columnMapping.id", 1); // physicalName dropped!
-      TestUtils.assertDeltaApiException(
-          () ->
-              updateTable(
-                  h,
-                  new DeltaSetSchemaUpdate()
-                      .columns(
-                          new DeltaStructType()
-                              .type("struct")
-                              .fields(
-                                  List.of(
-                                      new DeltaStructField()
-                                          .name("a")
-                                          .type(new DeltaPrimitiveType().type("long"))
-                                          .nullable(false)
-                                          .metadata(idOnly))))),
-          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-          "dropped column mapping metadata");
-    }
-
-    // -------- Reject: drop ALL column mapping metadata --------
-    // CM table; send set-columns with a column that has NO CM metadata at all.
-    {
-      Handle h = createCmNameModeManaged("tbl_guards_g2");
-      TestUtils.assertDeltaApiException(
-          () ->
-              updateTable(
-                  h,
-                  new DeltaSetSchemaUpdate()
-                      .columns(
-                          new DeltaStructType()
-                              .type("struct")
-                              .fields(
-                                  List.of(
-                                      new DeltaStructField()
-                                          .name("a")
-                                          .type(new DeltaPrimitiveType().type("long"))
-                                          .nullable(false)
-                                          .metadata(new DeltaStructFieldMetadata()))))),
-          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-          "dropped column mapping metadata");
-    }
-
-    // -------- Support: ids without physical names on a table without column mapping --------
-    // Non-CM table; incoming carries ids but no physicalName, so its columns are matched by name
-    // and no rename can be found.
-    {
-      Handle h = createDeltaExternal("tbl_guards_g3");
-      DeltaStructFieldMetadata idMeta = new DeltaStructFieldMetadata();
-      idMeta.put("delta.columnMapping.id", 1); // no physicalName
-      DeltaStructFieldMetadata amtMeta = new DeltaStructFieldMetadata();
-      amtMeta.put("delta.columnMapping.id", 2); // no physicalName
-      updateTable(
-          h,
-          cmMode("name"),
-          new DeltaSetSchemaUpdate()
-              .columns(
-                  new DeltaStructType()
-                      .type("struct")
-                      .fields(
-                          List.of(
-                              new DeltaStructField()
-                                  .name("id")
-                                  .type(new DeltaPrimitiveType().type("long"))
-                                  .nullable(false)
-                                  .metadata(idMeta),
-                              new DeltaStructField()
-                                  .name("amount")
-                                  .type(new DeltaPrimitiveType().type("double"))
-                                  .nullable(true)
-                                  .metadata(amtMeta)))));
-    }
-
-    // -------- Reject: first-enable + rename in one request --------
-    // Non-CM table; incoming enables CM AND renames "amount" → "revenue" in the same request.
-    {
-      Handle h = createDeltaExternal("tbl_guards_g4");
-      DeltaStructFieldMetadata idMeta = new DeltaStructFieldMetadata();
-      idMeta.put("delta.columnMapping.id", 1);
-      idMeta.put(
-          "delta.columnMapping.physicalName", "id"); // phys matches old logical "id": no rename
-      DeltaStructFieldMetadata amtMeta = new DeltaStructFieldMetadata();
-      amtMeta.put("delta.columnMapping.id", 2);
-      amtMeta.put(
-          "delta.columnMapping.physicalName",
-          "amount"); // phys="amount" but logical="revenue" → rename
-      TestUtils.assertDeltaApiException(
-          () ->
-              updateTable(
-                  h,
-                  cmMode("name"),
-                  new DeltaSetSchemaUpdate()
-                      .columns(
-                          new DeltaStructType()
-                              .type("struct")
-                              .fields(
-                                  List.of(
-                                      new DeltaStructField()
-                                          .name("id")
-                                          .type(new DeltaPrimitiveType().type("long"))
-                                          .nullable(false)
-                                          .metadata(idMeta),
-                                      new DeltaStructField()
-                                          .name("revenue")
-                                          .type(new DeltaPrimitiveType().type("double"))
-                                          .nullable(true)
-                                          .metadata(amtMeta))))),
-          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-          "separate statement");
-    }
-
-    // -------- Reject: more than one top-level rename in one request (name-mode) --------
-    {
-      Handle h = createTwoColCmNameModeManaged("tbl_guards_g6");
-      DeltaStructFieldMetadata cMeta = new DeltaStructFieldMetadata();
-      cMeta.put("delta.columnMapping.id", 1);
-      cMeta.put("delta.columnMapping.physicalName", "col-1"); // was "a"
-      DeltaStructFieldMetadata dMeta = new DeltaStructFieldMetadata();
-      dMeta.put("delta.columnMapping.id", 2);
-      dMeta.put("delta.columnMapping.physicalName", "col-2"); // was "b"
-      TestUtils.assertDeltaApiException(
-          () ->
-              updateTable(
-                  h,
-                  new DeltaSetSchemaUpdate()
-                      .columns(
-                          new DeltaStructType()
-                              .type("struct")
-                              .fields(
-                                  List.of(
-                                      new DeltaStructField()
-                                          .name("c")
-                                          .type(new DeltaPrimitiveType().type("long"))
-                                          .nullable(false)
-                                          .metadata(cMeta),
-                                      new DeltaStructField()
-                                          .name("d")
-                                          .type(new DeltaPrimitiveType().type("string"))
-                                          .nullable(true)
-                                          .metadata(dMeta))))),
-          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-          "single top-level column rename");
-    }
-
-    // -------- Reject: duplicate CM id in incoming schema (id-mode) --------
-    {
-      Handle h = createCmIdModeManaged("tbl_guards_g8");
-      DeltaStructFieldMetadata dupMeta = new DeltaStructFieldMetadata();
-      dupMeta.put("delta.columnMapping.id", 1); // SAME id as "a" → duplicate
-      dupMeta.put("delta.columnMapping.physicalName", "col-99");
-      TestUtils.assertDeltaApiException(
-          () ->
-              updateTable(
-                  h,
-                  new DeltaSetSchemaUpdate()
-                      .columns(
-                          new DeltaStructType()
-                              .type("struct")
-                              .fields(
-                                  List.of(
-                                      new DeltaStructField()
-                                          .name("a")
-                                          .type(new DeltaPrimitiveType().type("long"))
-                                          .nullable(false)
-                                          .metadata(dupMeta), // id=1, same as below
-                                      new DeltaStructField()
-                                          .name("b")
-                                          .type(new DeltaPrimitiveType().type("string"))
-                                          .nullable(true)
-                                          .metadata(dupMeta))))), // id=1 again → duplicate
-          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-          "Duplicate column mapping id");
-    }
-
-    // -------- Reject: mode-specific CM key stripped (name-mode drops physicalName, keeps id)
-    // --------
-    // name-mode table (active key = physicalName); two-column table: send "a" with physicalName
-    // intact but "b" with physicalName stripped (only id kept).
-    {
-      Handle h = createTwoColCmNameModeManaged("tbl_guards_g5_name_mode");
-      DeltaStructFieldMetadata aOk = new DeltaStructFieldMetadata();
-      aOk.put("delta.columnMapping.id", 1);
-      aOk.put("delta.columnMapping.physicalName", "col-1"); // intact
-      DeltaStructFieldMetadata bStripped = new DeltaStructFieldMetadata();
-      bStripped.put("delta.columnMapping.id", 2); // physicalName stripped, only id kept
-      TestUtils.assertDeltaApiException(
-          () ->
-              updateTable(
-                  h,
-                  new DeltaSetSchemaUpdate()
-                      .columns(
-                          new DeltaStructType()
-                              .type("struct")
-                              .fields(
-                                  List.of(
-                                      new DeltaStructField()
-                                          .name("a")
-                                          .type(new DeltaPrimitiveType().type("long"))
-                                          .nullable(false)
-                                          .metadata(aOk),
-                                      new DeltaStructField()
-                                          .name("b")
-                                          .type(new DeltaPrimitiveType().type("string"))
-                                          .nullable(true)
-                                          .metadata(bStripped))))),
-          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-          "set-columns dropped column mapping metadata for column(s): b");
-    }
-
-    // -------- Reject: first-enable + NESTED rename in one request --------
-    // Current table: top-level "s" is a struct column containing nested field "x" (no CM at all).
-    // Incoming enables CM on "s" (physicalName "s" == current name: no outer rename) and
-    // introduces nested "y" with physicalName "x" (matches current nested "x"): nested rename.
-    // First-enable + nested rename in a single request is not supported.
-    {
-      Handle h = createSimpleStructExternal("tbl_guards_g4_nested");
-      // Outer column "s": physicalName "s" (no rename, matches current "s").
-      DeltaStructFieldMetadata outerMeta = new DeltaStructFieldMetadata();
-      outerMeta.put("delta.columnMapping.id", 1);
-      outerMeta.put("delta.columnMapping.physicalName", "s"); // phys == current name: no rename
-      // Inner field "y": physicalName "x" (matches current nested name "x") but logical "y" ≠ "x".
-      DeltaStructFieldMetadata innerMeta = new DeltaStructFieldMetadata();
-      innerMeta.put("delta.columnMapping.id", 2);
-      innerMeta.put("delta.columnMapping.physicalName", "x"); // phys matches old name → rename
-      DeltaStructType newInnerType =
-          new DeltaStructType()
-              .type("struct")
-              .fields(
-                  List.of(
-                      new DeltaStructField()
-                          .name("y") // renamed from "x"
-                          .type(new DeltaPrimitiveType().type("long"))
-                          .nullable(true)
-                          .metadata(innerMeta)));
-      TestUtils.assertDeltaApiException(
-          () ->
-              updateTable(
-                  h,
-                  cmMode("name"),
-                  new DeltaSetSchemaUpdate()
-                      .columns(
-                          new DeltaStructType()
-                              .type("struct")
-                              .fields(
-                                  List.of(
-                                      new DeltaStructField()
-                                          .name("s")
-                                          .type(newInnerType)
-                                          .nullable(false)
-                                          .metadata(outerMeta))))),
-          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-          "separate statement");
-    }
-
-    // -------- Invalid mode string → rejected --------
-    // An unknown stored delta.columnMapping.mode is rejected on set-columns; that case is covered
-    // by testSetColumnsUsesStoredColumnMappingMode.
-
-    // -------- Negative control: same physicalName across different struct levels is allowed
-    // --------
-    // physicalName uniqueness is only required among SIBLINGS at the same level; the same
-    // physicalName appearing in two DIFFERENT nested structs is fine.
-    {
-      DeltaStructField[] sameShape = {
-        fld("s1", struct(fld("x", prim("long"), 3, "col-inner")), false, 1, "col-s1"),
-        fld("s2", struct(fld("x", prim("long"), 4, "col-inner")), false, 2, "col-s2")
-      };
-      Handle h = createManaged("tbl_guards_phys_diff_levels", "name", 4, sameShape);
-      DeltaLoadTableResponse r = updateTable(h, setColumns(sameShape));
-      assertThat(columnNames(r)).containsExactly("s1", "s2");
-    }
-
-    // -------- Support: rename a column and re-add its old name in one request (name-mode) --------
-    // Rename "a"→"x" (physicalName col-1 kept) and add a NEW column named "a" with a fresh
-    // physicalName. The re-added "a" is a new column, not the renamed-away one.
-    {
-      Handle h = createTwoColCmNameModeManaged("tbl_guards_rename_readd");
-      DeltaStructFieldMetadata xMeta = new DeltaStructFieldMetadata();
-      xMeta.put("delta.columnMapping.id", 1);
-      xMeta.put("delta.columnMapping.physicalName", "col-1");
-      DeltaStructFieldMetadata bMeta = new DeltaStructFieldMetadata();
-      bMeta.put("delta.columnMapping.id", 2);
-      bMeta.put("delta.columnMapping.physicalName", "col-2");
-      DeltaStructFieldMetadata newAMeta = new DeltaStructFieldMetadata();
-      newAMeta.put("delta.columnMapping.id", 9);
-      newAMeta.put("delta.columnMapping.physicalName", "col-9");
-      DeltaLoadTableResponse r =
-          updateTable(
-              h,
-              new DeltaSetSchemaUpdate()
-                  .columns(
-                      new DeltaStructType()
-                          .type("struct")
-                          .fields(
-                              List.of(
-                                  new DeltaStructField()
-                                      .name("x")
-                                      .type(new DeltaPrimitiveType().type("long"))
-                                      .nullable(false)
-                                      .metadata(xMeta),
-                                  new DeltaStructField()
-                                      .name("b")
-                                      .type(new DeltaPrimitiveType().type("string"))
-                                      .nullable(true)
-                                      .metadata(bMeta),
-                                  new DeltaStructField()
-                                      .name("a")
-                                      .type(new DeltaPrimitiveType().type("string"))
-                                      .nullable(true)
-                                      .metadata(newAMeta)))));
-      assertThat(columnNames(r)).containsExactly("x", "b", "a");
-    }
-
-    // -------- Reject: duplicate top-level physicalName (name-mode) --------
-    {
-      Handle h = createTwoColCmNameModeManaged("tbl_guards_dup_phys");
-      DeltaStructFieldMetadata aMeta = new DeltaStructFieldMetadata();
-      aMeta.put("delta.columnMapping.id", 1);
-      aMeta.put("delta.columnMapping.physicalName", "col-dup");
-      DeltaStructFieldMetadata bMeta = new DeltaStructFieldMetadata();
-      bMeta.put("delta.columnMapping.id", 2);
-      bMeta.put("delta.columnMapping.physicalName", "col-dup");
-      TestUtils.assertDeltaApiException(
-          () ->
-              updateTable(
-                  h,
-                  new DeltaSetSchemaUpdate()
-                      .columns(
-                          new DeltaStructType()
-                              .type("struct")
-                              .fields(
-                                  List.of(
-                                      new DeltaStructField()
-                                          .name("a")
-                                          .type(new DeltaPrimitiveType().type("long"))
-                                          .nullable(false)
-                                          .metadata(aMeta),
-                                      new DeltaStructField()
-                                          .name("b")
-                                          .type(new DeltaPrimitiveType().type("string"))
-                                          .nullable(true)
-                                          .metadata(bMeta))))),
-          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-          "Duplicate column mapping physicalName 'col-dup'");
-    }
-
-    // -------- Reject: first-enable with an empty physicalName --------
-    {
-      Handle h = createDeltaExternal("tbl_guards_empty_phys");
-      DeltaStructFieldMetadata idMeta = new DeltaStructFieldMetadata();
-      idMeta.put("delta.columnMapping.id", 1);
-      idMeta.put("delta.columnMapping.physicalName", "id");
-      DeltaStructFieldMetadata amtMeta = new DeltaStructFieldMetadata();
-      amtMeta.put("delta.columnMapping.id", 2);
-      amtMeta.put("delta.columnMapping.physicalName", "");
-      TestUtils.assertDeltaApiException(
-          () ->
-              updateTable(
-                  h,
-                  cmMode("name"),
-                  new DeltaSetSchemaUpdate()
-                      .columns(
-                          new DeltaStructType()
-                              .type("struct")
-                              .fields(
-                                  List.of(
-                                      new DeltaStructField()
-                                          .name("id")
-                                          .type(new DeltaPrimitiveType().type("long"))
-                                          .nullable(false)
-                                          .metadata(idMeta),
-                                      new DeltaStructField()
-                                          .name("amount")
-                                          .type(new DeltaPrimitiveType().type("double"))
-                                          .nullable(true)
-                                          .metadata(amtMeta))))),
-          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-          "requires a physical column name");
-    }
-
-    // -------- Support: struct column changed to a scalar without column mapping --------
-    // Non-CM external table with s: struct<x>. Changing "s" to a scalar drops nested field "x",
-    // which is a drop and an add without column-mapping identities.
-    {
-      Handle h = createSimpleStructExternal("tbl_guards_struct_to_scalar");
-      updateTable(
-          h,
-          new DeltaSetSchemaUpdate()
-              .columns(
-                  new DeltaStructType()
-                      .type("struct")
-                      .fields(
-                          List.of(
-                              new DeltaStructField()
-                                  .name("s")
-                                  .type(new DeltaPrimitiveType().type("long"))
-                                  .nullable(false)
-                                  .metadata(new DeltaStructFieldMetadata())))));
-    }
-  }
-
   // ---------------------------------------------------------------- helpers
 
   /** Pins the update to the table's UUID and the Handle's etag. */
@@ -3108,6 +2412,19 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                         map(prim("string"), struct(fld("x", prim("long"), null, null))),
                         null,
                         null))),
+        ok(
+                "struct to scalar without column mapping",
+                EXTERNAL_STRUCT,
+                setColumns(fld("s", prim("long"), false, null, null)))
+            .expectColumns("s"),
+        // Names match ignoring case, so a case-only change keeps the column.
+        ok(
+                "case-only name change without column mapping",
+                EXTERNAL,
+                setColumns(
+                    fld("ID", prim("long"), false, null, null),
+                    fld("amount", prim("double"), null, null)))
+            .expectColumns("ID", "amount"),
         // An explicit set-partition-columns next to a rename of another column.
         ok(
                 "rename a non-partition column with explicit partitions",
@@ -3118,6 +2435,67 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
             .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("a")))
             .expectColumns("a", "c")
             .expectPartitions("a"),
+        // Renaming a partition column with the renamed column in set-partition-columns.
+        ok(
+                "rename a partition column with explicit partitions",
+                NAME_A,
+                setColumns(fld("b", prim("long"), false, 1, "col-1")),
+                new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("a")))
+            .expectColumns("b")
+            .expectPartitions("b"),
+        // A column-mapped table may reorder, change a type, and drop and add next to one rename.
+        ok(
+                "reorder a column-mapped table",
+                NAME_AB,
+                setColumns(
+                    fld("b", prim("long"), 2, "col-2"), fld("a", prim("long"), false, 1, "col-1")))
+            .expectColumns("b", "a"),
+        ok(
+                "type change on a column-mapped table",
+                NAME_A,
+                setColumns(fld("a", prim("double"), false, 1, "col-1")))
+            .expectColumns("a"),
+        ok(
+                "rename, drop and add in one request",
+                NAME_AB,
+                setColumns(
+                    fld("c", prim("long"), false, 1, "col-1"),
+                    fld("d", prim("string"), 5, "col-5")))
+            .expectColumns("c", "d"),
+        // The re-added old name is a new column, not the renamed one.
+        ok(
+                "rename a column and re-add its old name",
+                NAME_AB,
+                setColumns(
+                    fld("x", prim("long"), false, 1, "col-1"),
+                    fld("b", prim("long"), 2, "col-2"),
+                    fld("a", prim("string"), 9, "col-9")))
+            .expectColumns("x", "b", "a"),
+        // Physical names are unique among siblings only.
+        ok(
+                "same nested physical name under two columns",
+                (t, n) ->
+                    t.createManaged(
+                        n,
+                        "name",
+                        4,
+                        fld(
+                            "s1",
+                            struct(fld("x", prim("long"), 3, "col-inner")),
+                            false,
+                            1,
+                            "col-s1"),
+                        fld(
+                            "s2",
+                            struct(fld("x", prim("long"), 4, "col-inner")),
+                            false,
+                            2,
+                            "col-s2")),
+                setColumns(
+                    fld("s1", struct(fld("x", prim("long"), 3, "col-inner")), false, 1, "col-s1"),
+                    fld("s2", struct(fld("x", prim("long"), 4, "col-inner")), false, 2, "col-s2")))
+            .expectColumns("s1", "s2"),
         // Enabling on a table with a struct column, no rename.
         ok(
                 "enable with a nested struct",
@@ -3168,6 +2546,15 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 setColumns(
                     fld("id", prim("long"), false, 1, "id"),
                     fld("amount", prim("double"), 2, "amount")))
+            .expectColumns("id", "amount"),
+        // Without physical names the ids identify nothing on a table without column mapping.
+        ok(
+                "ids without physical names on a table without column mapping",
+                EXTERNAL,
+                cmMode("name"),
+                setColumns(
+                    fld("id", prim("long"), false, 1, null),
+                    fld("amount", prim("double"), 2, null)))
             .expectColumns("id", "amount"),
         // Without keys in the request the columns are read by name.
         ok(
