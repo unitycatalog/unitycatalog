@@ -383,9 +383,9 @@ public final class DeltaUpdateTableMapper {
       CollectedRequest collected,
       ServerProperties serverProperties) {
     CollectedUpdates c = collected.updates();
-    // set-columns is validated against the table's stored mode, before this request's property
-    // changes apply, and against the mode the request sets, which only enabling reads. The modes
-    // are read only for set-columns, so a mode value never blocks other updates.
+    // set-columns is validated against the table's stored mode and properties, before this
+    // request's property changes apply, and against the mode the request sets, which only enabling
+    // reads. The modes are read only for set-columns, so a mode value never blocks other updates.
     ColumnMappingMode columnMappingMode =
         c.setSchema.isPresent()
             ? ColumnMappingMode.parse(properties.get(TableProperties.COLUMN_MAPPING_MODE))
@@ -398,7 +398,6 @@ public final class DeltaUpdateTableMapper {
                     .map(u -> u.get(TableProperties.COLUMN_MAPPING_MODE))
                     .orElse(null))
             : ColumnMappingMode.NONE;
-    // set-columns is applied before set-properties, so the properties here are the stored ones.
     applySchemaAndPartitionColumns(
         session,
         dao,
