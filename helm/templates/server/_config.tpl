@@ -52,7 +52,7 @@ gcs.jsonKeyFilePath.{{ $index }}=/etc/conf/gcs-credentials-{{ $index }}.json
 {{ .Values.server.db.overrideConfig }}
 {{- else if eq .Values.server.db.type "file" -}}
 hibernate.connection.driver_class=org.h2.Driver
-hibernate.connection.url=jdbc:h2:file:./etc/db/h2db;DB_CLOSE_ON_EXIT=FALSE
+hibernate.connection.url=jdbc:h2:file:./etc/db/h2db;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=0
 {{- else if eq .Values.server.db.type "postgresql" -}}
 
 {{- $params := dict }}

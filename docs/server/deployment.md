@@ -56,11 +56,12 @@ This guide outlines how to deploy the Unity Catalog server.
 - The backend database can be configured by modifying the `etc/conf/hibernate.properties` file.
 - You need to provide the connection details to connect to your database server.
 - With an H2 file database, set the URL as the default file does:
-    `jdbc:h2:file:./etc/db/h2db;DB_CLOSE_ON_EXIT=FALSE`.
+    `jdbc:h2:file:./etc/db/h2db;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=0`.
     - `DB_CLOSE_ON_EXIT=FALSE` stops H2 from closing the database as soon as the JVM starts to exit. Without it,
       requests still finishing during a graceful shutdown fail.
-    - Leave out `DB_CLOSE_DELAY=-1`. It keeps the database open after the server closes its connection pool, so
-      with H2's own close at exit turned off, nothing closes it.
+    - `DB_CLOSE_DELAY=0` closes the database when the server closes its connection pool, after those requests.
+      Keep it in the URL: H2 stores the delay in the database file, so a database first opened with the old
+      `DB_CLOSE_DELAY=-1` would otherwise keep it and never close.
     - When upgrading, update your own `etc/conf/hibernate.properties`, or the Helm chart's `server.db.overrideConfig`,
       if it still has the old URL ending in `;DB_CLOSE_DELAY=-1`.
 - Hibernate and Casbin use one HikariCP pool built from those connection properties, so total

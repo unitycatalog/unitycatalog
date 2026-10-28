@@ -75,6 +75,9 @@ public class UnityCatalogServer implements AutoCloseable {
   private final HibernateConfigurator hibernateConfigurator;
   private final BlockingTaskExecutor blockingTaskExecutor;
 
+  /** How long tasks interrupted at the end of the shutdown drain get to stop. */
+  private static final Duration INTERRUPTED_TASK_GRACE = Duration.ofMillis(500);
+
   private final Duration shutdownTimeout;
 
   /** True when this server built the configurator itself and must therefore close it. */
@@ -135,9 +138,9 @@ public class UnityCatalogServer implements AutoCloseable {
   }
 
   /**
-   * Shuts down the server-owned blocking executor and waits up to {@code timeout}. A task still
-   * running after that is left in place and shutdown continues, so a wedged JDBC call cannot hold
-   * the process until the orchestrator kills it.
+   * Shuts down the server-owned blocking executor and waits up to {@code timeout}. Tasks still
+   * running after that are interrupted and given a moment to stop; then shutdown continues, so a
+   * wedged JDBC call cannot hold the process until the orchestrator kills it.
    */
   private static void closeBlockingTaskExecutor(
       BlockingTaskExecutor executor, Duration timeout, Throwable primaryFailure) {
@@ -149,12 +152,15 @@ public class UnityCatalogServer implements AutoCloseable {
       executor.shutdown();
       try {
         if (!executor.awaitTermination(timeout.toNanos(), TimeUnit.NANOSECONDS)) {
-          // Interrupt what is left, so a task blocked on a lock, a sleep or interruptible I/O
-          // stops before the resources it uses are closed. A task that ignores interrupts keeps
-          // running until the process exits.
+          // A task blocked on a lock, a sleep or interruptible I/O stops on the interrupt, before
+          // the resources it uses are closed. One that ignores interrupts can still be running
+          // when they close, and keeps running until the process exits.
           LOGGER.warn(
               "Blocking task executor did not stop within {}; interrupting its tasks", timeout);
           executor.shutdownNow();
+          if (!executor.awaitTermination(INTERRUPTED_TASK_GRACE.toNanos(), TimeUnit.NANOSECONDS)) {
+            LOGGER.warn("Blocking tasks still running after the interrupt; continuing shutdown");
+          }
         }
       } catch (InterruptedException ignored) {
         interrupted = true;
