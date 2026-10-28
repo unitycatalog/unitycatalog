@@ -612,6 +612,28 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertEquals(versionsDescending(125L, 101L), backfilledVersions(tableId));
   }
 
+  /**
+   * A backfill spanning more than the retention window flags rows that the same backfill then
+   * prunes. On a table over the commit limit the backfill is the only way to recover, so it must
+   * not fail on the rows it deletes.
+   */
+  @Test
+  public void testBackfillPastTheRetentionWindow() throws Exception {
+    UUID tableId = UUID.fromString(tableInfo.getTableId());
+    String loc = tableInfo.getStorageLocation();
+    deltaCommitsApi.commit(createCommitObject(tableInfo.getTableId(), 1L, loc));
+
+    deleteAllCommitRows(tableId);
+    for (long v = 1; v <= 150; v++) {
+      insertCommitRow(tableId, v, /* isBackfilled= */ false);
+    }
+    writePublishedCommitFiles(1L, 150L);
+    deltaCommitsApi.commit(createBackfillOnlyCommitObject(150L));
+    // Versions 1 to 49 fall more than 100 behind and are pruned; 50 to 150 stay, all flagged.
+    assertEquals(versionsDescending(150L, 50L), commitVersions(tableId));
+    assertEquals(versionsDescending(150L, 50L), backfilledVersions(tableId));
+  }
+
   private static List<Long> versionsDescending(long from, long to) {
     return LongStream.iterate(from, v -> v >= to, v -> v - 1).boxed().toList();
   }

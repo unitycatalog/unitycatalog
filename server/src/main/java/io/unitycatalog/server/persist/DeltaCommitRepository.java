@@ -768,9 +768,9 @@ public class DeltaCommitRepository {
   }
 
   /**
-   * Flags versions {@code (backfilledThrough, latestBackfilledVersion]} as backfilled, which moves
-   * them out of the live commit window, then prunes rows that have aged out of retention. Flagged
-   * rows stay put until then.
+   * Prunes rows that have aged out of retention, then flags versions {@code (backfilledThrough,
+   * latestBackfilledVersion]} as backfilled, which moves them out of the live commit window.
+   * Flagged rows stay put until a later backfill prunes them.
    *
    * <p>The published-file check happens before this method, outside the transaction. Callers must
    * invoke {@link #ensurePublishedRangeVerified} first so a missing file never gets flagged.
@@ -786,6 +786,10 @@ public class DeltaCommitRepository {
       // Re-reporting a version that is already backfilled is fine, but a no-op.
       return;
     }
+    // Prune first: the native DELETE bypasses the session, so a row it removes must not be loaded
+    // and flagged below, or the flush would update a row that no longer exists. The rows already in
+    // the session are the newest page, which is always above the prune bound.
+    pruneRetainedCommits(session, tableId, latestBackfilledVersion);
     // Flag through the entities rather than a bulk UPDATE: the rows were already loaded into this
     // session, and a bulk UPDATE would leave those instances stale for the rest of the transaction
     // (the Delta update path builds its response from them).
@@ -799,7 +803,6 @@ public class DeltaCommitRepository {
         .setParameter("toVersion", latestBackfilledVersion)
         .list()
         .forEach(c -> c.setBackfilled(true));
-    pruneRetainedCommits(session, tableId, latestBackfilledVersion);
   }
 
   /**
