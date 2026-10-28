@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
+import com.linecorp.armeria.common.Cookie;
 import com.linecorp.armeria.common.HttpData;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpMethod;
@@ -82,6 +83,49 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   }
 
   @Test
+  public void testCookieWritesRequireAjaxHeader() throws Exception {
+    for (String requestedWith : List.of("", "fetch")) {
+      RequestHeadersBuilder headers =
+          RequestHeaders.builder(HttpMethod.POST, "/api/1.0/unity-control/scim2/Users")
+              .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken());
+      if (!requestedWith.isEmpty()) {
+        headers.add(HttpHeaderNames.X_REQUESTED_WITH, requestedWith);
+      }
+      AggregatedHttpResponse response = client.execute(headers.build()).aggregate().join();
+      assertThat(response.status()).isEqualTo(HttpStatus.FORBIDDEN);
+      JsonNode error = MAPPER.readTree(response.contentUtf8());
+      assertThat(error.get("error_code").asText()).isEqualTo("PERMISSION_DENIED");
+      assertThat(error.get("message").asText())
+          .isEqualTo("Cookie requests require X-Requested-With: XMLHttpRequest");
+      assertThat(response.headers().get(HttpHeaderNames.SET_COOKIE)).isNull();
+    }
+
+    RequestHeaders read =
+        RequestHeaders.builder(HttpMethod.GET, "/api/1.0/unity-control/scim2/Me")
+            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
+            .build();
+    assertThat(client.execute(read).aggregate().join().status()).isEqualTo(HttpStatus.OK);
+
+    // An explicit bearer token takes precedence over cookies and needs no AJAX header.
+    RequestHeaders bearer =
+        RequestHeaders.builder(HttpMethod.POST, LOGOUT_ENDPOINT)
+            .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + securityContext.getServiceToken())
+            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=invalid")
+            .build();
+    assertThat(client.execute(bearer).aggregate().join().status()).isEqualTo(HttpStatus.OK);
+
+    RequestHeaders preflight =
+        RequestHeaders.builder(HttpMethod.OPTIONS, LOGOUT_ENDPOINT)
+            .add(HttpHeaderNames.ORIGIN, "https://other.example.com")
+            .add(HttpHeaderNames.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+            .add(HttpHeaderNames.ACCESS_CONTROL_REQUEST_HEADERS, "x-requested-with")
+            .build();
+    AggregatedHttpResponse response = client.execute(preflight).aggregate().join();
+    assertThat(response.headers().get(HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN)).isNull();
+    assertThat(response.headers().get(HttpHeaderNames.ACCESS_CONTROL_ALLOW_CREDENTIALS)).isNull();
+  }
+
+  @Test
   public void testExpiredAccessTokenIsRejected() throws Exception {
     // Request with expired access token should return 401
     RequestHeaders headers = buildLogoutRequestHeaderWithToken(createExpiredAccessToken());
@@ -102,7 +146,8 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
         RequestHeaders.builder()
             .method(HttpMethod.POST)
             .path(LOGOUT_ENDPOINT)
-            .contentType(MediaType.JSON);
+            .contentType(MediaType.JSON)
+            .add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest");
 
     if (includeCookie) {
       builder.add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken());
@@ -116,6 +161,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
         .method(HttpMethod.POST)
         .path(LOGOUT_ENDPOINT)
         .contentType(MediaType.JSON)
+        .add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest")
         .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + token)
         .build();
   }
@@ -162,6 +208,14 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   }
 
   private AggregatedHttpResponse exchangeToken(String identityToken) {
+    return exchangeToken(
+        identityToken,
+        RequestHeaders.builder(HttpMethod.POST, TOKEN_ENDPOINT)
+            .contentType(MediaType.FORM_DATA)
+            .build());
+  }
+
+  private AggregatedHttpResponse exchangeToken(String identityToken, RequestHeaders headers) {
     String formBody =
         "grant_type=urn:ietf:params:oauth:grant-type:token-exchange"
             + "&requested_token_type=urn:ietf:params:oauth:token-type:access_token"
@@ -169,14 +223,41 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
             + "&subject_token="
             + identityToken;
 
+    return client.execute(headers, HttpData.ofUtf8(formBody)).aggregate().join();
+  }
+
+  @Test
+  public void testCookieLoginRequiresAjaxHeader() throws Exception {
+    createEnabledUser(ENABLED_USER_EMAIL);
+    String token =
+        createIdentityToken(
+            ENABLED_USER_EMAIL, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
     RequestHeaders headers =
-        RequestHeaders.builder()
-            .method(HttpMethod.POST)
-            .path(TOKEN_ENDPOINT)
+        RequestHeaders.builder(HttpMethod.POST, TOKEN_ENDPOINT + "?ext=cookie")
             .contentType(MediaType.FORM_DATA)
             .build();
+    AggregatedHttpResponse rejected = exchangeToken(token, headers);
+    assertThat(rejected.status()).isEqualTo(HttpStatus.FORBIDDEN);
+    JsonNode error = MAPPER.readTree(rejected.contentUtf8());
+    assertThat(error.get("error_code").asText()).isEqualTo("PERMISSION_DENIED");
+    assertThat(error.get("message").asText())
+        .isEqualTo("Cookie requests require X-Requested-With: XMLHttpRequest");
+    assertThat(rejected.headers().get(HttpHeaderNames.SET_COOKIE)).isNull();
 
-    return client.execute(headers, HttpData.ofUtf8(formBody)).aggregate().join();
+    AggregatedHttpResponse accepted =
+        exchangeToken(
+            token,
+            headers.toBuilder().add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest").build());
+    assertThat(accepted.status()).isEqualTo(HttpStatus.OK);
+    Cookie cookie = Cookie.fromSetCookieHeader(accepted.headers().get(HttpHeaderNames.SET_COOKIE));
+    assertThat(cookie.name()).isEqualTo("UC_TOKEN");
+    assertThat(cookie.value())
+        .isEqualTo(MAPPER.readTree(accepted.contentUtf8()).get("access_token").asText());
+    assertThat(cookie.path()).isEqualTo("/");
+    assertThat(cookie.maxAge()).isEqualTo(Duration.ofDays(1).getSeconds());
+    assertThat(cookie.sameSite()).isEqualTo("Strict");
+    assertThat(cookie.isSecure()).isTrue();
+    assertThat(cookie.isHttpOnly()).isTrue();
   }
 
   /**
@@ -309,6 +390,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
             .method(HttpMethod.POST)
             .path(scimUsersPath)
             .contentType(MediaType.JSON)
+            .add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest")
             .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
             .build();
 
@@ -362,6 +444,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
               .path("/api/1.0/unity-control/scim2/Users")
               .contentType(MediaType.JSON)
               .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
+              .add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest")
               .build();
       String userJson =
           "{\"displayName\":\"test\",\"emails\":[{\"value\":\""

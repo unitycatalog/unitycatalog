@@ -4615,7 +4615,7 @@ wheels = [
 
 [[package]]
 name = "unitycatalog-ai"
-version = "0.4.0"
+version = "0.4.1"
 source = { editable = "../../core" }
 dependencies = [
     { name = "cloudpickle" },
@@ -4694,7 +4694,7 @@ wheels = [
 
 [[package]]
 name = "unitycatalog-dspy"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "dspy" },

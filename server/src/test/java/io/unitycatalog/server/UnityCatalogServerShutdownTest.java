@@ -56,6 +56,7 @@ class UnityCatalogServerShutdownTest {
         new HibernateConfigurator(HibernateConfigurator.setupHibernateProperties(serverProperties));
     CountDownLatch entered = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
+    CountDownLatch interrupted = new CountDownLatch(1);
     CapturingAppender appender = new CapturingAppender();
     Logger serverLogger = null;
     Level previousLevel = null;
@@ -66,7 +67,8 @@ class UnityCatalogServerShutdownTest {
               .port(port)
               .serverProperties(serverProperties)
               .hibernateConfigurator(hibernateConfigurator)
-              .credentialOperations(new WedgedCredentialVendor(serverProperties, entered, release))
+              .credentialOperations(
+                  new WedgedCredentialVendor(serverProperties, entered, release, interrupted))
               .build();
       // Attach after build(): loading UnityCatalogServer (re)initializes log4j. The test JVM may
       // not find etc/conf/server.log4j2.properties and fall back to ERROR, so enable WARN here.
@@ -102,6 +104,9 @@ class UnityCatalogServerShutdownTest {
           .isLessThan(SHUTDOWN_TIMEOUT.plus(ARMERIA_STOP_TAIL).plusSeconds(1));
       assertThat(appender.warnings())
           .anyMatch(message -> message.startsWith("Blocking task executor did not stop within"));
+      assertThat(interrupted.await(5, TimeUnit.SECONDS))
+          .as("close() interrupts the request still running after the drain")
+          .isTrue();
     } finally {
       release.countDown();
       if (serverLogger != null) {
@@ -126,12 +131,17 @@ class UnityCatalogServerShutdownTest {
 
     private final CountDownLatch entered;
     private final CountDownLatch release;
+    private final CountDownLatch interrupted;
 
     private WedgedCredentialVendor(
-        ServerProperties serverProperties, CountDownLatch entered, CountDownLatch release) {
+        ServerProperties serverProperties,
+        CountDownLatch entered,
+        CountDownLatch release,
+        CountDownLatch interrupted) {
       super(serverProperties);
       this.entered = entered;
       this.release = release;
+      this.interrupted = interrupted;
     }
 
     @Override
@@ -140,6 +150,7 @@ class UnityCatalogServerShutdownTest {
       try {
         release.await();
       } catch (InterruptedException e) {
+        interrupted.countDown();
         Thread.currentThread().interrupt();
       }
       return new TemporaryCredentials();

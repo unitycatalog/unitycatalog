@@ -71,6 +71,18 @@ Service integrations exchange an upstream OAuth access token on `POST /auth/toke
 
 Create UC users with a human-readable `email` for grants and set `externalId` to the OAuth client id for programmatic exchange. The issued UC access token always uses the resolved user's `email`.
 
+#### Browser cookie authentication
+
+The authentication cookie uses `Secure`, `HttpOnly`, and `SameSite=Strict`.
+Send `X-Requested-With: XMLHttpRequest` when requesting a cookie with
+`POST /auth/tokens?ext=cookie`.
+With authorization enabled, cookie-authenticated requests also need it,
+except GET, HEAD, and OPTIONS. A missing or incorrect header returns HTTP 403 `PERMISSION_DENIED`.
+The UI sends the header automatically. Cookie-based scripts must add it to writes.
+Clients that use `Authorization: Bearer <token>` do not need this header.
+Cross-origin browser requests with this header need CORS preflight approval.
+The server does not enable cross-origin access.
+
 #### Multiple Identity Providers
 
 You can configure multiple issuers and audiences by separating them with commas:
@@ -149,6 +161,11 @@ The setting covers:
 
 - [Grant validation](#valid-privilege-grants): Reject new grants on the wrong object type.
   Existing invalid grants can still be removed.
+- [Iceberg credentials](#table-credential-permissions): returning credentials from `loadTable`
+  or `loadCredentials` requires `USE CATALOG`, `USE SCHEMA`, and `SELECT`, or ownership at each level.
+- Table metadata: `MODIFY` no longer substitutes for `SELECT` for table details, listings,
+  and existence checks across the UC REST, Delta, and Iceberg REST APIs. Existing usage and
+  ownership rules still apply.
 
 The access checks apply only when `server.authorization=enable`.
 Grant validation also applies when authorization is disabled.
@@ -417,6 +434,27 @@ ATTACH 'unity' AS unity (TYPE UC_CATALOG);
 SHOW ALL TABLES;
 SELECT * from unity.default.numbers;
 ```
+
+## Table credential permissions
+
+With authorization enabled, Unity Catalog and Delta credential requests for existing tables
+require the permissions below. Iceberg uses the same read checks before returning credentials
+from `loadTable` or `loadCredentials`.
+
+| Object | Required to read |
+| --- | --- |
+| Containing catalog | `USE CATALOG` or catalog ownership |
+| Containing schema | `USE SCHEMA` or schema ownership |
+| Table | `SELECT` or table ownership |
+
+The caller must meet all three rows. `SELECT` inherited from a catalog or schema is valid.
+Metastore administration, parent ownership, or `MODIFY` alone does not meet these requirements.
+Read/write credentials also require `MODIFY` or table ownership. Iceberg credentials for UniForm
+tables remain read-only.
+
+Iceberg `loadTable` returns metadata to callers with metadata access. Credentials and their
+refresh endpoint are included only when the caller has read access. `loadCredentials` rejects
+requests without read access.
 
 ## Spark and Java client authentication types
 

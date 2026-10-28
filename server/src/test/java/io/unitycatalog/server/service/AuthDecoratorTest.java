@@ -2,6 +2,7 @@ package io.unitycatalog.server.service;
 
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
@@ -125,5 +127,36 @@ class AuthDecoratorTest {
   @SneakyThrows
   private void verifyNotDelegated() {
     verify(delegate, never()).serve(any(), any());
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = HttpMethod.class,
+      names = {"GET", "HEAD", "OPTIONS"})
+  void safeMethodsDoNotRequireCsrfHeader(HttpMethod method) {
+    assertThatCode(() -> AuthDecorator.validateCsrfHeader(RequestHeaders.of(method, "/")))
+        .doesNotThrowAnyException();
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = HttpMethod.class,
+      names = {"GET", "HEAD", "OPTIONS", "UNKNOWN"},
+      mode = EnumSource.Mode.EXCLUDE)
+  void unsafeMethodsRequireCsrfHeader(HttpMethod method) {
+    RequestHeaders headers = RequestHeaders.of(method, "/");
+    assertThatThrownBy(() -> AuthDecorator.validateCsrfHeader(headers))
+        .isInstanceOf(AuthorizationException.class)
+        .hasMessage("Cookie requests require X-Requested-With: XMLHttpRequest")
+        .extracting(e -> ((AuthorizationException) e).getErrorCode())
+        .isEqualTo(ErrorCode.PERMISSION_DENIED);
+
+    assertThatCode(
+            () ->
+                AuthDecorator.validateCsrfHeader(
+                    headers.toBuilder()
+                        .set(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest")
+                        .build()))
+        .doesNotThrowAnyException();
   }
 }
