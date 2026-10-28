@@ -47,9 +47,10 @@ public class UnityAccessEvaluator {
     this.parser = new SpelExpressionParser();
 
     MethodHandles.Lookup lookup = MethodHandles.lookup();
-    MethodType mt = MethodType.methodType(boolean.class, UUID.class, UUID.class, Privileges.class);
-    MethodHandle mh = lookup.findVirtual(authorizer.getClass(), "authorize", mt);
-    authorizeHandle = mh.bindTo(this.authorizer);
+    MethodType mt =
+        MethodType.methodType(boolean.class, UUID.class, Resource.class, Privileges.class);
+    MethodHandle mh = lookup.findVirtual(UnityAccessEvaluator.class, "authorize", mt);
+    authorizeHandle = mh.bindTo(this);
 
     mt = MethodType.methodType(boolean.class, Object[].class);
     mh = lookup.findVirtual(this.getClass(), "authorizeAny", mt);
@@ -60,22 +61,28 @@ public class UnityAccessEvaluator {
     authorizeAllHandle = mh.bindTo(this);
   }
 
+  private record Resource(SecurableType type, UUID id) {}
+
+  private boolean authorize(UUID principal, Resource resource, Privileges privilege) {
+    return authorizer.authorize(principal, resource.type(), resource.id(), privilege);
+  }
+
   protected boolean authorizeAny(Object... parameters) {
     // TODO: Find a better way to deal with the varargs authorizeAny() method.
     UUID principalId = (UUID) parameters[0];
-    UUID resource = (UUID) parameters[1];
+    Resource resource = (Resource) parameters[1];
     Privileges[] privileges = new Privileges[parameters.length - 2];
     System.arraycopy(parameters, 2, privileges, 0, privileges.length);
-    return authorizer.authorizeAny(principalId, resource, privileges);
+    return authorizer.authorizeAny(principalId, resource.type(), resource.id(), privileges);
   }
 
   protected boolean authorizeAll(Object... parameters) {
     // TODO: Find a better way to deal with the varargs authorizeAll() method.
     UUID principalId = (UUID) parameters[0];
-    UUID resource = (UUID) parameters[1];
+    Resource resource = (Resource) parameters[1];
     Privileges[] privileges = new Privileges[parameters.length - 2];
     System.arraycopy(parameters, 2, privileges, 0, privileges.length);
-    return authorizer.authorizeAll(principalId, resource, privileges);
+    return authorizer.authorizeAll(principalId, resource.type(), resource.id(), privileges);
   }
 
   /**
@@ -123,7 +130,10 @@ public class UnityAccessEvaluator {
     context.setVariable("permit", Boolean.TRUE);
     context.setVariable("principal", principal);
 
-    resourceIds.forEach((k, v) -> context.setVariable(k.name().toLowerCase(), v));
+    resourceIds.forEach(
+        (type, id) ->
+            context.setVariable(
+                type.name().toLowerCase(), id == null ? null : new Resource(type, id)));
     nonResourceValues.forEach(context::setVariable);
     context.setVariable("strict_privilege_checks", strictPrivilegeChecks);
 

@@ -150,13 +150,21 @@ public class PermissionService implements UnityCatalogRestService {
     // For now this is sufficient in that it covers owner on resources parentage.
     UUID parentId = authorizer.getHierarchyParent(resourceId);
     UUID grandparentId = (parentId != null) ? authorizer.getHierarchyParent(parentId) : null;
+    SecurableType parentType =
+        switch (securableType) {
+          case TABLE, VOLUME, FUNCTION, REGISTERED_MODEL -> SCHEMA;
+          case SCHEMA -> CATALOG;
+          default -> METASTORE;
+        };
 
     boolean isOwner =
-        authorizer.authorize(principalId, metastoreRepository.getMetastoreId(), Privileges.OWNER)
-            || authorizer.authorize(principalId, resourceId, Privileges.OWNER)
-            || (parentId != null && authorizer.authorize(principalId, parentId, Privileges.OWNER))
+        authorizer.authorize(
+                principalId, METASTORE, metastoreRepository.getMetastoreId(), Privileges.OWNER)
+            || authorizer.authorize(principalId, securableType, resourceId, Privileges.OWNER)
+            || (parentId != null
+                && authorizer.authorize(principalId, parentType, parentId, Privileges.OWNER))
             || (grandparentId != null
-                && authorizer.authorize(principalId, grandparentId, Privileges.OWNER));
+                && authorizer.authorize(principalId, CATALOG, grandparentId, Privileges.OWNER));
 
     Map<UUID, List<Privileges>> authorizations =
         isOwner
