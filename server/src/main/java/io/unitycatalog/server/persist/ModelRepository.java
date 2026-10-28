@@ -179,7 +179,7 @@ public class ModelRepository {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
-        String[] parts = RepositoryUtils.parseFullName(fullName);
+        String[] parts = RepositoryUtils.parseRegisteredModelFullName(fullName);
         String catalogName = parts[0];
         String schemaName = parts[1];
         String registeredModelName = parts[2];
@@ -391,7 +391,7 @@ public class ModelRepository {
 
     Transaction tx;
     try (Session session = sessionFactory.openSession()) {
-      String[] parts = RepositoryUtils.parseFullName(fullName);
+      String[] parts = RepositoryUtils.parseRegisteredModelFullName(fullName);
       String catalogName = parts[0];
       String schemaName = parts[1];
       String registeredModelName = parts[2];
@@ -451,7 +451,7 @@ public class ModelRepository {
     LOGGER.info("Deleting Registered Model: {}", fullName);
     try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
-      String[] parts = RepositoryUtils.parseFullName(fullName);
+      String[] parts = RepositoryUtils.parseRegisteredModelFullName(fullName);
       String catalogName = parts[0];
       String schemaName = parts[1];
       String registeredModelName = parts[2];
@@ -514,7 +514,7 @@ public class ModelRepository {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
-        String[] parts = RepositoryUtils.parseFullName(fullName);
+        String[] parts = RepositoryUtils.parseRegisteredModelFullName(fullName);
         String catalogName = parts[0];
         String schemaName = parts[1];
         String registeredModelName = parts[2];
@@ -647,7 +647,7 @@ public class ModelRepository {
       Transaction tx = session.beginTransaction();
       try {
         // Check if registered model already exists
-        String[] parts = RepositoryUtils.parseFullName(registeredModelFullName);
+        String[] parts = RepositoryUtils.parseRegisteredModelFullName(registeredModelFullName);
         String catalogName = parts[0];
         String schemaName = parts[1];
         String registeredModelName = parts[2];
@@ -707,7 +707,7 @@ public class ModelRepository {
 
     Transaction tx;
     try (Session session = sessionFactory.openSession()) {
-      String[] parts = RepositoryUtils.parseFullName(fullName);
+      String[] parts = RepositoryUtils.parseRegisteredModelFullName(fullName);
       String catalogName = parts[0];
       String schemaName = parts[1];
       String registeredModelName = parts[2];
@@ -747,7 +747,7 @@ public class ModelRepository {
 
   public void deleteModelVersion(String fullName, Long version) {
     LOGGER.info("Deleting model version: {}/{}", fullName, version);
-    String[] parts = RepositoryUtils.parseFullName(fullName);
+    String[] parts = RepositoryUtils.parseRegisteredModelFullName(fullName);
     String catalogName = parts[0];
     String schemaName = parts[1];
     String registeredModelName = parts[2];
@@ -804,7 +804,7 @@ public class ModelRepository {
 
     Transaction tx;
     try (Session session = sessionFactory.openSession()) {
-      String[] parts = RepositoryUtils.parseFullName(fullName);
+      String[] parts = RepositoryUtils.parseRegisteredModelFullName(fullName);
       String catalogName = parts[0];
       String schemaName = parts[1];
       String registeredModelName = parts[2];

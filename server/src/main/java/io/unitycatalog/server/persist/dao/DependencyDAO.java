@@ -5,7 +5,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.Dependency;
 import io.unitycatalog.server.model.FunctionDependency;
 import io.unitycatalog.server.model.TableDependency;
-import io.unitycatalog.server.persist.utils.RepositoryUtils;
+import io.unitycatalog.server.utils.ValidationUtils;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -129,7 +129,7 @@ public class DependencyDAO {
           ErrorCode.INVALID_ARGUMENT,
           "Dependency " + kind + " full name must not be null or empty");
     }
-    return RepositoryUtils.splitFullName(
+    return ValidationUtils.splitFullName(
         fullName,
         3,
         "Dependency "

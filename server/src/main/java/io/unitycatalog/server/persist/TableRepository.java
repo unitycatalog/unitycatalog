@@ -245,7 +245,7 @@ public class TableRepository {
         sessionFactory,
         session -> {
           String[] parts =
-              RepositoryUtils.splitFullName(fullName, 3, "Invalid table name: " + fullName);
+              ValidationUtils.splitFullName(fullName, 3, "Invalid table name: " + fullName);
           String catalogName = parts[0];
           String schemaName = parts[1];
           String tableName = parts[2];
@@ -1218,7 +1218,7 @@ public class TableRepository {
    * single dotted string.
    */
   public TableInfoDAO deleteTable(String fullName) {
-    String[] parts = RepositoryUtils.splitFullName(fullName, 3, "Invalid table name: " + fullName);
+    String[] parts = ValidationUtils.splitFullName(fullName, 3, "Invalid table name: " + fullName);
     return deleteTable(parts[0], parts[1], parts[2]);
   }
 

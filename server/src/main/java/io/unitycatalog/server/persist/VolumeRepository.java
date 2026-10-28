@@ -112,7 +112,7 @@ public class VolumeRepository {
         sessionFactory,
         session -> {
           String[] namespace =
-              RepositoryUtils.splitFullName(fullName, 3, "Invalid volume name: " + fullName);
+              ValidationUtils.splitFullName(fullName, 3, "Invalid volume name: " + fullName);
           String catalogName = namespace[0];
           String schemaName = namespace[1];
           String volumeName = namespace[2];
@@ -214,7 +214,7 @@ public class VolumeRepository {
       ValidationUtils.validateSqlObjectName(updateVolumeRequest.getNewName());
     }
     String callerId = IdentityUtils.findPrincipalEmailAddress();
-    String[] namespace = RepositoryUtils.splitFullName(name, 3, "Invalid volume name: " + name);
+    String[] namespace = ValidationUtils.splitFullName(name, 3, "Invalid volume name: " + name);
     String catalog = namespace[0], schema = namespace[1], volume = namespace[2];
 
     return TransactionManager.executeWithTransaction(
@@ -258,7 +258,7 @@ public class VolumeRepository {
         sessionFactory,
         session -> {
           String[] namespace =
-              RepositoryUtils.splitFullName(name, 3, "Invalid volume name: " + name);
+              ValidationUtils.splitFullName(name, 3, "Invalid volume name: " + name);
           String catalog = namespace[0], schema = namespace[1], volume = namespace[2];
           SchemaInfoDAO schemaInfo =
               repositories.getSchemaRepository().getSchemaDaoOrThrow(session, catalog, schema);

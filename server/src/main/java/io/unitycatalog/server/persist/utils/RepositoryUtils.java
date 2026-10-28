@@ -13,9 +13,9 @@ import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.ValidationUtils;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -159,22 +159,9 @@ public class RepositoryUtils {
     }
   }
 
-  /**
-   * Splits a dotted full name into exactly {@code expectedParts} non-empty parts. Throws {@code
-   * INVALID_ARGUMENT} with {@code errorMessage} otherwise, including when any part is empty (such
-   * as {@code a..b} or a trailing dot).
-   */
-  public static String[] splitFullName(String fullName, int expectedParts, String errorMessage) {
-    String[] parts = fullName.split("\\.", -1);
-    if (parts.length != expectedParts || Arrays.stream(parts).anyMatch(String::isEmpty)) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, errorMessage);
-    }
-    return parts;
-  }
-
   /** Splits a registered model full name (catalog.schema.model) into its three parts. */
-  public static String[] parseFullName(String fullName) {
-    return splitFullName(fullName, 3, "Invalid registered model name: " + fullName);
+  public static String[] parseRegisteredModelFullName(String fullName) {
+    return ValidationUtils.splitFullName(fullName, 3, "Invalid registered model name: " + fullName);
   }
 
   public static String getAssetFullName(String catalogName, String schemaName, String assetName) {
