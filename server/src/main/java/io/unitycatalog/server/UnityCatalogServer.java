@@ -58,6 +58,7 @@ import io.unitycatalog.server.utils.VersionUtils;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 import org.apache.logging.log4j.LogManager;
@@ -248,14 +249,17 @@ public class UnityCatalogServer implements AutoCloseable {
               unityCatalogServerBuilder.observabilityPort,
               unityCatalogServerBuilder.serverProperties);
     }
+    // Created here, before the repositories, so a failed start closes the sink.
+    Optional<Auditor> audit = Auditor.fromProperties(unityCatalogServerBuilder.serverProperties);
+    auditor = audit.orElse(null);
     Repositories repositories =
         new Repositories(
             hibernateConfigurator.getSessionFactory(),
             unityCatalogServerBuilder.serverProperties,
             unityCatalogServerBuilder.cloudCredentialVendor,
             unityCatalogServerBuilder.fileOperationsDecorator,
-            domainMetrics);
-    auditor = repositories.getAuditor().orElse(null);
+            domainMetrics,
+            audit);
     // Init metastore
     repositories.getMetastoreRepository().initMetastoreIfNeeded();
     // Init authorizer

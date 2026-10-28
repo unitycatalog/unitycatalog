@@ -68,6 +68,22 @@ public class Repositories {
     this(sessionFactory, serverProperties, cloudCredentialVendor, fileOperationsDecorator, null);
   }
 
+  /** Creates repositories with the audit sink set in {@code server.audit.sink}, if any. */
+  public Repositories(
+      SessionFactory sessionFactory,
+      ServerProperties serverProperties,
+      CloudCredentialVendor cloudCredentialVendor,
+      UnaryOperator<FileOperations> fileOperationsDecorator,
+      UnityCatalogMetrics metrics) {
+    this(
+        sessionFactory,
+        serverProperties,
+        cloudCredentialVendor,
+        fileOperationsDecorator,
+        metrics,
+        Auditor.fromProperties(serverProperties));
+  }
+
   /**
    * @param cloudCredentialVendor an injected cloud credential vendor (e.g. a test mock), used as
    *     is, or {@code null} to build the default from {@code serverProperties}, which caches vended
@@ -77,13 +93,16 @@ public class Repositories {
    * @param fileOperationsDecorator wraps the default {@link FileOperations} before use ({@link
    *     UnaryOperator#identity()} leaves it unchanged); lets tests map cloud IO to local storage.
    * @param metrics the domain metrics, or {@code null} for no-op metrics
+   * @param auditor records audit events, or empty for none. The caller owns it and closes it, also
+   *     when this constructor fails.
    */
   public Repositories(
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
       CloudCredentialVendor cloudCredentialVendor,
       UnaryOperator<FileOperations> fileOperationsDecorator,
-      UnityCatalogMetrics metrics) {
+      UnityCatalogMetrics metrics,
+      Optional<Auditor> auditor) {
     UnityCatalogMetrics resolvedMetrics =
         Objects.requireNonNullElseGet(metrics, UnityCatalogMetrics::noop);
     this.sessionFactory = sessionFactory;
@@ -92,7 +111,7 @@ public class Repositories {
         cloudCredentialVendor != null
             ? cloudCredentialVendor
             : defaultCloudCredentialVendor(serverProperties, resolvedMetrics);
-    this.auditor = Auditor.fromProperties(serverProperties);
+    this.auditor = auditor;
     // Wrap the vendor before FileOperationsImpl captures it, so the server's own and cleanup vends
     // are audited too.
     StorageCredentialVendor vendor =
