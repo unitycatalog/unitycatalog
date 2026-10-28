@@ -2647,47 +2647,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               return h;
             },
             setColumns(
-                fld("b", prim("long"), false, 1, "col-1"), fld("v", prim("long"), 2, "col-v"))));
-  }
-
-  private static DeltaStructField withTypeChange(DeltaStructField field, String from, String to) {
-    field.getMetadata().put("delta.typeChanges", List.of(Map.of("fromType", from, "toType", to)));
-    return field;
-  }
-
-  /** Makes the stored type of one column unreadable. */
-  private void corruptStoredType(Handle h, String columnName) {
-    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
-      Transaction tx = session.beginTransaction();
-      session
-          .createMutationQuery(
-              "update ColumnInfoDAO c set c.typeJson = :json"
-                  + " where c.table.id = :id and c.name = :name")
-          .setParameter("json", "not json")
-          .setParameter("id", h.tableId())
-          .setParameter("name", columnName)
-          .executeUpdate();
-      tx.commit();
-    }
-  }
-
-  // -------------------------------------------------------- assertion helpers
-
-  /** Returns the ordered list of top-level column names from a {@link DeltaLoadTableResponse}. */
-  private static List<String> columnNames(DeltaLoadTableResponse resp) {
-    return resp.getMetadata().getColumns().getFields().stream()
-        .map(DeltaStructField::getName)
-        .collect(Collectors.toList());
-  }
-
-  @ParameterizedTest(name = "{0}")
-  @MethodSource("partitionCases")
-  public void testPartitionColumnFollowsRename(SchemaCase c) throws Exception {
-    run(c);
-  }
-
-  static Stream<SchemaCase> partitionCases() {
-    return Stream.of(
+                fld("b", prim("long"), false, 1, "col-1"), fld("v", prim("long"), 2, "col-v"))),
+        // A partition column follows its column through a rename.
         ok(
                 "rename one of two partition columns",
                 NAME_AB,
@@ -2763,5 +2724,35 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                     fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 2, "col-2")))
             .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
             .expectPartitions("b"));
+  }
+
+  private static DeltaStructField withTypeChange(DeltaStructField field, String from, String to) {
+    field.getMetadata().put("delta.typeChanges", List.of(Map.of("fromType", from, "toType", to)));
+    return field;
+  }
+
+  /** Makes the stored type of one column unreadable. */
+  private void corruptStoredType(Handle h, String columnName) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction tx = session.beginTransaction();
+      session
+          .createMutationQuery(
+              "update ColumnInfoDAO c set c.typeJson = :json"
+                  + " where c.table.id = :id and c.name = :name")
+          .setParameter("json", "not json")
+          .setParameter("id", h.tableId())
+          .setParameter("name", columnName)
+          .executeUpdate();
+      tx.commit();
+    }
+  }
+
+  // -------------------------------------------------------- assertion helpers
+
+  /** Returns the ordered list of top-level column names from a {@link DeltaLoadTableResponse}. */
+  private static List<String> columnNames(DeltaLoadTableResponse resp) {
+    return resp.getMetadata().getColumns().getFields().stream()
+        .map(DeltaStructField::getName)
+        .collect(Collectors.toList());
   }
 }
