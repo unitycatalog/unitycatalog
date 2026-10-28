@@ -1,21 +1,23 @@
 {{/*
-Expand the name of the chart.
+Base name for resources: nameOverride, else "unitycatalog". Resource names default to "unitycatalog",
+not .Chart.Name, so they stay the same across chart renames and --reuse-values upgrades. Not
+truncated: unitycatalog.fullname compares it with the release name, then truncates the result.
 */}}
 {{- define "unitycatalog.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 56 | trimSuffix "-" }}
+{{- default "unitycatalog" .Values.nameOverride }}
 {{- end }}
 
 {{/*
 Create a default fully qualified app name.
 We truncate at 56 chars for all fullnames depending on this to fit 63 characters (longest suffix "-server").
 Some Kubernetes name fields are limited to this (by the DNS naming spec).
-If release name contains chart name it will be used as a full name.
+If the release name contains the base name, the release name is the full name.
 */}}
 {{- define "unitycatalog.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 56 | trimSuffix "-" }}
 {{- else }}
-{{- $name := default .Chart.Name .Values.nameOverride }}
+{{- $name := include "unitycatalog.name" . }}
 {{- if contains $name .Release.Name }}
 {{- .Release.Name | trunc 56 | trimSuffix "-" }}
 {{- else }}

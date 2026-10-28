@@ -61,6 +61,7 @@ import java.time.Duration;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,6 +76,9 @@ public class UnityCatalogServer implements AutoCloseable {
   private final SecurityContext securityContext;
   private final HibernateConfigurator hibernateConfigurator;
   private final BlockingTaskExecutor blockingTaskExecutor;
+
+  /** How long tasks interrupted at the end of the shutdown drain get to stop. */
+  private static final Duration INTERRUPTED_TASK_GRACE = Duration.ofMillis(500);
 
   private final Duration shutdownTimeout;
 
@@ -151,9 +155,9 @@ public class UnityCatalogServer implements AutoCloseable {
   }
 
   /**
-   * Shuts down the server-owned blocking executor and waits up to {@code timeout}. A task still
-   * running after that is left in place and shutdown continues, so a wedged JDBC call cannot hold
-   * the process until the orchestrator kills it.
+   * Shuts down the server-owned blocking executor and waits up to {@code timeout}. Tasks still
+   * running after that are interrupted and given a moment to stop; then shutdown continues, so a
+   * wedged JDBC call cannot hold the process until the orchestrator kills it.
    */
   private static void closeBlockingTaskExecutor(
       BlockingTaskExecutor executor, Duration timeout, Throwable primaryFailure) {
@@ -165,8 +169,15 @@ public class UnityCatalogServer implements AutoCloseable {
       executor.shutdown();
       try {
         if (!executor.awaitTermination(timeout.toNanos(), TimeUnit.NANOSECONDS)) {
+          // A task blocked on a lock, a sleep or interruptible I/O stops on the interrupt, before
+          // the resources it uses are closed. One that ignores interrupts can still be running
+          // when they close, and keeps running until the process exits.
           LOGGER.warn(
-              "Blocking task executor did not stop within {}; continuing shutdown", timeout);
+              "Blocking task executor did not stop within {}; interrupting its tasks", timeout);
+          executor.shutdownNow();
+          if (!executor.awaitTermination(INTERRUPTED_TASK_GRACE.toNanos(), TimeUnit.NANOSECONDS)) {
+            LOGGER.warn("Blocking tasks still running after the interrupt; continuing shutdown");
+          }
         }
       } catch (InterruptedException ignored) {
         interrupted = true;
@@ -475,9 +486,23 @@ public class UnityCatalogServer implements AutoCloseable {
       unityCatalogServer.start();
     } catch (RuntimeException e) {
       LOGGER.error("Failed to start the Unity Catalog server", e);
-      unityCatalogServer.close();
+      try {
+        unityCatalogServer.close();
+      } finally {
+        LogManager.shutdown();
+      }
       throw e;
     }
+    // On SIGTERM, close() runs on Armeria's shutdown thread: it stops the storage cleanup, lets
+    // in-flight requests finish for up to server.shutdown-timeout, then closes everything else.
+    // Log4j stops last, even when close() fails (Armeria logs that failure); bin/start-uc-server
+    // turns off Log4j's own shutdown hook so it doesn't stop logging during the drain. The hook is
+    // registered after start() so that close() can't run during a start; a SIGTERM while starting
+    // exits without it.
+    unityCatalogServer
+        .server
+        .closeOnJvmShutdown(unityCatalogServer::close)
+        .whenComplete((unused, failure) -> LogManager.shutdown());
   }
 
   public void start() {
@@ -505,7 +530,8 @@ public class UnityCatalogServer implements AutoCloseable {
    * <p>The blocking executor is drained before anything else is closed, using the time remaining
    * from {@code server.shutdown-timeout}, so a handler that outlived {@link #stop()} does not see a
    * closed authorizer or cleanup worker. This is not a total shutdown deadline: other resource
-   * cleanup and Armeria's final shutdown can add time.
+   * cleanup and Armeria's final shutdown can add time. A resource that fails to close is logged and
+   * the rest still close; only a failure from {@link #stop()} is thrown.
    */
   @Override
   public void close() {
@@ -519,9 +545,8 @@ public class UnityCatalogServer implements AutoCloseable {
       closeQuietly(metrics, null, "the metrics registry");
       closeQuietly(cleanupWorker, null, "the storage cleanup worker");
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, null, "the authorizer");
-      if (ownsHibernateConfigurator) {
-        hibernateConfigurator.close();
-      }
+      closeQuietly(
+          ownsHibernateConfigurator ? hibernateConfigurator : null, null, "the database pool");
     }
   }
 
