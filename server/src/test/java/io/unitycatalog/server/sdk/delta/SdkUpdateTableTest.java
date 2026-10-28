@@ -61,13 +61,17 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Integration tests for the Delta {@code POST /v1/.../tables/{table}} update endpoint. Consolidated
@@ -1756,51 +1760,48 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     Handle h = createDeltaManaged("tbl_replay_after_cm", Map.of());
     DeltaCommit v1 = commit(1L, "00000001.json");
     DeltaCommit v2 = commit(2L, "00000002.json");
-    DeltaLoadTableResponse r1 =
-        updateTable(
-            h,
-            setColumns(fld("a", prim("long"), null, null)),
-            new DeltaAddCommitUpdate().commit(v1));
+    DeltaSetSchemaUpdate plain =
+        setColumns(
+            fld("id", prim("long"), false, null, null),
+            fld("amount", prim("double"), null, null),
+            fld("a", prim("long"), null, null));
+    DeltaLoadTableResponse r1 = updateTable(h, plain, new DeltaAddCommitUpdate().commit(v1));
     DeltaLoadTableResponse r2 =
         updateTable(
             h.withEtag(r1.getMetadata().getEtag()),
             new DeltaSetPropertiesUpdate().updates(Map.of("delta.columnMapping.mode", "name")),
-            setColumns(fld("a", prim("long"), 1, "col-1"), fld("b", prim("long"), 2, "col-b")),
+            setColumns(
+                fld("id", prim("long"), false, 1, "id"),
+                fld("amount", prim("double"), 2, "amount"),
+                fld("a", prim("long"), 3, "a"),
+                fld("b", prim("long"), 4, "col-b")),
             new DeltaAddCommitUpdate().commit(v2));
     assertThat(r2.getLatestTableVersion()).isEqualTo(2L);
 
     // Resend v1 (an older version) and v2 (the latest) with key-less columns: still replays.
-    updateTable(
-        h, setColumns(fld("a", prim("long"), null, null)), new DeltaAddCommitUpdate().commit(v1));
-    updateTable(
-        h, setColumns(fld("a", prim("long"), null, null)), new DeltaAddCommitUpdate().commit(v2));
+    updateTable(h, plain, new DeltaAddCommitUpdate().commit(v1));
+    updateTable(h, plain, new DeltaAddCommitUpdate().commit(v2));
 
     // The replays changed nothing: the stored identity and the column added by v2 remain.
     DeltaLoadTableResponse reloaded =
         deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name());
-    assertThat(columnNames(reloaded)).containsExactly("a", "b");
+    assertThat(columnNames(reloaded)).containsExactly("id", "amount", "a", "b");
     assertThat(nestedField(reloaded, "a").getMetadata().get("delta.columnMapping.physicalName"))
-        .isEqualTo("col-1");
+        .isEqualTo("a");
 
     // A different commit file at a taken version is a conflict, not a guard rejection.
     TestUtils.assertDeltaApiException(
         () ->
             updateTable(
-                h,
-                setColumns(fld("a", prim("long"), null, null)),
-                new DeltaAddCommitUpdate().commit(commit(2L, "other-00000002.json"))),
+                h, plain, new DeltaAddCommitUpdate().commit(commit(2L, "other-00000002.json"))),
         DeltaErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION,
         "Commit version already accepted");
 
     // A commit at a new version is not a replay, so the guard still applies.
     TestUtils.assertDeltaApiException(
-        () ->
-            updateTable(
-                h,
-                setColumns(fld("a", prim("long"), null, null)),
-                new DeltaAddCommitUpdate().commit(commit(3L, "00000003.json"))),
+        () -> updateTable(h, plain, new DeltaAddCommitUpdate().commit(commit(3L, "00000003.json"))),
         DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-        "set-columns dropped column mapping metadata for column(s): a");
+        "set-columns dropped column mapping metadata for column(s): a, amount, id");
   }
 
   private static DeltaCommit commit(long version, String fileName) {
@@ -1896,14 +1897,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 setColumns(fld("id", prim("long"), false, 1, "id"))),
         DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
         "Invalid column mapping mode");
-
-    // The stored name mode applies, not the id mode the request sets: keeping the physical name
-    // keeps the column's identity.
-    Handle nameTable = createCmNameModeManaged("tbl_request_sets_mode");
-    updateTable(
-        nameTable,
-        new DeltaSetPropertiesUpdate().updates(Map.of("delta.columnMapping.mode", "id")),
-        setColumns(fld("a", prim("long"), false, null, "col-1")));
 
     // Removing the mode in the same request still checks the stored name mode.
     Handle removeMode = createCmNameModeManaged("tbl_request_removes_mode");
@@ -2071,6 +2064,11 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     return new DeltaSetSchemaUpdate().columns(struct(fields));
   }
 
+  /** Sets {@code delta.columnMapping.mode} in the same request. */
+  private static DeltaSetPropertiesUpdate cmMode(String mode) {
+    return new DeltaSetPropertiesUpdate().updates(Map.of("delta.columnMapping.mode", mode));
+  }
+
   /** Creates a MANAGED Delta table in the given column-mapping mode with the given columns. */
   private Handle createManaged(
       String tableName, String mode, int maxColumnId, DeltaStructField... fields)
@@ -2097,6 +2095,35 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 .lastCommitTimestampMs(PLACEHOLDER_LAST_COMMIT_TIMESTAMP_MS)
                 .properties(properties));
     return new Handle(tableName, staging.getTableId(), resp.getMetadata().getEtag());
+  }
+
+  /** Creates an EXTERNAL Delta table with the given columns. */
+  private Handle createExternal(String tableName, DeltaStructField... fields) throws Exception {
+    String location = Files.createTempDirectory(testDirectoryRoot, "external_").toString();
+    DeltaLoadTableResponse resp =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            new DeltaCreateTableRequest()
+                .name(tableName)
+                .location(location)
+                .tableType(DeltaTableType.EXTERNAL)
+                .columns(struct(fields))
+                .protocol(
+                    new DeltaProtocol()
+                        .minReaderVersion(3)
+                        .minWriterVersion(7)
+                        .readerFeatures(List.of(TableFeature.DELETION_VECTORS.specName()))
+                        .writerFeatures(List.of(TableFeature.DELETION_VECTORS.specName())))
+                .lastCommitTimestampMs(PLACEHOLDER_LAST_COMMIT_TIMESTAMP_MS)
+                .properties(Map.of("delta.enableDeletionVectors", "true")));
+    return new Handle(tableName, resp.getMetadata().getTableUuid(), resp.getMetadata().getEtag());
+  }
+
+  /** An EXTERNAL table with one struct column {@code s<x long>} and no column mapping. */
+  private Handle createSimpleStructExternal(String tableName) throws Exception {
+    return createExternal(
+        tableName, fld("s", struct(fld("x", prim("long"), null, null)), false, null, null));
   }
 
   /** The field at {@code path}: a top-level column, then struct fields down to the last name. */
@@ -2134,6 +2161,396 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       fields = ((DeltaStructType) next.getType()).getFields();
     }
     return fields.stream().map(DeltaStructField::getName).collect(Collectors.toList());
+  }
+
+  // -------------------------------------------------------- table-driven set-columns cases
+
+  /** Creates the table a {@link SchemaCase} runs against. */
+  @FunctionalInterface
+  private interface TableFactory {
+    Handle create(SdkUpdateTableTest test, String tableName) throws Exception;
+  }
+
+  /**
+   * One set-columns scenario: create a table, apply each setup request, then send {@code update}. A
+   * null {@code rejection} expects success; otherwise the request fails with
+   * INVALID_PARAMETER_VALUE and a message containing {@code rejection}.
+   */
+  private record SchemaCase(
+      String name,
+      TableFactory table,
+      List<DeltaTableUpdate[]> setup,
+      DeltaTableUpdate[] update,
+      String rejection,
+      List<String> columns,
+      List<String> partitions) {
+    @Override
+    public String toString() {
+      return name;
+    }
+
+    SchemaCase after(DeltaTableUpdate... step) {
+      List<DeltaTableUpdate[]> steps = new ArrayList<>(setup);
+      steps.add(step);
+      return new SchemaCase(name, table, steps, update, rejection, columns, partitions);
+    }
+
+    SchemaCase expectColumns(String... names) {
+      return new SchemaCase(name, table, setup, update, rejection, List.of(names), partitions);
+    }
+
+    SchemaCase expectPartitions(String... names) {
+      return new SchemaCase(name, table, setup, update, rejection, columns, List.of(names));
+    }
+  }
+
+  private static SchemaCase ok(String name, TableFactory table, DeltaTableUpdate... update) {
+    return new SchemaCase(name, table, List.of(), update, null, null, null);
+  }
+
+  private static SchemaCase rejected(
+      String name, String rejection, TableFactory table, DeltaTableUpdate... update) {
+    return new SchemaCase(name, table, List.of(), update, rejection, null, null);
+  }
+
+  private void run(SchemaCase c) throws Exception {
+    String tableName =
+        "tbl_case_" + c.name().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_");
+    Handle h = c.table().create(this, tableName);
+    for (DeltaTableUpdate[] step : c.setup()) {
+      h = h.withEtag(updateTable(h, step).getMetadata().getEtag());
+    }
+    Handle target = h;
+    if (c.rejection() != null) {
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(target, c.update()),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          c.rejection());
+      return;
+    }
+    DeltaLoadTableResponse r = updateTable(target, c.update());
+    if (c.columns() != null) {
+      assertThat(
+              columnNames(
+                  deltaTablesApi.loadTable(
+                      TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, target.name())))
+          .containsExactlyElementsOf(c.columns());
+    }
+    if (c.partitions() != null) {
+      assertThat(r.getMetadata().getPartitionColumns()).containsExactlyElementsOf(c.partitions());
+    }
+  }
+
+  private static final TableFactory EXTERNAL = (t, n) -> t.createDeltaExternal(n);
+  private static final TableFactory EXTERNAL_STRUCT = (t, n) -> t.createSimpleStructExternal(n);
+  private static final TableFactory NAME_A =
+      (t, n) -> t.createManaged(n, "name", 1, fld("a", prim("long"), false, 1, "col-1"));
+  private static final TableFactory ID_A =
+      (t, n) -> t.createManaged(n, "id", 1, fld("a", prim("long"), false, 1, "col-1"));
+  private static final TableFactory NAME_AB =
+      (t, n) ->
+          t.createManaged(
+              n,
+              "name",
+              2,
+              fld("a", prim("long"), false, 1, "col-1"),
+              fld("b", prim("long"), 2, "col-2"));
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("guardCases")
+  public void testColumnMappingGuards(SchemaCase c) throws Exception {
+    run(c);
+  }
+
+  static Stream<SchemaCase> guardCases() {
+    return Stream.of(
+        // In name mode renames are found by physical name, ignoring case, so both count. y's id
+        // changed, so an id key would find only one rename.
+        rejected(
+            "two renames found by physical name in another case",
+            "single top-level column rename",
+            NAME_AB,
+            setColumns(
+                fld("x", prim("long"), false, 1, "COL-1"), fld("y", prim("long"), 9, "col-2"))),
+        // A table without column mapping may add and reorder columns.
+        ok(
+                "add a column without column mapping",
+                EXTERNAL,
+                setColumns(
+                    fld("id", prim("long"), false, null, null),
+                    fld("amount", prim("double"), null, null),
+                    fld("extra", prim("string"), null, null)))
+            .expectColumns("id", "amount", "extra"),
+        ok(
+                "reorder without column mapping",
+                EXTERNAL,
+                setColumns(
+                    fld("amount", prim("double"), null, null),
+                    fld("id", prim("long"), false, null, null)))
+            .expectColumns("amount", "id"),
+        // Without column-mapping identities a missing name is a drop and an add, as when the table
+        // is replaced.
+        ok(
+                "replace a column without column mapping",
+                EXTERNAL,
+                setColumns(
+                    fld("id", prim("long"), false, null, null),
+                    fld("flag", prim("boolean"), null, null)))
+            .expectColumns("id", "flag"),
+        // Mode none, but the stored fields still carry keys: the table reads by name, so a changed
+        // name is a drop and an add even when it keeps a physical name.
+        ok(
+                "changed name on a mode-none table that stores keys",
+                EXTERNAL,
+                setColumns(
+                    fld("ident", prim("long"), false, 1, "col-1"),
+                    fld("amount", prim("double"), 2, "col-2")))
+            .after(
+                setColumns(
+                    fld("id", prim("long"), false, 1, "col-1"),
+                    fld("amount", prim("double"), 2, "col-2")))
+            .expectColumns("ident", "amount"),
+        ok(
+                "changed nested name on a mode-none table that stores keys",
+                EXTERNAL,
+                setColumns(
+                    fld("id", prim("long"), false, 1, "col-i"),
+                    fld("amount", prim("double"), 2, "col-a"),
+                    fld(
+                        "person",
+                        struct(fld("full_name", prim("string"), 4, "col-1")),
+                        3,
+                        "col-p")))
+            .after(
+                setColumns(
+                    fld("id", prim("long"), false, 1, "col-i"),
+                    fld("amount", prim("double"), 2, "col-a"),
+                    fld("person", struct(fld("name", prim("string"), 4, "col-1")), 3, "col-p")))
+            .expectColumns("id", "amount", "person"),
+        ok(
+                "keys removed on a mode-none table that stores keys",
+                EXTERNAL,
+                setColumns(
+                    fld("id", prim("long"), false, null, null),
+                    fld("amount", prim("double"), null, null)))
+            .after(
+                setColumns(
+                    fld("id", prim("long"), false, 1, "col-1"),
+                    fld("amount", prim("double"), 2, "col-2")))
+            .expectColumns("id", "amount"),
+        // Nested renames and shape changes without column mapping.
+        ok(
+                "nested struct rename without column mapping",
+                EXTERNAL_STRUCT,
+                setColumns(fld("s", struct(fld("y", prim("long"), null, null)), null, null)))
+            .expectColumns("s"),
+        ok(
+                "array element field rename without column mapping",
+                EXTERNAL,
+                setColumns(
+                    fld("id", prim("long"), false, null, null),
+                    fld("amount", prim("double"), null, null),
+                    fld("e", array(struct(fld("y", prim("long"), null, null))), null, null)))
+            .after(
+                setColumns(
+                    fld("id", prim("long"), false, null, null),
+                    fld("amount", prim("double"), null, null),
+                    fld("e", array(struct(fld("x", prim("long"), null, null))), null, null))),
+        ok(
+                "map value field rename without column mapping",
+                EXTERNAL,
+                setColumns(
+                    fld("id", prim("long"), false, null, null),
+                    fld("amount", prim("double"), null, null),
+                    fld(
+                        "m",
+                        map(prim("string"), struct(fld("y", prim("long"), null, null))),
+                        null,
+                        null)))
+            .after(
+                setColumns(
+                    fld("id", prim("long"), false, null, null),
+                    fld("amount", prim("double"), null, null),
+                    fld(
+                        "m",
+                        map(prim("string"), struct(fld("x", prim("long"), null, null))),
+                        null,
+                        null))),
+        ok(
+                "array of struct to scalar without column mapping",
+                EXTERNAL,
+                setColumns(
+                    fld("id", prim("long"), false, null, null),
+                    fld("amount", prim("double"), null, null),
+                    fld("e", prim("long"), null, null)))
+            .after(
+                setColumns(
+                    fld("id", prim("long"), false, null, null),
+                    fld("amount", prim("double"), null, null),
+                    fld("e", array(struct(fld("x", prim("long"), null, null))), null, null))),
+        ok(
+                "map to scalar without column mapping",
+                EXTERNAL,
+                setColumns(
+                    fld("id", prim("long"), false, null, null),
+                    fld("amount", prim("double"), null, null),
+                    fld("m", prim("long"), null, null)))
+            .after(
+                setColumns(
+                    fld("id", prim("long"), false, null, null),
+                    fld("amount", prim("double"), null, null),
+                    fld(
+                        "m",
+                        map(prim("string"), struct(fld("x", prim("long"), null, null))),
+                        null,
+                        null))),
+        ok(
+                "struct to scalar without column mapping",
+                EXTERNAL_STRUCT,
+                setColumns(fld("s", prim("long"), false, null, null)))
+            .expectColumns("s"),
+        // Names match ignoring case, so a case-only change keeps the column.
+        ok(
+                "case-only name change without column mapping",
+                EXTERNAL,
+                setColumns(
+                    fld("ID", prim("long"), false, null, null),
+                    fld("amount", prim("double"), null, null)))
+            .expectColumns("ID", "amount"),
+        // An explicit set-partition-columns next to a rename of another column.
+        ok(
+                "rename a non-partition column with explicit partitions",
+                NAME_AB,
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"), fld("c", prim("long"), 2, "col-2")),
+                new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("a")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("a")))
+            .expectColumns("a", "c")
+            .expectPartitions("a"),
+        // Renaming a partition column with the renamed column in set-partition-columns.
+        ok(
+                "rename a partition column with explicit partitions",
+                NAME_A,
+                setColumns(fld("b", prim("long"), false, 1, "col-1")),
+                new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("a")))
+            .expectColumns("b")
+            .expectPartitions("b"),
+        // A column-mapped table may reorder, change a type, and drop and add next to one rename.
+        ok(
+                "reorder a column-mapped table",
+                NAME_AB,
+                setColumns(
+                    fld("b", prim("long"), 2, "col-2"), fld("a", prim("long"), false, 1, "col-1")))
+            .expectColumns("b", "a"),
+        ok(
+                "type change on a column-mapped table",
+                NAME_A,
+                setColumns(fld("a", prim("double"), false, 1, "col-1")))
+            .expectColumns("a"),
+        ok(
+                "rename, drop and add in one request",
+                NAME_AB,
+                setColumns(
+                    fld("c", prim("long"), false, 1, "col-1"),
+                    fld("d", prim("string"), 5, "col-5")))
+            .expectColumns("c", "d"),
+        // The re-added old name is a new column, not the renamed one.
+        ok(
+                "rename a column and re-add its old name",
+                NAME_AB,
+                setColumns(
+                    fld("x", prim("long"), false, 1, "col-1"),
+                    fld("b", prim("long"), 2, "col-2"),
+                    fld("a", prim("string"), 9, "col-9")))
+            .expectColumns("x", "b", "a"),
+        // Physical names are unique among siblings only.
+        ok(
+                "same nested physical name under two columns",
+                (t, n) ->
+                    t.createManaged(
+                        n,
+                        "name",
+                        4,
+                        fld(
+                            "s1",
+                            struct(fld("x", prim("long"), 3, "col-inner")),
+                            false,
+                            1,
+                            "col-s1"),
+                        fld(
+                            "s2",
+                            struct(fld("x", prim("long"), 4, "col-inner")),
+                            false,
+                            2,
+                            "col-s2")),
+                setColumns(
+                    fld("s1", struct(fld("x", prim("long"), 3, "col-inner")), false, 1, "col-s1"),
+                    fld("s2", struct(fld("x", prim("long"), 4, "col-inner")), false, 2, "col-s2")))
+            .expectColumns("s1", "s2"),
+        // Enabling on a table with a struct column, no rename.
+        ok(
+                "enable with a nested struct",
+                EXTERNAL_STRUCT,
+                cmMode("name"),
+                setColumns(fld("s", struct(fld("x", prim("long"), 2, "x")), false, 1, "s")))
+            .expectColumns("s"),
+        // An integer id sent as a string is usable.
+        ok(
+                "integer id sent as a string",
+                NAME_A,
+                setColumns(fld("a", prim("long"), false, "1", "col-1")))
+            .expectColumns("a"),
+        ok(
+                "ids 01 and 2147483648 as strings",
+                ID_A,
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"),
+                    fld("b", prim("long"), "01", "col-b"),
+                    fld("c", prim("long"), "2147483648", "col-c")))
+            .expectColumns("a", "b", "c"),
+        // A table whose stored schema has no physical names is being enabled when the request
+        // carries them. A rename is found only by a physical name that names a stored column, so
+        // a new physical name is a drop and an add.
+        ok(
+                "enable and rename with a new physical name",
+                EXTERNAL,
+                setColumns(
+                    fld("id", prim("long"), false, 1, "id"),
+                    fld("revenue", prim("double"), 2, "revenue")))
+            .expectColumns("id", "revenue"),
+        ok(
+                "enable and drop a column",
+                EXTERNAL,
+                setColumns(fld("id", prim("long"), false, 1, "id")))
+            .expectColumns("id"),
+        // The stored mode applies, not the one the request sets.
+        ok(
+                "rename while removing column mapping",
+                NAME_A,
+                cmMode("none"),
+                setColumns(fld("b", prim("long"), false, 1, "col-1")))
+            .expectColumns("b"),
+        ok(
+                "set id mode on a table without column mapping",
+                EXTERNAL,
+                cmMode("id"),
+                setColumns(
+                    fld("id", prim("long"), false, 1, "id"),
+                    fld("amount", prim("double"), 2, "amount")))
+            .expectColumns("id", "amount"),
+        // A stored column without keys has no identity to rename from, so it may gain them.
+        ok(
+                "stored column without keys gains them",
+                (t, n) -> t.createManaged(n, "name", 1, fld("a", prim("long"), false, null, null)),
+                setColumns(fld("a", prim("long"), false, 1, "a")))
+            .expectColumns("a"),
+        // Replacing every column with new ids and physical names is a drop and an add of each.
+        ok(
+                "replace every column of a column-mapped table",
+                NAME_AB,
+                setColumns(fld("x", prim("long"), 3, "col-3"), fld("y", prim("long"), 4, "col-4")))
+            .expectColumns("x", "y"));
   }
 
   // -------------------------------------------------------- assertion helpers
