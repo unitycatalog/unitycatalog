@@ -805,7 +805,7 @@ public class DeltaUpdateTableMapperTest {
                     "col-s"))),
         rejected(
             "nested rename keeps the id and drops the physical name",
-            "Field y is missing physical name",
+            "requires a physical column name and a column mapping id",
             NAME_S,
             setColumns(fld("s", struct(fld("y", prim("long"), 2, null)), 1, "col-s"))),
         rejected(
