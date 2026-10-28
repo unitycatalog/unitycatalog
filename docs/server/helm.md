@@ -19,7 +19,8 @@ helm install unitycatalog oci://registry-1.docker.io/unitycatalog/unitycatalog-c
 Replace `X.Y.Z` with the Unity Catalog release to install.
 
 With the default values, the chart runs one server, which keeps its H2 database on a persistent volume. Run
-`helm test unitycatalog --namespace unitycatalog` to check that the server responds.
+`helm test unitycatalog --namespace unitycatalog` to check that the server and the UI respond. With authentication on,
+it checks only the UI.
 
 ## Open the API and the UI
 
@@ -83,8 +84,8 @@ helm upgrade --install unitycatalog oci://registry-1.docker.io/unitycatalog/unit
 
 To upgrade, read the release notes, then run `helm upgrade` with the new `--version`.
 
-`helm uninstall unitycatalog --namespace unitycatalog` removes the release. It keeps the H2 database
-PersistentVolumeClaim and the token signing key Secret, and a later install with the same release name and
+`helm uninstall unitycatalog --namespace unitycatalog` removes the release. It keeps the chart-created H2 database
+PersistentVolumeClaim and token signing key Secret, and a later install with the same release name and
 namespace reuses them. Delete both to remove the data.
 
 ## Configuration

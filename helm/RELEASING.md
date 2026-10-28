@@ -42,16 +42,17 @@ release.
 
 ## Verify
 
-Check that every image the published chart runs exists, including the UI. The check runs Helm with empty
-credential files, so it fetches the chart logged out and also confirms the chart is public. Helm also uses the
-credentials from `docker login`, so `helm registry logout` alone isn't enough.
+Check that every image the published chart runs exists, including the UI. The check, written for bash or zsh, runs
+with empty credential files, so it fetches the chart and inspects the images logged out and also confirms that they
+are public. Run it in its own shell session, because it sets environment variables. Helm also uses the credentials from `docker login`, so `helm registry logout` alone isn't enough.
 
-```sh
-images=$(HELM_REGISTRY_CONFIG="$(mktemp -d)/config.json" DOCKER_CONFIG="$(mktemp -d)" \
-  helm template uc oci://registry-1.docker.io/unitycatalog/unitycatalog-chart --version X.Y.Z \
+```bash
+export HELM_REGISTRY_CONFIG="$(mktemp -d)/config.json" DOCKER_CONFIG="$(mktemp -d)"
+images=$(helm template uc oci://registry-1.docker.io/unitycatalog/unitycatalog-chart --version X.Y.Z \
   | sed -n 's/^ *image: "\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' | sort -u)
 missing=0
 while read -r image; do
+  [ -n "$image" ] || continue
   docker buildx imagetools inspect "$image" > /dev/null || { echo "Missing: $image"; missing=1; }
 done <<< "$images"
 [ -n "$images" ] && [ "$missing" = 0 ] && echo "All images exist"
