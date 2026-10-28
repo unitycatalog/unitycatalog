@@ -116,7 +116,8 @@ public final class Auditor implements AutoCloseable {
       String path = location.toUri().getPath();
       return UUID.fromString(path.substring(path.lastIndexOf('/') + 1));
     } catch (RuntimeException e) {
-      reportFailure(e);
+      LOGGER.warn(
+          "Audit record written without its resource ID: cannot read it from {}", location, e);
       return null;
     }
   }
@@ -124,7 +125,7 @@ public final class Auditor implements AutoCloseable {
   /**
    * Keeps scheme, authority and path, so query strings, fragments and user info (which can carry
    * secrets) never reach a sink. ABFS keeps its {@code container@account} authority. A location
-   * that can't be parsed is reported and left out of the record.
+   * that can't be parsed is logged and left out of the record.
    */
   String sanitizeLocation(String url) {
     if (url == null) {
@@ -139,7 +140,8 @@ public final class Auditor implements AutoCloseable {
       String path = uri.getRawPath() == null ? "" : uri.getRawPath();
       return uri.getScheme() + "://" + (authority == null ? "" : authority) + path;
     } catch (RuntimeException e) {
-      reportFailure(e);
+      // The URL is left out of the message: a string that can't be parsed may still hold a secret.
+      LOGGER.warn("Audit record written without its location: cannot parse it", e);
       return null;
     }
   }
@@ -176,6 +178,11 @@ public final class Auditor implements AutoCloseable {
   }
 
   private void emit(Supplier<AuditRecord> build) {
+    if (closed.get()) {
+      // A request that outlived the shutdown drain; the lost records were already reported.
+      LOGGER.warn("Audit record dropped: sink {} is closed", sink.getClass().getName());
+      return;
+    }
     try {
       sink.record(build.get());
     } catch (Throwable t) {
