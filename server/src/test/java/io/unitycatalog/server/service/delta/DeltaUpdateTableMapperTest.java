@@ -575,6 +575,28 @@ public class DeltaUpdateTableMapperTest {
             setColumns(
                 fld("id", prim("long"), false, JSON_NULL, "id"),
                 fld("amount", prim("double"), 2, "amount"))),
+        rejected(
+            "enable with a null nested id",
+            "malformed column mapping identity",
+            EXTERNAL_STRUCT,
+            cmMode("name"),
+            setColumns(fld("s", struct(fld("x", prim("long"), JSON_NULL, "x")), false, 1, "s"))),
+        // A null id would be stored, and Kernel fails on it once a rename runs the check.
+        rejected(
+            "null id in name mode",
+            "malformed column mapping identity",
+            NAME_A,
+            setColumns(fld("a", prim("long"), false, JSON_NULL, "col-1"))),
+        rejected(
+            "null nested id in name mode",
+            "malformed column mapping identity",
+            NAME_S,
+            setColumns(fld("s", struct(fld("x", prim("long"), JSON_NULL, "col-x")), 1, "col-s"))),
+        rejected(
+            "null nested id with a rename in name mode",
+            "malformed column mapping identity",
+            NAME_S,
+            setColumns(fld("t", struct(fld("x", prim("long"), JSON_NULL, "col-x")), 1, "col-s"))),
 
         // Enabling with a shared physical name.
         rejected(

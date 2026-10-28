@@ -659,12 +659,13 @@ public final class DeltaUpdateTableMapper {
    * <ul>
    *   <li>A retained field keeps the identity key it has, and a schema that has identity keys keeps
    *       them.
-   *   <li>A top-level identity value that is present must be usable. In name mode, top-level
-   *       physical names are unique ignoring case. In id mode, ids are unique across the schema.
+   *   <li>An identity value that is present must be usable: the mode's key on a top-level column,
+   *       and a column mapping id on any field. In name mode, top-level physical names are unique
+   *       ignoring case. In id mode, ids are unique across the schema.
    *   <li>A request without identity keys has no rename to find: a missing name is a drop and an
    *       add, as when a table is replaced.
    *   <li>Enabling column mapping (a table without column mapping, or a stored schema without
-   *       identity keys): every field needs a physical name, top-level physical names and ids
+   *       identity keys): every field needs a physical name, top-level physical names and all ids
    *       must be usable and unique, and no column may be renamed in the same request.
    *   <li>Otherwise at most one top-level column is renamed per request.
    * </ul>
@@ -687,8 +688,9 @@ public final class DeltaUpdateTableMapper {
       }
     }
     if (tableMode != ColumnMappingMode.NONE) {
-      rejectMalformedTopLevelIdentities(incoming, tableMode.metadataKey());
+      rejectMalformedIdentities(allFields(incoming), TableProperties.COLUMN_MAPPING_ID);
       if (tableMode == ColumnMappingMode.NAME) {
+        rejectMalformedIdentities(incoming, TableProperties.COLUMN_MAPPING_PHYSICAL_NAME);
         rejectDuplicateTopLevelPhysicalNames(incoming);
       }
     }
@@ -738,7 +740,7 @@ public final class DeltaUpdateTableMapper {
               + " out.");
     }
     rejectDuplicateTopLevelPhysicalNames(incoming);
-    rejectMalformedTopLevelIdentities(incoming, TableProperties.COLUMN_MAPPING_ID);
+    rejectMalformedIdentities(allFields(incoming), TableProperties.COLUMN_MAPPING_ID);
     rejectDuplicateIds(incoming);
     if (renamesWhileEnabling(current, incoming)) {
       throw new BaseException(
@@ -763,11 +765,10 @@ public final class DeltaUpdateTableMapper {
         || (value instanceof String s && !s.isEmpty());
   }
 
-  /** Rejects top-level columns that carry {@code key} with an unusable value. */
-  private static void rejectMalformedTopLevelIdentities(
-      List<DeltaStructField> incoming, String key) {
+  /** Rejects fields that carry {@code key} with an unusable value. */
+  private static void rejectMalformedIdentities(List<DeltaStructField> fields, String key) {
     List<String> malformed =
-        incoming.stream()
+        fields.stream()
             .filter(
                 f ->
                     f.getMetadata().containsKey(key)
