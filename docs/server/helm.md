@@ -30,8 +30,7 @@ kubectl port-forward --namespace unitycatalog svc/unitycatalog-server 8080:8080
 
 The API is then at `http://localhost:8080/api/2.1/unity-catalog`.
 
-`helm test` also checks the UI; with authentication on, it checks the UI only. By default, the UI forwards API requests
-to the server, and in this mode you open it through `kubectl port-forward`:
+By default, the UI forwards API requests to the server, and in this mode you open it through `kubectl port-forward`:
 
 ```sh
 kubectl port-forward --namespace unitycatalog svc/unitycatalog-ui 3000:3000

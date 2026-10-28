@@ -42,9 +42,10 @@ release.
 
 ## Verify
 
-Check that every image the published chart runs exists, including the UI. The check, written for bash or zsh, runs
-with empty credential files, so it fetches the chart and inspects the images logged out and also confirms that they
-are public. Run it in its own shell session, because it sets environment variables. Helm also uses the credentials from `docker login`, so `helm registry logout` alone isn't enough.
+Check that every image the published chart runs with default values exists, including the UI. The check, written for
+bash or zsh, runs with empty credential files, so it fetches the chart and inspects the images logged out and also
+confirms that they are public. Run it in its own shell session, because it sets environment variables. Helm also uses
+the credentials from `docker login`, so `helm registry logout` alone isn't enough.
 
 ```bash
 export HELM_REGISTRY_CONFIG="$(mktemp -d)/config.json" DOCKER_CONFIG="$(mktemp -d)"
