@@ -89,6 +89,7 @@ namespace reuses them. Delete both to remove the data.
 
 ## Configuration
 
-The [chart README](https://github.com/unitycatalog/unitycatalog/blob/main/helm/README.md) lists every value,
-including authentication (`auth.*`), cloud storage credentials, and resources. See [Auth](auth.md) for how
+Run `helm show readme oci://registry-1.docker.io/unitycatalog/unitycatalog-chart --version X.Y.Z` for the chart README
+of the version you install, and `helm show values` with the same arguments for every value. They cover
+authentication (`auth.*`), cloud storage credentials, and resources. See [Auth](auth.md) for how
 authentication works.

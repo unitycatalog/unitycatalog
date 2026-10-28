@@ -4,26 +4,28 @@ Every Unity Catalog release X.Y.Z, patch releases included, publishes the chart 
 the server image `unitycatalog/unitycatalog:vX.Y.Z` and the UI image `unitycatalog/unitycatalog-ui:vX.Y.Z`, so both
 images must be on Docker Hub before the chart is pushed.
 
-Only the release managers, @tdas and @yili-db, push to the `unitycatalog` Docker Hub organization, and only they should
-have write access to its repositories.
+Only the release managers push to the `unitycatalog` Docker Hub organization, and only they should have write access to
+its repositories. The release managers are among the maintainers listed in [`.github/CODEOWNERS`](../.github/CODEOWNERS).
 
-## Publish the UI image
+## Bump the pinned helper images
 
-Publish the server image as for earlier releases. From the release tag, also publish the UI image with the same
-version, even when `ui/` didn't change:
+The chart's helper images are pinned by digest in `helm/values.yaml`, so a release always runs the same images: Alpine
+for the config init container and the create-users job, and busybox for the UI init container and the `helm test` pod.
+Before each release, update both to their latest stable release in a pull request, and merge it before you create the
+release tag so the tagged chart carries the new digests. Inspect the exact tags you pin, for example
+`docker buildx imagetools inspect alpine:3.24.2` and `docker buildx imagetools inspect busybox:1.37.0`, not floating
+tags such as `alpine:3`, which give a different digest.
+
+## Publish the images
+
+The chart needs the server image `unitycatalog/unitycatalog:vX.Y.Z` for both `linux/amd64` and `linux/arm64`, pushed
+before the chart. From the release tag, also publish the UI image with the same version, even when `ui/` didn't change:
 
 ```sh
 docker buildx build --platform linux/amd64,linux/arm64 -t unitycatalog/unitycatalog-ui:vX.Y.Z --push ui
 ```
 
 If the build reports that multi-platform builds aren't supported, run `docker buildx create --use` first.
-
-## Bump the pinned helper images
-
-The chart's helper images are pinned by digest in `helm/values.yaml`, so a release always runs the same images: Alpine
-for the config init container and the create-users job, and busybox for the UI init container and the `helm test` pod.
-Before each release, update both to their latest stable release in a pull request. `docker buildx imagetools inspect
-alpine:3` prints the digest.
 
 ## Publish the chart
 
