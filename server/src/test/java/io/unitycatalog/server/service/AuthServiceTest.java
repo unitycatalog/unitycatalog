@@ -444,6 +444,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
               .path("/api/1.0/unity-control/scim2/Users")
               .contentType(MediaType.JSON)
               .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
+              .add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest")
               .build();
       String userJson =
           "{\"displayName\":\"test\",\"emails\":[{\"value\":\""
