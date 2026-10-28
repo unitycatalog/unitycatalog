@@ -8,6 +8,8 @@ import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.model.DeltaErrorType;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
@@ -71,6 +73,28 @@ public class SdkDeleteTableTest extends BaseServerTest {
         Optional.of("file:///tmp/uc_test/tbl_delete_external"));
 
     createAndAssertDeleteThenNotFound("tbl_delete_managed", TableType.MANAGED, Optional.empty());
+
+    // -------- A non-Delta table is rejected and left in place --------
+    TableInfo parquet =
+        BaseTableCRUDTestEnv.createTestingTable(
+            "tbl_delete_parquet",
+            TableType.EXTERNAL,
+            Optional.of("file:///tmp/uc_test/tbl_delete_parquet"),
+            DataSourceFormat.PARQUET,
+            tableOps);
+    TestUtils.assertDeltaApiException(
+        () ->
+            deltaTablesApi.deleteTable(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, parquet.getName()),
+        DeltaErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
+        "Table is not a Delta table");
+    assertThat(
+            tableOps
+                .getTable(
+                    String.join(
+                        ".", TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, parquet.getName()))
+                .getTableId())
+        .isEqualTo(parquet.getTableId());
 
     // -------- Not-found: deleting a missing table returns 404 NoSuchTableException --------
     TestUtils.assertDeltaApiException(
