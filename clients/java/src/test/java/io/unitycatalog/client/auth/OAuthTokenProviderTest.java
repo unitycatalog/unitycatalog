@@ -18,6 +18,8 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
@@ -33,6 +35,11 @@ public class OAuthTokenProviderTest {
   private static final String ACCESS_TOKEN_1 = "access-token-1";
   private static final String ACCESS_TOKEN_2 = "access-token-2";
   private static final long EXPIRES_IN_SECONDS = 3600L;
+  private static final String CATALOG_URI = "https://uc.example.com/prefix/";
+  private static final String UC_TOKEN_EXCHANGE_URI =
+      "https://uc.example.com/prefix/api/1.0/unity-control/auth/tokens";
+  private static final String UC_TOKEN_1 = "uc-token-1";
+  private static final String UC_TOKEN_2 = "uc-token-2";
 
   private HttpClient mockHttpClient;
   private RetryingApiClient mockRetryingApiClient;
@@ -156,6 +163,7 @@ public class OAuthTokenProviderTest {
                     CLIENT_ID,
                     CLIENT_SECRET,
                     AuthConfigs.DEFAULT_OAUTH_SCOPE,
+                    /* catalogUri= */ null,
                     30L,
                     mockRetryingApiClient,
                     clock))
@@ -169,6 +177,7 @@ public class OAuthTokenProviderTest {
                     null,
                     CLIENT_SECRET,
                     AuthConfigs.DEFAULT_OAUTH_SCOPE,
+                    /* catalogUri= */ null,
                     30L,
                     mockRetryingApiClient,
                     clock))
@@ -182,6 +191,7 @@ public class OAuthTokenProviderTest {
                     CLIENT_ID,
                     null,
                     AuthConfigs.DEFAULT_OAUTH_SCOPE,
+                    /* catalogUri= */ null,
                     30L,
                     mockRetryingApiClient,
                     clock))
@@ -195,6 +205,7 @@ public class OAuthTokenProviderTest {
                     CLIENT_ID,
                     CLIENT_SECRET,
                     AuthConfigs.DEFAULT_OAUTH_SCOPE,
+                    /* catalogUri= */ null,
                     -1L,
                     mockRetryingApiClient,
                     clock))
@@ -260,13 +271,207 @@ public class OAuthTokenProviderTest {
     assertThat(requestBody(requestCaptor.getValue())).contains("scope=all-apis");
   }
 
+  @Test
+  public void testExchangeForUcTokenSendsExchangeRequestAndReturnsUcToken() throws Exception {
+    mockTokenResponses(tokenResponse(ACCESS_TOKEN_1, 60L), tokenResponse(UC_TOKEN_1, 3600L));
+    OAuthTokenProvider provider = exchangingOAuthTokenProvider();
+
+    assertThat(provider.accessToken()).isEqualTo(UC_TOKEN_1);
+
+    ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+    verify(mockHttpClient, times(2)).send(requestCaptor.capture(), any());
+    HttpRequest oauthRequest = requestCaptor.getAllValues().get(0);
+    HttpRequest exchangeRequest = requestCaptor.getAllValues().get(1);
+    assertThat(oauthRequest.uri().toString()).isEqualTo(OAUTH_URI);
+    assertThat(exchangeRequest.uri().toString()).isEqualTo(UC_TOKEN_EXCHANGE_URI);
+    assertThat(exchangeRequest.headers().firstValue("Authorization")).isEmpty();
+    assertThat(requestBody(exchangeRequest))
+        .isEqualTo(
+            "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange"
+                + "&requested_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aaccess_token"
+                + "&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aaccess_token"
+                + "&subject_token="
+                + ACCESS_TOKEN_1);
+  }
+
+  @Test
+  public void testExchangeForUcTokenCachesByUcTokenExpiry() throws Exception {
+    // The OAuth token expires after 60s, but the cache follows the UC token's 3600s lifetime.
+    mockTokenResponses(tokenResponse(ACCESS_TOKEN_1, 60L), tokenResponse(UC_TOKEN_1, 3600L));
+    OAuthTokenProvider provider = exchangingOAuthTokenProvider();
+
+    assertThat(provider.accessToken()).isEqualTo(UC_TOKEN_1);
+    clock.sleep(Duration.ofSeconds(3500));
+    assertThat(provider.accessToken()).isEqualTo(UC_TOKEN_1);
+    verifyOAuthRequest(2);
+
+    // Within the lead renewal time, both tokens are fetched again.
+    clock.sleep(Duration.ofSeconds(80));
+    mockTokenResponses(tokenResponse(ACCESS_TOKEN_2, 60L), tokenResponse(UC_TOKEN_2, 3600L));
+    assertThat(provider.accessToken()).isEqualTo(UC_TOKEN_2);
+    verifyOAuthRequest(4);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testExchangeForUcTokenHandlesHttpError() throws Exception {
+    HttpResponse<String> exchangeFailure = mock(HttpResponse.class);
+    when(exchangeFailure.statusCode()).thenReturn(401);
+    when(exchangeFailure.body()).thenReturn("Invalid issuer");
+    mockTokenResponses(tokenResponse(ACCESS_TOKEN_1, 60L), exchangeFailure);
+    OAuthTokenProvider provider = exchangingOAuthTokenProvider();
+
+    assertThatThrownBy(provider::accessToken)
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("Failed to renew OAuth token")
+        .cause()
+        .isInstanceOf(IOException.class)
+        .hasMessageContaining("Failed to exchange OAuth token for a UC token")
+        .hasMessageContaining("401");
+  }
+
+  @Test
+  public void testTokenExchangeUri() {
+    String[][] cases = {
+      {"https://uc.example.com", "https://uc.example.com/api/1.0/unity-control/auth/tokens"},
+      {"https://uc.example.com/", "https://uc.example.com/api/1.0/unity-control/auth/tokens"},
+      {"http://uc:8080/prefix", "http://uc:8080/prefix/api/1.0/unity-control/auth/tokens"},
+      {"http://uc:8080/prefix//", "http://uc:8080/prefix/api/1.0/unity-control/auth/tokens"},
+      // A query or fragment on the catalog URI is dropped rather than absorbing the path.
+      {"https://uc.example.com?x=1", "https://uc.example.com/api/1.0/unity-control/auth/tokens"},
+      {
+        "https://uc.example.com/prefix/?x=1#f",
+        "https://uc.example.com/prefix/api/1.0/unity-control/auth/tokens"
+      },
+      {"https://uc.example.com#f", "https://uc.example.com/api/1.0/unity-control/auth/tokens"},
+    };
+    for (String[] c : cases) {
+      assertThat(OAuthTokenProvider.tokenExchangeUri(c[0]).toString()).isEqualTo(c[1]);
+    }
+  }
+
+  @Test
+  public void testInvalidCatalogUriIsRejectedAtInitialization() {
+    for (String catalogUri :
+        new String[] {"uc.example.com", "localhost:8080", "ftp://uc.example.com"}) {
+      assertThatThrownBy(() -> new OAuthTokenProvider().initialize(exchangeConfigs(catalogUri)))
+          .as(catalogUri)
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("must be an http or https URI with a host");
+    }
+    for (String catalogUri : new String[] {"https://", "https://uc ex"}) {
+      assertThatThrownBy(() -> new OAuthTokenProvider().initialize(exchangeConfigs(catalogUri)))
+          .as(catalogUri)
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("is not a valid URI");
+    }
+  }
+
+  @Test
+  public void testExchangeFlagAcceptsOnlyTrueOrFalse() {
+    Map<String, String> configs = new HashMap<>(exchangeConfigs(CATALOG_URI));
+    for (String value : new String[] {"TRUE", "False"}) {
+      configs.put(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN, value);
+      OAuthTokenProvider provider = new OAuthTokenProvider();
+      provider.initialize(configs);
+      assertThat(provider.configs().containsKey(AuthConfigs.CATALOG_URI))
+          .as(value)
+          .isEqualTo(Boolean.parseBoolean(value));
+    }
+    for (String value : new String[] {"yes", "1", "ture", ""}) {
+      configs.put(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN, value);
+      assertThatThrownBy(() -> new OAuthTokenProvider().initialize(configs))
+          .as(value)
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining(
+              "Configuration key 'oauth.exchangeForUcToken' must be 'true' or 'false', but got '"
+                  + value
+                  + "'");
+    }
+  }
+
+  @Test
+  public void testTokenExpiryAcceptsNumericString() throws Exception {
+    mockTokenResponses(
+        tokenResponse("{\"access_token\":\"" + ACCESS_TOKEN_1 + "\",\"expires_in\":\"3600\"}"));
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
+
+    provider.accessToken();
+    provider.accessToken();
+    verifyOAuthRequest(1);
+  }
+
+  @Test
+  public void testExchangeDoesNotNeedOAuthTokenExpiry() throws Exception {
+    mockTokenResponses(
+        tokenResponse("{\"access_token\":\"" + ACCESS_TOKEN_1 + "\"}"),
+        tokenResponse(UC_TOKEN_1, 3600L));
+    OAuthTokenProvider provider = exchangingOAuthTokenProvider();
+
+    assertThat(provider.accessToken()).isEqualTo(UC_TOKEN_1);
+    assertThat(provider.accessToken()).isEqualTo(UC_TOKEN_1);
+    verifyOAuthRequest(2);
+  }
+
+  @Test
+  public void testMissingExpiresInIsReported() throws Exception {
+    mockTokenResponses(tokenResponse("{\"access_token\":\"" + ACCESS_TOKEN_1 + "\"}"));
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
+
+    assertThatThrownBy(provider::accessToken)
+        .isInstanceOf(RuntimeException.class)
+        .cause()
+        .isInstanceOf(IOException.class)
+        .hasMessageContaining("Token response has no valid 'expires_in'");
+  }
+
+  @Test
+  public void testMissingAccessTokenIsReported() throws Exception {
+    mockTokenResponses(tokenResponse("{\"expires_in\":3600}"));
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
+
+    assertThatThrownBy(provider::accessToken)
+        .isInstanceOf(RuntimeException.class)
+        .cause()
+        .isInstanceOf(IOException.class)
+        .hasMessageContaining("Token response has no 'access_token'");
+  }
+
+  private static Map<String, String> exchangeConfigs(String catalogUri) {
+    return Map.of(
+        AuthConfigs.OAUTH_URI, OAUTH_URI,
+        AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID,
+        AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET,
+        AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN, "true",
+        AuthConfigs.CATALOG_URI, catalogUri);
+  }
+
+  private OAuthTokenProvider exchangingOAuthTokenProvider() {
+    return new OAuthTokenProvider(
+        OAUTH_URI,
+        CLIENT_ID,
+        CLIENT_SECRET,
+        AuthConfigs.DEFAULT_OAUTH_SCOPE,
+        CATALOG_URI,
+        30L,
+        mockRetryingApiClient,
+        clock);
+  }
+
   private OAuthTokenProvider defaultOAuthTokenProvider() {
     return oauthTokenProvider(AuthConfigs.DEFAULT_OAUTH_SCOPE);
   }
 
   private OAuthTokenProvider oauthTokenProvider(String oauthScope) {
     return new OAuthTokenProvider(
-        OAUTH_URI, CLIENT_ID, CLIENT_SECRET, oauthScope, 30L, mockRetryingApiClient, clock);
+        OAUTH_URI,
+        CLIENT_ID,
+        CLIENT_SECRET,
+        oauthScope,
+        /* catalogUri= */ null,
+        30L,
+        mockRetryingApiClient,
+        clock);
   }
 
   /** Reads the string body of an HttpRequest built from a BodyPublishers.ofString publisher. */
@@ -313,6 +518,35 @@ public class OAuthTokenProviderTest {
     when(mockResponse.body()).thenReturn(jsonResponse);
     when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
         .thenReturn(mockResponse);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static HttpResponse<String> tokenResponse(String accessToken, long expiresIn) {
+    HttpResponse<String> response = mock(HttpResponse.class);
+    when(response.statusCode()).thenReturn(200);
+    when(response.body())
+        .thenReturn(
+            String.format(
+                "{\"access_token\":\"%s\",\"token_type\":\"Bearer\",\"expires_in\":%d}",
+                accessToken, expiresIn));
+    return response;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static HttpResponse<String> tokenResponse(String body) {
+    HttpResponse<String> response = mock(HttpResponse.class);
+    when(response.statusCode()).thenReturn(200);
+    when(response.body()).thenReturn(body);
+    return response;
+  }
+
+  /** Mocks consecutive token responses, e.g. the OAuth token and then the UC exchange. */
+  @SafeVarargs
+  @SuppressWarnings("unchecked")
+  private void mockTokenResponses(HttpResponse<String> first, HttpResponse<String>... rest)
+      throws Exception {
+    when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+        .thenReturn(first, rest);
   }
 
   /** Helper method to verify OAuth request was made expected number of times. */

@@ -475,7 +475,7 @@ Key names differ by client:
 | Server | Client |
 | --- | --- |
 | `server.authorization=disable` (default) | Java: `type=static` with `token=""`. Spark: legacy `token=""` (`export UC_TOKEN=`), or `auth.type=static` with `auth.token=""`. The client may send `Authorization: Bearer ` with an empty token; the server ignores it. |
-| `server.authorization=enable` | Java: `type=static` with a real token, or `type=oauth` with `oauth.uri`, `oauth.clientId`, and `oauth.clientSecret`. Spark: the same keys under the `auth.` prefix, or a non-empty legacy `token`. See the sections below. |
+| `server.authorization=enable` | Java: `type=static` with a real Unity Catalog token, or `type=oauth` with `oauth.uri`, `oauth.clientId`, `oauth.clientSecret`, `oauth.exchangeForUcToken=true` and `catalogUri`, because the server only accepts tokens it issued (see [Exchanging the OAuth token for a Unity Catalog token](#exchanging-the-oauth-token-for-a-unity-catalog-token)). Spark: the same keys under the `auth.` prefix, with `catalogUri` taken from the catalog `uri` (catalog-managed Delta tables also need `auth.catalogUri` for now, see the same section); or a non-empty legacy `token`. See the sections below. |
 
 Spark maps a present `token` catalog property to `type=static` even when the value is empty.
 Hive JDBC / Beeline URLs that omit empty query parameters cannot express an empty token;
@@ -575,6 +575,67 @@ Map<String, String> configs = Map.of(
 
 ```sh
 --conf "spark.sql.catalog.<catalog_name>.auth.oauth.scope="
+```
+
+### Exchanging the OAuth token for a Unity Catalog token
+
+By default the OAuth token provider sends the Identity Provider's token to Unity Catalog as is.
+The Unity Catalog server only accepts tokens it issued itself on API calls, so against a Unity
+Catalog server with authorization enabled, set `oauth.exchangeForUcToken=true`. The provider then
+exchanges the Identity Provider's token at the server's token exchange endpoint
+(`<catalogUri>/api/1.0/unity-control/auth/tokens`, see
+[Programmatic exchange](#programmatic-exchange-service-principals)) and caches and renews the
+Unity Catalog token instead.
+
+The exchange requires `server.authorization=enable`; otherwise the endpoint rejects it with
+"Authorization is disabled". The server must also allow the token's issuer and audience. It then
+picks an enabled Unity Catalog user from the token's claims:
+
+- If the token has an `email` claim, the user with that email; failing that, the user whose
+  `externalId` matches the token's `azp` (or `client_id`).
+- Otherwise, the user whose `externalId` matches `azp` (or `client_id`); failing that, the user
+  whose email is the token's `sub`.
+
+So if your Identity Provider puts an `email` claim in client-credentials tokens and a user has that
+email, that user is chosen even if another user's `externalId` matches the client ID.
+
+The exchange endpoint is derived from the catalog URI, set with the `catalogUri` key. Spark takes
+it from the catalog `uri` option:
+
+```sh
+--conf "spark.sql.catalog.<catalog_name>.uri=https://uc.example.com" \
+--conf "spark.sql.catalog.<catalog_name>.auth.type=oauth" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.uri=<identity provider token endpoint>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientId=<client ID>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientSecret=<client secret>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.exchangeForUcToken=true"
+```
+
+!!! note "Catalog-managed Delta tables"
+    With Delta releases that don't include
+    [delta-io/delta#7951](https://github.com/delta-io/delta/pull/7951), the Delta commit
+    coordinator and server-side planning build their own token provider from the Spark
+    configuration and do not get the catalog `uri`. For catalog-managed tables, also set
+    `auth.catalogUri` to the same value as `uri`:
+
+    ```sh
+    --conf "spark.sql.catalog.<catalog_name>.auth.catalogUri=https://uc.example.com"
+    ```
+
+    Unity Catalog itself ignores this key and always uses `uri`. It is no longer needed once Delta
+    includes that change (tracked in
+    [#2074](https://github.com/unitycatalog/unitycatalog/issues/2074)).
+
+Java clients set `catalogUri` themselves:
+
+```java
+Map<String, String> configs = Map.of(
+    "type", "oauth",
+    "catalogUri", "https://uc.example.com",
+    "oauth.uri", "<identity provider token endpoint>",
+    "oauth.clientId", "<client ID>",
+    "oauth.clientSecret", "<client secret>",
+    "oauth.exchangeForUcToken", "true");
 ```
 
 ## Using Google Identity with Unity Catalog UI
