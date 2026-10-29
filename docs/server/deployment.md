@@ -87,6 +87,22 @@ This guide outlines how to deploy the Unity Catalog server.
     docker-compose -f etc/db/mysql-example.yml up -d
     ```
 
+- Unity Catalog compares storage paths exactly, so two paths that differ only in case are
+  different locations. PostgreSQL and H2 compare text exactly by default, but MySQL's default
+  collation ignores case. Create the database with a binary collation. The example file already does this for `ucdb` when it creates a
+  new data volume; for your own server run:
+
+    ```sql
+    CREATE DATABASE ucdb CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
+    ```
+
+  The server logs a warning at startup if any text column in the database uses a case-insensitive
+  collation.
+
+  For an existing database, `ALTER DATABASE ... COLLATE` changes only the default for tables created
+  later. Convert each existing table instead, for example
+  `ALTER TABLE <table> CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;`.
+
 - Modify the `etc/conf/hibernate.properties` file with your MySQL connection details:
 
     ```properties
