@@ -291,14 +291,14 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
     try {
       // Use the securityConfiguration that was set up by BaseAccessControlCRUDTest
       Algorithm algorithm = securityConfiguration.algorithmRSA();
-      String keyId = securityConfiguration.getKeyId();
 
-      // Create token following the same pattern as SecurityContext.createAccessToken
+      // Same claims as SecurityContext.createAccessToken, plus a key ID
       return JWT.create()
           .withSubject(subject)
           .withIssuer(INTERNAL)
+          // Tokens with a key ID are accepted; the server ignores it for its own tokens.
+          .withKeyId("any-key-id")
           .withIssuedAt(new Date())
-          .withKeyId(keyId)
           .withJWTId(UUID.randomUUID().toString())
           .withClaim("email", subject)
           .sign(algorithm);

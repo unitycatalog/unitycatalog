@@ -811,7 +811,8 @@ not set
 			<td>Tag for the server image
 
 Use the server image from the same release as the chart. The chart passes secrets to
-the server as environment variables that older server images don't read.
+the server as environment variables that older server images don't read. The chart also
+sets the token signing key files, which older server images ignore.
 </td>
 		</tr>
 		<tr>
@@ -1034,7 +1035,9 @@ true
 </td>
 			<td>Create keypair secret
 
-If set to true, the secret will be created with a random keypair
+If set to true, the chart creates the secret with a random private key on install and keeps
+it on upgrade. **Deprecated:** a later release will stop generating the key. Create the
+secret yourself, set `name` to it, and set `create` to false.
 </td>
 		</tr>
 		<tr>
@@ -1046,11 +1049,16 @@ derived from the chart parameters and metadata
 </td>
 			<td>Name of the keypair secret for JWT signing
 
-The secret must contain the following keys:
-- `private_key.der` or `private_key.pem`: Private key in DER or PEM format
-- `key_id.txt`: Key ID
+The secret must contain `private_key.pem` or `private_key.der`: the RSA private key the
+server signs its tokens with, in PEM, or in PKCS #8 DER. A `key_id.txt` key is
+ignored; keep it while you may still roll back to an earlier chart, which requires it.
 
-[Kubernetes docs](https://github.com/unitycatalog/unitycatalog/blob/main/server/src/main/java/io/unitycatalog/server/security/SecurityConfiguration.java)
+Create one with:
+
+```sh
+openssl genrsa -out private_key.pem 2048
+kubectl create secret generic <name> --from-file=private_key.pem
+```
 </td>
 		</tr>
 		<tr>

@@ -286,6 +286,9 @@ public class ServerProperties {
     AUDIENCES("server.audiences"),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
     ACCESS_TOKEN_TIMEOUT("server.access-token-timeout", "PT24H", DURATION_VALIDATOR),
+    // The operator's token signing key pair; see SecurityConfiguration.
+    TOKEN_SIGNING_PRIVATE_KEY_FILE("server.token-signing-private-key-file"),
+    TOKEN_SIGNING_PUBLIC_KEY_FILE("server.token-signing-public-key-file"),
     READINESS_PROBE_INTERVAL(
         "server.readiness.probe-interval", "PT5S", POSITIVE_DURATION_VALIDATOR),
     READINESS_DB_TIMEOUT("server.readiness.db-timeout", "PT2S", POSITIVE_DURATION_VALIDATOR),

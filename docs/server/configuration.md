@@ -74,6 +74,24 @@ The server config file is at the location `etc/conf/server.properties` (relative
     any principal who can create a table can use it. Each entry must be a local path; an entry such as an `s3://` URL
     fails server startup. As with `storage-root.*`, a relative path containing `/` (for example `./uc-external`) is
     resolved against the server's working directory, and a directory that does not exist yet is accepted.
+- `server.token-signing-private-key-file` and `server.token-signing-public-key-file`: The RSA key pair the server
+    signs and checks its own tokens with: a PKCS #8 private key in PEM or DER, or a PKCS #1 one in PEM, and the
+    public key as `openssl rsa -pubout` writes it. Set both,
+    and use the same key pair on every server instance. The server only reads these files, so they can be read-only
+    mounts of a Kubernetes Secret. Create a key pair with:
+
+    ```sh
+    openssl genrsa -out private_key.pem 2048
+    openssl rsa -in private_key.pem -pubout -out public_key.pem
+    ```
+
+    !!! warning "Deprecated: the generated signing key"
+        When neither key file is set, the server signs with a key it keeps in `etc/conf`
+        (`private_key.der`, `public_key.der`), generating it on first start; with authorization enabled it logs a
+        warning at each start. This still works, but is deprecated; set both key file settings instead. A newly
+        generated private key is readable by its owner only. The server ignores `key_id.txt` and doesn't write
+        `certs.json`. Keep `key_id.txt` while you may still roll back: without it, an earlier version generates a new
+        key, and existing tokens stop working.
 - `server.shutdown-timeout`: How long the server waits for in-flight requests when it stops, for example on SIGTERM.
     Defaults to `PT5S`. Stopping takes longer than this: up to 5 seconds more if a storage cleanup attempt is
     running, plus about 2 seconds to stop the HTTP server. With the default, give `docker stop` 15 seconds or more

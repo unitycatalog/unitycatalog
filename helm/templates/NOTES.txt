@@ -1,0 +1,6 @@
+{{- if and .Values.server.enabled .Values.server.jwtKeypairSecret.create }}
+WARNING: server.jwtKeypairSecret.create=true is deprecated. The chart generates the key the
+server signs its tokens with, and a later release will stop doing so. Create a Secret holding
+private_key.pem, set server.jwtKeypairSecret.name to it, and set
+server.jwtKeypairSecret.create=false.
+{{- end }}

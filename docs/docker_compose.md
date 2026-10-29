@@ -60,6 +60,12 @@ Compose fills in each `${...}` from your shell or a `.env` file, so the secrets 
 out of `compose.yaml`. The database password works the same way; keeping it in the
 mounted `hibernate.properties` is deprecated.
 
+The server also keeps the key it signs its tokens with in the mounted `./etc/conf`,
+generating it on first start. That is deprecated: create a key pair, mount the two
+files into the container, and set `server.token-signing-private-key-file` and
+`server.token-signing-public-key-file` to them (see
+[Configuration](./server/configuration.md#configuration)).
+
 The configuration will also create a persistent, named volume to store the
 server's data. This will persist between restarts of the container. See the
 [deployment](./server/deployment.md) page for more details on how to configure other
