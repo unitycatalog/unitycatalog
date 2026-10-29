@@ -109,7 +109,8 @@ public class HibernateConfigurator implements AutoCloseable {
                 + " docs/server/deployment.md.",
             caseInsensitive);
       }
-    } catch (SQLException e) {
+    } catch (SQLException | RuntimeException e) {
+      // A failed check must not fail startup, and the constructor does not close the pool here.
       LOGGER.debug("Could not check the MySQL collation", e);
     }
   }
