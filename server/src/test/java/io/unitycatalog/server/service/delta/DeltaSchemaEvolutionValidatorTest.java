@@ -31,6 +31,13 @@ public class DeltaSchemaEvolutionValidatorTest {
   private static final Map<String, String> ID =
       Map.of("delta.columnMapping.mode", "id", "delta.columnMapping.maxColumnId", "5");
 
+  // s.x is clustered; t.x has the same physical name col-x under another parent.
+  private static final Map<String, String> CLUSTERED_BY_S_X =
+      Map.of(
+          "delta.columnMapping.mode", "name",
+          "delta.columnMapping.maxColumnId", "9",
+          "clusteringColumns", "[[\"col-s\",\"col-x\"]]");
+
   private record Case(
       String name,
       Map<String, String> properties,
@@ -313,6 +320,55 @@ public class DeltaSchemaEvolutionValidatorTest {
             cols(
                 fld("b", "long", 1, "col-1"),
                 fld("s", struct(fld("y", "long", 4, "col-y")), 2, "col-s"))),
+        ok(
+            "rename while dropping an unclustered field that shares a clustering physical name",
+            CLUSTERED_BY_S_X,
+            true,
+            cols(
+                fld("a", "long", 1, "col-1"),
+                fld(
+                    "s",
+                    struct(fld("x", "long", 3, "col-x"), fld("y", "long", 6, "col-sy")),
+                    2,
+                    "col-s"),
+                fld(
+                    "t",
+                    struct(fld("x", "long", 5, "col-x"), fld("y", "long", 7, "col-ty")),
+                    4,
+                    "col-t")),
+            cols(
+                fld("b", "long", 1, "col-1"),
+                fld(
+                    "s",
+                    struct(fld("x", "long", 3, "col-x"), fld("y", "long", 6, "col-sy")),
+                    2,
+                    "col-s"),
+                fld("t", struct(fld("y", "long", 7, "col-ty")), 4, "col-t"))),
+        rejected(
+            "rename while dropping the clustered field that shares a physical name with another",
+            "Cannot drop clustering column x",
+            CLUSTERED_BY_S_X,
+            true,
+            cols(
+                fld("a", "long", 1, "col-1"),
+                fld(
+                    "s",
+                    struct(fld("x", "long", 3, "col-x"), fld("y", "long", 6, "col-sy")),
+                    2,
+                    "col-s"),
+                fld(
+                    "t",
+                    struct(fld("x", "long", 5, "col-x"), fld("y", "long", 7, "col-ty")),
+                    4,
+                    "col-t")),
+            cols(
+                fld("b", "long", 1, "col-1"),
+                fld("s", struct(fld("y", "long", 6, "col-sy")), 2, "col-s"),
+                fld(
+                    "t",
+                    struct(fld("x", "long", 5, "col-x"), fld("y", "long", 7, "col-ty")),
+                    4,
+                    "col-t"))),
         ok(
             "clustering path naming no field",
             with(NAME, "clusteringColumns", "[[\"col-1\",\"nope\"]]"),

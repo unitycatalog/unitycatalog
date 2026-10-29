@@ -6,7 +6,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.delta.kernel.exceptions.KernelException;
 import io.delta.kernel.internal.TableConfig;
 import io.delta.kernel.internal.types.DataTypeJsonSerDe;
+import io.delta.kernel.internal.util.ColumnMapping;
 import io.delta.kernel.internal.util.SchemaUtils;
+import io.delta.kernel.types.ArrayType;
+import io.delta.kernel.types.DataType;
+import io.delta.kernel.types.MapType;
+import io.delta.kernel.types.StructField;
 import io.delta.kernel.types.StructType;
 import io.unitycatalog.server.delta.model.DeltaArrayType;
 import io.unitycatalog.server.delta.model.DeltaDataType;
@@ -19,6 +24,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.utils.ColumnUtils;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -30,7 +36,11 @@ import java.util.stream.Collectors;
  * pairs fields by column-mapping id and rejects what Delta rejects: a new physical name under the
  * same id, a new field reusing an id at or below {@code delta.columnMapping.maxColumnId}, a field
  * moved to another struct, a type change that type widening does not allow, tightened nullability,
- * a new non-nullable field, a dropped clustering column, and a field without an id.
+ * a new non-nullable field, and a field without an id.
+ *
+ * <p>A dropped clustering column is checked here, by its full physical path. Kernel compares only
+ * the last physical name of a path, so it would take an unclustered field for a clustered one when
+ * both end in the same physical name.
  *
  * <p>This is the only class that uses Kernel. The Kernel methods it calls are internal APIs with no
  * compatibility guarantee; {@code DeltaSchemaEvolutionValidatorTest} pins each behavior used.
@@ -73,17 +83,22 @@ final class DeltaSchemaEvolutionValidator {
           "set-columns: the table schema cannot be read: " + e.getMessage(),
           e);
     }
-    Set<String> clusteringNames = clusteringPhysicalNames(currentProperties);
+    // Clustering columns are checked below by full path. Kernel compares only the last physical
+    // name of a path, so it takes an unclustered field for a clustered one when both end in the
+    // same physical name.
+    // TODO: pass the paths to Kernel once it compares full paths (delta-io/delta#7976).
+    List<List<String>> clusteringPaths = clusteringPaths(currentProperties);
     // The returned schema is deliberately unused: the catalog stores the schema the client commits.
     try {
       SchemaUtils.validateSchemaEvolutionById(
           currentSchema,
           incomingSchema,
-          clusteringNames,
+          /* clusteringColumnPhysicalNames= */ Set.of(),
           maxColumnId(currentProperties),
           /* allowNewRequiredFields= */ false,
           TableConfig.ICEBERG_WRITER_COMPAT_V1_ENABLED.fromMetadata(currentProperties),
           TableConfig.TYPE_WIDENING_ENABLED.fromMetadata(currentProperties));
+      rejectDroppedClusteringColumns(currentSchema, incomingSchema, clusteringPaths);
     } catch (KernelException | IllegalArgumentException e) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "set-columns: " + e.getMessage(), e);
     }
@@ -122,14 +137,14 @@ final class DeltaSchemaEvolutionValidator {
   }
 
   /**
-   * Physical names of the clustering columns, from the stored {@code clusteringColumns} property
-   * only. Kernel takes the leaf physical name of each path; the stored paths already use physical
-   * names. Null or empty paths and null segments are skipped.
+   * Paths of the clustering columns, from the stored {@code clusteringColumns} property only. A
+   * path lists the physical name of each field from the top level down. Null or empty paths and
+   * null segments are skipped.
    */
-  private static Set<String> clusteringPhysicalNames(Map<String, String> properties) {
+  private static List<List<String>> clusteringPaths(Map<String, String> properties) {
     String json = properties.get(DeltaConsts.TableProperties.CLUSTERING_COLUMNS);
     if (json == null) {
-      return Set.of();
+      return List.of();
     }
     List<List<String>> paths;
     try {
@@ -144,15 +159,69 @@ final class DeltaSchemaEvolutionValidator {
           e);
     }
     if (paths == null) {
-      return Set.of();
+      return List.of();
     }
     return paths.stream()
         .filter(Objects::nonNull)
-        .map(
-            path ->
-                path.stream().filter(Objects::nonNull).reduce((first, last) -> last).orElse(null))
-        .filter(Objects::nonNull)
-        .collect(Collectors.toSet());
+        .map(path -> path.stream().filter(Objects::nonNull).collect(Collectors.toList()))
+        .filter(path -> !path.isEmpty())
+        .collect(Collectors.toList());
+  }
+
+  /**
+   * Rejects the change when the field of a clustering column is gone from the incoming schema.
+   * Fields are paired by column-mapping id, as Kernel pairs them. A path is resolved by physical
+   * name from the top level, so a field that only shares the last physical name of a clustering
+   * path is not taken for it. A path that names no field is ignored.
+   */
+  private static void rejectDroppedClusteringColumns(
+      StructType currentSchema, StructType incomingSchema, List<List<String>> clusteringPaths) {
+    Set<Integer> incomingIds = new HashSet<>();
+    collectIds(incomingSchema, incomingIds);
+    for (List<String> path : clusteringPaths) {
+      StructField field = fieldAt(currentSchema, path);
+      if (field != null && !incomingIds.contains(ColumnMapping.getColumnId(field))) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "set-columns: Cannot drop clustering column " + field.getName());
+      }
+    }
+  }
+
+  /** The field at a path of physical names from the top level, or null when there is none. */
+  private static StructField fieldAt(StructType schema, List<String> path) {
+    StructType level = schema;
+    StructField field = null;
+    for (String physicalName : path) {
+      if (level == null) {
+        return null;
+      }
+      field =
+          level.fields().stream()
+              .filter(f -> ColumnMapping.getPhysicalName(f).equals(physicalName))
+              .findFirst()
+              .orElse(null);
+      if (field == null) {
+        return null;
+      }
+      level = field.getDataType() instanceof StructType struct ? struct : null;
+    }
+    return field;
+  }
+
+  /** The column-mapping id of every struct field under {@code type}, at any depth. */
+  private static void collectIds(DataType type, Set<Integer> ids) {
+    if (type instanceof StructType struct) {
+      for (StructField field : struct.fields()) {
+        ids.add(ColumnMapping.getColumnId(field));
+        collectIds(field.getDataType(), ids);
+      }
+    } else if (type instanceof ArrayType array) {
+      collectIds(array.getElementType(), ids);
+    } else if (type instanceof MapType map) {
+      collectIds(map.getKeyType(), ids);
+      collectIds(map.getValueType(), ids);
+    }
   }
 
   private static boolean keepsAnIdUnderANewIdentity(
