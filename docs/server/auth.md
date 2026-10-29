@@ -223,6 +223,7 @@ Grant validation also runs when `server.authorization=disable`.
 | `USE SCHEMA`, `CREATE TABLE`, `CREATE FUNCTION`, `CREATE VOLUME`, `CREATE MODEL` | Catalog, schema |
 | `SELECT`, `MODIFY` | Catalog, schema, table |
 | `EXECUTE` | Catalog, schema, function, registered model |
+| `CREATE MODEL VERSION` | Catalog, schema, registered model |
 | `READ VOLUME` | Catalog, schema, volume |
 | `CREATE EXTERNAL LOCATION` | Metastore, storage credential |
 | `READ FILES`, `WRITE FILES`, `CREATE EXTERNAL TABLE` | External location, storage credential |

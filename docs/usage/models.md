@@ -6,6 +6,22 @@ Registered Models are logical containers for ML models within Unity Catalog.  A 
 number of Model Versions which represent different iterations of the model that you with to keep track of from within
 Unity Catalog.
 
+With authorization enabled, publishing requires `USE CATALOG`, `USE SCHEMA`, and either model
+ownership or `CREATE MODEL VERSION`. Grant `CREATE MODEL VERSION` on a registered model, schema,
+or catalog. Catalog and schema grants apply to their child models.
+Any authorized publisher can upload to a pending version.
+With authorization enabled, only its creator can finalize it. Owners and administrators
+can no longer finalize another user's pending version.
+Read credentials require `EXECUTE` or model ownership.
+
+With authorization disabled, any caller can finalize a pending version.
+In both modes, `READ_WRITE_MODEL_VERSION` requires a pending version.
+`READ_MODEL_VERSION` now requires a ready version.
+
+Pipelines that relied on parent ownership must receive `CREATE MODEL VERSION`.
+Finish anonymous pending versions before enabling authorization, or recreate them under an
+authenticated publisher.
+
 ## How Unity Catalog and MLflow work together
 
 The following diagram shows how Unity Catalog and MLflow work together from tracking to governance.

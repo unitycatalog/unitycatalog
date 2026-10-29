@@ -26,6 +26,7 @@ import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
@@ -816,6 +817,11 @@ public class ModelRepository {
         ModelVersionInfoDAO origModelVersionInfoDAO =
             getModelVersionDaoOrThrow(session, schemaId, fullName, registeredModelName, version);
 
+        if (serverProperties.isAuthorizationEnabled()
+            && !Objects.equals(callerId, origModelVersionInfoDAO.getCreatedBy())) {
+          throw new BaseException(
+              ErrorCode.PERMISSION_DENIED, "Only model version creator can finalize model version");
+        }
         if (ModelVersionStatus.valueOf(origModelVersionInfoDAO.getStatus())
             != ModelVersionStatus.PENDING_REGISTRATION) {
           throw new BaseException(
