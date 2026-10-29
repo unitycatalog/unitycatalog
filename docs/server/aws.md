@@ -70,7 +70,8 @@ aws.s3.secretKey=  # Leave it blank to delegate to DefaultCredentialsProvider
 aws.region=us-west-2
 ```
 It's recommended to leave `aws.s3.accessKey` and `aws.s3.secretKey` unset so that 
-[`DefaultCredentialsProvider`](https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/auth/credentials/DefaultCredentialsProvider.html) is still used if it’s properly configured. Otherwise these keys can be also configured through environment variables instead.
+[`DefaultCredentialsProvider`](https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/auth/credentials/DefaultCredentialsProvider.html) is still used if it’s properly configured. Otherwise set the secret key in an environment variable, not in
+`server.properties`, where it is deprecated (see [Secrets](configuration.md#secrets)).
 
 # Create and configure both the S3 storage and storage credential
 

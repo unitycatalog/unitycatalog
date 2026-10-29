@@ -91,6 +91,31 @@ The server config file is at the location `etc/conf/server.properties` (relative
     lowercase hex, raw non-ASCII) is rejected with `400`, and an external location whose URL has such an escape
     cannot hold one.
 
+### Secrets
+
+Set secrets in environment variables, not in `server.properties`. A secret's variable name is its key in upper case,
+with `_` for each character that is not a letter or digit:
+
+| Key in `server.properties` | Environment variable |
+| --- | --- |
+| `server.client-secret` | `SERVER_CLIENT_SECRET` |
+| `aws.secretKey`, `aws.sessionToken` | `AWS_SECRETKEY`, `AWS_SESSIONTOKEN` |
+| `s3.secretKey.<n>`, `s3.sessionToken.<n>` | `S3_SECRETKEY_<n>`, `S3_SESSIONTOKEN_<n>` |
+| `adls.clientSecret.<n>` | `ADLS_CLIENTSECRET_<n>` |
+
+```sh
+export SERVER_CLIENT_SECRET='<client secret>'
+bin/start-uc-server
+```
+
+A variable takes precedence over the same key in `server.properties`, and an empty variable is ignored. Only the keys
+above use upper-case names; other settings are read from an environment variable only under their exact key. The
+Helm chart passes these secrets to the server as environment variables from Kubernetes Secrets.
+
+!!! warning "Deprecated: secrets in `server.properties`"
+    Secrets in `server.properties` still work, but this is deprecated. The server logs a warning at startup for each
+    secret it reads from the file. Move them to environment variables.
+
 ## Local file system storage
 
 Unity Catalog can store data on the server's local file system, which is convenient for development and single-machine

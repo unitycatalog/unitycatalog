@@ -123,11 +123,6 @@ spec:
                 secretKeyRef:
                   name: {{ $config.credentialsSecretName | quote }}
                   key: accessKey
-            - name: S3_SECRET_KEY_{{ $index }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $config.credentialsSecretName | quote }}
-                  key: secretKey
           {{- end }}
           {{- range $index, $config := .Values.storage.credentials.adls }}
             - name: ADLS_TENANT_ID_{{ $index }}
@@ -140,11 +135,6 @@ spec:
                 secretKeyRef:
                   name: {{ $config.credentialsSecretName | quote }}
                   key: clientId
-            - name: ADLS_CLIENT_SECRET_{{ $index }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $config.credentialsSecretName | quote }}
-                  key: clientSecret
           {{- end }}
           {{- if .Values.auth.enabled }}
             - name: OAUTH_CLIENT_ID
@@ -152,11 +142,6 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.auth.clientSecretName | quote }}
                   key: clientId
-            - name: OAUTH_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.auth.clientSecretName | quote }}
-                  key: clientSecret
           {{- end }}
       {{- with .Values.server.deployment.extraInitContainers }}
         {{- toYaml . | nindent 8 }}
@@ -168,6 +153,11 @@ spec:
           {{- end }}
           image: "{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
+          {{- with include "unitycatalog.server.secretEnv" . | trim }}
+          # Secrets reach the server as environment variables, not through server.properties.
+          env:
+            {{- . | nindent 12 }}
+          {{- end }}
           ports:
             - name: api
               containerPort: {{ .Values.server.deployment.port }}
