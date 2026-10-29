@@ -319,7 +319,7 @@ public class TableRepository {
       String catalog, String schema, String table, DeltaUpdateTableRequest request) {
     try {
       // The backfill HEAD runs between transactions: the first attempt rolls back once it knows
-      // the version range, and the retry purges after the files have been checked.
+      // the version range, and the retry flags the range after the files have been checked.
       return repositories
           .getDeltaCommitRepository()
           .withPublishedCommitVerification(
@@ -330,7 +330,7 @@ public class TableRepository {
       // (a fresh read, since the rolled-back transaction produced no response).
       return loadTableForDelta(catalog, schema, table);
     } catch (DeltaCommitRepository.CommitContentCheckRequiredException e) {
-      // Version was purged, so the DB couldn't decide: settle it out of the (rolled-back)
+      // Version no longer retained, so the DB couldn't decide: settle it out of the (rolled-back)
       // transaction by comparing file content. A match is a no-op success (return current state);
       // a difference throws a conflict.
       DeltaCommitRepository.verifyContentReplayOrThrowConflict(repositories.getFileOperations(), e);

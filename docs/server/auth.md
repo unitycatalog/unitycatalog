@@ -166,6 +166,7 @@ The setting covers:
 - Table metadata: `MODIFY` no longer substitutes for `SELECT` for table details, listings,
   and existence checks across the UC REST, Delta, and Iceberg REST APIs. Existing usage and
   ownership rules still apply.
+- Volume rename: Also require permission to create volumes in the containing schema.
 
 The access checks apply only when `server.authorization=enable`.
 Grant validation also applies when authorization is disabled.
@@ -551,6 +552,30 @@ Spark catalog configuration uses the same key with the catalog auth prefix:
 The value can contain one or more space-separated scopes defined by the Identity Provider. For
 Microsoft Entra ID, a resource's default scope typically has the form
 `<resource-application-id-uri>/.default`.
+
+To send no scope at all, set `oauth.scope` to an empty value. Use this when your Identity Provider
+rejects `all-apis` with `invalid_scope` and you want its defaults rather than naming a scope. OAuth
+makes the scope optional for client credentials ([RFC 6749, section
+3.3](https://datatracker.ietf.org/doc/html/rfc6749#section-3.3)): the Identity Provider then either
+applies its own default scopes (for example Amazon Cognito grants all the scopes the app client is
+allowed) or rejects the request as having no scope, so check how yours behaves.
+
+- An unset `oauth.scope` still sends `all-apis`.
+- An empty or whitespace-only value sends no scope. An empty value, for example from an unset
+  template variable, used to fail at setup.
+
+```java
+Map<String, String> configs = Map.of(
+    "type", "oauth",
+    "oauth.uri", "<identity provider token endpoint>",
+    "oauth.clientId", "<client ID>",
+    "oauth.clientSecret", "<client secret>",
+    "oauth.scope", "");
+```
+
+```sh
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.scope="
+```
 
 ## Using Google Identity with Unity Catalog UI
 

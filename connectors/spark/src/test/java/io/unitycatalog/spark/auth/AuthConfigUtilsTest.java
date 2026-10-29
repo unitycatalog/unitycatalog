@@ -116,6 +116,24 @@ public class AuthConfigUtilsTest {
   }
 
   @Test
+  public void testOAuthEmptyScopeSurvives() {
+    // An empty scope means "send no scope"; dropping it on the way would fall back to all-apis.
+    Map<String, String> configs =
+        normalizeConfigs(
+            "auth.type",
+            "oauth",
+            "auth.oauth.uri",
+            "https://auth.example.com",
+            "auth.oauth.clientId",
+            "client-id",
+            "auth.oauth.clientSecret",
+            "client-secret",
+            "auth.oauth.scope",
+            "");
+    assertThat(TokenProvider.create(configs).configs()).containsEntry("oauth.scope", "");
+  }
+
+  @Test
   public void testConflictingTokens() {
     assertThatThrownBy(() -> normalizeConfigs("token", "legacy", "auth.token", "new"))
         .isInstanceOf(IllegalArgumentException.class)

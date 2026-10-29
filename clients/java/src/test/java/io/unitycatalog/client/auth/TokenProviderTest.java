@@ -109,17 +109,16 @@ public class TokenProviderTest {
     assertThat(TokenProvider.create(configs).configs())
         .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
 
-    // An explicitly empty scope is rejected rather than silently changing its meaning.
-    configs.put(AuthConfigs.OAUTH_SCOPE, "");
-    assertThatThrownBy(() -> TokenProvider.create(configs))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Configuration key 'oauth.scope' must not be empty");
-
-    // A scope that is empty after trimming is rejected as well.
-    configs.put(AuthConfigs.OAUTH_SCOPE, "   ");
-    assertThatThrownBy(() -> TokenProvider.create(configs))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Configuration key 'oauth.scope' must not be empty");
+    // An empty scope, or one that is empty after trimming, means "send no scope". It round-trips
+    // as empty, so executors rebuild a provider that sends none either, and not the default.
+    for (String emptyScope : new String[] {"", "   "}) {
+      configs.put(AuthConfigs.OAUTH_SCOPE, emptyScope);
+      Map<String, String> roundTripped = TokenProvider.create(configs).configs();
+      assertThat(roundTripped)
+          .as("scope '%s'", emptyScope)
+          .containsEntry(AuthConfigs.OAUTH_SCOPE, "");
+      assertThat(TokenProvider.create(roundTripped).configs()).isEqualTo(roundTripped);
+    }
 
     // Leading, trailing, and repeated interior whitespace is normalized.
     configs.put(AuthConfigs.OAUTH_SCOPE, "  scope-a  \t scope-b  ");
