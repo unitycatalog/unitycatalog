@@ -82,7 +82,7 @@ public class HibernateConfigurator implements AutoCloseable {
 
   /**
    * Storage paths compare exactly, but MySQL's default collation ignores case. Warns when the
-   * database, or a table in it, compares text case-insensitively (a {@code _ci} collation).
+   * column in the database compares text case-insensitively (a {@code _ci} collation).
    */
   private void warnIfMySqlIsCaseInsensitive(Properties properties) {
     if (!properties.getProperty("hibernate.connection.url", "").startsWith("jdbc:mysql:")) {
@@ -92,9 +92,8 @@ public class HibernateConfigurator implements AutoCloseable {
         Statement statement = connection.createStatement();
         ResultSet collations =
             statement.executeQuery(
-                "SELECT @@collation_database UNION "
-                    + "SELECT TABLE_COLLATION FROM information_schema.TABLES "
-                    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_COLLATION IS NOT NULL")) {
+                "SELECT DISTINCT COLLATION_NAME FROM information_schema.COLUMNS "
+                    + "WHERE TABLE_SCHEMA = DATABASE() AND COLLATION_NAME IS NOT NULL")) {
       Set<String> caseInsensitive = new TreeSet<>();
       while (collations.next()) {
         if (collations.getString(1).endsWith("_ci")) {
