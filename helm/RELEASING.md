@@ -15,7 +15,7 @@ for the config init container and the create-users job, and busybox for the UI i
 Before each release, update both to their latest stable release in a pull request, and merge it before you create the
 release tag so the tagged chart carries the new digests. Inspect the exact tags you pin, for example
 `docker buildx imagetools inspect alpine:3.24.2` and `docker buildx imagetools inspect busybox:1.37.0`, not floating
-tags such as `alpine:3`, which give a different digest.
+tags such as `alpine:3`, which can move to a newer release than the tag you write in `values.yaml`.
 
 ## Publish the images
 
@@ -44,13 +44,13 @@ release.
 ## Verify
 
 Check that every image the published chart runs with default values exists, including the UI. The check, written for
-bash or zsh, runs with empty credential files, so it fetches the chart and inspects the images logged out and also
-confirms that they are public. Run it in its own shell session, because it sets environment variables. Helm also uses
-the credentials from `docker login`, so `helm registry logout` alone isn't enough.
+bash or zsh, runs Helm with empty credential files, so it fetches the chart logged out and also confirms that the chart
+is public. Helm also uses the credentials from `docker login`, so `helm registry logout` alone isn't enough. The images
+are inspected with your usual Docker setup, so `docker buildx` is found wherever it is installed.
 
 ```bash
-export HELM_REGISTRY_CONFIG="$(mktemp -d)/config.json" DOCKER_CONFIG="$(mktemp -d)"
-images=$(helm template uc oci://registry-1.docker.io/unitycatalog/unitycatalog-chart --version X.Y.Z \
+images=$(HELM_REGISTRY_CONFIG="$(mktemp -d)/config.json" DOCKER_CONFIG="$(mktemp -d)" \
+  helm template uc oci://registry-1.docker.io/unitycatalog/unitycatalog-chart --version X.Y.Z \
   | sed -n 's/^ *image: "\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' | sort -u)
 missing=0
 while read -r image; do

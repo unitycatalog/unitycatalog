@@ -28,7 +28,8 @@ it checks only the UI.
 kubectl port-forward --namespace unitycatalog svc/unitycatalog-server 8080:8080
 ```
 
-The API is then at `http://localhost:8080/api/2.1/unity-catalog`.
+The API is then at `http://localhost:8080/api/2.1/unity-catalog`. With authentication on, API calls need a bearer
+token; see [Authentication](auth.md).
 
 By default, the UI forwards API requests to the server, and in this mode you open it through `kubectl port-forward`:
 
@@ -39,7 +40,7 @@ kubectl port-forward --namespace unitycatalog svc/unitycatalog-ui 3000:3000
 The UI is then at `http://localhost:3000`.
 
 To serve the API and the UI on a hostname, enable `ingress` or `httpRoute`. They send `/api` requests to the server and everything
-else to the UI. See
+else to the UI. Both need a `host`, and with either one the UI no longer forwards API requests itself. See
 [values.httproute.yaml](https://github.com/unitycatalog/unitycatalog/blob/main/helm/values.httproute.yaml) for an
 example.
 
@@ -74,6 +75,13 @@ With authentication on (`auth.enabled: true`), PostgreSQL also needs `server.aut
 during an upgrade, so a grant or revoke made through one server must reach the others. See
 [Multiple server instances](auth.md#multiple-server-instances).
 
+```yaml
+server:
+  config:
+    extraProperties:
+      server.authorization.policy-refresh: "true"
+```
+
 ```sh
 helm upgrade --install unitycatalog oci://registry-1.docker.io/unitycatalog/unitycatalog-chart \
   --version X.Y.Z --namespace unitycatalog --values values.yaml
@@ -81,7 +89,8 @@ helm upgrade --install unitycatalog oci://registry-1.docker.io/unitycatalog/unit
 
 ## Upgrade and uninstall
 
-To upgrade, read the release notes, then run `helm upgrade` with the new `--version`.
+To upgrade, read the release notes, then run `helm upgrade` with the new `--version` and the same `--values` file.
+Without `--values`, Helm resets your custom values to the chart's defaults.
 
 `helm uninstall unitycatalog --namespace unitycatalog` removes the release. It keeps the chart-created H2 database
 PersistentVolumeClaim and token signing key Secret, and a later install with the same release name and
