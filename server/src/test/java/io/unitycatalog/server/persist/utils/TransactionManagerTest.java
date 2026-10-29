@@ -573,7 +573,7 @@ public class TransactionManagerTest {
           .commitFilesize(100)
           .commitFileModificationTimestamp(new Date())
           .commitTimestamp(new Date())
-          .isBackfilledLatestCommit(false)
+          .isBackfilled(false)
           .build();
     }
   }
