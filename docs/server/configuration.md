@@ -74,6 +74,12 @@ The server config file is at the location `etc/conf/server.properties` (relative
     any principal who can create a table can use it. Each entry must be a local path; an entry such as an `s3://` URL
     fails server startup. As with `storage-root.*`, a relative path containing `/` (for example `./uc-external`) is
     resolved against the server's working directory, and a directory that does not exist yet is accepted.
+- `server.token-signing-key-dir`: A directory holding the key the server signs its tokens with: `private_key.der`
+    (PKCS #8, DER) or `private_key.pem` (PKCS #8 or PKCS #1, PEM), and `key_id.txt`. The server only reads this
+    directory and derives the public key, so it can be a read-only mount of a Kubernetes Secret. Use the same key on
+    every server instance. When unset, the server uses the key in `etc/conf`, generating it on first start (a newly
+    generated private key is readable by its owner only), and logs a warning at each start. The Helm chart sets this
+    to its key Secret.
 - `server.shutdown-timeout`: How long the server waits for in-flight requests when it stops, for example on SIGTERM.
     Defaults to `PT5S`. Stopping takes longer than this: up to 5 seconds more if a storage cleanup attempt is
     running, plus about 2 seconds to stop the HTTP server. With the default, give `docker stop` 15 seconds or more
