@@ -7,6 +7,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Lob;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.util.List;
 import java.util.UUID;
@@ -86,10 +87,12 @@ public class FunctionInfoDAO extends IdentifiableDAO {
 
   @OneToMany(mappedBy = "function", cascade = CascadeType.ALL, orphanRemoval = true)
   @SQLRestriction("input_or_return = 0")
+  @OrderBy("position")
   private List<FunctionParameterInfoDAO> inputParams;
 
   @OneToMany(mappedBy = "function", cascade = CascadeType.ALL, orphanRemoval = true)
   @SQLRestriction("input_or_return = 1")
+  @OrderBy("position")
   private List<FunctionParameterInfoDAO> returnParams;
 
   public static FunctionInfoDAO from(FunctionInfo functionInfo) {

@@ -17,13 +17,10 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.model.UpdateUser;
+import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import io.unitycatalog.server.testdatabase.TestDatabases;
-import io.unitycatalog.server.utils.ServerProperties;
-import java.util.Properties;
 import java.util.UUID;
 import org.hibernate.SessionFactory;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -31,25 +28,12 @@ class UserRepositoryTest {
 
   private static SessionFactory sessionFactory;
   private static UserRepository userRepository;
-  private static TestDatabase testDatabase;
+  @TempDatabase private static TestDatabase testDatabase;
 
   @BeforeAll
   static void setUp() {
-    Properties properties = new Properties();
-    properties.setProperty("server.env", "test");
-    testDatabase = TestDatabases.newDatabase();
-    sessionFactory =
-        testDatabase
-            .openHibernateConfigurator(new ServerProperties(properties))
-            .getSessionFactory();
+    sessionFactory = testDatabase.sessionFactory();
     userRepository = new UserRepository(null, sessionFactory);
-  }
-
-  @AfterAll
-  static void tearDown() {
-    if (testDatabase != null) {
-      testDatabase.close();
-    }
   }
 
   @Test
