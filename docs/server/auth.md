@@ -252,7 +252,6 @@ Behind the scenes, on startup, the UC server will configure itself with the foll
 
 * Creation of internal signing keys and authentication files in `etc/conf`, unless
   [`server.token-signing-key-dir`](configuration.md#configuration) points at your own key
-* Creation of an admin access token in `etc/conf/token.txt`
 * Creation of an admin account in the user database
 * Granting the admin account as the metastore admin for the server
 
@@ -262,11 +261,12 @@ The following steps allow you to test user and admin authentication to your loca
 
 ### Use admin token to verify admin user is in local database
 
-As noted earlier, on startup the UC server configured itself and created the admin access token at
-`etc/conf/token.txt`. The following command uses the same admin authentication token to view the user list.
+`bin/uc-admin-token` prints an admin access token signed with the server's key. Run it on the server's host,
+where that key is readable; the server does not write the token to a file. The token does not expire, so treat it
+like the key itself. The following command uses it to view the user list.
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt) user list
+bin/uc --auth_token $(bin/uc-admin-token) user list
 ```
 
 The output should look something like this
@@ -319,7 +319,7 @@ To fix this error, let’s start by adding your user account to the UC local dat
 to add your account to the local database.
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt) user create --name "Bobbie Draper" --email bobbie@rocinante
+bin/uc --auth_token $(bin/uc-admin-token) user create --name "Bobbie Draper" --email bobbie@rocinante
 ```
 
 ### Try to log in with your user account
@@ -369,13 +369,13 @@ bin/uc catalog list
 bin/uc --auth_token $token catalog list
 
 # Succeeds
-bin/uc --auth_token $(cat etc/conf/token.txt) catalog list
+bin/uc --auth_token $(bin/uc-admin-token) catalog list
 ```
 
 But if you were to add `USE CATALOG` permission to your user account
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt) permission create  --securable_type catalog --name unity --privilege 'USE CATALOG' --principal bobbie@rocinante 
+bin/uc --auth_token $(bin/uc-admin-token) permission create  --securable_type catalog --name unity --privilege 'USE CATALOG' --principal bobbie@rocinante 
 ```
 
 then the following command would work.
@@ -396,7 +396,7 @@ bin/uc --auth_token $token catalog create --name myfirstcatalog
 Thus, let’s provide your account with the necessary permissions.
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt) permission create --securable_type metastore --name metastore --privilege "CREATE CATALOG" --principal bobbie@rocinante
+bin/uc --auth_token $(bin/uc-admin-token) permission create --securable_type metastore --name metastore --privilege "CREATE CATALOG" --principal bobbie@rocinante
 ```
 
 With the permission set, the preceding command will succeed because your user account has the `CREATE CATALOG`
@@ -409,9 +409,9 @@ Notice how we’re providing access using the three-part naming convention of *c
 each level of permissions, we progress down the three parts.
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_type catalog --name unity --privilege "USE CATALOG" --principal bobbie@rocinante 
-bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_type schema --name unity.default --privilege "USE SCHEMA" --principal bobbie@rocinante
-bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_type table --name unity.default.numbers --privilege "SELECT" --principal bobbie@rocinante
+bin/uc --auth_token $(bin/uc-admin-token) permission create --securable_type catalog --name unity --privilege "USE CATALOG" --principal bobbie@rocinante 
+bin/uc --auth_token $(bin/uc-admin-token) permission create --securable_type schema --name unity.default --privilege "USE SCHEMA" --principal bobbie@rocinante
+bin/uc --auth_token $(bin/uc-admin-token) permission create --securable_type table --name unity.default.numbers --privilege "SELECT" --principal bobbie@rocinante
 ```
 
 Then start a new DuckDB session.

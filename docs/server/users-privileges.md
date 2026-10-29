@@ -25,7 +25,7 @@ When you create a new catalog with external authentication enabled, Unity Catalo
 
 **Admins:**
 
-- Use the admin token (in `etc/conf/token.txt`) to authenticate
+- Use the admin token (printed by `bin/uc-admin-token`) to authenticate
 - Have full privileges to access and transform catalogs, schemas and assets
 - Can create user accounts
 
@@ -40,7 +40,7 @@ When you create a new catalog with external authentication enabled, Unity Catalo
 Admins can create new users using the Unity Catalog CLI:
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt) user create --name "Bobbie Draper" --email bobbie@rocinante
+bin/uc --auth_token $(bin/uc-admin-token) user create --name "Bobbie Draper" --email bobbie@rocinante
 ```
 
 This will add a new user to the local Unity Catalog user database.
@@ -52,11 +52,11 @@ An admin can grant users privileges using the Unity Catalog CLI.
 For example, to grant a user the `USE CATALOG` privileg:
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt) permission create  --securable_type catalog --name unity --privilege 'USE CATALOG' --principal bobbie@rocinante
+bin/uc --auth_token $(bin/uc-admin-token) permission create  --securable_type catalog --name unity --privilege 'USE CATALOG' --principal bobbie@rocinante
 ```
 
 Or to grant the `CREATE CATALOG` privilege:
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt) permission create --securable_type metastore --name metastore --privilege "CREATE CATALOG" --principal bobbie@rocinante
+bin/uc --auth_token $(bin/uc-admin-token) permission create --securable_type metastore --name metastore --privilege "CREATE CATALOG" --principal bobbie@rocinante
 ```

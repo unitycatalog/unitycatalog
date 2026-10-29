@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# Prints an admin token signed with the server's key, for example:
+#   bin/uc --auth_token $(bin/uc-admin-token) user list
+# It reads the key the server signs with, so run it where that key is readable.
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+
+if [ -d "$ROOT_DIR/jars" ]; then
+  CLASSPATH_FILE="$ROOT_DIR/jars/classpath"
+else
+  CLASSPATH_FILE="$ROOT_DIR/server/target/classpath"
+fi
+if [ ! -f "$CLASSPATH_FILE" ]; then
+  echo "No classpath file at $CLASSPATH_FILE. Run build/sbt package first." >&2
+  exit 1
+fi
+
+cd "$ROOT_DIR" || exit 1
+exec java -cp "$(cat "$CLASSPATH_FILE")" io.unitycatalog.server.security.AdminTokenCommand

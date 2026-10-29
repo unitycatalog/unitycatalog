@@ -64,7 +64,7 @@ public class SecurityContext {
     serviceToken = createServiceToken();
 
     createInternalCertsFile();
-    createServiceTokenFile();
+    deleteServiceTokenFile();
 
     LOGGER.info("--- Internal Certs Configuration --");
     LOGGER.info(getInternalCertsFile());
@@ -85,6 +85,12 @@ public class SecurityContext {
   }
 
   public String createServiceToken() {
+    return createServiceToken(algorithm, keyId, serviceName, localIssuer);
+  }
+
+  /** Creates an admin service token. It has no expiry, so it is valid while the key is. */
+  static String createServiceToken(
+      Algorithm algorithm, String keyId, String serviceName, String localIssuer) {
     return JWT.create()
         .withSubject(serviceName)
         .withIssuer(localIssuer)
@@ -121,8 +127,16 @@ public class SecurityContext {
     return Files.readString(certsFile);
   }
 
+  // The admin token stays in memory; bin/uc-admin-token prints one. A token.txt in the
+  // configuration folder is a plaintext copy of an admin token that does not expire, so remove it.
+  // Removing the file does not revoke copies; changing the signing key does.
   @SneakyThrows
-  public void createServiceTokenFile() {
-    Files.writeString(serviceTokenFile, serviceToken);
+  private void deleteServiceTokenFile() {
+    if (Files.deleteIfExists(serviceTokenFile)) {
+      LOGGER.warn(
+          "Deleted {}: the server keeps the admin token in memory, and bin/uc-admin-token prints"
+              + " one. Copies of the deleted token stay valid until the signing key changes.",
+          serviceTokenFile);
+    }
   }
 }
