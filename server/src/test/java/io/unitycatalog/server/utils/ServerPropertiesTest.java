@@ -426,6 +426,7 @@ public class ServerPropertiesTest {
                 // A line break at the end, as in a Secret made from a file, is dropped.
                 "S3_SECRETKEY_0", "env-s3-secret\r\n",
                 "ADLS_CLIENTSECRET_0", "env-adls-secret",
+                "HIBERNATE_CONNECTION_PASSWORD", "env-db-password",
                 // An empty variable does not replace the file value.
                 "AWS_SECRETKEY", "",
                 // Only secrets use the upper-case name; cloud runtimes set AWS_REGION themselves.
@@ -434,6 +435,8 @@ public class ServerPropertiesTest {
     assertThat(serverProperties.get(Property.CLIENT_SECRET)).isEqualTo("env-client-secret");
     assertThat(serverProperties.get(Property.AWS_SECRET_KEY)).isEqualTo("file-aws-secret");
     assertThat(serverProperties.get(Property.AWS_REGION)).isEqualTo("us-west-2");
+    assertThat(serverProperties.getOverride("hibernate.connection.password"))
+        .isEqualTo("env-db-password");
     assertThat(
             serverProperties
                 .getS3Configurations()

@@ -503,7 +503,14 @@ If not set, the default storage class will be used
 not set
 </pre>
 </td>
-			<td>Override Hibernate configuration for the server</td>
+			<td>Override Hibernate configuration for the server
+
+Do not put the password here: set `postgresqlConfig.passwordSecretName` and
+`passwordSecretKey`; with `db.type: postgresql` the chart passes the password to the server
+as an environment variable. A password in `hibernate.properties` is deprecated.
+If the template sets `hibernate.connection.password=${DB_PASSWORD}`, remove that line: the
+server reads the password from `HIBERNATE_CONNECTION_PASSWORD`.
+</td>
 		</tr>
 		<tr>
 			<td>server.db.postgresqlConfig.dbName</td>

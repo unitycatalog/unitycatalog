@@ -53,10 +53,12 @@ services:
   server:
     environment:
       SERVER_CLIENT_SECRET: ${SERVER_CLIENT_SECRET}
+      HIBERNATE_CONNECTION_PASSWORD: ${HIBERNATE_CONNECTION_PASSWORD}
 ```
 
-Compose fills in `${SERVER_CLIENT_SECRET}` from your shell or a `.env` file, so the
-secret stays out of `compose.yaml`.
+Compose fills in each `${...}` from your shell or a `.env` file, so the secrets stay
+out of `compose.yaml`. The database password works the same way; keeping it in the
+mounted `hibernate.properties` is deprecated.
 
 The configuration will also create a persistent, named volume to store the
 server's data. This will persist between restarts of the container. See the

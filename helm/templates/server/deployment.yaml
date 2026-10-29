@@ -95,13 +95,6 @@ spec:
             - name: jwt-key-volume
               mountPath: /home/unitycatalog/etc/confJwtKey
           env:
-          {{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.passwordSecretName }}
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.server.db.postgresqlConfig.passwordSecretName | quote }}
-                  key: {{ required "Password secret key is required" .Values.server.db.postgresqlConfig.passwordSecretKey | quote }}
-          {{- end }}
           {{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.ssl.enabled }}
           {{- if .Values.server.db.postgresqlConfig.ssl.rootCert }}
             - name: DB_ROOT_CERT
@@ -154,7 +147,7 @@ spec:
           image: "{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
           {{- with include "unitycatalog.server.secretEnv" . | trim }}
-          # Secrets reach the server as environment variables, not through server.properties.
+          # Secrets reach the server as environment variables, not through the properties files.
           env:
             {{- . | nindent 12 }}
           {{- end }}

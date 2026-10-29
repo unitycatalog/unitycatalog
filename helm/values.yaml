@@ -293,6 +293,14 @@ server:
 
     # -- (string) Override Hibernate configuration for the server
     # @default -- not set
+    # @raw
+    #
+    # Do not put the password here: set `postgresqlConfig.passwordSecretName` and
+    # `passwordSecretKey`; with `db.type: postgresql` the chart passes the password to the server
+    # as an environment variable. A password in `hibernate.properties` is deprecated.
+    # If the template sets `hibernate.connection.password=${DB_PASSWORD}`, remove that line: the
+    # server reads the password from `HIBERNATE_CONNECTION_PASSWORD`.
+    #
     overrideConfig:
 
   config:
