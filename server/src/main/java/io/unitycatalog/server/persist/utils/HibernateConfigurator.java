@@ -33,6 +33,10 @@ import org.hibernate.SessionFactory;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.cfg.JdbcSettings;
+import org.hibernate.cfg.ManagedBeanSettings;
+import org.hibernate.resource.beans.container.spi.BeanContainer;
+import org.hibernate.resource.beans.container.spi.ContainedBean;
+import org.hibernate.resource.beans.spi.BeanInstanceProducer;
 import org.hibernate.service.ServiceRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,7 +60,7 @@ public class HibernateConfigurator implements AutoCloseable {
   private final HikariDataSource dataSource;
 
   public HibernateConfigurator(ServerProperties serverProperties) {
-    this(setupHibernateProperties(serverProperties));
+    this(setupHibernateProperties(serverProperties), CredentialCipher.from(serverProperties));
   }
 
   /**
@@ -64,10 +68,14 @@ public class HibernateConfigurator implements AutoCloseable {
    * properties (e.g. point at PostgreSQL via Testcontainers) before construction.
    */
   public HibernateConfigurator(Properties hibernateProperties) {
+    this(hibernateProperties, new CredentialCipher(/* key= */ null));
+  }
+
+  HibernateConfigurator(Properties hibernateProperties, CredentialCipher credentialCipher) {
     this.hibernateProperties = hibernateProperties;
     this.dataSource = createDataSource(hibernateProperties);
     try {
-      this.sessionFactory = createSessionFactory(hibernateProperties, dataSource);
+      this.sessionFactory = createSessionFactory(hibernateProperties, dataSource, credentialCipher);
     } catch (Throwable t) {
       dataSource.close();
       throw t;
@@ -117,7 +125,9 @@ public class HibernateConfigurator implements AutoCloseable {
   }
 
   private static SessionFactory createSessionFactory(
-      Properties hibernateProperties, HikariDataSource dataSource) {
+      Properties hibernateProperties,
+      HikariDataSource dataSource,
+      CredentialCipher credentialCipher) {
     try {
       Properties sessionFactoryProperties = new Properties();
       sessionFactoryProperties.putAll(hibernateProperties);
@@ -131,6 +141,8 @@ public class HibernateConfigurator implements AutoCloseable {
           .keySet()
           .removeIf(key -> key instanceof String name && name.startsWith(HIKARI_PREFIX));
       sessionFactoryProperties.put(JdbcSettings.JAKARTA_NON_JTA_DATASOURCE, dataSource);
+      sessionFactoryProperties.put(
+          ManagedBeanSettings.BEAN_CONTAINER, new CredentialCipherBeanContainer(credentialCipher));
 
       Configuration configuration = new Configuration().setProperties(sessionFactoryProperties);
 
@@ -217,5 +229,40 @@ public class HibernateConfigurator implements AutoCloseable {
           PASSWORD_KEY,
           propertiesPath);
     }
+  }
+
+  /**
+   * Gives Hibernate the configured {@link CredentialCipher} for the converter on CredentialDAO,
+   * which Hibernate would otherwise create without a key. Other beans are created the way Hibernate
+   * creates them without a container.
+   */
+  private record CredentialCipherBeanContainer(CredentialCipher credentialCipher)
+      implements BeanContainer {
+
+    @Override
+    public <B> ContainedBean<B> getBean(
+        Class<B> beanType, LifecycleOptions options, BeanInstanceProducer fallbackProducer) {
+      B bean =
+          beanType == CredentialCipher.class
+              ? beanType.cast(credentialCipher)
+              : fallbackProducer.produceBeanInstance(beanType);
+      return () -> bean;
+    }
+
+    @Override
+    public <B> ContainedBean<B> getBean(
+        String name,
+        Class<B> beanType,
+        LifecycleOptions options,
+        BeanInstanceProducer fallbackProducer) {
+      B bean =
+          beanType == CredentialCipher.class
+              ? beanType.cast(credentialCipher)
+              : fallbackProducer.produceBeanInstance(name, beanType);
+      return () -> bean;
+    }
+
+    @Override
+    public void stop() {}
   }
 }

@@ -80,6 +80,13 @@ The server config file is at the location `etc/conf/server.properties` (relative
     every server instance. When unset, the server uses the key in `etc/conf`, generating it on first start (a newly
     generated private key is readable by its owner only), and logs a warning at each start. The Helm chart sets this
     to its key Secret.
+- `server.credential-encryption-key` or `server.credential-encryption-key-file`: The key that encrypts the storage
+    credentials the server stores in its database (AES-256-GCM): 32 random bytes in base64, for example the output of
+    `openssl rand -base64 32`, set inline (as `SERVER_CREDENTIAL_ENCRYPTION_KEY`, see [Secrets](#secrets)) or in a
+    file the second setting names. Set one, not both, and keep the key: credentials encrypted with it cannot be read
+    without it. Credentials stored before the key was set stay readable and are encrypted when next updated. When
+    neither is set, the server stores them unencrypted and logs a warning at startup. The Helm chart sets it from
+    `server.credentialEncryptionKeySecret`.
 - `server.shutdown-timeout`: How long the server waits for in-flight requests when it stops, for example on SIGTERM.
     Defaults to `PT5S`. Stopping takes longer than this: up to 5 seconds more if a storage cleanup attempt is
     running, plus about 2 seconds to stop the HTTP server. With the default, give `docker stop` 15 seconds or more
@@ -109,6 +116,7 @@ with `_` for each character that is not a letter or digit:
 | `s3.secretKey.<n>`, `s3.sessionToken.<n>` | `S3_SECRETKEY_<n>`, `S3_SESSIONTOKEN_<n>` |
 | `adls.clientSecret.<n>` | `ADLS_CLIENTSECRET_<n>` |
 | `hibernate.connection.password` (in `hibernate.properties`) | `HIBERNATE_CONNECTION_PASSWORD` |
+| `server.credential-encryption-key` | `SERVER_CREDENTIAL_ENCRYPTION_KEY` |
 
 ```sh
 export SERVER_CLIENT_SECRET='<client secret>'

@@ -42,7 +42,7 @@ public class ServerProperties {
       Pattern.compile(
           "server\\.client-secret|aws\\.secretKey|aws\\.sessionToken"
               + "|(s3\\.secretKey|s3\\.sessionToken|adls\\.clientSecret)\\.\\d+"
-              + "|hibernate\\.connection\\.password");
+              + "|hibernate\\.connection\\.password|server\\.credential-encryption-key");
 
   private final Properties properties = new Properties(generateDefaults());
   private final Map<String, String> env;
@@ -288,6 +288,9 @@ public class ServerProperties {
     ACCESS_TOKEN_TIMEOUT("server.access-token-timeout", "PT24H", DURATION_VALIDATOR),
     // Directory holding the operator's token signing key; see SecurityConfiguration.
     TOKEN_SIGNING_KEY_DIR("server.token-signing-key-dir"),
+    // Key that encrypts stored credentials, inline or in a file; see CredentialCipher.
+    CREDENTIAL_ENCRYPTION_KEY("server.credential-encryption-key"),
+    CREDENTIAL_ENCRYPTION_KEY_FILE("server.credential-encryption-key-file"),
     READINESS_PROBE_INTERVAL(
         "server.readiness.probe-interval", "PT5S", POSITIVE_DURATION_VALIDATOR),
     READINESS_DB_TIMEOUT("server.readiness.db-timeout", "PT2S", POSITIVE_DURATION_VALIDATOR),

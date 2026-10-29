@@ -2,9 +2,16 @@ package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.server.model.AwsIamRoleRequest;
+import io.unitycatalog.server.model.CreateCredentialRequest;
+import io.unitycatalog.server.model.CredentialPurpose;
+import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
+import javax.crypto.spec.SecretKeySpec;
+import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
 
 class HibernateConfiguratorTest {
@@ -76,6 +83,53 @@ class HibernateConfiguratorTest {
     } finally {
       System.clearProperty("hibernate.connection.password");
     }
+  }
+
+  @Test
+  void encryptsStoredCredentialsWithTheConfiguredKey() {
+    CredentialCipher cipher = new CredentialCipher(new SecretKeySpec(new byte[32], "AES"));
+    try (HibernateConfigurator configurator = new HibernateConfigurator(h2Properties(), cipher)) {
+      try (Session session = configurator.getSessionFactory().openSession()) {
+        session.beginTransaction();
+        session.persist(newCredential("encrypted", "role/r"));
+        session.persist(newCredential("plaintext", "role/old"));
+        session.flush();
+        // A row written before the key was set stays readable.
+        session
+            .createNativeMutationQuery(
+                "UPDATE uc_credentials SET credential = ?1 WHERE name = 'plaintext'")
+            .setParameter(1, "{\"role_arn\":\"arn:aws:iam::123456789012:role/old\"}")
+            .executeUpdate();
+        session.getTransaction().commit();
+      }
+      try (Session session = configurator.getSessionFactory().openSession()) {
+        String stored =
+            session
+                .createNativeQuery(
+                    "SELECT credential FROM uc_credentials WHERE name = 'encrypted'", String.class)
+                .getSingleResult();
+        assertThat(stored).startsWith(CredentialCipher.PREFIX).doesNotContain("role/r");
+        List<String> roleArns =
+            session
+                .createQuery("FROM CredentialDAO ORDER BY name", CredentialDAO.class)
+                .list()
+                .stream()
+                .map(dao -> dao.getAwsIamRoleResponse().getRoleArn())
+                .toList();
+        assertThat(roleArns)
+            .containsExactly(
+                "arn:aws:iam::123456789012:role/r", "arn:aws:iam::123456789012:role/old");
+      }
+    }
+  }
+
+  private static CredentialDAO newCredential(String name, String role) {
+    return CredentialDAO.from(
+        new CreateCredentialRequest()
+            .name(name)
+            .purpose(CredentialPurpose.STORAGE)
+            .awsIamRole(new AwsIamRoleRequest().roleArn("arn:aws:iam::123456789012:" + role)),
+        "owner");
   }
 
   private static Properties h2Properties() {

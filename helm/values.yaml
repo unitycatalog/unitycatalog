@@ -597,6 +597,18 @@ server:
     #
     create: true
 
+  credentialEncryptionKeySecret:
+    # -- (string) Name of the Secret holding the key that encrypts stored storage credentials
+    # @raw
+    #
+    # The key is 32 random bytes in base64, for example the output of `openssl rand -base64 32`.
+    # When unset, the server stores storage credentials unencrypted and logs a warning.
+    #
+    name:
+
+    # -- (string) Key in the Secret that holds the encryption key
+    key: key
+
   # -- (string) Log level for the server
   # @default -- info
   logLevel: info

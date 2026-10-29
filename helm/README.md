@@ -425,6 +425,28 @@ not set
 </td>
 		</tr>
 		<tr>
+			<td>server.credentialEncryptionKeySecret.key</td>
+			<td>string</td>
+			<td><pre lang="json">
+"key"
+</pre>
+</td>
+			<td>Key in the Secret that holds the encryption key</td>
+		</tr>
+		<tr>
+			<td>server.credentialEncryptionKeySecret.name</td>
+			<td>string</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+			<td>Name of the Secret holding the key that encrypts stored storage credentials
+
+The key is 32 random bytes in base64, for example the output of `openssl rand -base64 32`.
+When unset, the server stores storage credentials unencrypted and logs a warning.
+</td>
+		</tr>
+		<tr>
 			<td>server.db.fileConfig.persistence.accessModes</td>
 			<td>array</td>
 			<td><pre lang="json">

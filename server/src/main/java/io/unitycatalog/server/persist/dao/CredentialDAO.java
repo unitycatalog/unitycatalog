@@ -9,9 +9,11 @@ import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.CredentialPurpose;
+import io.unitycatalog.server.persist.utils.CredentialCipher;
 import io.unitycatalog.server.service.CredentialService;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -61,6 +63,7 @@ public class CredentialDAO extends IdentifiableDAO {
 
   @Lob
   @Column(name = "credential", nullable = false)
+  @Convert(converter = CredentialCipher.class)
   // No direct access from outside
   @Getter(AccessLevel.NONE)
   @Setter(AccessLevel.NONE)
@@ -161,7 +164,6 @@ public class CredentialDAO extends IdentifiableDAO {
     credentialType = type;
     try {
       credential = objectMapper.writeValueAsString(inputCredential);
-      // TODO: encrypt the credential
     } catch (JsonProcessingException e) {
       throw new IllegalArgumentException(
           "Failed to parse credential of " + credential.getClass().getSimpleName(), e);

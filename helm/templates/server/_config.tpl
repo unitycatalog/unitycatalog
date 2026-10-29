@@ -109,6 +109,13 @@ Secrets passed to the server container as environment variables, under the names
 (see "Secrets" in docs/server/configuration.md).
 */}}
 {{- define "unitycatalog.server.secretEnv" -}}
+{{- with .Values.server.credentialEncryptionKeySecret.name }}
+- name: SERVER_CREDENTIAL_ENCRYPTION_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ . | quote }}
+      key: {{ $.Values.server.credentialEncryptionKeySecret.key | quote }}
+{{- end }}
 {{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.passwordSecretName }}
 - name: HIBERNATE_CONNECTION_PASSWORD
   valueFrom:
