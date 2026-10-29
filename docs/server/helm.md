@@ -105,7 +105,8 @@ The endpoints are unauthenticated. See [Observability](observability.md) for res
 ## Upgrade and uninstall
 
 To upgrade, read the release notes, then run `helm upgrade` with the new `--version` and the same `--values` file.
-Without `--values`, Helm resets your custom values to the chart's defaults.
+If you pass any `--values` or `--set`, Helm doesn't keep the values from your earlier install, so pass the full file
+each time.
 
 `helm uninstall unitycatalog --namespace unitycatalog` removes the release. It keeps the chart-created H2 database
 PersistentVolumeClaim and token signing key Secret, and a later install with the same release name and
