@@ -74,7 +74,7 @@ public class OpaInputBuilderTest {
     properties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "false");
     serverProperties = new ServerProperties(properties);
     testDatabase = TestDatabases.newDatabase();
-    hibernateConfigurator = testDatabase.openHibernateConfigurator(serverProperties);
+    hibernateConfigurator = testDatabase.hibernateConfigurator();
     inputBuilder = new OpaInputBuilder(hibernateConfigurator.getSessionFactory());
     persist(user, catalog, schema);
   }
