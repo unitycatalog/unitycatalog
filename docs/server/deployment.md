@@ -89,6 +89,22 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
     docker-compose -f etc/db/mysql-example.yml up -d
     ```
 
+- Unity Catalog compares storage paths exactly, so two paths that differ only in case are
+  different locations. PostgreSQL and H2 compare text exactly by default, but MySQL's default
+  collation ignores case. Create the database with a binary collation. The example file already does this for `ucdb` when it creates a
+  new data volume; for your own server run:
+
+    ```sql
+    CREATE DATABASE ucdb CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
+    ```
+
+  The server logs a warning at startup if any text column in the database uses a case-insensitive
+  collation.
+
+  For an existing database, `ALTER DATABASE ... COLLATE` changes only the default for tables created
+  later. Convert each existing table instead, for example
+  `ALTER TABLE <table> CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;`.
+
 - Modify the `etc/conf/hibernate.properties` file with your MySQL connection details:
 
     ```properties
@@ -155,4 +171,44 @@ H2:
 
 ```sql
 ALTER TABLE uc_properties ALTER COLUMN property_value SET DATA TYPE VARCHAR(16777215);
+```
+
+### Retained Delta commits: upgrade and downgrade
+
+For managed Delta tables, `uc_delta_commits` keeps a backfilled commit's row for the last 100
+versions instead of deleting it, so a client retrying an already-published commit is answered from
+the recorded file name. Expect up to about 100 rows per managed Delta table, where earlier versions
+kept 1 to 10. Rows are only pruned when the table is next backfilled, so an idle table keeps its
+rows.
+
+No migration is needed: tables written by earlier versions are read correctly as they are. Earlier
+versions, however, misread the retained rows, so:
+
+- **Upgrade every server that shares the database together.** Do not run old and new servers side
+  by side. An old server serving a table that a new server has backfilled can reject commits with
+  `RESOURCE_EXHAUSTED`, check up to 100 published commit files in storage on a backfill (failing
+  if any of them were removed by Delta log cleanup), and omit the newest commit from some
+  get-commits responses.
+- **Before downgrading**, stop all servers and delete the retained rows. The statements below keep
+  only each table's highest backfilled row, which is the layout earlier versions expect.
+
+PostgreSQL and H2:
+
+```sql
+DELETE FROM uc_delta_commits
+WHERE is_backfilled_latest_commit = true
+  AND commit_version < (
+    SELECT MAX(c.commit_version) FROM uc_delta_commits c
+    WHERE c.table_id = uc_delta_commits.table_id AND c.is_backfilled_latest_commit = true);
+```
+
+MySQL:
+
+```sql
+DELETE d FROM uc_delta_commits d
+JOIN (
+  SELECT table_id, MAX(commit_version) AS max_version FROM uc_delta_commits
+  WHERE is_backfilled_latest_commit = true GROUP BY table_id
+) m ON d.table_id = m.table_id
+WHERE d.is_backfilled_latest_commit = true AND d.commit_version < m.max_version;
 ```

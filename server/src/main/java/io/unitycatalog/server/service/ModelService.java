@@ -14,6 +14,7 @@ import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
@@ -125,16 +126,21 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   @Patch("/{full_name}")
   @AuthorizeExpression(
       """
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #registered_model, OWNER))
+      (#authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+              #authorize(#principal, #schema, OWNER)) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+              #authorize(#principal, #schema, USE_SCHEMA) &&
+              #authorize(#principal, #registered_model, OWNER))) &&
+      (!#strict_privilege_checks || #new_name == null ||
+          #authorize(#principal, #schema, OWNER) ||
+          (#authorize(#principal, #schema, USE_SCHEMA) &&
+              #authorizeAny(#principal, #schema, CREATE_MODEL, CREATE_FUNCTION)))
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateRegisteredModel(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullName,
-      UpdateRegisteredModel updateRegisteredModel) {
+      @AuthorizeKey(key = "new_name") UpdateRegisteredModel updateRegisteredModel) {
     assert updateRegisteredModel != null;
     RegisteredModelInfo updateRegisteredModelResponse =
         modelRepository.updateRegisteredModel(fullName, updateRegisteredModel);

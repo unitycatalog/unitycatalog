@@ -9,7 +9,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpData;
-import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
@@ -26,7 +25,6 @@ import org.junit.jupiter.api.Test;
 public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
 
   private static final String TOKEN_ENDPOINT = "/api/1.0/unity-control/auth/tokens";
-  private static final String SCIM_USERS_PATH = "/api/1.0/unity-control/scim2/Users";
   private static final String OAUTH_CLIENT_ID = "oauth-client-uuid";
   private static final String SERVICE_EMAIL = "storium-uc-test@example.com";
   private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -38,7 +36,7 @@ public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
   public void setUp() {
     super.setUp();
     client = WebClient.builder(serverConfig.getServerUrl()).build();
-    createServiceUser();
+    createEnabledUser(SERVICE_EMAIL, OAUTH_CLIENT_ID);
   }
 
   @Test
@@ -163,30 +161,6 @@ public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
     String accessToken = body.get("access_token").asText();
     String subject = JWT.decode(accessToken).getClaim(JwtClaim.SUBJECT.key()).asString();
     assertThat(subject).isEqualTo(expectedSubject);
-  }
-
-  private void createServiceUser() {
-    String userJson =
-        "{"
-            + "\"displayName\":\"Storium UC test\","
-            + "\"externalId\":\""
-            + OAUTH_CLIENT_ID
-            + "\","
-            + "\"emails\":[{\"value\":\""
-            + SERVICE_EMAIL
-            + "\",\"primary\":true}]"
-            + "}";
-    RequestHeaders headers =
-        RequestHeaders.builder()
-            .method(HttpMethod.POST)
-            .path(SCIM_USERS_PATH)
-            .contentType(MediaType.JSON)
-            .add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest")
-            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
-            .build();
-    AggregatedHttpResponse response =
-        client.execute(headers, HttpData.ofUtf8(userJson)).aggregate().join();
-    assertThat(response.status().code()).isEqualTo(201);
   }
 
   private static String createIdentityToken(

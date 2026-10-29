@@ -5,6 +5,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import org.hibernate.SessionFactory;
 
 /**
  * One test's database on the selected backend. {@link #close()} closes every configurator opened
@@ -19,6 +20,7 @@ public final class TestDatabase implements AutoCloseable {
   private final String hbm2ddlAuto;
   private final Runnable release;
   private final List<HibernateConfigurator> openedConfigurators = new ArrayList<>();
+  private HibernateConfigurator defaultConfigurator;
 
   TestDatabase(
       String driver,
@@ -40,11 +42,12 @@ public final class TestDatabase implements AutoCloseable {
   }
 
   /**
-   * The server's Hibernate properties pointed at this database. Overrides what {@code
-   * server.env=test} forces, and makes a failed schema statement throw instead of logging.
+   * The server's Hibernate properties from {@code etc/conf/hibernate.properties}, pointed at this
+   * database, with a failed schema statement made to throw instead of being logged.
    */
-  public Properties hibernateProperties(ServerProperties serverProperties) {
-    Properties properties = HibernateConfigurator.setupHibernateProperties(serverProperties);
+  public Properties hibernateProperties() {
+    Properties properties =
+        HibernateConfigurator.setupHibernateProperties(new ServerProperties(new Properties()));
     properties.setProperty("hibernate.connection.driver_class", driver);
     properties.setProperty("hibernate.connection.url", url);
     properties.setProperty("hibernate.connection.username", user);
@@ -54,9 +57,16 @@ public final class TestDatabase implements AutoCloseable {
     return properties;
   }
 
-  /** A configurator on this database that {@link #close()} closes. */
-  public HibernateConfigurator openHibernateConfigurator(ServerProperties serverProperties) {
-    return openHibernateConfigurator(hibernateProperties(serverProperties));
+  /** The default configurator on this database, opened on first use; {@link #close()} closes it. */
+  public synchronized HibernateConfigurator hibernateConfigurator() {
+    if (defaultConfigurator == null) {
+      defaultConfigurator = openHibernateConfigurator(hibernateProperties());
+    }
+    return defaultConfigurator;
+  }
+
+  public SessionFactory sessionFactory() {
+    return hibernateConfigurator().getSessionFactory();
   }
 
   /** A configurator built from {@code hibernateProperties} that {@link #close()} closes. */
@@ -86,6 +96,7 @@ public final class TestDatabase implements AutoCloseable {
       }
     } finally {
       openedConfigurators.clear();
+      defaultConfigurator = null;
       release.run();
     }
   }
