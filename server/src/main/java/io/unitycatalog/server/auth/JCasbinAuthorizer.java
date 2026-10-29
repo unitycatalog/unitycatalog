@@ -1,5 +1,6 @@
 package io.unitycatalog.server.auth;
 
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -213,14 +214,16 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   }
 
   @Override
-  public boolean authorize(UUID principal, UUID resource, Privileges action) {
+  public boolean authorize(
+      UUID principal, SecurableType resourceType, UUID resource, Privileges action) {
     return currentEnforcer
         .get()
         .enforce(principal.toString(), resource.toString(), action.toString());
   }
 
   @Override
-  public boolean authorizeAny(UUID principal, UUID resource, Privileges... actions) {
+  public boolean authorizeAny(
+      UUID principal, SecurableType resourceType, UUID resource, Privileges... actions) {
     SyncedEnforcer enforcer = currentEnforcer.get();
     return Arrays.stream(actions)
         .anyMatch(
@@ -229,7 +232,8 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   }
 
   @Override
-  public boolean authorizeAll(UUID principal, UUID resource, Privileges... actions) {
+  public boolean authorizeAll(
+      UUID principal, SecurableType resourceType, UUID resource, Privileges... actions) {
     SyncedEnforcer enforcer = currentEnforcer.get();
     return Arrays.stream(actions)
         .allMatch(

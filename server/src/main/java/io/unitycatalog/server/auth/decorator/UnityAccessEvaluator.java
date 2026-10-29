@@ -1,6 +1,8 @@
 package io.unitycatalog.server.auth.decorator;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
 import java.lang.invoke.MethodHandle;
@@ -11,16 +13,16 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.expression.ExpressionParser;
+import org.springframework.expression.spel.SpelEvaluationException;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
 
 /**
  * Spring Expression Language access control evaluator.
  *
- * <p>A simple class to allow evaluating an SpEL authorization expression. This class exposes all
- * the principal and resource ids provided as SpEL context variables. It also exposes functions
- * authorization functions to call the configured authorization backend implementation which can be
- * used with SpEL logical operators to define compound authorization rules.
+ * <p>Exposes the principal UUID and resource values (type and UUID) as SpEL context variables.
+ * Authorization functions call the configured backend and can be combined with SpEL logical
+ * operators to define compound authorization rules.
  *
  * <p>{@code #strict_privilege_checks} is a boolean from server configuration. Request values cannot
  * override it.
@@ -47,35 +49,42 @@ public class UnityAccessEvaluator {
     this.parser = new SpelExpressionParser();
 
     MethodHandles.Lookup lookup = MethodHandles.lookup();
-    MethodType mt = MethodType.methodType(boolean.class, UUID.class, UUID.class, Privileges.class);
-    MethodHandle mh = lookup.findVirtual(authorizer.getClass(), "authorize", mt);
-    authorizeHandle = mh.bindTo(this.authorizer);
+    MethodType mt =
+        MethodType.methodType(boolean.class, UUID.class, Resource.class, Privileges.class);
+    MethodHandle mh = lookup.findVirtual(UnityAccessEvaluator.class, "authorize", mt);
+    authorizeHandle = mh.bindTo(this);
 
     mt = MethodType.methodType(boolean.class, Object[].class);
-    mh = lookup.findVirtual(this.getClass(), "authorizeAny", mt);
+    mh = lookup.findVirtual(UnityAccessEvaluator.class, "authorizeAny", mt);
     authorizeAnyHandle = mh.bindTo(this);
 
     mt = MethodType.methodType(boolean.class, Object[].class);
-    mh = lookup.findVirtual(this.getClass(), "authorizeAll", mt);
+    mh = lookup.findVirtual(UnityAccessEvaluator.class, "authorizeAll", mt);
     authorizeAllHandle = mh.bindTo(this);
   }
 
-  protected boolean authorizeAny(Object... parameters) {
-    // TODO: Find a better way to deal with the varargs authorizeAny() method.
-    UUID principalId = (UUID) parameters[0];
-    UUID resource = (UUID) parameters[1];
-    Privileges[] privileges = new Privileges[parameters.length - 2];
-    System.arraycopy(parameters, 2, privileges, 0, privileges.length);
-    return authorizer.authorizeAny(principalId, resource, privileges);
+  private record Resource(SecurableType type, UUID id) {}
+
+  private boolean authorize(UUID principal, Resource resource, Privileges privilege) {
+    return authorizer.authorize(principal, resource.type(), resource.id(), privilege);
   }
 
-  protected boolean authorizeAll(Object... parameters) {
-    // TODO: Find a better way to deal with the varargs authorizeAll() method.
+  private boolean authorizeAny(Object... parameters) {
+    // TODO: Find a better way to deal with the varargs authorizeAny() method.
     UUID principalId = (UUID) parameters[0];
-    UUID resource = (UUID) parameters[1];
+    Resource resource = (Resource) parameters[1];
     Privileges[] privileges = new Privileges[parameters.length - 2];
     System.arraycopy(parameters, 2, privileges, 0, privileges.length);
-    return authorizer.authorizeAll(principalId, resource, privileges);
+    return authorizer.authorizeAny(principalId, resource.type(), resource.id(), privileges);
+  }
+
+  private boolean authorizeAll(Object... parameters) {
+    // TODO: Find a better way to deal with the varargs authorizeAll() method.
+    UUID principalId = (UUID) parameters[0];
+    Resource resource = (Resource) parameters[1];
+    Privileges[] privileges = new Privileges[parameters.length - 2];
+    System.arraycopy(parameters, 2, privileges, 0, privileges.length);
+    return authorizer.authorizeAll(principalId, resource.type(), resource.id(), privileges);
   }
 
   /**
@@ -123,7 +132,10 @@ public class UnityAccessEvaluator {
     context.setVariable("permit", Boolean.TRUE);
     context.setVariable("principal", principal);
 
-    resourceIds.forEach((k, v) -> context.setVariable(k.name().toLowerCase(), v));
+    resourceIds.forEach(
+        (type, id) ->
+            context.setVariable(
+                type.name().toLowerCase(), id == null ? null : new Resource(type, id)));
     nonResourceValues.forEach(context::setVariable);
     context.setVariable("strict_privilege_checks", strictPrivilegeChecks);
 
@@ -149,7 +161,15 @@ public class UnityAccessEvaluator {
   }
 
   private boolean eval(String expression, StandardEvaluationContext context) {
-    Boolean result = parser.parseExpression(expression).getValue(context, Boolean.class);
-    return result != null && result;
+    try {
+      Boolean result = parser.parseExpression(expression).getValue(context, Boolean.class);
+      return result != null && result;
+    } catch (SpelEvaluationException e) {
+      if (e.getCause() instanceof BaseException failure
+          && failure.getErrorCode() == ErrorCode.UNAVAILABLE) {
+        throw failure;
+      }
+      throw e;
+    }
   }
 }

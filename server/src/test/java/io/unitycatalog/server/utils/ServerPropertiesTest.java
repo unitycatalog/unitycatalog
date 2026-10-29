@@ -8,10 +8,52 @@ import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.util.List;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 
 public class ServerPropertiesTest {
+
+  @Test
+  public void testOpaAuthorizationProperties() {
+    ServerProperties properties = new ServerProperties();
+    assertThat(properties.isOpaAuthorizationEnabled()).isFalse();
+    assertThat(properties.getOpaResponseTimeout()).isEqualTo(Duration.ofSeconds(5));
+    testValidProperty(Property.AUTHORIZATION_PROVIDER, "casbin");
+    testValidProperty(Property.AUTHORIZATION_PROVIDER, "OPA");
+    testInvalidProperty(Property.AUTHORIZATION_PROVIDER, "other", "server.authorization.provider");
+    testValidProperty(Property.OPA_RESPONSE_TIMEOUT, "PT0.001S");
+    for (String timeout : List.of("PT0S", "PT-1S", "PT0.0001S", "bad")) {
+      testInvalidProperty(
+          Property.OPA_RESPONSE_TIMEOUT, timeout, "server.authorization.opa.response-timeout");
+    }
+
+    assertThatThrownBy(properties::getOpaDecisionUrl)
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("server.authorization.opa.decision-url is required");
+    for (String url :
+        List.of(
+            "http://localhost:8181/v1/data/uc/authz", "https://opa.example.com/v1/data/uc/authz")) {
+      properties.set(Property.OPA_DECISION_URL, url);
+      assertThat(properties.getOpaDecisionUrl()).isEqualTo(url);
+    }
+    testInvalidProperty(
+        Property.OPA_DECISION_URL, "not a URL", "server.authorization.opa.decision-url");
+    for (String url :
+        List.of(
+            "file:///policy",
+            "ftp://localhost/policy",
+            "http:/policy",
+            "http://user:pass@localhost:8181/policy",
+            "http://localhost:8181/policy#fragment",
+            "http://localhost:0/policy",
+            "http://localhost:65536/policy")) {
+      properties.set(Property.OPA_DECISION_URL, url);
+      assertThatThrownBy(properties::getOpaDecisionUrl)
+          .isInstanceOf(BaseException.class)
+          .hasMessageContaining("must be an absolute HTTP or HTTPS URL");
+    }
+  }
 
   private void testValidProperty(Property property, String value) {
     Properties props = new Properties();

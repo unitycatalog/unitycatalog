@@ -20,12 +20,14 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.base.BaseServerTest;
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.logging.RequestContextDataProvider;
 import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.service.UnityCatalogRestService;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.ServerSocket;
 import java.net.URI;
@@ -37,6 +39,60 @@ import org.apache.logging.log4j.core.util.ContextDataProvider;
 import org.junit.jupiter.api.Test;
 
 public class UnityCatalogServerTest extends BaseServerTest {
+
+  @Test
+  public void opaCannotRunWithAuthorizationDisabled() {
+    ServerProperties properties = new ServerProperties(serverProperties);
+    properties.set(Property.AUTHORIZATION_PROVIDER, "opa");
+    properties.set(Property.OPA_DECISION_URL, "http://localhost:8181/v1/data/uc/authz");
+    assertThatThrownBy(
+            () ->
+                UnityCatalogServer.builder()
+                    .port(0)
+                    .serverProperties(properties)
+                    .hibernateConfigurator(hibernateConfigurator)
+                    .build())
+        .isInstanceOf(BaseException.class)
+        .hasMessage(
+            "server.authorization=enable is required when server.authorization.provider=opa")
+        .extracting(error -> ((BaseException) error).getErrorCode())
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+  }
+
+  @Test
+  public void opaRequiresAUrlAndReleasesNativeAuthorizerOnClose() {
+    ServerProperties properties = new ServerProperties(serverProperties);
+    properties.set(Property.AUTHORIZATION_ENABLED, "enable");
+    properties.set(Property.AUTHORIZATION_PROVIDER, "opa");
+    assertThatThrownBy(
+            () ->
+                UnityCatalogServer.builder()
+                    .port(0)
+                    .serverProperties(properties)
+                    .hibernateConfigurator(hibernateConfigurator)
+                    .build())
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("server.authorization.opa.decision-url is required");
+
+    properties.set(Property.OPA_DECISION_URL, "http://localhost:8181/v1/data/uc/authz");
+    int connections =
+        hibernateConfigurator.getDataSource().getHikariPoolMXBean().getActiveConnections();
+    UnityCatalogServer server =
+        UnityCatalogServer.builder()
+            .port(0)
+            .serverProperties(properties)
+            .hibernateConfigurator(hibernateConfigurator)
+            .build();
+    try {
+      assertThat(hibernateConfigurator.getDataSource().getHikariPoolMXBean().getActiveConnections())
+          .isEqualTo(connections + 1);
+    } finally {
+      server.close();
+    }
+    assertThat(hibernateConfigurator.getDataSource().getHikariPoolMXBean().getActiveConnections())
+        .isEqualTo(connections);
+    assertThat(hibernateConfigurator.getSessionFactory().isOpen()).isTrue();
+  }
 
   @Test
   public void startFailsWhenThePortIsTaken() throws Exception {

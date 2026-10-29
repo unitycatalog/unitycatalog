@@ -240,6 +240,11 @@ public class ServerProperties {
     SERVER_ENV("server.env", "dev", new EnumValidator(true, "dev", "prod", "test")),
     AUTHORIZATION_ENABLED(
         "server.authorization", "disable", new EnumValidator(true, "enable", "disable")),
+    AUTHORIZATION_PROVIDER(
+        "server.authorization.provider", "casbin", new EnumValidator(true, "casbin", "opa")),
+    OPA_DECISION_URL("server.authorization.opa.decision-url", URL_VALIDATOR),
+    OPA_RESPONSE_TIMEOUT(
+        "server.authorization.opa.response-timeout", "PT5S", POSITIVE_DURATION_VALIDATOR),
     STRICT_PRIVILEGE_CHECKS_ENABLED(
         "server.authorization.strict-privilege-checks", "true", BOOLEAN_VALIDATOR),
     POLICY_REFRESH_ENABLED("server.authorization.policy-refresh", "false", BOOLEAN_VALIDATOR),
@@ -554,6 +559,39 @@ public class ServerProperties {
 
   public boolean isAuthorizationEnabled() {
     return isTrueOrEnable(get(Property.AUTHORIZATION_ENABLED));
+  }
+
+  /** Whether OPA is selected for privilege decisions. */
+  public boolean isOpaAuthorizationEnabled() {
+    return "opa".equalsIgnoreCase(get(Property.AUTHORIZATION_PROVIDER));
+  }
+
+  /** Returns the required decision URL when OPA is selected. */
+  public String getOpaDecisionUrl() {
+    String value = get(Property.OPA_DECISION_URL);
+    if (value == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "server.authorization.opa.decision-url is required when"
+              + " server.authorization.provider=opa");
+    }
+    URI uri = URI.create(value);
+    if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+        || uri.getHost() == null
+        || uri.getRawUserInfo() != null
+        || uri.getRawFragment() != null
+        || uri.getPort() == 0
+        || uri.getPort() > 65535) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "server.authorization.opa.decision-url must be an absolute HTTP or HTTPS URL"
+              + " without credentials or a fragment");
+    }
+    return value;
+  }
+
+  public Duration getOpaResponseTimeout() {
+    return Duration.parse(get(Property.OPA_RESPONSE_TIMEOUT));
   }
 
   /** Whether permission checks use the stricter rules instead of the previous rules. */
