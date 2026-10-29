@@ -612,16 +612,18 @@ it from the catalog `uri` option:
 ```
 
 !!! note "Catalog-managed Delta tables"
-    With Delta 4.3.1, the Delta commit coordinator and server-side planning build their own token
-    provider from the Spark configuration and do not get the catalog `uri`. For catalog-managed
-    tables, also set `auth.catalogUri` to the same value as `uri`:
+    With Delta releases that don't include
+    [delta-io/delta#7951](https://github.com/delta-io/delta/pull/7951), the Delta commit
+    coordinator and server-side planning build their own token provider from the Spark
+    configuration and do not get the catalog `uri`. For catalog-managed tables, also set
+    `auth.catalogUri` to the same value as `uri`:
 
     ```sh
     --conf "spark.sql.catalog.<catalog_name>.auth.catalogUri=https://uc.example.com"
     ```
 
     Unity Catalog itself ignores this key and always uses `uri`. It is no longer needed once Delta
-    includes [delta-io/delta#7951](https://github.com/delta-io/delta/pull/7951) (tracked in
+    includes that change (tracked in
     [#2074](https://github.com/unitycatalog/unitycatalog/issues/2074)).
 
 Java clients set `catalogUri` themselves:
