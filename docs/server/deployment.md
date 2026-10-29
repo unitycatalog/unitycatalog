@@ -93,10 +93,18 @@ This guide outlines how to deploy the Unity Catalog server.
     hibernate.connection.driver_class=com.mysql.cj.jdbc.Driver
     hibernate.connection.url=jdbc:mysql://localhost:3306/ucdb
     hibernate.connection.user=uc_default_user
-    hibernate.connection.password=uc_default_password
     hibernate.hikari.maximumPoolSize=20
     hibernate.hikari.minimumIdle=2
     ```
+
+- Set the password in the `HIBERNATE_CONNECTION_PASSWORD` environment variable before you start the server:
+
+    ```sh
+    export HIBERNATE_CONNECTION_PASSWORD=uc_default_password
+    ```
+
+    Keeping `hibernate.connection.password` in `hibernate.properties` still works but is deprecated: the server logs a
+    warning at startup (see [Secrets](configuration.md#secrets)).
 
 - Modify the `jars/classpath` file and add path to your JDBC driver.
 
@@ -122,10 +130,18 @@ This guide outlines how to deploy the Unity Catalog server.
     hibernate.connection.driver_class=org.postgresql.Driver
     hibernate.connection.url=jdbc:postgresql://localhost:5432/ucdb
     hibernate.connection.user=uc_default_user
-    hibernate.connection.password=uc_default_password
     hibernate.hikari.maximumPoolSize=20
     hibernate.hikari.minimumIdle=2
     ```
+
+- Set the password in the `HIBERNATE_CONNECTION_PASSWORD` environment variable before you start the server:
+
+    ```sh
+    export HIBERNATE_CONNECTION_PASSWORD=uc_default_password
+    ```
+
+    Keeping `hibernate.connection.password` in `hibernate.properties` still works but is deprecated: the server logs a
+    warning at startup (see [Secrets](configuration.md#secrets)).
 
 ### Existing deployments and column type changes
 

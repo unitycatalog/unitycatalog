@@ -2,6 +2,7 @@ package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -62,6 +63,19 @@ class HibernateConfiguratorTest {
     properties.setProperty("hibernate.connection.username", "alice");
     properties.setProperty("hibernate.connection.user", "bob");
     assertThat(HibernateConfigurator.resolveConnectionUsername(properties)).isEqualTo("alice");
+  }
+
+  @Test
+  void takesThePasswordFromASystemProperty() {
+    System.setProperty("hibernate.connection.password", "override-password");
+    try {
+      Properties properties =
+          HibernateConfigurator.setupHibernateProperties(new ServerProperties());
+      assertThat(properties.getProperty("hibernate.connection.password"))
+          .isEqualTo("override-password");
+    } finally {
+      System.clearProperty("hibernate.connection.password");
+    }
   }
 
   private static Properties h2Properties() {

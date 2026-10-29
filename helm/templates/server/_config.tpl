@@ -78,9 +78,6 @@ hibernate.connection.url=jdbc:h2:file:./etc/db/h2db;DB_CLOSE_ON_EXIT=FALSE;DB_CL
 hibernate.connection.driver_class=org.postgresql.Driver
 hibernate.connection.url=jdbc:postgresql://{{ .Values.server.db.postgresqlConfig.host }}:{{ .Values.server.db.postgresqlConfig.port }}/{{ .Values.server.db.postgresqlConfig.dbName }}{{ $urlParams }}
 hibernate.connection.user={{ .Values.server.db.postgresqlConfig.username }}
-{{- if .Values.server.db.postgresqlConfig.passwordSecretName }}
-hibernate.connection.password=${DB_PASSWORD}
-{{- end }}
 {{- else }}
 {{ fail "Unsupported database type. Supported types are: file, postgresql." }}
 {{- end }}
@@ -112,6 +109,13 @@ Secrets passed to the server container as environment variables, under the names
 (see "Secrets" in docs/server/configuration.md).
 */}}
 {{- define "unitycatalog.server.secretEnv" -}}
+{{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.passwordSecretName }}
+- name: HIBERNATE_CONNECTION_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.server.db.postgresqlConfig.passwordSecretName | quote }}
+      key: {{ required "Password secret key is required" .Values.server.db.postgresqlConfig.passwordSecretKey | quote }}
+{{- end }}
 {{- if .Values.auth.enabled }}
 - name: SERVER_CLIENT_SECRET
   valueFrom:
