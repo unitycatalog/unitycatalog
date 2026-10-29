@@ -29,13 +29,14 @@ public class SdkFunctionOperations implements FunctionOperations {
       String catalogName, String schemaName, Optional<String> pageToken) throws ApiException {
     return Objects.requireNonNull(
         functionsAPI
-            .listFunctions(catalogName, schemaName, 100, pageToken.orElse(null))
+            .listFunctions(
+                catalogName, schemaName, 100, pageToken.orElse(null), /* includeBrowse= */ false)
             .getFunctions());
   }
 
   @Override
   public FunctionInfo getFunction(String functionFullName) throws ApiException {
-    return functionsAPI.getFunction(functionFullName);
+    return functionsAPI.getFunction(functionFullName, /* includeBrowse= */ false);
   }
 
   @Override

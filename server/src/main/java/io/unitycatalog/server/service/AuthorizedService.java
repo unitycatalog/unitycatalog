@@ -15,6 +15,7 @@ import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 import lombok.SneakyThrows;
 
 /**
@@ -132,16 +133,33 @@ public abstract class AuthorizedService {
    * @param <T> The type of items in the list
    */
   protected <T> void applyResponseFilter(SecurableType securableType, List<T> items) {
+    applyResponseFilter(securableType, items, null);
+  }
+
+  /** Filters a list and projects objects authorized only through BROWSE. */
+  protected <T> void applyResponseFilter(
+      SecurableType securableType, List<T> items, UnaryOperator<T> browseOnly) {
     if (serverProperties.isAuthorizationEnabled()) {
-      ResultFilter resultFilter =
-          ServiceRequestContext.current().attr(UnityAccessDecorator.RESULT_FILTER_ATTR);
-      if (resultFilter == null) {
-        throw new BaseException(
-            ErrorCode.INTERNAL,
-            "Authorization filter not initialized — ensure the request goes through"
-                + " UnityAccessDecorator.");
-      }
-      resultFilter.filter(securableType, items);
+      getResponseFilter().filter(securableType, items, browseOnly);
     }
+  }
+
+  /** Returns full or BROWSE-only metadata, or denies access to a GET result. */
+  protected <T> T applyResponseFilter(T item, UnaryOperator<T> browseOnly) {
+    return serverProperties.isAuthorizationEnabled()
+        ? getResponseFilter().filterResult(item, browseOnly)
+        : item;
+  }
+
+  private ResultFilter getResponseFilter() {
+    ResultFilter resultFilter =
+        ServiceRequestContext.current().attr(UnityAccessDecorator.RESULT_FILTER_ATTR);
+    if (resultFilter == null) {
+      throw new BaseException(
+          ErrorCode.INTERNAL,
+          "Authorization filter not initialized — ensure the request goes through"
+              + " UnityAccessDecorator.");
+    }
+    return resultFilter;
   }
 }

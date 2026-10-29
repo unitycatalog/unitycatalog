@@ -64,7 +64,11 @@ public class UCViewReadOnlySuite {
             .name(name)
             .tableType(tableType)
             .viewDefinition("version: \"0.1\"");
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema." + name), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema." + name),
+            eq(true),
+            eq(true),
+            /* includeBrowse= */ eq(false)))
         .thenReturn(row);
   }
 
@@ -142,7 +146,8 @@ public class UCViewReadOnlySuite {
                     new TableInfo().name("mv1").tableType(TableType.METRIC_VIEW),
                     new TableInfo().name("mtv1").tableType(TableType.MATERIALIZED_VIEW)))
             .nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(response);
 
     assertThat(proxy.listTables(NAMESPACE))
@@ -224,7 +229,8 @@ public class UCViewReadOnlySuite {
             .viewDefinition(PLAIN_VIEW_QUERY)
             .columns(columns)
             .properties(properties);
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.v1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.v1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(row);
 
     Table table = proxy.loadTable(Identifier.of(NAMESPACE, "v1"));

@@ -66,7 +66,7 @@ No authorization required
 
 <a name="getFunction"></a>
 # **getFunction**
-> FunctionInfo getFunction(name)
+> FunctionInfo getFunction(name, include\_browse)
 
 Get a function
 
@@ -77,6 +77,7 @@ Get a function
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **name** | **String**| The fully-qualified name of the function (of the form __catalog_name__.__schema_name__.__function__name__). | [default to null] |
+| **include\_browse** | **Boolean**| Include discovery metadata for objects visible through BROWSE when ordinary access fails. Such objects have browse_only&#x3D;true. Ordinary access returns full metadata.  | [optional] [default to false] |
 
 ### Return type
 
@@ -93,7 +94,7 @@ No authorization required
 
 <a name="listFunctions"></a>
 # **listFunctions**
-> ListFunctionsResponse listFunctions(catalog\_name, schema\_name, max\_results, page\_token)
+> ListFunctionsResponse listFunctions(catalog\_name, schema\_name, max\_results, page\_token, include\_browse)
 
 List functions
 
@@ -107,6 +108,7 @@ List functions
 | **schema\_name** | **String**| Parent schema of functions. | [default to null] |
 | **max\_results** | **Integer**| Maximum number of functions to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | [optional] [default to null] |
 | **page\_token** | **String**| Opaque pagination token to go to next page based on previous query. | [optional] [default to null] |
+| **include\_browse** | **Boolean**| Include discovery metadata for objects visible through BROWSE when ordinary access fails. Such objects have browse_only&#x3D;true. Ordinary access returns full metadata.  | [optional] [default to false] |
 
 ### Return type
 

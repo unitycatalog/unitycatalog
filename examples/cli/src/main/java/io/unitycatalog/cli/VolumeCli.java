@@ -98,20 +98,23 @@ public class VolumeCli {
       pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
     }
     return objectWriter.writeValueAsString(
-        volumesApi.listVolumes(catalogName, schemaName, maxResults, pageToken).getVolumes());
+        volumesApi
+            .listVolumes(catalogName, schemaName, maxResults, pageToken, /* includeBrowse= */ false)
+            .getVolumes());
   }
 
   private static String getVolume(VolumesApi volumesApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     String volumeFullName = json.getString(CliParams.FULL_NAME.getServerParam());
-    return objectWriter.writeValueAsString(volumesApi.getVolume(volumeFullName));
+    return objectWriter.writeValueAsString(
+        volumesApi.getVolume(volumeFullName, /* includeBrowse= */ false));
   }
 
   private static String writeRandomFileInVolume(
       VolumesApi volumesApi, TemporaryCredentialsApi tempCredApi, JSONObject json)
       throws ApiException {
     String volumeFullName = json.getString(CliParams.FULL_NAME.getServerParam());
-    VolumeInfo volumeInfo = volumesApi.getVolume(volumeFullName);
+    VolumeInfo volumeInfo = volumesApi.getVolume(volumeFullName, /* includeBrowse= */ false);
     String volumeLocation = volumeInfo.getStorageLocation();
     URI baseURI = URI.create(volumeLocation);
     Configuration conf =
@@ -162,7 +165,7 @@ public class VolumeCli {
       VolumesApi volumesApi, TemporaryCredentialsApi tempCredApi, JSONObject json)
       throws ApiException {
     String volumeFullName = json.getString(CliParams.FULL_NAME.getServerParam());
-    VolumeInfo volumeInfo = volumesApi.getVolume(volumeFullName);
+    VolumeInfo volumeInfo = volumesApi.getVolume(volumeFullName, /* includeBrowse= */ false);
     String volumeLocation = volumeInfo.getStorageLocation();
     String relativePath =
         json.has(CliParams.PATH.getServerParam())

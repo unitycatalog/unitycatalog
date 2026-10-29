@@ -17,6 +17,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
+import io.unitycatalog.server.auth.decorator.BrowseOnlyConverter;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateCatalog;
 import io.unitycatalog.server.model.ListCatalogsResponse;
@@ -81,22 +82,30 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
 
   @Get("")
   @AuthorizeExpression(AuthorizeExpressions.GET_CATALOG)
-  @ResponseAuthorizeFilter
+  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listCatalogs(
       @Param("max_results") Optional<Integer> maxResults,
-      @Param("page_token") Optional<String> pageToken) {
+      @Param("page_token") Optional<String> pageToken,
+      @Param("include_browse") Optional<Boolean> includeBrowse) {
     ListCatalogsResponse listCatalogsResponse =
         catalogRepository.listCatalogs(maxResults, pageToken);
-    applyResponseFilter(SecurableType.CATALOG, listCatalogsResponse.getCatalogs());
+    applyResponseFilter(
+        SecurableType.CATALOG,
+        listCatalogsResponse.getCatalogs(),
+        BrowseOnlyConverter::toBrowseOnly);
     return HttpResponse.ofJson(listCatalogsResponse);
   }
 
   @Get("/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_CATALOG)
+  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
   @AuthorizeResourceKey(METASTORE)
-  public HttpResponse getCatalog(@Param("name") @AuthorizeResourceKey(CATALOG) String name) {
-    return HttpResponse.ofJson(catalogRepository.getCatalog(name));
+  public HttpResponse getCatalog(
+      @Param("name") @AuthorizeResourceKey(CATALOG) String name,
+      @Param("include_browse") Optional<Boolean> includeBrowse) {
+    return HttpResponse.ofJson(
+        applyResponseFilter(catalogRepository.getCatalog(name), BrowseOnlyConverter::toBrowseOnly));
   }
 
   @Patch("/{name}")

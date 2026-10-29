@@ -3,6 +3,7 @@
 
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
+| **browse\_only** | **Boolean** | True when the response contains only discovery metadata authorized by BROWSE. | [optional] [default to null] |
 | **name** | **String** | The name of the registered model | [optional] [default to null] |
 | **catalog\_name** | **String** | The name of the catalog where the schema and the registered model reside | [optional] [default to null] |
 | **schema\_name** | **String** | The name of the schema where the registered model resides | [optional] [default to null] |
