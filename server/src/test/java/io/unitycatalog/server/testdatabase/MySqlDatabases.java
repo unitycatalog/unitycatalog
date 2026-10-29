@@ -48,7 +48,10 @@ final class MySqlDatabases extends TemplateDatabases {
             // No binary log (no replication or point-in-time recovery needed).
             "--skip-log-bin",
             // No doublewrite buffer (it only guards against torn pages on a crash).
-            "--innodb-doublewrite=OFF");
+            "--innodb-doublewrite=OFF",
+            // PostgreSQL drops a database WITH (FORCE). MySQL's DROP DATABASE waits for locks held
+            // by open transactions, for a year by default; fail a test that leaks one instead.
+            "--lock-wait-timeout=60");
   }
 
   @Override
