@@ -164,6 +164,12 @@ without them keeps signing with the key it generated in `etc/conf`, which is dep
 (see [Configuration](configuration.md#configuration)). Tokens issued before the upgrade keep working as long as the
 key stays the same.
 
+The server no longer writes the admin token to `etc/conf/token.txt`, and deletes that file at startup. Use
+`bin/uc-admin-token` instead (see [Testing User and Admin Authentication](#testing-user-and-admin-authentication)).
+Copies of the old token stay valid until the signing key changes, so change the key to revoke them: point the token
+signing key file settings at a new key pair, or, with the generated key, delete `etc/conf/private_key.der` and
+`etc/conf/public_key.der` and restart the server. Every token signed with the old key stops working.
+
 Other changes to the server's own tokens:
 
 - A token signed with a different key gets 401 instead of 500, so clients such as the Spark connector no longer retry
@@ -171,7 +177,8 @@ Other changes to the server's own tokens:
 - The server no longer writes `etc/conf/key_id.txt` or `etc/conf/certs.json`, and leaves existing ones in place. An
   earlier version generates a new key when `key_id.txt` is missing, so before rolling back a server that was first
   started on this version, create `etc/conf/key_id.txt` with any value, for example `uc`.
-- A generated `etc/conf/private_key.der` is readable by its owner only.
+- A generated `etc/conf/private_key.der` is readable by its owner only. Run `bin/uc-admin-token` as the user that
+  runs the server, from the directory the server starts in.
 - With authorization enabled and no key file settings, the server logs a warning at each start.
 - Helm: use the server image from the chart's release, which is the default. An older server image ignores the key
   file settings and generates its own key in each pod, so tokens from other pods and from the create-users job are
@@ -278,7 +285,6 @@ Behind the scenes, on startup, the UC server will configure itself with the foll
 
 * Creation of an internal signing key in `etc/conf` on first start, unless the
   [token signing key files](configuration.md#configuration) are set; generating the key is deprecated
-* Creation of an admin access token in `etc/conf/token.txt`
 * Creation of an admin account in the user database
 * Granting the admin account as the metastore admin for the server
 
@@ -288,11 +294,12 @@ The following steps allow you to test user and admin authentication to your loca
 
 ### Use admin token to verify admin user is in local database
 
-As noted earlier, on startup the UC server configured itself and created the admin access token at
-`etc/conf/token.txt`. The following command uses the same admin authentication token to view the user list.
+`bin/uc-admin-token` prints an admin access token signed with the server's key. Like the server, it reads `etc/conf` in
+the current directory, so run it from the directory you start the server in; the server does not write the token to a
+file. The token does not expire, so treat it like the key itself. The following command uses it to view the user list.
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt) user list
+bin/uc --auth_token "$(bin/uc-admin-token)" user list
 ```
 
 The output should look something like this
@@ -345,7 +352,7 @@ To fix this error, let’s start by adding your user account to the UC local dat
 to add your account to the local database.
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt) user create --name "Bobbie Draper" --email bobbie@rocinante
+bin/uc --auth_token "$(bin/uc-admin-token)" user create --name "Bobbie Draper" --email bobbie@rocinante
 ```
 
 ### Try to log in with your user account
@@ -395,13 +402,13 @@ bin/uc catalog list
 bin/uc --auth_token $token catalog list
 
 # Succeeds
-bin/uc --auth_token $(cat etc/conf/token.txt) catalog list
+bin/uc --auth_token "$(bin/uc-admin-token)" catalog list
 ```
 
 But if you were to add `USE CATALOG` permission to your user account
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt) permission create  --securable_type catalog --name unity --privilege 'USE CATALOG' --principal bobbie@rocinante 
+bin/uc --auth_token "$(bin/uc-admin-token)" permission create  --securable_type catalog --name unity --privilege 'USE CATALOG' --principal bobbie@rocinante 
 ```
 
 then the following command would work.
@@ -422,7 +429,7 @@ bin/uc --auth_token $token catalog create --name myfirstcatalog
 Thus, let’s provide your account with the necessary permissions.
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt) permission create --securable_type metastore --name metastore --privilege "CREATE CATALOG" --principal bobbie@rocinante
+bin/uc --auth_token "$(bin/uc-admin-token)" permission create --securable_type metastore --name metastore --privilege "CREATE CATALOG" --principal bobbie@rocinante
 ```
 
 With the permission set, the preceding command will succeed because your user account has the `CREATE CATALOG`
@@ -435,9 +442,9 @@ Notice how we’re providing access using the three-part naming convention of *c
 each level of permissions, we progress down the three parts.
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_type catalog --name unity --privilege "USE CATALOG" --principal bobbie@rocinante 
-bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_type schema --name unity.default --privilege "USE SCHEMA" --principal bobbie@rocinante
-bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_type table --name unity.default.numbers --privilege "SELECT" --principal bobbie@rocinante
+bin/uc --auth_token "$(bin/uc-admin-token)" permission create --securable_type catalog --name unity --privilege "USE CATALOG" --principal bobbie@rocinante 
+bin/uc --auth_token "$(bin/uc-admin-token)" permission create --securable_type schema --name unity.default --privilege "USE SCHEMA" --principal bobbie@rocinante
+bin/uc --auth_token "$(bin/uc-admin-token)" permission create --securable_type table --name unity.default.numbers --privilege "SELECT" --principal bobbie@rocinante
 ```
 
 Then start a new DuckDB session.

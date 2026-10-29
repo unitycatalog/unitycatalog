@@ -3,6 +3,7 @@ package io.unitycatalog.server.security;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.auth0.jwt.JWT;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -62,6 +63,31 @@ class SecurityConfigurationTest {
                 SecurityConfiguration.load(
                     settings(privateKey, keyDirectory.resolve("missing.pub")), configurationFolder))
         .hasMessageContaining("No token signing key file at");
+  }
+
+  @Test
+  void loadsAnExistingKeyWithoutGeneratingOne() throws Exception {
+    ServerProperties noSettings = new ServerProperties(new Properties());
+    assertThatThrownBy(() -> SecurityConfiguration.loadExisting(noSettings, configurationFolder))
+        .hasMessageContaining("No token signing key file at");
+    try (var files = Files.list(configurationFolder)) {
+      assertThat(files).isEmpty();
+    }
+
+    // The admin token bin/uc-admin-token prints from the key the server generated.
+    new SecurityConfiguration(configurationFolder);
+    SecurityConfiguration existing =
+        SecurityConfiguration.loadExisting(noSettings, configurationFolder);
+    String token =
+        SecurityContext.createServiceToken(
+            existing.algorithmRSA(), "server", SecurityContext.Issuers.INTERNAL);
+    assertThat(
+            JWT.require(existing.algorithmRSA())
+                .build()
+                .verify(token)
+                .getClaim(JwtClaim.SUBJECT.key())
+                .asString())
+        .isEqualTo("admin");
   }
 
   @Test

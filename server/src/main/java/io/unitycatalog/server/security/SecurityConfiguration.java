@@ -101,6 +101,17 @@ public class SecurityConfiguration {
     return new SecurityConfiguration(configurationFolder);
   }
 
+  /** Like {@link #load}, but never generates a key: a missing key is an error. */
+  static SecurityConfiguration loadExisting(
+      ServerProperties serverProperties, Path configurationFolder) {
+    SecurityConfiguration configured = fromSettings(serverProperties);
+    return configured != null
+        ? configured
+        : fromKeyFiles(
+            configurationFolder.resolve("private_key.der"),
+            configurationFolder.resolve("public_key.der"));
+  }
+
   // Returns null when neither key file is set.
   private static SecurityConfiguration fromSettings(ServerProperties serverProperties) {
     String privateKeyFile =
