@@ -204,7 +204,8 @@ public class IcebergRestCatalogServiceTest {
         .thenReturn(
             new TableRepository.IcebergTableState(
                 tableId, DataSourceFormat.ICEBERG, "s3://bucket/metadata.json", "s3://bucket"));
-    when(keyMapper.mapResourceKeys(Map.of(SecurableType.TABLE, tableId.toString())))
+    when(keyMapper.mapResourceKeys(
+            Map.of(SecurableType.TABLE, tableId.toString(), SecurableType.METASTORE, "")))
         .thenReturn(
             Map.of(
                 SecurableType.CATALOG, UUID.randomUUID(),

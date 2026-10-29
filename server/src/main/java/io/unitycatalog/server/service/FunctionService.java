@@ -10,7 +10,9 @@ import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
@@ -21,6 +23,7 @@ import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.ListFunctionsResponse;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.model.UpdateFunction;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.FunctionRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
@@ -73,17 +76,19 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
     return HttpResponse.ofJson(functionInfo);
   }
 
-  @Get("")
-  @AuthorizeExpression(
+  private static final String LIST_AND_GET_AUTH_EXPRESSION =
       """
       #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) &&
+      #authorizeAny(#principal, #catalog, OWNER, MANAGE) ||
+      (#authorizeAny(#principal, #schema, OWNER, MANAGE) &&
           #authorize(#principal, #catalog, USE_CATALOG)) ||
       (#authorize(#principal, #schema, USE_SCHEMA) &&
           #authorizeAny(#principal, #catalog, USE_CATALOG) &&
-          #authorizeAny(#principal, #function, OWNER, EXECUTE))
-      """)
+          #authorizeAny(#principal, #function, OWNER, MANAGE, EXECUTE))
+      """;
+
+  @Get("")
+  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
   @ResponseAuthorizeFilter
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listFunctions(
@@ -99,30 +104,26 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
 
   @Get("/{name}")
   @AuthorizeResourceKey(METASTORE)
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) &&
-          #authorizeAny(#principal, #catalog, USE_CATALOG)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorizeAny(#principal, #function, OWNER, EXECUTE))
-      """)
+  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
   public HttpResponse getFunction(@Param("name") @AuthorizeResourceKey(FUNCTION) String name) {
     return HttpResponse.ofJson(functionRepository.getFunction(name));
   }
 
-  @Delete("/{name}")
+  @Patch("/{name}")
   @AuthorizeResourceKey(METASTORE)
   @AuthorizeExpression(
-      """
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #function, OWNER))
-      """)
+      "#authorize(#principal, #metastore, OWNER) || (" + AuthorizeExpressions.UPDATE_FUNCTION + ")")
+  public HttpResponse updateFunction(
+      @Param("name") @AuthorizeResourceKey(FUNCTION) String name, UpdateFunction updateFunction) {
+    validateOwnerTransfer(updateFunction.getOwner());
+    FunctionInfo result = functionRepository.updateFunction(name, updateFunction);
+    reloadAfterOwnerChange(updateFunction.getOwner());
+    return HttpResponse.ofJson(result);
+  }
+
+  @Delete("/{name}")
+  @AuthorizeResourceKey(METASTORE)
+  @AuthorizeExpression(AuthorizeExpressions.UPDATE_FUNCTION)
   public HttpResponse deleteFunction(
       @Param("name") @AuthorizeResourceKey(FUNCTION) String name,
       @Param("force") Optional<Boolean> force) {

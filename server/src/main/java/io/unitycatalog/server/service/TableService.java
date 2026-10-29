@@ -11,6 +11,7 @@ import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -24,10 +25,12 @@ import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.UpdateTable;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Optional;
 import lombok.SneakyThrows;
@@ -128,6 +131,20 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
 
     applyResponseFilter(SecurableType.TABLE, listTablesResponse.getTables());
     return HttpResponse.ofJson(listTablesResponse);
+  }
+
+  @Patch("/{full_name}")
+  @AuthorizeExpression(
+      "#authorize(#principal, #metastore, OWNER) || (" + AuthorizeExpressions.DELETE_TABLE + ")")
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse updateTable(
+      @Param("full_name") @AuthorizeResourceKey(TABLE) String fullName, UpdateTable updateTable) {
+    if (RepositoryUtils.isViewLike(tableRepository.getTable(fullName).getTableType().getValue())) {
+      validateOwnerTransfer(updateTable.getOwner());
+    }
+    TableInfo result = tableRepository.updateTable(fullName, updateTable);
+    reloadAfterOwnerChange(updateTable.getOwner());
+    return HttpResponse.ofJson(result);
   }
 
   @Delete("/{full_name}")
