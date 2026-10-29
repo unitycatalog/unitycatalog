@@ -111,6 +111,18 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     sql("DROP TABLE IF EXISTS %s", fullTableName);
   }
 
+  /** Names that Databricks accepts, such as one containing '$', round-trip through Spark. */
+  @Test
+  public void testManagedTableNameWithSpecialCharacters() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + ".`issue$components`";
+    sql("CREATE TABLE %s(i INT, s STRING) USING delta", fullTableName);
+    sql("INSERT INTO %s VALUES (1, 'a')", fullTableName);
+    validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(1, "a"));
+    sql("DROP TABLE %s", fullTableName);
+  }
+
   /**
    * A managed CREATE TABLE with no USING clause honors `spark.sql.sources.default`: when it
    * resolves to delta, UC treats the table as a managed Delta table (mirroring Spark's built-in
