@@ -3,6 +3,7 @@ package io.unitycatalog.server.security;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.auth0.jwt.JWT;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -49,6 +50,11 @@ class SecurityConfigurationTest {
     assertThat(configuration.rsaPrivateKey()).isEqualTo(keyPair.getPrivate());
     // The public key is derived from the private key.
     assertThat(configuration.rsaPublicKey()).isEqualTo(keyPair.getPublic());
+    // bin/uc-admin-token reads the same settings.
+    assertThat(
+            SecurityConfiguration.loadExisting(settings(privateKey), configurationFolder)
+                .rsaPrivateKey())
+        .isEqualTo(keyPair.getPrivate());
     try (var files = Files.list(configurationFolder)) {
       assertThat(files).isEmpty();
     }
@@ -63,6 +69,31 @@ class SecurityConfigurationTest {
 
     assertThatThrownBy(() -> SecurityConfiguration.load(settings(privateKey), configurationFolder))
         .hasMessageContaining("is encrypted");
+  }
+
+  @Test
+  void loadsAnExistingKeyWithoutGeneratingOne() throws Exception {
+    ServerProperties noSettings = new ServerProperties(new Properties());
+    assertThatThrownBy(() -> SecurityConfiguration.loadExisting(noSettings, configurationFolder))
+        .hasMessageContaining("No token signing key file at");
+    try (var files = Files.list(configurationFolder)) {
+      assertThat(files).isEmpty();
+    }
+
+    // bin/uc-admin-token signs the admin token with the key the server generated.
+    new SecurityConfiguration(configurationFolder);
+    SecurityConfiguration existing =
+        SecurityConfiguration.loadExisting(noSettings, configurationFolder);
+    String token =
+        SecurityContext.createServiceToken(
+            existing.algorithmRSA(), "server", SecurityContext.Issuers.INTERNAL);
+    assertThat(
+            JWT.require(existing.algorithmRSA())
+                .build()
+                .verify(token)
+                .getClaim(JwtClaim.SUBJECT.key())
+                .asString())
+        .isEqualTo("admin");
   }
 
   @Test

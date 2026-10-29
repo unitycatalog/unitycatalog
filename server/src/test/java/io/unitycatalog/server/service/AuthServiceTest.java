@@ -87,7 +87,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     for (String requestedWith : List.of("", "fetch")) {
       RequestHeadersBuilder headers =
           RequestHeaders.builder(HttpMethod.POST, "/api/1.0/unity-control/scim2/Users")
-              .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken());
+              .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.createServiceToken());
       if (!requestedWith.isEmpty()) {
         headers.add(HttpHeaderNames.X_REQUESTED_WITH, requestedWith);
       }
@@ -102,14 +102,14 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
 
     RequestHeaders read =
         RequestHeaders.builder(HttpMethod.GET, "/api/1.0/unity-control/scim2/Me")
-            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
+            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.createServiceToken())
             .build();
     assertThat(client.execute(read).aggregate().join().status()).isEqualTo(HttpStatus.OK);
 
     // An explicit bearer token takes precedence over cookies and needs no AJAX header.
     RequestHeaders bearer =
         RequestHeaders.builder(HttpMethod.POST, LOGOUT_ENDPOINT)
-            .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + securityContext.getServiceToken())
+            .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + securityContext.createServiceToken())
             .add(HttpHeaderNames.COOKIE, "UC_TOKEN=invalid")
             .build();
     assertThat(client.execute(bearer).aggregate().join().status()).isEqualTo(HttpStatus.OK);
@@ -150,7 +150,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
             .add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest");
 
     if (includeCookie) {
-      builder.add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken());
+      builder.add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.createServiceToken());
     }
 
     return builder.build();
@@ -390,7 +390,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
             .path(scimUsersPath)
             .contentType(MediaType.JSON)
             .add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest")
-            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
+            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.createServiceToken())
             .build();
 
     // First create succeeds
@@ -442,7 +442,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
               .method(HttpMethod.POST)
               .path("/api/1.0/unity-control/scim2/Users")
               .contentType(MediaType.JSON)
-              .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
+              .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.createServiceToken())
               .add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest")
               .build();
       String userJson =
