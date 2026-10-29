@@ -227,6 +227,7 @@ Grant validation also runs when `server.authorization=disable`.
 | `CREATE EXTERNAL LOCATION` | Metastore, storage credential |
 | `READ FILES`, `WRITE FILES`, `CREATE EXTERNAL TABLE` | External location, storage credential |
 | `CREATE EXTERNAL VOLUME`, `CREATE MANAGED STORAGE` | External location |
+| `READ METADATA` | Metastore, catalog, schema, table, function, volume, registered model, external location, storage credential |
 
 For example, `USE CATALOG` on a schema is invalid. Grant it on the containing catalog instead.
 If any addition is invalid, the server rejects the full request with `INVALID_ARGUMENT` before
@@ -457,6 +458,8 @@ tables remain read-only.
 Iceberg `loadTable` returns metadata to callers with metadata access. Credentials and their
 refresh endpoint are included only when the caller has read access. `loadCredentials` rejects
 requests without read access.
+
+`READ METADATA` alone does not permit table credentials.
 
 ## Spark and Java client authentication types
 

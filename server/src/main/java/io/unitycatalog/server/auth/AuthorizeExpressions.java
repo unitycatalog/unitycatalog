@@ -25,41 +25,58 @@ public final class AuthorizeExpressions {
    * and catalog owner pass unconditionally; schema owner passes with catalog {@code USE_CATALOG};
    * regular callers need {@code USE_SCHEMA} + {@code USE_CATALOG} plus {@code OWNER} or {@code
    * SELECT} on the table. With strict privilege checks disabled, {@code MODIFY} also permits
-   * metadata access.
+   * metadata access. {@code READ_METADATA} at metastore or catalog scope needs no usage grants;
+   * schema scope needs {@code USE_CATALOG}, and table scope needs both usage grants.
    */
   // TODO(#2024): Remove the MODIFY fallback when the migration flag is removed.
   public static final String GET_TABLE =
       """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      #authorizeAny(#principal, #metastore, OWNER, READ_METADATA) ||
+      #authorizeAny(#principal, #catalog, OWNER, READ_METADATA) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorizeAny(#principal, #schema, OWNER, READ_METADATA)) ||
       (#authorize(#principal, #catalog, USE_CATALOG) &&
           #authorize(#principal, #schema, USE_SCHEMA) &&
-          (#authorizeAny(#principal, #table, OWNER, SELECT) ||
+          (#authorizeAny(#principal, #table, OWNER, SELECT, READ_METADATA) ||
               (!#strict_privilege_checks && #authorize(#principal, #table, MODIFY))))
       """;
 
   /**
    * Catalog-level read access: metastore admin, or {@code OWNER}/{@code USE_CATALOG} on the
-   * catalog. Shared by the catalog get/list endpoints and the Delta/Iceberg config endpoints.
+   * catalog, or {@code READ_METADATA} on the metastore or catalog. Shared by the catalog get/list
+   * endpoints and the Delta/Iceberg config endpoints.
    */
   public static final String GET_CATALOG =
       """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
+      #authorizeAny(#principal, #metastore, OWNER, READ_METADATA) ||
+      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG, READ_METADATA)
       """;
 
   /**
    * Schema-level read access: metastore admin, catalog {@code OWNER}, or schema {@code
    * OWNER}/{@code USE_SCHEMA} with catalog {@code USE_CATALOG}. Used as the get-schema gate and the
-   * list-schemas/namespaces response filter (listing and reading grant the same access).
+   * list-schemas/namespaces response filter (listing and reading grant the same access). {@code
+   * READ_METADATA} on the metastore or catalog needs no usage grants; on the schema it needs {@code
+   * USE_CATALOG}.
    */
   public static final String GET_SCHEMA =
       """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
+      #authorizeAny(#principal, #metastore, OWNER, READ_METADATA) ||
+      #authorizeAny(#principal, #catalog, OWNER, READ_METADATA) ||
       (#authorizeAny(#principal, #catalog, USE_CATALOG) &&
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA))
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA, READ_METADATA))
+      """;
+
+  /** Function metadata access, shared by get and list filtering. */
+  public static final String GET_FUNCTION =
+      """
+      #authorizeAny(#principal, #metastore, OWNER, READ_METADATA) ||
+      #authorizeAny(#principal, #catalog, OWNER, READ_METADATA) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorizeAny(#principal, #schema, OWNER, READ_METADATA)) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorizeAny(#principal, #function, OWNER, EXECUTE, READ_METADATA))
       """;
 
   /**
@@ -214,7 +231,7 @@ public final class AuthorizeExpressions {
               #authorizeAll(#principal, #table, SELECT, MODIFY)))
       """;
 
-  /** Iceberg loadCredentials uses the read rule, or GET_TABLE during migration. */
+  /** Iceberg credentials keep the existing read and migration rules without metadata grants. */
   // TODO(#2024): Reuse VEND_TABLE_CREDENTIAL with a fixed READ operation after removing the flag.
   public static final String VEND_ICEBERG_TABLE_CREDENTIAL =
       """
@@ -223,14 +240,19 @@ public final class AuthorizeExpressions {
         #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
         #authorizeAny(#principal, #table, OWNER, SELECT)
       ) : (
-      """
-          + GET_TABLE
-          + ")";
+        #authorize(#principal, #metastore, OWNER) ||
+        #authorize(#principal, #catalog, OWNER) ||
+        (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+        (#authorize(#principal, #catalog, USE_CATALOG) &&
+            #authorize(#principal, #schema, USE_SCHEMA) &&
+            #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
+      )
+      """;
 
   /**
    * Authorization policy for the {@code get*Authorization} (permission read) endpoints. These
    * endpoints check authorization themselves and tailor the response based on whether the principal
-   * is an owner, so the only requirement here is that the caller is authenticated.
+   * can view all grants, so the only requirement here is that the caller is authenticated.
    */
   public static final String GET_RESOURCE_AUTHORIZATION = "#principal != null";
 }
