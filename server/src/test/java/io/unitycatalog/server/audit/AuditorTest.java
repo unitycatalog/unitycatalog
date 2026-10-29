@@ -154,14 +154,8 @@ class AuditorTest {
   @Test
   void afterCommitRunsOnlyOnCommitAndNeverFailsIt() {
     AtomicInteger runs = new AtomicInteger();
-    Properties test = new Properties();
-    test.setProperty("server.env", "test");
     try (TestDatabase database = TestDatabases.newDatabase();
-        Session session =
-            database
-                .openHibernateConfigurator(new ServerProperties(test))
-                .getSessionFactory()
-                .openSession()) {
+        Session session = database.sessionFactory().openSession()) {
       Transaction rolledBack = session.beginTransaction();
       auditor.afterCommit(session, runs::incrementAndGet);
       rolledBack.rollback();

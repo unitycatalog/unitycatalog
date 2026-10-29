@@ -11,8 +11,8 @@ import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Path;
@@ -34,7 +34,7 @@ class ManagedVolumeCleanupTaskTest {
   @TempDir Path tempDir;
 
   private SessionFactory sessionFactory;
-  private TestDatabase testDatabase;
+  @TempDatabase private TestDatabase testDatabase;
   private Repositories repositories;
   private UUID schemaId;
 
@@ -44,8 +44,7 @@ class ManagedVolumeCleanupTaskTest {
     properties.setProperty("server.env", "test");
     StorageCleanupTestSupport.captureAuditRecords(properties);
     ServerProperties serverProperties = new ServerProperties(properties);
-    testDatabase = TestDatabases.newDatabase();
-    sessionFactory = testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
+    sessionFactory = testDatabase.sessionFactory();
     repositories = StorageCleanupTestSupport.auditedRepositories(sessionFactory, serverProperties);
 
     UUID catalogId = UUID.randomUUID();
@@ -70,14 +69,10 @@ class ManagedVolumeCleanupTaskTest {
 
   @AfterEach
   void tearDown() {
-    try {
-      // Every test here, including the rolled-back and cascading drops, records exactly its tasks,
-      // and each cloud task's cleanup credential record carries the task's ID.
-      StorageCleanupTestSupport.assertQueueCleanupRecordsMatchTasks(sessionFactory);
-      StorageCleanupTestSupport.assertCleanupCredentialsJoinTasks(repositories, sessionFactory);
-    } finally {
-      testDatabase.close();
-    }
+    // Every test here, including the rolled-back and cascading drops, records exactly its tasks,
+    // and each cloud task's cleanup credential record carries the task's ID.
+    StorageCleanupTestSupport.assertQueueCleanupRecordsMatchTasks(sessionFactory);
+    StorageCleanupTestSupport.assertCleanupCredentialsJoinTasks(repositories, sessionFactory);
   }
 
   @Test

@@ -10,10 +10,9 @@ import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
+import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.NormalizedURL;
-import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Properties;
@@ -34,18 +33,14 @@ public class ExternalLocationUtilsTest {
 
   @TempDir Path tempDir;
 
-  private TestDatabase testDatabase;
+  @TempDatabase private TestDatabase testDatabase;
   private SessionFactory sessionFactory;
   private Session session;
   private ExternalLocationUtils externalLocationUtils;
 
   @BeforeEach
   public void setUp() {
-    Properties serverProperties = new Properties();
-    serverProperties.setProperty("server.env", "test");
-    testDatabase = TestDatabases.newDatabase();
-    Properties properties =
-        testDatabase.hibernateProperties(new ServerProperties(serverProperties));
+    Properties properties = testDatabase.hibernateProperties();
     // A nested transaction cannot borrow a second connection while the caller is using this one.
     properties.setProperty("hibernate.connection.pool_size", "1");
     sessionFactory = testDatabase.openHibernateConfigurator(properties).getSessionFactory();
@@ -59,7 +54,6 @@ public class ExternalLocationUtilsTest {
       session.getTransaction().rollback();
     }
     session.close();
-    testDatabase.close();
   }
 
   /**

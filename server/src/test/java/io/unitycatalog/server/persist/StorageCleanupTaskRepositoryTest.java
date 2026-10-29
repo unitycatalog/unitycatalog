@@ -12,14 +12,12 @@ import io.unitycatalog.server.persist.CleanupTaskRepository.Claim;
 import io.unitycatalog.server.persist.CleanupTaskRepository.CleanupFailureReport;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import io.unitycatalog.server.testdatabase.TestDatabases;
-import io.unitycatalog.server.utils.ServerProperties;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.util.Date;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -28,7 +26,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -38,22 +35,13 @@ public class StorageCleanupTaskRepositoryTest {
   private static final Duration LEASE_DURATION = Duration.ofMinutes(10);
 
   private SessionFactory sessionFactory;
-  private TestDatabase testDatabase;
+  @TempDatabase private TestDatabase testDatabase;
   private StorageCleanupTaskRepository repository;
 
   @BeforeEach
   void setUpRepository() {
-    testDatabase = TestDatabases.newDatabase();
-    sessionFactory =
-        testDatabase
-            .openHibernateConfigurator(new ServerProperties(new Properties()))
-            .getSessionFactory();
+    sessionFactory = testDatabase.sessionFactory();
     repository = new StorageCleanupTaskRepository(sessionFactory);
-  }
-
-  @AfterEach
-  void closeSessionFactory() {
-    testDatabase.close();
   }
 
   @Test
