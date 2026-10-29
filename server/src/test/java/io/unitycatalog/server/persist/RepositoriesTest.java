@@ -17,8 +17,8 @@ import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -33,7 +33,6 @@ import java.util.function.UnaryOperator;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.SupportsPrefixOperations;
 import org.hibernate.SessionFactory;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -42,7 +41,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class RepositoriesTest {
 
   private SessionFactory sessionFactory;
-  private TestDatabase testDatabase;
+  @TempDatabase private TestDatabase testDatabase;
   private ServerProperties serverProperties;
 
   @BeforeEach
@@ -50,13 +49,7 @@ class RepositoriesTest {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
     serverProperties = new ServerProperties(properties);
-    testDatabase = TestDatabases.newDatabase();
-    sessionFactory = testDatabase.openHibernateConfigurator(serverProperties).getSessionFactory();
-  }
-
-  @AfterEach
-  void tearDown() {
-    testDatabase.close();
+    sessionFactory = testDatabase.sessionFactory();
   }
 
   @Test
