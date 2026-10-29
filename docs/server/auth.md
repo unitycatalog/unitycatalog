@@ -167,6 +167,7 @@ The setting covers:
   and existence checks across the UC REST, Delta, and Iceberg REST APIs. Existing usage and
   ownership rules still apply.
 - Volume rename: Also require permission to create volumes in the containing schema.
+- Model rename: Also require permission to create models in the containing schema.
 
 The access checks apply only when `server.authorization=enable`.
 Grant validation also applies when authorization is disabled.
