@@ -10,9 +10,14 @@
 ### Option 1: Use localhost unity catalog server
 
 First, update integration test [server.properties](./etc/conf/server.properties)
-  - For S3: Set `s3.bucketPath.0`, `s3.region.0`, `s3.awsRoleArn.0`, `s3.accessKey.0`, and `s3.secretKey.0`
+  - For S3: Set `s3.bucketPath.0`, `s3.region.0`, `s3.awsRoleArn.0` and `s3.accessKey.0`, and the secret key in the
+    `S3_SECRETKEY_0` environment variable
   - For GCP: Set `gcs.bucketPath.0` and `gcs.jsonKeyFilePath.0`
-  - For Azure: Set `adls.storageAccountName.0`, `adls.tenantId.0`, `adls.clientId.0`, and `adls.clientSecret.0`
+  - For Azure: Set `adls.storageAccountName.0`, `adls.tenantId.0` and `adls.clientId.0`, and the client secret in the
+    `ADLS_CLIENTSECRET_0` environment variable
+
+  Secrets in `server.properties` still work, but are deprecated
+  (see [Secrets](../docs/server/configuration.md#secrets)).
 
 Next, run the UC server to test against:
 ```sh

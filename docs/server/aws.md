@@ -42,7 +42,7 @@ This configuration tells the Unity Catalog server which role it should use as th
 
 ```ini
 # server.properties (AWS-hosted)
-aws.s3.masterRoleArn=arn:aws:iam::1234567:role/UCMasterRole-EXAMPLE
+aws.masterRoleArn=arn:aws:iam::1234567:role/UCMasterRole-EXAMPLE
 aws.region=us-west-2
 ```
 
@@ -60,17 +60,17 @@ The Unity Catalog server can also take an **IAM user** in place of the UC master
 
 ## Configure in *server.properties* or environment variables
 
-When running on-premises and without *AWS IAM Roles Anywhere* deployment, Unity Catalog server has to be configured manually to provide the credential of the master user. In the `server.properties` file the IAM **user** arn can be specified for the key `aws.s3.masterRoleArn` despite the fact that the key is called `masterRoleArn`:
+When running on-premises and without *AWS IAM Roles Anywhere* deployment, Unity Catalog server has to be configured manually to provide the credential of the master user. In the `server.properties` file the IAM **user** arn can be specified for the key `aws.masterRoleArn` despite the fact that the key is called `masterRoleArn`:
 
 ```ini
 # server.properties (on‑prem with IAM user — only if Roles Anywhere isn’t possible)
-aws.s3.masterRoleArn=arn:aws:iam::1234567:user/UCMasterRole-EXAMPLE
-aws.s3.accessKey=  # Leave it blank to delegate to DefaultCredentialsProvider
-aws.s3.secretKey=  # Leave it blank to delegate to DefaultCredentialsProvider
+aws.masterRoleArn=arn:aws:iam::1234567:user/UCMasterRole-EXAMPLE
+aws.accessKey=  # Leave it blank to delegate to DefaultCredentialsProvider
 aws.region=us-west-2
 ```
-It's recommended to leave `aws.s3.accessKey` and `aws.s3.secretKey` unset so that 
-[`DefaultCredentialsProvider`](https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/auth/credentials/DefaultCredentialsProvider.html) is still used if it’s properly configured. Otherwise these keys can be also configured through environment variables instead.
+It's recommended to leave `aws.accessKey` and `aws.secretKey` unset so that 
+[`DefaultCredentialsProvider`](https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/auth/credentials/DefaultCredentialsProvider.html) is still used if it’s properly configured. Otherwise set the secret key (`aws.secretKey`) in the `AWS_SECRETKEY` environment variable, not in
+`server.properties`, where it is deprecated (see [Secrets](configuration.md#secrets)).
 
 # Create and configure both the S3 storage and storage credential
 
@@ -164,6 +164,9 @@ s3.awsRoleArn.0=<some ARN to be assumed>
 s3.accessKey.0=...
 s3.secretKey.0=...
 ```
+
+A secret key in `server.properties` is deprecated; until you migrate, set it in the `S3_SECRETKEY_<n>` environment
+variable instead (see [Secrets](configuration.md#secrets)).
 
 The following steps are recommended to migrate the old credential configs:
 

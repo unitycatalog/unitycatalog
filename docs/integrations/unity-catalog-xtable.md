@@ -44,6 +44,9 @@ For enabling server to vend AWS temporary credentials to access S3 buckets, the 
 - `s3.secretKey.i`: The AWS secret key used to sign API requests to AWS.
 - `s3.sessionToken.i`: THE AWS session token, used to verify that the request is coming from a trusted source.
 
+Set the secret key and the session token in the `S3_SECRETKEY_<i>` and `S3_SESSIONTOKEN_<i>` environment variables;
+keeping them in `server.properties` is deprecated (see [Secrets](../server/configuration.md#secrets)).
+
 ## Run the Unity Server
 
 ```sh

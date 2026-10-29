@@ -21,10 +21,12 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.IntPredicate;
+import java.util.regex.Pattern;
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,7 +34,17 @@ import org.slf4j.LoggerFactory;
 public class ServerProperties {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ServerProperties.class);
+
+  // Secrets, which can also be set in the environment variable named by envName(key), such as
+  // SERVER_CLIENT_SECRET or S3_SECRETKEY_0. Other keys use the exact-name lookup only, because
+  // cloud runtimes already set variables such as AWS_REGION for their own use.
+  private static final Pattern SECRET_KEY =
+      Pattern.compile(
+          "server\\.client-secret|aws\\.secretKey"
+              + "|(s3\\.secretKey|s3\\.sessionToken|adls\\.clientSecret)\\.\\d+");
+
   private final Properties properties = new Properties(generateDefaults());
+  private final Map<String, String> env;
 
   /** Validator interface for property values */
   private interface PropertyValidator {
@@ -323,17 +335,25 @@ public class ServerProperties {
   }
 
   public ServerProperties() {
+    env = System.getenv();
     // This call is still useful after the default values being validated by constructors of
     // Property because it also validates values picked up from system property and env.
     validateProperties();
   }
 
   public ServerProperties(String propertiesFile) {
+    env = System.getenv();
     readPropertiesFromFile(propertiesFile);
+    warnAboutSecretsInFile(propertiesFile);
     validateProperties();
   }
 
   public ServerProperties(Properties inputProperties) {
+    this(inputProperties, System.getenv());
+  }
+
+  ServerProperties(Properties inputProperties, Map<String, String> env) {
+    this.env = env;
     properties.putAll(inputProperties);
     validateProperties();
   }
@@ -408,6 +428,22 @@ public class ServerProperties {
         LOGGER.debug("Server properties loaded successfully: {}", path);
       } catch (IOException ex) {
         LOGGER.error("Exception during loading properties", ex);
+      }
+    }
+  }
+
+  private void warnAboutSecretsInFile(String propertiesFile) {
+    for (Object key : properties.keySet()) {
+      String name = key.toString();
+      if (SECRET_KEY.matcher(name).matches()
+          && System.getProperty(name) == null
+          && getEnv(name) == null) {
+        LOGGER.warn(
+            "{} is set in {}. Keeping secrets in this file is deprecated; set the {} environment"
+                + " variable instead.",
+            name,
+            propertiesFile,
+            envName(name));
       }
     }
   }
@@ -519,7 +555,7 @@ public class ServerProperties {
    *
    * <ol>
    *   <li>System property
-   *   <li>Environment variable
+   *   <li>Environment variable with the key as its name, or for a secret also {@link #envName}
    *   <li>server.properties file
    * </ol>
    *
@@ -534,12 +570,35 @@ public class ServerProperties {
     if (System.getProperty(key) != null) {
       return System.getProperty(key);
     }
-    if (System.getenv().containsKey(key)) {
-      return System.getenv(key);
+    String envValue = getEnv(key);
+    if (envValue != null) {
+      return envValue;
     }
     // Finally try properties. If not found in properties, this would return default value or null
     // if no default value.
     return properties.getProperty(key);
+  }
+
+  private String getEnv(String key) {
+    if (env.containsKey(key)) {
+      return env.get(key);
+    }
+    if (SECRET_KEY.matcher(key).matches()) {
+      // Trailing line breaks are dropped; a Kubernetes Secret made from a file often ends with one.
+      // An empty variable is treated as unset.
+      String value = env.getOrDefault(envName(key), "").replaceAll("[\\r\\n]+$", "");
+      if (!value.isEmpty()) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The environment variable name for a key: upper case, with {@code _} for each other character.
+   */
+  static String envName(String key) {
+    return key.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_");
   }
 
   public void set(Property property, String value) {
