@@ -98,14 +98,15 @@ public class HibernateConfigurator implements AutoCloseable {
   }
 
   /**
-   * Storage paths compare exactly, but MySQL's default collation ignores case. Warns when the
-   * column in the database compares text case-insensitively (a {@code _ci} collation).
+   * Storage paths compare exactly, but MySQL's default collation ignores case. Warns when any text
+   * column in the connected MySQL schema has a case-insensitive ({@code _ci}) collation. A failed
+   * check never fails startup.
    *
    * <p>TODO: decide whether a schema step should convert such a database to a case-sensitive
    * collation instead of only warning.
    */
   private void warnIfMySqlIsCaseInsensitive(Properties properties) {
-    if (!properties.getProperty("hibernate.connection.url", "").startsWith("jdbc:mysql:")) {
+    if (!properties.getProperty("hibernate.connection.url", "").startsWith("jdbc:mysql")) {
       return;
     }
     try (Connection connection = dataSource.getConnection();
@@ -116,8 +117,9 @@ public class HibernateConfigurator implements AutoCloseable {
                     + "WHERE TABLE_SCHEMA = DATABASE() AND COLLATION_NAME IS NOT NULL")) {
       Set<String> caseInsensitive = new TreeSet<>();
       while (collations.next()) {
-        if (collations.getString(1).endsWith("_ci")) {
-          caseInsensitive.add(collations.getString(1));
+        String collation = collations.getString(1);
+        if (collation.endsWith("_ci")) {
+          caseInsensitive.add(collation);
         }
       }
       if (!caseInsensitive.isEmpty()) {
@@ -129,8 +131,9 @@ public class HibernateConfigurator implements AutoCloseable {
             caseInsensitive);
       }
     } catch (SQLException | RuntimeException e) {
-      // A failed check must not fail startup, and the constructor does not close the pool here.
-      LOGGER.debug("Could not check the MySQL collation", e);
+      // Only a warning is lost, and an exception here would leak the pool: the constructor does not
+      // close it after this point.
+      LOGGER.warn("Could not check whether the MySQL database compares text case-insensitively", e);
     }
   }
 
