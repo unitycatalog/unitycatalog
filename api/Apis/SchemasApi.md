@@ -68,7 +68,7 @@ No authorization required
 
 <a name="getSchema"></a>
 # **getSchema**
-> SchemaInfo getSchema(full\_name)
+> SchemaInfo getSchema(full\_name, include\_browse)
 
 Get a schema
 
@@ -79,6 +79,7 @@ Get a schema
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **full\_name** | **String**| Full name of the schema. | [default to null] |
+| **include\_browse** | **Boolean**| Include discovery metadata for objects visible through BROWSE when ordinary access fails. Such objects have browse_only&#x3D;true. Ordinary access returns full metadata.  | [optional] [default to false] |
 
 ### Return type
 
@@ -95,7 +96,7 @@ No authorization required
 
 <a name="listSchemas"></a>
 # **listSchemas**
-> ListSchemasResponse listSchemas(catalog\_name, max\_results, page\_token)
+> ListSchemasResponse listSchemas(catalog\_name, max\_results, page\_token, include\_browse)
 
 List schemas
 
@@ -108,6 +109,7 @@ List schemas
 | **catalog\_name** | **String**| Parent catalog for schemas of interest. | [default to null] |
 | **max\_results** | **Integer**| Maximum number of schemas to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | [optional] [default to null] |
 | **page\_token** | **String**| Opaque pagination token to go to next page based on previous query.  | [optional] [default to null] |
+| **include\_browse** | **Boolean**| Include discovery metadata for objects visible through BROWSE when ordinary access fails. Such objects have browse_only&#x3D;true. Ordinary access returns full metadata.  | [optional] [default to false] |
 
 ### Return type
 

@@ -11,11 +11,13 @@ import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
+import io.unitycatalog.server.auth.decorator.BrowseOnlyConverter;
 import io.unitycatalog.server.model.CreateFunctionRequest;
 import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.ListFunctionsResponse;
@@ -84,16 +86,20 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
           #authorizeAny(#principal, #catalog, USE_CATALOG) &&
           #authorizeAny(#principal, #function, OWNER, EXECUTE))
       """)
-  @ResponseAuthorizeFilter
+  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listFunctions(
       @Param("catalog_name") @AuthorizeResourceKey(CATALOG) String catalogName,
       @Param("schema_name") @AuthorizeResourceKey(SCHEMA) String schemaName,
       @Param("max_results") Optional<Integer> maxResults,
-      @Param("page_token") Optional<String> pageToken) {
+      @Param("page_token") Optional<String> pageToken,
+      @Param("include_browse") Optional<Boolean> includeBrowse) {
     ListFunctionsResponse listFunctionsResponse =
         functionRepository.listFunctions(catalogName, schemaName, maxResults, pageToken);
-    applyResponseFilter(SecurableType.FUNCTION, listFunctionsResponse.getFunctions());
+    applyResponseFilter(
+        SecurableType.FUNCTION,
+        listFunctionsResponse.getFunctions(),
+        BrowseOnlyConverter::toBrowseOnly);
     return HttpResponse.ofJson(listFunctionsResponse);
   }
 
@@ -109,8 +115,13 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
           #authorize(#principal, #schema, USE_SCHEMA) &&
           #authorizeAny(#principal, #function, OWNER, EXECUTE))
       """)
-  public HttpResponse getFunction(@Param("name") @AuthorizeResourceKey(FUNCTION) String name) {
-    return HttpResponse.ofJson(functionRepository.getFunction(name));
+  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
+  public HttpResponse getFunction(
+      @Param("name") @AuthorizeResourceKey(FUNCTION) String name,
+      @Param("include_browse") Optional<Boolean> includeBrowse) {
+    return HttpResponse.ofJson(
+        applyResponseFilter(
+            functionRepository.getFunction(name), BrowseOnlyConverter::toBrowseOnly));
   }
 
   @Delete("/{name}")

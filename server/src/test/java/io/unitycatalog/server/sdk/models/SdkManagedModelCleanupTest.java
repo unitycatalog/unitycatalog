@@ -82,7 +82,8 @@ class SdkManagedModelCleanupTest extends BaseServerTest {
     ModelVersionInfo third = versions.createModelVersion(versionRequest);
     Path thirdMarker = writeMarker(Path.of(URI.create(third.getStorageLocation())));
     models.deleteRegisteredModel(model.getFullName(), true);
-    assertThatThrownBy(() -> models.getRegisteredModel(model.getFullName()))
+    assertThatThrownBy(
+            () -> models.getRegisteredModel(model.getFullName(), /* includeBrowse= */ false))
         .isInstanceOf(ApiException.class);
     RegisteredModelInfo replacement = models.createRegisteredModel(request);
     assertThat(replacement.getId()).isNotEqualTo(model.getId());

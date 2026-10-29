@@ -3,6 +3,7 @@
 
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
+| **browse\_only** | **Boolean** | True when the response contains only discovery metadata authorized by BROWSE. | [optional] [default to null] |
 | **name** | **String** | Name of catalog. | [optional] [default to null] |
 | **comment** | **String** | User-provided free-form text description. | [optional] [default to null] |
 | **properties** | **Map** | A map of key-value properties attached to the securable. | [optional] [default to null] |

@@ -56,14 +56,19 @@ public class OAuthTokenExchangeClientTest extends BaseAuthCRUDTest {
 
     assertThat(JWT.decode(provider.accessToken()).getClaim("sub").asString())
         .isEqualTo(SERVICE_EMAIL);
-    assertThat(catalogsApi(provider).listCatalogs(null, null).getCatalogs()).isNullOrEmpty();
+    assertThat(
+            catalogsApi(provider)
+                .listCatalogs(null, null, /* includeBrowse= */ false)
+                .getCatalogs())
+        .isNullOrEmpty();
   }
 
   @Test
   public void testIdentityProviderTokenIsRejectedWithoutExchange() {
     TokenProvider provider = TokenProvider.create(oauthConfigs(/* exchangeForUcToken= */ false));
 
-    assertThatThrownBy(() -> catalogsApi(provider).listCatalogs(null, null))
+    assertThatThrownBy(
+            () -> catalogsApi(provider).listCatalogs(null, null, /* includeBrowse= */ false))
         .isInstanceOf(ApiException.class)
         .hasMessageContaining("403");
   }

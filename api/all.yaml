@@ -85,6 +85,7 @@ paths:
             format: int32
             maximum: 1000
           required: false
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: listCatalogs
       summary: List catalogs
       description: |
@@ -111,6 +112,8 @@ paths:
       summary: Get a catalog
       description: |
         Gets the specified catalog.
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The catalog was successfully retrieved.
@@ -206,6 +209,7 @@ paths:
           schema:
             type: string
           required: false
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: listSchemas
       summary: List schemas
       description: |
@@ -233,6 +237,8 @@ paths:
       summary: Get a schema
       description: |
         Gets the specified schema for a catalog.
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The schema was successfully retrieved.
@@ -369,6 +375,7 @@ paths:
           required: false
           schema:
             type: string
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: listTables
       summary: List tables
       description: |
@@ -413,6 +420,7 @@ paths:
           schema:
             type: boolean
             default: true
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The table was successfully retrieved.
@@ -530,6 +538,7 @@ paths:
           required: false
           schema:
             type: string
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The volume list was successfully retrieved
@@ -576,6 +585,8 @@ paths:
       summary: Get a Volume
       description: |
         Gets a volume for a specific catalog and schema.
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: Successfully retrieved the properties of the volume
@@ -764,6 +775,7 @@ paths:
           schema:
             type: string
           required: false
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: listFunctions
       summary: List functions
       description: |
@@ -787,7 +799,8 @@ paths:
     get:
       tags:
         - Functions
-      parameters: []
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: getFunction
       summary: Get a function
       description: 'Gets a function from within a parent catalog and schema.'
@@ -867,6 +880,7 @@ paths:
           required: false
           schema:
             type: string
+        - $ref: '#/components/parameters/IncludeBrowse'
       operationId: listRegisteredModels
       summary: List models
       description: |
@@ -894,6 +908,8 @@ paths:
       summary: Get a specified registered model
       description: |
         Gets a fully specified registered model.
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The registered model was successfully retrieved.
@@ -1353,6 +1369,7 @@ paths:
           schema:
             type: string
           required: false
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The external location list was successfully retrieved.
@@ -1375,6 +1392,8 @@ paths:
       description: |
         Gets an external location from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location.
       operationId: getExternalLocation
+      parameters:
+        - $ref: '#/components/parameters/IncludeBrowse'
       responses:
         '200':
           description: The external location was successfully retrieved.
@@ -1501,6 +1520,17 @@ paths:
         '501':
           description: Not Implemented. The requested functionality is not supported.
 components:
+  parameters:
+    IncludeBrowse:
+      name: include_browse
+      in: query
+      description: |
+        Include discovery metadata for objects visible through BROWSE when ordinary access fails.
+        Such objects have browse_only=true. Ordinary access returns full metadata.
+      required: false
+      schema:
+        type: boolean
+        default: false
   schemas:
     SecurablePropertiesMap:
       description: A map of key-value properties attached to the securable.
@@ -1566,6 +1596,9 @@ components:
     VolumeInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         catalog_name:
           type: string
           description: The name of the catalog where the schema and the volume are
@@ -1698,6 +1731,9 @@ components:
     TableInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: Name of table, relative to parent schema.
           type: string
@@ -1845,6 +1881,9 @@ components:
     SchemaInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: Name of schema, relative to parent catalog.
           type: string
@@ -1941,6 +1980,9 @@ components:
     CatalogInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: Name of catalog.
           type: string
@@ -2219,6 +2261,9 @@ components:
     FunctionInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: Name of function, relative to parent schema.
           type: string
@@ -2435,6 +2480,9 @@ components:
     RegisteredModelInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: The name of the registered model
           type: string
@@ -2914,6 +2962,9 @@ components:
     ExternalLocationInfo:
       type: object
       properties:
+        browse_only:
+          description: True when the response contains only discovery metadata authorized by BROWSE.
+          type: boolean
         name:
           description: Name of the external location.
           type: string

@@ -73,13 +73,16 @@ public class SchemaCli {
       pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
     }
     return objectWriter.writeValueAsString(
-        schemasApi.listSchemas(catalogName, maxResults, pageToken).getSchemas());
+        schemasApi
+            .listSchemas(catalogName, maxResults, pageToken, /* includeBrowse= */ false)
+            .getSchemas());
   }
 
   private static String getSchema(SchemasApi schemasApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     String schemaFullName = json.getString(CliParams.FULL_NAME.getServerParam());
-    return objectWriter.writeValueAsString(schemasApi.getSchema(schemaFullName));
+    return objectWriter.writeValueAsString(
+        schemasApi.getSchema(schemaFullName, /* includeBrowse= */ false));
   }
 
   private static String updateSchema(SchemasApi schemasApi, JSONObject json)

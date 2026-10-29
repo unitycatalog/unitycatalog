@@ -12,14 +12,13 @@ import java.lang.annotation.Target;
  * Annotation to mark service methods that require response filtering for authorization.
  *
  * <p>When a method is annotated with {@code @ResponseAuthorizeFilter}, it indicates that the method
- * returns a list of resources that must be filtered based on the user's permissions. The service
- * method MUST call {@code applyResponseFilter()} to filter the results before returning them to the
- * client.
+ * returns resources that must be filtered based on the user's permissions. The service method MUST
+ * call {@code applyResponseFilter()} to filter the results before returning them to the client.
  *
  * <p>This annotation works in conjunction with {@link AuthorizeExpression} to implement
- * authorization for LIST operations. The {@link UnityAccessDecorator} creates a {@link
+ * authorization for GET and LIST operations. The {@link UnityAccessDecorator} creates a {@link
  * ResultFilter} instance and stores it in the request context. The service method retrieves this
- * filter and applies it to the response list by calling {@code applyResponseFilter()}.
+ * filter and applies it to the response by calling {@code applyResponseFilter()}.
  *
  * <p><b>Security Enforcement:</b> If a method is annotated with {@code @ResponseAuthorizeFilter}
  * but does not call the filter on successful responses, the decorator will throw a security
@@ -47,4 +46,10 @@ import java.lang.annotation.Target;
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
-public @interface ResponseAuthorizeFilter {}
+public @interface ResponseAuthorizeFilter {
+  /**
+   * Optional BROWSE fallback, evaluated only with {@code include_browse=true} after ordinary
+   * authorization fails. The handler must supply a typed projection of the allowed response fields.
+   */
+  String browse() default "";
+}

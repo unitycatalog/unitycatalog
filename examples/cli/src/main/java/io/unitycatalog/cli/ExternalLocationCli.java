@@ -69,7 +69,8 @@ public class ExternalLocationCli {
     String pageToken = json.optString(CliParams.PAGE_TOKEN.getServerParam(), null);
 
     ListExternalLocationsResponse listExternalLocationsResponse =
-        externalLocationsApi.listExternalLocations(maxResults, pageToken);
+        externalLocationsApi.listExternalLocations(
+            maxResults, pageToken, /* includeBrowse= */ false);
     List<ExternalLocationInfo> externalLocations =
         listExternalLocationsResponse.getExternalLocations();
     return objectWriter.writeValueAsString(externalLocations);
@@ -79,7 +80,8 @@ public class ExternalLocationCli {
       ExternalLocationsApi externalLocationsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     String name = json.getString(CliParams.NAME.getServerParam());
-    ExternalLocationInfo externalLocationInfo = externalLocationsApi.getExternalLocation(name);
+    ExternalLocationInfo externalLocationInfo =
+        externalLocationsApi.getExternalLocation(name, /* includeBrowse= */ false);
     return objectWriter.writeValueAsString(externalLocationInfo);
   }
 

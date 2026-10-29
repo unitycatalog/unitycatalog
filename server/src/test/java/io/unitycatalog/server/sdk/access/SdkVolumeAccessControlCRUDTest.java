@@ -165,10 +165,12 @@ public class SdkVolumeAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest
     UpdateVolumeRequestContent commentOnly = new UpdateVolumeRequestContent().comment("comment");
     if (canComment) {
       callerApi.updateVolume(fullName, commentOnly);
-      assertThat(observerApi.getVolume(fullName).getComment()).isEqualTo("comment");
+      assertThat(observerApi.getVolume(fullName, /* includeBrowse= */ false).getComment())
+          .isEqualTo("comment");
     } else {
       assertPermissionDenied(() -> callerApi.updateVolume(fullName, commentOnly));
-      assertThat(observerApi.getVolume(fullName).getComment()).isEqualTo(original.getComment());
+      assertThat(observerApi.getVolume(fullName, /* includeBrowse= */ false).getComment())
+          .isEqualTo(original.getComment());
     }
 
     UpdateVolumeRequestContent sameName = new UpdateVolumeRequestContent().newName("volume");
@@ -186,7 +188,8 @@ public class SdkVolumeAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest
           new UpdateVolumeRequestContent().newName("renamed").comment(comment);
       if (canRename) {
         callerApi.updateVolume(fullName, rename);
-        VolumeInfo renamed = observerApi.getVolume(schemaFullName + ".renamed");
+        VolumeInfo renamed =
+            observerApi.getVolume(schemaFullName + ".renamed", /* includeBrowse= */ false);
         assertThat(renamed.getVolumeId()).isEqualTo(original.getVolumeId());
         assertThat(renamed.getName()).isEqualTo("renamed");
         assertThat(renamed.getComment()).isEqualTo(comment == null ? "comment" : comment);
@@ -194,7 +197,7 @@ public class SdkVolumeAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest
             schemaFullName + ".renamed", new UpdateVolumeRequestContent().newName("volume"));
       } else {
         assertPermissionDenied(() -> callerApi.updateVolume(fullName, rename));
-        VolumeInfo unchanged = observerApi.getVolume(fullName);
+        VolumeInfo unchanged = observerApi.getVolume(fullName, /* includeBrowse= */ false);
         assertThat(unchanged.getName()).isEqualTo("volume");
         assertThat(unchanged.getComment())
             .isEqualTo(canComment ? "comment" : original.getComment());
@@ -281,15 +284,18 @@ public class SdkVolumeAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest
     assertThat(principal1Volumes).hasSize(1);
 
     // get volume (principal-1) -> owner -> allowed
-    VolumeInfo volumeInfoOwner = principal1VolumesApi.getVolume("cat_pr1.sch_pr1.vol_adm");
+    VolumeInfo volumeInfoOwner =
+        principal1VolumesApi.getVolume("cat_pr1.sch_pr1.vol_adm", /* includeBrowse= */ false);
     assertThat(volumeInfoOwner).isNotNull();
 
     // get volume (admin) -> metastore admin -> allowed
-    VolumeInfo volumeInfoAdmin = adminVolumesApi.getVolume("cat_pr1.sch_pr1.vol_adm");
+    VolumeInfo volumeInfoAdmin =
+        adminVolumesApi.getVolume("cat_pr1.sch_pr1.vol_adm", /* includeBrowse= */ false);
     assertThat(volumeInfoAdmin).isNotNull();
 
     // get volume (regular-1) -> no permission -> denied
-    assertPermissionDenied(() -> regular1VolumesApi.getVolume("cat_pr1.sch_pr1.vol_adm"));
+    assertPermissionDenied(
+        () -> regular1VolumesApi.getVolume("cat_pr1.sch_pr1.vol_adm", /* includeBrowse= */ false));
 
     // update volume (principal-1) -> catalog owner, schema owner, USE SCHEMA -> allowed
     VolumeInfo updatedVolume =

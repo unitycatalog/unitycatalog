@@ -19,6 +19,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
+import io.unitycatalog.server.auth.decorator.BrowseOnlyConverter;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateSchema;
 import io.unitycatalog.server.model.ListSchemasResponse;
@@ -86,23 +87,30 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
 
   @Get("")
   @AuthorizeExpression(AuthorizeExpressions.GET_SCHEMA)
-  @ResponseAuthorizeFilter
+  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listSchemas(
       @Param("catalog_name") @AuthorizeResourceKey(CATALOG) String catalogName,
       @Param("max_results") Optional<Integer> maxResults,
-      @Param("page_token") Optional<String> pageToken) {
+      @Param("page_token") Optional<String> pageToken,
+      @Param("include_browse") Optional<Boolean> includeBrowse) {
     ListSchemasResponse listSchemasResponse =
         schemaRepository.listSchemas(catalogName, maxResults, pageToken);
-    applyResponseFilter(SecurableType.SCHEMA, listSchemasResponse.getSchemas());
+    applyResponseFilter(
+        SecurableType.SCHEMA, listSchemasResponse.getSchemas(), BrowseOnlyConverter::toBrowseOnly);
     return HttpResponse.ofJson(listSchemasResponse);
   }
 
   @Get("/{full_name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_SCHEMA)
+  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
   @AuthorizeResourceKey(METASTORE)
-  public HttpResponse getSchema(@Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName) {
-    return HttpResponse.ofJson(schemaRepository.getSchema(fullName));
+  public HttpResponse getSchema(
+      @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,
+      @Param("include_browse") Optional<Boolean> includeBrowse) {
+    return HttpResponse.ofJson(
+        applyResponseFilter(
+            schemaRepository.getSchema(fullName), BrowseOnlyConverter::toBrowseOnly));
   }
 
   @Patch("/{full_name}")

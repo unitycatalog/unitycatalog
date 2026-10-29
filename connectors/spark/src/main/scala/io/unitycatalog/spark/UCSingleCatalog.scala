@@ -687,7 +687,8 @@ class UCSingleCatalog
     try {
       Some(tablesApi.getTable(fullTableName,
         /* readStreamingTableAsManaged = */ false,
-        /* readMaterializedViewAsManaged = */ false))
+        /* readMaterializedViewAsManaged = */ false,
+        /* includeBrowse = */ false))
     } catch {
       case e: ApiException if e.getCode == 404 && allowMissingTable => None
       case e: ApiException if e.getCode == 404 => throw new NoSuchTableException(ident)
@@ -964,7 +965,8 @@ private[spark] class UCProxy(
     val tables = ArrayBuffer.empty[UCTableInfo]
     var pageToken: String = null
     do {
-      val response = tablesApi.listTables(catalogName, schemaName, /* limit */ 0, pageToken)
+      val response = tablesApi.listTables(
+        catalogName, schemaName, /* limit */ 0, pageToken, /* includeBrowse = */ false)
       tables ++= response.getTables.asScala
       pageToken = response.getNextPageToken
     } while (pageToken != null && pageToken.nonEmpty)
@@ -986,7 +988,8 @@ private[spark] class UCProxy(
       Some(tablesApi.getTable(
         fullName,
         /* readStreamingTableAsManaged = */ true,
-        /* readMaterializedViewAsManaged = */ true))
+        /* readMaterializedViewAsManaged = */ true,
+        /* includeBrowse = */ false))
     } catch {
       case e: ApiException if e.getCode == 404 => None
     }
@@ -1268,7 +1271,8 @@ private[spark] class UCProxy(
     val schemas = ArrayBuffer.empty[Array[String]]
     var pageToken: String = null
     do {
-      val response = schemasApi.listSchemas(name, /* limit */ 0, pageToken)
+      val response = schemasApi.listSchemas(
+        name, /* limit */ 0, pageToken, /* includeBrowse = */ false)
       schemas ++= response.getSchemas.asScala.map(schema => Array(schema.getName))
       pageToken = response.getNextPageToken
     } while (pageToken != null && pageToken.nonEmpty)
@@ -1282,7 +1286,7 @@ private[spark] class UCProxy(
   override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
     val schema = try {
-      schemasApi.getSchema(name + "." + namespace(0))
+      schemasApi.getSchema(name + "." + namespace(0), /* includeBrowse = */ false)
     } catch {
       case e: ApiException if e.getCode == 404 =>
         throw new NoSuchNamespaceException(namespace)

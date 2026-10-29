@@ -15,6 +15,7 @@ import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
+import io.unitycatalog.server.auth.decorator.BrowseOnlyConverter;
 import io.unitycatalog.server.model.CreateExternalLocation;
 import io.unitycatalog.server.model.ExternalLocationInfo;
 import io.unitycatalog.server.model.ListExternalLocationsResponse;
@@ -66,25 +67,37 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
         CREATE_EXTERNAL_TABLE, CREATE_EXTERNAL_VOLUME, CREATE_MANAGED_STORAGE)
       """;
 
+  private static final String BROWSE_AUTH_EXPRESSION =
+      "#authorize(#principal, #external_location, BROWSE)";
+
   @Get("")
   @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
-  @ResponseAuthorizeFilter
+  @ResponseAuthorizeFilter(browse = BROWSE_AUTH_EXPRESSION)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listExternalLocations(
       @Param("max_results") Optional<Integer> maxResults,
-      @Param("page_token") Optional<String> pageToken) {
+      @Param("page_token") Optional<String> pageToken,
+      @Param("include_browse") Optional<Boolean> includeBrowse) {
     ListExternalLocationsResponse locations =
         externalLocationRepository.listExternalLocations(maxResults, pageToken);
-    applyResponseFilter(SecurableType.EXTERNAL_LOCATION, locations.getExternalLocations());
+    applyResponseFilter(
+        SecurableType.EXTERNAL_LOCATION,
+        locations.getExternalLocations(),
+        BrowseOnlyConverter::toBrowseOnly);
     return HttpResponse.ofJson(locations);
   }
 
   @Get("/{name}")
   @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @ResponseAuthorizeFilter(browse = BROWSE_AUTH_EXPRESSION)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getExternalLocation(
-      @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name) {
-    return HttpResponse.ofJson(externalLocationRepository.getExternalLocation(name));
+      @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
+      @Param("include_browse") Optional<Boolean> includeBrowse) {
+    return HttpResponse.ofJson(
+        applyResponseFilter(
+            externalLocationRepository.getExternalLocation(name),
+            BrowseOnlyConverter::toBrowseOnly));
   }
 
   @Patch("/{name}")

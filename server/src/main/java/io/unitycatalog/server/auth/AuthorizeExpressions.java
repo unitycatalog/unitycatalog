@@ -20,6 +20,9 @@ public final class AuthorizeExpressions {
 
   private AuthorizeExpressions() {}
 
+  /** Catalog BROWSE permits discovery of the catalog and its descendants without usage grants. */
+  public static final String BROWSE_CATALOG = "#authorize(#principal, #catalog, BROWSE)";
+
   /**
    * Authorization policy for reading table metadata and filtering table listings. Metastore admin
    * and catalog owner pass unconditionally; schema owner passes with catalog {@code USE_CATALOG};

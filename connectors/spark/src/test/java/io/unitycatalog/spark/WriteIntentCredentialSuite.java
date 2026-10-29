@@ -113,7 +113,10 @@ public class WriteIntentCredentialSuite {
                         .nullable(true)
                         .position(0)));
     when(fixture.mockTablesApi.getTable(
-            eq(CATALOG_NAME + "." + SCHEMA_NAME + "." + name), eq(true), eq(true)))
+            eq(CATALOG_NAME + "." + SCHEMA_NAME + "." + name),
+            eq(true),
+            eq(true),
+            /* includeBrowse= */ eq(false)))
         .thenReturn(ucTable);
   }
 
