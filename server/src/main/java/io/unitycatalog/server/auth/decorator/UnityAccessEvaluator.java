@@ -17,10 +17,9 @@ import org.springframework.expression.spel.support.StandardEvaluationContext;
 /**
  * Spring Expression Language access control evaluator.
  *
- * <p>A simple class to allow evaluating an SpEL authorization expression. This class exposes all
- * the principal and resource ids provided as SpEL context variables. It also exposes functions
- * authorization functions to call the configured authorization backend implementation which can be
- * used with SpEL logical operators to define compound authorization rules.
+ * <p>Exposes the principal UUID and resource values (type and UUID) as SpEL context variables.
+ * Authorization functions call the configured backend and can be combined with SpEL logical
+ * operators to define compound authorization rules.
  *
  * <p>{@code #strict_privilege_checks} is a boolean from server configuration. Request values cannot
  * override it.
@@ -53,11 +52,11 @@ public class UnityAccessEvaluator {
     authorizeHandle = mh.bindTo(this);
 
     mt = MethodType.methodType(boolean.class, Object[].class);
-    mh = lookup.findVirtual(this.getClass(), "authorizeAny", mt);
+    mh = lookup.findVirtual(UnityAccessEvaluator.class, "authorizeAny", mt);
     authorizeAnyHandle = mh.bindTo(this);
 
     mt = MethodType.methodType(boolean.class, Object[].class);
-    mh = lookup.findVirtual(this.getClass(), "authorizeAll", mt);
+    mh = lookup.findVirtual(UnityAccessEvaluator.class, "authorizeAll", mt);
     authorizeAllHandle = mh.bindTo(this);
   }
 
@@ -67,7 +66,7 @@ public class UnityAccessEvaluator {
     return authorizer.authorize(principal, resource.type(), resource.id(), privilege);
   }
 
-  protected boolean authorizeAny(Object... parameters) {
+  private boolean authorizeAny(Object... parameters) {
     // TODO: Find a better way to deal with the varargs authorizeAny() method.
     UUID principalId = (UUID) parameters[0];
     Resource resource = (Resource) parameters[1];
@@ -76,7 +75,7 @@ public class UnityAccessEvaluator {
     return authorizer.authorizeAny(principalId, resource.type(), resource.id(), privileges);
   }
 
-  protected boolean authorizeAll(Object... parameters) {
+  private boolean authorizeAll(Object... parameters) {
     // TODO: Find a better way to deal with the varargs authorizeAll() method.
     UUID principalId = (UUID) parameters[0];
     Resource resource = (Resource) parameters[1];

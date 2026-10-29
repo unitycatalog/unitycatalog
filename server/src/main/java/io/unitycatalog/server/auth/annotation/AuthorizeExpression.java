@@ -25,11 +25,14 @@ import java.lang.annotation.Target;
  *   <li>#principal - the (UUID) of the principal making the request
  *   <li>#deny - constant evaluating to false
  *   <li>#permit - constant evaluating to true - always allow access
- *   <li>#catalog - the ID of the catalog associated with the request (if applicable)
- *   <li>#schema - the ID of the schema associated with the request (if applicable)
- *   <li>#table - the ID of the table associated with the request (if applicable)
- *   <li>#metastore - the ID of the metastore/server (if applicable)
+ *   <li>#catalog - the catalog resource associated with the request (if applicable)
+ *   <li>#schema - the schema resource associated with the request (if applicable)
+ *   <li>#table - the table resource associated with the request (if applicable)
+ *   <li>#metastore - the metastore resource (if applicable)
  * </ul>
+ *
+ * <p>Resource variables contain a resource type and UUID. Pass them directly to the authorization
+ * functions. Missing resources are null; compare them with null, not with UUIDs.
  *
  * <p>Example: #authorize(#principal, #schema, 'USE_SCHEMA')
  */
