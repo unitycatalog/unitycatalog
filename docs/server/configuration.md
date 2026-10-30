@@ -178,7 +178,8 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 - `privilege`: on `GRANT` and `REVOKE`, the API's privilege name (for example `USE CATALOG`).
 - `request_id`: the ID of the request being served, the same as `request_id` in the `server.log` lines of
   that request. It is absent on `CLEANUP` records, which are not made while serving a request.
-- `location`: the storage location, with scheme, authority and path only. The query string and
+- `location`: the storage location (on `QUEUE_CLEANUP`, the location queued for deletion), with
+  scheme, authority and path only. The query string and
   fragment are removed. User info is removed too, except that for ABFS the part before the `@` is
   kept when it looks like a container name (3 to 63 lowercase letters, digits and hyphens) and is
   replaced by `[REDACTED]` otherwise.
@@ -205,8 +206,10 @@ To send records somewhere else, set `server.audit.sink` to your own class that i
 server classpath, and the server does not start if it can't be loaded. `record` is called
 concurrently, from request threads and the server's own threads, so it must be thread-safe and should hand
 records to a queue instead of sending them inline. A record for a drop is made while the drop is
-committing, and holds the drop's database connection until `record` returns. `close` is called once at shutdown. A failure thrown from either
-method is logged (in `server.log`, or on the console with the Helm chart) and never fails a request.
+committing, and holds the drop's database connection until `record` returns. A force delete of a
+schema or catalog commits once and calls `record` once for every queued task. `close` is called once
+at shutdown. A failure thrown from either method is logged (in `server.log`, or on the console with
+the Helm chart) and never fails a request.
 
 ## Logging
 
