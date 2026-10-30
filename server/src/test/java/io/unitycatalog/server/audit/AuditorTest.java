@@ -175,6 +175,22 @@ class AuditorTest {
             "logger.audit.appenderRef.a.ref = A"));
     assertThatThrownBy(() -> FileAuditSink.validate(load(ignoringFailures.toString())))
         .hasMessageContaining("ignoreExceptions");
+    // A level on the link to the appender can drop every record although the logger passes INFO.
+    Path droppingRecords = Files.createTempFile("log4j2", ".properties");
+    Files.writeString(
+        droppingRecords,
+        String.join(
+            "\n",
+            "appender.a.type = Console",
+            "appender.a.name = A",
+            "appender.a.ignoreExceptions = false",
+            "logger.audit.name = audit",
+            "logger.audit.level = info",
+            "logger.audit.additivity = false",
+            "logger.audit.appenderRef.a.ref = A",
+            "logger.audit.appenderRef.a.level = warn"));
+    assertThatThrownBy(() -> FileAuditSink.validate(load(droppingRecords.toString())))
+        .hasMessageContaining("appender reference");
   }
 
   private static Configuration load(String file) throws Exception {

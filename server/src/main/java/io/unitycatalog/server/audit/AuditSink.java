@@ -20,6 +20,7 @@ package io.unitycatalog.server.audit;
  * </ul>
  */
 public interface AuditSink {
+  /** Records one audit record. See the threading and failure rules above. */
   void record(AuditRecord record);
 
   /**

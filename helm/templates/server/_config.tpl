@@ -106,7 +106,7 @@ appender.console.layout.type=PatternLayout
 appender.console.layout.pattern=%d{HH:mm:ss.SSS} ${hostName} [%t] %-5level %logger{36} %notEmpty{request_id=%X{request_id} }- %msg%n
 
 # Audit records (server.audit.sink=io.unitycatalog.server.audit.FileAuditSink); no file is created
-# until the first record. Rolls over every hour and keeps up to 7 days or 1GB of archives.
+# until the first record. Rolls over every hour and at 10MB, and keeps up to 7 days or 1GB of archives.
 appender.auditFile.type=RollingFile
 appender.auditFile.name=AuditFile
 appender.auditFile.fileName=/home/unitycatalog/etc/logs/audit.log

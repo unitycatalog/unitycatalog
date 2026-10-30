@@ -178,10 +178,12 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 - `privilege`: on `GRANT` and `REVOKE`, the API's privilege name (for example `USE CATALOG`).
 - `request_id`: the ID of the request being served, the same as `request_id` in the `server.log` lines of
   that request. It is absent on `CLEANUP` records, which are not made while serving a request.
-- `access` is `READ` or `READ_WRITE`, and `expires_at` is when the credential expires. Records never contain
-  credential values, and `location` never contains a query string. User info is removed, except that
-  for ABFS the part before the `@` is kept when it looks like a container name (3 to 63 lowercase
-  letters, digits and hyphens) and is replaced by `[REDACTED]` otherwise.
+- `location`: the storage location, with scheme, authority and path only. The query string and
+  fragment are removed. User info is removed too, except that for ABFS the part before the `@` is
+  kept when it looks like a container name (3 to 63 lowercase letters, digits and hyphens) and is
+  replaced by `[REDACTED]` otherwise.
+- `access` is `READ` or `READ_WRITE`, and `expires_at` is when the credential expires. Records never
+  contain credential values.
 
 A record is written for every credential issued, including ones served from the credential cache.
 Permission changes are recorded only when authorization is on. A `GRANT` is recorded when it adds a grant.

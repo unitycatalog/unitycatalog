@@ -8,8 +8,9 @@ import lombok.NonNull;
 import lombok.Value;
 
 /**
- * One audit record. It holds no secrets: no credential values, and storage locations without query,
- * fragment or user info. Fields that don't apply to the record's action are null.
+ * One audit record. It holds no secrets: no credential values, and storage locations without query
+ * or fragment, and without user info except an ABFS container name before the {@code @}. Fields
+ * that don't apply to the record's action are null.
  */
 @Value
 @Builder
