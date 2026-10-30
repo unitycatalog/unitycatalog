@@ -1049,10 +1049,9 @@ components:
           const: "set-table-comment"
         comment:
           type: string
-          description: New table comment
+          description: New table comment. Omit it or send null to remove the table comment.
       required:
         - action
-        - comment
 
     DeltaAddCommitUpdate:
       allOf:

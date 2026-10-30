@@ -510,11 +510,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           "set-domain-metadata requires at least one domain entry");
 
       TestUtils.assertDeltaApiException(
-          () -> updateTable(h, new DeltaSetTableCommentUpdate().comment(null)),
-          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-          "set-table-comment requires a comment");
-
-      TestUtils.assertDeltaApiException(
           () ->
               updateTable(
                   h, new DeltaRemoveDomainMetadataUpdate().domains(List.of("delta.unknown"))),
@@ -1460,6 +1455,24 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           DeltaErrorType.COMMIT_STATE_UNKNOWN_EXCEPTION,
           "retry");
     }
+  }
+
+  /**
+   * set-table-comment without a comment removes the table comment. Delta sends one when a table
+   * loses its description, e.g. on CREATE OR REPLACE TABLE without a COMMENT clause.
+   */
+  @Test
+  public void testSetTableCommentWithoutCommentRemovesComment() throws Exception {
+    Handle h = createDeltaManaged("tbl_clear_comment", Map.of());
+    String fullName = TestUtils.SCHEMA_FULL_NAME + "." + h.name();
+
+    DeltaLoadTableResponse r1 =
+        updateTable(h, new DeltaSetTableCommentUpdate().comment("a comment"));
+    assertThat(tableOperations.getTable(fullName).getComment()).isEqualTo("a comment");
+
+    updateTable(
+        h.withEtag(r1.getMetadata().getEtag()), new DeltaSetTableCommentUpdate().comment(null));
+    assertThat(tableOperations.getTable(fullName).getComment()).isNull();
   }
 
   /** Write a dummy published {@code _delta_log/<version>.json} under the table location. */

@@ -1052,7 +1052,8 @@ public final class DeltaUpdateTableMapper {
   }
 
   private static void applySetTableComment(TableInfoDAO dao, DeltaSetTableCommentUpdate update) {
-    ValidationUtils.checkNotNull(update.getComment(), "set-table-comment requires a comment.");
+    // A null comment clears the table comment. Delta sends one when a table loses its description,
+    // e.g. on a CREATE OR REPLACE TABLE without a COMMENT clause.
     dao.setComment(update.getComment());
   }
 
