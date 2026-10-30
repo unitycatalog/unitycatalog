@@ -1,5 +1,6 @@
 package io.unitycatalog.server.sdk.access;
 
+import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -10,8 +11,12 @@ import static org.mockito.Mockito.spy;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
+import io.unitycatalog.client.model.PermissionsChange;
+import io.unitycatalog.client.model.Privilege;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.TableOperation;
+import io.unitycatalog.client.model.UpdatePermissions;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.IcebergRestClient;
@@ -46,6 +51,65 @@ public class SdkIcebergCredentialMigrationTest extends SdkAccessControlBaseCRUDT
     FileOperations operations = spy(fileOperations);
     doReturn(CREDENTIAL_CONFIG).when(operations).getFileIOConfig(any(), any(), any());
     return operations;
+  }
+
+  @Test
+  public void manageStillRequiresDataPrivilegesDuringMigration() throws Exception {
+    createTestUser(PRINCIPAL_1);
+    IcebergRestClient admin = new IcebergRestClient(adminConfig);
+    IcebergRestClient manager = new IcebergRestClient(createTestUserServerConfig(PRINCIPAL_1));
+    admin.createTable(
+        TestUtils.CATALOG_NAME,
+        TestUtils.SCHEMA_NAME,
+        CreateTableRequest.builder()
+            .withName(TABLE)
+            .withSchema(new Schema(Types.NestedField.required(1, "id", Types.LongType.get())))
+            .build());
+    for (SecurableType type :
+        List.of(SecurableType.CATALOG, SecurableType.SCHEMA, SecurableType.TABLE)) {
+      String name =
+          switch (type) {
+            case CATALOG -> TestUtils.CATALOG_NAME;
+            case SCHEMA -> TestUtils.SCHEMA_FULL_NAME;
+            case TABLE -> TestUtils.SCHEMA_FULL_NAME + "." + TABLE;
+            default -> throw new IllegalArgumentException();
+          };
+      grantPermissions(PRINCIPAL_1, type, name, Privileges.MANAGE);
+      if (type != SecurableType.CATALOG) {
+        grantPermissions(
+            PRINCIPAL_1, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
+      }
+      if (type == SecurableType.TABLE) {
+        grantPermissions(
+            PRINCIPAL_1, SecurableType.SCHEMA, TestUtils.SCHEMA_FULL_NAME, Privileges.USE_SCHEMA);
+      }
+      assertThat(
+              manager
+                  .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TABLE)
+                  .tableMetadata())
+          .isNotNull();
+      assertThat(manager.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TABLE).config())
+          .isEmpty();
+      assertIcebergApiException(
+          () -> manager.loadCredentials(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TABLE),
+          403,
+          "Access denied");
+      grantsApi.update(
+          type,
+          name,
+          new UpdatePermissions()
+              .changes(
+                  List.of(
+                      new PermissionsChange()
+                          .principal(PRINCIPAL_1)
+                          .remove(List.of(Privilege.MANAGE)))));
+    }
+    assertApiException(
+        () ->
+            grantPermissions(
+                PRINCIPAL_1, SecurableType.METASTORE, METASTORE_NAME, Privileges.MANAGE),
+        ErrorCode.INVALID_ARGUMENT,
+        "Privilege MANAGE cannot be granted on metastore");
   }
 
   @Test
@@ -93,13 +157,30 @@ public class SdkIcebergCredentialMigrationTest extends SdkAccessControlBaseCRUDT
       grantPermissions(user, SecurableType.SCHEMA, CATALOG + "." + SCHEMA, Privileges.USE_SCHEMA);
     }
 
-    // Each ownership rule and MODIFY-only access still permits credentials during migration.
-    for (IcebergRestClient client :
-        List.of(admin, catalogOwner, schemaOwner, tableOwner, modifier)) {
-      assertThat(client.loadTable(CATALOG, SCHEMA, TABLE).config()).isEqualTo(CREDENTIAL_CONFIG);
-      assertThat(client.loadCredentials(CATALOG, SCHEMA, TABLE).credentials())
-          .singleElement()
-          .satisfies(credential -> assertThat(credential.config()).isEqualTo(CREDENTIAL_CONFIG));
+    // Adding MANAGE must preserve legacy owner and MODIFY-only credential access.
+    for (Map.Entry<String, IcebergRestClient> entry :
+        Map.of(
+                "admin",
+                admin,
+                PRINCIPAL_1,
+                catalogOwner,
+                PRINCIPAL_2,
+                schemaOwner,
+                REGULAR_1,
+                tableOwner,
+                REGULAR_2,
+                modifier)
+            .entrySet()) {
+      for (boolean addManage : List.of(false, true)) {
+        if (addManage) {
+          grantPermissions(entry.getKey(), SecurableType.TABLE, fullName, Privileges.MANAGE);
+        }
+        assertThat(entry.getValue().loadTable(CATALOG, SCHEMA, TABLE).config())
+            .isEqualTo(CREDENTIAL_CONFIG);
+        assertThat(entry.getValue().loadCredentials(CATALOG, SCHEMA, TABLE).credentials())
+            .singleElement()
+            .satisfies(credential -> assertThat(credential.config()).isEqualTo(CREDENTIAL_CONFIG));
+      }
     }
     assertIcebergApiException(
         () -> noTableAccess.loadTable(CATALOG, SCHEMA, TABLE), 403, "Access denied");

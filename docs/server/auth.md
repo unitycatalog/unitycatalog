@@ -227,6 +227,7 @@ Grant validation also runs when `server.authorization=disable`.
 | `CREATE EXTERNAL LOCATION` | Metastore, storage credential |
 | `READ FILES`, `WRITE FILES`, `CREATE EXTERNAL TABLE` | External location, storage credential |
 | `CREATE EXTERNAL VOLUME`, `CREATE MANAGED STORAGE` | External location |
+| `MANAGE` | Catalog, schema, table/view, volume, function, registered model, external location, storage credential |
 
 For example, `USE CATALOG` on a schema is invalid. Grant it on the containing catalog instead.
 If any addition is invalid, the server rejects the full request with `INVALID_ARGUMENT` before
@@ -235,6 +236,21 @@ saving its grants or revokes.
 After an upgrade, existing grants stay in place. The server does not remove invalid grants
 automatically. You can still remove them through the permissions API. Update grant scripts
 to use the correct object types before adding or reapplying grants.
+
+### MANAGE
+
+`MANAGE` permits full metadata and grant inspection, grant changes, supported metadata updates,
+deletion, and ownership transfer. Catalog `MANAGE` needs no usage grants. Schema `MANAGE` needs
+`USE CATALOG`. Object `MANAGE` needs both `USE CATALOG` and `USE SCHEMA`. Catalog and schema grants
+also manage their children. External locations and storage credentials need no hierarchy usage.
+
+`MANAGE` does not grant data credentials, `EXECUTE`, model version publication, or `CREATE`
+privileges. Rename still requires permission to create the new name. Replacing an external
+location's credential still requires permission to use the replacement credential.
+
+Set `owner` in an object's PATCH request to transfer ownership to an existing user. Table and
+function PATCH requests support only ownership changes. For views, functions, and models, a user
+can transfer ownership to themselves; a metastore admin can transfer to another user.
 
 ### Restart the UC Server
 

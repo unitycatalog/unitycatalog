@@ -62,7 +62,7 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
   private static final String LIST_AND_GET_AUTH_EXPRESSION =
       """
       #authorize(#principal, #metastore, OWNER) ||
-      #authorizeAny(#principal, #external_location, OWNER, READ_FILES, WRITE_FILES,
+      #authorizeAny(#principal, #external_location, OWNER, MANAGE, READ_FILES, WRITE_FILES,
         CREATE_EXTERNAL_TABLE, CREATE_EXTERNAL_VOLUME, CREATE_MANAGED_STORAGE)
       """;
 
@@ -91,7 +91,7 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
   @AuthorizeExpression(
       """
       #authorize(#principal, #metastore, OWNER) ||
-      (#authorize(#principal, #external_location, OWNER) &&
+      (#authorizeAny(#principal, #external_location, OWNER, MANAGE) &&
        (#credential == null ||
         #authorizeAny(#principal, #credential, OWNER, CREATE_EXTERNAL_LOCATION)))
       """)
@@ -100,15 +100,17 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
       @AuthorizeResourceKey(value = CREDENTIAL, key = "credential_name")
           UpdateExternalLocation updateRequest) {
-    return HttpResponse.ofJson(
-        externalLocationRepository.updateExternalLocation(name, updateRequest));
+    ExternalLocationInfo result =
+        externalLocationRepository.updateExternalLocation(name, updateRequest);
+    reloadAfterOwnerChange(updateRequest.getOwner());
+    return HttpResponse.ofJson(result);
   }
 
   @Delete("/{name}")
   @AuthorizeExpression(
       """
       #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #external_location, OWNER)
+      #authorizeAny(#principal, #external_location, OWNER, MANAGE)
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteExternalLocation(

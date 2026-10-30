@@ -124,6 +124,13 @@ public class CredentialRepository {
             throw new BaseException(ErrorCode.NOT_FOUND, "Storage credential not found: " + name);
           }
 
+          if (updateCredential.getOwner() != null) {
+            existingCredential.setOwner(
+                repositories
+                    .getOwnershipRepository()
+                    .updateOwner(session, existingCredential, updateCredential.getOwner()));
+          }
+
           // Update fields if provided
           if (updateCredential.getNewName() != null) {
             ValidationUtils.validateSqlObjectName(updateCredential.getNewName());

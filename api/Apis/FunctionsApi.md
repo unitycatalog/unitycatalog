@@ -8,6 +8,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 | [**deleteFunction**](FunctionsApi.md#deleteFunction) | **DELETE** /functions/{name} | Delete a function |
 | [**getFunction**](FunctionsApi.md#getFunction) | **GET** /functions/{name} | Get a function |
 | [**listFunctions**](FunctionsApi.md#listFunctions) | **GET** /functions | List functions |
+| [**updateFunction**](FunctionsApi.md#updateFunction) | **PATCH** /functions/{name} | Update a function owner |
 
 
 <a name="createFunction"></a>
@@ -119,5 +120,33 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: Not defined
+- **Accept**: application/json
+
+<a name="updateFunction"></a>
+# **updateFunction**
+> FunctionInfo updateFunction(name, UpdateFunction)
+
+Update a function owner
+
+    Transfers ownership of a function to an existing user.
+
+### Parameters
+
+|Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **name** | **String**| The fully-qualified name of the function (of the form __catalog_name__.__schema_name__.__function__name__). | [default to null] |
+| **UpdateFunction** | [**UpdateFunction**](../Models/UpdateFunction.md)|  | |
+
+### Return type
+
+[**FunctionInfo**](../Models/FunctionInfo.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: application/json
 - **Accept**: application/json
 

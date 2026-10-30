@@ -224,6 +224,12 @@ public class VolumeRepository {
           if (volumeInfo == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Volume not found: " + name);
           }
+          if (updateVolumeRequest.getOwner() != null) {
+            volumeInfo.setOwner(
+                repositories
+                    .getOwnershipRepository()
+                    .updateOwner(session, volumeInfo, updateVolumeRequest.getOwner()));
+          }
           if (updateVolumeRequest.getNewName() != null) {
             VolumeInfoDAO existingVolume =
                 getVolumeDAO(session, catalog, schema, updateVolumeRequest.getNewName());
@@ -234,6 +240,7 @@ public class VolumeRepository {
             }
           }
           if (updateVolumeRequest.getNewName() == null
+              && updateVolumeRequest.getOwner() == null
               && updateVolumeRequest.getComment() == null) {
             return volumeInfo.toVolumeInfo(catalog, schema);
           }

@@ -20,6 +20,7 @@ import io.unitycatalog.server.model.DependencyList;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.model.UpdateTable;
 import io.unitycatalog.server.observability.TableMetrics;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
@@ -1211,6 +1212,34 @@ public class TableRepository {
       result.add(tableInfo);
     }
     return new ListTablesResponse().tables(result).nextPageToken(nextPageToken);
+  }
+
+  /** Transfers ownership while preserving the table's data and metadata. */
+  public TableInfo updateTable(String fullName, UpdateTable updateTable) {
+    String[] parts = ValidationUtils.splitFullName(fullName, 3, "Invalid table name: " + fullName);
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UUID schemaId =
+              repositories.getSchemaRepository().getSchemaIdOrThrow(session, parts[0], parts[1]);
+          TableInfoDAO dao = findBySchemaIdAndName(session, schemaId, parts[2]);
+          if (dao == null) {
+            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + fullName);
+          }
+          dao.setOwner(
+              repositories
+                  .getOwnershipRepository()
+                  .updateOwner(session, dao, updateTable.getOwner()));
+          dao.setUpdatedAt(new Date());
+          dao.setUpdatedBy(IdentityUtils.findPrincipalEmailAddress());
+          TableInfo result = dao.toTableInfo(true, parts[0], parts[1]);
+          RepositoryUtils.attachDependencies(
+              result, dao, session, repositories.getDependencyRepository());
+          return RepositoryUtils.attachProperties(
+              result, result.getTableId(), Constants.TABLE, session);
+        },
+        "Failed to update table owner",
+        /* readOnly= */ false);
   }
 
   /**

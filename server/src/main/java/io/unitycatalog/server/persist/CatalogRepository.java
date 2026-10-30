@@ -152,7 +152,14 @@ public class CatalogRepository {
         sessionFactory,
         session -> {
           CatalogInfoDAO catalogInfoDAO = getCatalogDaoOrThrow(session, name);
+          if (updateCatalog.getOwner() != null) {
+            catalogInfoDAO.setOwner(
+                repositories
+                    .getOwnershipRepository()
+                    .updateOwner(session, catalogInfoDAO, updateCatalog.getOwner()));
+          }
           if (updateCatalog.getNewName() == null
+              && updateCatalog.getOwner() == null
               && updateCatalog.getComment() == null
               && (updateCatalog.getProperties() == null
                   || updateCatalog.getProperties().isEmpty())) {
