@@ -33,6 +33,7 @@ import java.util.function.Function;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -239,7 +240,8 @@ class ManagedTableCleanupTaskTest {
     // pending QUEUE_CLEANUP record was not written.
     assertThatThrownBy(
             () -> repositories.getSchemaRepository().deleteSchema(CATALOG + "." + SCHEMA, true))
-        .isInstanceOf(RuntimeException.class);
+        .isInstanceOf(BaseException.class)
+        .hasCauseInstanceOf(ConstraintViolationException.class);
 
     assertThat(findTable(table.getId())).isNotNull();
     assertThat(findTask(table.getId())).isNull();

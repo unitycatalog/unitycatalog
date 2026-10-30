@@ -160,10 +160,10 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 - `action`: `ISSUE_CREDENTIAL`, `GRANT`, `REVOKE`, `CLEAR_RESOURCE_GRANTS` (a dropped object's
   grants), `CLEAR_PRINCIPAL_GRANTS` (a deleted user's grants), or `QUEUE_CLEANUP` (a dropped
   object's storage is queued for deletion).
-- `user`: the caller's identity from the token (`sub`): the user's email, `admin` for the bootstrap
-  admin token, or a service name. It is `system:storage-cleanup` for the background storage cleanup,
-  `system:server` for work the server does outside a request, such as the admin grant made at
-  first start, and absent when authorization is off.
+- `user`: `system:storage-cleanup` on `CLEANUP` records, whether or not authorization is on. On other
+  records, the caller's identity from the token (`sub`): the user's email, `admin` for the bootstrap
+  admin token, or a service name. It is `system:server` for work the server does outside a request,
+  such as the admin grant made at first start, and absent when authorization is off.
 - `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
   itself while handling the request, and `CLEANUP` for the background storage cleanup.
 - `resource_id`: on a permission change, the object whose grants changed (absent for
@@ -179,8 +179,9 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 - `request_id`: the ID of the request being served, the same as `request_id` in the `server.log` lines of
   that request. It is absent on `CLEANUP` records, which are not made while serving a request.
 - `access` is `READ` or `READ_WRITE`, and `expires_at` is when the credential expires. Records never contain
-  credential values, and `location` never contains a query string or user info. For ABFS, `location` keeps
-  `container@account`, and anything else before the `@` is replaced by `[REDACTED]`.
+  credential values, and `location` never contains a query string. User info is removed, except that
+  for ABFS the part before the `@` is kept when it looks like a container name (3 to 63 lowercase
+  letters, digits and hyphens) and is replaced by `[REDACTED]` otherwise.
 
 A record is written for every credential issued, including ones served from the credential cache.
 Permission changes are recorded only when authorization is on. A `GRANT` is recorded when it adds a grant.
@@ -189,8 +190,9 @@ nothing to remove, because with several servers sharing one database a server ca
 records are best effort: one can be lost when the sink fails, or when a request is still running as the
 server shuts down.
 
-`FileAuditSink` needs the `audit` logger in `etc/conf/server.log4j2.properties`, with its own
-appender set to `ignoreExceptions = false`, `additivity = false`, and level `INFO`. The shipped configuration has it. If it is missing,
+`FileAuditSink` needs the `audit` logger in `etc/conf/server.log4j2.properties`, set to
+`additivity = false` and level `INFO`, with its own appender set to `ignoreExceptions = false`.
+The shipped configuration has it. If it is missing,
 for example in a log configuration kept from an older release, the server does not start, so audit
 records never end up in `server.log`. `audit.log` rolls over with the same settings as
 `server.log`: every hour and at 10MB, keeping archives for up to 7 days or 1GB. Ship

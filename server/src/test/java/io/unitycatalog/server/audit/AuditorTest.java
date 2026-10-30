@@ -6,9 +6,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.interfaces.DecodedJWT;
+import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpRequest;
+import com.linecorp.armeria.common.util.SafeCloseable;
+import com.linecorp.armeria.server.ServiceRequestContext;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.CleanupTaskRepository;
+import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
@@ -73,9 +81,18 @@ class AuditorTest {
     assertThat(client.getPurpose()).isEqualTo(Purpose.CLIENT);
     assertThat(client.getAccess()).isEqualTo(AuditRecord.Access.READ);
     assertThat(client.getResourceId()).isNull();
+    // With a decoded token on the request, the caller is the token's subject.
+    DecodedJWT jwt =
+        JWT.decode(JWT.create().withSubject("bob@example.com").sign(Algorithm.HMAC256("secret")));
+    ServiceRequestContext request = ServiceRequestContext.of(HttpRequest.of(HttpMethod.GET, "/"));
+    request.setAttr(AuthDecorator.DECODED_JWT_ATTR, jwt);
+    try (SafeCloseable ignored = request.push()) {
+      audited.vendCredential(clientPath, CredentialContext.READ_ONLY);
+    }
+    assertThat(CapturingAuditSink.RECORDS.get(2).getUser()).isEqualTo("bob@example.com");
     // ABFS keeps its container@account authority.
-    assertThat(auditor.sanitizeLocation("abfss://ctr@acct.dfs.core.windows.net/p?sv=x"))
-        .isEqualTo("abfss://ctr@acct.dfs.core.windows.net/p");
+    assertThat(auditor.sanitizeLocation("abfss://my-ctr@acct.dfs.core.windows.net/p?sv=x"))
+        .isEqualTo("abfss://my-ctr@acct.dfs.core.windows.net/p");
     // Anything else before the @ may be a secret.
     assertThat(auditor.sanitizeLocation("abfss://user:pw@acct.dfs.core.windows.net/p"))
         .isEqualTo("abfss://[REDACTED]@acct.dfs.core.windows.net/p");

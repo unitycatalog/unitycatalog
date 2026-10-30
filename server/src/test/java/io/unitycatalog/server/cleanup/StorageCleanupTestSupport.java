@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.function.UnaryOperator;
+import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.SupportsPrefixOperations;
 import org.hibernate.SessionFactory;
 
@@ -123,12 +124,15 @@ public final class StorageCleanupTestSupport {
             .isNotEmpty()
             .allSatisfy(r -> assertThat(r.getResourceId()).isEqualTo(task.getId()));
       }
-      repositories.getFileOperations().getFileIO(location, CredentialContext.READ_ONLY);
-      assertThat(CapturingAuditSink.RECORDS)
-          .filteredOn(
-              r -> r.getPurpose() == Purpose.SERVER && location.toString().equals(r.getLocation()))
-          .isNotEmpty()
-          .allSatisfy(r -> assertThat(r.getResourceId()).isNull());
+      try (FileIO ignored =
+          repositories.getFileOperations().getFileIO(location, CredentialContext.READ_ONLY)) {
+        assertThat(CapturingAuditSink.RECORDS)
+            .filteredOn(
+                r ->
+                    r.getPurpose() == Purpose.SERVER && location.toString().equals(r.getLocation()))
+            .isNotEmpty()
+            .allSatisfy(r -> assertThat(r.getResourceId()).isNull());
+      }
     }
   }
 
