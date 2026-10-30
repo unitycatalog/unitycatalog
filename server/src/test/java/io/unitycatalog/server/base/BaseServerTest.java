@@ -1,9 +1,12 @@
 package io.unitycatalog.server.base;
 
+import com.linecorp.armeria.server.ServerPortBindException;
 import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
+import io.unitycatalog.server.testdatabase.TempDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.IOException;
@@ -11,10 +14,8 @@ import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
+import java.util.concurrent.CompletionException;
 import lombok.SneakyThrows;
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
-import org.hibernate.Transaction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.io.TempDir;
@@ -23,11 +24,17 @@ public abstract class BaseServerTest {
 
   public static final ServerConfig serverConfig = new ServerConfig("http://localhost", "");
 
+  private static final int MAX_START_ATTEMPTS = 3;
+
   protected ServerConfig observabilityServerConfig;
   protected boolean observabilityEnabled;
   protected UnityCatalogServer unityCatalogServer;
   protected Properties serverProperties;
   protected HibernateConfigurator hibernateConfigurator;
+
+  /** This test's database on the backend selected by UC_TEST_DATABASE. */
+  @TempDatabase protected TestDatabase testDatabase;
+
   protected CloudCredentialVendor cloudCredentialVendor;
 
   // All test data should be written under this directory. It will be cleaned up.
@@ -77,13 +84,6 @@ public abstract class BaseServerTest {
     return fileOperations;
   }
 
-  /**
-   * Subclasses can override this to customize the hibernate properties before the session factory
-   * is created, e.g. to point the server at an external database such as PostgreSQL via
-   * Testcontainers. Defaults to the H2 in-memory test configuration.
-   */
-  protected void setUpHibernateProperties(Properties hibernateProperties) {}
-
   @SneakyThrows
   @BeforeEach
   public void setUp() {
@@ -98,22 +98,26 @@ public abstract class BaseServerTest {
     }
     if (serverConfig.getServerUrl().contains("localhost")) {
       System.out.println("Running tests on localhost..");
-      // Start the server on a random port, reserving a second random port for optional
-      // observability. Both are taken at once so the two ports are guaranteed distinct: sequential
-      // ServerSocket(0) calls can hand back the same port (the first is closed before the second
-      // opens), which the API/observability-port validation would then reject.
-      int[] ports = findTwoAvailablePorts();
-      int port = ports[0];
-      int observabilityPort = ports[1];
       Files.createDirectories(testDirectoryRoot);
 
       setUpProperties();
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
       setUpCredentialOperations(initServerProperties);
-      Properties hibernateProperties =
-          HibernateConfigurator.setupHibernateProperties(initServerProperties);
-      setUpHibernateProperties(hibernateProperties);
-      hibernateConfigurator = new HibernateConfigurator(hibernateProperties);
+      hibernateConfigurator = testDatabase.hibernateConfigurator();
+      startServerOnFreePorts(initServerProperties);
+    }
+  }
+
+  /**
+   * Starts the server on a random API port, plus a second random port for optional observability.
+   * The ports are only free when chosen, so another process can bind one before the server does;
+   * that start is retried with fresh ports.
+   */
+  private void startServerOnFreePorts(ServerProperties initServerProperties) throws IOException {
+    for (int attempt = 1; ; attempt++) {
+      int[] ports = findTwoAvailablePorts();
+      int port = ports[0];
+      int observabilityPort = ports[1];
       UnityCatalogServer.Builder serverBuilder =
           UnityCatalogServer.builder()
               .port(port)
@@ -125,9 +129,19 @@ public abstract class BaseServerTest {
         serverBuilder.observabilityPort(observabilityPort);
       }
       unityCatalogServer = serverBuilder.build();
-      unityCatalogServer.start();
+      try {
+        unityCatalogServer.start();
+      } catch (CompletionException e) {
+        unityCatalogServer.close();
+        unityCatalogServer = null;
+        if (!(e.getCause() instanceof ServerPortBindException) || attempt == MAX_START_ATTEMPTS) {
+          throw e;
+        }
+        continue;
+      }
       serverConfig.setServerUrl("http://localhost:" + port);
       observabilityServerConfig = new ServerConfig("http://localhost:" + observabilityPort, "");
+      return;
     }
   }
 
@@ -145,34 +159,11 @@ public abstract class BaseServerTest {
 
   @AfterEach
   public void tearDown() {
+    // The server closes here; its database is dropped afterwards (see TempDatabase).
     if (unityCatalogServer != null) {
-
-      // TODO: Figure out a better way to clear the database
-      SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
-      Session session = sessionFactory.openSession();
-      Transaction tx = session.beginTransaction();
-      session.createMutationQuery("delete from FunctionParameterInfoDAO").executeUpdate();
-      session.createMutationQuery("delete from FunctionInfoDAO").executeUpdate();
-      session.createMutationQuery("delete from VolumeInfoDAO").executeUpdate();
-      session.createMutationQuery("delete from ColumnInfoDAO").executeUpdate();
-      session.createMutationQuery("delete from TableInfoDAO").executeUpdate();
-      session.createMutationQuery("delete from StagingTableDAO").executeUpdate();
-      session.createMutationQuery("delete from SchemaInfoDAO").executeUpdate();
-      session.createMutationQuery("delete from CatalogInfoDAO").executeUpdate();
-      session.createMutationQuery("delete from UserDAO").executeUpdate();
-      session.createMutationQuery("delete from ExternalLocationDAO").executeUpdate();
-      session.createMutationQuery("delete from CredentialDAO").executeUpdate();
-      tx.commit();
-      session.close();
-
       // close() rather than stop() so a server that built its own SessionFactory releases it;
-      // this harness injects one, so the server leaves it open and we close it below.
+      // this harness injects one, so the server leaves it open.
       unityCatalogServer.close();
-      // Release the factory and pool this harness built and injected in setUp(). setUp() builds
-      // a fresh one per test, so leaked factories would otherwise accumulate for the whole JVM run.
-      // In test env hbm2ddl is create-drop, so closing also drops the schema — keep this after the
-      // cleanup queries above.
-      hibernateConfigurator.close();
       // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
       unityCatalogServer = null;
     }

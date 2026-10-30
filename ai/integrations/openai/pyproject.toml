@@ -1,6 +1,6 @@
 [project]
 name = "unitycatalog-openai"
-version = "0.4.0"
+version = "0.4.1"
 description = "Support for Unity Catalog functions as OpenAI tools"
 authors = [
     { name="Serena Ruan", email="serena.ruan@databricks.com" }
@@ -10,21 +10,21 @@ license = { text="Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
     "openai>=1.46.1",
-    "unitycatalog-ai>=0.4.0,<0.5.0",
+    "unitycatalog-ai>=0.4.1,<0.5.0",
     "pydantic<3,>=2",
 ]
 
 [project.optional-dependencies]
 databricks = [
-  "unitycatalog-ai[databricks]>=0.4.0,<0.5.0",
+  "unitycatalog-ai[databricks]>=0.4.1,<0.5.0",
 ]
 
 databricks-dev = [
-  "unitycatalog-ai[databricks-dev]>=0.4.0,<0.5.0",
+  "unitycatalog-ai[databricks-dev]>=0.4.1,<0.5.0",
 ]
 
 dev = [
-  "unitycatalog-ai[dev]>=0.4.0,<0.5.0",
+  "unitycatalog-ai[dev]>=0.4.1,<0.5.0",
   "mlflow>=3.3.0,<=3.10.0",
 ]
 
@@ -75,6 +75,7 @@ convention = "google"
 
 [tool.uv]
 exclude-newer = "30d"
+exclude-newer-package = { certifi = "2026-10-23T00:00:00Z", uv = "2026-10-23T00:00:00Z" }
 
 [tool.uv.sources]
 unitycatalog-ai = { path = "../../core", editable = true }

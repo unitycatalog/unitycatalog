@@ -9,6 +9,7 @@ import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.model.VolumeType;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
@@ -17,9 +18,10 @@ import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.FileOperations;
-import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.InterruptiblePrefixOperations;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.testdatabase.TempDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -33,7 +35,6 @@ import java.util.Properties;
 import java.util.UUID;
 import org.apache.iceberg.aws.s3.S3FileIO;
 import org.hibernate.SessionFactory;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -67,24 +68,16 @@ class StorageCleanupWorkerE2ETest {
   private final String bucket = "cleanup-e2e-" + UUID.randomUUID();
 
   private SessionFactory sessionFactory;
+  @TempDatabase private TestDatabase testDatabase;
   private Repositories repositories;
   private UUID schemaId;
 
   @BeforeEach
   void setUp() {
     ServerProperties serverProperties = testServerProperties();
-    Properties hibernateProperties =
-        HibernateConfigurator.setupHibernateProperties(serverProperties);
-    hibernateProperties.setProperty(
-        "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
-    sessionFactory = new HibernateConfigurator(hibernateProperties).getSessionFactory();
+    sessionFactory = testDatabase.sessionFactory();
     repositories = new Repositories(sessionFactory, serverProperties, null);
     schemaId = seedNamespace();
-  }
-
-  @AfterEach
-  void tearDown() {
-    sessionFactory.close();
   }
 
   @Test
@@ -269,7 +262,8 @@ class StorageCleanupWorkerE2ETest {
         repositories.getStorageCleanupTaskRepository(),
         repositories.getFileOperations(),
         Clock.systemUTC(),
-        workerProperties());
+        workerProperties(),
+        UnityCatalogMetrics.noop());
   }
 
   /** Stubbed FileOperations that points the cleanup S3FileIO at the s3mock client. */
@@ -286,7 +280,8 @@ class StorageCleanupWorkerE2ETest {
         repositories.getStorageCleanupTaskRepository(),
         fileOperations,
         Clock.systemUTC(),
-        workerProperties());
+        workerProperties(),
+        UnityCatalogMetrics.noop());
   }
 
   private void putObjects(String prefix, String... suffixes) {

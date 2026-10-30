@@ -2,9 +2,12 @@ package io.unitycatalog.server.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.testdatabase.TempDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.time.Duration;
@@ -30,20 +33,18 @@ public class JCasbinAuthorizerMultiInstanceTest {
   private static final String TEST_REFRESH_INTERVAL = "PT0.05S";
 
   private HibernateConfigurator hibernateConfigurator;
+  @TempDatabase private TestDatabase testDatabase;
   private final List<JCasbinAuthorizer> replicas = new ArrayList<>();
 
   @BeforeEach
   void setUp() {
-    Properties properties = new Properties();
-    properties.setProperty(Property.SERVER_ENV.getKey(), "test");
-    hibernateConfigurator = new HibernateConfigurator(new ServerProperties(properties));
+    hibernateConfigurator = testDatabase.hibernateConfigurator();
   }
 
   @AfterEach
   void tearDown() {
     replicas.forEach(JCasbinAuthorizer::close);
     replicas.clear();
-    hibernateConfigurator.close();
   }
 
   private ServerProperties properties(boolean refreshEnabled, String interval) {
@@ -459,6 +460,35 @@ public class JCasbinAuthorizerMultiInstanceTest {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       fail("Interrupted while waiting for " + description);
+    }
+  }
+
+  @Test
+  void closeDoesNotWaitForARefreshStuckInsideTheLock() throws Exception {
+    startReplica(); // creates casbin_rule, which the refresh reads
+    CountDownLatch reloading = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    CasbinPolicyRefresher refresher =
+        new CasbinPolicyRefresher(
+            () -> {
+              reloading.countDown();
+              try {
+                release.await();
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              }
+            },
+            hibernateConfigurator.getSessionFactory(),
+            Duration.ZERO);
+    try {
+      // The first check always reloads, so the poller ends up waiting inside the refresh lock.
+      refresher.start(Duration.ofMillis(10));
+      awaitLatch(reloading, "the refresh to start reloading");
+      // close() interrupts the stuck refresh instead of waiting for its lock.
+      assertTimeoutPreemptively(Duration.ofSeconds(3), refresher::close);
+      assertThat(refresher.isRunning()).isFalse();
+    } finally {
+      release.countDown();
     }
   }
 

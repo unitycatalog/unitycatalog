@@ -5,13 +5,20 @@ import static io.unitycatalog.server.service.credential.CredentialContext.READ_W
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.auth.decorator.KeyMapper;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.DataSourceFormat;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
@@ -38,6 +45,7 @@ public class IcebergRestCatalogServiceTest {
 
   private final UnityCatalogAuthorizer authorizer = mock();
   private final Repositories repositories = mock();
+  private final KeyMapper keyMapper = mock();
   private final UserRepository userRepository = mock();
   private final ServerProperties serverProperties = mock();
   private final TableRepository tableRepository = mock();
@@ -47,6 +55,7 @@ public class IcebergRestCatalogServiceTest {
   @BeforeEach
   public void setUp() {
     when(repositories.getUserRepository()).thenReturn(userRepository);
+    when(repositories.getKeyMapper()).thenReturn(keyMapper);
     when(repositories.getCatalogRepository()).thenReturn(mock(CatalogRepository.class));
     when(repositories.getSchemaRepository()).thenReturn(mock(SchemaRepository.class));
     when(repositories.getStagingTableRepository()).thenReturn(mock(StagingTableRepository.class));
@@ -183,6 +192,31 @@ public class IcebergRestCatalogServiceTest {
     service.loadCredentials("cat", "ns", "tbl");
 
     verify(tableConfigService).getTableConfig(any(), eq(READ_ONLY), any());
+  }
+
+  @Test
+  public void loadCredentialsRejectsMissingReadAccess() {
+    UUID tableId = UUID.randomUUID();
+    when(userRepository.findPrincipalId()).thenReturn(UUID.randomUUID());
+    when(serverProperties.isAuthorizationEnabled()).thenReturn(true);
+    when(serverProperties.isStrictPrivilegeChecksEnabled()).thenReturn(true);
+    when(tableRepository.getIcebergTableState("cat", "ns", "tbl"))
+        .thenReturn(
+            new TableRepository.IcebergTableState(
+                tableId, DataSourceFormat.ICEBERG, "s3://bucket/metadata.json", "s3://bucket"));
+    when(keyMapper.mapResourceKeys(Map.of(SecurableType.TABLE, tableId.toString())))
+        .thenReturn(
+            Map.of(
+                SecurableType.CATALOG, UUID.randomUUID(),
+                SecurableType.SCHEMA, UUID.randomUUID(),
+                SecurableType.TABLE, tableId));
+
+    assertThatThrownBy(() -> service.loadCredentials("cat", "ns", "tbl"))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            error -> assertThat(error.getErrorCode()).isEqualTo(ErrorCode.PERMISSION_DENIED));
+    verifyNoInteractions(tableConfigService);
+    verify(authorizer, never()).refreshAuthorizations(anyLong());
   }
 
   @Test

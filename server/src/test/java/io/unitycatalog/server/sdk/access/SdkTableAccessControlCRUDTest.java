@@ -144,13 +144,14 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
         "regular-2@localhost", SecurableType.SCHEMA, "cat_pr1.sch_pr1", Privileges.USE_SCHEMA);
     grantPermissions(
         "regular-2@localhost", SecurableType.TABLE, "cat_pr1.sch_pr1.tbl_pr1", Privileges.SELECT);
+    grantPermissions(REGULAR_1, SecurableType.TABLE, "cat_pr1.sch_pr1.tbl_pr1", Privileges.MODIFY);
 
     // list tables (regular-2) -> use catalog, use schema, select -> allowed -> filtered list
     List<TableInfo> regular2Tables = listAllTables(regular2TablesApi, "cat_pr1", "sch_pr1");
     assertThat(regular2Tables).hasSize(1);
     assertThat(regular2Tables.get(0).getName()).isEqualTo("tbl_pr1");
 
-    // list tables (regular-1) -> -- -> owner table only
+    // MODIFY without SELECT does not make tbl_pr1 visible in table listings.
     List<TableInfo> regular1Tables = listAllTables(regular1TablesApi, "cat_pr1", "sch_pr1");
     assertThat(regular1Tables).hasSize(1);
     assertThat(regular1Tables.get(0).getName()).isEqualTo("tab_rg1");
@@ -166,6 +167,9 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     // get, table (regular-2) -> use schema, use catalog, select [table] -> allowed
     TableInfo tableInfoRegular2 = getTable(regular2TablesApi, "cat_pr1.sch_pr1.tbl_pr1");
     assertThat(tableInfoRegular2).isNotNull();
+
+    // USE_CATALOG + USE_SCHEMA + MODIFY without SELECT cannot read table details.
+    assertPermissionDenied(() -> getTable(regular1TablesApi, "cat_pr1.sch_pr1.tbl_pr1"));
 
     // Delta loadTable follows the same authz as getTable
     // loadTable (admin) -> metastore admin -> allowed

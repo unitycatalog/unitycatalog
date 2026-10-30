@@ -39,6 +39,7 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
   // Test identity provider keypair and mock OIDC server
   private HttpServer mockOidcServer;
   protected String testIssuer;
+  protected String testJwksUri;
   protected Algorithm testIssuerAlgorithm;
   protected String testIssuerKeyId;
 
@@ -98,7 +99,7 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
         "/.well-known/openid-configuration",
         exchange -> {
           String discoveryDoc =
-              String.format("{\"issuer\":\"%s\",\"jwks_uri\":\"%s/jwks\"}", testIssuer, testIssuer);
+              String.format("{\"issuer\":\"%s\",\"jwks_uri\":\"%s\"}", testIssuer, testJwksUri);
           byte[] body = discoveryDoc.getBytes(StandardCharsets.UTF_8);
           exchange.getResponseHeaders().set("Content-Type", "application/json");
           exchange.sendResponseHeaders(200, body.length);
@@ -120,6 +121,7 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
 
     int port = mockOidcServer.getAddress().getPort();
     testIssuer = "http://localhost:" + port;
+    testJwksUri = testIssuer + "/jwks";
   }
 
   /** Builds a JWKS JSON string containing a single RSA public key. */
@@ -177,11 +179,29 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
         String.format(
             "{\"displayName\":\"Test User\",\"emails\":[{\"value\":\"%s\",\"primary\":true}]}",
             email);
+    createUser(userJson);
+  }
+
+  /**
+   * Creates an ENABLED user whose {@code externalId} is an OAuth client ID, as used to resolve
+   * service principals on token exchange.
+   */
+  protected void createEnabledUser(String email, String externalId) {
+    String userJson =
+        String.format(
+            "{\"displayName\":\"Test User\",\"externalId\":\"%s\","
+                + "\"emails\":[{\"value\":\"%s\",\"primary\":true}]}",
+            externalId, email);
+    createUser(userJson);
+  }
+
+  private void createUser(String userJson) {
     RequestHeaders headers =
         RequestHeaders.builder()
             .method(HttpMethod.POST)
             .path("/api/1.0/unity-control/scim2/Users")
             .contentType(MediaType.JSON)
+            .add(HttpHeaderNames.X_REQUESTED_WITH, "XMLHttpRequest")
             .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
             .build();
     AggregatedHttpResponse response =

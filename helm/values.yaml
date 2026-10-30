@@ -132,6 +132,14 @@ auth:
   #
   allowedIssuers: https://accounts.google.com
 
+  # -- (string) Comma-separated list of exact JWKS URLs allowed on other origins
+  # @default -- https://www.googleapis.com/oauth2/v3/certs
+  # @raw
+  #
+  # Match each provider's discovery URL, including any explicit port. Wildcards are not supported.
+  #
+  allowedJwksUris: https://www.googleapis.com/oauth2/v3/certs
+
   # -- (string) Comma-separated list of expected JWT audience values
   # @default -- not set
   # @raw
@@ -189,7 +197,7 @@ server:
         createPVC: true
 
         # -- (array) Access modes for the file database volume
-        accessModes: [ "ReadWriteOnce" ]
+        accessModes: ["ReadWriteOnce"]
 
         # -- (string) Size of the file database volume
         # @raw
@@ -207,81 +215,81 @@ server:
         storageClassName:
 
     postgresqlConfig:
-        # -- (string) PostgreSQL database host (Required)
-        # @default -- not set
+      # -- (string) PostgreSQL database host (Required)
+      # @default -- not set
+      # @raw
+      #
+      # Example: `mydb.123456789012.us-east-1.rds.amazonaws.com`
+      #
+      host:
+
+      # -- (int) PostgreSQL database port
+      # @default -- 5432
+      port: 5432
+
+      # -- (string) PostgreSQL database name
+      # @default -- ucdb
+      dbName: ucdb
+
+      # -- (string) PostgreSQL username
+      # @default -- postgres
+      username: postgres
+
+      # -- (string) PostgreSQL user password secret name
+      # @default -- not set
+      # @raw
+      #
+      # If not set, connection will be made without a password
+      #
+      passwordSecretName:
+
+      # -- (string) PostgreSQL user password secret key
+      # @default -- password
+      passwordSecretKey: password
+
+      ssl:
+        enabled: false
+        # -- (string) PostgreSQL SSL mode
+        # @default -- verify-full
         # @raw
         #
-        # Example: `mydb.123456789012.us-east-1.rds.amazonaws.com`
+        # [Documentation](https://jdbc.postgresql.org/documentation/ssl/)
         #
-        host:
+        mode: verify-full
 
-        # -- (int) PostgreSQL database port
-        # @default -- 5432
-        port: 5432
-
-        # -- (string) PostgreSQL database name
-        # @default -- ucdb
-        dbName: ucdb
-
-        # -- (string) PostgreSQL username
-        # @default -- postgres
-        username: postgres
-
-        # -- (string) PostgreSQL user password secret name
-        # @default -- not set
-        # @raw
-        #
-        # If not set, connection will be made without a password
-        #
-        passwordSecretName:
-
-        # -- (string) PostgreSQL user password secret key
-        # @default -- password
-        passwordSecretKey: password
-
-        ssl:
-          enabled: false
-          # -- (string) PostgreSQL SSL mode
-          # @default -- verify-full
-          # @raw
-          #
-          # [Documentation](https://jdbc.postgresql.org/documentation/ssl/)
-          #
-          mode: verify-full
-
-          # -- (string) PostgreSQL SSL root certificate
-          # @default -- public root CAs
-          # @raw
-          #
-          # Example:
-          # ```yaml
-          # rootCert: |
-          #   -----BEGIN CERTIFICATE-----
-          #   ...certificate data...
-          #   -----END CERTIFICATE-----
-          # ```
-          #
-          rootCert:
-
-          # -- (string) PostgreSQL SSL root certificate config map name
-          # @default -- not set
-          rootCertConfigMapName:
-
-          # -- (string) PostgreSQL SSL root certificate config map key
-          # @default -- ca.crt
-          rootCertConfigMapKey: ca.crt
-
-        # -- (object) Postgres params
-        # @default -- not set
+        # -- (string) PostgreSQL SSL root certificate
+        # @default -- public root CAs
         # @raw
         #
         # Example:
         # ```yaml
-        # params:
-        #   sslfactory: my.custom.SSLFactory
+        # rootCert: |
+        #   -----BEGIN CERTIFICATE-----
+        #   ...certificate data...
+        #   -----END CERTIFICATE-----
         # ```
         #
-        extraParams:
+        rootCert:
+
+        # -- (string) PostgreSQL SSL root certificate config map name
+        # @default -- not set
+        rootCertConfigMapName:
+
+        # -- (string) PostgreSQL SSL root certificate config map key
+        # @default -- ca.crt
+        rootCertConfigMapKey: ca.crt
+
+      # -- (object) Postgres params
+      # @default -- not set
+      # @raw
+      #
+      # Example:
+      # ```yaml
+      # params:
+      #   sslfactory: my.custom.SSLFactory
+      # ```
+      #
+      extraParams:
 
     # -- (string) Override Hibernate configuration for the server
     # @default -- not set
@@ -350,8 +358,8 @@ server:
         repository: alpine
         # -- (string) Pull policy for the render config container
         pullPolicy: IfNotPresent
-        # -- (string) Tag for the render config container
-        tag: latest
+        # -- (string) Tag for the render config container, pinned by digest
+        tag: "3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
 
       # -- (object) Security context for the init container
       # @default -- not set
@@ -542,8 +550,8 @@ server:
       repository: alpine
       # -- (string) Pull policy for the create users job image
       pullPolicy: IfNotPresent
-      # -- (string) Tag for the create users job image
-      tag: latest
+      # -- (string) Tag for the create users job image, pinned by digest
+      tag: "3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
 
     # -- (object) Additional annotations for the create users job
     # @default -- not set
@@ -635,8 +643,8 @@ ui:
         repository: busybox
         # -- (string) Pull policy for the UI init container
         pullPolicy: IfNotPresent
-        # -- (string) Tag for the UI init container
-        tag: latest
+        # -- (string) Tag for the UI init container, pinned by digest
+        tag: "1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e"
 
       # -- (object) Security context for the init container
       # @default -- not set
@@ -819,11 +827,28 @@ ui:
     #
     updateStrategy:
 
-# -- (string) Override the name of the chart
-# @default -- derived from the chart parameters and metadata
+test:
+  image:
+    # -- (string) Repository for the `helm test` pod image
+    repository: busybox
+    # -- (string) Pull policy for the `helm test` pod image
+    pullPolicy: IfNotPresent
+    # -- (string) Tag for the `helm test` pod image, pinned by digest
+    tag: "1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e"
+
+  # -- (array) Image pull secrets for the `helm test` pod
+  # @default -- not set
+  # @raw
+  #
+  # [Kubernetes docs](https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod)
+  #
+  imagePullSecrets:
+
+# -- (string) Override the name used in resource names
+# @default -- unitycatalog
 nameOverride:
 # -- (string) Override the full name of the chart
-# @default -- derived from the chart parameters and metadata
+# @default -- derived from the release name and nameOverride
 fullnameOverride:
 
 

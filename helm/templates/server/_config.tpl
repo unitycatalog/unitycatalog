@@ -14,6 +14,7 @@ server.redirect-port={{ .Values.auth.redirectPort }}
 server.cookie-timeout={{ .Values.auth.cookieTimeout }}
 server.access-token-timeout={{ .Values.auth.accessTokenTimeout }}
 server.allowed-issuers={{ .Values.auth.allowedIssuers }}
+server.allowed-jwks-uris={{ .Values.auth.allowedJwksUris }}
 server.audiences={{ .Values.auth.audiences }}
 {{- end }}
 
@@ -51,7 +52,7 @@ gcs.jsonKeyFilePath.{{ $index }}=/etc/conf/gcs-credentials-{{ $index }}.json
 {{ .Values.server.db.overrideConfig }}
 {{- else if eq .Values.server.db.type "file" -}}
 hibernate.connection.driver_class=org.h2.Driver
-hibernate.connection.url=jdbc:h2:file:./etc/db/h2db;DB_CLOSE_DELAY=-1
+hibernate.connection.url=jdbc:h2:file:./etc/db/h2db;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=0
 {{- else if eq .Values.server.db.type "postgresql" -}}
 
 {{- $params := dict }}
@@ -102,7 +103,7 @@ appenders=console
 appender.console.type=Console
 appender.console.name=Console
 appender.console.layout.type=PatternLayout
-appender.console.layout.pattern=%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n
+appender.console.layout.pattern=%d{HH:mm:ss.SSS} ${hostName} [%t] %-5level %logger{36} %notEmpty{request_id=%X{request_id} }- %msg%n
 
 rootLogger.level={{ .Values.server.logLevel }}
 rootLogger.appenderRefs=console

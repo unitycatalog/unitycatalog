@@ -11,13 +11,13 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository.CleanupFailureReport;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
-import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.testdatabase.TempDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.util.Date;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -26,7 +26,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -36,27 +35,13 @@ public class StorageCleanupTaskRepositoryTest {
   private static final Duration LEASE_DURATION = Duration.ofMinutes(10);
 
   private SessionFactory sessionFactory;
+  @TempDatabase private TestDatabase testDatabase;
   private StorageCleanupTaskRepository repository;
-
-  protected void configureDatabase(Properties properties) {
-    properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
-    properties.setProperty(
-        "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
-  }
 
   @BeforeEach
   void setUpRepository() {
-    Properties properties = new Properties();
-    configureDatabase(properties);
-    properties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
-    properties.setProperty("hibernate.show_sql", "false");
-    sessionFactory = new HibernateConfigurator(properties).getSessionFactory();
+    sessionFactory = testDatabase.sessionFactory();
     repository = new StorageCleanupTaskRepository(sessionFactory);
-  }
-
-  @AfterEach
-  void closeSessionFactory() {
-    sessionFactory.close();
   }
 
   @Test

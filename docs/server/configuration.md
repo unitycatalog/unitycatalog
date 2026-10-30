@@ -74,6 +74,11 @@ The server config file is at the location `etc/conf/server.properties` (relative
     any principal who can create a table can use it. Each entry must be a local path; an entry such as an `s3://` URL
     fails server startup. As with `storage-root.*`, a relative path containing `/` (for example `./uc-external`) is
     resolved against the server's working directory, and a directory that does not exist yet is accepted.
+- `server.shutdown-timeout`: How long the server waits for in-flight requests when it stops, for example on SIGTERM.
+    Defaults to `PT5S`. Stopping takes longer than this: up to 5 seconds more if a storage cleanup attempt is
+    running, plus about 2 seconds to stop the HTTP server. With the default, give `docker stop` 15 seconds or more
+    (`--time`, or `--stop-timeout` on `docker run`), and keep Kubernetes' `terminationGracePeriodSeconds` above it
+    too; raise both when you raise this setting.
 
 !!! note "Local `file:` locations"
     A local `file:` location must name one plain path. The server rejects with `400` a location that has an encoded
@@ -139,6 +144,15 @@ Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is f
 
 The server logs are located at `etc/logs/server.log`. The log level and log rolling policy can be set in log4j2 config
 file: `etc/conf/server.log4j2.properties`.
+
+With the default log4j2 config, the log rolls over every hour, and within an hour each time it reaches 10MB. Each
+rolled-over file is compressed into `etc/logs/server-<yyyy-MM-dd-HH>-<n>.log.gz`, where `<n>` numbers the archives of
+that hour, starting at 1, up to 20. At each rollover, archives last written more than 7 days ago are deleted, and so are
+the oldest archives once all archives together exceed 1GB.
+
+With the default log4j2 config, each log line names the host that wrote it. A line written while serving a request
+also carries an ID the server generates for that request, as `request_id=<id>`, so all the lines one request writes
+can be found together. To add them to a log format of your own, use `${hostName}` and `%X{request_id}`.
 
 ## Authentication and Authorization
 

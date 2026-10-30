@@ -22,6 +22,11 @@
 .idea/
 *.tmproj
 .vscode/
+# Maintainer scripts
+*.sh
+
+# Maintainer docs
+RELEASING.md
 
 # Helm-docs files
 README.md.gotmpl

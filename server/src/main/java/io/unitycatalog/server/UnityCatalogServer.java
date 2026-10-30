@@ -54,14 +54,12 @@ import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
-import io.vertx.core.Verticle;
-import io.vertx.core.Vertx;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,11 +75,8 @@ public class UnityCatalogServer implements AutoCloseable {
   private final HibernateConfigurator hibernateConfigurator;
   private final BlockingTaskExecutor blockingTaskExecutor;
 
-  /**
-   * Blocking threads, one per JDBC connection. Also the URL transcoder's connection limit, since
-   * HTTP/1.1 carries one request per connection.
-   */
-  private final int blockingThreads;
+  /** How long tasks interrupted at the end of the shutdown drain get to stop. */
+  private static final Duration INTERRUPTED_TASK_GRACE = Duration.ofMillis(500);
 
   private final Duration shutdownTimeout;
 
@@ -120,12 +115,11 @@ public class UnityCatalogServer implements AutoCloseable {
         ownsHibernateConfigurator
             ? new HibernateConfigurator(unityCatalogServerBuilder.serverProperties)
             : unityCatalogServerBuilder.hibernateConfigurator;
-    this.blockingThreads = hibernateConfigurator.getDataSource().getMaximumPoolSize();
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
       createdBlockingTaskExecutor =
           BlockingTaskExecutor.builder()
-              .numThreads(blockingThreads)
+              .numThreads(hibernateConfigurator.getDataSource().getMaximumPoolSize())
               .threadNamePrefix("unity-catalog-blocking")
               .build();
       this.blockingTaskExecutor = createdBlockingTaskExecutor;
@@ -144,9 +138,9 @@ public class UnityCatalogServer implements AutoCloseable {
   }
 
   /**
-   * Shuts down the server-owned blocking executor and waits up to {@code timeout}. A task still
-   * running after that is left in place and shutdown continues, so a wedged JDBC call cannot hold
-   * the process until the orchestrator kills it.
+   * Shuts down the server-owned blocking executor and waits up to {@code timeout}. Tasks still
+   * running after that are interrupted and given a moment to stop; then shutdown continues, so a
+   * wedged JDBC call cannot hold the process until the orchestrator kills it.
    */
   private static void closeBlockingTaskExecutor(
       BlockingTaskExecutor executor, Duration timeout, Throwable primaryFailure) {
@@ -158,8 +152,15 @@ public class UnityCatalogServer implements AutoCloseable {
       executor.shutdown();
       try {
         if (!executor.awaitTermination(timeout.toNanos(), TimeUnit.NANOSECONDS)) {
+          // A task blocked on a lock, a sleep or interruptible I/O stops on the interrupt, before
+          // the resources it uses are closed. One that ignores interrupts can still be running
+          // when they close, and keeps running until the process exits.
           LOGGER.warn(
-              "Blocking task executor did not stop within {}; continuing shutdown", timeout);
+              "Blocking task executor did not stop within {}; interrupting its tasks", timeout);
+          executor.shutdownNow();
+          if (!executor.awaitTermination(INTERRUPTED_TASK_GRACE.toNanos(), TimeUnit.NANOSECONDS)) {
+            LOGGER.warn("Blocking tasks still running after the interrupt; continuing shutdown");
+          }
         }
       } catch (InterruptedException ignored) {
         interrupted = true;
@@ -235,7 +236,7 @@ public class UnityCatalogServer implements AutoCloseable {
             unityCatalogServerBuilder.serverProperties,
             blockingTaskExecutor);
 
-    UnityCatalogMetrics domainMetrics = null;
+    UnityCatalogMetrics domainMetrics = UnityCatalogMetrics.noop();
     if (unityCatalogServerBuilder.observabilityPort != null) {
       domainMetrics =
           initializeObservability(
@@ -269,7 +270,7 @@ public class UnityCatalogServer implements AutoCloseable {
     if (metrics != null) {
       armeriaServerBuilder.meterRegistry(metrics.registry());
     }
-    initializeCleanup(unityCatalogServerBuilder.serverProperties, repositories);
+    initializeCleanup(unityCatalogServerBuilder.serverProperties, repositories, domainMetrics);
 
     return armeriaServerBuilder.build();
   }
@@ -310,13 +311,17 @@ public class UnityCatalogServer implements AutoCloseable {
     return new UnityCatalogMetrics(meterRegistry);
   }
 
-  private void initializeCleanup(ServerProperties serverProperties, Repositories repositories) {
+  private void initializeCleanup(
+      ServerProperties serverProperties,
+      Repositories repositories,
+      UnityCatalogMetrics domainMetrics) {
     cleanupWorker =
         new StorageCleanupWorker(
             repositories.getStorageCleanupTaskRepository(),
             repositories.getFileOperations(),
             Clock.systemUTC(),
-            serverProperties);
+            serverProperties,
+            domainMetrics);
   }
 
   private UnityCatalogAuthorizer initializeAuthorizer(
@@ -365,7 +370,7 @@ public class UnityCatalogServer implements AutoCloseable {
         .annotate("auth", new AuthService(securityContext, serverProperties, repositories))
         .annotate("scim2/Users", new Scim2UserService(authorizer, repositories))
         .annotate("scim2/Me", new Scim2SelfService(authorizer, repositories))
-        .annotate("permissions", new PermissionService(authorizer, repositories))
+        .annotate("permissions", new PermissionService(authorizer, repositories, serverProperties))
         .annotate("catalogs", new CatalogService(authorizer, repositories, serverProperties))
         .annotate("schemas", schemaService)
         .annotate("volumes", new VolumeService(authorizer, repositories, serverProperties))
@@ -448,40 +453,39 @@ public class UnityCatalogServer implements AutoCloseable {
   public static void main(String[] args) {
     OptionParser options = new OptionParser();
     options.parse(args);
-    int clientPort = options.getPort();
+    int port = options.getPort();
     ServerProperties serverProperties = new ServerProperties(SERVER_PROPERTIES_FILE);
     UnityCatalogServer.Builder serverBuilder =
-        UnityCatalogServer.builder().port(clientPort + 1).serverProperties(serverProperties);
+        UnityCatalogServer.builder().port(port).serverProperties(serverProperties);
     if (options.getObservabilityPort() != null) {
-      validateObservabilityPort(clientPort, options.getObservabilityPort());
       serverBuilder.observabilityPort(options.getObservabilityPort());
     }
-    // Start Unity Catalog server
     UnityCatalogServer unityCatalogServer = serverBuilder.build();
     unityCatalogServer.printArt();
-    unityCatalogServer.start();
-    // Start URL transcoder. Clients use its port, not Armeria's, so wait for it to be listening
-    // before this process reports itself started, and fail rather than serve only the internal
-    // port if it cannot bind.
-    Vertx vertx = Vertx.vertx();
-    Verticle transcodeVerticle =
-        new URLTranscoderVerticle(clientPort, clientPort + 1, unityCatalogServer.blockingThreads);
+    // A failed start, such as a port that cannot be bound or a cleanup worker that cannot start
+    // after Armeria is listening, must end the process rather than leave the pool, background
+    // threads, or a bound port open.
     try {
-      vertx.deployVerticle(transcodeVerticle).toCompletionStage().toCompletableFuture().join();
-    } catch (CompletionException e) {
-      LOGGER.error("Failed to start the URL transcoder on port {}", clientPort, e.getCause());
-      vertx.close();
-      unityCatalogServer.close();
+      unityCatalogServer.start();
+    } catch (RuntimeException e) {
+      LOGGER.error("Failed to start the Unity Catalog server", e);
+      try {
+        unityCatalogServer.close();
+      } finally {
+        LogManager.shutdown();
+      }
       throw e;
     }
-  }
-
-  static void validateObservabilityPort(int clientPort, int observabilityPort) {
-    ArmeriaServerBuilder.validateObservabilityPort(clientPort + 1, observabilityPort);
-    if (observabilityPort == clientPort) {
-      throw new IllegalArgumentException(
-          "Observability port is already used by the client-facing listener: " + clientPort);
-    }
+    // On SIGTERM, close() runs on Armeria's shutdown thread: it stops the storage cleanup, lets
+    // in-flight requests finish for up to server.shutdown-timeout, then closes everything else.
+    // Log4j stops last, even when close() fails (Armeria logs that failure); bin/start-uc-server
+    // turns off Log4j's own shutdown hook so it doesn't stop logging during the drain. The hook is
+    // registered after start() so that close() can't run during a start; a SIGTERM while starting
+    // exits without it.
+    unityCatalogServer
+        .server
+        .closeOnJvmShutdown(unityCatalogServer::close)
+        .whenComplete((unused, failure) -> LogManager.shutdown());
   }
 
   public void start() {
@@ -509,7 +513,8 @@ public class UnityCatalogServer implements AutoCloseable {
    * <p>The blocking executor is drained before anything else is closed, using the time remaining
    * from {@code server.shutdown-timeout}, so a handler that outlived {@link #stop()} does not see a
    * closed authorizer or cleanup worker. This is not a total shutdown deadline: other resource
-   * cleanup and Armeria's final shutdown can add time.
+   * cleanup and Armeria's final shutdown can add time. A resource that fails to close is logged and
+   * the rest still close; only a failure from {@link #stop()} is thrown.
    */
   @Override
   public void close() {
@@ -523,9 +528,8 @@ public class UnityCatalogServer implements AutoCloseable {
       closeQuietly(metrics, null, "the metrics registry");
       closeQuietly(cleanupWorker, null, "the storage cleanup worker");
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, null, "the authorizer");
-      if (ownsHibernateConfigurator) {
-        hibernateConfigurator.close();
-      }
+      closeQuietly(
+          ownsHibernateConfigurator ? hibernateConfigurator : null, null, "the database pool");
     }
   }
 

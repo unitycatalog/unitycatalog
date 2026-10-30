@@ -48,6 +48,7 @@ server.token-url=https://oauth2.googleapis.com/token
 server.client-id=<Client ID provided earlier>
 server.client-secret=<Client secret provided earlier>
 server.allowed-issuers=https://accounts.google.com
+server.allowed-jwks-uris=https://www.googleapis.com/oauth2/v3/certs
 server.audiences=<Client ID provided earlier>
 ```
 
@@ -56,6 +57,9 @@ server.audiences=<Client ID provided earlier>
 When authorization is enabled, the server validates incoming identity tokens against configured issuers and audiences:
 
 - **server.allowed-issuers**: Comma-separated list of allowed token issuers (exact match or wildcard with `*`). Tokens from issuers not in this list will be rejected. This prevents attackers from using their own identity provider to forge tokens.
+- **server.allowed-jwks-uris**: Comma-separated list of exact JWKS URLs on other origins. By default, the discovery document's `jwks_uri` must use the issuer's scheme, host, and port. Set this property when the provider publishes keys on another origin. For example, Google requires `https://www.googleapis.com/oauth2/v3/certs`. Match the URL from discovery, including any explicit port; `https://host:443/certs` differs from `https://host/certs`. Wildcards are not supported. HTTPS issuers require HTTPS key URLs, even for configured URLs. HTTP issuers can use HTTP key URLs for local or private providers. Restart the server after changing this property.
+  Each entry must be an absolute HTTP or HTTPS URL without credentials or a fragment.
+  An invalid entry prevents server startup, even when authorization is disabled.
 - **server.audiences**: Comma-separated list of expected JWT audience values. Tokens must contain an `aud` value matching one of these entries (exact match or wildcard with `*`). A single value of `*` disables audience validation (issuer and user checks still apply); that sentinel cannot be combined with other values.
 
 #### Programmatic exchange (service principals)
@@ -67,12 +71,25 @@ Service integrations exchange an upstream OAuth access token on `POST /auth/toke
 
 Create UC users with a human-readable `email` for grants and set `externalId` to the OAuth client id for programmatic exchange. The issued UC access token always uses the resolved user's `email`.
 
+#### Browser cookie authentication
+
+The authentication cookie uses `Secure`, `HttpOnly`, and `SameSite=Strict`.
+Send `X-Requested-With: XMLHttpRequest` when requesting a cookie with
+`POST /auth/tokens?ext=cookie`.
+With authorization enabled, cookie-authenticated requests also need it,
+except GET, HEAD, and OPTIONS. A missing or incorrect header returns HTTP 403 `PERMISSION_DENIED`.
+The UI sends the header automatically. Cookie-based scripts must add it to writes.
+Clients that use `Authorization: Bearer <token>` do not need this header.
+Cross-origin browser requests with this header need CORS preflight approval.
+The server does not enable cross-origin access.
+
 #### Multiple Identity Providers
 
 You can configure multiple issuers and audiences by separating them with commas:
 
 ```properties
 server.allowed-issuers=https://accounts.google.com,https://login.microsoftonline.com/{tenant-id}/v2.0
+server.allowed-jwks-uris=https://www.googleapis.com/oauth2/v3/certs
 server.audiences=your-google-client-id,your-azure-client-id
 ```
 
@@ -110,13 +127,50 @@ values under that pattern can steer JWKS fetches (an SSRF-style surface).
 Use wildcard issuers only where necessary, only for domains you control, and avoid patterns that
 cover internal or sensitive hosts. Prefer exact issuer URLs and `https://` issuers when possible.
 
+#### Signing-key requests
+
+The server rejects discovery and JWKS redirects and limits response size and wait time. Issuer URLs
+cannot contain credentials, a query, or a fragment. JWKS URLs cannot contain credentials or a fragment.
+
+The server caches external providers and signing keys with size and lifetime limits. Concurrent
+requests for one issuer share discovery. Failed discovery requests have a retry delay. Each provider
+caches the full signing-key set and limits HTTP refreshes, including failed requests. Unknown key IDs
+do not block keys already in that set. A newly published key can require a wait until the next allowed
+refresh. Provider expiry removes the cached keys.
+
+Each distinct wildcard issuer can trigger discovery. The provider cache does not limit discovery
+requests across different issuers, and cache eviction can cause an earlier reload.
+
+The issuer allowlist and extra JWKS URLs define trusted destinations, including their DNS records.
+These settings do not replace network egress rules.
+
+#### Upgrading
+
+When upgrading, set `server.allowed-jwks-uris` for each provider whose keys use another origin.
+For Google deployments that do not use Helm, set
+`server.allowed-jwks-uris=https://www.googleapis.com/oauth2/v3/certs` in `server.properties`
+before starting the new server. Helm includes this URL by default.
+
 ### Permission-check migration
 
 `server.authorization.strict-privilege-checks` is a temporary migration setting. It defaults to
 `true` and will be removed in a future release. Permission fixes that use this setting apply the
 corrected rules by default.
 
+The setting covers:
+
+- [Grant validation](#valid-privilege-grants): Reject new grants on the wrong object type.
+  Existing invalid grants can still be removed.
+- [Iceberg credentials](#table-credential-permissions): returning credentials from `loadTable`
+  or `loadCredentials` requires `USE CATALOG`, `USE SCHEMA`, and `SELECT`, or ownership at each level.
+- Table metadata: `MODIFY` no longer substitutes for `SELECT` for table details, listings,
+  and existence checks across the UC REST, Delta, and Iceberg REST APIs. Existing usage and
+  ownership rules still apply.
+- Volume rename: Also require permission to create volumes in the containing schema.
+- Model rename: Also require permission to create models in the containing schema.
+
 The access checks apply only when `server.authorization=enable`.
+Grant validation also applies when authorization is disabled.
 
 To keep the previous rules during a migration, set:
 
@@ -153,6 +207,34 @@ Optional tuning:
 Revocations propagate on the poll interval. A stale deny can trigger one `max(id)` probe
 before returning 403. Concurrent denials and list-filter items share a probe that started after the
 request.
+
+### Valid privilege grants
+
+Each privilege can be granted only on the object types below. Catalog and schema grants still
+apply to their matching child objects. For example, catalog `SELECT` applies to the tables in
+that catalog.
+
+Grant validation also runs when `server.authorization=disable`.
+
+| Privilege | Object types |
+| --- | --- |
+| `CREATE CATALOG`, `CREATE STORAGE CREDENTIAL` | Metastore |
+| `USE CATALOG`, `CREATE SCHEMA` | Catalog |
+| `USE SCHEMA`, `CREATE TABLE`, `CREATE FUNCTION`, `CREATE VOLUME`, `CREATE MODEL` | Catalog, schema |
+| `SELECT`, `MODIFY` | Catalog, schema, table |
+| `EXECUTE` | Catalog, schema, function, registered model |
+| `READ VOLUME` | Catalog, schema, volume |
+| `CREATE EXTERNAL LOCATION` | Metastore, storage credential |
+| `READ FILES`, `WRITE FILES`, `CREATE EXTERNAL TABLE` | External location, storage credential |
+| `CREATE EXTERNAL VOLUME`, `CREATE MANAGED STORAGE` | External location |
+
+For example, `USE CATALOG` on a schema is invalid. Grant it on the containing catalog instead.
+If any addition is invalid, the server rejects the full request with `INVALID_ARGUMENT` before
+saving its grants or revokes.
+
+After an upgrade, existing grants stay in place. The server does not remove invalid grants
+automatically. You can still remove them through the permissions API. Update grant scripts
+to use the correct object types before adding or reapplying grants.
 
 ### Restart the UC Server
 
@@ -355,6 +437,27 @@ SHOW ALL TABLES;
 SELECT * from unity.default.numbers;
 ```
 
+## Table credential permissions
+
+With authorization enabled, Unity Catalog and Delta credential requests for existing tables
+require the permissions below. Iceberg uses the same read checks before returning credentials
+from `loadTable` or `loadCredentials`.
+
+| Object | Required to read |
+| --- | --- |
+| Containing catalog | `USE CATALOG` or catalog ownership |
+| Containing schema | `USE SCHEMA` or schema ownership |
+| Table | `SELECT` or table ownership |
+
+The caller must meet all three rows. `SELECT` inherited from a catalog or schema is valid.
+Metastore administration, parent ownership, or `MODIFY` alone does not meet these requirements.
+Read/write credentials also require `MODIFY` or table ownership. Iceberg credentials for UniForm
+tables remain read-only.
+
+Iceberg `loadTable` returns metadata to callers with metadata access. Credentials and their
+refresh endpoint are included only when the caller has read access. `loadCredentials` rejects
+requests without read access.
+
 ## Spark and Java client authentication types
 
 The Java and Spark clients always construct a token provider (`TokenProvider.create`).
@@ -373,7 +476,7 @@ Key names differ by client:
 | Server | Client |
 | --- | --- |
 | `server.authorization=disable` (default) | Java: `type=static` with `token=""`. Spark: legacy `token=""` (`export UC_TOKEN=`), or `auth.type=static` with `auth.token=""`. The client may send `Authorization: Bearer ` with an empty token; the server ignores it. |
-| `server.authorization=enable` | Java: `type=static` with a real token, or `type=oauth` with `oauth.uri`, `oauth.clientId`, and `oauth.clientSecret`. Spark: the same keys under the `auth.` prefix, or a non-empty legacy `token`. See the sections below. |
+| `server.authorization=enable` | Java: `type=static` with a real Unity Catalog token, or `type=oauth` with `oauth.uri`, `oauth.clientId`, `oauth.clientSecret`, `oauth.exchangeForUcToken=true` and `catalogUri`, because the server only accepts tokens it issued (see [Exchanging the OAuth token for a Unity Catalog token](#exchanging-the-oauth-token-for-a-unity-catalog-token)). Spark: the same keys under the `auth.` prefix, with `catalogUri` taken from the catalog `uri` (catalog-managed Delta tables also need `auth.catalogUri` for now, see the same section); or a non-empty legacy `token`. See the sections below. |
 
 Spark maps a present `token` catalog property to `type=static` even when the value is empty.
 Hive JDBC / Beeline URLs that omit empty query parameters cannot express an empty token;
@@ -450,6 +553,91 @@ Spark catalog configuration uses the same key with the catalog auth prefix:
 The value can contain one or more space-separated scopes defined by the Identity Provider. For
 Microsoft Entra ID, a resource's default scope typically has the form
 `<resource-application-id-uri>/.default`.
+
+To send no scope at all, set `oauth.scope` to an empty value. Use this when your Identity Provider
+rejects `all-apis` with `invalid_scope` and you want its defaults rather than naming a scope. OAuth
+makes the scope optional for client credentials ([RFC 6749, section
+3.3](https://datatracker.ietf.org/doc/html/rfc6749#section-3.3)): the Identity Provider then either
+applies its own default scopes (for example Amazon Cognito grants all the scopes the app client is
+allowed) or rejects the request as having no scope, so check how yours behaves.
+
+- An unset `oauth.scope` still sends `all-apis`.
+- An empty or whitespace-only value sends no scope. An empty value, for example from an unset
+  template variable, used to fail at setup.
+
+```java
+Map<String, String> configs = Map.of(
+    "type", "oauth",
+    "oauth.uri", "<identity provider token endpoint>",
+    "oauth.clientId", "<client ID>",
+    "oauth.clientSecret", "<client secret>",
+    "oauth.scope", "");
+```
+
+```sh
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.scope="
+```
+
+### Exchanging the OAuth token for a Unity Catalog token
+
+By default the OAuth token provider sends the Identity Provider's token to Unity Catalog as is.
+The Unity Catalog server only accepts tokens it issued itself on API calls, so against a Unity
+Catalog server with authorization enabled, set `oauth.exchangeForUcToken=true`. The provider then
+exchanges the Identity Provider's token at the server's token exchange endpoint
+(`<catalogUri>/api/1.0/unity-control/auth/tokens`, see
+[Programmatic exchange](#programmatic-exchange-service-principals)) and caches and renews the
+Unity Catalog token instead.
+
+The exchange requires `server.authorization=enable`; otherwise the endpoint rejects it with
+"Authorization is disabled". The server must also allow the token's issuer and audience. It then
+picks an enabled Unity Catalog user from the token's claims:
+
+- If the token has an `email` claim, the user with that email; failing that, the user whose
+  `externalId` matches the token's `azp` (or `client_id`).
+- Otherwise, the user whose `externalId` matches `azp` (or `client_id`); failing that, the user
+  whose email is the token's `sub`.
+
+So if your Identity Provider puts an `email` claim in client-credentials tokens and a user has that
+email, that user is chosen even if another user's `externalId` matches the client ID.
+
+The exchange endpoint is derived from the catalog URI, set with the `catalogUri` key. Spark takes
+it from the catalog `uri` option:
+
+```sh
+--conf "spark.sql.catalog.<catalog_name>.uri=https://uc.example.com" \
+--conf "spark.sql.catalog.<catalog_name>.auth.type=oauth" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.uri=<identity provider token endpoint>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientId=<client ID>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientSecret=<client secret>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.exchangeForUcToken=true"
+```
+
+!!! note "Catalog-managed Delta tables"
+    With Delta releases that don't include
+    [delta-io/delta#7951](https://github.com/delta-io/delta/pull/7951), the Delta commit
+    coordinator and server-side planning build their own token provider from the Spark
+    configuration and do not get the catalog `uri`. For catalog-managed tables, also set
+    `auth.catalogUri` to the same value as `uri`:
+
+    ```sh
+    --conf "spark.sql.catalog.<catalog_name>.auth.catalogUri=https://uc.example.com"
+    ```
+
+    Unity Catalog itself ignores this key and always uses `uri`. It is no longer needed once Delta
+    includes that change (tracked in
+    [#2074](https://github.com/unitycatalog/unitycatalog/issues/2074)).
+
+Java clients set `catalogUri` themselves:
+
+```java
+Map<String, String> configs = Map.of(
+    "type", "oauth",
+    "catalogUri", "https://uc.example.com",
+    "oauth.uri", "<identity provider token endpoint>",
+    "oauth.clientId", "<client ID>",
+    "oauth.clientSecret", "<client secret>",
+    "oauth.exchangeForUcToken", "true");
+```
 
 ## Using Google Identity with Unity Catalog UI
 

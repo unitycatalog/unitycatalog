@@ -6,6 +6,12 @@
 # Build
 /build.sbt @tdas @yili-db
 /version.sbt @tdas @yili-db
+/build/ @tdas @yili-db
+/project/ @tdas @yili-db
+
+# GitHub Actions and Workflows
+/.github/actions/ @tdas @yili-db
+/.github/workflows/ @tdas @yili-db
 
 # Etc
 /etc/ @tdas @yili-db
@@ -17,24 +23,35 @@
 /connectors/hadoop/ @tdas @openinx @TimothyW553 @yili-db
 
 # Clients.
-/clients/ @tdas @openinx @yili-db
+/clients/ @tdas @openinx @yili-db @TimothyW553
 
 # Examples, CLI.
-/examples/ @tdas @openinx @yili-db
+/examples/ @tdas @openinx @yili-db @TimothyW553
 
 # Integration tests.
-/integration-tests/ @tdas @openinx @yili-db
+/integration-tests/ @tdas @openinx @yili-db @TimothyW553
 
 # UC Server
-/server/ @tdas @openinx @yili-db
-/server-shaded/ @tdas @openinx @yili-db
+/server/ @tdas @openinx @yili-db @TimothyW553
+/server-shaded/ @tdas @openinx @yili-db @TimothyW553
 
 # Docs
-/docs/ @tdas @openinx @yili-db
-/mkdocs.yml @tdas @openinx @yili-db
+/docs/ @tdas @openinx @yili-db @TimothyW553
+/mkdocs.yml @tdas @openinx @yili-db @TimothyW553
 
 # UI
+/ui/ @tdas @yili-db
 /ui-new/ @yili-db @newfront @roeap @tdas
 
-# AI
+# AI Integration
 /ai/ @tdas @yili-db
+
+# AI Skills
+/CODE_REVIEW.md @tdas @yili-db
+/AGENTS.md @tdas @yili-db
+
+# Helm
+/helm/ @tdas @yili-db
+
+# Helper scripts
+/bin/ @tdas @openinx @yili-db @TimothyW553

@@ -17,12 +17,17 @@ import io.unitycatalog.client.model.Privilege;
 import io.unitycatalog.client.model.PrivilegeAssignment;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.UpdatePermissions;
+import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.sdk.access.SdkAccessControlBaseCRUDTest;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -129,6 +134,123 @@ public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
 
   @Test
   @SneakyThrows
+  public void invalidAdditionLeavesAllGrantsUnchanged() {
+    grantsApi.update(
+        SecurableType.SCHEMA, SCHEMA_FULL_NAME, addPrivileges(REGULAR_1, Privilege.USE_SCHEMA));
+
+    UpdatePermissions request =
+        new UpdatePermissions()
+            .changes(
+                List.of(
+                    new PermissionsChange()
+                        .principal(REGULAR_1)
+                        .add(List.of(Privilege.CREATE_TABLE))
+                        .remove(List.of(Privilege.USE_SCHEMA)),
+                    new PermissionsChange()
+                        .principal(REGULAR_2)
+                        .add(List.of(Privilege.USE_SCHEMA, Privilege.USE_CATALOG))
+                        .remove(List.of())));
+    assertApiException(
+        () -> grantsApi.update(SecurableType.SCHEMA, SCHEMA_FULL_NAME, request),
+        ErrorCode.INVALID_ARGUMENT,
+        "Privilege USE CATALOG cannot be granted on schema");
+
+    PermissionsList permissions = grantsApi.get(SecurableType.SCHEMA, SCHEMA_FULL_NAME, null);
+    assertThat(privilegesFor(permissions, REGULAR_1)).containsExactly(Privilege.USE_SCHEMA);
+    assertThat(privilegesFor(permissions, REGULAR_2)).isEmpty();
+  }
+
+  @Test
+  @SneakyThrows
+  public void legacyInvalidGrantCanBeRemoved() {
+    ServerProperties properties = new ServerProperties(serverProperties);
+    Repositories repositories =
+        new Repositories(hibernateConfigurator.getSessionFactory(), properties);
+    UUID principalId =
+        UUID.fromString(repositories.getUserRepository().getUserByEmail(REGULAR_1).getId());
+    UUID schemaId =
+        UUID.fromString(
+            repositories.getSchemaRepository().getSchema(SCHEMA_FULL_NAME).getSchemaId());
+
+    try (JCasbinAuthorizer authorizer = new JCasbinAuthorizer(hibernateConfigurator, properties)) {
+      // Seed an old invalid grant directly because the API must no longer create it.
+      authorizer.grantAuthorization(principalId, schemaId, Privileges.USE_CATALOG);
+      assertThat(countCasbinRulesReferencing(principalId.toString())).isOne();
+
+      new PermissionService(authorizer, repositories, properties)
+          .updateSchemaAuthorization(
+              SCHEMA_FULL_NAME,
+              new io.unitycatalog.server.model.UpdatePermissions()
+                  .changes(
+                      List.of(
+                          new io.unitycatalog.server.model.PermissionsChange()
+                              .principal(REGULAR_1)
+                              .remove(
+                                  List.of(io.unitycatalog.server.model.Privilege.USE_CATALOG)))));
+
+      assertThat(authorizer.listAuthorizations(principalId, schemaId)).isEmpty();
+      assertThat(countCasbinRulesReferencing(principalId.toString())).isZero();
+    }
+  }
+
+  @Test
+  @SneakyThrows
+  public void validParentGrantsStillApplyToChildObjects() {
+    TablesApi adminTables = new TablesApi(adminApiClient);
+    TablesApi readerTables =
+        new TablesApi(TestUtils.createApiClient(createTestUserServerConfig(REGULAR_1)));
+    createExternalTable(
+        adminTables,
+        CATALOG_NAME,
+        SCHEMA_NAME,
+        TABLE_NAME,
+        testDirectoryRoot.resolve(TABLE_NAME).toString());
+    grantsApi.update(
+        SecurableType.CATALOG,
+        CATALOG_NAME,
+        addPrivileges(REGULAR_1, Privilege.USE_CATALOG, Privilege.USE_SCHEMA, Privilege.SELECT));
+    assertThat(getTable(readerTables, TABLE_FULL_NAME).getName()).isEqualTo(TABLE_NAME);
+
+    String futureTable = TABLE_NAME + "_future";
+    String futureFullName = SCHEMA_FULL_NAME + "." + futureTable;
+    createExternalTable(
+        adminTables,
+        CATALOG_NAME,
+        SCHEMA_NAME,
+        futureTable,
+        testDirectoryRoot.resolve(futureTable).toString());
+    assertThat(getTable(readerTables, futureFullName).getName()).isEqualTo(futureTable);
+
+    grantsApi.update(
+        SecurableType.TABLE, TABLE_FULL_NAME, addPrivileges(REGULAR_1, Privilege.SELECT));
+    grantsApi.update(
+        SecurableType.CATALOG, CATALOG_NAME, removePrivileges(REGULAR_1, Privilege.SELECT));
+    assertThat(getTable(readerTables, TABLE_FULL_NAME).getName()).isEqualTo(TABLE_NAME);
+    assertPermissionDenied(() -> getTable(readerTables, futureFullName));
+
+    grantsApi.update(
+        SecurableType.SCHEMA, SCHEMA_FULL_NAME, addPrivileges(REGULAR_1, Privilege.SELECT));
+    grantsApi.update(
+        SecurableType.TABLE, TABLE_FULL_NAME, removePrivileges(REGULAR_1, Privilege.SELECT));
+    assertThat(getTable(readerTables, TABLE_FULL_NAME).getName()).isEqualTo(TABLE_NAME);
+    assertThat(getTable(readerTables, futureFullName).getName()).isEqualTo(futureTable);
+
+    grantsApi.update(
+        SecurableType.SCHEMA, SCHEMA_FULL_NAME, addPrivileges(REGULAR_1, Privilege.CREATE_TABLE));
+    String createdTable = TABLE_NAME + "_created";
+    assertThat(
+            createExternalTable(
+                    readerTables,
+                    CATALOG_NAME,
+                    SCHEMA_NAME,
+                    createdTable,
+                    testDirectoryRoot.resolve(createdTable).toString())
+                .getName())
+        .isEqualTo(createdTable);
+  }
+
+  @Test
+  @SneakyThrows
   public void nonOwnerCanReadCatalogPermissions() {
     // GET is gated only on authentication, so a non-owner gets their own (empty) view.
     PermissionsList response =
@@ -209,6 +331,12 @@ public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
   private static UpdatePermissions addPrivileges(String principal, Privilege... privileges) {
     PermissionsChange change =
         new PermissionsChange().principal(principal).add(List.of(privileges)).remove(List.of());
+    return new UpdatePermissions().changes(List.of(change));
+  }
+
+  private static UpdatePermissions removePrivileges(String principal, Privilege... privileges) {
+    PermissionsChange change =
+        new PermissionsChange().principal(principal).add(List.of()).remove(List.of(privileges));
     return new UpdatePermissions().changes(List.of(change));
   }
 
