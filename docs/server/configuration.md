@@ -161,9 +161,14 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
   admin token, or a service name. It is `system:storage-cleanup` for the background storage cleanup,
   `system:server` for work the server does outside a request, such as the admin grant made at
   first start, and absent when authorization is off. Permission changes are recorded only when authorization is on.
+  A `GRANT` is recorded when it adds a grant. `REVOKE` and the two `CLEAR_*` actions are recorded whenever
+  the server applies them, also when there was nothing to remove, because with several servers sharing
+  one database a server can't always tell.
 - `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
   itself while handling the request, and `CLEANUP` for the background storage cleanup.
-- `resource_id`: the object's ID. A `CLEANUP` credential carries the ID of the dropped object.
+- `resource_id`: on a permission change, the object whose grants changed (absent for
+  `CLEAR_PRINCIPAL_GRANTS`). On a `CLEANUP` credential, the ID of the dropped object. Other
+  credential records do not carry it.
 - `principal_id`: on a permission change, the ID of the user whose grants changed.
 - `privilege` uses the API's privilege names (for example `USE CATALOG`), and `access` is `READ` or
   `READ_WRITE`. Records never contain credential values, and `location` never contains a query

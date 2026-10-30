@@ -81,16 +81,19 @@ class AuditPermissionIntegrationTest extends SdkAccessControlBaseCRUDTest {
     // The second grant changes nothing, so it records nothing.
     grantPermissions(
         REGULAR_1, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
-    grantsApi.update(
-        SecurableType.CATALOG,
-        TestUtils.CATALOG_NAME,
-        new UpdatePermissions()
-            .changes(
-                List.of(
-                    new PermissionsChange()
-                        .principal(REGULAR_1)
-                        .add(List.of())
-                        .remove(List.of(Privilege.USE_CATALOG)))));
+    // The second revoke finds nothing to remove, and is recorded all the same.
+    for (int i = 0; i < 2; i++) {
+      grantsApi.update(
+          SecurableType.CATALOG,
+          TestUtils.CATALOG_NAME,
+          new UpdatePermissions()
+              .changes(
+                  List.of(
+                      new PermissionsChange()
+                          .principal(REGULAR_1)
+                          .add(List.of())
+                          .remove(List.of(Privilege.USE_CATALOG)))));
+    }
     // A grant left for the user delete to clear.
     grantPermissions(
         REGULAR_1, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.CREATE_SCHEMA);
@@ -120,10 +123,11 @@ class AuditPermissionIntegrationTest extends SdkAccessControlBaseCRUDTest {
             });
     assertThat(records)
         .filteredOn(r -> r.getAction() == AuditRecord.Action.REVOKE)
-        .singleElement()
-        .satisfies(
+        .hasSize(2)
+        .allSatisfy(
             r -> {
               assertThat(r.getPrivilege()).isEqualTo("USE CATALOG");
+              assertThat(r.getResourceId()).isNotNull();
               assertThat(r.getPrincipalId()).isEqualTo(userId);
               assertThat(r.getUser()).isEqualTo(admin);
             });
