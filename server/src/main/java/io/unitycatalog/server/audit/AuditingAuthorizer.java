@@ -7,7 +7,10 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Records each permission change that changed something. Public because {@code
+ * Records each permission change. A grant is recorded when it added a grant. A revoke or a clear is
+ * recorded whenever the call returns, because the delete has run in the shared policy table by
+ * then: the returned flag only says whether this server's in-memory policy changed, which can miss
+ * a removal made through a server that has not reloaded yet. Public because {@code
  * UnityAccessEvaluator} resolves {@code authorize} on the authorizer's class through a method
  * handle.
  */
@@ -32,27 +35,21 @@ public final class AuditingAuthorizer implements UnityCatalogAuthorizer, AutoClo
   @Override
   public boolean revokeAuthorization(UUID principal, UUID resource, Privileges action) {
     boolean changed = delegate.revokeAuthorization(principal, resource, action);
-    if (changed) {
-      auditor.recordPermission(AuditRecord.Action.REVOKE, principal, resource, action);
-    }
+    auditor.recordPermission(AuditRecord.Action.REVOKE, principal, resource, action);
     return changed;
   }
 
   @Override
   public boolean clearAuthorizationsForPrincipal(UUID principal) {
     boolean changed = delegate.clearAuthorizationsForPrincipal(principal);
-    if (changed) {
-      auditor.recordPermission(AuditRecord.Action.CLEAR_PRINCIPAL_GRANTS, principal, null, null);
-    }
+    auditor.recordPermission(AuditRecord.Action.CLEAR_PRINCIPAL_GRANTS, principal, null, null);
     return changed;
   }
 
   @Override
   public boolean clearAuthorizationsForResource(UUID resource) {
     boolean changed = delegate.clearAuthorizationsForResource(resource);
-    if (changed) {
-      auditor.recordPermission(AuditRecord.Action.CLEAR_RESOURCE_GRANTS, null, resource, null);
-    }
+    auditor.recordPermission(AuditRecord.Action.CLEAR_RESOURCE_GRANTS, null, resource, null);
     return changed;
   }
 

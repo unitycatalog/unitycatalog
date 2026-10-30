@@ -37,7 +37,10 @@ public class AuditRecord {
   @NonNull Instant time;
   @NonNull Action action;
 
-  /** Acting user's email, {@code system:storage-cleanup}, {@code system:server}, or null. */
+  /**
+   * The caller's token subject (an email, {@code admin} or a service name), {@code
+   * system:storage-cleanup}, {@code system:server}, or null.
+   */
   String user;
 
   String requestId;

@@ -106,11 +106,11 @@ appender.console.layout.type=PatternLayout
 appender.console.layout.pattern=%d{HH:mm:ss.SSS} ${hostName} [%t] %-5level %logger{36} %notEmpty{request_id=%X{request_id} }- %msg%n
 
 # Audit records (server.audit.sink=io.unitycatalog.server.audit.FileAuditSink); no file is created
-# until the first record.
+# until the first record. Rolls over every hour and keeps up to 7 days or 1GB of archives.
 appender.auditFile.type=RollingFile
 appender.auditFile.name=AuditFile
 appender.auditFile.fileName=/home/unitycatalog/etc/logs/audit.log
-appender.auditFile.filePattern=/home/unitycatalog/etc/logs/audit-%d{MM-dd-yyyy-HH-mm-ss}-%i.log.gz
+appender.auditFile.filePattern=/home/unitycatalog/etc/logs/audit-%d{yyyy-MM-dd-HH}-%i.log.gz
 appender.auditFile.createOnDemand=true
 appender.auditFile.ignoreExceptions=false
 appender.auditFile.layout.type=PatternLayout
@@ -121,14 +121,17 @@ appender.auditFile.policies.time.interval=1
 appender.auditFile.policies.size.type=SizeBasedTriggeringPolicy
 appender.auditFile.policies.size.size=10MB
 appender.auditFile.strategy.type=DefaultRolloverStrategy
-appender.auditFile.strategy.max=5
+appender.auditFile.strategy.max=20
 appender.auditFile.strategy.fileIndex=max
 appender.auditFile.strategy.action.type=Delete
 appender.auditFile.strategy.action.basePath=/home/unitycatalog/etc/logs
 appender.auditFile.strategy.action.condition.type=IfFileName
 appender.auditFile.strategy.action.condition.glob=audit-*.log.gz
-appender.auditFile.strategy.action.ifAny.type=IfAccumulatedFileCount
-appender.auditFile.strategy.action.ifAny.exceeds=5
+appender.auditFile.strategy.action.condition.any.type=IfAny
+appender.auditFile.strategy.action.condition.any.age.type=IfLastModified
+appender.auditFile.strategy.action.condition.any.age.age=P7D
+appender.auditFile.strategy.action.condition.any.size.type=IfAccumulatedFileSize
+appender.auditFile.strategy.action.condition.any.size.exceeds=1GB
 
 logger.audit.name=audit
 logger.audit.level=info
