@@ -91,6 +91,43 @@ The server config file is at the location `etc/conf/server.properties` (relative
     lowercase hex, raw non-ASCII) is rejected with `400`, and an external location whose URL has such an escape
     cannot hold one.
 
+### Secrets
+
+Set secrets in environment variables, not in `server.properties`. A secret's variable name is its key in upper case,
+with `_` for each character that is not a letter or digit:
+
+| Key in `server.properties` | Environment variable |
+| --- | --- |
+| `server.client-secret` | `SERVER_CLIENT_SECRET` |
+| `aws.secretKey` | `AWS_SECRETKEY` |
+| `s3.secretKey.<n>`, `s3.sessionToken.<n>` | `S3_SECRETKEY_<n>`, `S3_SESSIONTOKEN_<n>` |
+| `adls.clientSecret.<n>` | `ADLS_CLIENTSECRET_<n>` |
+
+```sh
+export SERVER_CLIENT_SECRET='<client secret>'
+bin/start-uc-server
+```
+
+A variable takes precedence over the same key in `server.properties`. An empty upper-case variable is ignored, and a
+line break at the end of a value is dropped, as a Kubernetes Secret made from a file often has one. Only the keys above
+use upper-case names; other settings are read from an environment variable only under their exact key. The Helm chart
+passes `SERVER_CLIENT_SECRET`, `S3_SECRETKEY_<n>` and `ADLS_CLIENTSECRET_<n>` to the server from Kubernetes Secrets.
+
+!!! warning "Deprecated: secrets in `server.properties`"
+    Secrets in `server.properties` still work, but this is deprecated. The server logs a warning at startup for each
+    secret it reads from the file. Move them to environment variables.
+
+#### Upgrading
+
+- A variable from the table that is already set in the server's environment now takes precedence over
+  `server.properties`.
+- `bin/uc auth login` reads `SERVER_CLIENT_SECRET` before `server.client-secret` in `etc/conf/server.properties`.
+- Helm: use the server image from the chart's release, which is the default. An older server image doesn't read these
+  variables, so OAuth login, S3 and ADLS lose their secrets.
+- Helm: the init container no longer has `OAUTH_CLIENT_SECRET`, `S3_SECRET_KEY_<n>` or `ADLS_CLIENT_SECRET_<n>`. An
+  `extraInitContainers` entry that reads them must use the variables in the table. In a `server.config.override`
+  template, remove the lines that use them: the server reads those secrets from its environment.
+
 ## Local file system storage
 
 Unity Catalog can store data on the server's local file system, which is convenient for development and single-machine

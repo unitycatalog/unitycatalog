@@ -8,6 +8,7 @@ import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 
@@ -402,6 +403,45 @@ public class ServerPropertiesTest {
 
     serverProperties.set(Property.ACCESS_TOKEN_TIMEOUT, "PT48H");
     assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT1H"));
+  }
+
+  @Test
+  public void testSecretsFromEnvironment() {
+    Properties props = new Properties();
+    props.setProperty("server.client-secret", "file-client-secret");
+    props.setProperty("aws.secretKey", "file-aws-secret");
+    props.setProperty("aws.region", "us-west-2");
+    props.setProperty("s3.bucketPath.0", "s3://bucket0");
+    props.setProperty("s3.accessKey.0", "access-key");
+    props.setProperty("s3.secretKey.0", "file-s3-secret");
+    props.setProperty("s3.sessionToken.0", "session-token");
+    props.setProperty("adls.storageAccountName.0", "account0");
+    props.setProperty("adls.tenantId.0", "tenant");
+    props.setProperty("adls.clientId.0", "client");
+    ServerProperties serverProperties =
+        new ServerProperties(
+            props,
+            Map.of(
+                "SERVER_CLIENT_SECRET", "env-client-secret",
+                // A line break at the end, as in a Secret made from a file, is dropped.
+                "S3_SECRETKEY_0", "env-s3-secret\r\n",
+                "ADLS_CLIENTSECRET_0", "env-adls-secret",
+                // An empty variable does not replace the file value.
+                "AWS_SECRETKEY", "",
+                // Only secrets use the upper-case name; cloud runtimes set AWS_REGION themselves.
+                "AWS_REGION", "us-east-1"));
+
+    assertThat(serverProperties.get(Property.CLIENT_SECRET)).isEqualTo("env-client-secret");
+    assertThat(serverProperties.get(Property.AWS_SECRET_KEY)).isEqualTo("file-aws-secret");
+    assertThat(serverProperties.get(Property.AWS_REGION)).isEqualTo("us-west-2");
+    assertThat(
+            serverProperties
+                .getS3Configurations()
+                .get(NormalizedURL.from("s3://bucket0"))
+                .getSecretKey())
+        .isEqualTo("env-s3-secret");
+    assertThat(serverProperties.getAdlsConfigurations().get("account0").getClientSecret())
+        .isEqualTo("env-adls-secret");
   }
 
   @Test
