@@ -296,6 +296,7 @@ public class ServerProperties {
     AWS_SECRET_KEY("aws.secretKey"),
     AWS_SESSION_TOKEN("aws.sessionToken"),
     AWS_REGION("aws.region"),
+    AWS_ENDPOINT("aws.endpoint"),
     INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR);
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
@@ -420,6 +421,7 @@ public class ServerProperties {
         .accessKey(get(Property.AWS_ACCESS_KEY))
         .secretKey(get(Property.AWS_SECRET_KEY))
         // Does not take AWS_SESSION_TOKEN as it's only part of a temporary credential.
+        .endpoint(get(Property.AWS_ENDPOINT))
         .build();
   }
 
@@ -434,6 +436,7 @@ public class ServerProperties {
       String secretKey = getProperty("s3.secretKey." + i);
       String sessionToken = getProperty("s3.sessionToken." + i);
       String credentialGenerator = getProperty("s3.credentialGenerator." + i);
+      String endpoint = getProperty("s3.endpoint." + i);
       if ((bucketPath == null || region == null || awsRoleArn == null)
           && (accessKey == null || secretKey == null || sessionToken == null)) {
         break;
@@ -447,6 +450,7 @@ public class ServerProperties {
               .secretKey(secretKey)
               .sessionToken(sessionToken)
               .credentialGenerator(credentialGenerator)
+              .endpoint(endpoint)
               .build();
       s3BucketConfigMap.put(NormalizedURL.from(bucketPath), s3StorageConfig);
       i++;
