@@ -1,0 +1,8 @@
+# Renders the optional graceful shutdown values so that chart lint covers them.
+server:
+  deployment:
+    lifecycle:
+      preStop:
+        exec:
+          command: ["sleep", "10"]
+    terminationGracePeriodSeconds: 30

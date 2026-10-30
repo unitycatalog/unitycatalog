@@ -30,3 +30,4 @@ RELEASING.md
 
 # Helm-docs files
 README.md.gotmpl
+ci/
