@@ -8,11 +8,11 @@ import java.util.UUID;
 
 /**
  * Records each permission change. A grant is recorded when it added a grant. A revoke or a clear is
- * recorded whenever the call returns, because the delete has run in the shared policy table by
- * then: the returned flag only says whether this server's in-memory policy changed, which can miss
- * a removal made through a server that has not reloaded yet. Public because {@code
- * UnityAccessEvaluator} resolves {@code authorize} on the authorizer's class through a method
- * handle.
+ * recorded whenever the call returns. In jCasbin 1.99.0, {@code removePolicy} and {@code
+ * removeFilteredPolicy} delete the rows through the adapter before they check the in-memory model,
+ * so a server that has not reloaded the policy deletes the rows and still returns false. A failed
+ * delete throws, so it is not recorded. Public because {@code UnityAccessEvaluator} resolves {@code
+ * authorize} on the authorizer's class through a method handle.
  */
 public final class AuditingAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
   private final UnityCatalogAuthorizer delegate;
