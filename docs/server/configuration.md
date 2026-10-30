@@ -155,7 +155,8 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 ```
 
 - `action`: `ISSUE_CREDENTIAL`.
-- `user`: the caller's email. It is `system:storage-cleanup` for the background storage cleanup,
+- `user`: the caller's identity from the token (`sub`): the user's email, `admin` for the bootstrap
+  admin token, or a service name. It is `system:storage-cleanup` for the background storage cleanup,
   and absent when authorization is off.
 - `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
   itself while handling the request, and `CLEANUP` for the background storage cleanup.
