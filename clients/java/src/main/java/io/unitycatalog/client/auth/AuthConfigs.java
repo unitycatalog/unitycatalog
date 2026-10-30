@@ -24,6 +24,9 @@ class AuthConfigs {
   // When true, the OAuth token is exchanged for a UC-issued token at the UC server's token
   // exchange endpoint, which is derived from the catalog URI.
   static final String OAUTH_EXCHANGE_FOR_UC_TOKEN = "oauth.exchangeForUcToken";
+  // When true, TokenProvider.create returns one JVM-wide OAuth provider per auth configuration,
+  // so callers that build a new client per operation reuse its cached token.
+  static final String OAUTH_SHARED = "oauth.shared";
   // The Unity Catalog server URI. Set by the connectors from the catalog URI.
   static final String CATALOG_URI = "catalogUri";
 }

@@ -109,6 +109,7 @@ public class OAuthTokenProviderTest {
     HttpRequest request = requestCaptor.getValue();
     assertThat(request.uri().toString()).isEqualTo(OAUTH_URI);
     assertThat(request.method()).isEqualTo("POST");
+    assertThat(request.timeout()).contains(OAuthTokenProvider.TOKEN_REQUEST_TIMEOUT);
     assertThat(request.headers().firstValue("Authorization"))
         .isPresent()
         .get()
@@ -284,6 +285,7 @@ public class OAuthTokenProviderTest {
     HttpRequest exchangeRequest = requestCaptor.getAllValues().get(1);
     assertThat(oauthRequest.uri().toString()).isEqualTo(OAUTH_URI);
     assertThat(exchangeRequest.uri().toString()).isEqualTo(UC_TOKEN_EXCHANGE_URI);
+    assertThat(exchangeRequest.timeout()).contains(OAuthTokenProvider.TOKEN_REQUEST_TIMEOUT);
     assertThat(exchangeRequest.headers().firstValue("Authorization")).isEmpty();
     assertThat(requestBody(exchangeRequest))
         .isEqualTo(

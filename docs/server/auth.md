@@ -639,6 +639,22 @@ Map<String, String> configs = Map.of(
     "oauth.exchangeForUcToken", "true");
 ```
 
+### Sharing OAuth tokens across clients
+
+Each OAuth token provider caches its own token. A caller that builds a new client for every
+operation, such as Delta's commit coordinator for catalog-managed tables, therefore requests a new
+token for every operation. Identity Providers that limit the number of active tokens per client
+can then reject further requests under load. Set `oauth.shared=true` to get one provider shared
+JVM-wide by every caller with the same auth configuration, so they reuse its cached token:
+
+```sh
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.shared=true"
+```
+
+Configurations that differ in any entry, such as the client secret, get separate providers, so
+different clients never share a token and a rotated secret gets a new provider. Providers that have
+not been looked up for an hour are dropped.
+
 ## Using Google Identity with Unity Catalog UI
 
 We previously configured Google as the Identity Provider and configured UC Server settings for CLI access. However, we
