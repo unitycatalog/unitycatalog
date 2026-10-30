@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Unity Catalog</title>
+    <script>
+      // Apply the saved color mode before paint to avoid a light/dark flash.
+      (function () {
+        try {
+          var m = localStorage.getItem("uc-ui-color-mode");
+          if (m !== "light" && m !== "dark" && m !== "auto") m = "auto";
+          document.documentElement.dataset.colorMode = m;
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body class="h-full">
+    <div id="root" class="h-full"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
