@@ -44,7 +44,8 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
 ### Configuring the UC server
 
 - The UC server can be configured by modifying the files in `etc/conf/`. This includes properties related to logging,
-    server environment and the s3 configuration.
+    server environment and the s3 configuration. Set secrets, including the database password, in environment
+    variables instead; keeping them in these files is deprecated (see [Secrets](./configuration.md#secrets)).
 - Setting the server environment to `dev` will use properties located in `etc/conf/hibernate.properties` to configure
     the backend database whereas `test` will spin up an in-memory database.
 - The `etc/data/` directory contains the data files that are used by the UC server. This includes the tables and volumes
@@ -111,10 +112,18 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
     hibernate.connection.driver_class=com.mysql.cj.jdbc.Driver
     hibernate.connection.url=jdbc:mysql://localhost:3306/ucdb
     hibernate.connection.user=uc_default_user
-    hibernate.connection.password=uc_default_password
     hibernate.hikari.maximumPoolSize=20
     hibernate.hikari.minimumIdle=2
     ```
+
+- Set the password in the `HIBERNATE_CONNECTION_PASSWORD` environment variable before you start the server:
+
+    ```sh
+    export HIBERNATE_CONNECTION_PASSWORD=uc_default_password
+    ```
+
+    Keeping `hibernate.connection.password` in `hibernate.properties` still works but is deprecated: the server logs a
+    warning at startup (see [Secrets](configuration.md#secrets)).
 
 - Modify the `jars/classpath` file and add path to your JDBC driver.
 
@@ -140,10 +149,18 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
     hibernate.connection.driver_class=org.postgresql.Driver
     hibernate.connection.url=jdbc:postgresql://localhost:5432/ucdb
     hibernate.connection.user=uc_default_user
-    hibernate.connection.password=uc_default_password
     hibernate.hikari.maximumPoolSize=20
     hibernate.hikari.minimumIdle=2
     ```
+
+- Set the password in the `HIBERNATE_CONNECTION_PASSWORD` environment variable before you start the server:
+
+    ```sh
+    export HIBERNATE_CONNECTION_PASSWORD=uc_default_password
+    ```
+
+    Keeping `hibernate.connection.password` in `hibernate.properties` still works but is deprecated: the server logs a
+    warning at startup (see [Secrets](configuration.md#secrets)).
 
 ### Existing deployments and column type changes
 

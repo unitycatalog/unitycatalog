@@ -342,6 +342,8 @@ extraProperties:
   my-config.property1: my-value1
   my-config.property2: my-value2
 ```
+
+Do not put secrets here: a secret in `server.properties` is deprecated.
 </td>
 		</tr>
 		<tr>
@@ -359,6 +361,11 @@ server.env=prod
 server.port=8080
 ...other config properties...
 ```
+
+Do not put secrets here: the chart passes them to the server as environment variables, and
+a secret in `server.properties` is deprecated. If the template uses `${OAUTH_CLIENT_SECRET}`,
+`${S3_SECRET_KEY_<n>}` or `${ADLS_CLIENT_SECRET_<n>}`, remove those lines: the server reads the
+secrets from environment variables.
 </td>
 		</tr>
 		<tr>
@@ -496,7 +503,14 @@ If not set, the default storage class will be used
 not set
 </pre>
 </td>
-			<td>Override Hibernate configuration for the server</td>
+			<td>Override Hibernate configuration for the server
+
+Do not put the password here: set `postgresqlConfig.passwordSecretName` and
+`passwordSecretKey`; with `db.type: postgresql` the chart passes the password to the server
+as an environment variable. A password in `hibernate.properties` is deprecated.
+If the template sets `hibernate.connection.password=${DB_PASSWORD}`, remove that line: the
+server reads the password from `HIBERNATE_CONNECTION_PASSWORD`.
+</td>
 		</tr>
 		<tr>
 			<td>server.db.postgresqlConfig.dbName</td>
@@ -794,7 +808,11 @@ not set
 {{ .Chart.AppVersion }}
 </pre>
 </td>
-			<td>Tag for the server image</td>
+			<td>Tag for the server image
+
+Use the server image from the same release as the chart. The chart passes secrets to
+the server as environment variables that older server images don't read.
+</td>
 		</tr>
 		<tr>
 			<td>server.deployment.imagePullSecrets</td>

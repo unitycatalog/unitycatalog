@@ -61,7 +61,13 @@ public class Oauth2CliExchange {
     String authorizationUrl = serverProperties.getProperty("server.authorization-url");
     String tokenUrl = serverProperties.getProperty("server.token-url");
     String clientId = serverProperties.getProperty("server.client-id");
-    String clientSecret = serverProperties.getProperty("server.client-secret");
+    // Read SERVER_CLIENT_SECRET first, then server.client-secret from the file. The variable name
+    // and the line-break trimming match the server (see Secrets in docs/server/configuration.md).
+    String clientSecret =
+        System.getenv().getOrDefault("SERVER_CLIENT_SECRET", "").replaceAll("[\\r\\n]+$", "");
+    if (clientSecret.isEmpty()) {
+      clientSecret = serverProperties.getProperty("server.client-secret");
+    }
 
     // Find a random available port
     int port = findAvailablePort();

@@ -38,18 +38,23 @@ Once you have configured your identity provider, the next step is to configure y
 
 ## Configure UC Server Settings
 
-Start by editing `etc/conf/server.properties` with the **Client ID** and **Client secret** provided to you by the
-Identity Provider.
+Start by editing `etc/conf/server.properties` with the **Client ID** provided to you by the Identity Provider, and set
+the **Client secret** in the `SERVER_CLIENT_SECRET` environment variable before you start the server. Setting
+`server.client-secret` in `server.properties` still works but is deprecated (see
+[Secrets](configuration.md#secrets)).
 
 ```sh
 server.authorization=enable
 server.authorization-url=https://accounts.google.com/o/oauth2/auth
 server.token-url=https://oauth2.googleapis.com/token
 server.client-id=<Client ID provided earlier>
-server.client-secret=<Client secret provided earlier>
 server.allowed-issuers=https://accounts.google.com
 server.allowed-jwks-uris=https://www.googleapis.com/oauth2/v3/certs
 server.audiences=<Client ID provided earlier>
+```
+
+```sh
+export SERVER_CLIENT_SECRET='<Client secret provided earlier>'
 ```
 
 ### Issuer and Audience Validation
@@ -150,6 +155,9 @@ When upgrading, set `server.allowed-jwks-uris` for each provider whose keys use 
 For Google deployments that do not use Helm, set
 `server.allowed-jwks-uris=https://www.googleapis.com/oauth2/v3/certs` in `server.properties`
 before starting the new server. Helm includes this URL by default.
+
+Move `server.client-secret` from `server.properties` to the `SERVER_CLIENT_SECRET` environment variable, for both the
+server and `bin/uc auth login`. The file still works, but is deprecated (see [Secrets](configuration.md#secrets)).
 
 ### Permission-check migration
 

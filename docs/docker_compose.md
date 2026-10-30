@@ -44,6 +44,22 @@ The configuration will create a bind mount to the local files in `./etc/conf`.
 The UC server can be configured by editing the configuration files on the host,
 and the mount will reflect the changes in the container.
 
+Set secrets as environment variables of the `server` service, not in the mounted
+`server.properties`, where they are deprecated (see
+[Secrets](./server/configuration.md#secrets)). For example, in `compose.yaml`:
+
+```yaml
+services:
+  server:
+    environment:
+      SERVER_CLIENT_SECRET: ${SERVER_CLIENT_SECRET}
+      HIBERNATE_CONNECTION_PASSWORD: ${HIBERNATE_CONNECTION_PASSWORD}
+```
+
+Compose fills in each `${...}` from your shell or a `.env` file, so the secrets stay
+out of `compose.yaml`. The database password works the same way; keeping it in the
+mounted `hibernate.properties` is deprecated.
+
 The configuration will also create a persistent, named volume to store the
 server's data. This will persist between restarts of the container. See the
 [deployment](./server/deployment.md) page for more details on how to configure other

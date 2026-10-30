@@ -55,6 +55,7 @@ public class HibernateConfigurator implements AutoCloseable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(HibernateConfigurator.class);
   private static final String HIKARI_PREFIX = "hibernate.hikari.";
+  private static final String PASSWORD_KEY = "hibernate.connection.password";
 
   private final SessionFactory sessionFactory;
   private final Properties hibernateProperties;
@@ -231,6 +232,7 @@ public class HibernateConfigurator implements AutoCloseable {
         throw new RuntimeException(e);
       }
     }
+    applyPasswordOverride(hibernateProperties, serverProperties, hibernatePropertiesPath);
 
     if ("test".equals(serverProperties.get(Property.SERVER_ENV))) {
       hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
@@ -240,5 +242,24 @@ public class HibernateConfigurator implements AutoCloseable {
       LOGGER.debug("Hibernate configuration set for testing");
     }
     return hibernateProperties;
+  }
+
+  /**
+   * Takes the database password from a system property or the HIBERNATE_CONNECTION_PASSWORD
+   * environment variable when set. A password kept in hibernate.properties still works but logs a
+   * deprecation warning.
+   */
+  static void applyPasswordOverride(
+      Properties hibernateProperties, ServerProperties serverProperties, Path propertiesPath) {
+    String password = serverProperties.getOverride(PASSWORD_KEY);
+    if (password != null) {
+      hibernateProperties.setProperty(PASSWORD_KEY, password);
+    } else if (!hibernateProperties.getProperty(PASSWORD_KEY, "").isEmpty()) {
+      LOGGER.warn(
+          "{} is set in {}. Keeping the database password in this file is deprecated; set the"
+              + " HIBERNATE_CONNECTION_PASSWORD environment variable instead.",
+          PASSWORD_KEY,
+          propertiesPath);
+    }
   }
 }
