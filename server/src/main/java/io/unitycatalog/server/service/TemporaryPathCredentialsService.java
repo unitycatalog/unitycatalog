@@ -7,6 +7,7 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
@@ -50,8 +51,8 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
   // a. For external location, it requires READ_FILES for reads, and +WRITE_FILES for writes
   //  and reads.
   // b. For table, it requires SELECT for reads, and +MODIFY for writes and reads.
-  // c. For volume, it requires READ_VOLUME for reads, and OWNER for writes and reads.
-  //  (WRITE_VOLUME is not implemented yet)
+  // c. For volume, it requires READ_VOLUME for reads, and +WRITE_VOLUME for writes and reads.
+  //  Volume ownership satisfies both volume privileges.
   // d. For model,  it requires EXECUTE for reads, and OWNER for writes and reads.
   // e. Additionally for all data securables, it requires USE_CATALOG and USE_SCHEMA (or OWNER)
   //  of the parent catalog and schema.
@@ -80,25 +81,26 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
          (#authorize(#principal, #table, OWNER) ||
           #authorizeAll(#principal, #table, SELECT, MODIFY))) ||
-        (#volume != null &&
-         #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-         #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-         #authorize(#principal, #volume, OWNER)) ||
-        (#registered_model != null &&
-         #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-         #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-         #authorize(#principal, #registered_model, OWNER)) ||
-        (#external_location != null &&
-         (#authorize(#principal, #external_location, OWNER) ||
-          #authorizeAll(#principal, #external_location, READ_FILES, WRITE_FILES)))
-      )
-      : #operation == 'PATH_CREATE_TABLE' ? (
-        #no_overlap_with_data_securable &&
-        #external_location != null &&
-        #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE)
-      )
-      : #deny
-      """)
+        (#volume != null && (
+      """
+          + AuthorizeExpressions.VEND_VOLUME_WRITE_CREDENTIAL
+          + """
+            )) ||
+            (#registered_model != null &&
+             #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+             #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+             #authorize(#principal, #registered_model, OWNER)) ||
+            (#external_location != null &&
+             (#authorize(#principal, #external_location, OWNER) ||
+              #authorizeAll(#principal, #external_location, READ_FILES, WRITE_FILES)))
+          )
+          : #operation == 'PATH_CREATE_TABLE' ? (
+            #no_overlap_with_data_securable &&
+            #external_location != null &&
+            #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE)
+          )
+          : #deny
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse generateTemporaryPathCredential(
       @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "url") @AuthorizeKey(key = "operation")
