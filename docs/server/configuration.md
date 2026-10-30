@@ -198,8 +198,9 @@ records never end up in `server.log`. `audit.log` rolls over with the same setti
 To send records somewhere else, set `server.audit.sink` to your own class that implements
 `io.unitycatalog.server.audit.AuditSink` and has a public no-arg constructor. It must be on the
 server classpath, and the server does not start if it can't be loaded. `record` is called
-concurrently, from request threads and the server's own threads, so it must be thread-safe and should hand records to a queue
-instead of sending them inline. `close` is called once at shutdown. A failure thrown from either
+concurrently, from request threads and the server's own threads, so it must be thread-safe and should hand
+records to a queue instead of sending them inline. A record for a drop is made while the drop is
+committing, and holds the drop's database connection until `record` returns. `close` is called once at shutdown. A failure thrown from either
 method is logged (in `server.log`, or on the console with the Helm chart) and never fails a request.
 
 ## Logging

@@ -9,7 +9,9 @@ package io.unitycatalog.server.audit;
  *   <li>{@link #record} is called concurrently, from request threads and from the server's own
  *       threads such as the storage cleanup, so implementations must be thread-safe.
  *   <li>{@link #record} runs on the calling thread. A sink that sends records to a remote service
- *       should queue them and send asynchronously, and flush in {@link #close}.
+ *       should queue them and send asynchronously, and flush in {@link #close}. For a drop that
+ *       queues storage cleanup, the calling thread is the one committing the drop, so a slow sink
+ *       holds that drop's database connection until {@link #record} returns.
  *   <li>A failure thrown from {@link #record} or {@link #close} is logged and never fails the
  *       request or the shutdown.
  *   <li>Compatibility: {@link AuditRecord} may gain new getters and builder methods; existing ones
