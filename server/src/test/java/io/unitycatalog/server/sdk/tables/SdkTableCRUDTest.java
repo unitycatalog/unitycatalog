@@ -109,7 +109,11 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
             tableOperations);
     ListTablesResponse resp =
         localTablesApi.listTables(
-            testingTable.getCatalogName(), testingTable.getSchemaName(), 100, null);
+            testingTable.getCatalogName(),
+            testingTable.getSchemaName(),
+            100,
+            null,
+            /* includeBrowse= */ false);
     assertThat(resp.getNextPageToken()).isNull();
     assertThat(resp.getTables())
         .hasSize(1)
@@ -124,7 +128,11 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
     List<TableInfo> testingTables = createMultipleTestingTables(11);
     ListTablesResponse resp =
         localTablesApi.listTables(
-            testingTables.get(0).getCatalogName(), testingTables.get(0).getSchemaName(), 10, null);
+            testingTables.get(0).getCatalogName(),
+            testingTables.get(0).getSchemaName(),
+            10,
+            null,
+            /* includeBrowse= */ false);
     assertThat(resp.getNextPageToken()).isNotNull();
     assertThat(resp.getTables()).hasSize(10);
     // Check the next page has the last table
@@ -133,7 +141,8 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
             testingTables.get(0).getCatalogName(),
             testingTables.get(0).getSchemaName(),
             10,
-            resp.getNextPageToken());
+            resp.getNextPageToken(),
+            /* includeBrowse= */ false);
     assertThat(nextPageResp.getNextPageToken()).isNull();
     assertThat(nextPageResp.getTables()).hasSize(1);
   }

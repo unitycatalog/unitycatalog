@@ -369,7 +369,15 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
         Map<String, Object> nonResourceValues) {
       resultFilter =
           new ResultFilter(
-              evaluator, principal, expression, resourceIds, nonResourceValues, keyMapper);
+              evaluator,
+              principal,
+              expression,
+              Boolean.parseBoolean(ctx.queryParam("include_browse"))
+                  ? method().getAnnotation(ResponseAuthorizeFilter.class).browse()
+                  : "",
+              resourceIds,
+              nonResourceValues,
+              keyMapper);
       ctx.setAttr(RESULT_FILTER_ATTR, resultFilter);
     }
 

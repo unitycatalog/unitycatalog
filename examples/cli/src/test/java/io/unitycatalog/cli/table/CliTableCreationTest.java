@@ -111,7 +111,8 @@ public class CliTableCreationTest extends BaseServerTest {
 
     // Verify CCv2 (catalog-managed) properties are persisted on the server via direct RPC call
     TablesApi tablesApi = new TablesApi(TestUtils.createApiClient(serverConfig));
-    Map<String, String> props = tablesApi.getTable(TABLE_FULL_NAME, true, true).getProperties();
+    Map<String, String> props =
+        tablesApi.getTable(TABLE_FULL_NAME, true, true, /* includeBrowse= */ false).getProperties();
     assertThat(props).isNotNull();
     assertThat(props).containsEntry("delta.feature.catalogManaged", "supported");
     assertThat(props).containsEntry("delta.feature.vacuumProtocolCheck", "supported");

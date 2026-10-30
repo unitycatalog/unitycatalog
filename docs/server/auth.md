@@ -220,6 +220,7 @@ Grant validation also runs when `server.authorization=disable`.
 | --- | --- |
 | `CREATE CATALOG`, `CREATE STORAGE CREDENTIAL` | Metastore |
 | `USE CATALOG`, `CREATE SCHEMA` | Catalog |
+| `BROWSE` | Catalog, external location |
 | `USE SCHEMA`, `CREATE TABLE`, `CREATE FUNCTION`, `CREATE VOLUME`, `CREATE MODEL` | Catalog, schema |
 | `SELECT`, `MODIFY` | Catalog, schema, table |
 | `EXECUTE` | Catalog, schema, function, registered model |
@@ -235,6 +236,20 @@ saving its grants or revokes.
 After an upgrade, existing grants stay in place. The server does not remove invalid grants
 automatically. You can still remove them through the permissions API. Update grant scripts
 to use the correct object types before adding or reapplying grants.
+
+### Discover objects with BROWSE
+
+Catalog `BROWSE` lets a user discover the catalog and its schemas, tables, views, functions,
+registered models, and volumes without usage grants. External location `BROWSE` applies only to
+that location. Native get and list APIs require `include_browse=true` to use these grants.
+
+Ordinary access returns full metadata. Otherwise, BROWSE returns `browse_only=true` and the
+object's discovery fields. Tables hide storage details, properties, and view definitions.
+Functions hide their body. Models and volumes keep their storage paths. External locations hide
+credential references. BROWSE does not permit data access, credentials, changes, or engine table loads.
+
+Lists can mix full and browse-only objects. A filtered page can be empty and still have a
+`next_page_token`; continue until the token is absent.
 
 ### Restart the UC Server
 

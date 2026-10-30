@@ -125,7 +125,7 @@ public class SdkUseDeltaApiOnlyFlagTest extends DeltaBaseTableCRUDTestEnv {
     // 5. UC getTable on the MANAGED Delta table -- allowed for now as non-Delta clients and
     // older clients supporting only EXTERNAL tables still needs to gracefully recognize MANAGED
     // Delta tables by loading them.
-    ucTablesApi.getTable(fullName(tableName), null, null);
+    ucTablesApi.getTable(fullName(tableName), null, null, /* includeBrowse= */ false);
 
     // 6. UC generateTemporaryTableCredentials on the MANAGED Delta table -- blocked.
     assertGateBlocks(
@@ -153,7 +153,7 @@ public class SdkUseDeltaApiOnlyFlagTest extends DeltaBaseTableCRUDTestEnv {
             tableOperations);
 
     // 10. UC getTable on the EXTERNAL table -- allowed.
-    ucTablesApi.getTable(fullName(external.getName()), null, null);
+    ucTablesApi.getTable(fullName(external.getName()), null, null, /* includeBrowse= */ false);
 
     // 11. UC generateTemporaryTableCredentials on the EXTERNAL table -- allowed.
     ucCredsApi.generateTemporaryTableCredentials(

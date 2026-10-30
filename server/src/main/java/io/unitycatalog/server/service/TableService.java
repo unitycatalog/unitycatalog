@@ -19,6 +19,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
+import io.unitycatalog.server.auth.decorator.BrowseOnlyConverter;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
@@ -98,16 +99,19 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
 
   @Get("/{full_name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
+  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
   @AuthorizeResourceKey(METASTORE)
-  public HttpResponse getTable(@Param("full_name") @AuthorizeResourceKey(TABLE) String fullName) {
+  public HttpResponse getTable(
+      @Param("full_name") @AuthorizeResourceKey(TABLE) String fullName,
+      @Param("include_browse") Optional<Boolean> includeBrowse) {
     assert fullName != null;
     TableInfo tableInfo = tableRepository.getTable(fullName);
-    return HttpResponse.ofJson(tableInfo);
+    return HttpResponse.ofJson(applyResponseFilter(tableInfo, BrowseOnlyConverter::toBrowseOnly));
   }
 
   @Get("")
   @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
-  @ResponseAuthorizeFilter
+  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listTables(
       @Param("catalog_name") @AuthorizeResourceKey(CATALOG) String catalogName,
@@ -115,7 +119,8 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken,
       @Param("omit_properties") Optional<Boolean> omitProperties,
-      @Param("omit_columns") Optional<Boolean> omitColumns) {
+      @Param("omit_columns") Optional<Boolean> omitColumns,
+      @Param("include_browse") Optional<Boolean> includeBrowse) {
 
     ListTablesResponse listTablesResponse =
         tableRepository.listTables(
@@ -126,7 +131,8 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
             omitProperties.orElse(false),
             omitColumns.orElse(false));
 
-    applyResponseFilter(SecurableType.TABLE, listTablesResponse.getTables());
+    applyResponseFilter(
+        SecurableType.TABLE, listTablesResponse.getTables(), BrowseOnlyConverter::toBrowseOnly);
     return HttpResponse.ofJson(listTablesResponse);
   }
 

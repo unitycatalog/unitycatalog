@@ -13,12 +13,14 @@ import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
+import io.unitycatalog.server.auth.decorator.BrowseOnlyConverter;
 import io.unitycatalog.server.model.CreateVolumeRequestContent;
 import io.unitycatalog.server.model.ListVolumesResponseContent;
 import io.unitycatalog.server.model.SchemaInfo;
@@ -120,7 +122,7 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
 
   @Get("")
   @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
-  @ResponseAuthorizeFilter
+  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listVolumes(
       @Param("catalog_name") @AuthorizeResourceKey(CATALOG) String catalogName,
@@ -130,17 +132,21 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
       @Param("include_browse") Optional<Boolean> includeBrowse) {
     ListVolumesResponseContent listVolumesResponse =
         volumeRepository.listVolumes(catalogName, schemaName, maxResults, pageToken, includeBrowse);
-    applyResponseFilter(SecurableType.VOLUME, listVolumesResponse.getVolumes());
+    applyResponseFilter(
+        SecurableType.VOLUME, listVolumesResponse.getVolumes(), BrowseOnlyConverter::toBrowseOnly);
     return HttpResponse.ofJson(listVolumesResponse);
   }
 
   @Get("/{full_name}")
   @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getVolume(
       @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName,
       @Param("include_browse") Optional<Boolean> includeBrowse) {
-    return HttpResponse.ofJson(volumeRepository.getVolume(fullName));
+    return HttpResponse.ofJson(
+        applyResponseFilter(
+            volumeRepository.getVolume(fullName), BrowseOnlyConverter::toBrowseOnly));
   }
 
   @Patch("/{full_name}")

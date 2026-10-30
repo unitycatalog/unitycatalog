@@ -192,10 +192,11 @@ public class SdkModelAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     UpdateRegisteredModel commentOnly = new UpdateRegisteredModel().comment("comment");
     if (canComment) {
       callerApi.updateRegisteredModel(fullName, commentOnly);
-      assertThat(observerApi.getRegisteredModel(fullName).getComment()).isEqualTo("comment");
+      assertThat(observerApi.getRegisteredModel(fullName, /* includeBrowse= */ false).getComment())
+          .isEqualTo("comment");
     } else {
       assertPermissionDenied(() -> callerApi.updateRegisteredModel(fullName, commentOnly));
-      assertThat(observerApi.getRegisteredModel(fullName).getComment())
+      assertThat(observerApi.getRegisteredModel(fullName, /* includeBrowse= */ false).getComment())
           .isEqualTo(original.getComment());
     }
 
@@ -214,7 +215,8 @@ public class SdkModelAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
           new UpdateRegisteredModel().newName("renamed").comment(comment);
       if (canRename) {
         callerApi.updateRegisteredModel(fullName, rename);
-        RegisteredModelInfo renamed = observerApi.getRegisteredModel(schemaFullName + ".renamed");
+        RegisteredModelInfo renamed =
+            observerApi.getRegisteredModel(schemaFullName + ".renamed", /* includeBrowse= */ false);
         assertThat(renamed.getId()).isEqualTo(original.getId());
         assertThat(renamed.getName()).isEqualTo("renamed");
         assertThat(renamed.getComment()).isEqualTo(comment == null ? "comment" : comment);
@@ -222,7 +224,8 @@ public class SdkModelAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
             schemaFullName + ".renamed", new UpdateRegisteredModel().newName("model"));
       } else {
         assertPermissionDenied(() -> callerApi.updateRegisteredModel(fullName, rename));
-        RegisteredModelInfo unchanged = observerApi.getRegisteredModel(fullName);
+        RegisteredModelInfo unchanged =
+            observerApi.getRegisteredModel(fullName, /* includeBrowse= */ false);
         assertThat(unchanged.getName()).isEqualTo("model");
         assertThat(unchanged.getComment())
             .isEqualTo(canComment ? "comment" : original.getComment());
@@ -265,11 +268,15 @@ public class SdkModelAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
 
     // TEST: Get registered model as principal-1 (owner) - should succeed
     RegisteredModelInfo getModelInfo =
-        principal1ModelsApi.getRegisteredModel("cat_pr1.sch_pr1.mod_pr1");
+        principal1ModelsApi.getRegisteredModel(
+            "cat_pr1.sch_pr1.mod_pr1", /* includeBrowse= */ false);
     assertThat(getModelInfo).isNotNull();
 
     // TEST: Get registered model as principal-2 (not owner) - should fail
-    assertPermissionDenied(() -> principal2ModelsApi.getRegisteredModel("cat_pr1.sch_pr1.mod_pr1"));
+    assertPermissionDenied(
+        () ->
+            principal2ModelsApi.getRegisteredModel(
+                "cat_pr1.sch_pr1.mod_pr1", /* includeBrowse= */ false));
 
     // TEST: List registered models as principal-1 - should see owned model
     List<RegisteredModelInfo> principal1Models =

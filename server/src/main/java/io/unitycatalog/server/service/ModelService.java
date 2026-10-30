@@ -12,12 +12,14 @@ import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
+import io.unitycatalog.server.auth.decorator.BrowseOnlyConverter;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateModelVersion;
@@ -99,28 +101,34 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
 
   @Get("")
   @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
-  @ResponseAuthorizeFilter
+  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listRegisteredModels(
       @Param("catalog_name") Optional<String> catalogName,
       @Param("schema_name") Optional<String> schemaName,
       @Param("max_results") Optional<Integer> maxResults,
-      @Param("page_token") Optional<String> pageToken) {
+      @Param("page_token") Optional<String> pageToken,
+      @Param("include_browse") Optional<Boolean> includeBrowse) {
     ListRegisteredModelsResponse listRegisteredModelsResponse =
         modelRepository.listRegisteredModels(catalogName, schemaName, maxResults, pageToken);
     applyResponseFilter(
-        SecurableType.REGISTERED_MODEL, listRegisteredModelsResponse.getRegisteredModels());
+        SecurableType.REGISTERED_MODEL,
+        listRegisteredModelsResponse.getRegisteredModels(),
+        BrowseOnlyConverter::toBrowseOnly);
     return HttpResponse.ofJson(listRegisteredModelsResponse);
   }
 
   @Get("/{full_name}")
   @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getRegisteredModel(
-      @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullNameArg) {
+      @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullNameArg,
+      @Param("include_browse") Optional<Boolean> includeBrowse) {
     assert fullNameArg != null;
     RegisteredModelInfo registeredModelInfo = modelRepository.getRegisteredModel(fullNameArg);
-    return HttpResponse.ofJson(registeredModelInfo);
+    return HttpResponse.ofJson(
+        applyResponseFilter(registeredModelInfo, BrowseOnlyConverter::toBrowseOnly));
   }
 
   @Patch("/{full_name}")

@@ -273,7 +273,10 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
     TableInfo sibling =
         tablesApi.createTable(createExternalTableRequest("sibling_table", siblingPath));
     String siblingName = TestUtils.SCHEMA_FULL_NAME + "." + sibling.getName();
-    assertThat(tablesApi.getTable(siblingName, null, null).getStorageLocation())
+    assertThat(
+            tablesApi
+                .getTable(siblingName, null, null, /* includeBrowse= */ false)
+                .getStorageLocation())
         .isEqualTo(siblingPath);
     tablesApi.deleteTable(siblingName);
 
@@ -305,13 +308,15 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
 
     TableInfo replacement = tablesApi.createTable(tableRequest);
     String replacementName = TestUtils.SCHEMA_FULL_NAME + "." + replacement.getName();
-    TableInfo persisted = tablesApi.getTable(replacementName, null, null);
+    TableInfo persisted =
+        tablesApi.getTable(replacementName, null, null, /* includeBrowse= */ false);
     assertThat(persisted.getTableType()).isEqualTo(TableType.EXTERNAL);
     assertThat(persisted.getStorageLocation()).isEqualTo(tableStorageRoot);
     tablesApi.deleteTable(replacementName);
 
     VolumeInfo volume = volumesApi.createVolume(volumeRequest);
-    VolumeInfo persistedVolume = volumesApi.getVolume(volume.getFullName());
+    VolumeInfo persistedVolume =
+        volumesApi.getVolume(volume.getFullName(), /* includeBrowse= */ false);
     assertThat(persistedVolume.getVolumeType()).isEqualTo(VolumeType.EXTERNAL);
     assertThat(persistedVolume.getStorageLocation()).isEqualTo(tableStorageRoot);
   }
@@ -329,7 +334,11 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
                 .tableType(TableType.MANAGED)
                 .properties(Map.of(TableProperties.UC_TABLE_ID, staging.getId())));
     TableInfo persisted =
-        tablesApi.getTable(TestUtils.SCHEMA_FULL_NAME + "." + table.getName(), null, null);
+        tablesApi.getTable(
+            TestUtils.SCHEMA_FULL_NAME + "." + table.getName(),
+            null,
+            null,
+            /* includeBrowse= */ false);
     assertThat(persisted.getTableType()).isEqualTo(TableType.MANAGED);
     assertThat(persisted.getTableId()).isEqualTo(staging.getId());
     assertThat(persisted.getStorageLocation()).isEqualTo(staging.getStagingLocation());
@@ -340,7 +349,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
     String fullName = TestUtils.SCHEMA_FULL_NAME + "." + table.getName();
     tablesApi.deleteTable(fullName);
     assertApiException(
-        () -> tablesApi.getTable(fullName, null, null),
+        () -> tablesApi.getTable(fullName, null, null, /* includeBrowse= */ false),
         ErrorCode.TABLE_NOT_FOUND,
         "Table not found");
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
@@ -391,16 +400,18 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
       List<String> deniedExternalLocationNames) {
     // Test get operation
     for (String name : allowedExternalLocationNames) {
-      ExternalLocationInfo retrieved = api.getExternalLocation(name);
+      ExternalLocationInfo retrieved = api.getExternalLocation(name, /* includeBrowse= */ false);
       assertThat(retrieved.getName()).isEqualTo(name);
       assertThat(retrieved.getId()).isNotNull().isNotEmpty();
       assertThat(retrieved.getUrl()).isNotNull().isNotEmpty();
     }
     for (String name : deniedExternalLocationNames) {
-      TestUtils.assertPermissionDenied(() -> api.getExternalLocation(name));
+      TestUtils.assertPermissionDenied(
+          () -> api.getExternalLocation(name, /* includeBrowse= */ false));
     }
     // Test list operation
-    ListExternalLocationsResponse response = api.listExternalLocations(100, null);
+    ListExternalLocationsResponse response =
+        api.listExternalLocations(100, null, /* includeBrowse= */ false);
     assertThat(response.getNextPageToken()).isNull();
     response.getExternalLocations().forEach(el -> assertThat(el.getId()).isNotNull().isNotEmpty());
     response.getExternalLocations().forEach(el -> assertThat(el.getUrl()).isNotNull().isNotEmpty());
@@ -441,7 +452,10 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   private void assertDeleteSuccess(ExternalLocationsApi api, String name) throws ApiException {
     api.deleteExternalLocation(name, false);
     // Verify deletion by checking that get fails with 404
-    assertApiException(() -> adminApi.getExternalLocation(name), ErrorCode.NOT_FOUND, "not found");
+    assertApiException(
+        () -> adminApi.getExternalLocation(name, /* includeBrowse= */ false),
+        ErrorCode.NOT_FOUND,
+        "not found");
   }
 
   private void assertDeleteFailure(ExternalLocationsApi api, String name) {

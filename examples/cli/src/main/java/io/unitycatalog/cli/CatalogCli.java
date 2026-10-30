@@ -74,13 +74,14 @@ public class CatalogCli {
       pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
     }
     return objectWriter.writeValueAsString(
-        catalogsApi.listCatalogs(pageToken, maxResults).getCatalogs());
+        catalogsApi.listCatalogs(pageToken, maxResults, /* includeBrowse= */ false).getCatalogs());
   }
 
   private static String getCatalog(CatalogsApi catalogsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     String catalogName = json.getString(NAME_PARAM);
-    return objectWriter.writeValueAsString(catalogsApi.getCatalog(catalogName));
+    return objectWriter.writeValueAsString(
+        catalogsApi.getCatalog(catalogName, /* includeBrowse= */ false));
   }
 
   private static String updateCatalog(CatalogsApi catalogsApi, JSONObject json)

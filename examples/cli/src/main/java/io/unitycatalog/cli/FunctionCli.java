@@ -114,7 +114,10 @@ public class FunctionCli {
       pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
     }
     return objectWriter.writeValueAsString(
-        functionsApi.listFunctions(catalogName, schemaName, maxResults, pageToken).getFunctions());
+        functionsApi
+            .listFunctions(
+                catalogName, schemaName, maxResults, pageToken, /* includeBrowse= */ false)
+            .getFunctions());
   }
 
   private static String executeFunction(FunctionsApi functionsApi, JSONObject json)
@@ -123,7 +126,7 @@ public class FunctionCli {
     String functionFullName = json.getString(CliParams.FULL_NAME.getServerParam());
     try {
       return PythonInvoker.invokePython(
-          functionsApi.getFunction(functionFullName),
+          functionsApi.getFunction(functionFullName, /* includeBrowse= */ false),
           "etc/data/function/python_engine.py",
           Arrays.stream(args.split(",")).map(String::trim).toArray(String[]::new));
     } catch (Exception e) {
@@ -134,7 +137,8 @@ public class FunctionCli {
   private static String getFunction(FunctionsApi functionsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     String functionFullName = json.getString(CliParams.FULL_NAME.getServerParam());
-    return objectWriter.writeValueAsString(functionsApi.getFunction(functionFullName));
+    return objectWriter.writeValueAsString(
+        functionsApi.getFunction(functionFullName, /* includeBrowse= */ false));
   }
 
   private static String deleteFunction(FunctionsApi functionsApi, JSONObject json)

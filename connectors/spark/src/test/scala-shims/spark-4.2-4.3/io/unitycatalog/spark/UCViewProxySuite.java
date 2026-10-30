@@ -86,7 +86,8 @@ public class UCViewProxySuite {
                     new TableInfo().name("table1").tableType(TableType.EXTERNAL),
                     new TableInfo().name("mv1").tableType(TableType.METRIC_VIEW)))
             .nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(response);
 
     Identifier[] result = proxyViews.listViews(NAMESPACE);
@@ -155,7 +156,8 @@ public class UCViewProxySuite {
             .properties(Map.of("metric_view.from.type", "ASSET"))
             .viewDependencies(ucDeps);
     when(mockTablesApi.createTable(any(CreateTable.class))).thenReturn(ucMetricView);
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.mv1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(ucMetricView);
 
     View loaded = proxyViews.createView(Identifier.of(NAMESPACE, "mv1"), view);
@@ -206,7 +208,8 @@ public class UCViewProxySuite {
                         .nullable(true)
                         .position(0)))
             .properties(Map.of("metric_view.from.type", "ASSET"));
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.mv1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(ucMetricView);
 
     Relation relation = proxyRelations.loadRelation(Identifier.of(NAMESPACE, "mv1"));
@@ -234,7 +237,8 @@ public class UCViewProxySuite {
             .name("mv1")
             .tableType(TableType.METRIC_VIEW)
             .viewDefinition("version: \"0.1\"");
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.mv1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(ucMetricView);
 
     assertThatThrownBy(() -> proxy.loadTable(Identifier.of(NAMESPACE, "mv1")))
@@ -251,12 +255,14 @@ public class UCViewProxySuite {
             .name("mv1")
             .tableType(TableType.METRIC_VIEW)
             .viewDefinition("version: \"0.1\"");
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.mv1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(ucMetricView);
 
     proxyRelations.loadRelation(Identifier.of(NAMESPACE, "mv1"));
     verify(mockTablesApi, org.mockito.Mockito.times(1))
-        .getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true));
+        .getTable(
+            eq("test_catalog.test_schema.mv1"), eq(true), eq(true), /* includeBrowse= */ eq(false));
   }
 
   @Test
@@ -268,7 +274,8 @@ public class UCViewProxySuite {
             .name("mv1")
             .tableType(TableType.METRIC_VIEW)
             .viewDefinition("version: \"0.1\"");
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.mv1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(ucMetricView);
 
     Identifier ident = Identifier.of(NAMESPACE, "mv1");
@@ -284,7 +291,8 @@ public class UCViewProxySuite {
     assertThat(relation).isInstanceOf(View.class);
     verify(delegate).loadTable(eq(ident));
     verify(mockTablesApi, org.mockito.Mockito.times(1))
-        .getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true));
+        .getTable(
+            eq("test_catalog.test_schema.mv1"), eq(true), eq(true), /* includeBrowse= */ eq(false));
   }
 
   @Test
@@ -300,7 +308,8 @@ public class UCViewProxySuite {
             .schemaName(SCHEMA_NAME)
             .name("t1")
             .tableType(TableType.EXTERNAL);
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.t1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(ucTable);
 
     Identifier ident = Identifier.of(NAMESPACE, "t1");
@@ -318,7 +327,8 @@ public class UCViewProxySuite {
         .isSameAs(delegateError);
     verify(delegate).loadTable(eq(ident));
     verify(mockTablesApi, org.mockito.Mockito.never())
-        .getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true));
+        .getTable(
+            eq("test_catalog.test_schema.t1"), eq(true), eq(true), /* includeBrowse= */ eq(false));
   }
 
   @Test
@@ -327,7 +337,11 @@ public class UCViewProxySuite {
     // When neither the delegate nor UC knows the identifier, loadRelation surfaces the delegate's
     // NoSuchTableException -- not the NoSuchViewException raised internally by the UC fallback.
     Identifier ident = Identifier.of(NAMESPACE, "missing");
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.missing"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.missing"),
+            eq(true),
+            eq(true),
+            /* includeBrowse= */ eq(false)))
         .thenThrow(new ApiException(404, "not found"));
 
     NoSuchTableException delegateError = new NoSuchTableException(ident);
@@ -344,13 +358,11 @@ public class UCViewProxySuite {
   }
 
   @Test
-  public void testUCSingleCatalogLoadRelationRejectsNonDeltaPathWithoutDelegate()
-      throws Exception {
+  public void testUCSingleCatalogLoadRelationRejectsNonDeltaPathWithoutDelegate() throws Exception {
     // Spark 4.2 RelationResolution.loadRelation only falls back to SQL-on-file for
     // NoSuchTableException. Non-Delta path idents (parquet.`s3://...`) must not reach the
     // delegate, which would call UC and surface "Invalid table name" instead.
-    Identifier ident =
-        Identifier.of(new String[] {"parquet"}, "s3://bucket/dir/file.parquet");
+    Identifier ident = Identifier.of(new String[] {"parquet"}, "s3://bucket/dir/file.parquet");
     TableCatalog delegate = org.mockito.Mockito.mock(TableCatalog.class);
 
     UCSingleCatalog catalog = new UCSingleCatalog();
@@ -360,7 +372,8 @@ public class UCViewProxySuite {
     assertThatThrownBy(() -> ((RelationCatalog) catalog).loadRelation(ident))
         .isInstanceOf(NoSuchTableException.class);
     verify(delegate, org.mockito.Mockito.never()).loadTable(any());
-    verify(mockTablesApi, org.mockito.Mockito.never()).getTable(any(), any(), any());
+    verify(mockTablesApi, org.mockito.Mockito.never())
+        .getTable(any(), any(), any(), /* includeBrowse= */ org.mockito.ArgumentMatchers.any());
   }
 
   @Test
@@ -371,7 +384,8 @@ public class UCViewProxySuite {
             .schemaName(SCHEMA_NAME)
             .name("t1")
             .tableType(TableType.EXTERNAL);
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.t1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(ucTable);
 
     assertThatThrownBy(() -> proxyViews.loadView(Identifier.of(NAMESPACE, "t1")))
@@ -389,7 +403,11 @@ public class UCViewProxySuite {
             .schemaName(SCHEMA_NAME)
             .name("mtv1")
             .tableType(TableType.MATERIALIZED_VIEW);
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mtv1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.mtv1"),
+            eq(true),
+            eq(true),
+            /* includeBrowse= */ eq(false)))
         .thenReturn(ucMaterializedView);
 
     assertThatThrownBy(() -> proxyViews.loadView(Identifier.of(NAMESPACE, "mtv1")))
@@ -404,7 +422,8 @@ public class UCViewProxySuite {
             .schemaName(SCHEMA_NAME)
             .name("t1")
             .tableType(TableType.EXTERNAL);
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.t1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(ucTable);
 
     boolean dropped = proxyViews.dropView(Identifier.of(NAMESPACE, "t1"));
@@ -426,7 +445,11 @@ public class UCViewProxySuite {
             .schemaName(SCHEMA_NAME)
             .name("mtv1")
             .tableType(TableType.MATERIALIZED_VIEW);
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mtv1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.mtv1"),
+            eq(true),
+            eq(true),
+            /* includeBrowse= */ eq(false)))
         .thenReturn(ucMaterializedView);
 
     boolean dropped = proxyViews.dropView(Identifier.of(NAMESPACE, "mtv1"));
@@ -450,7 +473,8 @@ public class UCViewProxySuite {
             .viewDefinition("version: \"0.1\"")
             .columns(null)
             .properties(Map.of("metric_view.from.type", "ASSET"));
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.mv1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(ucMetricView);
 
     View loaded = proxyViews.loadView(Identifier.of(NAMESPACE, "mv1"));
@@ -515,7 +539,8 @@ public class UCViewProxySuite {
             .tableType(TableType.METRIC_VIEW)
             .viewDefinition(view.queryText());
     when(mockTablesApi.createTable(any(CreateTable.class))).thenReturn(ucMetricView);
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.mv1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(ucMetricView);
 
     proxyViews.createView(Identifier.of(NAMESPACE, "mv1"), view);
@@ -583,7 +608,8 @@ public class UCViewProxySuite {
                     new TableInfo().name("external1").tableType(TableType.EXTERNAL),
                     new TableInfo().name("mv1").tableType(TableType.METRIC_VIEW)))
             .nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(response);
 
     TableSummary[] result = proxyRelations.listTableSummaries(NAMESPACE);
@@ -600,7 +626,8 @@ public class UCViewProxySuite {
         .getTable(
             org.mockito.ArgumentMatchers.anyString(),
             org.mockito.ArgumentMatchers.any(),
-            org.mockito.ArgumentMatchers.any());
+            org.mockito.ArgumentMatchers.any(),
+            /* includeBrowse= */ org.mockito.ArgumentMatchers.any());
   }
 
   @Test
@@ -617,7 +644,8 @@ public class UCViewProxySuite {
                     new TableInfo().name("st1").tableType(TableType.STREAMING_TABLE),
                     new TableInfo().name("unknown1").tableType(TableType.UNKNOWN_DEFAULT_OPEN_API)))
             .nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(response);
 
     TableSummary[] result = proxyRelations.listTableSummaries(NAMESPACE);
@@ -640,7 +668,8 @@ public class UCViewProxySuite {
                     new TableInfo().name("managed1").tableType(TableType.MANAGED),
                     new TableInfo().name("mv1").tableType(TableType.METRIC_VIEW)))
             .nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(response);
 
     TableSummary[] result = proxyRelations.listRelationSummaries(NAMESPACE);
@@ -656,7 +685,8 @@ public class UCViewProxySuite {
         .getTable(
             org.mockito.ArgumentMatchers.anyString(),
             org.mockito.ArgumentMatchers.any(),
-            org.mockito.ArgumentMatchers.any());
+            org.mockito.ArgumentMatchers.any(),
+            /* includeBrowse= */ org.mockito.ArgumentMatchers.any());
   }
 
   @Test
@@ -667,7 +697,8 @@ public class UCViewProxySuite {
         new ListTablesResponse()
             .tables(List.of(new TableInfo().name("managed1").tableType(TableType.MANAGED)))
             .nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(response);
 
     // A delegate that would fail if consulted for the listing -- proves ucProxy is used instead.
@@ -688,7 +719,8 @@ public class UCViewProxySuite {
         .getTable(
             org.mockito.ArgumentMatchers.anyString(),
             org.mockito.ArgumentMatchers.any(),
-            org.mockito.ArgumentMatchers.any());
+            org.mockito.ArgumentMatchers.any(),
+            /* includeBrowse= */ org.mockito.ArgumentMatchers.any());
   }
 
   // -- Plain SQL views (TableType.VIEW) --
@@ -703,7 +735,8 @@ public class UCViewProxySuite {
                     new TableInfo().name("v1").tableType(TableType.VIEW),
                     new TableInfo().name("mv1").tableType(TableType.METRIC_VIEW)))
             .nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(response);
 
     assertThat(proxyViews.listViews(NAMESPACE))
@@ -846,7 +879,8 @@ public class UCViewProxySuite {
                                 + "\"metadata\":{}}")
                         .nullable(true)
                         .position(0)));
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.v1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.v1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(ucView);
     return ucView;
   }

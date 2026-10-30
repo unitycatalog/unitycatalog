@@ -27,13 +27,13 @@ public class SdkExternalLocationOperations implements ExternalLocationOperations
   public List<ExternalLocationInfo> listExternalLocations(Optional<String> pageToken)
       throws ApiException {
     return externalLocationsApi
-        .listExternalLocations(100, pageToken.orElse(null))
+        .listExternalLocations(100, pageToken.orElse(null), /* includeBrowse= */ false)
         .getExternalLocations();
   }
 
   @Override
   public ExternalLocationInfo getExternalLocation(String name) throws ApiException {
-    return externalLocationsApi.getExternalLocation(name);
+    return externalLocationsApi.getExternalLocation(name, /* includeBrowse= */ false);
   }
 
   @Override
