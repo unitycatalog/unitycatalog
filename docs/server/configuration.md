@@ -151,9 +151,10 @@ The server can write an audit record for each storage credential it issues. Audi
 Each record is one JSON line. Fields that don't apply to a record are left out:
 
 ```json
-{"time":"2026-10-20T10:02:00.000Z","action":"ISSUE_CREDENTIAL","user":"bob@example.com","request_id":"…","purpose":"CLIENT","location":"s3://bucket/root/tables/7f3a…","access":"READ","expires_at":"2026-10-20T11:02:00.000Z"}
+{"time":"2026-10-20T10:02:00.000Z","action":"ISSUE_CREDENTIAL","user":"bob@example.com","request_id":"a1b2c3d4","purpose":"CLIENT","location":"s3://bucket/root/tables/7f3a1c2e-5b6d-4e8f-9a0b-1c2d3e4f5a6b","access":"READ","expires_at":"2026-10-20T11:02:00.000Z"}
 ```
 
+- `time`: when the record was made, in ISO 8601 UTC.
 - `action`: `ISSUE_CREDENTIAL`.
 - `user`: the caller's identity from the token (`sub`): the user's email, `admin` for the bootstrap
   admin token, or a service name. It is `system:storage-cleanup` for the background storage cleanup,
@@ -161,8 +162,14 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 - `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
   itself while handling the request, and `CLEANUP` for the background storage cleanup.
 - `resource_id`: on a `CLEANUP` credential, the ID of the dropped object.
-- `access` is `READ` or `READ_WRITE`. Records never contain credential values, and `location` never contains a query
-  string or user info.
+- `request_id`: the ID of the request being served, the same as `request_id` in the `server.log` lines of
+  that request. It is absent on `CLEANUP` records, which are not made while serving a request.
+- `access` is `READ` or `READ_WRITE`, and `expires_at` is when the credential expires. Records never contain
+  credential values, and `location` never contains a query string or user info.
+
+A record is written for every credential issued, including ones served from the credential cache. Audit
+records are best effort: one can be lost when the sink fails, or when a request is still running as the
+server shuts down.
 
 `FileAuditSink` needs the `audit` logger in `etc/conf/server.log4j2.properties`, with its own
 appender set to `ignoreExceptions = false`, `additivity = false`, and level `INFO`. The shipped configuration has it. If it is missing,
@@ -176,7 +183,7 @@ To send records somewhere else, set `server.audit.sink` to your own class that i
 server classpath, and the server does not start if it can't be loaded. `record` is called
 concurrently, from request threads and the server's own threads, so it must be thread-safe and should hand records to a queue
 instead of sending them inline. `close` is called once at shutdown. A failure thrown from either
-method is logged in `server.log` and never fails a request.
+method is logged (in `server.log`, or on the console with the Helm chart) and never fails a request.
 
 ## Logging
 
