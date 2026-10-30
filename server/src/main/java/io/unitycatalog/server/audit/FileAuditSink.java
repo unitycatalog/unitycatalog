@@ -12,6 +12,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.config.AppenderRef;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
 
@@ -58,6 +59,24 @@ public class FileAuditSink implements AuditSink {
               + config.getLevel()
               + " drops every audit record."
               + FIX);
+    }
+    for (AppenderRef ref : config.getAppenderRefs()) {
+      if (ref.getLevel() != null && !ref.getLevel().isLessSpecificThan(Level.INFO)) {
+        throw new IllegalStateException(
+            "The Log4j 'audit' logger's appender reference "
+                + ref.getRef()
+                + " has level "
+                + ref.getLevel()
+                + ", which drops every audit record."
+                + FIX);
+      }
+      if (ref.getFilter() != null) {
+        throw new IllegalStateException(
+            "The Log4j 'audit' logger's appender reference "
+                + ref.getRef()
+                + " must not have a filter, which can drop audit records."
+                + FIX);
+      }
     }
     for (Appender appender : config.getAppenders().values()) {
       if (appender.ignoreExceptions()) {
