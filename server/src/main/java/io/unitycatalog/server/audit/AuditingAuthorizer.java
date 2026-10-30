@@ -1,6 +1,7 @@
 package io.unitycatalog.server.audit;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
 import java.util.List;
 import java.util.Map;
@@ -75,18 +76,21 @@ public final class AuditingAuthorizer implements UnityCatalogAuthorizer, AutoClo
   }
 
   @Override
-  public boolean authorize(UUID principal, UUID resource, Privileges action) {
-    return delegate.authorize(principal, resource, action);
+  public boolean authorize(
+      UUID principal, SecurableType resourceType, UUID resource, Privileges action) {
+    return delegate.authorize(principal, resourceType, resource, action);
   }
 
   @Override
-  public boolean authorizeAny(UUID principal, UUID resource, Privileges... actions) {
-    return delegate.authorizeAny(principal, resource, actions);
+  public boolean authorizeAny(
+      UUID principal, SecurableType resourceType, UUID resource, Privileges... actions) {
+    return delegate.authorizeAny(principal, resourceType, resource, actions);
   }
 
   @Override
-  public boolean authorizeAll(UUID principal, UUID resource, Privileges... actions) {
-    return delegate.authorizeAll(principal, resource, actions);
+  public boolean authorizeAll(
+      UUID principal, SecurableType resourceType, UUID resource, Privileges... actions) {
+    return delegate.authorizeAll(principal, resourceType, resource, actions);
   }
 
   @Override
