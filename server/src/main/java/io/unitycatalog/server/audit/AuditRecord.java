@@ -1,6 +1,6 @@
 package io.unitycatalog.server.audit;
 
-import io.unitycatalog.server.model.TableOperation;
+import io.unitycatalog.server.service.credential.Purpose;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.Builder;
@@ -19,14 +19,10 @@ public class AuditRecord {
     ISSUE_CREDENTIAL
   }
 
-  /** Who a credential is issued for. */
-  public enum Purpose {
-    /** Returned to the API caller. */
-    CLIENT,
-    /** Used by the server itself while handling a request. */
-    SERVER,
-    /** Used by the background storage cleanup. */
-    CLEANUP
+  /** What a credential allows. */
+  public enum Access {
+    READ,
+    READ_WRITE
   }
 
   @NonNull Instant time;
@@ -42,8 +38,7 @@ public class AuditRecord {
   Purpose purpose;
   String location;
 
-  /** {@code READ} or {@code READ_WRITE}. */
-  TableOperation access;
+  Access access;
 
   /** When the credential expires. */
   Instant expiresAt;

@@ -1,6 +1,5 @@
 package io.unitycatalog.server.persist.utils;
 
-import io.unitycatalog.server.audit.AuditRecord.Purpose;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
@@ -8,6 +7,7 @@ import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
 import io.unitycatalog.server.utils.CooperativeDeadline;
@@ -19,6 +19,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import org.apache.iceberg.aws.AwsClientProperties;
@@ -93,7 +94,8 @@ public class FileOperationsImpl implements FileOperations {
       case FILE, NULL -> new SimpleLocalFileIO(Paths.get(rootPath.toUri()));
       case S3, GS, ABFS, ABFSS -> {
         ResolvingFileIO fileio = new ResolvingFileIO();
-        fileio.initialize(serverFileIOConfig(rootPath, privileges, Purpose.SERVER));
+        fileio.initialize(
+            serverFileIOConfig(rootPath, privileges, Purpose.SERVER, Optional.empty()));
         yield fileio;
       }
     };
@@ -107,19 +109,21 @@ public class FileOperationsImpl implements FileOperations {
    */
   @Override
   public SupportsPrefixOperations getCleanupFileIO(
-      NormalizedURL rootPath, CooperativeDeadline deadline) {
+      NormalizedURL rootPath, UUID resourceId, CooperativeDeadline deadline) {
     return switch (UriScheme.fromURI(rootPath.toUri())) {
       case FILE, NULL -> new SimpleLocalFileIO(Paths.get(rootPath.toUri()), deadline);
       case S3, GS -> {
         ResolvingFileIO fileIO = new ResolvingFileIO();
         fileIO.initialize(
-            serverFileIOConfig(rootPath, CredentialContext.READ_WRITE, Purpose.CLEANUP));
+            serverFileIOConfig(
+                rootPath, CredentialContext.READ_WRITE, Purpose.CLEANUP, Optional.of(resourceId)));
         yield new InterruptiblePrefixOperations(fileIO, rootPath + "/", deadline);
       }
       case ABFS, ABFSS -> {
         ADLSFileIO fileIO = new ADLSFileIO();
         fileIO.initialize(
-            serverFileIOConfig(rootPath, CredentialContext.READ_WRITE, Purpose.CLEANUP));
+            serverFileIOConfig(
+                rootPath, CredentialContext.READ_WRITE, Purpose.CLEANUP, Optional.of(resourceId)));
         yield new ADLSPrefixOperations(fileIO, rootPath + "/", deadline);
       }
     };
@@ -143,9 +147,14 @@ public class FileOperationsImpl implements FileOperations {
 
   /** The FileIO config for credentials the server uses itself, labeled with their purpose. */
   private Map<String, String> serverFileIOConfig(
-      NormalizedURL path, Set<CredentialContext.Privilege> privileges, Purpose purpose) {
+      NormalizedURL path,
+      Set<CredentialContext.Privilege> privileges,
+      Purpose purpose,
+      Optional<UUID> resourceId) {
     return toFileIOConfig(
-        path, storageCredentialVendor.vendCredential(path, privileges, purpose), Optional.empty());
+        path,
+        storageCredentialVendor.vendCredential(path, privileges, purpose, resourceId),
+        Optional.empty());
   }
 
   private Map<String, String> toFileIOConfig(

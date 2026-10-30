@@ -20,6 +20,7 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.UUID;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.apache.iceberg.Schema;
@@ -180,7 +181,9 @@ public class IcebergRestCatalogCredentialVendingTest extends BaseCRUDTestWithMoc
     String prefix = tableLocation + "/";
     try (SupportsPrefixOperations cleanup =
         mappingFileOperations.getCleanupFileIO(
-            NormalizedURL.from(tableLocation), CooperativeDeadline.NO_DEADLINE)) {
+            NormalizedURL.from(tableLocation),
+            UUID.randomUUID(),
+            CooperativeDeadline.NO_DEADLINE)) {
       assertThat(cleanup.listPrefix(prefix).iterator().hasNext()).isTrue();
       cleanup.deletePrefix(prefix);
       assertThat(cleanup.listPrefix(prefix).iterator().hasNext()).isFalse();

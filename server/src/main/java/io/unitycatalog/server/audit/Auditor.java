@@ -2,12 +2,11 @@ package io.unitycatalog.server.audit;
 
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.linecorp.armeria.server.ServiceRequestContext;
-import io.unitycatalog.server.audit.AuditRecord.Purpose;
-import io.unitycatalog.server.model.TableOperation;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -92,34 +91,23 @@ public final class Auditor implements AutoCloseable {
       NormalizedURL path,
       Set<CredentialContext.Privilege> privileges,
       Purpose purpose,
+      Optional<UUID> resourceId,
       TemporaryCredentials credential) {
     emit(
         () ->
             base(AuditRecord.Action.ISSUE_CREDENTIAL, purpose)
                 .purpose(purpose)
-                .resourceId(purpose == Purpose.CLEANUP ? cleanupResourceId(path) : null)
+                .resourceId(resourceId.orElse(null))
                 .location(sanitizeLocation(path.toString()))
                 .access(
                     privileges.contains(CredentialContext.Privilege.UPDATE)
-                        ? TableOperation.READ_WRITE
-                        : TableOperation.READ)
+                        ? AuditRecord.Access.READ_WRITE
+                        : AuditRecord.Access.READ)
                 .expiresAt(
                     credential.getExpirationTime() == null
                         ? null
                         : Instant.ofEpochMilli(credential.getExpirationTime()))
                 .build());
-  }
-
-  /** Returns the resource ID from a cleanup location, which ends in {@code /<segment>/<id>}. */
-  private UUID cleanupResourceId(NormalizedURL location) {
-    try {
-      String path = location.toUri().getPath();
-      return UUID.fromString(path.substring(path.lastIndexOf('/') + 1));
-    } catch (RuntimeException e) {
-      LOGGER.warn(
-          "Audit record written without its resource ID: cannot read it from {}", location, e);
-      return null;
-    }
   }
 
   /**

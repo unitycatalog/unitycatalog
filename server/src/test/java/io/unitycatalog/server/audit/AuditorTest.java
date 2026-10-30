@@ -6,10 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import io.unitycatalog.server.audit.AuditRecord.Purpose;
-import io.unitycatalog.server.model.TableOperation;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -20,6 +19,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import org.apache.logging.log4j.core.LoggerContext;
@@ -45,15 +45,18 @@ class AuditorTest {
     NormalizedURL path = NormalizedURL.from("s3://key:secret@bkt/root/tables/" + ID + "?sig=x");
     TemporaryCredentials credential = new TemporaryCredentials().expirationTime(1792500120000L);
     StorageCredentialVendor delegate = mock(StorageCredentialVendor.class);
-    when(delegate.vendCredential(path, CredentialContext.READ_WRITE, Purpose.CLEANUP))
+    when(delegate.vendCredential(
+            path, CredentialContext.READ_WRITE, Purpose.CLEANUP, Optional.of(ID)))
         .thenReturn(credential);
     StorageCredentialVendor audited = auditor.wrap(delegate);
-    assertThat(audited.vendCredential(path, CredentialContext.READ_WRITE, Purpose.CLEANUP))
+    assertThat(
+            audited.vendCredential(
+                path, CredentialContext.READ_WRITE, Purpose.CLEANUP, Optional.of(ID)))
         .isSameAs(credential);
     AuditRecord r = CapturingAuditSink.RECORDS.get(0);
     assertThat(r.getUser()).isEqualTo(Auditor.CLEANUP_USER);
     assertThat(r.getResourceId()).isEqualTo(ID);
-    assertThat(r.getAccess()).isEqualTo(TableOperation.READ_WRITE);
+    assertThat(r.getAccess()).isEqualTo(AuditRecord.Access.READ_WRITE);
     assertThat(r.getLocation()).isEqualTo("s3://bkt/root/tables/" + ID); // no secrets
     // A vend without a purpose is a client credential, and read-only access is recorded as READ.
     NormalizedURL clientPath = NormalizedURL.from("s3://bkt/t");
@@ -61,7 +64,7 @@ class AuditorTest {
     audited.vendCredential(clientPath, CredentialContext.READ_ONLY);
     AuditRecord client = CapturingAuditSink.RECORDS.get(1);
     assertThat(client.getPurpose()).isEqualTo(Purpose.CLIENT);
-    assertThat(client.getAccess()).isEqualTo(TableOperation.READ);
+    assertThat(client.getAccess()).isEqualTo(AuditRecord.Access.READ);
     assertThat(client.getResourceId()).isNull();
     // ABFS keeps its container@account authority.
     assertThat(auditor.sanitizeLocation("abfss://ctr@acct.dfs.core.windows.net/p?sv=x"))
@@ -102,6 +105,7 @@ class AuditorTest {
                     NormalizedURL.from("s3://bkt/t"),
                     CredentialContext.READ_ONLY,
                     Purpose.CLIENT,
+                    Optional.empty(),
                     new TemporaryCredentials()))
         .doesNotThrowAnyException();
     assertThatCode(erroring::close).doesNotThrowAnyException();
