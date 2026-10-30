@@ -1,0 +1,202 @@
+syntax = "proto3";
+
+package uc.v1;
+
+import "buf/validate/validate.proto";
+import "uc/v1/common.proto";
+
+// FunctionLanguage is the language family of a UC function.
+enum FunctionLanguage {
+  FUNCTION_LANGUAGE_UNSPECIFIED = 0;
+  FUNCTION_LANGUAGE_SQL = 1;
+  FUNCTION_LANGUAGE_EXTERNAL = 2;
+}
+
+// FunctionSqlDataAccess describes the SQL data accessed by a function.
+enum FunctionSqlDataAccess {
+  FUNCTION_SQL_DATA_ACCESS_UNSPECIFIED = 0;
+  FUNCTION_SQL_DATA_ACCESS_CONTAINS_SQL = 1;
+  FUNCTION_SQL_DATA_ACCESS_READS_SQL_DATA = 2;
+  FUNCTION_SQL_DATA_ACCESS_NO_SQL = 3;
+}
+
+// FunctionParameterMode is the direction of a function parameter.
+enum FunctionParameterMode {
+  FUNCTION_PARAMETER_MODE_UNSPECIFIED = 0;
+  FUNCTION_PARAMETER_MODE_IN = 1;
+}
+
+// FunctionParameterType distinguishes scalar parameters from table columns.
+enum FunctionParameterType {
+  FUNCTION_PARAMETER_TYPE_UNSPECIFIED = 0;
+  FUNCTION_PARAMETER_TYPE_PARAM = 1;
+  FUNCTION_PARAMETER_TYPE_COLUMN = 2;
+}
+
+// FunctionParameterInfo describes one function parameter.
+message FunctionParameterInfo {
+  string name = 1;
+  string type_text = 2;
+  string type_json = 3;
+  ColumnTypeName type_name = 4;
+  int32 position = 5;
+  string parameter_default = 6;
+  string comment = 7;
+  optional int32 type_precision = 8;
+  optional int32 type_scale = 9;
+  string type_interval_type = 10;
+  FunctionParameterMode parameter_mode = 11;
+  FunctionParameterType parameter_type = 12;
+}
+
+// FunctionParameterInput is the compact parameter shape accepted from the UI.
+// Branch 2 derives type_text, type_json, and position before calling UC. The
+// supported scalar set deliberately excludes types needing nested shape,
+// precision, scale, interval, or length metadata.
+message FunctionParameterInput {
+  string name = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 255
+  }];
+  ColumnTypeName type_name = 2 [(buf.validate.field).enum = {
+    defined_only: true
+    in: 1
+    in: 2
+    in: 3
+    in: 4
+    in: 5
+    in: 6
+    in: 7
+    in: 8
+    in: 9
+    in: 10
+    in: 11
+    in: 12
+    in: 18
+  }];
+  optional string comment = 3 [(buf.validate.field).string.max_len = 65536];
+}
+
+// FunctionSummary contains the fields needed to render a function list.
+message FunctionSummary {
+  string catalog_name = 1;
+  string schema_name = 2;
+  string name = 3;
+  string full_name = 4;
+  ColumnTypeName data_type = 5;
+  FunctionLanguage language = 6;
+  string comment = 7;
+  AuditInfo audit = 8;
+}
+
+// FunctionInfo contains the complete function details exposed by the UI.
+message FunctionInfo {
+  string catalog_name = 1;
+  string schema_name = 2;
+  string name = 3;
+  string full_name = 4;
+  repeated FunctionParameterInfo input_parameters = 5;
+  ColumnTypeName data_type = 6;
+  string full_data_type = 7;
+  FunctionLanguage language = 8;
+  string routine_definition = 9;
+  FunctionSqlDataAccess sql_data_access = 10;
+  optional bool is_deterministic = 11;
+  optional bool is_null_call = 12;
+  string external_language = 13;
+  string comment = 14;
+  string properties_json = 15;
+  AuditInfo audit = 16;
+  string id = 17;
+  repeated FunctionParameterInfo return_parameters = 18;
+  repeated Dependency routine_dependencies = 19;
+}
+
+// ListFunctionsRequest lists functions in a schema.
+message ListFunctionsRequest {
+  option (buf.validate.message).cel = {
+    id: "list_functions.page_size"
+    message: "max_results must not exceed 1000"
+    expression: "!has(this.page) || !has(this.page.max_results) || this.page.max_results <= 1000"
+  };
+
+  SchemaRef schema = 1 [(buf.validate.field).required = true];
+  PageRequest page = 2;
+}
+
+// ListFunctionsResponse contains one page of functions.
+message ListFunctionsResponse {
+  repeated FunctionSummary functions = 1;
+  PageResponse page = 2;
+}
+
+// GetFunctionRequest selects a function.
+message GetFunctionRequest {
+  SchemaObjectRef function = 1 [(buf.validate.field).required = true];
+}
+
+// GetFunctionResponse contains complete function details.
+message GetFunctionResponse {
+  FunctionInfo function = 1 [(buf.validate.field).required = true];
+}
+
+// CreateFunctionRequest creates a scalar SQL function.
+//
+// Branch 2 supplies UC's fixed SQL-function fields: routine_body=SQL,
+// parameter_style=S, is_deterministic=true, sql_data_access=NO_SQL,
+// is_null_call=true, security_type=DEFINER, and specific_name=name.
+message CreateFunctionRequest {
+  option (buf.validate.message).cel = {
+    id: "create_function.unique_parameter_names"
+    message: "function parameter names must be unique"
+    expression: "this.parameters.all(parameter, this.parameters.filter(other, other.name == parameter.name).size() == 1)"
+  };
+
+  SchemaObjectRef function = 1 [(buf.validate.field).required = true];
+  repeated FunctionParameterInput parameters = 2 [(buf.validate.field).repeated.max_items = 100];
+  ColumnTypeName return_type = 3 [(buf.validate.field).enum = {
+    defined_only: true
+    in: 1
+    in: 2
+    in: 3
+    in: 4
+    in: 5
+    in: 6
+    in: 7
+    in: 8
+    in: 9
+    in: 10
+    in: 11
+    in: 12
+    in: 18
+  }];
+  string routine_definition = 4 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 16777215
+  }];
+  optional string comment = 5 [(buf.validate.field).string.max_len = 65536];
+}
+
+// CreateFunctionResponse contains the newly created function.
+message CreateFunctionResponse {
+  FunctionInfo function = 1 [(buf.validate.field).required = true];
+}
+
+// DeleteFunctionRequest deletes a function.
+//
+// UC has no native function update operation, so the UI contract intentionally
+// does not expose destructive delete-and-recreate editing.
+message DeleteFunctionRequest {
+  SchemaObjectRef function = 1 [(buf.validate.field).required = true];
+}
+
+// DeleteFunctionResponse acknowledges a successful function deletion.
+message DeleteFunctionResponse {}
+
+// FunctionService provides the UI-facing function operations.
+service FunctionService {
+  rpc ListFunctions(ListFunctionsRequest) returns (ListFunctionsResponse);
+  rpc GetFunction(GetFunctionRequest) returns (GetFunctionResponse);
+  rpc CreateFunction(CreateFunctionRequest) returns (CreateFunctionResponse);
+  rpc DeleteFunction(DeleteFunctionRequest) returns (DeleteFunctionResponse);
+}
