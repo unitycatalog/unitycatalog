@@ -11,6 +11,7 @@ import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
@@ -74,16 +75,7 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
   }
 
   @Get("")
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) &&
-          #authorize(#principal, #catalog, USE_CATALOG)) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorizeAny(#principal, #catalog, USE_CATALOG) &&
-          #authorizeAny(#principal, #function, OWNER, EXECUTE))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.GET_FUNCTION)
   @ResponseAuthorizeFilter
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listFunctions(
@@ -99,16 +91,7 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
 
   @Get("/{name}")
   @AuthorizeResourceKey(METASTORE)
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) &&
-          #authorizeAny(#principal, #catalog, USE_CATALOG)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorizeAny(#principal, #function, OWNER, EXECUTE))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.GET_FUNCTION)
   public HttpResponse getFunction(@Param("name") @AuthorizeResourceKey(FUNCTION) String name) {
     return HttpResponse.ofJson(functionRepository.getFunction(name));
   }

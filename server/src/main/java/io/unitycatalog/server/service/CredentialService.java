@@ -65,8 +65,8 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
 
   private static final String LIST_AND_GET_AUTH_EXPRESSION =
       """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorizeAny(#principal, #credential, OWNER, CREATE_EXTERNAL_LOCATION)
+      #authorizeAny(#principal, #metastore, OWNER, READ_METADATA) ||
+      #authorizeAny(#principal, #credential, OWNER, READ_METADATA, CREATE_EXTERNAL_LOCATION)
       """;
 
   @Get("")

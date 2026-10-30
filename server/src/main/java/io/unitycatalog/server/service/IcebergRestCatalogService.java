@@ -458,18 +458,17 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   }
 
   /**
-   * Credential permissions for {@link #loadTable} and {@link #loadCredentials}. Failed strict read
-   * checks return an empty set. Non-native (UniForm) tables are read-only; native tables get
+   * Credential permissions for {@link #loadTable} and {@link #loadCredentials}. Metadata grants
+   * alone return an empty set. Non-native (UniForm) tables are read-only; native tables get
    * READ_WRITE for table {@code OWNER} or {@code SELECT}+{@code MODIFY}, else READ. (Auth off:
    * principal is null but {@code AllowingAuthorizer} grants all.)
    */
   Set<CredentialContext.Privilege> getLoadCredentialPrivileges(
       TableRepository.IcebergTableState state) {
     UUID principalId = userRepository.findPrincipalId();
-    if (serverProperties.isAuthorizationEnabled()
-        && serverProperties.isStrictPrivilegeChecksEnabled()) {
+    if (serverProperties.isAuthorizationEnabled()) {
       Map<SecurableType, UUID> resourceIds =
-          keyMapper.mapResourceKeys(Map.of(TABLE, state.tableId().toString()));
+          keyMapper.mapResourceKeys(Map.of(TABLE, state.tableId().toString(), METASTORE, ""));
       // Missing read access gives loadTable a metadata-only response.
       // Check cached permissions directly to avoid UnityAccessEvaluator's policy refresh.
       boolean canRead =
@@ -479,7 +478,21 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
                   principalId, resourceIds.get(SCHEMA), Privileges.OWNER, Privileges.USE_SCHEMA)
               && authorizer.authorizeAny(
                   principalId, state.tableId(), Privileges.OWNER, Privileges.SELECT);
-      if (!canRead) {
+      // Keep the previous owner and MODIFY access during migration, independently of metadata.
+      // TODO(#2024): Remove with the strict-privilege flag.
+      boolean legacyAccess =
+          !serverProperties.isStrictPrivilegeChecksEnabled()
+              && (authorizer.authorize(principalId, resourceIds.get(METASTORE), Privileges.OWNER)
+                  || authorizer.authorize(principalId, resourceIds.get(CATALOG), Privileges.OWNER)
+                  || (authorizer.authorize(
+                          principalId, resourceIds.get(CATALOG), Privileges.USE_CATALOG)
+                      && (authorizer.authorize(
+                              principalId, resourceIds.get(SCHEMA), Privileges.OWNER)
+                          || (authorizer.authorize(
+                                  principalId, resourceIds.get(SCHEMA), Privileges.USE_SCHEMA)
+                              && authorizer.authorize(
+                                  principalId, state.tableId(), Privileges.MODIFY)))));
+      if (!canRead && !legacyAccess) {
         return Set.of();
       }
     }
