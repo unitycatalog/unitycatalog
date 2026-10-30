@@ -139,8 +139,9 @@ public final class Auditor implements AutoCloseable {
       String path = uri.getRawPath() == null ? "" : uri.getRawPath();
       return uri.getScheme() + "://" + (authority == null ? "" : authority) + path;
     } catch (RuntimeException e) {
-      // The URL is left out of the message: a string that can't be parsed may still hold a secret.
-      LOGGER.warn("Audit record written without its location: cannot parse it", e);
+      // Neither the URL nor the exception is logged: a string that can't be parsed may still hold
+      // a secret, and the parse error's message repeats the whole input.
+      LOGGER.warn("Audit record written without its location: cannot parse it");
       return null;
     }
   }
