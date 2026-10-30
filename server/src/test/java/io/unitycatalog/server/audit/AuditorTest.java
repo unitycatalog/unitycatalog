@@ -3,6 +3,8 @@ package io.unitycatalog.server.audit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.audit.AuditRecord.Purpose;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -42,16 +44,26 @@ class AuditorTest {
   @Test
   void cleanupCredentialNamesTheCleanupUserAndResource() {
     NormalizedURL path = NormalizedURL.from("s3://key:secret@bkt/root/tables/" + ID + "?sig=x");
-    auditor.recordCredential(
-        path,
-        CredentialContext.READ_WRITE,
-        Purpose.CLEANUP,
-        new TemporaryCredentials().expirationTime(1792500120000L));
+    TemporaryCredentials credential = new TemporaryCredentials().expirationTime(1792500120000L);
+    StorageCredentialVendor delegate = mock(StorageCredentialVendor.class);
+    when(delegate.vendCredential(path, CredentialContext.READ_WRITE, Purpose.CLEANUP))
+        .thenReturn(credential);
+    StorageCredentialVendor audited = auditor.wrap(delegate);
+    assertThat(audited.vendCredential(path, CredentialContext.READ_WRITE, Purpose.CLEANUP))
+        .isSameAs(credential);
     AuditRecord r = CapturingAuditSink.RECORDS.get(0);
     assertThat(r.getUser()).isEqualTo(Auditor.CLEANUP_USER);
     assertThat(r.getResourceId()).isEqualTo(ID);
     assertThat(r.getAccess()).isEqualTo(TableOperation.READ_WRITE);
     assertThat(r.getLocation()).isEqualTo("s3://bkt/root/tables/" + ID); // no secrets
+    // A vend without a purpose is a client credential, and read-only access is recorded as READ.
+    NormalizedURL clientPath = NormalizedURL.from("s3://bkt/t");
+    when(delegate.vendCredential(clientPath, CredentialContext.READ_ONLY)).thenReturn(credential);
+    audited.vendCredential(clientPath, CredentialContext.READ_ONLY);
+    AuditRecord client = CapturingAuditSink.RECORDS.get(1);
+    assertThat(client.getPurpose()).isEqualTo(Purpose.CLIENT);
+    assertThat(client.getAccess()).isEqualTo(TableOperation.READ);
+    assertThat(client.getResourceId()).isNull();
     // ABFS keeps its container@account authority.
     assertThat(auditor.sanitizeLocation("abfss://ctr@acct.dfs.core.windows.net/p?sv=x"))
         .isEqualTo("abfss://ctr@acct.dfs.core.windows.net/p");

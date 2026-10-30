@@ -157,7 +157,8 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 
 - `action`: `ISSUE_CREDENTIAL`, `GRANT`, `REVOKE`, `CLEAR_RESOURCE_GRANTS` (a dropped object's
   grants), or `CLEAR_PRINCIPAL_GRANTS` (a deleted user's grants).
-- `user`: the caller's email. It is `system:storage-cleanup` for the background storage cleanup,
+- `user`: the caller's identity from the token (`sub`): the user's email, `admin` for the bootstrap
+  admin token, or a service name. It is `system:storage-cleanup` for the background storage cleanup,
   `system:server` for work the server does outside a request, such as the admin grant made at
   first start, and absent when authorization is off. Permission changes are recorded only when authorization is on.
 - `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
@@ -172,9 +173,8 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 appender set to `ignoreExceptions = false`, `additivity = false`, and level `INFO`. The shipped configuration has it. If it is missing,
 for example in a log configuration kept from an older release, the server does not start, so audit
 records never end up in `server.log`. `audit.log` rolls over with the same settings as
-`server.log`, which keep only a few rolled files, so a busy server holds just seconds of audit
-history on disk. Ship `etc/logs/audit.log` continuously to your log or security service to keep
-the records.
+`server.log`: every hour and at 10MB, keeping archives for up to 7 days or 1GB. Ship
+`etc/logs/audit.log` continuously to your log or security service to keep the records longer.
 
 To send records somewhere else, set `server.audit.sink` to your own class that implements
 `io.unitycatalog.server.audit.AuditSink` and has a public no-arg constructor. It must be on the
