@@ -13,6 +13,7 @@ import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.SupportsPrefixOperations;
 
@@ -91,9 +92,11 @@ public interface FileOperations {
    *
    * @param rootPath the root location of the data entity to clean up, as for {@link
    *     #getFileIO(NormalizedURL)}
+   * @param resourceId the ID of the dropped object, which the audit record of the credential names
    * @param deadline the cancellation checks shared with the cleanup attempt
    */
-  SupportsPrefixOperations getCleanupFileIO(NormalizedURL rootPath, CooperativeDeadline deadline);
+  SupportsPrefixOperations getCleanupFileIO(
+      NormalizedURL rootPath, UUID resourceId, CooperativeDeadline deadline);
 
   /**
    * Builds the Iceberg FileIO configuration (credentials, region, token expiry) for the given

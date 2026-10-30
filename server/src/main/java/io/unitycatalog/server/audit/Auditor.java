@@ -2,14 +2,13 @@ package io.unitycatalog.server.audit;
 
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.linecorp.armeria.server.ServiceRequestContext;
-import io.unitycatalog.server.audit.AuditRecord.Purpose;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
-import io.unitycatalog.server.model.TableOperation;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -23,6 +22,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,6 +38,8 @@ public final class Auditor implements AutoCloseable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(Auditor.class);
   private static final long REPORT_INTERVAL_MS = 60_000;
+  // An Azure container name: 3 to 63 lowercase letters, digits and hyphens.
+  private static final Pattern ABFS_CONTAINER = Pattern.compile("[a-z0-9-]{3,63}");
 
   private final AuditSink sink;
   private final Clock clock;
@@ -104,17 +106,18 @@ public final class Auditor implements AutoCloseable {
       NormalizedURL path,
       Set<CredentialContext.Privilege> privileges,
       Purpose purpose,
+      Optional<UUID> resourceId,
       TemporaryCredentials credential) {
     emit(
         () ->
             base(AuditRecord.Action.ISSUE_CREDENTIAL, purpose)
                 .purpose(purpose)
-                .resourceId(purpose == Purpose.CLEANUP ? cleanupResourceId(path) : null)
+                .resourceId(resourceId.orElse(null))
                 .location(sanitizeLocation(path.toString()))
                 .access(
                     privileges.contains(CredentialContext.Privilege.UPDATE)
-                        ? TableOperation.READ_WRITE
-                        : TableOperation.READ)
+                        ? AuditRecord.Access.READ_WRITE
+                        : AuditRecord.Access.READ)
                 .expiresAt(
                     credential.getExpirationTime() == null
                         ? null
@@ -133,21 +136,10 @@ public final class Auditor implements AutoCloseable {
                 .build());
   }
 
-  /** Returns the resource ID from a cleanup location, which ends in {@code /<segment>/<id>}. */
-  private UUID cleanupResourceId(NormalizedURL location) {
-    try {
-      String path = location.toUri().getPath();
-      return UUID.fromString(path.substring(path.lastIndexOf('/') + 1));
-    } catch (RuntimeException e) {
-      LOGGER.warn(
-          "Audit record written without its resource ID: cannot read it from {}", location, e);
-      return null;
-    }
-  }
-
   /**
    * Keeps scheme, authority and path, so query strings, fragments and user info (which can carry
-   * secrets) never reach a sink. ABFS keeps its {@code container@account} authority. A location
+   * secrets) never reach a sink. ABFS keeps its {@code container@account} authority, with anything
+   * before the {@code @} that is not a container name replaced by {@code [REDACTED]}. A location
    * that can't be parsed is logged and left out of the record.
    */
   String sanitizeLocation(String url) {
@@ -157,8 +149,15 @@ public final class Auditor implements AutoCloseable {
     try {
       URI uri = URI.create(url);
       String authority = uri.getRawAuthority();
-      if (authority != null && !uri.getScheme().startsWith("abfs")) {
-        authority = authority.substring(authority.lastIndexOf('@') + 1);
+      if (authority != null && authority.contains("@")) {
+        int at = authority.lastIndexOf('@');
+        String host = authority.substring(at + 1);
+        boolean abfs = uri.getScheme().startsWith("abfs");
+        if (!abfs) {
+          authority = host;
+        } else if (!ABFS_CONTAINER.matcher(authority.substring(0, at)).matches()) {
+          authority = "[REDACTED]@" + host;
+        }
       }
       String path = uri.getRawPath() == null ? "" : uri.getRawPath();
       return uri.getScheme() + "://" + (authority == null ? "" : authority) + path;
