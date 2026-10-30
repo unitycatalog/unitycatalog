@@ -216,6 +216,15 @@ public class SdkModelVersionPublishingTest extends SdkAccessControlBaseCRUDTest 
         .isEqualTo(ready);
     assertApiException(
         () ->
+            publisherVersions.finalizeModelVersion(MODEL_FULL_NAME, version.getVersion(), finalize),
+        ErrorCode.INVALID_ARGUMENT,
+        "Model version not in a pending registration state");
+    assertApiException(
+        () -> ownerVersions.finalizeModelVersion(MODEL_FULL_NAME, version.getVersion(), finalize),
+        ErrorCode.PERMISSION_DENIED,
+        "Only model version creator can finalize model version");
+    assertApiException(
+        () ->
             publisherCredentials.generateTemporaryModelVersionCredentials(
                 credentialRequest(ready, ModelVersionOperation.READ_WRITE_MODEL_VERSION)),
         ErrorCode.INVALID_ARGUMENT,

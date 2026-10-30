@@ -817,6 +817,7 @@ public class ModelRepository {
         ModelVersionInfoDAO origModelVersionInfoDAO =
             getModelVersionDaoOrThrow(session, schemaId, fullName, registeredModelName, version);
 
+        // Check the creator here so the check and status update use the same stored version.
         if (serverProperties.isAuthorizationEnabled()
             && !Objects.equals(callerId, origModelVersionInfoDAO.getCreatedBy())) {
           throw new BaseException(
