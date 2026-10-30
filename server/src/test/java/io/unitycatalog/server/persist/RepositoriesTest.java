@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.UnaryOperator;
 import org.apache.iceberg.io.FileIO;
@@ -155,8 +156,8 @@ class RepositoriesTest {
 
     @Override
     public SupportsPrefixOperations getCleanupFileIO(
-        NormalizedURL rootPath, CooperativeDeadline deadline) {
-      return delegate.getCleanupFileIO(rootPath, deadline);
+        NormalizedURL rootPath, UUID resourceId, CooperativeDeadline deadline) {
+      return delegate.getCleanupFileIO(rootPath, resourceId, deadline);
     }
 
     @Override

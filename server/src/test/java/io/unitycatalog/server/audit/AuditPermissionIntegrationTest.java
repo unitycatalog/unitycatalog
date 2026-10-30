@@ -20,9 +20,9 @@ import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdatePermissions;
 import io.unitycatalog.control.model.UserResource;
-import io.unitycatalog.server.audit.AuditRecord.Purpose;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.sdk.access.SdkAccessControlBaseCRUDTest;
+import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
@@ -162,7 +162,7 @@ class AuditPermissionIntegrationTest extends SdkAccessControlBaseCRUDTest {
         .satisfies(
             r -> {
               assertThat(r.getPurpose()).isEqualTo(Purpose.CLIENT);
-              assertThat(r.getAccess()).isEqualTo(io.unitycatalog.server.model.TableOperation.READ);
+              assertThat(r.getAccess()).isEqualTo(AuditRecord.Access.READ);
               assertThat(r.getUser()).isEqualTo(admin);
             });
     // The drop commits first (QUEUE_CLEANUP), then clears the table's grants.

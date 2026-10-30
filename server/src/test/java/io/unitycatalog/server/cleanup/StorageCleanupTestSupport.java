@@ -17,6 +17,7 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -99,7 +100,9 @@ public final class StorageCleanupTestSupport {
   /**
    * Builds each cloud task's cleanup FileIO, as the worker does, and asserts the {@code CLEANUP}
    * credential it vends is recorded with the task's ID, so it joins the task's {@code
-   * QUEUE_CLEANUP} record. Local tasks are skipped: their cleanup vends no credential.
+   * QUEUE_CLEANUP} record. Also builds the location's server FileIO and asserts that credential is
+   * recorded as {@code SERVER}, without a resource ID. Local tasks are skipped: they vend no
+   * credential.
    */
   public static void assertCleanupCredentialsJoinTasks(
       Repositories repositories, SessionFactory sessionFactory) {
@@ -111,15 +114,21 @@ public final class StorageCleanupTestSupport {
       try (SupportsPrefixOperations ignored =
           repositories
               .getFileOperations()
-              .getCleanupFileIO(location, CooperativeDeadline.NO_DEADLINE)) {
+              .getCleanupFileIO(location, task.getId(), CooperativeDeadline.NO_DEADLINE)) {
         assertThat(CapturingAuditSink.RECORDS)
             .filteredOn(
                 r ->
-                    r.getPurpose() == AuditRecord.Purpose.CLEANUP
+                    r.getPurpose() == Purpose.CLEANUP
                         && location.toString().equals(r.getLocation()))
             .isNotEmpty()
             .allSatisfy(r -> assertThat(r.getResourceId()).isEqualTo(task.getId()));
       }
+      repositories.getFileOperations().getFileIO(location, CredentialContext.READ_ONLY);
+      assertThat(CapturingAuditSink.RECORDS)
+          .filteredOn(
+              r -> r.getPurpose() == Purpose.SERVER && location.toString().equals(r.getLocation()))
+          .isNotEmpty()
+          .allSatisfy(r -> assertThat(r.getResourceId()).isNull());
     }
   }
 
