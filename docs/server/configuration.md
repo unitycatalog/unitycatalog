@@ -177,11 +177,16 @@ server shuts down.
 
 `FileAuditSink` needs the `audit` logger in `etc/conf/server.log4j2.properties`, set to
 `additivity = false` and level `INFO`, with its own appender set to `ignoreExceptions = false`.
-The shipped configuration has it. If it is missing,
-for example in a log configuration kept from an older release, the server does not start, so audit
-records never end up in `server.log`. `audit.log` rolls over with the same settings as
-`server.log`: every hour and at 10MB, keeping archives for up to 7 days or 1GB. Ship
-`etc/logs/audit.log` continuously to your log or security service to keep the records longer.
+Neither the Log4j configuration, the `audit` logger nor its appender may have a filter, and the
+link to the appender (`logger.audit.appenderRef.*`) may have neither a filter nor a level above
+`INFO`, because any of these drops records silently. The shipped configuration meets all of this.
+If a requirement is not met, for example in a custom or copied log configuration without the
+`audit` logger, the server does not start, so audit records never end up in `server.log`.
+
+In the default distribution, `audit.log` rolls over with the same settings as `server.log`: every
+hour and at 10MB, keeping archives for up to 7 days or 1GB. The Helm chart has no `server.log`
+file and configures `audit.log` the same way. Ship `etc/logs/audit.log` continuously to your log or
+security service to keep the records longer.
 
 To send records somewhere else, set `server.audit.sink` to your own class that implements
 `io.unitycatalog.server.audit.AuditSink` and has a public no-arg constructor. It must be on the
