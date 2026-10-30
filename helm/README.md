@@ -342,6 +342,8 @@ extraProperties:
   my-config.property1: my-value1
   my-config.property2: my-value2
 ```
+
+Do not put secrets here: a secret in `server.properties` is deprecated.
 </td>
 		</tr>
 		<tr>
@@ -359,6 +361,11 @@ server.env=prod
 server.port=8080
 ...other config properties...
 ```
+
+Do not put secrets here: the chart passes them to the server as environment variables, and
+a secret in `server.properties` is deprecated. If the template uses `${OAUTH_CLIENT_SECRET}`,
+`${S3_SECRET_KEY_<n>}` or `${ADLS_CLIENT_SECRET_<n>}`, remove those lines: the server reads the
+secrets from environment variables.
 </td>
 		</tr>
 		<tr>
@@ -496,7 +503,14 @@ If not set, the default storage class will be used
 not set
 </pre>
 </td>
-			<td>Override Hibernate configuration for the server</td>
+			<td>Override Hibernate configuration for the server
+
+Do not put the password here: set `postgresqlConfig.passwordSecretName` and
+`passwordSecretKey`; with `db.type: postgresql` the chart passes the password to the server
+as an environment variable. A password in `hibernate.properties` is deprecated.
+If the template sets `hibernate.connection.password=${DB_PASSWORD}`, remove that line: the
+server reads the password from `HIBERNATE_CONNECTION_PASSWORD`.
+</td>
 		</tr>
 		<tr>
 			<td>server.db.postgresqlConfig.dbName</td>
@@ -794,7 +808,12 @@ not set
 {{ .Chart.AppVersion }}
 </pre>
 </td>
-			<td>Tag for the server image</td>
+			<td>Tag for the server image
+
+Use the server image from the same release as the chart. The chart passes secrets to
+the server as environment variables that older server images don't read. The chart also
+sets the token signing key files, which older server images ignore.
+</td>
 		</tr>
 		<tr>
 			<td>server.deployment.imagePullSecrets</td>
@@ -1016,7 +1035,9 @@ true
 </td>
 			<td>Create keypair secret
 
-If set to true, the secret will be created with a random keypair
+If set to true, the chart creates the secret with a random private key on install and keeps
+it on upgrade. **Deprecated:** a later release will stop generating the key. Create the
+secret yourself, set `name` to it, and set `create` to false.
 </td>
 		</tr>
 		<tr>
@@ -1028,11 +1049,16 @@ derived from the chart parameters and metadata
 </td>
 			<td>Name of the keypair secret for JWT signing
 
-The secret must contain the following keys:
-- `private_key.der` or `private_key.pem`: Private key in DER or PEM format
-- `key_id.txt`: Key ID
+The secret must contain `private_key.pem` or `private_key.der`: the RSA private key the
+server signs its tokens with, in PEM, or in PKCS #8 DER. A `key_id.txt` key is
+ignored; keep it while you may still roll back to an earlier chart, which requires it.
 
-[Kubernetes docs](https://github.com/unitycatalog/unitycatalog/blob/main/server/src/main/java/io/unitycatalog/server/security/SecurityConfiguration.java)
+Create one with:
+
+```sh
+openssl genrsa -out private_key.pem 2048
+kubectl create secret generic <name> --from-file=private_key.pem
+```
 </td>
 		</tr>
 		<tr>

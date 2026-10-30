@@ -79,8 +79,10 @@ To have Unity Catalog work with cloud object storage as the storage location for
     s3.awsRoleArn.0=<S3_ROLE>
     # Optional (If blank, it will use DefaultCredentialsProviderChain)
     s3.accessKey.0=<SECRET>
-    s3.secretKey.0=<SECRET>
     ```
+
+    Set the secret key in the `S3_SECRETKEY_0` environment variable. Keeping `s3.secretKey.0` in
+    `server.properties` is deprecated (see [Secrets](../server/configuration.md#secrets)).
 
 === "Azure ADLSgen2"
 
@@ -89,8 +91,10 @@ To have Unity Catalog work with cloud object storage as the storage location for
     adls.storageAccountName.0=<ADLS_STORAGEACCOUNTNAME>
     adls.tenantId.0=<ADLS_TENANTID>
     adls.clientId.0=<ADLS_CLIENTID>
-    adls.clientSecret.0=<SECRET>
     ```
+
+    Set the client secret in the `ADLS_CLIENTSECRET_0` environment variable. Keeping `adls.clientSecret.0` in
+    `server.properties` is deprecated (see [Secrets](../server/configuration.md#secrets)).
 
 === "Google Cloud Storage"
 
