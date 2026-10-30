@@ -9,7 +9,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Index;
-import jakarta.persistence.Lob;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
@@ -87,7 +86,6 @@ public class TableInfoDAO extends IdentifiableDAO {
   @OrderBy("ordinalPosition ASC")
   private List<ColumnInfoDAO> columns;
 
-  @Lob
   @Column(name = "view_definition", length = 16777215)
   private String viewDefinition;
 
