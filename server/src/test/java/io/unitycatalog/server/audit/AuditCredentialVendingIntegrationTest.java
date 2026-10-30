@@ -71,6 +71,7 @@ class AuditCredentialVendingIntegrationTest extends BaseCRUDTestWithMockCredenti
               assertThat(r.getAction()).isEqualTo(AuditRecord.Action.ISSUE_CREDENTIAL); // no grants
               assertThat(r.getUser()).isNull(); // authorization off: no user
               assertThat(r.getLocation()).startsWith("s3://");
+              assertThat(r.getRequestId()).isNotBlank(); // joins to the server.log lines
             });
   }
 
