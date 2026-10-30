@@ -74,6 +74,24 @@ The server config file is at the location `etc/conf/server.properties` (relative
     any principal who can create a table can use it. Each entry must be a local path; an entry such as an `s3://` URL
     fails server startup. As with `storage-root.*`, a relative path containing `/` (for example `./uc-external`) is
     resolved against the server's working directory, and a directory that does not exist yet is accepted.
+- `server.token-signing-private-key-file` and `server.token-signing-public-key-file`: The RSA key pair the server
+    signs and checks its own tokens with: a PKCS #8 private key in PEM or DER, or a PKCS #1 one in PEM, and the
+    public key as `openssl rsa -pubout` writes it. Set both,
+    and use the same key pair on every server instance. The server only reads these files, so they can be read-only
+    mounts of a Kubernetes Secret. Create a key pair with:
+
+    ```sh
+    openssl genrsa -out private_key.pem 2048
+    openssl rsa -in private_key.pem -pubout -out public_key.pem
+    ```
+
+    !!! warning "Deprecated: the generated signing key"
+        When neither key file is set, the server signs with a key it keeps in `etc/conf`
+        (`private_key.der`, `public_key.der`), generating it on first start; with authorization enabled it logs a
+        warning at each start. This still works, but is deprecated; set both key file settings instead. A newly
+        generated private key is readable by its owner only. The server ignores `key_id.txt` and doesn't write
+        `certs.json`. Keep `key_id.txt` while you may still roll back: without it, an earlier version generates a new
+        key, and existing tokens stop working.
 - `server.shutdown-timeout`: How long the server waits for in-flight requests when it stops, for example on SIGTERM.
     Defaults to `PT5S`. Stopping takes longer than this: up to 5 seconds more if a storage cleanup attempt is
     running, plus about 2 seconds to stop the HTTP server. With the default, give `docker stop` 15 seconds or more
@@ -90,6 +108,51 @@ The server config file is at the location `etc/conf/server.properties` (relative
     (`my%20table`, `a%25b`, `caf%C3%A9`); a location with an escape it does not need (`table%41` for `tableA`,
     lowercase hex, raw non-ASCII) is rejected with `400`, and an external location whose URL has such an escape
     cannot hold one.
+
+### Secrets
+
+Set secrets in environment variables, not in `server.properties` or `hibernate.properties`. A secret's variable name is its key in upper case,
+with `_` for each character that is not a letter or digit:
+
+| Key | Environment variable |
+| --- | --- |
+| `server.client-secret` | `SERVER_CLIENT_SECRET` |
+| `aws.secretKey` | `AWS_SECRETKEY` |
+| `s3.secretKey.<n>`, `s3.sessionToken.<n>` | `S3_SECRETKEY_<n>`, `S3_SESSIONTOKEN_<n>` |
+| `adls.clientSecret.<n>` | `ADLS_CLIENTSECRET_<n>` |
+| `hibernate.connection.password` (in `hibernate.properties`) | `HIBERNATE_CONNECTION_PASSWORD` |
+
+```sh
+export SERVER_CLIENT_SECRET='<client secret>'
+bin/start-uc-server
+```
+
+A variable takes precedence over the same key in `server.properties`. An empty upper-case variable is ignored, and a
+line break at the end of a value is dropped, as a Kubernetes Secret made from a file often has one. Only the keys above
+use upper-case names; other settings are read from an environment variable only under their exact key. The Helm chart
+passes `SERVER_CLIENT_SECRET`, `S3_SECRETKEY_<n>` and `ADLS_CLIENTSECRET_<n>` to the server from Kubernetes Secrets.
+On PostgreSQL, it also passes `HIBERNATE_CONNECTION_PASSWORD` if `server.db.postgresqlConfig.passwordSecretName` is set.
+
+!!! warning "Deprecated: secrets in properties files"
+    Secrets in `server.properties` still work, but this is deprecated. The database password is the exception: the
+    server reads it only from `hibernate.properties` or `HIBERNATE_CONNECTION_PASSWORD`, and ignores
+    `hibernate.connection.password` in `server.properties`. A password in `hibernate.properties` still works, but is
+    deprecated. The server logs a warning at startup for each secret it reads from a file. Move them to environment
+    variables.
+
+#### Upgrading
+
+- A variable from the table that is already set in the server's environment now takes precedence over
+  `server.properties`, and `HIBERNATE_CONNECTION_PASSWORD` over `hibernate.properties`.
+- `bin/uc auth login` reads `SERVER_CLIENT_SECRET` before `server.client-secret` in `etc/conf/server.properties`.
+- Helm: use the server image from the chart's release, which is the default. An older server image doesn't read these
+  variables, so OAuth login, S3 and ADLS lose their secrets, and the server can't connect to PostgreSQL.
+- Helm: the init container no longer has `OAUTH_CLIENT_SECRET`, `S3_SECRET_KEY_<n>` or `ADLS_CLIENT_SECRET_<n>`. An
+  `extraInitContainers` entry that reads them must use the variables in the table. In a `server.config.override`
+  template, remove the lines that use them: the server reads those secrets from its environment.
+- Helm: the init container no longer has `DB_PASSWORD`. An `extraInitContainers` entry that reads it must use
+  `HIBERNATE_CONNECTION_PASSWORD`. In a `server.db.overrideConfig` template, remove the line
+  `hibernate.connection.password=${DB_PASSWORD}`.
 
 ## Local file system storage
 

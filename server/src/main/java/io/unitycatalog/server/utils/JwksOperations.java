@@ -28,7 +28,6 @@ import io.unitycatalog.server.security.SecurityContext;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URL;
-import java.nio.file.Path;
 import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
@@ -53,7 +52,8 @@ public class JwksOperations {
 
   private final WebClient webClient;
   private static final ObjectMapper mapper = new ObjectMapper();
-  private final SecurityContext securityContext;
+  // Checks the server's own tokens with its signing key. Tests of external issuers pass no context.
+  private final JWTVerifier internalVerifier;
   private final Ticker ticker;
   private final Set<URI> allowedJwksUris;
   private final Cache<String, JwkProvider> providers;
@@ -79,7 +79,10 @@ public class JwksOperations {
       List<String> allowedJwksUris,
       Ticker ticker,
       Duration responseTimeout) {
-    this.securityContext = securityContext;
+    this.internalVerifier =
+        securityContext == null
+            ? null
+            : JWT.require(securityContext.getAlgorithm()).withIssuer(INTERNAL).build();
     this.ticker = ticker;
     this.webClient =
         WebClient.builder()
@@ -108,8 +111,16 @@ public class JwksOperations {
             .build();
   }
 
+  /**
+   * Returns the verifier for a token from the given issuer. For the server's own ({@code internal})
+   * tokens, {@code keyId} and {@code alg} are ignored.
+   */
   @SneakyThrows
   public JWTVerifier verifierForIssuerAndKey(String issuer, String keyId, String alg) {
+    if (issuer.equals(INTERNAL)) {
+      // The key ID of the server's own tokens is ignored.
+      return internalVerifier;
+    }
     JwkProvider jwkProvider = loadJwkProvider(issuer);
     Jwk jwk;
     try {
@@ -159,18 +170,12 @@ public class JwksOperations {
   /**
    * Reuses an external provider after the caller checks the issuer allowlist.
    *
-   * @param issuer token issuer, or {@code internal} for the server's own keys
+   * @param issuer an external token issuer
    * @return the signing-key provider
    */
   @SneakyThrows
   public JwkProvider loadJwkProvider(String issuer) {
     LOGGER.debug("Loading JwkProvider for issuer '{}'", issuer);
-    if (issuer.equals(INTERNAL)) {
-      // Return our own "self-signed" provider, for easy mode.
-      // TODO: This should be configurable
-      Path certsFile = securityContext.getCertsFile();
-      return new JwkProviderBuilder(certsFile.toUri().toURL()).cached(false).build();
-    }
     // Share discovery for each issuer. A slow load can also delay issuers in the same hash bin.
     return providers.get(issuer, this::fetchJwkProvider);
   }

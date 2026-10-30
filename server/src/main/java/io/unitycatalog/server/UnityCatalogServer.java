@@ -105,7 +105,8 @@ public class UnityCatalogServer implements AutoCloseable {
     setDefaults(unityCatalogServerBuilder);
     this.shutdownTimeout = unityCatalogServerBuilder.serverProperties.getShutdownTimeout();
     Path configurationFolder = Path.of("etc", "conf");
-    SecurityConfiguration securityConfiguration = new SecurityConfiguration(configurationFolder);
+    SecurityConfiguration securityConfiguration =
+        SecurityConfiguration.load(unityCatalogServerBuilder.serverProperties, configurationFolder);
 
     this.securityContext =
         new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);

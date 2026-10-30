@@ -1,7 +1,10 @@
 package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import io.unitycatalog.server.utils.ServerProperties;
+import java.nio.file.Path;
 import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -62,6 +65,28 @@ class HibernateConfiguratorTest {
     properties.setProperty("hibernate.connection.username", "alice");
     properties.setProperty("hibernate.connection.user", "bob");
     assertThat(HibernateConfigurator.resolveConnectionUsername(properties)).isEqualTo("alice");
+  }
+
+  @Test
+  void prefersThePasswordFromASystemPropertyToTheFile() {
+    // ServerProperties reads the real environment, which must not set the password here.
+    assumeTrue(System.getenv("HIBERNATE_CONNECTION_PASSWORD") == null);
+    Properties fileProperties = new Properties();
+    fileProperties.setProperty("hibernate.connection.password", "file-password");
+    HibernateConfigurator.applyPasswordOverride(
+        fileProperties, new ServerProperties(), Path.of("hibernate.properties"));
+    assertThat(fileProperties.getProperty("hibernate.connection.password"))
+        .isEqualTo("file-password");
+
+    System.setProperty("hibernate.connection.password", "override-password");
+    try {
+      HibernateConfigurator.applyPasswordOverride(
+          fileProperties, new ServerProperties(), Path.of("hibernate.properties"));
+      assertThat(fileProperties.getProperty("hibernate.connection.password"))
+          .isEqualTo("override-password");
+    } finally {
+      System.clearProperty("hibernate.connection.password");
+    }
   }
 
   private static Properties h2Properties() {

@@ -21,10 +21,12 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.IntPredicate;
+import java.util.regex.Pattern;
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,7 +34,18 @@ import org.slf4j.LoggerFactory;
 public class ServerProperties {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ServerProperties.class);
+
+  // Secrets, which can also be set in the environment variable named by envName(key), such as
+  // SERVER_CLIENT_SECRET or S3_SECRETKEY_0. Other keys use the exact-name lookup only, because
+  // cloud runtimes already set variables such as AWS_REGION for their own use.
+  private static final Pattern SECRET_KEY =
+      Pattern.compile(
+          "server\\.client-secret|aws\\.secretKey"
+              + "|(s3\\.secretKey|s3\\.sessionToken|adls\\.clientSecret)\\.\\d+"
+              + "|hibernate\\.connection\\.password");
+
   private final Properties properties = new Properties(generateDefaults());
+  private final Map<String, String> env;
 
   /** Validator interface for property values */
   private interface PropertyValidator {
@@ -273,6 +286,9 @@ public class ServerProperties {
     AUDIENCES("server.audiences"),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
     ACCESS_TOKEN_TIMEOUT("server.access-token-timeout", "PT24H", DURATION_VALIDATOR),
+    // The operator's token signing key pair; see SecurityConfiguration.
+    TOKEN_SIGNING_PRIVATE_KEY_FILE("server.token-signing-private-key-file"),
+    TOKEN_SIGNING_PUBLIC_KEY_FILE("server.token-signing-public-key-file"),
     READINESS_PROBE_INTERVAL(
         "server.readiness.probe-interval", "PT5S", POSITIVE_DURATION_VALIDATOR),
     READINESS_DB_TIMEOUT("server.readiness.db-timeout", "PT2S", POSITIVE_DURATION_VALIDATOR),
@@ -323,17 +339,25 @@ public class ServerProperties {
   }
 
   public ServerProperties() {
+    env = System.getenv();
     // This call is still useful after the default values being validated by constructors of
     // Property because it also validates values picked up from system property and env.
     validateProperties();
   }
 
   public ServerProperties(String propertiesFile) {
+    env = System.getenv();
     readPropertiesFromFile(propertiesFile);
+    warnAboutSecretsInFile(propertiesFile);
     validateProperties();
   }
 
   public ServerProperties(Properties inputProperties) {
+    this(inputProperties, System.getenv());
+  }
+
+  ServerProperties(Properties inputProperties, Map<String, String> env) {
+    this.env = env;
     properties.putAll(inputProperties);
     validateProperties();
   }
@@ -408,6 +432,30 @@ public class ServerProperties {
         LOGGER.debug("Server properties loaded successfully: {}", path);
       } catch (IOException ex) {
         LOGGER.error("Exception during loading properties", ex);
+      }
+    }
+  }
+
+  private void warnAboutSecretsInFile(String propertiesFile) {
+    for (Object key : properties.keySet()) {
+      String name = key.toString();
+      if (!SECRET_KEY.matcher(name).matches() || getOverride(name) != null) {
+        continue;
+      }
+      if (name.equals("hibernate.connection.password")) {
+        // The server reads the database password from hibernate.properties, not this file.
+        LOGGER.warn(
+            "{} in {} is ignored; set the HIBERNATE_CONNECTION_PASSWORD environment variable"
+                + " instead.",
+            name,
+            propertiesFile);
+      } else {
+        LOGGER.warn(
+            "{} is set in {}. Keeping secrets in this file is deprecated; set the {} environment"
+                + " variable instead.",
+            name,
+            propertiesFile,
+            envName(name));
       }
     }
   }
@@ -519,7 +567,7 @@ public class ServerProperties {
    *
    * <ol>
    *   <li>System property
-   *   <li>Environment variable
+   *   <li>Environment variable with the key as its name, or for a secret also {@link #envName}
    *   <li>server.properties file
    * </ol>
    *
@@ -531,15 +579,45 @@ public class ServerProperties {
 
   /** Get a property value by key name. */
   private String getProperty(String key) {
-    if (System.getProperty(key) != null) {
-      return System.getProperty(key);
-    }
-    if (System.getenv().containsKey(key)) {
-      return System.getenv(key);
+    String override = getOverride(key);
+    if (override != null) {
+      return override;
     }
     // Finally try properties. If not found in properties, this would return default value or null
     // if no default value.
     return properties.getProperty(key);
+  }
+
+  /**
+   * Get a value set for a key in a system property or an environment variable, or null. Settings
+   * kept in other files, such as the database password in hibernate.properties, use this to let the
+   * same sources override the file.
+   */
+  public String getOverride(String key) {
+    String value = System.getProperty(key);
+    return value != null ? value : getEnv(key);
+  }
+
+  private String getEnv(String key) {
+    if (env.containsKey(key)) {
+      return env.get(key);
+    }
+    if (SECRET_KEY.matcher(key).matches()) {
+      // Trailing line breaks are dropped; a Kubernetes Secret made from a file often ends with one.
+      // An empty variable is treated as unset.
+      String value = env.getOrDefault(envName(key), "").replaceAll("[\\r\\n]+$", "");
+      if (!value.isEmpty()) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The environment variable name for a key: upper case, with {@code _} for each other character.
+   */
+  static String envName(String key) {
+    return key.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_");
   }
 
   public void set(Property property, String value) {

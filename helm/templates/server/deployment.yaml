@@ -47,37 +47,26 @@ spec:
               cp /home/unitycatalog/etc/confTemplates/server.log4j2.properties.template /home/unitycatalog/etc/conf/server.log4j2.properties
               envsubst < /home/unitycatalog/etc/confTemplates/hibernate.properties.template > /home/unitycatalog/etc/conf/hibernate.properties
 
-              echo "Generating DER format keys (private_key.der and public_key.der) if they do not exist..."
-              if [ -f /home/unitycatalog/etc/conf/private_key.der ] && [ -f /home/unitycatalog/etc/conf/public_key.der ]; then
-                echo "DER format keys already exist, skipping generation."
-              elif [ -f /home/unitycatalog/etc/confJwtKey/private_key.der ]; then
-                echo "Using /home/unitycatalog/etc/confJwtKey/private_key.der..."
-                cp /home/unitycatalog/etc/confJwtKey/private_key.der /home/unitycatalog/etc/conf/private_key.der
-                openssl rsa -pubout -inform DER -outform DER \
-                    -in /home/unitycatalog/etc/confJwtKey/private_key.der \
-                    -out /home/unitycatalog/etc/conf/public_key.der
-              elif [ -f /home/unitycatalog/etc/confJwtKey/private_key.pem ]; then
-                echo "Using /home/unitycatalog/etc/confJwtKey/private_key.pem..."
-                openssl pkcs8 -topk8 -inform PEM -outform DER -nocrypt \
-                    -in /home/unitycatalog/etc/confJwtKey/private_key.pem \
-                    -out /home/unitycatalog/etc/conf/private_key.der
-                openssl rsa -pubout -inform PEM -outform DER \
-                    -in /home/unitycatalog/etc/confJwtKey/private_key.pem \
-                    -out /home/unitycatalog/etc/conf/public_key.der
+              # The server reads the private key from the Secret mount. Only the public key, which is
+              # not secret, is written here, because the chart's generated Secret holds no public key.
+              KEY_DIR=/home/unitycatalog/etc/confJwtKey
+              if [ -f "$KEY_DIR/private_key.pem" ]; then
+                PRIVATE_KEY="$KEY_DIR/private_key.pem"
+                openssl rsa -in "$PRIVATE_KEY" -pubout -out /home/unitycatalog/etc/conf/public_key.pem \
+                    || { echo "ERROR: Cannot read $PRIVATE_KEY in the token signing key Secret"; exit 1; }
+              elif [ -f "$KEY_DIR/private_key.der" ]; then
+                PRIVATE_KEY="$KEY_DIR/private_key.der"
+                openssl rsa -inform DER -in "$PRIVATE_KEY" -pubout -out /home/unitycatalog/etc/conf/public_key.pem \
+                    || { echo "ERROR: Cannot read $PRIVATE_KEY in the token signing key Secret"; exit 1; }
               else
-                echo "ERROR: No private_key.der or private_key.pem found in /home/unitycatalog/etc/conf or /home/unitycatalog/etc/confJwtKey"
+                echo "ERROR: No private_key.pem or private_key.der in the token signing key Secret"
                 exit 1
               fi
-
-              echo "Looking up key_id.txt..."
-              if [ -f /home/unitycatalog/etc/conf/key_id.txt ]; then
-                echo "Key ID file already exists, skipping..."
-              elif [ -f /home/unitycatalog/etc/confJwtKey/key_id.txt ]; then
-                echo "Using /home/unitycatalog/etc/confJwtKey/key_id.txt..."
-                cp /home/unitycatalog/etc/confJwtKey/key_id.txt /home/unitycatalog/etc/conf/key_id.txt
-              else
-                echo "ERROR: No key_id.txt found in /home/unitycatalog/etc/confJwtKey"
-                exit 1
+              # Key files set to a non-empty value through server.config.override or extraProperties are kept.
+              if ! grep -q -E '^[[:space:]]*server\.token-signing-(private|public)-key-file(([[:space:]]*[=:][[:space:]]*[^[:space:]])|([[:space:]]+[^[:space:]=:]))' \
+                  /home/unitycatalog/etc/conf/server.properties; then
+                printf '\nserver.token-signing-private-key-file=%s\nserver.token-signing-public-key-file=%s\n' \
+                    "$PRIVATE_KEY" /home/unitycatalog/etc/conf/public_key.pem >> /home/unitycatalog/etc/conf/server.properties
               fi
 
               {{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.ssl.enabled }}
@@ -94,14 +83,8 @@ spec:
               mountPath: /home/unitycatalog/etc/conf
             - name: jwt-key-volume
               mountPath: /home/unitycatalog/etc/confJwtKey
+              readOnly: true
           env:
-          {{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.passwordSecretName }}
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.server.db.postgresqlConfig.passwordSecretName | quote }}
-                  key: {{ required "Password secret key is required" .Values.server.db.postgresqlConfig.passwordSecretKey | quote }}
-          {{- end }}
           {{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.ssl.enabled }}
           {{- if .Values.server.db.postgresqlConfig.ssl.rootCert }}
             - name: DB_ROOT_CERT
@@ -123,11 +106,6 @@ spec:
                 secretKeyRef:
                   name: {{ $config.credentialsSecretName | quote }}
                   key: accessKey
-            - name: S3_SECRET_KEY_{{ $index }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $config.credentialsSecretName | quote }}
-                  key: secretKey
           {{- end }}
           {{- range $index, $config := .Values.storage.credentials.adls }}
             - name: ADLS_TENANT_ID_{{ $index }}
@@ -140,11 +118,6 @@ spec:
                 secretKeyRef:
                   name: {{ $config.credentialsSecretName | quote }}
                   key: clientId
-            - name: ADLS_CLIENT_SECRET_{{ $index }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $config.credentialsSecretName | quote }}
-                  key: clientSecret
           {{- end }}
           {{- if .Values.auth.enabled }}
             - name: OAUTH_CLIENT_ID
@@ -152,11 +125,6 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.auth.clientSecretName | quote }}
                   key: clientId
-            - name: OAUTH_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.auth.clientSecretName | quote }}
-                  key: clientSecret
           {{- end }}
       {{- with .Values.server.deployment.extraInitContainers }}
         {{- toYaml . | nindent 8 }}
@@ -168,6 +136,11 @@ spec:
           {{- end }}
           image: "{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
+          {{- with include "unitycatalog.server.secretEnv" . | trim }}
+          # Secrets reach the server as environment variables, not through the properties files.
+          env:
+            {{- . | nindent 12 }}
+          {{- end }}
           ports:
             - name: api
               containerPort: {{ .Values.server.deployment.port }}
@@ -215,6 +188,9 @@ spec:
           volumeMounts:
             - name: config-volume
               mountPath: /home/unitycatalog/etc/conf
+            - name: jwt-key-volume
+              mountPath: /home/unitycatalog/etc/confJwtKey
+              readOnly: true
           {{- if eq .Values.server.db.type "file" }}
             - name: db-volume
               mountPath: /home/unitycatalog/etc/db
