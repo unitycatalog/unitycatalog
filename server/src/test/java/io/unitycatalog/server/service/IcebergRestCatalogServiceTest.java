@@ -75,8 +75,10 @@ public class IcebergRestCatalogServiceTest {
     UUID principalId = UUID.randomUUID();
     UUID tableId = UUID.randomUUID();
     when(userRepository.findPrincipalId()).thenReturn(principalId);
-    when(authorizer.authorize(principalId, tableId, Privileges.OWNER)).thenReturn(false);
-    when(authorizer.authorizeAll(principalId, tableId, Privileges.SELECT, Privileges.MODIFY))
+    when(authorizer.authorize(principalId, SecurableType.TABLE, tableId, Privileges.OWNER))
+        .thenReturn(false);
+    when(authorizer.authorizeAll(
+            principalId, SecurableType.TABLE, tableId, Privileges.SELECT, Privileges.MODIFY))
         .thenReturn(false);
 
     assertThat(
@@ -94,7 +96,8 @@ public class IcebergRestCatalogServiceTest {
     UUID principalId = UUID.randomUUID();
     UUID tableId = UUID.randomUUID();
     when(userRepository.findPrincipalId()).thenReturn(principalId);
-    when(authorizer.authorize(principalId, tableId, Privileges.OWNER)).thenReturn(true);
+    when(authorizer.authorize(principalId, SecurableType.TABLE, tableId, Privileges.OWNER))
+        .thenReturn(true);
 
     assertThat(
             service.getLoadCredentialPrivileges(
@@ -143,7 +146,8 @@ public class IcebergRestCatalogServiceTest {
     UUID principalId = UUID.randomUUID();
     UUID tableId = UUID.randomUUID();
     when(userRepository.findPrincipalId()).thenReturn(principalId);
-    when(authorizer.authorize(principalId, tableId, Privileges.OWNER)).thenReturn(true);
+    when(authorizer.authorize(principalId, SecurableType.TABLE, tableId, Privileges.OWNER))
+        .thenReturn(true);
     when(tableRepository.getIcebergTableState("cat", "ns", "tbl"))
         .thenReturn(
             new TableRepository.IcebergTableState(
@@ -176,8 +180,10 @@ public class IcebergRestCatalogServiceTest {
     UUID principalId = UUID.randomUUID();
     UUID tableId = UUID.randomUUID();
     when(userRepository.findPrincipalId()).thenReturn(principalId);
-    when(authorizer.authorize(principalId, tableId, Privileges.OWNER)).thenReturn(false);
-    when(authorizer.authorizeAll(principalId, tableId, Privileges.SELECT, Privileges.MODIFY))
+    when(authorizer.authorize(principalId, SecurableType.TABLE, tableId, Privileges.OWNER))
+        .thenReturn(false);
+    when(authorizer.authorizeAll(
+            principalId, SecurableType.TABLE, tableId, Privileges.SELECT, Privileges.MODIFY))
         .thenReturn(false);
     when(tableRepository.getIcebergTableState("cat", "ns", "tbl"))
         .thenReturn(
