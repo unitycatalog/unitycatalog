@@ -11,6 +11,9 @@ import scala.language.existentials
 
 import io.unitycatalog.client.api.{SchemasApi, TablesApi}
 import io.unitycatalog.client.auth.TokenProvider
+import io.unitycatalog.client.delta.DeltaApiException
+import io.unitycatalog.client.delta.api.DeltaTablesApi
+import io.unitycatalog.client.delta.model.{DeltaErrorType, DeltaRenameTableRequest}
 import io.unitycatalog.client.model.{
   TableInfo => UCTableInfo,
   _
@@ -456,7 +459,7 @@ class UCSingleCatalog
   private def isCatalogManagedDeltaTable(tableInfo: UCTableInfo): Boolean = {
     val tableProperties = Option(tableInfo.getProperties)
     tableInfo.getTableType == TableType.MANAGED &&
-    tableInfo.getDataSourceFormat == DataSourceFormat.DELTA &&
+    UCSingleCatalog.isDeltaTable(tableInfo) &&
     tableProperties.exists(
       _.get(UCTableProperties.DELTA_CATALOG_MANAGED_KEY) ==
         UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
@@ -569,7 +572,16 @@ class UCSingleCatalog
   override def dropTable(ident: Identifier): Boolean = delegate.dropTable(ident)
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
-    throw new UnsupportedOperationException("Renaming a table is not supported yet")
+    // Rename goes through the UC Delta REST API, so honor the catalog's opt-out from it. Unlike
+    // `shouldUseDeltaAPI`, this does not require DeltaCatalog or a minimum Delta version: rename is
+    // a single metadata call from the connector and never reaches the Delta library.
+    if (!deltaRestApiEnabled) {
+      throw new UnsupportedOperationException(
+        s"ALTER TABLE ... RENAME TO requires the Unity Catalog Delta REST API, which is disabled " +
+          s"for catalog '${name()}' (spark.sql.catalog.${name()}.${OptionsUtil.DELTA_API_ENABLED}" +
+          "=false)")
+    }
+    delegate.renameTable(oldIdent, newIdent)
   }
 
   override def listNamespaces(): Array[Array[String]] = {
@@ -913,6 +925,38 @@ object UCSingleCatalog {
       !ident.name().contains("/")
   }
 
+  /** True for a MANAGED or EXTERNAL Delta table: the rows the UC Delta REST API serves. */
+  private[spark] def isDeltaTable(t: UCTableInfo): Boolean =
+    (t.getTableType == TableType.MANAGED || t.getTableType == TableType.EXTERNAL) &&
+      t.getDataSourceFormat == DataSourceFormat.DELTA
+
+  /**
+   * Rejects a rename target outside the source's schema. Spark hands the RENAME TO target over as
+   * written, without stripping a leading catalog name, so `table`, `schema.table` and
+   * `<catalogName>.schema.table` are all accepted when they name the source's schema.
+   */
+  private[spark] def requireSameSchemaRenameTarget(
+      catalogName: String,
+      oldIdent: Identifier,
+      newIdent: Identifier): Unit = {
+    val schema = oldIdent.namespace().head
+    val sameSchema = newIdent.namespace() match {
+      case Array() => true
+      case Array(ns) => ns == schema
+      case Array(catalog, ns) => catalog == catalogName && ns == schema
+      case _ => false
+    }
+    if (!sameSchema) {
+      throw new UnsupportedOperationException(
+        s"Renaming a table into another catalog or schema is not supported: " +
+          s"${oldIdent.namespace().mkString(".")} to ${newIdent.namespace().mkString(".")}")
+    }
+  }
+
+  /** The Delta REST error type carried in `e`'s response body, if it has one. */
+  private[spark] def deltaErrorType(e: ApiException): Option[DeltaErrorType] =
+    Option(DeltaApiException.from(e).orElse(null)).flatMap(d => Option(d.getErrorType))
+
 }
 
 /** Internal signal that preserves a view row rejected by the table-only catalog surface. */
@@ -936,10 +980,12 @@ private[spark] class UCProxy(
   with Logging {
   private[this] var name: String = null
   private[this] var schemasApi: SchemasApi = null
+  private[this] var deltaTablesApi: DeltaTablesApi = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.name = name
     schemasApi = new SchemasApi(apiClient)
+    deltaTablesApi = new DeltaTablesApi(apiClient)
   }
 
   override def name(): String = {
@@ -979,14 +1025,19 @@ private[spark] class UCProxy(
   // Names UC cannot address answer `None` without an RPC. UC rejects them with 400, which Spark's
   // resolver does not absorb the way it absorbs a not-found, so asking would surface a name Spark
   // is merely probing (a bare `parquet.`s3://...`` path) as a query failure.
-  private[spark] def getUCTableLike(ident: Identifier): Option[UCTableInfo] = {
+  //
+  // `readAsManaged` maps to UC's "read streaming table / materialized view as managed" flags. Pass
+  // `false` when the caller needs those rows to show their real type.
+  private[spark] def getUCTableLike(
+      ident: Identifier,
+      readAsManaged: Boolean = true): Option[UCTableInfo] = {
     if (!UCSingleCatalog.isAddressableTableName(ident)) return None
     val fullName = UCSingleCatalog.fullTableNameForApi(this.name, ident)
     try {
       Some(tablesApi.getTable(
         fullName,
-        /* readStreamingTableAsManaged = */ true,
-        /* readMaterializedViewAsManaged = */ true))
+        /* readStreamingTableAsManaged = */ readAsManaged,
+        /* readMaterializedViewAsManaged = */ readAsManaged))
     } catch {
       case e: ApiException if e.getCode == 404 => None
     }
@@ -1258,10 +1309,60 @@ private[spark] class UCProxy(
     true
   }
 
-  // UC OSS does not currently expose a rename endpoint for tables or views; stub until UC adds
-  // a rename API. `UCProxyViewSupport.renameView` mirrors this stub.
+  /**
+   * Renames a Delta table within its schema through the UC Delta REST API's rename endpoint. The
+   * rename is metadata-only: the table UUID and storage location are unchanged.
+   *
+   * Only MANAGED and EXTERNAL Delta tables can be renamed. Views (see `renameView`), other table
+   * types, and other formats are rejected here and again by the server. The source is looked up
+   * without the streaming-table / materialized-view "as managed" read flags so those rows show
+   * their real type.
+   */
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
-    throw new UnsupportedOperationException("Renaming a table is not supported yet")
+    val fullName = UCSingleCatalog.fullTableNameForApi(this.name, oldIdent)
+    UCSingleCatalog.requireSameSchemaRenameTarget(this.name, oldIdent, newIdent)
+    val t = getUCTableLike(oldIdent, readAsManaged = false)
+      .getOrElse(throw new NoSuchTableException(oldIdent))
+    if (UCViewTypes.isViewLikeTableType(t.getTableType)) {
+      throw new UnsupportedOperationException(
+        s"Cannot rename $fullName with ALTER TABLE: it has type ${t.getTableType}, not a table")
+    }
+    if (!UCSingleCatalog.isDeltaTable(t)) {
+      throw new UnsupportedOperationException(
+        s"Renaming is only supported for Delta tables; $fullName has type " +
+          s"${t.getTableType} and format ${t.getDataSourceFormat}")
+    }
+    try {
+      deltaTablesApi.renameTable(
+        this.name,
+        oldIdent.namespace().head,
+        oldIdent.name(),
+        new DeltaRenameTableRequest().newName(newIdent.name()))
+    } catch {
+      case e: ApiException => throw renameError(e, fullName, oldIdent, newIdent)
+    }
+  }
+
+  /** Maps a failed Delta REST rename call to the exception `renameTable` should throw. */
+  private def renameError(
+      e: ApiException,
+      fullName: String,
+      oldIdent: Identifier,
+      newIdent: Identifier): Throwable = UCSingleCatalog.deltaErrorType(e) match {
+    case Some(DeltaErrorType.ALREADY_EXISTS_EXCEPTION) =>
+      new TableAlreadyExistsException(Identifier.of(oldIdent.namespace(), newIdent.name()))
+    case Some(DeltaErrorType.NO_SUCH_TABLE_EXCEPTION) =>
+      // Dropped between the lookup and the rename.
+      new NoSuchTableException(oldIdent)
+    case Some(DeltaErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION) =>
+      new UnsupportedOperationException(
+        s"Renaming is only supported for Delta tables: $fullName", e)
+    case None if e.getCode == 404 =>
+      // The table exists (looked up before the call), so a 404 without a Delta error body means
+      // the route is missing: a UC server that predates the Delta rename endpoint.
+      new UnsupportedOperationException(
+        "ALTER TABLE ... RENAME TO is not supported by this Unity Catalog server", e)
+    case _ => e
   }
 
   override def listNamespaces(): Array[Array[String]] = {
