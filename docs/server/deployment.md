@@ -2,6 +2,8 @@
 
 This guide outlines how to deploy the Unity Catalog server.
 
+To deploy on Kubernetes, see [Deploy with Helm](helm.md).
+
 ## Deploying using tarball
 
 ### Prerequisites
