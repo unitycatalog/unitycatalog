@@ -92,12 +92,11 @@ jobs:
             validation-mode: "spark-tests"
             non-blocking: true
             spark-source-build: false
-          # Build from the fixed v4.3.0-rc1 tag, not the nightly SNAPSHOT.
-          - spark-version: "4.3.0-SNAPSHOT"
+          - spark-version: "4.3.0"
             delta-version: "master-SNAPSHOT"
             validation-mode: "spark-tests"
             non-blocking: true
-            spark-source-build: true
+            spark-source-build: false
 
     steps:
       # Local composite actions require checkout before uses: ./.github/actions/...
