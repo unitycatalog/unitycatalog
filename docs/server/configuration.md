@@ -165,7 +165,8 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 - `request_id`: the ID of the request being served, the same as `request_id` in the `server.log` lines of
   that request. It is absent on `CLEANUP` records, which are not made while serving a request.
 - `access` is `READ` or `READ_WRITE`, and `expires_at` is when the credential expires. Records never contain
-  credential values, and `location` never contains a query string or user info.
+  credential values, and `location` never contains a query string or user info. For ABFS, `location` keeps
+  `container@account`, and anything else before the `@` is replaced by `[REDACTED]`.
 
 A record is written for every credential issued, including ones served from the credential cache. Audit
 records are best effort: one can be lost when the sink fails, or when a request is still running as the
