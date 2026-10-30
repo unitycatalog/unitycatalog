@@ -155,7 +155,9 @@ public final class Auditor implements AutoCloseable {
                 .build());
   }
 
-  /** Runs {@code action} after the session's transaction commits; never on rollback. */
+  /**
+   * Runs {@code action} only once the session's transaction commits; not on rollback or failure.
+   */
   void afterCommit(Session session, Runnable action) {
     try {
       session

@@ -15,6 +15,7 @@ import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.AppenderRef;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.apache.logging.log4j.core.filter.Filterable;
 
 /**
  * Writes each record as one JSON line to the {@code audit} logger. The Log4j configuration must
@@ -60,6 +61,14 @@ public class FileAuditSink implements AuditSink {
               + " drops every audit record."
               + FIX);
     }
+    if (configuration.hasFilter()) {
+      throw new IllegalStateException(
+          "The Log4j configuration must not have a filter, which can drop audit records." + FIX);
+    }
+    if (config.hasFilter()) {
+      throw new IllegalStateException(
+          "The Log4j 'audit' logger must not have a filter, which can drop audit records." + FIX);
+    }
     for (AppenderRef ref : config.getAppenderRefs()) {
       if (ref.getLevel() != null && !ref.getLevel().isLessSpecificThan(Level.INFO)) {
         throw new IllegalStateException(
@@ -84,6 +93,13 @@ public class FileAuditSink implements AuditSink {
             "The Log4j 'audit' logger's appender "
                 + appender.getName()
                 + " must set ignoreExceptions = false, or failed writes lose records silently."
+                + FIX);
+      }
+      if (appender instanceof Filterable filterable && filterable.hasFilter()) {
+        throw new IllegalStateException(
+            "The Log4j 'audit' logger's appender "
+                + appender.getName()
+                + " must not have a filter, which can drop audit records."
                 + FIX);
       }
     }

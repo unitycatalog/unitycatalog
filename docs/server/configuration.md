@@ -167,9 +167,9 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 - `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
   itself while handling the request, and `CLEANUP` for the background storage cleanup.
 - `resource_id`: on a permission change, the object whose grants changed (absent for
-  `CLEAR_PRINCIPAL_GRANTS`). On a `CLEANUP` credential, the ID of the dropped object, so match it
-  to that object's `QUEUE_CLEANUP` record on `resource_id`; the two can be written in either order.
-  Other credential records do not carry it. Records are best effort: a drop whose record fails to
+  `CLEAR_PRINCIPAL_GRANTS`). On a `QUEUE_CLEANUP` record and on a `CLEANUP` credential, the ID of the
+  dropped object, so match the two on `resource_id`; they can be written in either order. Other
+  credential records do not carry it. Records are best effort: a drop whose record fails to
   write, whose commit reports an error after the database applied it, or that was queued before
   audit records were turned on, has no `QUEUE_CLEANUP` record. Cleanup of local `file:` storage
   vends no credential, so it has no `CLEANUP` record.
@@ -189,17 +189,23 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 A record is written for every credential issued, including ones served from the credential cache.
 Permission changes are recorded only when authorization is on. A `GRANT` is recorded when it adds a grant.
 `REVOKE` and the two `CLEAR_*` actions are recorded whenever the server applies them, also when there was
-nothing to remove, because with several servers sharing one database a server can't always tell. Audit
+nothing to remove, because with several servers sharing one database a server can't always tell.
+Changes to the parent and child links between objects are not recorded. Audit
 records are best effort: one can be lost when the sink fails, or when a request is still running as the
 server shuts down.
 
 `FileAuditSink` needs the `audit` logger in `etc/conf/server.log4j2.properties`, set to
 `additivity = false` and level `INFO`, with its own appender set to `ignoreExceptions = false`.
-The shipped configuration has it. If it is missing,
-for example in a log configuration kept from an older release, the server does not start, so audit
-records never end up in `server.log`. `audit.log` rolls over with the same settings as
-`server.log`: every hour and at 10MB, keeping archives for up to 7 days or 1GB. Ship
-`etc/logs/audit.log` continuously to your log or security service to keep the records longer.
+Neither the Log4j configuration, the `audit` logger nor its appender may have a filter, and the
+link to the appender (`logger.audit.appenderRef.*`) may have neither a filter nor a level above
+`INFO`, because any of these drops records silently. The shipped configuration meets all of this.
+If a requirement is not met, for example in a custom or copied log configuration without the
+`audit` logger, the server does not start, so audit records never end up in `server.log`.
+
+In the default distribution, `audit.log` rolls over with the same settings as `server.log`: every
+hour and at 10MB, keeping archives for up to 7 days or 1GB. The Helm chart has no `server.log`
+file and configures `audit.log` the same way. Ship `etc/logs/audit.log` continuously to your log or
+security service to keep the records longer.
 
 To send records somewhere else, set `server.audit.sink` to your own class that implements
 `io.unitycatalog.server.audit.AuditSink` and has a public no-arg constructor. It must be on the
