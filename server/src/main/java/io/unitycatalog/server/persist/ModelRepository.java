@@ -26,7 +26,6 @@ import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
@@ -819,7 +818,7 @@ public class ModelRepository {
 
         // Check the creator here so the check and status update use the same stored version.
         if (serverProperties.isAuthorizationEnabled()
-            && !Objects.equals(callerId, origModelVersionInfoDAO.getCreatedBy())) {
+            && (callerId == null || !callerId.equals(origModelVersionInfoDAO.getCreatedBy()))) {
           throw new BaseException(
               ErrorCode.PERMISSION_DENIED, "Only model version creator can finalize model version");
         }

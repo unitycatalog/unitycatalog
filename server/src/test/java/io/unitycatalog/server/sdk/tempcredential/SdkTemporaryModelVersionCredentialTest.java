@@ -10,6 +10,7 @@ import static io.unitycatalog.server.utils.TestUtils.MV_RUNID2;
 import static io.unitycatalog.server.utils.TestUtils.MV_SOURCE;
 import static io.unitycatalog.server.utils.TestUtils.MV_SOURCE2;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -250,12 +251,12 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
             .version(2L)
             .operation(ModelVersionOperation.READ_MODEL_VERSION);
 
-    assertThatThrownBy(
-            () ->
-                temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
-                    generateCloudPendingCreds))
-        .isInstanceOf(ApiException.class)
-        .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
+    assertApiException(
+        () ->
+            temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
+                generateCloudPendingCreds),
+        ErrorCode.INVALID_ARGUMENT,
+        "model version that is not ready");
 
     // Cannot pass in an unknown operation.
     generateCloudPendingCreds.operation(ModelVersionOperation.UNKNOWN_MODEL_VERSION_OPERATION);
