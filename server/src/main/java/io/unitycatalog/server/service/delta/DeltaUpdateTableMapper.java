@@ -383,9 +383,9 @@ public final class DeltaUpdateTableMapper {
       CollectedRequest collected,
       ServerProperties serverProperties) {
     CollectedUpdates c = collected.updates();
-    // set-columns is validated against the table's stored mode, before this request's property
-    // changes apply, and against the mode the request sets, which only enabling reads. The modes
-    // are read only for set-columns, so a mode value never blocks other updates.
+    // set-columns is validated against the table's stored mode and properties, before this
+    // request's property changes apply, and against the mode the request sets, which only enabling
+    // reads. The modes are read only for set-columns, so a mode value never blocks other updates.
     ColumnMappingMode columnMappingMode =
         c.setSchema.isPresent()
             ? ColumnMappingMode.parse(properties.get(TableProperties.COLUMN_MAPPING_MODE))
@@ -399,7 +399,13 @@ public final class DeltaUpdateTableMapper {
                     .orElse(null))
             : ColumnMappingMode.NONE;
     applySchemaAndPartitionColumns(
-        session, dao, c.setSchema, c.setPartitionColumns, columnMappingMode, requestedMode);
+        session,
+        dao,
+        c.setSchema,
+        c.setPartitionColumns,
+        columnMappingMode,
+        requestedMode,
+        properties.asMap());
     c.setProtocol.ifPresent(u -> applySetProtocol(properties, u.getProtocol()));
     c.setProperties.ifPresent(u -> applySetProperties(properties, u.getUpdates()));
     c.removeProperties.ifPresent(u -> applyRemoveProperties(properties, u.getRemovals()));
@@ -460,8 +466,14 @@ public final class DeltaUpdateTableMapper {
    * swapping the DAO column collection. The spec frames {@code set-columns} and {@code
    * set-partition-columns} as independent actions; the absent action's concern is preserved from
    * the existing DAO so a column-only request can't silently desync the partition list (and vice
-   * versa). If a partition column is missing from the resulting schema, the request is rejected
-   * with {@code partition-columns references unknown column: ...}.
+   * versa). The request is rejected when:
+   *
+   * <ul>
+   *   <li>a partition column named by set-partition-columns is missing from the resulting schema
+   *       ({@code partition-columns references unknown column: ...});
+   *   <li>set-columns drops an existing partition column, or leaves one without its own identity on
+   *       a column-mapped table (see {@link #resolvePartitionColumns}).
+   * </ul>
    *
    * <p>Swap semantics rely on the orphanRemoval mapping on {@link TableInfoDAO#getColumns()} to
    * clean up the old rows; the intervening flush ensures the deletes hit the DB before the inserts,
@@ -476,7 +488,8 @@ public final class DeltaUpdateTableMapper {
       Optional<DeltaSetSchemaUpdate> setSchema,
       Optional<DeltaSetPartitionColumnsUpdate> setPartition,
       ColumnMappingMode columnMappingMode,
-      ColumnMappingMode requestedMode) {
+      ColumnMappingMode requestedMode,
+      Map<String, String> currentProperties) {
     if (setSchema.isEmpty() && setPartition.isEmpty()) {
       return;
     }
@@ -494,20 +507,23 @@ public final class DeltaUpdateTableMapper {
             ErrorCode.INVALID_ARGUMENT, "set-columns requires at least one column.");
       }
       ColumnUtils.validateStructType(columns, "columns");
-      validateColumnMappingGuards(dao, fields, columnMappingMode, requestedMode);
+      validateColumnMappingGuards(dao, fields, columnMappingMode, requestedMode, currentProperties);
       newColumns = ColumnUtils.toColumnInfos(fields);
     } else {
       newColumns = ColumnInfoDAO.toList(dao.getColumns());
       newColumns.forEach(c -> c.setPartitionIndex(null));
     }
     // Source of the partition list: the request when set-partition-columns is present, otherwise
-    // the existing DAO's partition columns (preserved by name across a column-only action).
+    // resolve the existing DAO's partition columns to their names in the new schema, so a renamed
+    // partition column keeps its partition.
     List<String> partitionNames;
     if (setPartition.isPresent()) {
       partitionNames =
           ValidationUtils.checkNotNull(
               setPartition.get().getPartitionColumns(),
               "set-partition-columns requires a partition-columns list.");
+    } else if (setSchema.isPresent()) {
+      partitionNames = resolvePartitionColumns(dao, newColumns, columnMappingMode);
     } else {
       partitionNames = currentPartitionColumnNames(dao);
     }
@@ -679,16 +695,19 @@ public final class DeltaUpdateTableMapper {
    *   <li>Enabling column mapping (a table without column mapping, or a stored schema without
    *       identity keys): top-level physical names and all ids must be unique, and no column may be
    *       renamed in the same request.
-   *   <li>Otherwise at most one top-level column is renamed per request.
+   *   <li>Otherwise at most one top-level column is renamed per request. Delta Kernel checks the
+   *       rest of the change ({@link DeltaSchemaEvolutionValidator}).
    * </ul>
    *
    * @param requestedMode the mode this request sets, {@code NONE} when it sets none
+   * @param currentProperties the table properties before this request is applied
    */
   private static void validateColumnMappingGuards(
       TableInfoDAO dao,
       List<DeltaStructField> incoming,
       ColumnMappingMode tableMode,
-      ColumnMappingMode requestedMode) {
+      ColumnMappingMode requestedMode,
+      Map<String, String> currentProperties) {
     ColumnMappingMode mode =
         tableMode == ColumnMappingMode.NONE ? ColumnMappingMode.NAME : tableMode;
     List<DeltaStructField> current = readableStoredFields(dao);
@@ -745,6 +764,14 @@ public final class DeltaUpdateTableMapper {
               + renameList
               + "]. Split them into separate ALTER statements.");
     }
+
+    // Delta Kernel decides the rest: identities, types, nullability and clustering columns. It
+    // reads the whole stored schema, so a stored column with an unreadable type fails the check.
+    DeltaSchemaEvolutionValidator.validate(
+        ColumnInfoDAO.toList(dao.getColumns()),
+        ColumnUtils.toColumnInfos(incoming),
+        currentProperties,
+        !topLevelRenames.isEmpty());
   }
 
   /**
@@ -1019,6 +1046,100 @@ public final class DeltaUpdateTableMapper {
         .sorted(Comparator.comparingInt(ColumnInfo::getPartitionIndex))
         .map(ColumnInfo::getName)
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Resolves the current partition columns to their names in the incoming schema, so a partition
+   * column that is renamed keeps its partition. Columns are matched by the identity Delta reads
+   * them by in the table's stored mode (see {@link #identityKeyOf}), top-level only so a nested
+   * field cannot collide with a partition column's key.
+   *
+   * <p>Per partition column, using the identities stored before this update (a stored column whose
+   * type cannot be read has no identity, see {@link #readableStoredFields}):
+   *
+   * <ul>
+   *   <li>the table has no column mapping, or the incoming schema carries no identity at all:
+   *       matched by logical name;
+   *   <li>the column has a stored identity: matched to the incoming column with the same identity.
+   *       If no incoming column carries it, an incoming column with the same name and an identity
+   *       no stored column has keeps the partition: that is the column replaced in place, as a
+   *       {@code REPLACE TABLE} that changes its type sends. Otherwise it is rejected as dropped,
+   *       even if another stored column now uses its name;
+   *   <li>the column has no stored identity but other stored columns do: rejected as having no
+   *       column mapping identity, because matching by name could move the partition onto a
+   *       different column that reuses the old name;
+   *   <li>no stored column has an identity: matched by logical name.
+   * </ul>
+   *
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if a partition column is dropped
+   *     or has no identity on a column-mapped table
+   */
+  private static List<String> resolvePartitionColumns(
+      TableInfoDAO dao, List<ColumnInfo> incomingColumns, ColumnMappingMode columnMappingMode) {
+    List<ColumnInfo> curList = ColumnInfoDAO.toList(dao.getColumns());
+    List<ColumnInfo> partitionCols =
+        curList.stream()
+            .filter(c -> c.getPartitionIndex() != null)
+            .sorted(Comparator.comparingInt(ColumnInfo::getPartitionIndex))
+            .collect(Collectors.toList());
+    if (partitionCols.isEmpty()) {
+      return List.of();
+    }
+
+    Map<String, String> incomingNameByLowerName = new HashMap<>();
+    Map<String, String> incomingNameByKey = new HashMap<>();
+    Map<String, String> incomingKeyByLowerName = new HashMap<>();
+    for (ColumnInfo inc : incomingColumns) {
+      String lowerName = inc.getName().toLowerCase(Locale.ROOT);
+      incomingNameByLowerName.put(lowerName, inc.getName());
+      String key = identityKeyOf(ColumnUtils.toStructField(inc), columnMappingMode);
+      if (key != null) {
+        incomingNameByKey.put(key, inc.getName());
+        incomingKeyByLowerName.put(lowerName, key);
+      }
+    }
+    boolean byName = columnMappingMode == ColumnMappingMode.NONE || incomingNameByKey.isEmpty();
+    Map<String, String> currentKeyByLowerName = new HashMap<>();
+    if (!byName) {
+      for (DeltaStructField cur : readableStoredFields(dao)) {
+        String key = identityKeyOf(cur, columnMappingMode);
+        if (key != null) {
+          currentKeyByLowerName.put(cur.getName().toLowerCase(Locale.ROOT), key);
+        }
+      }
+    }
+
+    List<String> resolved = new ArrayList<>();
+    for (ColumnInfo cur : partitionCols) {
+      String lowerName = cur.getName().toLowerCase(Locale.ROOT);
+      String newName;
+      String key = currentKeyByLowerName.get(lowerName);
+      if (key != null) {
+        newName = incomingNameByKey.get(key);
+        String sameNameKey = incomingKeyByLowerName.get(lowerName);
+        if (newName == null
+            && sameNameKey != null
+            && !currentKeyByLowerName.containsValue(sameNameKey)) {
+          // Replaced in place under the same name with a new identity.
+          newName = incomingNameByLowerName.get(lowerName);
+        }
+      } else if (currentKeyByLowerName.isEmpty()) {
+        newName = incomingNameByLowerName.get(lowerName);
+      } else {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "partition column '"
+                + cur.getName()
+                + "' has no column mapping identity while the table uses column mapping.");
+      }
+      if (newName == null) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "partition column '" + cur.getName() + "' dropped: not in the new schema.");
+      }
+      resolved.add(newName);
+    }
+    return resolved;
   }
 
   private static void applySetDomainMetadata(

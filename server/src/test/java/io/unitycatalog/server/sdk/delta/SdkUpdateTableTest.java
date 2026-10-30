@@ -383,7 +383,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
 
     // -------- set-columns alone that drops a previously-partition column is rejected --------
     // Partition is on `id`; the new schema replaces `id` with `id2`. Silent partition clearing
-    // would leave the table inconsistent, so this must fail with the unknown-column error.
+    // would leave the table inconsistent, so this must fail with the dropped-partition error.
     {
       Handle h = createDeltaExternal("tbl_setcols_drop_part");
       Handle h1 =
@@ -407,7 +407,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                                           .nullable(false)
                                           .metadata(new DeltaStructFieldMetadata()))))),
           DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-          "partition-columns references unknown column: id");
+          "partition column 'id' dropped");
     }
 
     // -------- assert-etag conflict: mutate once to roll the etag, then resubmit with the stale
@@ -2229,7 +2229,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       DeltaTableUpdate[] update,
       String rejection,
       List<String> columns,
-      List<String> partitions) {
+      List<String> partitions,
+      DeltaErrorType errorType) {
     @Override
     public String toString() {
       return name;
@@ -2238,25 +2239,48 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     SchemaCase after(DeltaTableUpdate... step) {
       List<DeltaTableUpdate[]> steps = new ArrayList<>(setup);
       steps.add(step);
-      return new SchemaCase(name, table, steps, update, rejection, columns, partitions);
+      return new SchemaCase(name, table, steps, update, rejection, columns, partitions, errorType);
     }
 
     SchemaCase expectColumns(String... names) {
-      return new SchemaCase(name, table, setup, update, rejection, List.of(names), partitions);
+      return new SchemaCase(
+          name, table, setup, update, rejection, List.of(names), partitions, errorType);
+    }
+
+    /** Expects the rejection under {@code type} instead of INVALID_PARAMETER_VALUE. */
+    SchemaCase asError(DeltaErrorType type) {
+      return new SchemaCase(name, table, setup, update, rejection, columns, partitions, type);
     }
 
     SchemaCase expectPartitions(String... names) {
-      return new SchemaCase(name, table, setup, update, rejection, columns, List.of(names));
+      return new SchemaCase(
+          name, table, setup, update, rejection, columns, List.of(names), errorType);
     }
   }
 
   private static SchemaCase ok(String name, TableFactory table, DeltaTableUpdate... update) {
-    return new SchemaCase(name, table, List.of(), update, null, null, null);
+    return new SchemaCase(
+        name,
+        table,
+        List.of(),
+        update,
+        null,
+        null,
+        null,
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION);
   }
 
   private static SchemaCase rejected(
       String name, String rejection, TableFactory table, DeltaTableUpdate... update) {
-    return new SchemaCase(name, table, List.of(), update, rejection, null, null);
+    return new SchemaCase(
+        name,
+        table,
+        List.of(),
+        update,
+        rejection,
+        null,
+        null,
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION);
   }
 
   private void run(SchemaCase c) throws Exception {
@@ -2269,9 +2293,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     Handle target = h;
     if (c.rejection() != null) {
       TestUtils.assertDeltaApiException(
-          () -> updateTable(target, c.update()),
-          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-          c.rejection());
+          () -> updateTable(target, c.update()), c.errorType(), c.rejection());
       return;
     }
     DeltaLoadTableResponse r = updateTable(target, c.update());
@@ -2301,6 +2323,18 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               2,
               fld("a", prim("long"), false, 1, "col-1"),
               fld("b", prim("long"), 2, "col-2"));
+  private static final TableFactory ID_AB =
+      (t, n) ->
+          t.createManaged(
+              n,
+              "id",
+              2,
+              fld("a", prim("long"), false, 1, "col-1"),
+              fld("b", prim("long"), 2, "col-2"));
+  private static final TableFactory ID_S =
+      (t, n) ->
+          t.createManaged(
+              n, "id", 2, fld("s", struct(fld("x", prim("long"), 2, "col-x")), 1, "col-s"));
 
   @ParameterizedTest(name = "{0}")
   @MethodSource("guardCases")
@@ -2596,7 +2630,185 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 "replace every column of a column-mapped table",
                 NAME_AB,
                 setColumns(fld("x", prim("long"), 3, "col-3"), fld("y", prim("long"), 4, "col-4")))
-            .expectColumns("x", "y"));
+            .expectColumns("x", "y"),
+        // Delta Kernel checks what the guards above leave: renames, type changes, physical names.
+        ok(
+                "same name with a new id is a drop and add",
+                ID_A,
+                setColumns(fld("a", prim("long"), false, 2, "col-1")))
+            .expectColumns("a"),
+        ok(
+                "nested same name with a new id is a drop and add",
+                ID_S,
+                setColumns(fld("s", struct(fld("x", prim("long"), 99, "col-x")), 1, "col-s")))
+            .expectColumns("s"),
+        ok(
+                "rename a type-widened column",
+                (t, n) ->
+                    t.createManaged(
+                        n,
+                        "name",
+                        1,
+                        withTypeChange(
+                            fld("a", prim("long"), false, 1, "col-1"), "integer", "long")),
+                setColumns(
+                    withTypeChange(fld("b", prim("long"), false, 1, "col-1"), "integer", "long")))
+            .expectColumns("b"),
+        ok(
+                "widen a type without a rename",
+                (t, n) ->
+                    t.createManaged(n, "name", 1, fld("a", prim("integer"), false, 1, "col-1")),
+                setColumns(
+                    withTypeChange(fld("a", prim("long"), false, 1, "col-1"), "integer", "long")))
+            .expectColumns("a"),
+        ok(
+                "nested rename plus a new field with the old name",
+                (t, n) ->
+                    t.createManaged(
+                        n,
+                        "name",
+                        4,
+                        fld("p", struct(fld("x", prim("long"), 2, "col-x")), 1, "col-p")),
+                setColumns(
+                    fld(
+                        "p",
+                        struct(
+                            fld("y", prim("long"), 2, "col-x"),
+                            fld("x", prim("long"), 5, "col-x2")),
+                        1,
+                        "col-p")))
+            .expectColumns("p"),
+        rejected(
+            "rename next to a stored column with an unreadable type",
+            "the table schema cannot be read",
+            (t, n) -> {
+              Handle h =
+                  t.createManaged(
+                      n,
+                      "name",
+                      2,
+                      fld("a", prim("long"), false, 1, "col-1"),
+                      fld("v", prim("long"), 2, "col-v"));
+              t.corruptStoredType(h, "v");
+              return h;
+            },
+            setColumns(
+                fld("b", prim("long"), false, 1, "col-1"), fld("v", prim("long"), 2, "col-v"))),
+        // A partition column follows its column through a rename.
+        ok(
+                "rename one of two partition columns",
+                NAME_AB,
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 2, "col-2")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("a", "b")))
+            .expectPartitions("a", "b2"),
+        ok(
+                "name mode partition follows the physical name",
+                NAME_AB,
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 9, "col-2")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .expectPartitions("b2"),
+        ok(
+                "id mode partition follows the id",
+                ID_AB,
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 2, "col-2")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .expectPartitions("b2"),
+        // REPLACE TABLE that changes a partition column's type: Delta gives the column a new id
+        // and physical name under the same name, and sends no set-partition-columns.
+        ok(
+                "name mode partition column replaced with a new type",
+                NAME_AB,
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"),
+                    fld("b", prim("string"), 3, "col-3")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .expectPartitions("b"),
+        ok(
+                "id mode partition column replaced with a new type",
+                ID_AB,
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"),
+                    fld("b", prim("string"), 3, "col-3")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .expectPartitions("b"),
+        ok(
+                "first enable on a partitioned table",
+                (t, n) ->
+                    t.createManaged(
+                        n,
+                        "none",
+                        0,
+                        fld("a", prim("long"), false, null, null),
+                        fld("b", prim("long"), null, null)),
+                setColumns(fld("a", prim("long"), false, 1, "a"), fld("b", prim("long"), 2, "b")),
+                new DeltaSetPropertiesUpdate().updates(Map.of("delta.columnMapping.mode", "name")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .expectPartitions("b"),
+        rejected(
+                "partition rename at a taken commit version",
+                "Commit version already accepted",
+                NAME_AB,
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 2, "col-2")),
+                new DeltaAddCommitUpdate().commit(commit(1L, "other-00000001.json")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .after(new DeltaAddCommitUpdate().commit(commit(1L, "00000001.json")))
+            .asError(DeltaErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION),
+        ok(
+                "stored type of a non-partition column is unreadable",
+                (t, n) -> {
+                  Handle h = NAME_AB.create(t, n);
+                  h =
+                      h.withEtag(
+                          t.updateTable(
+                                  h,
+                                  new DeltaSetPartitionColumnsUpdate()
+                                      .partitionColumns(List.of("a")))
+                              .getMetadata()
+                              .getEtag());
+                  t.corruptStoredType(h, "b");
+                  return h;
+                },
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 2, "col-2")))
+            .expectPartitions("a"),
+        ok(
+                "name mode, stored columns without keys: the partition resolves by name",
+                (t, n) ->
+                    t.createManaged(
+                        n,
+                        "name",
+                        2,
+                        fld("a", prim("long"), false, null, null),
+                        fld("b", prim("long"), null, null)),
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 2, "col-2")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .expectPartitions("b"));
+  }
+
+  private static DeltaStructField withTypeChange(DeltaStructField field, String from, String to) {
+    field.getMetadata().put("delta.typeChanges", List.of(Map.of("fromType", from, "toType", to)));
+    return field;
+  }
+
+  /** Makes the stored type of one column unreadable. */
+  private void corruptStoredType(Handle h, String columnName) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction tx = session.beginTransaction();
+      session
+          .createMutationQuery(
+              "update ColumnInfoDAO c set c.typeJson = :json"
+                  + " where c.table.id = :id and c.name = :name")
+          .setParameter("json", "not json")
+          .setParameter("id", h.tableId())
+          .setParameter("name", columnName)
+          .executeUpdate();
+      tx.commit();
+    }
   }
 
   // -------------------------------------------------------- assertion helpers
