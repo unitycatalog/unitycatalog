@@ -1,0 +1,15 @@
+apiVersion: v2
+name: unitycatalog
+description: A Helm chart to install Unity Catalog
+type: application
+version: 0.0.1
+home: https://www.unitycatalog.io/
+icon: https://github.com/unitycatalog/unitycatalog/blob/main/uc-logo-horiz.png?raw=true
+sources:
+  - https://github.com/unitycatalog/unitycatalog
+keywords:
+  - iceberg
+  - delta
+  - data lake
+  - catalog
+  - databricks
