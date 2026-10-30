@@ -92,18 +92,20 @@ jobs:
             validation-mode: "spark-tests"
             non-blocking: true
             spark-source-build: false
-          # Build from the fixed v4.3.0-rc1 tag, not the nightly SNAPSHOT.
-          - spark-version: "4.3.0-SNAPSHOT"
+          - spark-version: "4.3.0"
             delta-version: "master-SNAPSHOT"
+            delta-ref: refs/pull/7989/head
             validation-mode: "spark-tests"
             non-blocking: true
-            spark-source-build: true
+            spark-source-build: false
 
     steps:
       # Local composite actions require checkout before uses: ./.github/actions/...
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Run UC unit tests
         uses: ./.github/actions/run-uc-unit-tests
+        env:
+          DELTA_REF: ${{ matrix.delta-ref || 'master' }}
         with:
           spark-version: ${{ matrix.spark-version }}
           delta-version: ${{ matrix.delta-version }}
