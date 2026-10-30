@@ -39,7 +39,9 @@ The server can write one JSON audit record per issued storage credential, permis
 queued storage cleanup to `/home/unitycatalog/etc/logs/audit.log` (see the server configuration
 docs). The chart's log configuration already has the `audit` logger; turn records on and ship the
 file with your log shipper (for example a sidecar in `server.deployment.extraContainers` that
-shares `/home/unitycatalog/etc/logs` through `extraVolumes` and `extraVolumeMounts`):
+shares `/home/unitycatalog/etc/logs` through `extraVolumes` and `extraVolumeMounts`). The file lives in
+the container, so it is lost when the pod restarts unless it is shipped continuously or the directory is on
+a volume:
 
 ```yaml
 server:
