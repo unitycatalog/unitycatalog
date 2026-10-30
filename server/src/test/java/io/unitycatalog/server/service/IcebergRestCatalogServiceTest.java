@@ -197,24 +197,34 @@ public class IcebergRestCatalogServiceTest {
   @Test
   public void loadCredentialsRejectsMissingReadAccess() {
     UUID tableId = UUID.randomUUID();
-    when(userRepository.findPrincipalId()).thenReturn(UUID.randomUUID());
+    UUID principalId = UUID.randomUUID();
+    UUID catalogId = UUID.randomUUID();
+    UUID schemaId = UUID.randomUUID();
+    when(userRepository.findPrincipalId()).thenReturn(principalId);
     when(serverProperties.isAuthorizationEnabled()).thenReturn(true);
     when(serverProperties.isStrictPrivilegeChecksEnabled()).thenReturn(true);
     when(tableRepository.getIcebergTableState("cat", "ns", "tbl"))
         .thenReturn(
             new TableRepository.IcebergTableState(
                 tableId, DataSourceFormat.ICEBERG, "s3://bucket/metadata.json", "s3://bucket"));
-    when(keyMapper.mapResourceKeys(Map.of(SecurableType.TABLE, tableId.toString())))
+    when(keyMapper.mapResourceKeys(
+            Map.of(SecurableType.TABLE, tableId.toString(), SecurableType.METASTORE, "")))
         .thenReturn(
             Map.of(
-                SecurableType.CATALOG, UUID.randomUUID(),
-                SecurableType.SCHEMA, UUID.randomUUID(),
+                SecurableType.CATALOG, catalogId,
+                SecurableType.SCHEMA, schemaId,
+                SecurableType.METASTORE, UUID.randomUUID(),
                 SecurableType.TABLE, tableId));
+    when(authorizer.authorizeAny(principalId, catalogId, Privileges.OWNER, Privileges.USE_CATALOG))
+        .thenReturn(true);
+    when(authorizer.authorizeAny(principalId, schemaId, Privileges.OWNER, Privileges.USE_SCHEMA))
+        .thenReturn(true);
 
     assertThatThrownBy(() -> service.loadCredentials("cat", "ns", "tbl"))
         .isInstanceOfSatisfying(
             BaseException.class,
             error -> assertThat(error.getErrorCode()).isEqualTo(ErrorCode.PERMISSION_DENIED));
+    verify(authorizer).authorizeAny(principalId, tableId, Privileges.OWNER, Privileges.SELECT);
     verifyNoInteractions(tableConfigService);
     verify(authorizer, never()).refreshAuthorizations(anyLong());
   }
