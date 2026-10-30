@@ -1060,9 +1060,11 @@ public final class DeltaUpdateTableMapper {
    * <ul>
    *   <li>the table has no column mapping, or the incoming schema carries no identity at all:
    *       matched by logical name;
-   *   <li>the column has a stored identity: matched to the incoming column with the same identity,
-   *       and rejected as dropped if no incoming column carries it, even if another column reuses
-   *       its name;
+   *   <li>the column has a stored identity: matched to the incoming column with the same identity.
+   *       If no incoming column carries it, an incoming column with the same name and an identity
+   *       no stored column has keeps the partition: that is the column replaced in place, as a
+   *       {@code REPLACE TABLE} that changes its type sends. Otherwise it is rejected as dropped,
+   *       even if another stored column now uses its name;
    *   <li>the column has no stored identity but other stored columns do: rejected as having no
    *       column mapping identity, because matching by name could move the partition onto a
    *       different column that reuses the old name;
@@ -1086,11 +1088,14 @@ public final class DeltaUpdateTableMapper {
 
     Map<String, String> incomingNameByLowerName = new HashMap<>();
     Map<String, String> incomingNameByKey = new HashMap<>();
+    Map<String, String> incomingKeyByLowerName = new HashMap<>();
     for (ColumnInfo inc : incomingColumns) {
-      incomingNameByLowerName.put(inc.getName().toLowerCase(Locale.ROOT), inc.getName());
+      String lowerName = inc.getName().toLowerCase(Locale.ROOT);
+      incomingNameByLowerName.put(lowerName, inc.getName());
       String key = identityKeyOf(ColumnUtils.toStructField(inc), columnMappingMode);
       if (key != null) {
         incomingNameByKey.put(key, inc.getName());
+        incomingKeyByLowerName.put(lowerName, key);
       }
     }
     boolean byName = columnMappingMode == ColumnMappingMode.NONE || incomingNameByKey.isEmpty();
@@ -1111,6 +1116,13 @@ public final class DeltaUpdateTableMapper {
       String key = currentKeyByLowerName.get(lowerName);
       if (key != null) {
         newName = incomingNameByKey.get(key);
+        String sameNameKey = incomingKeyByLowerName.get(lowerName);
+        if (newName == null
+            && sameNameKey != null
+            && !currentKeyByLowerName.containsValue(sameNameKey)) {
+          // Replaced in place under the same name with a new identity.
+          newName = incomingNameByLowerName.get(lowerName);
+        }
       } else if (currentKeyByLowerName.isEmpty()) {
         newName = incomingNameByLowerName.get(lowerName);
       } else {

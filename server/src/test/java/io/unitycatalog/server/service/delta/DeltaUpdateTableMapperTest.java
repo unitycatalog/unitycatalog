@@ -859,12 +859,6 @@ public class DeltaUpdateTableMapperTest {
             setColumns(
                 fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), null, null))),
         rejected(
-            "id mode same name with a new id",
-            "partition column 'b' dropped",
-            ID_AB.partitionedBy("b"),
-            setColumns(
-                fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 9, "col-2"))),
-        rejected(
             "no column mapping: the partition follows the logical name, not a leftover key",
             "partition column 'b' dropped",
             managed(
@@ -948,9 +942,6 @@ public class DeltaUpdateTableMapperTest {
   private static final StoredTable NAME_AB =
       managed(
           "name", 2, fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 2, "col-2"));
-  private static final StoredTable ID_AB =
-      managed(
-          "id", 2, fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 2, "col-2"));
   private static final StoredTable NAME_S =
       managed("name", 2, fld("s", struct(fld("x", prim("long"), 2, "col-x")), 1, "col-s"));
   private static final StoredTable NAME_S2 =
