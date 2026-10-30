@@ -1,5 +1,6 @@
 package io.unitycatalog.server.auth;
 
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
 import java.util.List;
 import java.util.Map;
@@ -54,17 +55,20 @@ public class AllowingAuthorizer implements UnityCatalogAuthorizer {
   }
 
   @Override
-  public boolean authorize(UUID principal, UUID resource, Privileges action) {
+  public boolean authorize(
+      UUID principal, SecurableType resourceType, UUID resource, Privileges action) {
     return true;
   }
 
   @Override
-  public boolean authorizeAny(UUID principal, UUID resource, Privileges... actions) {
+  public boolean authorizeAny(
+      UUID principal, SecurableType resourceType, UUID resource, Privileges... actions) {
     return true;
   }
 
   @Override
-  public boolean authorizeAll(UUID principal, UUID resource, Privileges... actions) {
+  public boolean authorizeAll(
+      UUID principal, SecurableType resourceType, UUID resource, Privileges... actions) {
     return true;
   }
 
