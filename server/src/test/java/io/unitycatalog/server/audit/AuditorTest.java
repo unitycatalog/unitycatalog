@@ -28,6 +28,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
@@ -185,6 +186,28 @@ class AuditorTest {
             "logger.audit.appenderRef.a.level = warn"));
     assertThatThrownBy(() -> FileAuditSink.validate(load(droppingRecords.toString())))
         .hasMessageContaining("appender reference");
+    // So can a filter on the configuration, the audit logger or its appender.
+    for (String filter :
+        List.of(
+            "filter.t.type = ThresholdFilter\nfilter.t.level = warn",
+            "logger.audit.filter.t.type = ThresholdFilter\nlogger.audit.filter.t.level = warn",
+            "appender.a.filter.t.type = ThresholdFilter\nappender.a.filter.t.level = warn")) {
+      Path filtered = Files.createTempFile("log4j2", ".properties");
+      Files.writeString(
+          filtered,
+          String.join(
+              "\n",
+              "appender.a.type = Console",
+              "appender.a.name = A",
+              "appender.a.ignoreExceptions = false",
+              "logger.audit.name = audit",
+              "logger.audit.level = info",
+              "logger.audit.additivity = false",
+              "logger.audit.appenderRef.a.ref = A",
+              filter));
+      assertThatThrownBy(() -> FileAuditSink.validate(load(filtered.toString())))
+          .hasMessageContaining("must not have a filter");
+    }
   }
 
   private static Configuration load(String file) throws Exception {
