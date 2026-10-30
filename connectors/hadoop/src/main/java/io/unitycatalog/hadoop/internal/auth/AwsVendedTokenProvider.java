@@ -3,6 +3,7 @@ package io.unitycatalog.hadoop.internal.auth;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.util.Preconditions;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
@@ -21,8 +22,7 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
   @Override
   public GenericCredential initGenericCredential(Configuration conf) {
     if (conf.get(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY) != null
-        && conf.get(UCHadoopConfConstants.S3A_INIT_SECRET_KEY) != null
-        && conf.get(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN) != null) {
+        && conf.get(UCHadoopConfConstants.S3A_INIT_SECRET_KEY) != null) {
 
       String accessKey = conf.get(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY);
       String secretKey = conf.get(UCHadoopConfConstants.S3A_INIT_SECRET_KEY);
@@ -50,7 +50,9 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
   @Override
   public AwsCredentials resolveCredentials() {
     AwsCredential aws = (AwsCredential) accessCredentials();
-
+    if (!aws.hasSessionToken()) {
+      return AwsBasicCredentials.create(aws.accessKeyId(), aws.secretAccessKey());
+    }
     return AwsSessionCredentials.builder()
         .accessKeyId(aws.accessKeyId())
         .secretAccessKey(aws.secretAccessKey())

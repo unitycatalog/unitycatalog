@@ -10,6 +10,7 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CredentialsApi;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
+import io.unitycatalog.client.model.AwsS3AccessKeyRequest;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
@@ -63,6 +64,15 @@ public class CredentialCli {
     }
   }
 
+  private static Optional<AwsS3AccessKeyRequest> extractAwsS3AccessKey(JSONObject json) {
+    if (json.has(CliParams.AWS_S3_ACCESS_KEY_ID.getServerParam())) {
+      String accessKeyId = json.getString(CliParams.AWS_S3_ACCESS_KEY_ID.getServerParam());
+      return Optional.of(new AwsS3AccessKeyRequest().accessKeyId(accessKeyId));
+    } else {
+      return Optional.empty();
+    }
+  }
+
   private static String createCredential(CredentialsApi credentialsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     CreateCredentialRequest createCredentialRequest =
@@ -70,7 +80,8 @@ public class CredentialCli {
             .name(json.getString(CliParams.NAME.getServerParam()))
             .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
             .purpose(CredentialPurpose.STORAGE)
-            .awsIamRole(extractAwsIamRole(json).orElse(null));
+            .awsIamRole(extractAwsIamRole(json).orElse(null))
+            .awsS3AccessKey(extractAwsS3AccessKey(json).orElse(null));
     CredentialInfo credentialInfo = credentialsApi.createCredential(createCredentialRequest);
     return objectWriter.writeValueAsString(credentialInfo);
   }
@@ -101,7 +112,8 @@ public class CredentialCli {
         new UpdateCredentialRequest()
             .newName(json.optString(CliParams.NEW_NAME.getServerParam(), null))
             .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
-            .awsIamRole(extractAwsIamRole(json).orElse(null));
+            .awsIamRole(extractAwsIamRole(json).orElse(null))
+            .awsS3AccessKey(extractAwsS3AccessKey(json).orElse(null));
     CredentialInfo credentialInfo = credentialsApi.updateCredential(name, updateCredentialRequest);
     return objectWriter.writeValueAsString(credentialInfo);
   }
