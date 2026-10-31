@@ -10,8 +10,7 @@ With authorization enabled, publishing requires `USE CATALOG`, `USE SCHEMA`, and
 ownership or `CREATE MODEL VERSION`. Grant `CREATE MODEL VERSION` on a registered model, schema,
 or catalog. Catalog and schema grants apply to their child models.
 Any authorized publisher can upload to a pending version.
-With authorization enabled, only its creator can finalize it. Owners and administrators
-can no longer finalize another user's pending version.
+With authorization enabled, only the user who created a pending version can finalize it.
 Read credentials require `EXECUTE` or model ownership.
 
 With authorization disabled, any caller can finalize a pending version.

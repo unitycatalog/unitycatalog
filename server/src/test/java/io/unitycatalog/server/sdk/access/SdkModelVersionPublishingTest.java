@@ -159,7 +159,8 @@ public class SdkModelVersionPublishingTest extends SdkAccessControlBaseCRUDTest 
             publisherCredentials.generateTemporaryPathCredentials(
                 new GenerateTemporaryPathCredential()
                     .url(version.getStorageLocation())
-                    .operation(PathOperation.PATH_READ_WRITE)));
+                    .operation(PathOperation.PATH_READ_WRITE)),
+        "Access denied.");
 
     assertThat(
             publisherCredentials
