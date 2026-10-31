@@ -7,6 +7,7 @@ import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
 import io.unitycatalog.server.utils.CooperativeDeadline;
@@ -18,6 +19,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import org.apache.iceberg.aws.AwsClientProperties;
@@ -92,7 +94,8 @@ public class FileOperationsImpl implements FileOperations {
       case FILE, NULL -> new SimpleLocalFileIO(Paths.get(rootPath.toUri()));
       case S3, GS, ABFS, ABFSS -> {
         ResolvingFileIO fileio = new ResolvingFileIO();
-        fileio.initialize(getFileIOConfig(rootPath, privileges));
+        fileio.initialize(
+            serverFileIOConfig(rootPath, privileges, Purpose.SERVER, Optional.empty()));
         yield fileio;
       }
     };
@@ -106,17 +109,21 @@ public class FileOperationsImpl implements FileOperations {
    */
   @Override
   public SupportsPrefixOperations getCleanupFileIO(
-      NormalizedURL rootPath, CooperativeDeadline deadline) {
+      NormalizedURL rootPath, UUID resourceId, CooperativeDeadline deadline) {
     return switch (UriScheme.fromURI(rootPath.toUri())) {
       case FILE, NULL -> new SimpleLocalFileIO(Paths.get(rootPath.toUri()), deadline);
       case S3, GS -> {
         ResolvingFileIO fileIO = new ResolvingFileIO();
-        fileIO.initialize(getFileIOConfig(rootPath, CredentialContext.READ_WRITE));
+        fileIO.initialize(
+            serverFileIOConfig(
+                rootPath, CredentialContext.READ_WRITE, Purpose.CLEANUP, Optional.of(resourceId)));
         yield new InterruptiblePrefixOperations(fileIO, rootPath + "/", deadline);
       }
       case ABFS, ABFSS -> {
         ADLSFileIO fileIO = new ADLSFileIO();
-        fileIO.initialize(getFileIOConfig(rootPath, CredentialContext.READ_WRITE));
+        fileIO.initialize(
+            serverFileIOConfig(
+                rootPath, CredentialContext.READ_WRITE, Purpose.CLEANUP, Optional.of(resourceId)));
         yield new ADLSPrefixOperations(fileIO, rootPath + "/", deadline);
       }
     };
@@ -134,8 +141,26 @@ public class FileOperationsImpl implements FileOperations {
       // tables.
       return Map.of();
     }
+    return toFileIOConfig(
+        path,
+        storageCredentialVendor.vendCredential(path, privileges, Purpose.CLIENT, Optional.empty()),
+        credentialsEndpoint);
+  }
 
-    TemporaryCredentials cred = storageCredentialVendor.vendCredential(path, privileges);
+  /** The FileIO config for credentials the server uses itself, labeled with their purpose. */
+  private Map<String, String> serverFileIOConfig(
+      NormalizedURL path,
+      Set<CredentialContext.Privilege> privileges,
+      Purpose purpose,
+      Optional<UUID> resourceId) {
+    return toFileIOConfig(
+        path,
+        storageCredentialVendor.vendCredential(path, privileges, purpose, resourceId),
+        Optional.empty());
+  }
+
+  private Map<String, String> toFileIOConfig(
+      NormalizedURL path, TemporaryCredentials cred, Optional<String> credentialsEndpoint) {
     if (cred.getAzureUserDelegationSas() != null) {
       return getADLSConfig(
           path, cred.getAzureUserDelegationSas(), cred.getExpirationTime(), credentialsEndpoint);

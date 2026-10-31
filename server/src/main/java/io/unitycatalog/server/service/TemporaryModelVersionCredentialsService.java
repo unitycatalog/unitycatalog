@@ -22,8 +22,10 @@ import io.unitycatalog.server.persist.ModelRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
+import java.util.Optional;
 import java.util.Set;
 
 public class TemporaryModelVersionCredentialsService implements UnityCatalogRestService {
@@ -93,7 +95,9 @@ public class TemporaryModelVersionCredentialsService implements UnityCatalogRest
     return HttpResponse.ofJson(
         storageCredentialVendor.vendCredential(
             NormalizedURL.from(modelVersionInfo.getStorageLocation()),
-            modelVersionOperationToPrivileges(requestedOperation)));
+            modelVersionOperationToPrivileges(requestedOperation),
+            Purpose.CLIENT,
+            Optional.empty()));
   }
 
   private Set<CredentialContext.Privilege> modelVersionOperationToPrivileges(

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
@@ -30,6 +31,7 @@ import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.persist.utils.InterruptiblePrefixOperations;
 import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -74,6 +76,7 @@ import software.amazon.awssdk.services.s3.model.HeadBucketResponse;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 public class FileOperationsTest {
+  private static final UUID RESOURCE_ID = UUID.randomUUID();
 
   @TempDir Path rootBase;
 
@@ -229,7 +232,7 @@ public class FileOperationsTest {
         fileOps.getFileIOConfig(NormalizedURL.from("file:///tmp/some/table"));
 
     assertThat(config).isEmpty();
-    verify(vendor, never()).vendCredential(any(), any());
+    verify(vendor, never()).vendCredential(any(), any(), any(), any());
   }
 
   @Test
@@ -240,7 +243,7 @@ public class FileOperationsTest {
     props.setProperty("s3.region.0", "us-west-2");
     props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    when(vendor.vendCredential(any(), any()))
+    when(vendor.vendCredential(any(), any(), any(), any()))
         .thenReturn(
             new TemporaryCredentials()
                 .awsTempCredentials(
@@ -272,7 +275,7 @@ public class FileOperationsTest {
     props.setProperty("s3.region.0", "us-west-2");
     props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    when(vendor.vendCredential(any(), any()))
+    when(vendor.vendCredential(any(), any(), any(), any()))
         .thenReturn(
             new TemporaryCredentials()
                 .awsTempCredentials(
@@ -341,7 +344,7 @@ public class FileOperationsTest {
     cases.forEach(
         (credential, expected) -> {
           StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-          when(vendor.vendCredential(any(), any())).thenReturn(credential);
+          when(vendor.vendCredential(any(), any(), any(), any())).thenReturn(credential);
           FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(props));
 
           assertThat(
@@ -356,7 +359,7 @@ public class FileOperationsTest {
   @Test
   public void testGetFileIOConfigGcsIncludesExpiry() {
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    when(vendor.vendCredential(any(), any()))
+    when(vendor.vendCredential(any(), any(), any(), any()))
         .thenReturn(
             new TemporaryCredentials()
                 .gcpOauthToken(new GcpOauthToken().oauthToken("gcs-token"))
@@ -374,7 +377,7 @@ public class FileOperationsTest {
   @Test
   public void testGetFileIOConfigGcsOmitsExpiryWhenNull() {
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    when(vendor.vendCredential(any(), any()))
+    when(vendor.vendCredential(any(), any(), any(), any()))
         .thenReturn(
             new TemporaryCredentials().gcpOauthToken(new GcpOauthToken().oauthToken("gcs-token")));
     FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
@@ -389,7 +392,7 @@ public class FileOperationsTest {
   @Test
   public void testGetFileIOConfigAdls() {
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    when(vendor.vendCredential(any(), any()))
+    when(vendor.vendCredential(any(), any(), any(), any()))
         .thenReturn(
             new TemporaryCredentials()
                 .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("sas-token")));
@@ -411,7 +414,7 @@ public class FileOperationsTest {
     // A cloud scheme that vends no recognized credential type must fail loudly rather than
     // silently returning a credential-less config.
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    when(vendor.vendCredential(any(), any())).thenReturn(new TemporaryCredentials());
+    when(vendor.vendCredential(any(), any(), any(), any())).thenReturn(new TemporaryCredentials());
     FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
 
     assertThatThrownBy(() -> fileOps.getFileIOConfig(NormalizedURL.from("gs://my-bucket/table")))
@@ -429,7 +432,7 @@ public class FileOperationsTest {
     try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from("file:///tmp/some/table"))) {
       assertThat(fileIO).isInstanceOf(SimpleLocalFileIO.class);
     }
-    verify(vendor, never()).vendCredential(any(), any());
+    verify(vendor, never()).vendCredential(any(), any(), any(), any());
   }
 
   @SneakyThrows
@@ -472,7 +475,7 @@ public class FileOperationsTest {
     props.setProperty("s3.region.0", "us-west-2");
     props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    when(vendor.vendCredential(any(), any()))
+    when(vendor.vendCredential(any(), any(), eq(Purpose.SERVER), any()))
         .thenReturn(
             new TemporaryCredentials()
                 .awsTempCredentials(
@@ -499,7 +502,7 @@ public class FileOperationsTest {
     props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
     props.setProperty("aws.region", "us-east-1");
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    when(vendor.vendCredential(any(), any()))
+    when(vendor.vendCredential(any(), any(), any(), any()))
         .thenReturn(
             new TemporaryCredentials()
                 .awsTempCredentials(
@@ -520,7 +523,7 @@ public class FileOperationsTest {
       for (int attempt = 0; attempt < 2; attempt++) {
         Map<String, String> expectedConfig;
         try (SupportsPrefixOperations fileIO =
-            fileOps.getCleanupFileIO(path, CooperativeDeadline.NO_DEADLINE)) {
+            fileOps.getCleanupFileIO(path, RESOURCE_ID, CooperativeDeadline.NO_DEADLINE)) {
           assertThat(fileIO).isInstanceOf(InterruptiblePrefixOperations.class);
           assertThat(fileIO.properties())
               .doesNotContainKey(HttpClientProperties.APACHE_SOCKET_TIMEOUT_MS)
@@ -543,14 +546,16 @@ public class FileOperationsTest {
       }
     }
 
-    verify(vendor, times(2)).vendCredential(path, CredentialContext.READ_WRITE);
+    verify(vendor, times(2))
+        .vendCredential(
+            path, CredentialContext.READ_WRITE, Purpose.CLEANUP, Optional.of(RESOURCE_ID));
   }
 
   @Test
   public void testGetCleanupFileIOForGcsUsesFreshCredentials() {
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
     long expiration = 1900000000000L;
-    when(vendor.vendCredential(any(), any()))
+    when(vendor.vendCredential(any(), any(), any(), any()))
         .thenReturn(
             new TemporaryCredentials()
                 .gcpOauthToken(new GcpOauthToken().oauthToken("first-token"))
@@ -575,7 +580,7 @@ public class FileOperationsTest {
                 GCPProperties.GCS_OAUTH2_TOKEN, tokens.get(attempt),
                 GCPProperties.GCS_OAUTH2_TOKEN_EXPIRES_AT, Long.toString(expiration));
         try (SupportsPrefixOperations fileIO =
-            fileOps.getCleanupFileIO(path, CooperativeDeadline.NO_DEADLINE)) {
+            fileOps.getCleanupFileIO(path, RESOURCE_ID, CooperativeDeadline.NO_DEADLINE)) {
           assertThat(fileIO).isInstanceOf(InterruptiblePrefixOperations.class);
           assertThat(fileIO.properties()).isEqualTo(expectedConfig);
           fileIO.deletePrefix(prefix);
@@ -591,7 +596,9 @@ public class FileOperationsTest {
         verify(gcs).close();
       }
     }
-    verify(vendor, times(2)).vendCredential(path, CredentialContext.READ_WRITE);
+    verify(vendor, times(2))
+        .vendCredential(
+            path, CredentialContext.READ_WRITE, Purpose.CLEANUP, Optional.of(RESOURCE_ID));
   }
 
   @Test
@@ -601,17 +608,19 @@ public class FileOperationsTest {
 
     try (SupportsPrefixOperations operations =
         fileOps.getCleanupFileIO(
-            NormalizedURL.from(rootBase.toString()), CooperativeDeadline.NO_DEADLINE)) {
+            NormalizedURL.from(rootBase.toString()),
+            RESOURCE_ID,
+            CooperativeDeadline.NO_DEADLINE)) {
       assertThat(operations).isInstanceOf(SimpleLocalFileIO.class);
     }
-    verify(vendor, never()).vendCredential(any(), any());
+    verify(vendor, never()).vendCredential(any(), any(), any(), any());
   }
 
   @Test
   @SuppressWarnings("unchecked")
   public void testGetCleanupFileIOForAdlsUsesFreshCredentials() {
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    when(vendor.vendCredential(any(), any()))
+    when(vendor.vendCredential(any(), any(), any(), any()))
         .thenReturn(
             new TemporaryCredentials()
                 .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("first-token")),
@@ -635,7 +644,7 @@ public class FileOperationsTest {
             NormalizedURL.from(
                 schemes.get(attempt) + "://container@account.dfs.core.windows.net/tables/id");
         try (SupportsPrefixOperations operations =
-            fileOps.getCleanupFileIO(path, CooperativeDeadline.NO_DEADLINE)) {
+            fileOps.getCleanupFileIO(path, RESOURCE_ID, CooperativeDeadline.NO_DEADLINE)) {
           operations.deletePrefix(path + "/");
         }
         assertThat(adlsFiles.constructed()).hasSize(attempt + 1);
@@ -646,7 +655,9 @@ public class FileOperationsTest {
                     AzureProperties.ADLS_SAS_TOKEN_PREFIX + "account.dfs.core.windows.net",
                     tokens.get(attempt)));
         verify(adls).close();
-        verify(vendor).vendCredential(path, CredentialContext.READ_WRITE);
+        verify(vendor)
+            .vendCredential(
+                path, CredentialContext.READ_WRITE, Purpose.CLEANUP, Optional.of(RESOURCE_ID));
       }
     }
     verify(directory, times(2)).deleteIfExists();
@@ -657,7 +668,7 @@ public class FileOperationsTest {
    */
   private static StorageCredentialVendor awsCredentialVendor() {
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    when(vendor.vendCredential(any(), any()))
+    when(vendor.vendCredential(any(), any(), any(), any()))
         .thenReturn(
             new TemporaryCredentials()
                 .awsTempCredentials(

@@ -1,5 +1,6 @@
 package io.unitycatalog.server.persist;
 
+import io.unitycatalog.server.audit.Auditor;
 import io.unitycatalog.server.auth.decorator.KeyMapper;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
@@ -8,8 +9,10 @@ import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.service.credential.StorageCredentialVendorImpl;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.UnaryOperator;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
@@ -63,6 +66,25 @@ public class Repositories {
   }
 
   /**
+   * Creates repositories that record no audit events: {@code server.audit.sink} is not read here.
+   * To audit, pass an {@link Auditor} to the full constructor, and close it when done.
+   */
+  public Repositories(
+      SessionFactory sessionFactory,
+      ServerProperties serverProperties,
+      CloudCredentialVendor cloudCredentialVendor,
+      UnaryOperator<FileOperations> fileOperationsDecorator,
+      UnityCatalogMetrics metrics) {
+    this(
+        sessionFactory,
+        serverProperties,
+        cloudCredentialVendor,
+        fileOperationsDecorator,
+        metrics,
+        Optional.empty());
+  }
+
+  /**
    * @param cloudCredentialVendor an injected cloud credential vendor (e.g. a test mock), used as
    *     is, or {@code null} to build the default from {@code serverProperties}, which caches vended
    *     credentials when the storage credential cache is enabled. Owning the credential/file-IO
@@ -71,13 +93,16 @@ public class Repositories {
    * @param fileOperationsDecorator wraps the default {@link FileOperations} before use ({@link
    *     UnaryOperator#identity()} leaves it unchanged); lets tests map cloud IO to local storage.
    * @param metrics the domain metrics, or {@code null} for no-op metrics
+   * @param auditor records audit events, or empty for none. The caller owns it and closes it, also
+   *     when this constructor fails.
    */
   public Repositories(
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
       CloudCredentialVendor cloudCredentialVendor,
       UnaryOperator<FileOperations> fileOperationsDecorator,
-      UnityCatalogMetrics metrics) {
+      UnityCatalogMetrics metrics,
+      Optional<Auditor> auditor) {
     UnityCatalogMetrics resolvedMetrics =
         Objects.requireNonNullElseGet(metrics, UnityCatalogMetrics::noop);
     this.sessionFactory = sessionFactory;
@@ -86,8 +111,11 @@ public class Repositories {
         cloudCredentialVendor != null
             ? cloudCredentialVendor
             : defaultCloudCredentialVendor(serverProperties, resolvedMetrics);
-    this.storageCredentialVendor =
-        new StorageCredentialVendor(resolvedCloudCredentialVendor, externalLocationUtils);
+    // Wrap the vendor before FileOperationsImpl captures it, so the server's own and cleanup vends
+    // are audited too.
+    StorageCredentialVendor vendor =
+        new StorageCredentialVendorImpl(resolvedCloudCredentialVendor, externalLocationUtils);
+    this.storageCredentialVendor = auditor.map(a -> a.wrap(vendor)).orElse(vendor);
     this.fileOperations =
         fileOperationsDecorator.apply(
             new FileOperationsImpl(storageCredentialVendor, serverProperties));
