@@ -1,0 +1,1 @@
+# Empty on purpose: chart-testing lints with the default values only when no values file is listed in ci/, so this keeps that lint.
