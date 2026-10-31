@@ -2,7 +2,6 @@ package io.unitycatalog.cli.delta;
 
 import static io.delta.kernel.internal.util.Utils.singletonCloseableIterator;
 
-import de.vandermeer.asciitable.AsciiTable;
 import io.delta.kernel.Scan;
 import io.delta.kernel.data.ColumnarBatch;
 import io.delta.kernel.data.FilteredColumnarBatch;
@@ -37,8 +36,8 @@ import java.util.Optional;
 
 /**
  * Utility class to read data from a Delta table. It helps read data from delta file existing at the
- * given table path and prints the contents to the console with the help of the {@link AsciiTable}
- * class. The code has evolved from examples provided in <a
+ * given table path and prints the contents to the console with the help of the {@link
+ * com.github.freva.asciitable.AsciiTable} class. The code has evolved from examples provided in <a
  * href="https://github.com/delta-io/delta/blob/master/kernel/examples/kernel-examples/src/main/java/io/delta/kernel/examples/BaseTableReader.java">BaseTableReader.java</a>
  */
 public class DeltaKernelReadUtils {
