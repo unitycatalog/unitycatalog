@@ -10,6 +10,7 @@ import static io.unitycatalog.server.utils.TestUtils.MV_RUNID2;
 import static io.unitycatalog.server.utils.TestUtils.MV_SOURCE;
 import static io.unitycatalog.server.utils.TestUtils.MV_SOURCE2;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -17,6 +18,7 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.CreateModelVersion;
 import io.unitycatalog.client.model.CreateRegisteredModel;
+import io.unitycatalog.client.model.FinalizeModelVersion;
 import io.unitycatalog.client.model.GenerateTemporaryModelVersionCredential;
 import io.unitycatalog.client.model.ModelVersionOperation;
 import io.unitycatalog.client.model.RegisteredModelInfo;
@@ -31,6 +33,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ModelVersionInfo;
 import io.unitycatalog.server.model.ModelVersionStatus;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
+import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.models.SdkModelOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
@@ -239,21 +242,53 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
 
-    // Cannot pass in an unknown operation
-    GenerateTemporaryModelVersionCredential generateUnknownOperation =
+    // Cannot get read credentials for a pending model version.
+    GenerateTemporaryModelVersionCredential generateCloudPendingCreds =
         new GenerateTemporaryModelVersionCredential()
             .catalogName(CATALOG_NAME)
             .schemaName(SCHEMA_NAME)
             .modelName(MODEL_NAME)
             .version(2L)
-            .operation(ModelVersionOperation.UNKNOWN_MODEL_VERSION_OPERATION);
+            .operation(ModelVersionOperation.READ_MODEL_VERSION);
 
+    assertApiException(
+        () ->
+            temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
+                generateCloudPendingCreds),
+        ErrorCode.INVALID_ARGUMENT,
+        "model version that is not ready");
+
+    // Cannot pass in an unknown operation.
+    generateCloudPendingCreds.operation(ModelVersionOperation.UNKNOWN_MODEL_VERSION_OPERATION);
     assertThatThrownBy(
             () ->
                 temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
-                    generateUnknownOperation))
+                    generateCloudPendingCreds))
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
+
+    // Authorization is disabled, so a named creator does not restrict finalization.
+    TransactionManager.executeWithTransaction(
+        hibernateConfigurator.getSessionFactory(),
+        session -> {
+          session
+              .get(ModelVersionInfoDAO.class, UUID.fromString(pendingCloudMv.getId()))
+              .setCreatedBy("alice");
+          return null;
+        },
+        "Failed to set test model version creator",
+        /* readOnly= */ false);
+    io.unitycatalog.client.model.ModelVersionInfo finalized =
+        modelOperations.finalizeModelVersion(
+            MODEL_FULL_NAME,
+            pendingCloudMv.getVersion(),
+            new FinalizeModelVersion()
+                .fullName(MODEL_FULL_NAME)
+                .version(pendingCloudMv.getVersion()));
+    assertThat(finalized.getStatus().getValue()).isEqualTo(ModelVersionStatus.READY.getValue());
+    assertThat(finalized.getCreatedBy()).isEqualTo("alice");
+    assertThat(modelOperations.getModelVersion(MODEL_FULL_NAME, pendingCloudMv.getVersion()))
+        .isEqualTo(finalized);
   }
 
   @ParameterizedTest

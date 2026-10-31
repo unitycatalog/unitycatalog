@@ -816,6 +816,12 @@ public class ModelRepository {
         ModelVersionInfoDAO origModelVersionInfoDAO =
             getModelVersionDaoOrThrow(session, schemaId, fullName, registeredModelName, version);
 
+        // Check the creator here so the check and status update use the same stored version.
+        if (serverProperties.isAuthorizationEnabled()
+            && (callerId == null || !callerId.equals(origModelVersionInfoDAO.getCreatedBy()))) {
+          throw new BaseException(
+              ErrorCode.PERMISSION_DENIED, "Only model version creator can finalize model version");
+        }
         if (ModelVersionStatus.valueOf(origModelVersionInfoDAO.getStatus())
             != ModelVersionStatus.PENDING_REGISTRATION) {
           throw new BaseException(

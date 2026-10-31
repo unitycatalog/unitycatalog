@@ -228,6 +228,17 @@ public final class AuthorizeExpressions {
           + ")";
 
   /**
+   * Require USE_CATALOG and USE_SCHEMA, plus (model OWNER or CREATE_MODEL_VERSION). Catalog and
+   * schema ownership replace the usage check for the object they own.
+   */
+  public static final String CREATE_MODEL_VERSION =
+      """
+      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+      #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+      #authorizeAny(#principal, #registered_model, OWNER, CREATE_MODEL_VERSION)
+      """;
+
+  /**
    * Authorization policy for the {@code get*Authorization} (permission read) endpoints. These
    * endpoints check authorization themselves and tailor the response based on whether the principal
    * is an owner, so the only requirement here is that the caller is authenticated.
