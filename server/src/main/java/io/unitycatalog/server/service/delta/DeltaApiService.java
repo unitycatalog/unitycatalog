@@ -46,10 +46,12 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.service.AuthorizedService;
 import io.unitycatalog.server.service.RegisteredService;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -207,7 +209,9 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
     TemporaryCredentials credentials =
         storageCredentialVendor.vendCredential(
             stagingLocation,
-            Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
+            Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE),
+            Purpose.CLIENT,
+            Optional.empty());
     return DeltaStagingTableMapper.toStagingTableResponse(staging, credentials);
   }
 
@@ -344,7 +348,8 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
       @Param("operation") @AuthorizeKey DeltaCredentialOperation operation) {
     NormalizedURL storageLocation = tableRepository.getTableStorageLocation(catalog, schema, table);
     TemporaryCredentials credentials =
-        storageCredentialVendor.vendCredential(storageLocation, toPrivileges(operation));
+        storageCredentialVendor.vendCredential(
+            storageLocation, toPrivileges(operation), Purpose.CLIENT, Optional.empty());
     return DeltaCredentialsMapper.toCredentialsResponse(credentials, operation);
   }
 
@@ -363,7 +368,9 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
     TemporaryCredentials credentials =
         storageCredentialVendor.vendCredential(
             storageLocation,
-            Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
+            Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE),
+            Purpose.CLIENT,
+            Optional.empty());
     return DeltaCredentialsMapper.toCredentialsResponse(
         credentials, DeltaCredentialOperation.READ_WRITE);
   }

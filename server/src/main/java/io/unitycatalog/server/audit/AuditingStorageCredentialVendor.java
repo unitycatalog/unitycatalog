@@ -21,14 +21,6 @@ final class AuditingStorageCredentialVendor implements StorageCredentialVendor {
 
   @Override
   public TemporaryCredentials vendCredential(
-      NormalizedURL path, Set<CredentialContext.Privilege> privileges) {
-    TemporaryCredentials credential = delegate.vendCredential(path, privileges);
-    auditor.recordCredential(path, privileges, Purpose.CLIENT, Optional.empty(), credential);
-    return credential;
-  }
-
-  @Override
-  public TemporaryCredentials vendCredential(
       NormalizedURL path,
       Set<CredentialContext.Privilege> privileges,
       Purpose purpose,

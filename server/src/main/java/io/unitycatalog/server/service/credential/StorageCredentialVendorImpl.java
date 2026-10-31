@@ -9,6 +9,7 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Vends temporary cloud storage credentials for accessing data at specific paths.
@@ -43,7 +44,10 @@ public class StorageCredentialVendorImpl implements StorageCredentialVendor {
    */
   @Override
   public TemporaryCredentials vendCredential(
-      NormalizedURL path, Set<CredentialContext.Privilege> privileges) {
+      NormalizedURL path,
+      Set<CredentialContext.Privilege> privileges,
+      Purpose purpose,
+      Optional<UUID> resourceId) {
     if (path == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Storage location is null.");
     }
