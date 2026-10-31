@@ -112,3 +112,22 @@ jobs:
           # to H2 here; an empty value would skip the license check and fail the database lookup.
           test-database: ${{ matrix.test-database || 'H2' }}
           use-spark-source-cache: ${{ matrix.spark-source-build }}
+
+  # Databases already ran the merged schema steps, so a pull request may only add steps, and none
+  # on a release branch.
+  # TODO: make this job a required status check on main and branch-0.8 onward (repository branch
+  # protection); until then a failing run does not block a merge. Not on branch-0.7: it has no job.
+  migration-steps:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    name: Merged migration steps unchanged
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # HEAD^1, the first parent of the merge commit, is the code this change starts from.
+          fetch-depth: 2
+      - name: Check merged migration steps
+        env:
+          # The base branch name tells the script whether the pull request targets a release branch.
+          BASE_BRANCH: ${{ github.base_ref }}
+        run: dev/check-migration-steps.sh "$(git rev-parse HEAD^1)" "$BASE_BRANCH"

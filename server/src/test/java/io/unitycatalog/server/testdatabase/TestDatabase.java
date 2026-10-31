@@ -1,10 +1,13 @@
 package io.unitycatalog.server.testdatabase;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import javax.sql.DataSource;
 import org.hibernate.SessionFactory;
 
 /**
@@ -17,23 +20,16 @@ public final class TestDatabase implements AutoCloseable {
   private final String url;
   private final String user;
   private final String password;
-  private final String hbm2ddlAuto;
   private final Runnable release;
   private final List<HibernateConfigurator> openedConfigurators = new ArrayList<>();
   private HibernateConfigurator defaultConfigurator;
+  private HikariDataSource dataSource;
 
-  TestDatabase(
-      String driver,
-      String url,
-      String user,
-      String password,
-      String hbm2ddlAuto,
-      Runnable release) {
+  TestDatabase(String driver, String url, String user, String password, Runnable release) {
     this.driver = driver;
     this.url = url;
     this.user = user;
     this.password = password;
-    this.hbm2ddlAuto = hbm2ddlAuto;
     this.release = release;
   }
 
@@ -41,9 +37,25 @@ public final class TestDatabase implements AutoCloseable {
     return url;
   }
 
+  /** A small connection pool on this database, closed by {@link #close()}. */
+  public synchronized DataSource dataSource() {
+    if (dataSource == null) {
+      HikariConfig config = new HikariConfig();
+      config.setDriverClassName(driver);
+      config.setJdbcUrl(url);
+      config.setUsername(user);
+      config.setPassword(password);
+      // Two migration runs at once: one holds its run lock's connection and Flyway's two, the other
+      // waits for the lock on its own.
+      config.setMaximumPoolSize(4);
+      dataSource = new HikariDataSource(config);
+    }
+    return dataSource;
+  }
+
   /**
-   * The server's Hibernate properties from {@code etc/conf/hibernate.properties}, pointed at this
-   * database, with a failed schema statement made to throw instead of being logged.
+   * The server's Hibernate properties pointed at this database, with {@code hbm2ddl.auto=none}: the
+   * migration steps own the schema.
    */
   public Properties hibernateProperties() {
     Properties properties =
@@ -52,8 +64,7 @@ public final class TestDatabase implements AutoCloseable {
     properties.setProperty("hibernate.connection.url", url);
     properties.setProperty("hibernate.connection.username", user);
     properties.setProperty("hibernate.connection.password", password);
-    properties.setProperty("hibernate.hbm2ddl.auto", hbm2ddlAuto);
-    properties.setProperty("hibernate.hbm2ddl.halt_on_error", "true");
+    properties.setProperty("hibernate.hbm2ddl.auto", "none");
     return properties;
   }
 
@@ -97,7 +108,14 @@ public final class TestDatabase implements AutoCloseable {
     } finally {
       openedConfigurators.clear();
       defaultConfigurator = null;
-      release.run();
+      try {
+        if (dataSource != null) {
+          dataSource.close();
+        }
+      } finally {
+        dataSource = null;
+        release.run();
+      }
     }
   }
 }

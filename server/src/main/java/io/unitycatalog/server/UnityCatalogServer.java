@@ -17,6 +17,7 @@ import io.unitycatalog.server.cleanup.StorageCleanupWorker;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.migrate.SchemaMigrator;
 import io.unitycatalog.server.observability.DbReadinessChecker;
 import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
@@ -57,6 +58,7 @@ import io.unitycatalog.server.utils.VersionUtils;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 import org.apache.logging.log4j.LogManager;
@@ -117,6 +119,21 @@ public class UnityCatalogServer implements AutoCloseable {
             : unityCatalogServerBuilder.hibernateConfigurator;
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
+      Properties hibernateProperties = hibernateConfigurator.getHibernateProperties();
+      // The schema steps own the schema; an injected configurator may still let Hibernate change
+      // it.
+      String schemaUpdates = hibernateProperties.getProperty("hibernate.hbm2ddl.auto", "none");
+      if (!"none".equals(schemaUpdates)) {
+        throw new IllegalStateException(
+            "hibernate.hbm2ddl.auto="
+                + schemaUpdates
+                + " is not supported: the schema steps manage the schema. Set it to none.");
+      }
+      // Upgrades the database to this release's schema, or refuses one it cannot upgrade. The
+      // migration uses its own small pool, so the server's pool size does not limit it.
+      try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(hibernateProperties)) {
+        migrator.migrate();
+      }
       createdBlockingTaskExecutor =
           BlockingTaskExecutor.builder()
               .numThreads(hibernateConfigurator.getDataSource().getMaximumPoolSize())

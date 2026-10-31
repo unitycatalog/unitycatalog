@@ -1,7 +1,9 @@
 package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -64,13 +66,34 @@ class HibernateConfiguratorTest {
     assertThat(HibernateConfigurator.resolveConnectionUsername(properties)).isEqualTo("alice");
   }
 
+  @Test
+  void neverLetsHibernateChangeTheSchema() {
+    Properties properties = h2Properties();
+    properties.setProperty("hibernate.hbm2ddl.auto", "update");
+
+    assertThat(HibernateConfigurator.withSchemaUpdatesOff(properties))
+        .containsEntry("hibernate.hbm2ddl.auto", "none");
+    assertThat(
+            HibernateConfigurator.setupHibernateProperties(new ServerProperties(new Properties())))
+        .containsEntry("hibernate.hbm2ddl.auto", "none");
+  }
+
+  @Test
+  void refusesHibernatesOwnDefaultSchema() {
+    Properties properties = h2Properties();
+    properties.setProperty("hibernate.default_schema", "uc");
+
+    assertThatThrownBy(() -> new HibernateConfigurator(properties))
+        .hasMessageContaining("set the schema in the JDBC URL instead");
+  }
+
   private static Properties h2Properties() {
     Properties properties = new Properties();
     properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
     properties.setProperty(
         "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
     properties.setProperty("hibernate.connection.user", "sa");
-    properties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
+    properties.setProperty("hibernate.hbm2ddl.auto", "none");
     return properties;
   }
 }

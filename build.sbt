@@ -44,6 +44,7 @@ lazy val micrometerVersion = "1.17.0"
 lazy val nettyVersion = "4.2.18.Final"
 lazy val nettyTcnativeVersion = "2.0.84.Final"
 lazy val postgresqlVersion = "42.7.14"
+lazy val flywayVersion = "13.10.3"
 // Keep in step with the Caffeine version iceberg-core depends on (2.9.3 in Iceberg 1.11.0).
 lazy val caffeineVersion = "2.9.3"
 lazy val junitJupiterVersion = "5.13.4"
@@ -97,6 +98,8 @@ lazy val commonSettings = Seq(
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
+    // Merged, not dropped: Flyway finds its database support through its ServiceLoader file.
+    case PathList("META-INF", "services", f) if f.startsWith("org.flywaydb") => MergeStrategy.filterDistinctLines
     // Keep the Log4j provider registration that adds request_id to log lines.
     case PathList("META-INF", "services", "org.apache.logging.log4j.core.util.ContextDataProvider") =>
       MergeStrategy.concat
@@ -117,7 +120,10 @@ lazy val commonSettings = Seq(
       targetDir = packageFile.getParentFile,
       // Also include the jar being built (packageFile) in the classpath
       // This is specifically required by the server project since the server and control models are provided dependencies
-      classpath = (Runtime / dependencyClasspath).value :+ Attributed.blank(packageFile)
+      // The jar replaces the project's own class directory: with both, Flyway finds every
+      // migration step twice.
+      classpath = (Runtime / dependencyClasspath).value
+        .filterNot(_.data == (Compile / classDirectory).value) :+ Attributed.blank(packageFile)
     )
     packageFile
   },
@@ -424,6 +430,9 @@ lazy val server = (project in file("server"))
 
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
       "com.zaxxer" % "HikariCP" % "7.1.0",
+      "org.flywaydb" % "flyway-core" % flywayVersion,
+      "org.flywaydb" % "flyway-database-postgresql" % flywayVersion,
+      "org.flywaydb" % "flyway-mysql" % flywayVersion,
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
@@ -483,6 +492,8 @@ lazy val server = (project in file("server"))
         exclude("ch.qos.logback", "logback-classic")
         exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
+      // The upgrade tests run older releases, whose servers read Vert.x's version file at start.
+      "io.vertx" % "vertx-core" % "4.5.34" % Test,
 
       // Integration testing
       "org.testcontainers" % "junit-jupiter" % testcontainersVersion % Test,
