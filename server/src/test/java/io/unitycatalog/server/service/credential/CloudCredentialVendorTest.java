@@ -64,8 +64,9 @@ public class CloudCredentialVendorTest {
   private TemporaryCredentials vendCredential(
       String path, Set<CredentialContext.Privilege> privileges) {
     StorageCredentialVendor storageCredentialVendor =
-        new StorageCredentialVendor(credentialsOperations, externalLocationUtils);
-    return storageCredentialVendor.vendCredential(NormalizedURL.from(path), privileges);
+        new StorageCredentialVendorImpl(credentialsOperations, externalLocationUtils);
+    return storageCredentialVendor.vendCredential(
+        NormalizedURL.from(path), privileges, Purpose.CLIENT, Optional.empty());
   }
 
   @Test

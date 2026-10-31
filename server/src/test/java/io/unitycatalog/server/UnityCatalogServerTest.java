@@ -15,6 +15,7 @@ import com.linecorp.armeria.server.ServerPortBindException;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.prometheus.PrometheusExpositionService;
+import io.unitycatalog.server.audit.CapturingAuditSink;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
@@ -26,11 +27,13 @@ import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.service.UnityCatalogRestService;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.ServiceLoader;
 import java.util.concurrent.CompletionException;
 import org.apache.logging.log4j.core.util.ContextDataProvider;
@@ -54,6 +57,28 @@ public class UnityCatalogServerTest extends BaseServerTest {
           .hasCauseInstanceOf(ServerPortBindException.class);
       assertThatCode(server::close).doesNotThrowAnyException();
     }
+  }
+
+  @Test
+  public void failedConstructionClosesTheAuditSink() {
+    Properties audited = new Properties();
+    audited.putAll(serverProperties);
+    audited.setProperty(Property.AUDIT_SINK.getKey(), CapturingAuditSink.class.getName());
+    CapturingAuditSink.reset();
+    // The decorator runs inside the Repositories constructor, after the sink is created.
+    assertThatThrownBy(
+            () ->
+                UnityCatalogServer.builder()
+                    .port(0)
+                    .serverProperties(new ServerProperties(audited))
+                    .hibernateConfigurator(hibernateConfigurator)
+                    .fileOperationsDecorator(
+                        fileOperations -> {
+                          throw new IllegalStateException("decorator failed");
+                        })
+                    .build())
+        .hasMessage("decorator failed");
+    assertThat(CapturingAuditSink.CLOSE_COUNT.get()).isEqualTo(1);
   }
 
   @Test

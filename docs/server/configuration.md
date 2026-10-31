@@ -140,6 +140,73 @@ The cache is controlled by these keys:
 
 Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is five minutes).
 
+### Audit records
+
+The server can write an audit record for each storage credential it issues and each permission
+change. Audit records are off by default. Set `server.audit.sink` to turn them on:
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `server.audit.sink` | (unset) | The class that receives audit records. `io.unitycatalog.server.audit.FileAuditSink` writes them to `etc/logs/audit.log`. When unset, no records are written. |
+
+Each record is one JSON line. Fields that don't apply to a record are left out:
+
+```json
+{"time":"2026-10-20T10:02:00.000Z","action":"ISSUE_CREDENTIAL","user":"bob@example.com","request_id":"a1b2c3d4","purpose":"CLIENT","location":"s3://bucket/root/tables/7f3a1c2e-5b6d-4e8f-9a0b-1c2d3e4f5a6b","access":"READ","expires_at":"2026-10-20T11:02:00.000Z"}
+```
+
+- `time`: when the record was made, in ISO 8601 UTC.
+- `action`: `ISSUE_CREDENTIAL`, `GRANT`, `REVOKE`, `CLEAR_RESOURCE_GRANTS` (a dropped object's
+  grants), or `CLEAR_PRINCIPAL_GRANTS` (a deleted user's grants).
+- `user`: `system:storage-cleanup` on `CLEANUP` records, whether or not authorization is on. On other
+  records, the caller's identity from the token (`sub`): the user's email, `admin` for the bootstrap
+  admin token, or a service name. It is `system:server` for work the server does outside a request,
+  such as the admin grant made at first start, and absent when authorization is off.
+- `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
+  itself while handling the request, and `CLEANUP` for the background storage cleanup.
+- `resource_id`: on a permission change, the object whose grants changed (absent for
+  `CLEAR_PRINCIPAL_GRANTS`). On a `CLEANUP` credential, the ID of the dropped object. Other
+  credential records do not carry it.
+- `principal_id`: on `GRANT`, `REVOKE` and `CLEAR_PRINCIPAL_GRANTS`, the ID of the user whose grants
+  changed.
+- `privilege`: on `GRANT` and `REVOKE`, the API's privilege name (for example `USE CATALOG`).
+- `request_id`: the ID of the request being served, the same as `request_id` in the `server.log` lines of
+  that request. It is absent on `CLEANUP` records, which are not made while serving a request.
+- `location`: the storage location, with scheme, authority and path only. The query string and
+  fragment are removed. User info is removed too, except that for ABFS the part before the `@` is
+  kept when it looks like a container name (3 to 63 lowercase letters, digits and hyphens) and is
+  replaced by `[REDACTED]` otherwise.
+- `access` is `READ` or `READ_WRITE`, and `expires_at` is when the credential expires. Records never
+  contain credential values.
+
+A record is written for every credential issued, including ones served from the credential cache.
+Permission changes are recorded only when authorization is on. A `GRANT` is recorded when it adds a grant.
+`REVOKE` and the two `CLEAR_*` actions are recorded whenever the server applies them, also when there was
+nothing to remove, because with several servers sharing one database a server can't always tell.
+Changes to the parent and child links between objects are not recorded. Audit
+records are best effort: one can be lost when the sink fails, or when a request is still running as the
+server shuts down.
+
+`FileAuditSink` needs the `audit` logger in `etc/conf/server.log4j2.properties`, set to
+`additivity = false` and level `INFO`, with its own appender set to `ignoreExceptions = false`.
+Neither the Log4j configuration, the `audit` logger nor its appender may have a filter, and the
+link to the appender (`logger.audit.appenderRef.*`) may have neither a filter nor a level above
+`INFO`, because any of these drops records silently. The shipped configuration meets all of this.
+If a requirement is not met, for example in a custom or copied log configuration without the
+`audit` logger, the server does not start, so audit records never end up in `server.log`.
+
+In the default distribution, `audit.log` rolls over with the same settings as `server.log`: every
+hour and at 10MB, keeping archives for up to 7 days or 1GB. The Helm chart has no `server.log`
+file and configures `audit.log` the same way. Ship `etc/logs/audit.log` continuously to your log or
+security service to keep the records longer.
+
+To send records somewhere else, set `server.audit.sink` to your own class that implements
+`io.unitycatalog.server.audit.AuditSink` and has a public no-arg constructor. It must be on the
+server classpath, and the server does not start if it can't be loaded. `record` is called
+concurrently, from request threads and the server's own threads, so it must be thread-safe and should hand records to a queue
+instead of sending them inline. `close` is called once at shutdown. A failure thrown from either
+method is logged (in `server.log`, or on the console with the Helm chart) and never fails a request.
+
 ## Logging
 
 The server logs are located at `etc/logs/server.log`. The log level and log rolling policy can be set in log4j2 config
