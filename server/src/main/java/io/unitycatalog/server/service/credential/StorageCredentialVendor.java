@@ -14,23 +14,15 @@ public interface StorageCredentialVendor {
    *
    * @param path the normalized storage location URL (e.g., s3://bucket/path)
    * @param privileges the set of privileges required (SELECT, UPDATE)
+   * @param purpose who the credential is for. It only labels the audit record; it does not change
+   *     what is vended. Pass {@link Purpose#CLIENT} for a credential returned to the API caller.
+   * @param resourceId the ID of the object the credential is for, when the caller knows it. It only
+   *     labels the audit record.
    * @return temporary credentials scoped to the requested path and privileges
    */
   TemporaryCredentials vendCredential(
-      NormalizedURL path, Set<CredentialContext.Privilege> privileges);
-
-  /**
-   * Vends temporary credentials, as the two-argument form does. {@code purpose} and {@code
-   * resourceId} only label the audit record; they do not change what is vended. The two-argument
-   * form is for {@link Purpose#CLIENT} and names no resource.
-   *
-   * @param resourceId the ID of the object the credential is for, when the caller knows it
-   */
-  default TemporaryCredentials vendCredential(
       NormalizedURL path,
       Set<CredentialContext.Privilege> privileges,
       Purpose purpose,
-      Optional<UUID> resourceId) {
-    return vendCredential(path, privileges);
-  }
+      Optional<UUID> resourceId);
 }

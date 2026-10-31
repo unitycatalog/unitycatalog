@@ -17,6 +17,7 @@ import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.CooperativeDeadline;
@@ -134,8 +135,12 @@ class RepositoriesTest {
         new Repositories(sessionFactory, new ServerProperties(properties), injected);
     NormalizedURL path = NormalizedURL.from("s3://bucket/table");
 
-    repositories.getStorageCredentialVendor().vendCredential(path, CredentialContext.READ_ONLY);
-    repositories.getStorageCredentialVendor().vendCredential(path, CredentialContext.READ_ONLY);
+    repositories
+        .getStorageCredentialVendor()
+        .vendCredential(path, CredentialContext.READ_ONLY, Purpose.CLIENT, Optional.empty());
+    repositories
+        .getStorageCredentialVendor()
+        .vendCredential(path, CredentialContext.READ_ONLY, Purpose.CLIENT, Optional.empty());
 
     // Even with the cache enabled, an injected vendor is not wrapped: every request reaches it.
     verify(injected, times(2)).vendCredential(any());

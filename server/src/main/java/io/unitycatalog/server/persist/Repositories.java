@@ -43,9 +43,6 @@ public class Repositories {
   private final DependencyRepository dependencyRepository;
   private final StorageCleanupTaskRepository storageCleanupTaskRepository;
 
-  /** Empty when {@code server.audit.sink} is unset. */
-  private final Optional<Auditor> auditor;
-
   private final KeyMapper keyMapper;
 
   public Repositories(SessionFactory sessionFactory, ServerProperties serverProperties) {
@@ -114,7 +111,6 @@ public class Repositories {
         cloudCredentialVendor != null
             ? cloudCredentialVendor
             : defaultCloudCredentialVendor(serverProperties, resolvedMetrics);
-    this.auditor = auditor;
     // Wrap the vendor before FileOperationsImpl captures it, so the server's own and cleanup vends
     // are audited too.
     StorageCredentialVendor vendor =

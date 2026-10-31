@@ -17,7 +17,7 @@ package io.unitycatalog.server.audit;
  *       values. New methods on this interface are only added as {@code default} methods.
  * </ul>
  */
-public interface AuditSink {
+public interface AuditSink extends AutoCloseable {
   /** Records one audit record. See the threading and failure rules above. */
   void record(AuditRecord record);
 
@@ -26,5 +26,6 @@ public interface AuditSink {
    * that outlived the shutdown drain can still call {@link #record} while this runs or just after
    * it; a sink that stops on close should drop such records.
    */
+  @Override
   default void close() {}
 }

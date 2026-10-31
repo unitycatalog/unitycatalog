@@ -142,7 +142,9 @@ public class FileOperationsImpl implements FileOperations {
       return Map.of();
     }
     return toFileIOConfig(
-        path, storageCredentialVendor.vendCredential(path, privileges), credentialsEndpoint);
+        path,
+        storageCredentialVendor.vendCredential(path, privileges, Purpose.CLIENT, Optional.empty()),
+        credentialsEndpoint);
   }
 
   /** The FileIO config for credentials the server uses itself, labeled with their purpose. */
