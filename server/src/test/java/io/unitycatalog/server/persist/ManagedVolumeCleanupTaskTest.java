@@ -22,6 +22,7 @@ import java.util.Properties;
 import java.util.UUID;
 import java.util.function.Function;
 import org.hibernate.SessionFactory;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -41,9 +42,10 @@ class ManagedVolumeCleanupTaskTest {
   void setUp() {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
+    StorageCleanupTestSupport.captureAuditRecords(properties);
     ServerProperties serverProperties = new ServerProperties(properties);
     sessionFactory = testDatabase.sessionFactory();
-    repositories = new Repositories(sessionFactory, serverProperties);
+    repositories = StorageCleanupTestSupport.auditedRepositories(sessionFactory, serverProperties);
 
     UUID catalogId = UUID.randomUUID();
     schemaId = UUID.randomUUID();
@@ -63,6 +65,14 @@ class ManagedVolumeCleanupTaskTest {
         },
         "Failed to create test namespace",
         /* readOnly= */ false);
+  }
+
+  @AfterEach
+  void tearDown() {
+    // Every test here, including the rolled-back and cascading drops, records exactly its tasks,
+    // and each cloud task's cleanup credential record carries the task's ID.
+    StorageCleanupTestSupport.assertQueueCleanupRecordsMatchTasks(sessionFactory);
+    StorageCleanupTestSupport.assertCleanupCredentialsJoinTasks(repositories, sessionFactory);
   }
 
   @Test

@@ -25,9 +25,9 @@ import com.azure.storage.file.datalake.models.ListPathsOptions;
 import com.azure.storage.file.datalake.models.PathItem;
 import io.unitycatalog.server.cleanup.StorageCleanupWorker;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
+import io.unitycatalog.server.persist.CleanupTaskRepository.Claim;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
-import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -365,11 +365,11 @@ class ADLSPrefixOperationsTest {
               return true;
             });
     FileOperations factory = mock(FileOperations.class);
-    when(factory.getCleanupFileIO(eq(NormalizedURL.from(CONTAINER + DIRECTORY)), any()))
+    when(factory.getCleanupFileIO(eq(NormalizedURL.from(CONTAINER + DIRECTORY)), any(), any()))
         .thenAnswer(
             invocation -> {
               expectedThread = Thread.currentThread();
-              return new ADLSPrefixOperations(fileIO, PREFIX, invocation.getArgument(1));
+              return new ADLSPrefixOperations(fileIO, PREFIX, invocation.getArgument(2));
             });
 
     ServerProperties properties = new ServerProperties();

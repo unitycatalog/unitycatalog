@@ -263,6 +263,7 @@ public class ServerProperties {
         "server.storage-credential-cache.max-size", "1000", POSITIVE_INTEGER_VALIDATOR),
     STORAGE_CREDENTIAL_CACHE_MAX_AGE(
         "server.storage-credential-cache.max-age", "PT5M", POSITIVE_DURATION_VALIDATOR),
+    AUDIT_SINK("server.audit.sink"),
     AUTHORIZATION_URL("server.authorization-url", URL_VALIDATOR),
     TOKEN_URL("server.token-url", URL_VALIDATOR),
     CLIENT_ID("server.client-id"),
@@ -596,6 +597,11 @@ public class ServerProperties {
 
   public boolean isStorageCredentialCacheEnabled() {
     return Boolean.parseBoolean(get(Property.STORAGE_CREDENTIAL_CACHE_ENABLED));
+  }
+
+  /** The audit sink class name, or null or blank when audit is off. */
+  public String getAuditSink() {
+    return get(Property.AUDIT_SINK);
   }
 
   public int getStorageCredentialCacheMaxSize() {

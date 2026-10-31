@@ -16,10 +16,10 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.unitycatalog.server.observability.UcMetric;
 import io.unitycatalog.server.observability.UcMetricConstants;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
+import io.unitycatalog.server.persist.CleanupTaskRepository.Claim;
+import io.unitycatalog.server.persist.CleanupTaskRepository.CleanupFailureReport;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
-import io.unitycatalog.server.persist.StorageCleanupTaskRepository.Claim;
-import io.unitycatalog.server.persist.StorageCleanupTaskRepository.CleanupFailureReport;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -78,7 +78,7 @@ class StorageCleanupWorkerTest {
   void setUp() {
     setClaim(ManagedResourceType.TABLE, LOCATION.toString());
     when(clock.instant()).thenReturn(NOW);
-    when(fileOperations.getCleanupFileIO(eq(LOCATION), any())).thenReturn(fileIO);
+    when(fileOperations.getCleanupFileIO(eq(LOCATION), eq(RESOURCE_ID), any())).thenReturn(fileIO);
     when(fileIO.listPrefix(PREFIX)).thenReturn(List.of());
     when(serverProperties.getStorageCleanupPollInterval()).thenReturn(INTERVAL);
     when(serverProperties.getStorageCleanupLeaseDuration()).thenReturn(LEASE_DURATION);
@@ -109,7 +109,7 @@ class StorageCleanupWorkerTest {
   void tagsAttemptsWithTheResourceType() {
     String location = "s3://bucket/" + ManagedResourceType.VOLUME.pathSegment() + "/" + RESOURCE_ID;
     setClaim(ManagedResourceType.VOLUME, location);
-    when(fileOperations.getCleanupFileIO(eq(NormalizedURL.from(location)), any()))
+    when(fileOperations.getCleanupFileIO(eq(NormalizedURL.from(location)), eq(RESOURCE_ID), any()))
         .thenReturn(fileIO);
     when(fileIO.listPrefix(location + "/")).thenReturn(List.of());
 
@@ -217,7 +217,7 @@ class StorageCleanupWorkerTest {
 
   @Test
   void checksDeadlineAfterCredentialVending() {
-    when(fileOperations.getCleanupFileIO(eq(LOCATION), any()))
+    when(fileOperations.getCleanupFileIO(eq(LOCATION), eq(RESOURCE_ID), any()))
         .thenAnswer(
             ignored -> {
               when(clock.instant()).thenReturn(NOW.plus(ATTEMPT_TIMEOUT));
@@ -260,10 +260,10 @@ class StorageCleanupWorkerTest {
   @Test
   void stopInterruptsCleanupAndWaitsForReporting() throws Exception {
     CountDownLatch deletionStarted = new CountDownLatch(1);
-    when(fileOperations.getCleanupFileIO(eq(LOCATION), any()))
+    when(fileOperations.getCleanupFileIO(eq(LOCATION), eq(RESOURCE_ID), any()))
         .thenAnswer(
             invocation -> {
-              CooperativeDeadline deadline = invocation.getArgument(1);
+              CooperativeDeadline deadline = invocation.getArgument(2);
               doAnswer(
                       ignored -> {
                         deletionStarted.countDown();

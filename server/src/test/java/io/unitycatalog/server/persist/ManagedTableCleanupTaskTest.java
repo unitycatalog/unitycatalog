@@ -8,11 +8,13 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.model.VolumeType;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.testdatabase.SupportedDatabase;
@@ -31,6 +33,8 @@ import java.util.function.Function;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
+import org.hibernate.exception.ConstraintViolationException;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -51,9 +55,10 @@ class ManagedTableCleanupTaskTest {
   void setUp() {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
+    StorageCleanupTestSupport.captureAuditRecords(properties);
     serverProperties = new ServerProperties(properties);
     sessionFactory = testDatabase.sessionFactory();
-    repositories = new Repositories(sessionFactory, serverProperties);
+    repositories = StorageCleanupTestSupport.auditedRepositories(sessionFactory, serverProperties);
 
     UUID catalogId = UUID.randomUUID();
     schemaId = UUID.randomUUID();
@@ -73,6 +78,14 @@ class ManagedTableCleanupTaskTest {
         },
         "Failed to create test namespace",
         /* readOnly= */ false);
+  }
+
+  @AfterEach
+  void tearDown() {
+    // Every test here, including the rolled-back and cascading drops, records exactly its tasks,
+    // and each cloud task's cleanup credential record carries the task's ID.
+    StorageCleanupTestSupport.assertQueueCleanupRecordsMatchTasks(sessionFactory);
+    StorageCleanupTestSupport.assertCleanupCredentialsJoinTasks(repositories, sessionFactory);
   }
 
   @Test
@@ -192,6 +205,50 @@ class ManagedTableCleanupTaskTest {
   }
 
   @Test
+  void forceSchemaDeleteFailingAfterQueueingATaskRecordsNothing() {
+    TableInfoDAO table =
+        createTable("first_child", TableType.MANAGED, id -> "s3://bucket/root/tables/" + id);
+    UUID volumeId = UUID.randomUUID();
+    String existingTaskLocation = "s3://bucket/existing/volumes/" + volumeId;
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          session.persist(
+              VolumeInfoDAO.builder()
+                  .id(volumeId)
+                  .schemaId(schemaId)
+                  .name("later_child")
+                  .volumeType(VolumeType.MANAGED.getValue())
+                  .storageLocation("s3://bucket/root/volumes/" + volumeId)
+                  .createdAt(new Date())
+                  .build());
+          repositories
+              .getStorageCleanupTaskRepository()
+              .create(
+                  session,
+                  ManagedResourceType.VOLUME,
+                  volumeId,
+                  "later_child",
+                  existingTaskLocation);
+          return null;
+        },
+        "Failed to create the volume and its existing cleanup task",
+        /* readOnly= */ false);
+
+    // The force delete drops tables before volumes, so the table queues its task first; the
+    // volume's duplicate task then rolls the whole transaction back. tearDown checks the table's
+    // pending QUEUE_CLEANUP record was not written.
+    assertThatThrownBy(
+            () -> repositories.getSchemaRepository().deleteSchema(CATALOG + "." + SCHEMA, true))
+        .isInstanceOf(BaseException.class)
+        .hasCauseInstanceOf(ConstraintViolationException.class);
+
+    assertThat(findTable(table.getId())).isNotNull();
+    assertThat(findTask(table.getId())).isNull();
+    assertThat(findTask(volumeId).getStorageLocation()).isEqualTo(existingTaskLocation);
+  }
+
+  @Test
   void dropBlockedByCommitLockIsUnavailable() {
     TableInfoDAO table = createTableWithColumn("locked_table");
     TableRepository impatientTables = impatientRepositories().getTableRepository();
@@ -275,7 +332,7 @@ class ManagedTableCleanupTaskTest {
               case POSTGRES_18 -> "?options=-c%20lock_timeout%3D50";
               case MYSQL_8 -> "?sessionVariables=innodb_lock_wait_timeout=1";
             });
-    return new Repositories(
+    return StorageCleanupTestSupport.auditedRepositories(
         testDatabase.openHibernateConfigurator(impatient).getSessionFactory(), serverProperties);
   }
 

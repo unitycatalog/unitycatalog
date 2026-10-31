@@ -17,6 +17,7 @@ import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.CooperativeDeadline;
@@ -28,6 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.UnaryOperator;
 import org.apache.iceberg.io.FileIO;
@@ -133,8 +135,12 @@ class RepositoriesTest {
         new Repositories(sessionFactory, new ServerProperties(properties), injected);
     NormalizedURL path = NormalizedURL.from("s3://bucket/table");
 
-    repositories.getStorageCredentialVendor().vendCredential(path, CredentialContext.READ_ONLY);
-    repositories.getStorageCredentialVendor().vendCredential(path, CredentialContext.READ_ONLY);
+    repositories
+        .getStorageCredentialVendor()
+        .vendCredential(path, CredentialContext.READ_ONLY, Purpose.CLIENT, Optional.empty());
+    repositories
+        .getStorageCredentialVendor()
+        .vendCredential(path, CredentialContext.READ_ONLY, Purpose.CLIENT, Optional.empty());
 
     // Even with the cache enabled, an injected vendor is not wrapped: every request reaches it.
     verify(injected, times(2)).vendCredential(any());
@@ -155,8 +161,8 @@ class RepositoriesTest {
 
     @Override
     public SupportsPrefixOperations getCleanupFileIO(
-        NormalizedURL rootPath, CooperativeDeadline deadline) {
-      return delegate.getCleanupFileIO(rootPath, deadline);
+        NormalizedURL rootPath, UUID resourceId, CooperativeDeadline deadline) {
+      return delegate.getCleanupFileIO(rootPath, resourceId, deadline);
     }
 
     @Override
