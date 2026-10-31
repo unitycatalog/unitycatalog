@@ -22,7 +22,7 @@ Focus on recent changes and newly written code. Identify which UC subsystems are
 
 2. **Spec-first and generated code** -- See CODE_REVIEW.md T05. Additionally: verify `api/all.yaml` is the single source of truth; no hand-edits to generated code; spec and checked-in docs (`api/Apis/`, `api/Models/`) synced in the same PR.
 
-3. **Persistence and schema portability** -- See CODE_REVIEW.md T11. Additionally: schema changes additive-only (Hibernate `hbm2ddl.auto=update`); portable across H2, MySQL, PostgreSQL; unique constraints at DB level; reads use `readOnly=true`, writes `readOnly=false`; no N+1 queries in list operations.
+3. **Persistence and schema portability** -- See CODE_REVIEW.md T11. Additionally: schema changes ship as new Flyway steps for each database under `server/src/main/resources/db/migration/<db>/`, never edits of merged steps, checked by `BaselineMatchesEntitiesTest` and the upgrade tests; unique constraints at DB level; reads use `readOnly=true`, writes `readOnly=false`; no N+1 queries in list operations.
 
 4. **Dual-dialect error mapping** -- See CODE_REVIEW.md T03/T12. Additionally: error codes must map correctly to UC REST, Delta, and Iceberg surfaces; verify HTTP statuses are correct per dialect; tests exercise all affected surfaces.
 

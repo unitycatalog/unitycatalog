@@ -69,6 +69,7 @@ public class HibernateConfigurator implements AutoCloseable {
    * properties (e.g. point at PostgreSQL via Testcontainers) before construction.
    */
   public HibernateConfigurator(Properties hibernateProperties) {
+    requireSchemaFromConnection(hibernateProperties);
     this.hibernateProperties = hibernateProperties;
     this.dataSource = createDataSource(hibernateProperties);
     try {
@@ -81,9 +82,28 @@ public class HibernateConfigurator implements AutoCloseable {
   }
 
   /**
+   * The schema migration and Hibernate must use the same schema, and the migration uses the
+   * connection's. Refuses Hibernate's own default schema or catalog, which only Hibernate would
+   * use.
+   */
+  private static void requireSchemaFromConnection(Properties properties) {
+    for (String name : new String[] {"hibernate.default_schema", "hibernate.default_catalog"}) {
+      if (properties.getProperty(name) != null) {
+        throw new IllegalArgumentException(
+            name
+                + " is not supported: the schema migration uses the connection's schema. Remove it"
+                + " and set the schema in the JDBC URL instead (PostgreSQL: currentSchema=...).");
+      }
+    }
+  }
+
+  /**
    * Storage paths compare exactly, but MySQL's default collation ignores case. Warns when any text
    * column in the connected MySQL schema has a case-insensitive ({@code _ci}) collation. A failed
    * check never fails startup.
+   *
+   * <p>TODO: decide whether a schema step should convert such a database to a case-sensitive
+   * collation instead of only warning.
    */
   private void warnIfMySqlIsCaseInsensitive(Properties properties) {
     if (!properties.getProperty("hibernate.connection.url", "").startsWith("jdbc:mysql")) {
@@ -118,6 +138,11 @@ public class HibernateConfigurator implements AutoCloseable {
   }
 
   private static HikariDataSource createDataSource(Properties hibernateProperties) {
+    return new HikariDataSource(hikariConfig(hibernateProperties));
+  }
+
+  /** The connection pool settings of {@code hibernateProperties}. */
+  public static HikariConfig hikariConfig(Properties hibernateProperties) {
     Properties hikariProperties = new Properties();
     hibernateProperties.stringPropertyNames().stream()
         .filter(name -> name.startsWith(HIKARI_PREFIX))
@@ -147,7 +172,7 @@ public class HibernateConfigurator implements AutoCloseable {
     if (hikariConfig.getPoolName() == null) {
       hikariConfig.setPoolName("unity-catalog");
     }
-    return new HikariDataSource(hikariConfig);
+    return hikariConfig;
   }
 
   /**
@@ -223,7 +248,6 @@ public class HibernateConfigurator implements AutoCloseable {
       hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
       hibernateProperties.setProperty(
           "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
-      hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "update");
     } else {
       try (InputStream input = Files.newInputStream(hibernatePropertiesPath)) {
         hibernateProperties.load(input);
@@ -236,9 +260,24 @@ public class HibernateConfigurator implements AutoCloseable {
       hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
       hibernateProperties.setProperty(
           "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
-      hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
       LOGGER.debug("Hibernate configuration set for testing");
     }
-    return hibernateProperties;
+    return withSchemaUpdatesOff(hibernateProperties);
+  }
+
+  /**
+   * Flyway owns the schema, so Hibernate never changes it, even if an old {@code
+   * etc/conf/hibernate.properties} still says {@code update}.
+   */
+  static Properties withSchemaUpdatesOff(Properties properties) {
+    String auto = properties.getProperty("hibernate.hbm2ddl.auto");
+    if (auto != null && !"none".equals(auto)) {
+      LOGGER.warn(
+          "Ignoring hibernate.hbm2ddl.auto={}: the schema is managed by the schema migration"
+              + " steps.",
+          auto);
+    }
+    properties.setProperty("hibernate.hbm2ddl.auto", "none");
+    return properties;
   }
 }

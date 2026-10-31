@@ -1,0 +1,45 @@
+name: Upgrade Tests
+
+# Each release since 0.7.0 writes data to one database, then this build upgrades it and reads the
+# data back (RealUpgradeTest, which runs only with UC_TEST_UPGRADES=true). Runs only for changes
+# to the schema steps, the migration code or its tests.
+on:
+  pull_request:
+    branches: [ "main", "branch-*" ]
+    paths:
+      - "server/src/main/resources/db/migration/**"
+      - "server/src/main/java/io/unitycatalog/server/migrate/**"
+      - "server/src/main/java/io/unitycatalog/server/persist/**"
+      - "server/src/main/java/io/unitycatalog/server/UnityCatalogServer.java"
+      - "server/src/test/java/io/unitycatalog/server/migrate/**"
+      - "server/src/test/java/io/unitycatalog/server/testdatabase/**"
+      - "build.sbt"
+      - "version.sbt"
+      - ".github/actions/prepare-spark-env/**"
+      - ".github/workflows/upgrade-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  upgrade-tests:
+    runs-on: ubuntu-latest
+    name: Upgrade tests (${{ matrix.test-database }})
+    strategy:
+      fail-fast: false
+      matrix:
+        test-database: [ "H2", "POSTGRES_18", "MYSQL_8" ]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      # The test builds each release's server jar from its tag.
+      - name: Fetch the release tags
+        run: git fetch --tags --force origin
+      - name: Prepare the environment
+        uses: ./.github/actions/prepare-spark-env
+        with:
+          spark-version: "4.0.0"
+      - name: Run upgrade tests
+        env:
+          UC_TEST_DATABASE: ${{ matrix.test-database }}
+          UC_TEST_UPGRADES: "true"
+        run: build/sbt -J-Xmx2G "server/testOnly io.unitycatalog.server.migrate.RealUpgradeTest"

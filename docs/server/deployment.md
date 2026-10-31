@@ -51,7 +51,9 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
     that are created.
 - If you configure local storage, the server reads and writes it with its own identity; see
     [Local file system storage](./configuration.md#local-file-system-storage) before letting other users write to it.
-- The `etc/db/` directory contains the backend database that is used by the UC server.
+- The `etc/db/` directory contains the backend database that is used by the UC server. By default
+    this is an H2 database file, which supports one server per file; to run more than one server, use
+    PostgreSQL or MySQL.
 
 ### Configuring the database
 
@@ -147,13 +149,14 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
 
 ### Existing deployments and column type changes
 
-The server uses `hibernate.hbm2ddl.auto=update`. Hibernate can create missing tables and
-columns, but **it does not change the type or length of a column that already exists**.
+Flyway manages the database schema. See [Upgrading the database schema](upgrades.md).
 
 `uc_properties.property_value` used to be created as `varchar(255)`. Table and view properties
 (user `TBLPROPERTIES`, Spark `view.sqlConfig.*`, and any other REST-sent property) can exceed
-that. New installs get a wider column from Hibernate. **Existing databases keep `varchar(255)`
-until you run one of the statements below**; upgrading the server JAR alone has no effect.
+that. New installs get a wider column from the schema steps. **Databases created before 0.7.0 keep
+`varchar(255)` until a 0.7.0 server starts on them (its schema update widens the column on H2,
+PostgreSQL and MySQL) or you run one of the statements below**; the schema steps of later releases
+leave it unchanged.
 
 PostgreSQL:
 
