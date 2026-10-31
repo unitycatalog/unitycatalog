@@ -44,10 +44,11 @@ public class GcpCredentialVendorTest {
   /** The condition the vendor is expected to emit for a path already escaped for CEL. */
   private String expectedCondition(String bucket, String escapedPath) {
     return format(
-        "resource.name.startsWith(\"projects/_/buckets/%s/objects/%s\")"
+        "resource.name == \"projects/_/buckets/%s/objects/%s\""
+            + " || resource.name.startsWith(\"projects/_/buckets/%s/objects/%s/\")"
             + " || api.getAttribute('storage.googleapis.com/objectListPrefix', '')"
-            + ".startsWith(\"%s\")",
-        bucket, escapedPath, escapedPath);
+            + ".startsWith(\"%s/\")",
+        bucket, escapedPath, bucket, escapedPath, escapedPath);
   }
 
   @Test
@@ -59,6 +60,28 @@ public class GcpCredentialVendorTest {
     assertThat(rule.getAvailablePermissions()).containsExactly("inRole:roles/storage.objectViewer");
     assertThat(rule.getAvailabilityCondition().getExpression())
         .isEqualTo(expectedCondition("test-bucket", "team/data"));
+  }
+
+  @Test
+  public void testSiblingPathIsOutsideTheBoundary() {
+    // sales_archive/ and sales_2024/ are neighbors of sales/ and must not match.
+    String condition = availabilityConditionFor("gs://test-bucket/sales");
+
+    assertThat(condition)
+        .contains("startsWith(\"projects/_/buckets/test-bucket/objects/sales/\")")
+        .contains(".startsWith(\"sales/\")")
+        .doesNotContain("startsWith(\"projects/_/buckets/test-bucket/objects/sales\")")
+        .doesNotContain(".startsWith(\"sales\")");
+  }
+
+  @Test
+  public void testBucketRootCoversWholeBucket() {
+    assertThat(availabilityConditionFor("gs://test-bucket"))
+        .isEqualTo(
+            "resource.name == \"projects/_/buckets/test-bucket/objects/\""
+                + " || resource.name.startsWith(\"projects/_/buckets/test-bucket/objects/\")"
+                + " || api.getAttribute('storage.googleapis.com/objectListPrefix', '')"
+                + ".startsWith(\"\")");
   }
 
   @Test
