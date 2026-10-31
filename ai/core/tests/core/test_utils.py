@@ -54,6 +54,17 @@ def test_is_base64_encoded():
         ),
         (datetime.timedelta(hours=100), "INTERVAL '4 4:0:0.0' DAY TO SECOND"),
         (datetime.timedelta(days=1, hours=10, minutes=3), "INTERVAL '1 10:3:0.0' DAY TO SECOND"),
+        (datetime.timedelta(days=-2), "INTERVAL '-2 0:0:0.0' DAY TO SECOND"),
+        (datetime.timedelta(hours=-1), "INTERVAL '-0 1:0:0.0' DAY TO SECOND"),
+        (datetime.timedelta(minutes=-90), "INTERVAL '-0 1:30:0.0' DAY TO SECOND"),
+        (
+            datetime.timedelta(days=-1, hours=-2, minutes=-30),
+            "INTERVAL '-1 2:30:0.0' DAY TO SECOND",
+        ),
+        (
+            datetime.timedelta(seconds=-1, microseconds=-500000),
+            "INTERVAL '-0 0:0:1.500000' DAY TO SECOND",
+        ),
     ],
 )
 def test_convert_timedelta_to_interval_str(time_val, expected):
