@@ -67,10 +67,13 @@ class AuditorTest {
     assertThat(r.getResourceId()).isEqualTo(ID);
     assertThat(r.getAccess()).isEqualTo(AuditRecord.Access.READ_WRITE);
     assertThat(r.getLocation()).isEqualTo("s3://bkt/root/tables/" + ID); // no secrets
-    // A vend without a purpose is a client credential, and read-only access is recorded as READ.
+    // A client vend with read-only access is recorded as READ, without a resource ID.
     NormalizedURL clientPath = NormalizedURL.from("s3://bkt/t");
-    when(delegate.vendCredential(clientPath, CredentialContext.READ_ONLY)).thenReturn(credential);
-    audited.vendCredential(clientPath, CredentialContext.READ_ONLY);
+    when(delegate.vendCredential(
+            clientPath, CredentialContext.READ_ONLY, Purpose.CLIENT, Optional.empty()))
+        .thenReturn(credential);
+    audited.vendCredential(
+        clientPath, CredentialContext.READ_ONLY, Purpose.CLIENT, Optional.empty());
     AuditRecord client = CapturingAuditSink.RECORDS.get(1);
     assertThat(client.getPurpose()).isEqualTo(Purpose.CLIENT);
     assertThat(client.getAccess()).isEqualTo(AuditRecord.Access.READ);
@@ -81,7 +84,8 @@ class AuditorTest {
     ServiceRequestContext request = ServiceRequestContext.of(HttpRequest.of(HttpMethod.GET, "/"));
     request.setAttr(AuthDecorator.DECODED_JWT_ATTR, jwt);
     try (SafeCloseable ignored = request.push()) {
-      audited.vendCredential(clientPath, CredentialContext.READ_ONLY);
+      audited.vendCredential(
+          clientPath, CredentialContext.READ_ONLY, Purpose.CLIENT, Optional.empty());
     }
     assertThat(CapturingAuditSink.RECORDS.get(2).getUser()).isEqualTo("bob@example.com");
     // ABFS keeps its container@account authority.
