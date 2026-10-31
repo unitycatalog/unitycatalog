@@ -87,6 +87,21 @@ helm upgrade --install unitycatalog oci://registry-1.docker.io/unitycatalog/unit
   --version X.Y.Z --namespace unitycatalog --values values.yaml
 ```
 
+## Health checks
+
+The server serves `/livez`, `/readyz` and `/metrics` only when it starts with an observability port. Set
+`server.deployment.obsPort` to start it with one, and turn on the readiness probe so a pod receives traffic only
+while it can reach its database:
+
+```yaml
+server:
+  deployment:
+    obsPort: 8090
+    enableReadinessProbe: true
+```
+
+The endpoints are unauthenticated. See [Observability](observability.md) for restricting access to the port.
+
 ## Upgrade and uninstall
 
 To upgrade, read the release notes, then run `helm upgrade` with the new `--version` and the same `--values` file.

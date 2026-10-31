@@ -352,6 +352,19 @@ server:
     # -- (int) Port for the server deployment
     port: 8080
 
+    # -- (int) Observability port for the server deployment
+    # @default -- not set (observability off)
+    # @raw
+    #
+    # When set, the server starts with `--obs-port` and serves `/livez`, `/readyz` and `/metrics`
+    # on this port, without authentication. The readiness and liveness probes, when turned on,
+    # then check `/readyz` and `/livez`; without it they check that the API port accepts a
+    # connection. The Service doesn't expose the port, but other pods can reach it
+    # on the pod IP; restrict it with a NetworkPolicy if needed, and allow the kubelet to reach it
+    # for the probes. Must differ from `port`. Needs server image v0.7.0 or later.
+    #
+    obsPort:
+
     initContainer:
       image:
         # -- (string) Repository for the render config container
@@ -535,7 +548,7 @@ server:
     enableLivenessProbe: false
 
     # -- (object) Liveness probe
-    # @default -- tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 30 # 5 minutes
+    # @default -- with obsPort: httpGet `/livez` on port obs; otherwise tcpSocket on port api. timeoutSeconds: 10, periodSeconds: 10, failureThreshold: 30 (5 minutes)
     # @raw
     #
     # [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
@@ -552,7 +565,7 @@ server:
     enableReadinessProbe: false
 
     # -- (object) Readiness probe
-    # @default -- tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 30 # 5 minutes
+    # @default -- with obsPort: httpGet `/readyz` on port obs, failureThreshold: 3; otherwise tcpSocket on port api, failureThreshold: 30 (5 minutes). timeoutSeconds: 10, periodSeconds: 10
     # @raw
     #
     # [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)

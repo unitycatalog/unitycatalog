@@ -165,6 +165,10 @@ spec:
       {{- with .Values.server.deployment.extraInitContainers }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- $obsPort := .Values.server.deployment.obsPort }}
+      {{- if and $obsPort (eq (toString $obsPort) (toString .Values.server.deployment.port)) }}
+      {{- fail "server.deployment.obsPort must differ from server.deployment.port" }}
+      {{- end }}
       containers:
         - name: server
           {{- with .Values.server.deployment.securityContext }}
@@ -175,18 +179,36 @@ spec:
           {{- end }}
           image: "{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
+          {{- with $obsPort }}
+          command:
+            - ./bin/start-uc-server
+          args:
+            - --obs-port
+            - {{ . | quote }}
+          {{- end }}
           ports:
             - name: api
               containerPort: {{ .Values.server.deployment.port }}
               protocol: TCP
+            {{- with $obsPort }}
+            - name: obs
+              containerPort: {{ . }}
+              protocol: TCP
+            {{- end }}
 
           {{- if .Values.server.deployment.enableLivenessProbe }}
-          {{- if .Values.server.deployment.livenessProbe }}
+          {{- with .Values.server.deployment.livenessProbe }}
           livenessProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           livenessProbe:
+            {{- if $obsPort }}
+            httpGet:
+              path: /livez
+              port: obs
+            {{- else }}
             tcpSocket:
               port: api
+            {{- end }}
             timeoutSeconds: 10
             periodSeconds: 10
             failureThreshold: 30 # 5 minutes
@@ -194,20 +216,29 @@ spec:
           {{- end }}
 
           {{- if .Values.server.deployment.enableReadinessProbe }}
-          {{- if .Values.server.deployment.readinessProbe }}
+          {{- with .Values.server.deployment.readinessProbe }}
           readinessProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           readinessProbe:
+            {{- if $obsPort }}
+            httpGet:
+              path: /readyz
+              port: obs
+            timeoutSeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+            {{- else }}
             tcpSocket:
               port: api
             timeoutSeconds: 10
             periodSeconds: 10
             failureThreshold: 30 # 5 minutes
+            {{- end }}
           {{- end }}
           {{- end }}
 
           {{- if .Values.server.deployment.enableStartupProbe }}
-          {{- if .Values.server.deployment.startupProbe }}
+          {{- with .Values.server.deployment.startupProbe }}
           startupProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           startupProbe:
