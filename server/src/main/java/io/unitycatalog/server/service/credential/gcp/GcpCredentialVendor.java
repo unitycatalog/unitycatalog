@@ -138,7 +138,7 @@ public class GcpCredentialVendor {
               String resource =
                   format("//storage.googleapis.com/projects/_/buckets/%s", locationUri.getHost());
 
-              // Objects: the path itself or anything under path/. Listing: under path/ only.
+              // Match the path itself or anything under path/, never a sibling like path_archive/.
               String dirPrefix = path.isEmpty() ? "" : path + "/";
               String objectsPrefix =
                   format("projects/_/buckets/%s/objects/", locationUri.getHost());
@@ -151,13 +151,14 @@ public class GcpCredentialVendor {
                       celStringLiteral(objectsPrefix + dirPrefix));
 
               // for listing objects
-              String objectListPrefixStartsWithExpr =
+              String objectListPrefixExpr =
                   format(
-                      "api.getAttribute('storage.googleapis.com/objectListPrefix',"
+                      "api.getAttribute('storage.googleapis.com/objectListPrefix', '') == %s"
+                          + " || api.getAttribute('storage.googleapis.com/objectListPrefix',"
                           + " '').startsWith(%s)",
-                      celStringLiteral(dirPrefix));
+                      celStringLiteral(path), celStringLiteral(dirPrefix));
 
-              String combinedExpr = resourceNameExpr + " || " + objectListPrefixStartsWithExpr;
+              String combinedExpr = resourceNameExpr + " || " + objectListPrefixExpr;
 
               boundaryBuilder.addRule(
                   CredentialAccessBoundary.AccessBoundaryRule.newBuilder()

@@ -46,9 +46,10 @@ public class GcpCredentialVendorTest {
     return format(
         "resource.name == \"projects/_/buckets/%s/objects/%s\""
             + " || resource.name.startsWith(\"projects/_/buckets/%s/objects/%s/\")"
+            + " || api.getAttribute('storage.googleapis.com/objectListPrefix', '') == \"%s\""
             + " || api.getAttribute('storage.googleapis.com/objectListPrefix', '')"
             + ".startsWith(\"%s/\")",
-        bucket, escapedPath, bucket, escapedPath, escapedPath);
+        bucket, escapedPath, bucket, escapedPath, escapedPath, escapedPath);
   }
 
   @Test
@@ -83,6 +84,7 @@ public class GcpCredentialVendorTest {
         .isEqualTo(
             "resource.name == \"projects/_/buckets/test-bucket/objects/\""
                 + " || resource.name.startsWith(\"projects/_/buckets/test-bucket/objects/\")"
+                + " || api.getAttribute('storage.googleapis.com/objectListPrefix', '') == \"\""
                 + " || api.getAttribute('storage.googleapis.com/objectListPrefix', '')"
                 + ".startsWith(\"\")");
   }
