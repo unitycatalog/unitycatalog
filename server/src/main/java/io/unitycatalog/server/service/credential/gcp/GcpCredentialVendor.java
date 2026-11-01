@@ -138,7 +138,7 @@ public class GcpCredentialVendor {
               String resource =
                   format("//storage.googleapis.com/projects/_/buckets/%s", locationUri.getHost());
 
-              // Match the path itself or anything under path/, never a sibling like path_archive/.
+              // Path itself or under path/; a bare-path list can also show sibling names, as on S3.
               String dirPrefix = path.isEmpty() ? "" : path + "/";
               String objectsPrefix =
                   format("projects/_/buckets/%s/objects/", locationUri.getHost());
