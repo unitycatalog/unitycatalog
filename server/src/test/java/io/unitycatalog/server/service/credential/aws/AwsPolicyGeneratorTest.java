@@ -19,9 +19,11 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
+import org.apache.hadoop.fs.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import software.amazon.awssdk.regions.Region;
 
 public class AwsPolicyGeneratorTest {
@@ -78,14 +80,14 @@ public class AwsPolicyGeneratorTest {
 
   @ParameterizedTest(name = "{index}: {0} becomes {1}")
   @CsvSource({
-    "%2A, ${*}",
-    "%2a, ${*}",
-    "%3F, ${?}",
-    "%3f, ${?}",
+    "%2A, %2A",
+    "%2a, %2a",
+    "%3F, %3F",
+    "%3f, %3f",
     "prefix*middle, prefix${*}middle",
-    "prefix%3Fmiddle, prefix${?}middle",
-    "%24%7Baws:username%7D, ${$}{aws:username}",
-    "$%7B*%7D, ${$}{${*}}"
+    "prefix%3Fmiddle, prefix%3Fmiddle",
+    "%24%7Baws:username%7D, %24%7Baws:username%7D",
+    "$%7B*%7D, ${$}%7B${*}%7D"
   })
   public void testPolicyEscapesIamSpecialCharacters(String encodedPath, String expectedPath)
       throws Exception {
@@ -120,6 +122,34 @@ public class AwsPolicyGeneratorTest {
     assertThat(node.get("Statement").get(1).findPath("s3:prefix"))
         .map(JsonNode::asText)
         .containsExactly("path1/table1", "path1/table1/", "path1/table1/*");
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "team%20reports",
+        "team%2Freports",
+        "team%252Freports",
+        "caf%C3%A9",
+        "team%2F",
+        "team+reports",
+        "café/資料"
+      })
+  public void testPolicyPreservesLiteralCloudPath(String path) throws Exception {
+    NormalizedURL location = NormalizedURL.from("s3://test-bucket/" + path);
+    String clientPath = new Path(location.toString()).toUri().getPath().substring(1);
+
+    JsonNode policy =
+        JSON_MAPPER.readTree(AwsPolicyGenerator.generatePolicy(Set.of(SELECT), List.of(location)));
+
+    assertThat(policy.get("Statement").get(0).get("Resource"))
+        .map(JsonNode::asText)
+        .containsExactly(
+            "arn:aws:s3:::test-bucket/" + clientPath + "/*",
+            "arn:aws:s3:::test-bucket/" + clientPath);
+    assertThat(policy.get("Statement").get(1).findPath("s3:prefix"))
+        .map(JsonNode::asText)
+        .containsExactly(clientPath, clientPath + "/", clientPath + "/*");
   }
 
   @Test

@@ -133,7 +133,7 @@ public class GcpCredentialVendor {
         .forEach(
             location -> {
               URI locationUri = location.toUri();
-              String path = CharMatcher.is('/').trimLeadingFrom(locationUri.getPath());
+              String path = CharMatcher.is('/').trimLeadingFrom(location.getStoragePath());
 
               String resource =
                   format("//storage.googleapis.com/projects/_/buckets/%s", locationUri.getHost());

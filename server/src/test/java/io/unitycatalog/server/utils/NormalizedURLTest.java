@@ -8,8 +8,11 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
 import java.util.UUID;
+import java.util.stream.Stream;
+import org.apache.hadoop.fs.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 public class NormalizedURLTest {
@@ -167,6 +170,40 @@ public class NormalizedURLTest {
         .isEqualTo(NormalizedURL.from("abfss://container@account.dfs.core.windows.net"));
   }
 
+  private static Stream<String> cloudLocationsWithLiteralPaths() {
+    return Stream.of(
+            "s3://bucket/",
+            "gs://bucket/",
+            "abfs://container@account.dfs.core.windows.net/",
+            "abfss://container@account.dfs.core.windows.net/")
+        .flatMap(
+            base ->
+                Stream.of(
+                        "team%20reports",
+                        "team%2Freports",
+                        "team%2F",
+                        "team%252Freports",
+                        "caf%C3%A9",
+                        "café/資料",
+                        "team+reports")
+                    .map(path -> base + path));
+  }
+
+  @ParameterizedTest
+  @MethodSource("cloudLocationsWithLiteralPaths")
+  public void testStoragePathMatchesCloudClient(String location) {
+    assertThat(NormalizedURL.from(location).getStoragePath())
+        .isEqualTo(new Path(location).toUri().getPath());
+  }
+
+  @Test
+  public void testStoragePathDecodesLocalFileLocation() {
+    assertThat(NormalizedURL.from("file:///tmp/team%20reports").getStoragePath())
+        .isEqualTo("/tmp/team reports");
+    assertThat(NormalizedURL.from("file:///tmp/team%2520reports").getStoragePath())
+        .isEqualTo("/tmp/team%20reports");
+  }
+
   @ParameterizedTest
   @ValueSource(
       strings = {
@@ -175,7 +212,6 @@ public class NormalizedURLTest {
         "s3://bucket///",
         "s3://bucket/.",
         "s3://bucket/a/..",
-        "s3://bucket/%2F",
         "s3://bucket?query",
         "s3://bucket#fragment",
         "gs://bucket/",
@@ -190,9 +226,15 @@ public class NormalizedURLTest {
   @ValueSource(
       strings = {
         "s3://bucket/path",
+        "s3://bucket/%2F",
+        "s3://bucket/%2f",
+        "s3://bucket/%252F",
         "gs://bucket/path",
+        "gs://bucket/%2F",
         "abfs://container@account.dfs.core.windows.net/path",
+        "abfs://container@account.dfs.core.windows.net/%2F",
         "abfss://container@account.dfs.core.windows.net/path",
+        "abfss://container@account.dfs.core.windows.net/%2F",
         "file:///"
       })
   public void testDoesNotIdentifyScopedOrLocalLocationsAsCloudStorageRoots(String location) {

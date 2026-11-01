@@ -95,16 +95,29 @@ public final class NormalizedURL {
   }
 
   /**
+   * Returns the path as interpreted by storage clients, including its leading slash.
+   *
+   * <p>Cloud object names keep percent sequences literally, matching the stored location and Hadoop
+   * string paths. Local file paths use URI decoding to identify the file-system path.
+   */
+  public String getStoragePath() {
+    URI uri = toUri();
+    return switch (UriScheme.fromURI(uri)) {
+      case S3, GS, ABFS, ABFSS -> uri.getRawPath();
+      case FILE, NULL -> uri.getPath();
+    };
+  }
+
+  /**
    * Returns whether this URL identifies an entire cloud storage bucket or container.
    *
-   * <p>The decoded path is checked so equivalent root forms such as a trailing slash, normalized
-   * dot segments, and encoded slashes are treated consistently.
+   * <p>A cloud root has no nonempty literal object path.
    */
   public boolean isCloudStorageRoot() {
     URI uri = toUri();
     return switch (UriScheme.fromURI(uri)) {
       case S3, GS, ABFS, ABFSS -> {
-        String path = uri.getPath();
+        String path = getStoragePath();
         yield path == null || path.chars().allMatch(character -> character == '/');
       }
       default -> false;

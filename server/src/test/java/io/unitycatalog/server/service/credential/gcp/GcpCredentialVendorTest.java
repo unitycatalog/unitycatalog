@@ -13,6 +13,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import org.apache.hadoop.fs.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -67,7 +68,7 @@ public class GcpCredentialVendorTest {
     String location = "gs://test-bucket/team/data')%20%7C%7C%20('1'%3D%3D'1";
 
     assertThat(availabilityConditionFor(location))
-        .isEqualTo(expectedCondition("test-bucket", "team/data') || ('1'=='1"));
+        .isEqualTo(expectedCondition("test-bucket", "team/data')%20%7C%7C%20('1'%3D%3D'1"));
   }
 
   @Test
@@ -76,7 +77,7 @@ public class GcpCredentialVendorTest {
     String location = "gs://test-bucket/team/data%22)%20%7C%7C%20(%221%22%3D%3D%221";
 
     assertThat(availabilityConditionFor(location))
-        .isEqualTo(expectedCondition("test-bucket", "team/data\\\") || (\\\"1\\\"==\\\"1"));
+        .isEqualTo(expectedCondition("test-bucket", "team/data%22)%20%7C%7C%20(%221%22%3D%3D%221"));
   }
 
   @ParameterizedTest
@@ -87,7 +88,7 @@ public class GcpCredentialVendorTest {
             + "%5C".repeat(backslashCount)
             + "%22)%20%7C%7C%20(%221%22%3D%3D%221";
     String escapedPath =
-        "team/data" + "\\".repeat(backslashCount * 2 + 1) + "\") || (\\\"1\\\"==\\\"1";
+        "team/data" + "%5C".repeat(backslashCount) + "%22)%20%7C%7C%20(%221%22%3D%3D%221";
 
     assertThat(availabilityConditionFor(location))
         .isEqualTo(expectedCondition("test-bucket", escapedPath));
@@ -95,24 +96,40 @@ public class GcpCredentialVendorTest {
 
   @Test
   public void testCelEscapeSequencesInPathStayLiteral() {
-    String escapedPath = "team/\\\\n\\\\x27\\\\" + "u0027";
+    String escapedPath = "team/%5Cn%5Cx27%5Cu0027";
 
     assertThat(availabilityConditionFor("gs://test-bucket/team/%5Cn%5Cx27%5Cu0027"))
         .isEqualTo(expectedCondition("test-bucket", escapedPath));
   }
 
   @Test
-  public void testCelControlCharactersAreEscaped() {
+  public void testEncodedControlCharactersStayLiteral() {
     String location = "gs://test-bucket/team/%07%08%0C%0A%0D%09%0Bdata";
 
     assertThat(availabilityConditionFor(location))
-        .isEqualTo(expectedCondition("test-bucket", "team/\\a\\b\\f\\n\\r\\t\\vdata"));
+        .isEqualTo(expectedCondition("test-bucket", "team/%07%08%0C%0A%0D%09%0Bdata"));
+  }
+
+  @Test
+  public void testEncodedUnicodePathStaysLiteral() {
+    assertThat(
+            availabilityConditionFor("gs://test-bucket/caf%C3%A9/%E8%B3%87%E6%96%99/%F0%9F%92%BE"))
+        .isEqualTo(expectedCondition("test-bucket", "caf%C3%A9/%E8%B3%87%E6%96%99/%F0%9F%92%BE"));
   }
 
   @Test
   public void testUnicodePathIsPreserved() {
-    assertThat(
-            availabilityConditionFor("gs://test-bucket/caf%C3%A9/%E8%B3%87%E6%96%99/%F0%9F%92%BE"))
+    assertThat(availabilityConditionFor("gs://test-bucket/café/資料/💾"))
         .isEqualTo(expectedCondition("test-bucket", "café/資料/💾"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"team%2Freports", "team%2F", "team%252Freports", "team+reports"})
+  public void testBoundaryPreservesLiteralCloudPath(String path) {
+    String location = "gs://test-bucket/" + path;
+    String clientPath = new Path(location).toUri().getPath().substring(1);
+
+    assertThat(availabilityConditionFor(location))
+        .isEqualTo(expectedCondition("test-bucket", clientPath));
   }
 }
