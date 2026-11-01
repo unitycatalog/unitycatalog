@@ -60,6 +60,9 @@ public class GcpCredentialVendorTest {
     assertThat(rule.getAvailablePermissions()).containsExactly("inRole:roles/storage.objectViewer");
     assertThat(rule.getAvailabilityCondition().getExpression())
         .isEqualTo(expectedCondition("test-bucket", "team/data"));
+    // An encoded trailing slash decodes to "team/data/" and must scope the same as "team/data".
+    assertThat(availabilityConditionFor("gs://test-bucket/team/data%2F"))
+        .isEqualTo(expectedCondition("test-bucket", "team/data"));
   }
 
   @Test
