@@ -59,6 +59,15 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
     assertThat(functionInfo.getFunctionId()).isNotNull();
   }
 
+  private static FunctionParameterInfo functionParameter(String name, int position) {
+    return new FunctionParameterInfo()
+        .name(name)
+        .typeName(ColumnTypeName.INT)
+        .typeText("int")
+        .typeJson("{\"type\":\"int\"}")
+        .position(position);
+  }
+
   @Test
   public void testFunctionCRUD() throws ApiException {
     assertThatThrownBy(() -> functionOperations.getFunction(FUNCTION_FULL_NAME))
@@ -72,6 +81,9 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
         new FunctionParameterInfos()
             .parameters(
                 List.of(
+                    // Submitted out of position order, so only ordering by position returns
+                    // them in order
+                    functionParameter("gamma", 3),
                     new FunctionParameterInfo()
                         .name("param1")
                         .typeName(ColumnTypeName.INT)
@@ -82,7 +94,9 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
                                 + "\"metadata\":{\"comment\":\""
                                 + "x".repeat(300)
                                 + "\"}}")
-                        .position(0)));
+                        .position(0),
+                    functionParameter("beta", 2),
+                    functionParameter("zeta", 1)));
     CreateFunction createFunction =
         new CreateFunction()
             .name(FUNCTION_NAME)
@@ -184,7 +198,14 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
     // Get function
     System.out.println("Testing get function..");
     FunctionInfo retrievedFunctionInfo = functionOperations.getFunction(FUNCTION_FULL_NAME);
-    assertThat(retrievedFunctionInfo).isEqualTo(functionInfo);
+    // The create response keeps the order it was given; get returns the parameters by position.
+    assertThat(retrievedFunctionInfo)
+        .usingRecursiveComparison()
+        .ignoringCollectionOrderInFields("inputParams.parameters")
+        .isEqualTo(functionInfo);
+    assertThat(retrievedFunctionInfo.getInputParams().getParameters())
+        .extracting(FunctionParameterInfo::getPosition)
+        .isSorted();
 
     // now update the parent catalog
     UpdateCatalog updateCatalog = new UpdateCatalog().newName(CATALOG_NEW_NAME);

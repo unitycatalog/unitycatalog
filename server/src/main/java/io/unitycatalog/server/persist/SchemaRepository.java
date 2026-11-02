@@ -515,10 +515,8 @@ public class SchemaRepository {
   }
 
   public CatalogAndSchemaNames splitSchemaFullName(String fullName) {
-    String[] namespace = fullName.split("\\.");
-    if (namespace.length != 2) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid schema full name: " + fullName);
-    }
+    String[] namespace =
+        ValidationUtils.splitFullName(fullName, 2, "Invalid schema full name: " + fullName);
     return new CatalogAndSchemaNames(namespace[0], namespace[1]);
   }
 }

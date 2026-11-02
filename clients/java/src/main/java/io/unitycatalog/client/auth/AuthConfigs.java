@@ -21,4 +21,9 @@ class AuthConfigs {
   static final String OAUTH_CLIENT_SECRET = "oauth.clientSecret";
   static final String OAUTH_SCOPE = "oauth.scope";
   static final String DEFAULT_OAUTH_SCOPE = "all-apis";
+  // When true, the OAuth token is exchanged for a UC-issued token at the UC server's token
+  // exchange endpoint, which is derived from the catalog URI.
+  static final String OAUTH_EXCHANGE_FOR_UC_TOKEN = "oauth.exchangeForUcToken";
+  // The Unity Catalog server URI. Set by the connectors from the catalog URI.
+  static final String CATALOG_URI = "catalogUri";
 }

@@ -20,9 +20,8 @@ import io.unitycatalog.server.exception.TransactionRollbackException;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.testdatabase.SupportedDatabase;
+import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import io.unitycatalog.server.testdatabase.TestDatabases;
-import io.unitycatalog.server.utils.ServerProperties;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Date;
@@ -42,7 +41,6 @@ import org.hibernate.dialect.PostgreSQLDialect;
 import org.hibernate.engine.jdbc.spi.JdbcServices;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.exception.GenericJDBCException;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -446,30 +444,48 @@ public class TransactionManagerTest {
   public class IsolationLevelWithRealDatabaseTest {
 
     private static SessionFactory realSessionFactory;
-    private static TestDatabase testDatabase;
+    @TempDatabase private static TestDatabase testDatabase;
 
     @BeforeAll
     public static void setUp() {
-      testDatabase = TestDatabases.newDatabase();
-      Properties hibernateProperties =
-          testDatabase.hibernateProperties(new ServerProperties(new Properties()));
+      Properties hibernateProperties = testDatabase.hibernateProperties();
       // One pooled connection, so each transaction reuses the connection the previous one used.
       hibernateProperties.setProperty("hibernate.hikari.maximumPoolSize", "1");
       realSessionFactory =
           testDatabase.openHibernateConfigurator(hibernateProperties).getSessionFactory();
     }
 
-    @AfterAll
-    public static void tearDown() {
-      testDatabase.close();
-    }
-
+    /**
+     * A transaction runs at the isolation level its caller asks for, and the pooled connection goes
+     * back to its default afterwards, so the level never leaks into the next transaction. The test
+     * asks for a level other than the database's default: asking for the default would pass even if
+     * nothing were restored.
+     */
     @Test
     public void testIsolationLevelIsSetAndRestored() {
       final int[] isolationDuringTx = new int[1];
       final int[] isolationAfter = new int[1];
+      final int[] defaultIsolation = new int[1];
 
-      // Run a transaction with REPEATABLE_READ
+      // The database's default isolation level (READ_COMMITTED on H2 and PostgreSQL,
+      // REPEATABLE_READ on MySQL)
+      TransactionManager.executeWithTransaction(
+          realSessionFactory,
+          session -> {
+            session.doWork(
+                connection -> defaultIsolation[0] = connection.getTransactionIsolation());
+            return null;
+          },
+          "test",
+          true);
+
+      // Request a level other than the default, or "restored" cannot be told from "never changed"
+      int requested =
+          defaultIsolation[0] == Connection.TRANSACTION_REPEATABLE_READ
+              ? Connection.TRANSACTION_SERIALIZABLE
+              : Connection.TRANSACTION_REPEATABLE_READ;
+
+      // Run a transaction with the requested level
       TransactionManager.executeWithTransaction(
           realSessionFactory,
           session -> {
@@ -479,10 +495,10 @@ public class TransactionManagerTest {
           },
           "test",
           true,
-          Optional.of(Connection.TRANSACTION_REPEATABLE_READ));
+          Optional.of(requested));
 
-      // Check the isolation level was set to REPEATABLE_READ during the transaction
-      assertThat(isolationDuringTx[0]).isEqualTo(Connection.TRANSACTION_REPEATABLE_READ);
+      // Check the requested isolation level was set during the transaction
+      assertThat(isolationDuringTx[0]).isEqualTo(requested);
 
       // Run another transaction without custom isolation to verify restore
       TransactionManager.executeWithTransaction(
@@ -494,9 +510,8 @@ public class TransactionManagerTest {
           "test",
           true);
 
-      // Original isolation level should have been restored (H2 and PostgreSQL default to
-      // READ_COMMITTED)
-      assertThat(isolationAfter[0]).isEqualTo(Connection.TRANSACTION_READ_COMMITTED);
+      // Original isolation level should have been restored
+      assertThat(isolationAfter[0]).isEqualTo(defaultIsolation[0]);
     }
 
     @Test
@@ -568,26 +583,18 @@ public class TransactionManagerTest {
   public class DatabaseErrorWithRealDatabaseTest {
 
     private static SessionFactory realSessionFactory;
-    private static TestDatabase testDatabase;
+    @TempDatabase private static TestDatabase testDatabase;
 
     @BeforeAll
     public static void setUp() {
-      testDatabase = TestDatabases.newDatabase();
-      realSessionFactory =
-          testDatabase
-              .openHibernateConfigurator(new ServerProperties(new Properties()))
-              .getSessionFactory();
-    }
-
-    @AfterAll
-    public static void tearDown() {
-      testDatabase.close();
+      realSessionFactory = testDatabase.sessionFactory();
     }
 
     /**
      * PostgreSQL limits a btree index entry to 2,704 bytes. A longer staging location fails the
      * insert into idx_staging_location, which the request caused, so it is INVALID_ARGUMENT. H2 has
-     * no such limit, so the insert succeeds there.
+     * no such limit, and MySQL has no idx_staging_location (InnoDB rejects it), so the insert
+     * succeeds there.
      */
     @Test
     public void testValueOverIndexLimitIsInvalidArgument() {
@@ -595,6 +602,7 @@ public class TransactionManagerTest {
           switch (SupportedDatabase.selected()) {
             case H2 -> false;
             case POSTGRES_18 -> true;
+            case MYSQL_8 -> false;
           };
       StagingTableDAO stagingTableDAO = new StagingTableDAO();
       stagingTableDAO.setDefaultFields();
