@@ -12,15 +12,17 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.AbstractOutputStreamAppender;
 import org.apache.logging.log4j.core.config.AppenderRef;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.apache.logging.log4j.core.filter.Filterable;
 
 /**
- * Writes each record as one JSON line to the {@code audit} logger. The Log4j configuration must
- * give that logger its own appender with {@code ignoreExceptions = false}, {@code additivity =
- * false} and level INFO; see etc/conf/server.log4j2.properties.
+ * Writes each record as one JSON line to the {@code audit} logger. The logger needs {@code
+ * additivity = false} and level INFO. It writes to {@code etc/logs/audit.log} as shipped (see
+ * etc/conf/server.log4j2.properties), or to any Log4j appender, such as one that ships records to a
+ * cloud service. A file or console appender needs {@code ignoreExceptions = false}.
  */
 public class FileAuditSink implements AuditSink {
   static final String LOGGER_NAME = "audit";
@@ -38,7 +40,7 @@ public class FileAuditSink implements AuditSink {
     this.logger = LogManager.getLogger(LOGGER_NAME);
   }
 
-  /** Fails unless audit records reach their own appender, and only that appender. */
+  /** Fails when the Log4j configuration can drop audit records or hide a failed write. */
   static void validate(Configuration configuration) {
     LoggerConfig config = configuration.getLoggers().get(LOGGER_NAME);
     if (config == null) {
@@ -88,6 +90,11 @@ public class FileAuditSink implements AuditSink {
       }
     }
     for (Appender appender : config.getAppenders().values()) {
+      // Only file and console appenders, as shipped; another appender (for example one that ships
+      // records to a cloud service) is the operator's choice.
+      if (!(appender instanceof AbstractOutputStreamAppender<?>)) {
+        continue;
+      }
       if (appender.ignoreExceptions()) {
         throw new IllegalStateException(
             "The Log4j 'audit' logger's appender "

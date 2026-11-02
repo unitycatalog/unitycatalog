@@ -183,6 +183,21 @@ class AuditorTest {
             "logger.audit.appenderRef.a.level = warn"));
     assertThatThrownBy(() -> FileAuditSink.validate(load(droppingRecords.toString())))
         .hasMessageContaining("appender reference");
+    // Appender rules apply to file and console appenders only; other appenders, such as one that
+    // ships records to a cloud service, are the operator's choice.
+    Path otherAppender = Files.createTempFile("log4j2", ".properties");
+    Files.writeString(
+        otherAppender,
+        String.join(
+            "\n",
+            "appender.n.type = Null",
+            "appender.n.name = N",
+            "logger.audit.name = audit",
+            "logger.audit.level = info",
+            "logger.audit.additivity = false",
+            "logger.audit.appenderRef.n.ref = N"));
+    assertThatCode(() -> FileAuditSink.validate(load(otherAppender.toString())))
+        .doesNotThrowAnyException();
     // So can a filter on the configuration, the audit logger or its appender.
     for (String filter :
         List.of(
