@@ -50,6 +50,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 
 @SuppressWarnings("unchecked")
 class ADLSPrefixOperationsTest {
@@ -275,12 +276,14 @@ class ADLSPrefixOperationsTest {
     for (String prefix :
         List.of(
             CONTAINER,
-            CONTAINER + "%2F/",
+            PREFIX + "a//b/",
+            "abfss:///root/",
+            "abfss://bad container@account.dfs.core.windows.net/root/",
             PREFIX + "../",
-            PREFIX + "%2E%2E/",
             PREFIX + "?query",
             PREFIX + "#fragment",
             PREFIX.substring(0, PREFIX.length() - 1),
+            PREFIX.substring(0, PREFIX.length() - 1) + "%2F",
             "s3://bucket/root/")) {
       assertThatThrownBy(() -> new ADLSPrefixOperations(fileIO, prefix, deadline))
           .isInstanceOf(IllegalArgumentException.class);
@@ -305,20 +308,48 @@ class ADLSPrefixOperationsTest {
   }
 
   @Test
-  void decodesTheTaskUrlButNotListedNames() {
-    String directory = "root with space/tables/" + RESOURCE_ID;
-    String prefix = CONTAINER + "root%20with%20space/tables/" + RESOURCE_ID + "/";
+  void usesTheTaskUrlLiterallyAndEncodesListedNames() {
+    String directory = "root%20with%20space/tables/" + RESOURCE_ID;
+    String prefix = CONTAINER + directory + "/";
     paths.clear();
     paths.put(directory, true);
     paths.put(directory + "/literal%2Fname", false);
     when(fileIO.client(prefix)).thenReturn(client);
     try (ADLSPrefixOperations encoded = new ADLSPrefixOperations(fileIO, prefix, deadline)) {
-      assertThat(encoded.listPrefix(prefix).iterator().next().location())
-          .isEqualTo(prefix + "literal%252Fname");
+      String location = encoded.listPrefix(prefix).iterator().next().location();
+      assertThat(java.net.URI.create(location).getPath())
+          .isEqualTo("/" + directory + "/literal%2Fname");
       encoded.deletePrefix(prefix);
     }
     assertThat(paths).isEmpty();
     verify(client).getFileClient(directory + "/literal%2Fname");
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {"root", "root%20reports", "root%2Freports", "root reports", "x/%2e%2e/root"})
+  void cleanupTargetsTheLiteralManagedDirectory(String root) {
+    NormalizedURL location =
+        ExternalLocationUtils.getManagedLocationForTable(
+            NormalizedURL.from(CONTAINER + root), RESOURCE_ID);
+    String prefix = location + "/";
+    String expectedDirectory = root + "/tables/" + RESOURCE_ID;
+    assertThat(location.getStoragePath()).isEqualTo("/" + expectedDirectory);
+    paths.clear();
+    paths.put(expectedDirectory, true);
+    paths.put(expectedDirectory + "/data", false);
+    when(fileIO.client(prefix)).thenReturn(client);
+
+    try (ADLSPrefixOperations cleanup = new ADLSPrefixOperations(fileIO, prefix, deadline)) {
+      cleanup.listPrefix(prefix).iterator().hasNext();
+      ArgumentCaptor<ListPathsOptions> options = ArgumentCaptor.forClass(ListPathsOptions.class);
+      verify(client).listPaths(options.capture(), isNull());
+      assertThat(options.getValue().getPath())
+          .as("Cleanup directory must match the managed location used for credential scope")
+          .isEqualTo(expectedDirectory);
+      cleanup.deletePrefix(prefix);
+    }
+    assertThat(paths).isEmpty();
   }
 
   @ParameterizedTest

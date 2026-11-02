@@ -7,6 +7,7 @@ import com.azure.storage.file.datalake.models.ListPathsOptions;
 import com.azure.storage.file.datalake.models.PathItem;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
@@ -34,20 +35,22 @@ final class ADLSPrefixOperations implements SupportsPrefixOperations {
 
   /**
    * @param fileIO credentialed FileIO owned and closed by these prefix operations
-   * @param boundPrefix absolute ADLS directory URL, including its trailing slash
+   * @param boundPrefix ADLS directory location as stored, with a literal path and a trailing slash
    * @param deadline shared attempt deadline and shutdown interruption check
    */
   ADLSPrefixOperations(ADLSFileIO fileIO, String boundPrefix, CooperativeDeadline deadline) {
-    URI uri = URI.create(boundPrefix);
-    String path = uri.getPath();
-    if (!("abfs".equals(uri.getScheme()) || "abfss".equals(uri.getScheme()))
-        || uri.getRawAuthority() == null
-        || uri.getRawQuery() != null
-        || uri.getRawFragment() != null
-        || path == null
+    // ADLS names are literal, as in the stored location and the cleanup credential's scope: the
+    // path is read as written, so a space or percent sequence is part of a name.
+    int schemeEnd = boundPrefix.indexOf("://");
+    int pathStart = schemeEnd < 0 ? -1 : boundPrefix.indexOf('/', schemeEnd + 3);
+    String scheme = schemeEnd < 0 ? "" : boundPrefix.substring(0, schemeEnd);
+    String authority = pathStart < 0 ? "" : boundPrefix.substring(schemeEnd + 3, pathStart);
+    String path = pathStart < 0 ? "" : boundPrefix.substring(pathStart);
+    if (!("abfs".equals(scheme) || "abfss".equals(scheme))
+        || !isValidAuthority(scheme, authority)
         || path.chars().allMatch(character -> character == '/')
         || !path.endsWith("/")
-        || !uri.normalize().equals(uri)
+        || path.contains("//")
         || hasDotSegment(path)) {
       throw new IllegalArgumentException(
           "Bound prefix must identify an ADLS directory ending in '/'");
@@ -55,12 +58,13 @@ final class ADLSPrefixOperations implements SupportsPrefixOperations {
     this.fileIO = Objects.requireNonNull(fileIO, "fileIO");
     this.boundPrefix = boundPrefix;
     this.directory = path.substring(1, path.length() - 1);
-    this.containerRoot = uri.getScheme() + "://" + uri.getRawAuthority() + "/";
+    this.containerRoot = scheme + "://" + authority + "/";
     this.deadline = Objects.requireNonNull(deadline, "deadline");
   }
 
   /**
-   * Lists files lazily as absolute ADLS URLs; a missing directory is already empty.
+   * Lists files lazily as URL-encoded absolute ADLS URLs (the bound prefix itself is literal); a
+   * missing directory is already empty.
    *
    * @param prefix the exact bound prefix
    */
@@ -166,6 +170,15 @@ final class ADLSPrefixOperations implements SupportsPrefixOperations {
         return item;
       }
     };
+  }
+
+  private static boolean isValidAuthority(String scheme, String authority) {
+    try {
+      return !authority.isEmpty()
+          && new URI(scheme + "://" + authority + "/").getAuthority() != null;
+    } catch (URISyntaxException e) {
+      return false;
+    }
   }
 
   private static boolean hasDotSegment(String path) {
