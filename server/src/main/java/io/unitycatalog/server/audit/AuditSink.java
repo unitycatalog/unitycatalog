@@ -23,8 +23,8 @@ public interface AuditSink extends AutoCloseable {
 
   /**
    * Called once when the server shuts down. The server stops passing records before calling this,
-   * but a request that outlived the shutdown drain can still call {@link #record} while this runs;
-   * a sink that stops on close should drop such records.
+   * but a request that outlived the shutdown drain can still call {@link #record} while this runs
+   * or just after it; a sink that stops on close should drop such records.
    */
   @Override
   default void close() {}
