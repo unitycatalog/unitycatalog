@@ -26,6 +26,7 @@ import java.io.OutputStreamWriter;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import org.apache.commons.cli.CommandLine;
 import org.apache.hadoop.conf.Configuration;
@@ -114,20 +115,15 @@ public class VolumeCli {
     String volumeFullName = json.getString(CliParams.FULL_NAME.getServerParam());
     VolumeInfo volumeInfo = volumesApi.getVolume(volumeFullName);
     String volumeLocation = volumeInfo.getStorageLocation();
-    URI baseURI = URI.create(volumeLocation);
     Configuration conf =
         DeltaKernelUtils.getHDFSConfiguration(
-            baseURI,
+            new org.apache.hadoop.fs.Path(volumeLocation).toUri(),
             tempCredApi.generateTemporaryVolumeCredentials(
                 new GenerateTemporaryVolumeCredential()
                     .volumeId(volumeInfo.getVolumeId())
                     .operation(VolumeOperation.WRITE_VOLUME)));
-    FileSystem fs =
-        DeltaKernelUtils.getFileSystem(
-            URI.create(DeltaKernelUtils.substituteSchemeForS3(volumeLocation)), conf);
+    FileSystem fs = DeltaKernelUtils.getFileSystem(volumePath(volumeLocation).toUri(), conf);
     try {
-      org.apache.hadoop.fs.Path path =
-          new org.apache.hadoop.fs.Path(DeltaKernelUtils.substituteSchemeForS3(baseURI.toString()));
       // Generate a random file name
       String randomFileName = UUID.randomUUID() + ".txt";
 
@@ -172,25 +168,16 @@ public class VolumeCli {
     if (!volumeLocation.endsWith("/")) {
       volumeLocation = volumeLocation + "/";
     }
-    URI baseURI = URI.create(volumeLocation);
-    URI relativeURI = resolveURI(baseURI, relativePath);
+    org.apache.hadoop.fs.Path basePath = volumePath(volumeLocation);
     Configuration conf =
         DeltaKernelUtils.getHDFSConfiguration(
-            relativeURI,
+            new org.apache.hadoop.fs.Path(volumeLocation).toUri(),
             tempCredApi.generateTemporaryVolumeCredentials(
                 new GenerateTemporaryVolumeCredential()
                     .volumeId(volumeInfo.getVolumeId())
                     .operation(VolumeOperation.READ_VOLUME)));
-    FileSystem fs =
-        DeltaKernelUtils.getFileSystem(
-            URI.create(DeltaKernelUtils.substituteSchemeForS3(volumeLocation)), conf);
-    String location = DeltaKernelUtils.substituteSchemeForS3(relativeURI.toString());
-    // Path(String) keeps a %XX in a cloud location as part of the object name, as the write path
-    // does. A local file location is URI-encoded, so Path(URI) decodes it.
-    org.apache.hadoop.fs.Path path =
-        isCloudLocation(relativeURI)
-            ? new org.apache.hadoop.fs.Path(location)
-            : new org.apache.hadoop.fs.Path(URI.create(location));
+    FileSystem fs = DeltaKernelUtils.getFileSystem(basePath.toUri(), conf);
+    org.apache.hadoop.fs.Path path = resolvePath(basePath, relativePath);
     try {
       if (!fs.exists(path)) {
         throw new CliException("Volume location does not exist " + path);
@@ -202,7 +189,7 @@ public class VolumeCli {
         for (FileStatus status : fileStatuses) {
           URI entityPath = status.getPath().toUri();
           fileList.add(
-              path.toUri().relativize(entityPath)
+              path.toUri().relativize(entityPath).getPath()
                   + " "
                   + (status.isDirectory() ? "[directory]" : "[file]"));
         }
@@ -229,24 +216,44 @@ public class VolumeCli {
     }
   }
 
-  public static URI resolveURI(URI baseURI, String relativePath) {
-    URI resolvedURI = baseURI.resolve(relativePath);
-    // Ensure the resolved URI is equivalent to or longer than the base URI. Compare the paths in
-    // the form that names what is read: raw for a cloud object, decoded for a local file.
-    boolean cloudLocation = isCloudLocation(baseURI);
-    String basePath = cloudLocation ? baseURI.getRawPath() : baseURI.getPath();
-    String resolvedPath = cloudLocation ? resolvedURI.getRawPath() : resolvedURI.getPath();
-
-    if (!resolvedPath.startsWith(basePath)) {
-      throw new CliException(
-          "Resolved URI is outside the base URI path. Read Failed. " + resolvedPath);
-    }
-
-    return resolvedURI;
+  /**
+   * Returns the volume location as a Hadoop path. A cloud location names objects literally, like
+   * {@code hadoop fs}: a space or {@code %XX} stays part of the name. A local file location is
+   * stored URI-encoded, so it is decoded.
+   */
+  private static org.apache.hadoop.fs.Path volumePath(String volumeLocation) {
+    String location = DeltaKernelUtils.substituteSchemeForS3(volumeLocation);
+    return Constants.SUPPORTED_CLOUD_SCHEMES.contains(
+            new org.apache.hadoop.fs.Path(volumeLocation).toUri().getScheme())
+        ? new org.apache.hadoop.fs.Path(location)
+        : new org.apache.hadoop.fs.Path(URI.create(location));
   }
 
-  private static boolean isCloudLocation(URI uri) {
-    return Constants.SUPPORTED_CLOUD_SCHEMES.contains(uri.getScheme());
+  /**
+   * Joins {@code --path} to the volume path. {@code --path} names objects literally, and the
+   * result, including a full URI, must stay inside the volume.
+   */
+  private static org.apache.hadoop.fs.Path resolvePath(
+      org.apache.hadoop.fs.Path basePath, String relativePath) {
+    if (relativePath.isEmpty()) {
+      return basePath;
+    }
+    // A full URI names its own bucket. Any other path is a name under the volume, where "./" keeps
+    // a ':' in it from being read as a URI scheme.
+    org.apache.hadoop.fs.Path resolvedPath =
+        relativePath.matches("[a-zA-Z][a-zA-Z0-9+.-]*://.*")
+            ? new org.apache.hadoop.fs.Path(DeltaKernelUtils.substituteSchemeForS3(relativePath))
+            : new org.apache.hadoop.fs.Path(
+                basePath, relativePath.startsWith("/") ? relativePath : "./" + relativePath);
+    // Ensure the resolved path stays inside the volume.
+    String base = basePath.toUri().getPath().replaceAll("/$", "") + "/";
+    String resolved = resolvedPath.toUri().getPath();
+    if (!Objects.equals(resolvedPath.toUri().getScheme(), basePath.toUri().getScheme())
+        || !Objects.equals(resolvedPath.toUri().getAuthority(), basePath.toUri().getAuthority())
+        || !(resolved + "/").startsWith(base)) {
+      throw new CliException("Path is outside the volume location. Read failed: " + resolvedPath);
+    }
+    return resolvedPath;
   }
 
   private static String updateVolume(VolumesApi apiClient, JSONObject json)
