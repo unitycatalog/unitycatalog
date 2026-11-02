@@ -25,8 +25,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Builds audit records and hands them to the configured {@link AuditSink}. A sink failure at
- * runtime is logged (at most once per minute) and never fails the caller.
+ * Builds audit records and hands them to the configured {@link AuditSink}. A failure from the
+ * sink's {@code record} is logged at most once per minute, with a count of the failures in between,
+ * and never fails the caller.
  */
 public final class Auditor implements AutoCloseable {
   static final String CLEANUP_USER = "system:storage-cleanup";
@@ -98,7 +99,6 @@ public final class Auditor implements AutoCloseable {
     emit(
         () ->
             base(AuditRecord.Action.ISSUE_CREDENTIAL, use.getPurpose())
-                .purpose(use.getPurpose())
                 .resourceId(use.getResourceId())
                 .location(sanitizeLocation(path.toString()))
                 .access(
@@ -164,6 +164,7 @@ public final class Auditor implements AutoCloseable {
     return AuditRecord.builder()
         .time(clock.instant())
         .action(action)
+        .purpose(purpose)
         .user(user(purpose, ctx))
         .requestId(ctx == null ? null : ctx.id().text());
   }
