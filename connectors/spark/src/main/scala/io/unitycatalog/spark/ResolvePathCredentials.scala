@@ -7,6 +7,7 @@ import io.unitycatalog.hadoop.internal.UCHadoopConfConstants
 import org.apache.hadoop.fs.Path
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.analysis.UnresolvedRelation
+import org.apache.spark.sql.catalyst.catalog.CatalogUtils
 import org.apache.spark.sql.catalyst.plans.logical.{InsertIntoDir, InsertIntoStatement, LogicalPlan}
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.connector.catalog.CatalogNotFoundException
@@ -88,14 +89,17 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
             }
 
           // Write: INSERT OVERWRITE DIRECTORY '<cloud path>' USING <format> ...
+          // Spark writes to `CatalogUtils.URIToString(locationUri)`, not `locationUri.toString`
+          // (which keeps the URI escaping, e.g. `%2520` for a literal `%20`), so use the same
+          // path here.
           case i: InsertIntoDir
               if !isDeltaProvider(i.provider) &&
                 i.storage.locationUri.exists { u =>
-                  val location = u.toString
+                  val location = CatalogUtils.URIToString(u)
                   isCloudPath(location) &&
                     !hasUcPathCredentials(i.storage.properties, location)
                 } =>
-            val location = i.storage.locationUri.get.toString
+            val location = CatalogUtils.URIToString(i.storage.locationUri.get)
             val conf = optionsAfterLookup(
               location,
               uc.vendPathCredentialConfOrEmpty(
