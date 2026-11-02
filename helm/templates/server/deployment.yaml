@@ -30,6 +30,10 @@ spec:
       {{- with .Values.server.deployment.podSecurityContext }}
       securityContext: {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- /* kindIs keeps an explicit 0, which "with" would drop. */}}
+      {{- if not (kindIs "invalid" .Values.server.deployment.terminationGracePeriodSeconds) }}
+      terminationGracePeriodSeconds: {{ .Values.server.deployment.terminationGracePeriodSeconds }}
+      {{- end }}
       initContainers:
         - name: init
           {{- with .Values.server.deployment.initContainer.securityContext }}
@@ -165,6 +169,9 @@ spec:
         - name: server
           {{- with .Values.server.deployment.securityContext }}
           securityContext: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.server.deployment.lifecycle }}
+          lifecycle: {{- toYaml . | nindent 12 }}
           {{- end }}
           image: "{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}

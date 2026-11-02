@@ -46,12 +46,11 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.service.AuthorizedService;
 import io.unitycatalog.server.service.RegisteredService;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.Purpose;
+import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -210,8 +209,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
         storageCredentialVendor.vendCredential(
             stagingLocation,
             Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE),
-            Purpose.CLIENT,
-            Optional.empty());
+            CredentialUse.CLIENT);
     return DeltaStagingTableMapper.toStagingTableResponse(staging, credentials);
   }
 
@@ -349,7 +347,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
     NormalizedURL storageLocation = tableRepository.getTableStorageLocation(catalog, schema, table);
     TemporaryCredentials credentials =
         storageCredentialVendor.vendCredential(
-            storageLocation, toPrivileges(operation), Purpose.CLIENT, Optional.empty());
+            storageLocation, toPrivileges(operation), CredentialUse.CLIENT);
     return DeltaCredentialsMapper.toCredentialsResponse(credentials, operation);
   }
 
@@ -369,8 +367,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
         storageCredentialVendor.vendCredential(
             storageLocation,
             Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE),
-            Purpose.CLIENT,
-            Optional.empty());
+            CredentialUse.CLIENT);
     return DeltaCredentialsMapper.toCredentialsResponse(
         credentials, DeltaCredentialOperation.READ_WRITE);
   }

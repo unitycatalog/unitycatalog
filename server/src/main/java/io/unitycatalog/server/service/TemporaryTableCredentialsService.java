@@ -16,11 +16,10 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.TableRepository.TableStorageLocationInfo;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.Purpose;
+import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Collections;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -54,8 +53,7 @@ public class TemporaryTableCredentialsService implements UnityCatalogRestService
         storageCredentialVendor.vendCredential(
             info.url(),
             tableOperationToPrivileges(generateTemporaryTableCredential.getOperation()),
-            Purpose.CLIENT,
-            Optional.empty()));
+            CredentialUse.CLIENT));
   }
 
   private Set<CredentialContext.Privilege> tableOperationToPrivileges(

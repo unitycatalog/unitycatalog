@@ -97,6 +97,32 @@ each time.
 PersistentVolumeClaim and token signing key Secret, and a later install with the same release name and
 namespace reuses them. Delete both to remove the data.
 
+## Graceful shutdown
+
+During an upgrade or scale-down, Kubernetes sends the server SIGTERM, and the server finishes requests in flight
+for up to the [`server.shutdown-timeout`](configuration.md) server property, which you can set under
+`server.config.extraProperties`. Kubernetes can keep routing requests to the pod for a few seconds after it starts
+terminating. To cover that, set a `preStop` sleep with `server.deployment.lifecycle`, and a
+`server.deployment.terminationGracePeriodSeconds` longer than the sleep plus the whole shutdown time that the
+`server.shutdown-timeout` entry describes. Both are unset by default.
+
+The following example fits with the default timeout: a 10 second sleep, the 5 second timeout and up to 7 seconds
+more for storage cleanup and stopping the HTTP server take 22 seconds, within 30.
+
+```yaml
+server:
+  deployment:
+    lifecycle:
+      preStop:
+        exec:
+          command: ["sleep", "10"]
+    terminationGracePeriodSeconds: 30
+```
+
+This avoids downtime only with a rolling update, which the chart uses with PostgreSQL or more than one replica
+unless you set `server.deployment.updateStrategy`. The default single replica on the file database is recreated, so
+it is briefly unavailable during an upgrade.
+
 ## Configuration
 
 Run `helm show readme oci://registry-1.docker.io/unitycatalog/unitycatalog-chart --version X.Y.Z` for the chart README
