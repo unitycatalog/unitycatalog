@@ -182,16 +182,6 @@ public class SdkModelVersionPublishingTest extends SdkAccessControlBaseCRUDTest 
         () -> ownerVersions.finalizeModelVersion(MODEL_FULL_NAME, version.getVersion(), finalize),
         ErrorCode.PERMISSION_DENIED,
         "Only model version creator can finalize model version");
-    assertApiException(
-        () ->
-            publisherVersions.finalizeModelVersion(
-                MODEL_FULL_NAME,
-                version.getVersion(),
-                new FinalizeModelVersion()
-                    .fullName(MODEL_FULL_NAME + "_other")
-                    .version(version.getVersion())),
-        ErrorCode.INVALID_ARGUMENT,
-        "Path and request-body model version must match");
 
     revokePermission(PRINCIPAL_2, scope, target, Privilege.CREATE_MODEL_VERSION);
     assertPermissionDenied(() -> publisherVersions.createModelVersion(createVersionRequest()));

@@ -11,15 +11,11 @@ ownership or `CREATE MODEL VERSION`. Grant `CREATE MODEL VERSION` on a registere
 or catalog. Catalog and schema grants apply to their child models.
 Any authorized publisher can upload to a pending version.
 With authorization enabled, only the user who created a pending version can finalize it.
-Read credentials require `EXECUTE` or model ownership.
+Read credentials require `USE CATALOG`, `USE SCHEMA`, and either `EXECUTE` or model ownership.
 
 With authorization disabled, any caller can finalize a pending version.
 In both modes, `READ_WRITE_MODEL_VERSION` requires a pending version.
-`READ_MODEL_VERSION` now requires a ready version.
-
-Pipelines that relied on parent ownership must receive `CREATE MODEL VERSION`.
-Finish anonymous pending versions before enabling authorization, or recreate them under an
-authenticated publisher.
+`READ_MODEL_VERSION` requires a ready version.
 
 ## How Unity Catalog and MLflow work together
 
