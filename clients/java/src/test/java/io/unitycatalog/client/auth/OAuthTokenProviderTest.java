@@ -317,6 +317,29 @@ public class OAuthTokenProviderTest {
 
   @Test
   @SuppressWarnings("unchecked")
+  public void testFailedRenewalKeepsTokenUntilItExpires() throws Exception {
+    HttpResponse<String> failure = mock(HttpResponse.class);
+    when(failure.statusCode()).thenReturn(503);
+    when(failure.body()).thenReturn("Unavailable");
+    mockTokenResponses(tokenResponse(ACCESS_TOKEN_1, 60L), failure);
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
+    assertThat(provider.accessToken()).isEqualTo(ACCESS_TOKEN_1);
+
+    // In the renewal lead time, a failed renewal still returns the valid token.
+    clock.sleep(Duration.ofSeconds(31));
+    assertThat(provider.accessToken()).isEqualTo(ACCESS_TOKEN_1);
+    verifyOAuthRequest(2);
+
+    // Once the token has expired, the failure reaches the caller.
+    clock.sleep(Duration.ofSeconds(29));
+    assertThatThrownBy(provider::accessToken)
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("Failed to renew OAuth token");
+    verifyOAuthRequest(3);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
   public void testExchangeForUcTokenHandlesHttpError() throws Exception {
     HttpResponse<String> exchangeFailure = mock(HttpResponse.class);
     when(exchangeFailure.statusCode()).thenReturn(401);

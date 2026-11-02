@@ -211,9 +211,11 @@ public class HttpRetryHandlerTest {
   }
 
   @Test
-  public void testRetriesOnHttpTimeout() throws IOException, InterruptedException {
-    // HttpRequest.timeout() and HttpClient.connectTimeout() raise HttpTimeoutException (and its
-    // subclass HttpConnectTimeoutException), not SocketTimeoutException.
+  public void testRetriesConnectTimeoutButNotRequestTimeout()
+      throws IOException, InterruptedException {
+    // java.net.http raises HttpConnectTimeoutException for HttpClient.connectTimeout() and its
+    // superclass HttpTimeoutException for HttpRequest.timeout(), never SocketTimeoutException. A
+    // request that timed out may already have been applied, so only the connect timeout is retried.
     RetryPolicy retryPolicy =
         JitterDelayRetryPolicy.builder()
             .maxAttempts(3)
@@ -224,25 +226,40 @@ public class HttpRetryHandlerTest {
 
     HttpClient mockClient = mock(HttpClient.class);
     HttpRequest mockRequest =
-        HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/slow")).build();
+        HttpRequest.newBuilder()
+            .uri(URI.create("http://localhost:8080/api/slow"))
+            .POST(HttpRequest.BodyPublishers.ofString("{}"))
+            .build();
     HttpResponse.BodyHandler<String> bodyHandler = HttpResponse.BodyHandlers.ofString();
 
     HttpResponse<String> response200 = createMockResponse(200, "Success");
     when(mockClient.send(
             ArgumentMatchers.any(HttpRequest.class),
             ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
-        .thenThrow(new java.net.http.HttpTimeoutException("request timed out"))
         .thenThrow(new java.net.http.HttpConnectTimeoutException("connect timed out"))
         .thenReturn(response200);
-
     HttpRetryHandler handler = new HttpRetryHandler(retryPolicy, clock);
-    HttpResponse<String> result = handler.call(mockClient, mockRequest, bodyHandler);
 
-    verify(mockClient, times(3))
+    assertThat(handler.call(mockClient, mockRequest, bodyHandler).statusCode()).isEqualTo(200);
+    verify(mockClient, times(2))
         .send(
             ArgumentMatchers.any(HttpRequest.class),
             ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
-    assertThat(result.statusCode()).isEqualTo(200);
+
+    HttpClient timingOutClient = mock(HttpClient.class);
+    when(timingOutClient.send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+        .thenThrow(new java.net.http.HttpTimeoutException("request timed out"))
+        .thenReturn(response200);
+
+    assertThatThrownBy(() -> handler.call(timingOutClient, mockRequest, bodyHandler))
+        .isInstanceOf(java.net.http.HttpTimeoutException.class)
+        .hasMessage("request timed out");
+    verify(timingOutClient, times(1))
+        .send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
   }
 
   @Test

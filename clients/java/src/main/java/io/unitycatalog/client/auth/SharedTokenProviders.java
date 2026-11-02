@@ -1,43 +1,35 @@
 package io.unitycatalog.client.auth;
 
-import io.unitycatalog.client.internal.Clock;
-import java.time.Duration;
-import java.time.Instant;
+import io.unitycatalog.client.internal.BoundedKeyedCache;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * JVM-wide OAuth token providers shared by every caller with the same auth configuration.
  *
  * <p>Each {@link OAuthTokenProvider} caches its own token, so callers that build a new client per
- * operation fetch a new token per operation. Sharing one provider per configuration lets them reuse
- * the cached token instead. The key is the config itself, compared by equality, so different
+ * operation would fetch a new token per operation. Sharing one provider per configuration lets them
+ * reuse the cached token instead. The key is the config itself, compared by equality, so different
  * principals never share a provider and a rotated secret gets a new one.
  *
- * <p>Evicting an entry is always safe: callers keep the provider they already hold, and the next
- * lookup creates a new one. Entries not looked up for longer than {@link #IDLE_TIMEOUT} are
- * evicted, which also drops providers for rotated secrets. Using a provider does not count as a
- * lookup, so a long-lived caller may see its entry evicted; it only costs one token on the next
- * lookup.
+ * <p>The cache keeps the most recently looked-up providers, up to the system property {@code
+ * unitycatalog.oauth.tokenProviders.cache.maxSize} (default 100). Evicting an entry is safe:
+ * callers keep the provider they already hold, and the next lookup creates a new one.
  */
 final class SharedTokenProviders {
 
-  static final Duration IDLE_TIMEOUT = Duration.ofHours(1);
-  private static final Duration SWEEP_INTERVAL = Duration.ofMinutes(1);
+  private static final String MAX_SIZE_KEY = "unitycatalog.oauth.tokenProviders.cache.maxSize";
+  private static final int DEFAULT_MAX_SIZE = 100;
 
   private static final SharedTokenProviders INSTANCE =
-      new SharedTokenProviders(Clock.systemClock());
+      new SharedTokenProviders(Integer.getInteger(MAX_SIZE_KEY, DEFAULT_MAX_SIZE));
 
-  private final Clock clock;
-  private final ConcurrentHashMap<Map<String, String>, Entry> providers = new ConcurrentHashMap<>();
-  private volatile Instant lastSweep;
+  private final BoundedKeyedCache<Map<String, String>, TokenProvider> providers;
 
-  SharedTokenProviders(Clock clock) {
-    this.clock = clock;
-    this.lastSweep = clock.now();
+  SharedTokenProviders(int maxSize) {
+    this.providers = new BoundedKeyedCache<>(maxSize, BoundedKeyedCache.noOpListener());
   }
 
   static SharedTokenProviders instance() {
@@ -46,62 +38,23 @@ final class SharedTokenProviders {
 
   /** Returns the shared OAuth provider for {@code configs}, creating it on first use. */
   TokenProvider get(Map<String, String> configs) {
-    Map<String, String> key = cacheKey(configs);
-    Instant now = clock.now();
-    Entry entry =
-        providers.compute(
-            key,
-            (k, existing) -> {
-              if (existing != null) {
-                existing.lastAccess = now;
-                return existing;
-              }
-              OAuthTokenProvider provider = new OAuthTokenProvider();
-              provider.initialize(configs);
-              return new Entry(provider, now);
-            });
-    sweepIfDue(now);
-    return entry.provider;
+    return providers.getOrLoad(
+        cacheKey(configs),
+        () -> {
+          OAuthTokenProvider provider = new OAuthTokenProvider();
+          provider.initialize(configs);
+          return provider;
+        });
   }
 
   int size() {
     return providers.size();
   }
 
-  private void sweepIfDue(Instant now) {
-    if (now.isBefore(lastSweep.plus(SWEEP_INTERVAL))) {
-      return;
-    }
-    lastSweep = now;
-    Instant idleCutoff = now.minus(IDLE_TIMEOUT);
-    // Check and remove under the key's lock, like get, so a lookup that refreshes an entry
-    // concurrently is never evicted right after.
-    for (Map<String, String> key : providers.keySet()) {
-      providers.computeIfPresent(
-          key, (k, entry) -> entry.lastAccess.isBefore(idleCutoff) ? null : entry);
-    }
-  }
-
-  /** The entries with lower-cased keys, without the sharing flag itself. */
+  /** The entries with lower-cased keys, so lookups ignore key casing like the configs do. */
   private static Map<String, String> cacheKey(Map<String, String> configs) {
     Map<String, String> key = new HashMap<>();
-    configs.forEach(
-        (name, value) -> {
-          String normalizedName = name.toLowerCase(Locale.ROOT);
-          if (!normalizedName.equals(AuthConfigs.OAUTH_SHARED.toLowerCase(Locale.ROOT))) {
-            key.put(normalizedName, value);
-          }
-        });
+    configs.forEach((name, value) -> key.put(name.toLowerCase(Locale.ROOT), value));
     return Collections.unmodifiableMap(key);
-  }
-
-  private static final class Entry {
-    private final TokenProvider provider;
-    private volatile Instant lastAccess;
-
-    private Entry(TokenProvider provider, Instant lastAccess) {
-      this.provider = provider;
-      this.lastAccess = lastAccess;
-    }
   }
 }

@@ -50,9 +50,8 @@ import org.slf4j.LoggerFactory;
  */
 class OAuthTokenProvider implements TokenProvider {
   private static final long DEFAULT_LEAD_RENEWAL_TIME_SECONDS = 30L;
-  // Renewal holds the provider's lock, so a hung token request must not block every caller. A
-  // timed-out request is retried like other transient errors, so renewal gives up after about
-  // 30 seconds with the default retry policy.
+  // Bounds connecting and receiving the response headers of each token request, so a hung
+  // identity provider or UC server can't hold the renewal lock of a shared provider indefinitely.
   static final Duration TOKEN_REQUEST_TIMEOUT = Duration.ofSeconds(10);
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
   private static final Logger LOGGER = LoggerFactory.getLogger(OAuthTokenProvider.class);
@@ -140,7 +139,7 @@ class OAuthTokenProvider implements TokenProvider {
     this.oauthScope = normalizeOAuthScope(configs.get(AuthConfigs.OAUTH_SCOPE));
 
     // Optional exchange of the OAuth token for a UC token; needs the catalog URI to reach UC.
-    if (parseBooleanConfig(configs, AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN)) {
+    if (parseExchangeForUcToken(configs.get(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN))) {
       String catalogUri = configs.get(AuthConfigs.CATALOG_URI);
       Preconditions.checkArgument(
           catalogUri != null && !catalogUri.isEmpty(),
@@ -162,7 +161,7 @@ class OAuthTokenProvider implements TokenProvider {
     if (tempToken == null || tempToken.isReadyToRenew()) {
       synchronized (this) {
         if (tempToken == null || tempToken.isReadyToRenew()) {
-          tempToken = renewToken();
+          tempToken = renewOrKeepValidToken();
         }
       }
     }
@@ -182,6 +181,22 @@ class OAuthTokenProvider implements TokenProvider {
       configs.put(AuthConfigs.CATALOG_URI, catalogUri);
     }
     return Collections.unmodifiableMap(configs);
+  }
+
+  /**
+   * A failed renewal fails the caller only once the current token has expired. Until then, renewal
+   * is retried on the next call, so an identity provider outage during the renewal lead time
+   * doesn't fail every caller of a shared provider.
+   */
+  private TempToken renewOrKeepValidToken() {
+    try {
+      return renewToken();
+    } catch (RuntimeException e) {
+      if (tempToken == null || tempToken.isExpired()) {
+        throw e;
+      }
+      return tempToken;
+    }
   }
 
   private TempToken renewToken() {
@@ -347,19 +362,17 @@ class OAuthTokenProvider implements TokenProvider {
   }
 
   /**
-   * Reads an optional boolean config, false when unset. Accepts only {@code true} or {@code false}
-   * (any case), like Spark's boolean options, so a typo fails here rather than silently turning the
-   * feature off.
+   * Accepts only {@code true} or {@code false} (any case), like Spark's boolean options, so a typo
+   * fails here rather than silently turning the exchange off.
    */
-  static boolean parseBooleanConfig(Map<String, String> configs, String key) {
-    String value = configs.get(key);
+  private static boolean parseExchangeForUcToken(String value) {
     if (value == null) {
       return false;
     }
     Preconditions.checkArgument(
         value.equalsIgnoreCase("true") || value.equalsIgnoreCase("false"),
         "Configuration key '%s' must be 'true' or 'false', but got '%s'",
-        key,
+        AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN,
         value);
     return Boolean.parseBoolean(value);
   }
@@ -392,6 +405,10 @@ class OAuthTokenProvider implements TokenProvider {
       }
       Instant renewalTime = expirationTime.minusSeconds(leadRenewalTimeSeconds);
       return clock.now().isAfter(renewalTime);
+    }
+
+    public boolean isExpired() {
+      return !clock.now().isBefore(expirationTime);
     }
   }
 }
