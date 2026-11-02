@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import com.zaxxer.hikari.HikariDataSource;
+import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
@@ -55,6 +56,14 @@ public class MigratorTest {
 
     assertThat(migrator.migrate()).isEqualTo(releaseSteps(migrator));
     assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+  }
+
+  @Test
+  void recognizesMySqlUrlsThatLookUpTheHostInDns() {
+    assertThat(DatabaseKind.fromJdbcUrl("jdbc:mysql://db.example:3306/uc"))
+        .isEqualTo(DatabaseKind.MYSQL);
+    assertThat(DatabaseKind.fromJdbcUrl("jdbc:mysql+srv://db.example/uc"))
+        .isEqualTo(DatabaseKind.MYSQL);
   }
 
   @Test
