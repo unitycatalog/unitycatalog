@@ -30,3 +30,6 @@ RELEASING.md
 
 # Helm-docs files
 README.md.gotmpl
+
+# Chart-testing values
+ci/
