@@ -17,6 +17,7 @@ import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -29,7 +30,6 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import org.apache.logging.log4j.core.LoggerContext;
@@ -55,13 +55,11 @@ class AuditorTest {
     NormalizedURL path = NormalizedURL.from("s3://key:secret@bkt/root/tables/" + ID + "?sig=x");
     TemporaryCredentials credential = new TemporaryCredentials().expirationTime(1792500120000L);
     StorageCredentialVendor delegate = mock(StorageCredentialVendor.class);
-    when(delegate.vendCredential(
-            path, CredentialContext.READ_WRITE, Purpose.CLEANUP, Optional.of(ID)))
+    when(delegate.vendCredential(path, CredentialContext.READ_WRITE, CredentialUse.cleanup(ID)))
         .thenReturn(credential);
     StorageCredentialVendor audited = auditor.wrap(delegate);
     assertThat(
-            audited.vendCredential(
-                path, CredentialContext.READ_WRITE, Purpose.CLEANUP, Optional.of(ID)))
+            audited.vendCredential(path, CredentialContext.READ_WRITE, CredentialUse.cleanup(ID)))
         .isSameAs(credential);
     AuditRecord r = CapturingAuditSink.RECORDS.get(0);
     assertThat(r.getUser()).isEqualTo(Auditor.CLEANUP_USER);
@@ -70,11 +68,9 @@ class AuditorTest {
     assertThat(r.getLocation()).isEqualTo("s3://bkt/root/tables/" + ID); // no secrets
     // A client vend with read-only access is recorded as READ, without a resource ID.
     NormalizedURL clientPath = NormalizedURL.from("s3://bkt/t");
-    when(delegate.vendCredential(
-            clientPath, CredentialContext.READ_ONLY, Purpose.CLIENT, Optional.empty()))
+    when(delegate.vendCredential(clientPath, CredentialContext.READ_ONLY, CredentialUse.CLIENT))
         .thenReturn(credential);
-    audited.vendCredential(
-        clientPath, CredentialContext.READ_ONLY, Purpose.CLIENT, Optional.empty());
+    audited.vendCredential(clientPath, CredentialContext.READ_ONLY, CredentialUse.CLIENT);
     AuditRecord client = CapturingAuditSink.RECORDS.get(1);
     assertThat(client.getPurpose()).isEqualTo(Purpose.CLIENT);
     assertThat(client.getAccess()).isEqualTo(AuditRecord.Access.READ);
@@ -85,8 +81,7 @@ class AuditorTest {
     ServiceRequestContext request = ServiceRequestContext.of(HttpRequest.of(HttpMethod.GET, "/"));
     request.setAttr(AuthDecorator.DECODED_JWT_ATTR, jwt);
     try (SafeCloseable ignored = request.push()) {
-      audited.vendCredential(
-          clientPath, CredentialContext.READ_ONLY, Purpose.CLIENT, Optional.empty());
+      audited.vendCredential(clientPath, CredentialContext.READ_ONLY, CredentialUse.CLIENT);
     }
     assertThat(CapturingAuditSink.RECORDS.get(2).getUser()).isEqualTo("bob@example.com");
     // ABFS keeps its container@account authority.
@@ -130,8 +125,7 @@ class AuditorTest {
                 erroring.recordCredential(
                     NormalizedURL.from("s3://bkt/t"),
                     CredentialContext.READ_ONLY,
-                    Purpose.CLIENT,
-                    Optional.empty(),
+                    CredentialUse.CLIENT,
                     new TemporaryCredentials()))
         .doesNotThrowAnyException();
     assertThatCode(erroring::close).doesNotThrowAnyException();

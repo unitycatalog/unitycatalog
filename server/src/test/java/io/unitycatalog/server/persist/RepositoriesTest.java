@@ -17,7 +17,7 @@ import io.unitycatalog.server.persist.utils.FileOperationsImpl;
 import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.Purpose;
+import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.CooperativeDeadline;
@@ -137,10 +137,10 @@ class RepositoriesTest {
 
     repositories
         .getStorageCredentialVendor()
-        .vendCredential(path, CredentialContext.READ_ONLY, Purpose.CLIENT, Optional.empty());
+        .vendCredential(path, CredentialContext.READ_ONLY, CredentialUse.CLIENT);
     repositories
         .getStorageCredentialVendor()
-        .vendCredential(path, CredentialContext.READ_ONLY, Purpose.CLIENT, Optional.empty());
+        .vendCredential(path, CredentialContext.READ_ONLY, CredentialUse.CLIENT);
 
     // Even with the cache enabled, an injected vendor is not wrapped: every request reaches it.
     verify(injected, times(2)).vendCredential(any());
