@@ -7,7 +7,6 @@ import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialUse;
-import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -159,23 +158,19 @@ public final class Auditor implements AutoCloseable {
     }
   }
 
-  private AuditRecord.AuditRecordBuilder base(AuditRecord.Action action, Purpose purpose) {
+  private AuditRecord.AuditRecordBuilder base(
+      AuditRecord.Action action, AuditRecord.Purpose purpose) {
     ServiceRequestContext ctx = ServiceRequestContext.currentOrNull();
     return AuditRecord.builder()
         .time(clock.instant())
         .action(action)
-        .purpose(
-            switch (purpose) {
-              case CLIENT -> AuditRecord.Purpose.CLIENT;
-              case SERVER -> AuditRecord.Purpose.SERVER;
-              case CLEANUP -> AuditRecord.Purpose.CLEANUP;
-            })
+        .purpose(purpose)
         .user(user(purpose, ctx))
         .requestId(ctx == null ? null : ctx.id().text());
   }
 
-  private static String user(Purpose purpose, ServiceRequestContext ctx) {
-    if (purpose == Purpose.CLEANUP) {
+  private static String user(AuditRecord.Purpose purpose, ServiceRequestContext ctx) {
+    if (purpose == AuditRecord.Purpose.CLEANUP) {
       return CLEANUP_USER;
     }
     DecodedJWT jwt = ctx == null ? null : ctx.attr(AuthDecorator.DECODED_JWT_ATTR);

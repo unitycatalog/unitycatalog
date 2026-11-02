@@ -1,5 +1,6 @@
 package io.unitycatalog.server.service.credential;
 
+import io.unitycatalog.server.audit.AuditRecord.Purpose;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
