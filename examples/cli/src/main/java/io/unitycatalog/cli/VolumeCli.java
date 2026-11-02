@@ -8,6 +8,7 @@ import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.cli.utils.Pagination;
+import io.unitycatalog.cli.utils.Constants;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
@@ -181,12 +182,16 @@ public class VolumeCli {
                 new GenerateTemporaryVolumeCredential()
                     .volumeId(volumeInfo.getVolumeId())
                     .operation(VolumeOperation.READ_VOLUME)));
-    URI relativeURIWithS3AScheme =
-        URI.create(DeltaKernelUtils.substituteSchemeForS3(relativeURI.toString()));
     FileSystem fs =
         DeltaKernelUtils.getFileSystem(
             URI.create(DeltaKernelUtils.substituteSchemeForS3(volumeLocation)), conf);
-    org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path(relativeURIWithS3AScheme);
+    String location = DeltaKernelUtils.substituteSchemeForS3(relativeURI.toString());
+    // Path(String) keeps a %XX in a cloud location as part of the object name, as the write path
+    // does. A local file location is URI-encoded, so Path(URI) decodes it.
+    org.apache.hadoop.fs.Path path =
+        isCloudLocation(relativeURI)
+            ? new org.apache.hadoop.fs.Path(location)
+            : new org.apache.hadoop.fs.Path(URI.create(location));
     try {
       if (!fs.exists(path)) {
         throw new CliException("Volume location does not exist " + path);
@@ -198,7 +203,7 @@ public class VolumeCli {
         for (FileStatus status : fileStatuses) {
           URI entityPath = status.getPath().toUri();
           fileList.add(
-              relativeURIWithS3AScheme.relativize(entityPath)
+              path.toUri().relativize(entityPath)
                   + " "
                   + (status.isDirectory() ? "[directory]" : "[file]"));
         }
@@ -227,9 +232,11 @@ public class VolumeCli {
 
   public static URI resolveURI(URI baseURI, String relativePath) {
     URI resolvedURI = baseURI.resolve(relativePath);
-    // Ensure the resolved URI is equivalent to or longer than the base URI
-    String basePath = baseURI.getPath();
-    String resolvedPath = resolvedURI.getPath();
+    // Ensure the resolved URI is equivalent to or longer than the base URI. Compare the paths in
+    // the form that names what is read: raw for a cloud object, decoded for a local file.
+    boolean cloudLocation = isCloudLocation(baseURI);
+    String basePath = cloudLocation ? baseURI.getRawPath() : baseURI.getPath();
+    String resolvedPath = cloudLocation ? resolvedURI.getRawPath() : resolvedURI.getPath();
 
     if (!resolvedPath.startsWith(basePath)) {
       throw new CliException(
@@ -237,6 +244,10 @@ public class VolumeCli {
     }
 
     return resolvedURI;
+  }
+
+  private static boolean isCloudLocation(URI uri) {
+    return Constants.SUPPORTED_CLOUD_SCHEMES.contains(uri.getScheme());
   }
 
   private static String updateVolume(VolumesApi apiClient, JSONObject json)
