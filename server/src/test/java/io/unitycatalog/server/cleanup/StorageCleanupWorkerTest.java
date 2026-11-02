@@ -333,7 +333,8 @@ class StorageCleanupWorkerTest {
     setClaim(ManagedResourceType.TABLE, LOCATION + suffix);
     assertThat(worker.runOnce()).isTrue();
     verifyNoInteractions(fileOperations);
-    verifyFailure("Storage cleanup failed: IllegalArgumentException");
+    // NormalizedURL rejects '?' and '#' in a cloud location before the task is checked.
+    verifyFailure("Storage cleanup failed: BaseException");
   }
 
   @Test

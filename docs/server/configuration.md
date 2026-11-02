@@ -114,12 +114,13 @@ server acts on behalf of every principal that can write those directories:
 For a deployment shared by users who should not have each other's file access, use cloud storage, where the server
 vends credentials scoped to each location.
 
-### Cloud storage locations
+## Cloud storage locations
 
 Temporary credentials for S3, GCS, and Azure are scoped to the location's path as stored, the way
-Hadoop and Spark read it. A percent sequence in a cloud location is part of the object name: for
-example, `s3://bucket/team%20reports` names the prefix `team%20reports`, and `%2F` is not a directory
-separator.
+Hadoop and Spark read it. A space or a percent sequence in a cloud location is part of the object
+name: for example, `s3://bucket/team reports` names the prefix `team reports`,
+`s3://bucket/team%20reports` names the prefix `team%20reports`, and `%2F` is not a directory
+separator. A cloud location cannot contain `?` or `#`.
 
 Because `%2F` is part of an object name, a location such as `s3://bucket/%2F` is not a bucket root:
 it can be used as an external table or volume location, and credentials for it are

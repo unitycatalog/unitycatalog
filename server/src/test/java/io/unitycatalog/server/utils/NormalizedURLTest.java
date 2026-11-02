@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.apache.hadoop.fs.Path;
@@ -142,6 +143,26 @@ public class NormalizedURLTest {
     // Cloud locations keep their escapes, since an object key may contain a literal '%'.
     assertNormalizedURL("s3://bucket/a%2Fb", "s3://bucket/a%2Fb");
     assertNormalizedURL("gs://bucket/%2e%2e/x", "gs://bucket/%2e%2e/x");
+    // Iceberg FileIO cuts a cloud path at '?' or '#', so cleanup could reach a different prefix.
+    assertRejected("s3://bucket/t?x");
+    assertRejected("gs://bucket/t#x");
+    assertRejected("s3://bucket#x/data");
+    assertRejected("abfss://container@account.dfs.core.windows.net/t?x");
+  }
+
+  @Test
+  public void testFromUriKeepsTheLiteralCloudPath() {
+    // A client's URI escapes the path; the stored location is the literal Hadoop path string.
+    for (String location : List.of("s3://bucket/team reports", "s3://bucket/team%20reports")) {
+      assertThat(NormalizedURL.from(new Path(location).toUri()))
+          .isEqualTo(NormalizedURL.from(location));
+    }
+    for (String uri : List.of("s3://bucket/x?y", "s3://bucket/x#y")) {
+      assertThatThrownBy(() -> NormalizedURL.from(URI.create(uri)))
+          .isInstanceOf(BaseException.class)
+          .extracting(e -> ((BaseException) e).getErrorCode())
+          .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+    }
   }
 
   private void assertRejected(String url) {
@@ -157,6 +178,8 @@ public class NormalizedURLTest {
     assertThat(NormalizedURL.from("s3://bucket/path").getStorageBase())
         .isEqualTo(NormalizedURL.from("s3://bucket"));
     assertThat(NormalizedURL.from("s3://bucket/path/to/file").getStorageBase())
+        .isEqualTo(NormalizedURL.from("s3://bucket"));
+    assertThat(NormalizedURL.from("s3://bucket/team reports/t").getStorageBase())
         .isEqualTo(NormalizedURL.from("s3://bucket"));
     assertThat(NormalizedURL.from("gs://bucket/path").getStorageBase())
         .isEqualTo(NormalizedURL.from("gs://bucket"));
@@ -185,7 +208,8 @@ public class NormalizedURLTest {
                         "team%252Freports",
                         "caf%C3%A9",
                         "café/資料",
-                        "team+reports")
+                        "team+reports",
+                        "team reports")
                     .map(path -> base + path));
   }
 
@@ -212,8 +236,6 @@ public class NormalizedURLTest {
         "s3://bucket///",
         "s3://bucket/.",
         "s3://bucket/a/..",
-        "s3://bucket?query",
-        "s3://bucket#fragment",
         "gs://bucket/",
         "abfs://container@account.dfs.core.windows.net/",
         "abfss://container@account.dfs.core.windows.net/"

@@ -5,7 +5,9 @@ import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Paths;
+import java.util.Objects;
 import lombok.EqualsAndHashCode;
+import org.apache.hadoop.fs.Path;
 
 /**
  * A type-safe wrapper for normalized URLs that ensures consistent URL formatting across the Unity
@@ -65,13 +67,29 @@ public final class NormalizedURL {
   }
 
   /**
-   * Creates a normalized URL from the given URI. Returns null if the input is null. Convenience
-   * overload of {@link #from(String)} for callers that already hold a {@link URI}.
+   * Creates a normalized URL from the given URI. Returns null if the input is null. A cloud URI's
+   * decoded path is the literal object name, so {@code s3://b/team%20reports} names {@code team
+   * reports}. A cloud URI with a query or fragment is rejected.
    *
    * @param uri the URI to normalize
    */
   public static NormalizedURL from(URI uri) {
-    return uri == null ? null : new NormalizedURL(uri.toString());
+    if (uri == null) {
+      return null;
+    }
+    // A cloud URI escapes its path, but the stored location is the literal path string.
+    return switch (UriScheme.fromURI(uri)) {
+      case S3, GS, ABFS, ABFSS -> {
+        if (uri.getRawQuery() != null || uri.getRawFragment() != null) {
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              "Cloud storage location cannot contain '?' or '#': " + uri);
+        }
+        yield new NormalizedURL(
+            uri.getScheme() + "://" + Objects.toString(uri.getRawAuthority(), "") + uri.getPath());
+      }
+      case FILE, NULL -> new NormalizedURL(uri.toString());
+    };
   }
 
   /**
@@ -87,11 +105,29 @@ public final class NormalizedURL {
   /**
    * Converts the normalized URL to a URI object.
    *
+   * <p>For a cloud location this is the URI Hadoop builds from the path string, so its decoded path
+   * is the literal object name.
+   *
    * @return the URI representation of this normalized URL
    * @throws IllegalArgumentException if the URL string violates RFC 2396
    */
   public URI toUri() {
-    return URI.create(url);
+    URI cloudUri = cloudUri(url);
+    return cloudUri != null ? cloudUri : URI.create(url);
+  }
+
+  /** Returns the URI Hadoop builds for a cloud location, or null for any other location. */
+  private static URI cloudUri(String location) {
+    URI uri;
+    try {
+      uri = new Path(location).toUri();
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
+    return switch (UriScheme.fromURI(uri)) {
+      case S3, GS, ABFS, ABFSS -> uri;
+      case FILE, NULL -> null;
+    };
   }
 
   /**
@@ -101,17 +137,14 @@ public final class NormalizedURL {
    * string paths. Local file paths use URI decoding to identify the file-system path.
    */
   public String getStoragePath() {
-    URI uri = toUri();
-    return switch (UriScheme.fromURI(uri)) {
-      case S3, GS, ABFS, ABFSS -> uri.getRawPath();
-      case FILE, NULL -> uri.getPath();
-    };
+    return toUri().getPath();
   }
 
   /**
    * Returns whether this URL identifies an entire cloud storage bucket or container.
    *
-   * <p>A cloud root has no nonempty literal object path.
+   * <p>A cloud root's literal path is empty or only slashes; an encoded {@code %2F} is part of an
+   * object name, not a separator.
    */
   public boolean isCloudStorageRoot() {
     URI uri = toUri();
@@ -166,6 +199,26 @@ public final class NormalizedURL {
       // A path containing no / is very likely a malformed path or it's intended to be a name.
       // In any case we reject it.
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Ambiguous path: " + inputPath);
+    }
+    // A cloud object name is literal, as in Hadoop: a space or '%' is part of the name.
+    URI cloudUri = cloudUri(inputPath);
+    if (cloudUri != null) {
+      // Iceberg FileIO cuts a cloud path at '?' or '#', so such a name can't be addressed safely.
+      if (inputPath.indexOf('?') >= 0 || inputPath.indexOf('#') >= 0) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "Cloud storage location cannot contain '?' or '#': " + inputPath);
+      }
+      // Only the object path is literal: the bucket or container must still be a valid authority.
+      String root = cloudUri.getScheme() + "://" + Objects.toString(cloudUri.getAuthority(), "");
+      if (cloudUri.getAuthority() != null) {
+        try {
+          new URI(root);
+        } catch (URISyntaxException e) {
+          throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unsupported path: " + inputPath);
+        }
+      }
+      return removeExtraSlashes(root + cloudUri.getPath());
     }
     // Check if the path is already a URI with a valid scheme
     URI uri;
@@ -297,7 +350,7 @@ public final class NormalizedURL {
   }
 
   public NormalizedURL getStorageBase() {
-    URI uri = URI.create(url);
+    URI uri = toUri();
     return NormalizedURL.from(uri.getScheme() + "://" + uri.getAuthority());
   }
 }

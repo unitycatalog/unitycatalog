@@ -133,6 +133,7 @@ public class AwsPolicyGeneratorTest {
         "caf%C3%A9",
         "team%2F",
         "team+reports",
+        "team reports",
         "café/資料"
       })
   public void testPolicyPreservesLiteralCloudPath(String path) throws Exception {
