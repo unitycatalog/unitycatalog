@@ -7,7 +7,7 @@ import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.Purpose;
+import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
 import io.unitycatalog.server.utils.CooperativeDeadline;
@@ -94,8 +94,7 @@ public class FileOperationsImpl implements FileOperations {
       case FILE, NULL -> new SimpleLocalFileIO(Paths.get(rootPath.toUri()));
       case S3, GS, ABFS, ABFSS -> {
         ResolvingFileIO fileio = new ResolvingFileIO();
-        fileio.initialize(
-            serverFileIOConfig(rootPath, privileges, Purpose.SERVER, Optional.empty()));
+        fileio.initialize(serverFileIOConfig(rootPath, privileges, CredentialUse.SERVER));
         yield fileio;
       }
     };
@@ -116,14 +115,14 @@ public class FileOperationsImpl implements FileOperations {
         ResolvingFileIO fileIO = new ResolvingFileIO();
         fileIO.initialize(
             serverFileIOConfig(
-                rootPath, CredentialContext.READ_WRITE, Purpose.CLEANUP, Optional.of(resourceId)));
+                rootPath, CredentialContext.READ_WRITE, CredentialUse.cleanup(resourceId)));
         yield new InterruptiblePrefixOperations(fileIO, rootPath + "/", deadline);
       }
       case ABFS, ABFSS -> {
         ADLSFileIO fileIO = new ADLSFileIO();
         fileIO.initialize(
             serverFileIOConfig(
-                rootPath, CredentialContext.READ_WRITE, Purpose.CLEANUP, Optional.of(resourceId)));
+                rootPath, CredentialContext.READ_WRITE, CredentialUse.cleanup(resourceId)));
         yield new ADLSPrefixOperations(fileIO, rootPath + "/", deadline);
       }
     };
@@ -143,20 +142,15 @@ public class FileOperationsImpl implements FileOperations {
     }
     return toFileIOConfig(
         path,
-        storageCredentialVendor.vendCredential(path, privileges, Purpose.CLIENT, Optional.empty()),
+        storageCredentialVendor.vendCredential(path, privileges, CredentialUse.CLIENT),
         credentialsEndpoint);
   }
 
   /** The FileIO config for credentials the server uses itself, labeled with their purpose. */
   private Map<String, String> serverFileIOConfig(
-      NormalizedURL path,
-      Set<CredentialContext.Privilege> privileges,
-      Purpose purpose,
-      Optional<UUID> resourceId) {
+      NormalizedURL path, Set<CredentialContext.Privilege> privileges, CredentialUse use) {
     return toFileIOConfig(
-        path,
-        storageCredentialVendor.vendCredential(path, privileges, purpose, resourceId),
-        Optional.empty());
+        path, storageCredentialVendor.vendCredential(path, privileges, use), Optional.empty());
   }
 
   private Map<String, String> toFileIOConfig(

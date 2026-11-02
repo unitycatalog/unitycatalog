@@ -17,11 +17,10 @@ import io.unitycatalog.server.model.VolumeOperation;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.Purpose;
+import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.Collections;
-import java.util.Optional;
 import java.util.Set;
 
 public class TemporaryVolumeCredentialsService implements UnityCatalogRestService {
@@ -55,8 +54,7 @@ public class TemporaryVolumeCredentialsService implements UnityCatalogRestServic
         storageCredentialVendor.vendCredential(
             NormalizedURL.from(volumeInfo.getStorageLocation()),
             volumeOperationToPrivileges(generateTemporaryVolumeCredential.getOperation()),
-            Purpose.CLIENT,
-            Optional.empty()));
+            CredentialUse.CLIENT));
   }
 
   private Set<CredentialContext.Privilege> volumeOperationToPrivileges(

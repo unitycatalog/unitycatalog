@@ -6,6 +6,7 @@ import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -16,7 +17,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -93,14 +93,13 @@ public final class Auditor implements AutoCloseable {
   void recordCredential(
       NormalizedURL path,
       Set<CredentialContext.Privilege> privileges,
-      Purpose purpose,
-      Optional<UUID> resourceId,
+      CredentialUse use,
       TemporaryCredentials credential) {
     emit(
         () ->
-            base(AuditRecord.Action.ISSUE_CREDENTIAL, purpose)
-                .purpose(purpose)
-                .resourceId(resourceId.orElse(null))
+            base(AuditRecord.Action.ISSUE_CREDENTIAL, use.getPurpose())
+                .purpose(use.getPurpose())
+                .resourceId(use.getResourceId())
                 .location(sanitizeLocation(path.toString()))
                 .access(
                     privileges.contains(CredentialContext.Privilege.UPDATE)
