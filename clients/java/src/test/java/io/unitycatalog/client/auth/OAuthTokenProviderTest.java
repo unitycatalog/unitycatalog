@@ -393,14 +393,21 @@ public class OAuthTokenProviderTest {
 
   @Test
   public void testTokenExpiryFallsBackToJwtExpClaim() throws Exception {
-    String jwt = jwtWithExp(clock.now().plusSeconds(EXPIRES_IN_SECONDS).getEpochSecond());
-    mockTokenResponses(tokenResponse("{\"access_token\":\"" + jwt + "\"}"));
+    String jwt = jwtWithExp(clock.now().plusSeconds(120).getEpochSecond());
+    mockTokenResponses(
+        tokenResponse("{\"access_token\":\"" + jwt + "\"}"),
+        tokenResponse(ACCESS_TOKEN_2, EXPIRES_IN_SECONDS));
     OAuthTokenProvider provider = defaultOAuthTokenProvider();
 
     assertThat(provider.accessToken()).isEqualTo(jwt);
-    clock.sleep(Duration.ofSeconds(EXPIRES_IN_SECONDS - 60));
+    // Reused until exp minus the 30s renewal lead time.
+    clock.sleep(Duration.ofSeconds(89));
     assertThat(provider.accessToken()).isEqualTo(jwt);
     verifyOAuthRequest(1);
+
+    clock.sleep(Duration.ofSeconds(2));
+    assertThat(provider.accessToken()).isEqualTo(ACCESS_TOKEN_2);
+    verifyOAuthRequest(2);
   }
 
   @Test
@@ -457,6 +464,7 @@ public class OAuthTokenProviderTest {
     assertThat(OAuthTokenProvider.jwtExpirationOf(ACCESS_TOKEN_1)).isEmpty();
     assertThat(OAuthTokenProvider.jwtExpirationOf("a.not-base64!.c")).isEmpty();
     assertThat(OAuthTokenProvider.jwtExpirationOf(jwt("{\"sub\":\"x\"}"))).isEmpty();
+    assertThat(OAuthTokenProvider.jwtExpirationOf(jwtWithExp(Long.MAX_VALUE))).isEmpty();
   }
 
   private static Map<String, String> exchangeConfigs(String catalogUri) {

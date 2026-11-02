@@ -15,12 +15,15 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Internal class - not intended for direct use.
@@ -47,7 +50,7 @@ import java.util.Optional;
 class OAuthTokenProvider implements TokenProvider {
   private static final long DEFAULT_LEAD_RENEWAL_TIME_SECONDS = 30L;
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-  private static final System.Logger LOGGER = System.getLogger(OAuthTokenProvider.class.getName());
+  private static final Logger LOGGER = LoggerFactory.getLogger(OAuthTokenProvider.class);
   private static final String TOKEN_EXCHANGE_PATH = "/api/1.0/unity-control/auth/tokens";
   private static final String TOKEN_EXCHANGE_GRANT_TYPE =
       "urn:ietf:params:oauth:grant-type:token-exchange";
@@ -66,7 +69,7 @@ class OAuthTokenProvider implements TokenProvider {
   private Clock clock;
 
   private volatile TempToken tempToken;
-  private volatile boolean hasWarnedUncacheableToken;
+  private boolean hasWarnedUncacheableToken;
 
   OAuthTokenProvider() {}
 
@@ -306,8 +309,7 @@ class OAuthTokenProvider implements TokenProvider {
     }
     if (!hasWarnedUncacheableToken) {
       hasWarnedUncacheableToken = true;
-      LOGGER.log(
-          System.Logger.Level.WARNING,
+      LOGGER.warn(
           "Token response has no 'expires_in' and the token has no 'exp' claim, so it cannot be"
               + " cached: a new token is fetched for every request.");
     }
@@ -328,7 +330,7 @@ class OAuthTokenProvider implements TokenProvider {
       return exp != null && exp.canConvertToLong()
           ? Optional.of(Instant.ofEpochSecond(exp.asLong()))
           : Optional.empty();
-    } catch (IllegalArgumentException | IOException e) {
+    } catch (IllegalArgumentException | DateTimeException | IOException e) {
       return Optional.empty();
     }
   }
