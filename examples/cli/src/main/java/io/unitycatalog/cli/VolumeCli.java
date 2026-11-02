@@ -173,10 +173,9 @@ public class VolumeCli {
       volumeLocation = volumeLocation + "/";
     }
     URI baseURI = URI.create(volumeLocation);
-    URI relativeURI = resolveURI(baseURI, relativePath);
     Configuration conf =
         DeltaKernelUtils.getHDFSConfiguration(
-            relativeURI,
+            baseURI,
             tempCredApi.generateTemporaryVolumeCredentials(
                 new GenerateTemporaryVolumeCredential()
                     .volumeId(volumeInfo.getVolumeId())
@@ -184,13 +183,7 @@ public class VolumeCli {
     FileSystem fs =
         DeltaKernelUtils.getFileSystem(
             URI.create(DeltaKernelUtils.substituteSchemeForS3(volumeLocation)), conf);
-    String location = DeltaKernelUtils.substituteSchemeForS3(relativeURI.toString());
-    // Path(String) keeps a %XX in a cloud location as part of the object name, as the write path
-    // does. A local file location is URI-encoded, so Path(URI) decodes it.
-    org.apache.hadoop.fs.Path path =
-        isCloudLocation(relativeURI)
-            ? new org.apache.hadoop.fs.Path(location)
-            : new org.apache.hadoop.fs.Path(URI.create(location));
+    org.apache.hadoop.fs.Path path = resolvePath(baseURI, relativePath);
     try {
       if (!fs.exists(path)) {
         throw new CliException("Volume location does not exist " + path);
@@ -229,20 +222,28 @@ public class VolumeCli {
     }
   }
 
-  public static URI resolveURI(URI baseURI, String relativePath) {
-    URI resolvedURI = baseURI.resolve(relativePath);
-    // Ensure the resolved URI is equivalent to or longer than the base URI. Compare the paths in
-    // the form that names what is read: raw for a cloud object, decoded for a local file.
-    boolean cloudLocation = isCloudLocation(baseURI);
-    String basePath = cloudLocation ? baseURI.getRawPath() : baseURI.getPath();
-    String resolvedPath = cloudLocation ? resolvedURI.getRawPath() : resolvedURI.getPath();
-
-    if (!resolvedPath.startsWith(basePath)) {
-      throw new CliException(
-          "Resolved URI is outside the base URI path. Read Failed. " + resolvedPath);
+  /**
+   * Joins {@code --path} to the volume location. Both name objects literally, like {@code hadoop
+   * fs}: a {@code %XX} stays part of the name. A local file location is URI-encoded, so it is
+   * decoded.
+   */
+  private static org.apache.hadoop.fs.Path resolvePath(URI baseURI, String relativePath) {
+    String location = DeltaKernelUtils.substituteSchemeForS3(baseURI.toString());
+    org.apache.hadoop.fs.Path basePath =
+        isCloudLocation(baseURI)
+            ? new org.apache.hadoop.fs.Path(location)
+            : new org.apache.hadoop.fs.Path(URI.create(location));
+    if (relativePath.isEmpty()) {
+      return basePath;
     }
-
-    return resolvedURI;
+    org.apache.hadoop.fs.Path resolvedPath = new org.apache.hadoop.fs.Path(basePath, relativePath);
+    // Ensure the resolved path stays inside the volume.
+    String base = basePath.toUri().getPath().replaceAll("/$", "") + "/";
+    String resolved = resolvedPath.toUri().getPath();
+    if (!(resolved + "/").startsWith(base)) {
+      throw new CliException("Resolved URI is outside the base URI path. Read Failed. " + resolved);
+    }
+    return resolvedPath;
   }
 
   private static boolean isCloudLocation(URI uri) {

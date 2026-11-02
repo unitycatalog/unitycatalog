@@ -25,7 +25,6 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.volume.BaseVolumeCRUDTest;
 import io.unitycatalog.server.base.volume.VolumeOperations;
-import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.hadoop.fs.FileStatus;
@@ -48,16 +47,22 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
 
   @ParameterizedTest
   @CsvSource({
-    "s3://test-bucket0/team_reports,",
-    "s3://test-bucket0/team%20reports,",
-    "s3://test-bucket0/team%2Freports,",
+    "s3://test-bucket0/team_reports,, /team_reports",
+    "s3://test-bucket0/team%20reports,, /team%20reports",
+    "s3://test-bucket0/team%2Freports,, /team%2Freports",
+    // --path names the object literally, like the stored location.
+    "s3://test-bucket0/team_reports, Q3 report.pdf, /team_reports/Q3 report.pdf",
+    "s3://test-bucket0/team_reports, Q3%20report.pdf, /team_reports/Q3%20report.pdf",
     // Outside the volume; it looks inside only when both paths are decoded.
-    "s3://test-bucket0/team%2Freports, ../team/reports/data",
+    "s3://test-bucket0/team%2Freports, ../team/reports/data,",
+    "s3://test-bucket0/team_reports, ../team_reports2/data,",
     // Local paths stay URI-decoded, like the server's local file access.
-    "file:///tmp/uc-cli-volume-test/my%20vol,"
+    "file:///tmp/uc-cli-volume-test/my%20vol,, /tmp/uc-cli-volume-test/my vol",
+    "file:///tmp/uc-cli-volume-test/my%20vol, Q3 report.pdf, /tmp/uc-cli-volume-test/my vol/Q3"
+        + " report.pdf"
   })
   public void testReadVolumePathMatchesRegisteredLiteralLocation(
-      String location, String relativePath) throws Exception {
+      String location, String relativePath, String expectedPath) throws Exception {
     VolumeInfo volume =
         volumeOperations.createVolume(
             new CreateVolumeRequestContent()
@@ -88,7 +93,7 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
                 invocation.getMethod().getName().equals("getFileSystem")
                     ? fileSystem
                     : invocation.callRealMethod())) {
-      if (relativePath != null) {
+      if (expectedPath == null) {
         assertThatThrownBy(() -> UnityCatalogCli.main(arguments.toArray(String[]::new)))
             .isInstanceOf(CliException.class)
             .hasMessageContaining("outside the base URI path");
@@ -102,9 +107,8 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
     verify(fileSystem).exists(path.capture());
     // Compare without a trailing slash: Path(String) drops it.
     assertThat(path.getValue().toUri().getPath().replaceAll("/$", ""))
-        .as("CLI read directory must match the registered location's literal credential path")
-        .isEqualTo(
-            NormalizedURL.from(volume.getStorageLocation()).getStoragePath().replaceAll("/$", ""));
+        .as("CLI read path must be the registered location joined with --path, both literal")
+        .isEqualTo(expectedPath);
   }
 
   @Override
