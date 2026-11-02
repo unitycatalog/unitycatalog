@@ -121,8 +121,8 @@ Hadoop and Spark read it. A percent sequence in a cloud location is part of the 
 example, `s3://bucket/team%20reports` names the prefix `team%20reports`, and `%2F` is not a directory
 separator.
 
-Because `%2F` is part of an object name, a location such as `s3://bucket/%2F` is no longer treated as
-a bucket root: it can be used as an external table or volume location, and credentials for it are
+Because `%2F` is part of an object name, a location such as `s3://bucket/%2F` is not a bucket root:
+it can be used as an external table or volume location, and credentials for it are
 scoped to the prefix `%2F`.
 
 ### Storage credential cache

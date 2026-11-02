@@ -95,7 +95,7 @@ public final class NormalizedURL {
   }
 
   /**
-   * Returns the path as interpreted by storage clients, including its leading slash.
+   * Returns the path as interpreted by storage clients, with a leading slash when it is nonempty.
    *
    * <p>Cloud object names keep percent sequences literally, matching the stored location and Hadoop
    * string paths. Local file paths use URI decoding to identify the file-system path.
