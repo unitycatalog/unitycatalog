@@ -164,7 +164,12 @@ public final class Auditor implements AutoCloseable {
     return AuditRecord.builder()
         .time(clock.instant())
         .action(action)
-        .purpose(purpose)
+        .purpose(
+            switch (purpose) {
+              case CLIENT -> AuditRecord.Purpose.CLIENT;
+              case SERVER -> AuditRecord.Purpose.SERVER;
+              case CLEANUP -> AuditRecord.Purpose.CLEANUP;
+            })
         .user(user(purpose, ctx))
         .requestId(ctx == null ? null : ctx.id().text());
   }

@@ -17,7 +17,6 @@ import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialUse;
-import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -72,7 +71,7 @@ class AuditorTest {
         .thenReturn(credential);
     audited.vendCredential(clientPath, CredentialContext.READ_ONLY, CredentialUse.CLIENT);
     AuditRecord client = CapturingAuditSink.RECORDS.get(1);
-    assertThat(client.getPurpose()).isEqualTo(Purpose.CLIENT);
+    assertThat(client.getPurpose()).isEqualTo(AuditRecord.Purpose.CLIENT);
     assertThat(client.getAccess()).isEqualTo(AuditRecord.Access.READ);
     assertThat(client.getResourceId()).isNull();
     // With a decoded token on the request, the caller is the token's subject.
