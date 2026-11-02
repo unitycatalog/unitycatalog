@@ -65,7 +65,7 @@ public class GcpCredentialVendorTest {
 
   @Test
   public void testSiblingPathIsOutsideTheBoundary() {
-    // sales_archive/ and sales_2024/ are neighbors of sales/ and must not match.
+    // Objects under sales_archive/ and sales_2024/ must not match the startsWith rules.
     String condition = availabilityConditionFor("gs://test-bucket/sales");
 
     assertThat(condition)
