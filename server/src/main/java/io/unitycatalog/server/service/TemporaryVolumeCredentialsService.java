@@ -34,16 +34,7 @@ public class TemporaryVolumeCredentialsService implements UnityCatalogRestServic
   }
 
   @Post("")
-  @AuthorizeExpression(
-      """
-      #operation == 'READ_VOLUME' ? (
-        #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-        #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-        #authorizeAny(#principal, #volume, OWNER, READ_VOLUME)
-      ) : (
-      """
-          + AuthorizeExpressions.VEND_VOLUME_WRITE_CREDENTIAL
-          + ")")
+  @AuthorizeExpression(AuthorizeExpressions.VEND_VOLUME_CREDENTIAL)
   public HttpResponse generateTemporaryVolumeCredential(
       @AuthorizeResourceKey(value = VOLUME, key = "volume_id") @AuthorizeKey(key = "operation")
           GenerateTemporaryVolumeCredential generateTemporaryVolumeCredential) {

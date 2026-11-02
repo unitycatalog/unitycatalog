@@ -511,6 +511,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
                     .schemaName("sch_pr2")
                     .volumeType(VolumeType.EXTERNAL)
                     .storageLocation(TEST_EXTERNAL_LOCATION_URL + "/owner_volume"));
+    revokePermissions(PRINCIPAL_1, SecurableType.CATALOG, catalog, Privilege.USE_CATALOG);
     revokePermissions(PRINCIPAL_2, SecurableType.CATALOG, catalog, Privilege.USE_CATALOG);
     revokePermissions(
         TABLE_VOLUME_OWNER_EMAIL, SecurableType.CATALOG, catalog, Privilege.USE_CATALOG);

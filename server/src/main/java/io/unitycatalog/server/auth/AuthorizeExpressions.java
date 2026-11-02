@@ -214,13 +214,18 @@ public final class AuthorizeExpressions {
               #authorizeAll(#principal, #table, SELECT, MODIFY)))
       """;
 
-  /** Volume writes require parent usage and either volume ownership or both volume grants. */
-  public static final String VEND_VOLUME_WRITE_CREDENTIAL =
+  /**
+   * Volume credentials require parent usage. Reads need OWNER or READ_VOLUME; writes need OWNER or
+   * both READ_VOLUME and WRITE_VOLUME.
+   */
+  public static final String VEND_VOLUME_CREDENTIAL =
       """
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
       #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-      (#authorize(#principal, #volume, OWNER) ||
-          #authorizeAll(#principal, #volume, READ_VOLUME, WRITE_VOLUME))
+      (#operation == 'READ_VOLUME'
+          ? #authorizeAny(#principal, #volume, OWNER, READ_VOLUME)
+          : (#authorize(#principal, #volume, OWNER) ||
+              #authorizeAll(#principal, #volume, READ_VOLUME, WRITE_VOLUME)))
       """;
 
   /** Iceberg loadCredentials uses the read rule, or GET_TABLE during migration. */
