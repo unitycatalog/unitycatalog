@@ -130,18 +130,20 @@ def is_time_type(column_type: str) -> bool:
 
 def convert_timedelta_to_interval_str(time_val: datetime.timedelta) -> str:
     """
-    Convert a timedelta object to a string representing an interval in the format of 'INTERVAL "d hh:mm:ss.ssssss"'.
+    Convert a timedelta object to a string representing an interval in the format of
+    'INTERVAL "[-]d h:m:s.ffffff" DAY TO SECOND'. A leading '-' applies to the whole
+    literal, and the fractional part is zero-padded to six digits.
     """
     # Python stores negative timedeltas as negative days plus a positive time of
-    # day (timedelta(hours=-1) is days=-1, seconds=82800), and one '-' sign makes
-    # the whole SQL literal negative — so format the magnitude, sign first.
+    # day (timedelta(hours=-1) is days=-1, seconds=82800). One '-' sign makes the
+    # whole SQL literal negative, so format the magnitude and put the sign first.
     sign = "-" if time_val < datetime.timedelta(0) else ""
     time_val = abs(time_val)
     days = time_val.days
     hours, remainder = divmod(time_val.seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     microseconds = time_val.microseconds
-    return f"INTERVAL '{sign}{days} {hours}:{minutes}:{seconds}.{microseconds}' DAY TO SECOND"
+    return f"INTERVAL '{sign}{days} {hours}:{minutes}:{seconds}.{microseconds:06d}' DAY TO SECOND"
 
 
 def python_type_to_sql_type(py_type: Any) -> str:
