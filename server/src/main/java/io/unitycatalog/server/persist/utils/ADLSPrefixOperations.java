@@ -40,13 +40,15 @@ final class ADLSPrefixOperations implements SupportsPrefixOperations {
   ADLSPrefixOperations(ADLSFileIO fileIO, String boundPrefix, CooperativeDeadline deadline) {
     URI uri = URI.create(boundPrefix);
     String path = uri.getPath();
+    // ADLS names keep percent sequences literally, matching the cleanup credential's scope.
+    String rawPath = uri.getRawPath();
     if (!("abfs".equals(uri.getScheme()) || "abfss".equals(uri.getScheme()))
         || uri.getRawAuthority() == null
         || uri.getRawQuery() != null
         || uri.getRawFragment() != null
         || path == null
         || path.chars().allMatch(character -> character == '/')
-        || !path.endsWith("/")
+        || !rawPath.endsWith("/")
         || !uri.normalize().equals(uri)
         || hasDotSegment(path)) {
       throw new IllegalArgumentException(
@@ -54,7 +56,7 @@ final class ADLSPrefixOperations implements SupportsPrefixOperations {
     }
     this.fileIO = Objects.requireNonNull(fileIO, "fileIO");
     this.boundPrefix = boundPrefix;
-    this.directory = path.substring(1, path.length() - 1);
+    this.directory = rawPath.substring(1, rawPath.length() - 1);
     this.containerRoot = uri.getScheme() + "://" + uri.getRawAuthority() + "/";
     this.deadline = Objects.requireNonNull(deadline, "deadline");
   }
