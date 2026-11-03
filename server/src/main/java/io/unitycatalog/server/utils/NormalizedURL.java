@@ -241,7 +241,7 @@ public final class NormalizedURL {
       // A host is read as the first directory (file://tmp/x is /tmp/x): check after folding it in.
       case FILE -> validateLocalFileURI(localFileURIToString(uri), inputPath);
       case S3, GS, ABFS, ABFSS -> {
-        // A cloud location without "//" (s3:bucket/x) misses the literal branch above.
+        // Hadoop's Path can't parse an opaque location (s3:bucket/x), so it skips the branch above.
         rejectQueryOrFragment(inputPath);
         yield removeExtraSlashes(uri.toString());
       }
