@@ -46,7 +46,10 @@ Use these steps for every database (H2, PostgreSQL, MySQL).
     ```
 
 On PostgreSQL and MySQL, when several servers start at the same time, one applies the steps and
-the others wait for it, then start.
+the others wait for it, then start. The server holds that lock on one database session for the
+whole run, so connect to the database directly or through a pooler in session mode, not in
+transaction mode (PgBouncer's `pool_mode = transaction`): there the lock can be released on
+another session, and the start fails.
 
 A step waits for locks that other sessions hold on its table, for example an open transaction of
 a reporting tool. If a start stays at the steps for long, look for such sessions and end them:

@@ -75,8 +75,9 @@ public class HibernateConfigurator implements AutoCloseable {
    * properties (e.g. point at PostgreSQL via Testcontainers) before construction.
    */
   public HibernateConfigurator(Properties hibernateProperties) {
-    requireSchemaFromConnection(hibernateProperties);
-    requireNoSchemaChanges(hibernateProperties);
+    Map<Object, Object> settings = settingsHibernateReads(hibernateProperties);
+    requireSchemaFromConnection(settings);
+    requireNoSchemaChanges(settings);
     this.hibernateProperties = hibernateProperties;
     this.dataSource = createDataSource(hibernateProperties);
     try {
@@ -89,13 +90,23 @@ public class HibernateConfigurator implements AutoCloseable {
   }
 
   /**
+   * {@code properties} over the settings Hibernate adds itself: JVM system properties and a {@code
+   * hibernate.properties} on the classpath.
+   */
+  private static Map<Object, Object> settingsHibernateReads(Properties properties) {
+    Map<Object, Object> settings = new HashMap<>(Environment.getProperties());
+    settings.putAll(properties);
+    return settings;
+  }
+
+  /**
    * The schema migration and Hibernate must use the same schema, and the migration uses the
    * connection's. Refuses Hibernate's own default schema or catalog, which only Hibernate would
    * use.
    */
-  private static void requireSchemaFromConnection(Properties properties) {
+  private static void requireSchemaFromConnection(Map<Object, Object> settings) {
     for (String name : new String[] {"hibernate.default_schema", "hibernate.default_catalog"}) {
-      if (properties.getProperty(name) != null) {
+      if (settings.get(name) != null) {
         throw new IllegalArgumentException(
             name
                 + " is not supported: the schema migration uses the connection's schema. Remove it"
@@ -106,12 +117,9 @@ public class HibernateConfigurator implements AutoCloseable {
 
   /**
    * The schema steps own the schema. Refuses every Hibernate schema action but none, validate too,
-   * before the pool or the session factory exists. Reads the settings Hibernate adds itself as
-   * well: JVM system properties and a {@code hibernate.properties} on the classpath.
+   * before the pool or the session factory exists.
    */
-  private static void requireNoSchemaChanges(Properties properties) {
-    Map<Object, Object> settings = new HashMap<>(Environment.getProperties());
-    settings.putAll(properties);
+  private static void requireNoSchemaChanges(Map<Object, Object> settings) {
     settings.forEach(
         (name, value) -> {
           if (isSchemaAction(name) && !isNone(value)) {
