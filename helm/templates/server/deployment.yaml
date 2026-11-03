@@ -179,8 +179,7 @@ spec:
           {{- end }}
           image: "{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
-          command:
-            - ./bin/start-uc-server
+          command: {{- toYaml .Values.server.deployment.command | nindent 12 }}
           args:
             - --port
             - {{ .Values.server.deployment.port | quote }}

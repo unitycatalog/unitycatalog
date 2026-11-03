@@ -656,6 +656,25 @@ not set
 </td>
 		</tr>
 		<tr>
+			<td>server.deployment.command</td>
+			<td>array</td>
+			<td><pre lang="json">
+[
+  "./bin/start-uc-server"
+]
+</pre>
+</td>
+			<td>Command that starts the server
+
+The chart passes `--port`, and `--obs-port` when `obsPort` is set, as the container's `args`.
+Kubernetes runs this command instead of the image's `ENTRYPOINT`, so an image that starts
+through its own wrapper can set it here; the wrapper must pass the arguments on to
+`./bin/start-uc-server`.
+
+[Kubernetes docs](https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/)
+</td>
+		</tr>
+		<tr>
 			<td>server.deployment.enableLivenessProbe</td>
 			<td>bool</td>
 			<td><pre lang="json">
@@ -785,7 +804,7 @@ not set
 "unitycatalog/unitycatalog"
 </pre>
 </td>
-			<td>Repository for the server image. The chart starts it with `./bin/start-uc-server`, so a custom image must provide that script</td>
+			<td>Repository for the server image</td>
 		</tr>
 		<tr>
 			<td>server.deployment.image.tag</td>

@@ -60,6 +60,11 @@ jobs:
           grep -A1 -- '- --port' <<<"$out" | grep -qF -- '- "9000"'
           ! grep -qF -- '--obs-port' <<<"$out" || exit 1
           grep -A1 'readinessProbe:' <<<"$out" | grep -qF 'tcpSocket:'
+          grep -A1 'command:' <<<"$out" | grep -qF -- '- ./bin/start-uc-server'
+          # A custom command replaces the default one.
+          out="$(helm template uc helm --set 'server.deployment.command={/entrypoint.sh,./bin/start-uc-server}')"
+          grep -A2 'command:' <<<"$out" | grep -qF -- '- /entrypoint.sh'
+          ! grep -A1 'command:' <<<"$out" | grep -qF -- '- ./bin/start-uc-server' || exit 1
           # The create-users job calls the server through its Service, so it uses the Service port.
           out="$(helm template uc helm --set server.deployment.port=9000 --set auth.enabled=true \
             --set 'auth.users[0].name=admin' --set 'auth.users[0].email=admin@example.com')"

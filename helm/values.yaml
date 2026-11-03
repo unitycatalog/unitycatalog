@@ -383,13 +383,26 @@ server:
       securityContext:
 
     image:
-      # -- (string) Repository for the server image. The chart starts it with `./bin/start-uc-server`, so a custom image must provide that script
+      # -- (string) Repository for the server image
       repository: unitycatalog/unitycatalog
       # -- (string) Pull policy for the server image
       pullPolicy: IfNotPresent
       # -- (string) Tag for the server image
       # @default -- {{ .Chart.AppVersion }}
       tag:
+
+    # -- (array) Command that starts the server
+    # @raw
+    #
+    # The chart passes `--port`, and `--obs-port` when `obsPort` is set, as the container's `args`.
+    # Kubernetes runs this command instead of the image's `ENTRYPOINT`, so an image that starts
+    # through its own wrapper can set it here; the wrapper must pass the arguments on to
+    # `./bin/start-uc-server`.
+    #
+    # [Kubernetes docs](https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/)
+    #
+    command:
+      - ./bin/start-uc-server
 
     # -- (array) Image pull secrets for the server
     # @default -- not set
