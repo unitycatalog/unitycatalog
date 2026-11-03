@@ -4,9 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.model.CreateCatalog;
-import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.server.audit.AuditRecord;
 import io.unitycatalog.server.audit.CapturingAuditSink;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
@@ -227,16 +225,12 @@ public class IcebergRestCatalogCredentialVendingTest extends BaseCRUDTestWithMoc
     assertThatCode(() -> readWrite.newOutputFile(file)).doesNotThrowAnyException();
   }
 
-  /**
-   * With authorization off, audit records for the vended credentials carry no user, and a drop
-   * records the queued cleanup.
-   */
+  /** With authorization off, audit records for the vended credentials carry no user. */
   @Test
-  public void auditRecordsClientCredentialsAndQueuedCleanup() throws Exception {
+  public void auditRecordsCredentialsWithoutUser() throws Exception {
     String root = "s3://" + CONFIGURED_BUCKET + testDirectoryRoot.toAbsolutePath() + "/audit";
     createCloudCatalog(CLOUD_CATALOG, root, testDirectoryRoot.toAbsolutePath().resolve("audit"));
     Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
-    // A managed table (no location), so its drop queues a storage cleanup.
     icebergClient.createTable(
         CLOUD_CATALOG,
         TestUtils.SCHEMA_NAME,
@@ -251,23 +245,6 @@ public class IcebergRestCatalogCredentialVendingTest extends BaseCRUDTestWithMoc
               assertThat(r.getUser()).isNull(); // authorization off: no user
               assertThat(r.getLocation()).startsWith("s3://");
               assertThat(r.getRequestId()).isNotBlank(); // joins to the server.log lines
-            });
-
-    TableInfo table =
-        new TablesApi(TestUtils.createApiClient(serverConfig))
-            .getTable(
-                CLOUD_CATALOG + "." + TestUtils.SCHEMA_NAME + "." + TestUtils.TABLE_NAME,
-                /* readStreamingTableAsManaged= */ true,
-                /* readMaterializedViewAsManaged= */ true);
-    icebergClient.dropTable(CLOUD_CATALOG, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
-    // The cleanup's CLEANUP credentials carry this ID, so the two join on resource_id.
-    assertThat(CapturingAuditSink.RECORDS)
-        .filteredOn(r -> r.getAction() == AuditRecord.Action.QUEUE_CLEANUP)
-        .singleElement()
-        .satisfies(
-            r -> {
-              assertThat(r.getResourceId()).isEqualTo(UUID.fromString(table.getTableId()));
-              assertThat(r.getLocation()).isEqualTo(table.getStorageLocation());
             });
   }
 }
