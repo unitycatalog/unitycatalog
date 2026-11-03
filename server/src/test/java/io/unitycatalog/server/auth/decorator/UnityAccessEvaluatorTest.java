@@ -357,4 +357,105 @@ class UnityAccessEvaluatorTest {
           .isEqualTo(strictPrivilegeChecks);
     }
   }
+
+  @Test
+  void batchChecksSharedParentsOncePerList() throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    UUID principal = UUID.randomUUID();
+    UUID metastore = UUID.randomUUID();
+    UUID catalog = UUID.randomUUID();
+    UUID schema = UUID.randomUUID();
+    when(authorizer.authorize(principal, CATALOG, catalog, USE_CATALOG)).thenReturn(true);
+    when(authorizer.authorize(principal, SCHEMA, schema, USE_SCHEMA)).thenReturn(true);
+    when(authorizer.authorizeAny(
+            eq(principal), eq(TABLE), any(UUID.class), any(Privileges[].class)))
+        .thenReturn(true);
+
+    UnityAccessEvaluator.Batch batch =
+        new UnityAccessEvaluator(authorizer, true)
+            .batch(principal, AuthorizeExpressions.GET_TABLE, Map.of(), System.nanoTime());
+    int tables = 100;
+    for (int i = 0; i < tables; i++) {
+      assertThat(
+              batch.evaluate(
+                  Map.of(
+                      METASTORE, metastore,
+                      CATALOG, catalog,
+                      SCHEMA, schema,
+                      TABLE, UUID.randomUUID())))
+          .isTrue();
+    }
+
+    // Unbatched, every one of these ran once per table (USE_CATALOG twice): 7 authorizer calls per
+    // table, now 1.
+    verify(authorizer, times(1)).authorize(principal, METASTORE, metastore, Privileges.OWNER);
+    verify(authorizer, times(1)).authorize(principal, CATALOG, catalog, Privileges.OWNER);
+    verify(authorizer, times(1)).authorize(principal, CATALOG, catalog, USE_CATALOG);
+    verify(authorizer, times(1)).authorize(principal, SCHEMA, schema, Privileges.OWNER);
+    verify(authorizer, times(1)).authorize(principal, SCHEMA, schema, USE_SCHEMA);
+    verify(authorizer, times(tables))
+        .authorizeAny(eq(principal), eq(TABLE), any(UUID.class), any(Privileges[].class));
+    verify(authorizer, never()).refreshAuthorizations(anyLong());
+  }
+
+  @Test
+  void batchRefreshesAtMostOncePerList() throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    when(authorizer.refreshAuthorizations(anyLong())).thenReturn(true);
+    UUID principal = UUID.randomUUID();
+    UUID catalog = UUID.randomUUID();
+
+    UnityAccessEvaluator.Batch batch =
+        new UnityAccessEvaluator(authorizer, true)
+            .batch(principal, "#authorize(#principal, #table, OWNER)", Map.of(), System.nanoTime());
+    List<UUID> tables = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+    for (UUID table : tables) {
+      assertThat(batch.evaluate(Map.of(CATALOG, catalog, TABLE, table))).isFalse();
+    }
+
+    // The first deny refreshes and re-checks; that refresh already covers the operation start, so
+    // later denies are final instead of paying a second evaluation each.
+    verify(authorizer, times(1)).refreshAuthorizations(anyLong());
+    verify(authorizer, times(2)).authorize(principal, TABLE, tables.get(0), Privileges.OWNER);
+    verify(authorizer, times(1)).authorize(principal, TABLE, tables.get(1), Privileges.OWNER);
+    verify(authorizer, times(1)).authorize(principal, TABLE, tables.get(2), Privileges.OWNER);
+  }
+
+  @Test
+  void listFilteringKeepsEachItemsOwnDecision() throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    UUID principal = UUID.randomUUID();
+    UUID metastore = UUID.randomUUID();
+    UUID catalog = UUID.randomUUID();
+    UUID schema = UUID.randomUUID();
+    when(authorizer.authorize(principal, CATALOG, catalog, USE_CATALOG)).thenReturn(true);
+    when(authorizer.authorize(principal, SCHEMA, schema, USE_SCHEMA)).thenReturn(true);
+    List<TableInfo> items = new ArrayList<>();
+    List<String> readable = new ArrayList<>();
+    for (int i = 0; i < 10; i++) {
+      UUID table = UUID.randomUUID();
+      items.add(new TableInfo().tableId(table.toString()));
+      if (i % 2 == 0) {
+        readable.add(table.toString());
+      }
+    }
+    when(authorizer.authorizeAny(
+            eq(principal), eq(TABLE), any(UUID.class), any(Privileges[].class)))
+        .thenAnswer(invocation -> readable.contains(invocation.getArgument(2).toString()));
+
+    new ResultFilter(
+            new UnityAccessEvaluator(authorizer, true),
+            principal,
+            AuthorizeExpressions.GET_TABLE,
+            new HashMap<>(Map.of(METASTORE, metastore, CATALOG, catalog, SCHEMA, schema)),
+            Map.of(),
+            mock(KeyMapper.class))
+        .filter(TABLE, items);
+
+    // Decisions are shared across items only for the same resource: alternating table grants must
+    // still alternate after filtering.
+    assertThat(items).extracting(TableInfo::getTableId).containsExactlyElementsOf(readable);
+    verify(authorizer, times(1)).authorize(principal, CATALOG, catalog, USE_CATALOG);
+    verify(authorizer, times(1)).authorize(principal, SCHEMA, schema, USE_SCHEMA);
+  }
 }
