@@ -324,7 +324,6 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(withCredentials.storage().properties().apply(UCHadoopConfConstants.UC_PATH_KEY))
         .as("UC credential identity must match the directory used by Spark execution")
         .isEqualTo(executionPath);
-    // The rule sees its own credentials on the next analyzer pass and leaves the plan alone.
     assertThat(injectPathCredentials(withCredentials)).isSameAs(withCredentials);
   }
 
