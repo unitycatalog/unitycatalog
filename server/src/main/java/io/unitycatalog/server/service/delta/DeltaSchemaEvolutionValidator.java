@@ -31,18 +31,21 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Checks a set-columns rename against Delta's schema evolution rules with Delta Kernel. Kernel
- * pairs fields by column-mapping id and rejects what Delta rejects: a new physical name under the
- * same id, a new field reusing an id at or below {@code delta.columnMapping.maxColumnId}, a field
- * moved to another struct, a type change that type widening does not allow, tightened nullability,
- * a new non-nullable field, and a field without an id.
+ * Checks a set-columns on a MANAGED table that renames a top-level column, or keeps a
+ * column-mapping id under a new name or physical name, against Delta's schema evolution rules with
+ * Delta Kernel. Kernel pairs fields by column-mapping id and rejects what Delta rejects: a new
+ * physical name under the same id, a new field reusing an id at or below {@code
+ * delta.columnMapping.maxColumnId}, a field moved to another struct, a type change that type
+ * widening does not allow, tightened nullability, a new non-nullable field, and a field without an
+ * id.
  *
  * <p>A dropped clustering column is checked here, by its full physical path. Kernel compares only
  * the last physical name of a path, so it would take an unclustered field for a clustered one when
  * both end in the same physical name.
  *
- * <p>This is the only class that uses Kernel. The Kernel methods it calls are internal APIs with no
- * compatibility guarantee; {@code DeltaSchemaEvolutionValidatorTest} pins each behavior used.
+ * <p>This is the only server class that uses Kernel. The Kernel methods it calls are internal APIs
+ * with no compatibility guarantee; {@code DeltaSchemaEvolutionValidatorTest} pins each behavior
+ * used.
  */
 final class DeltaSchemaEvolutionValidator {
 
@@ -199,7 +202,7 @@ final class DeltaSchemaEvolutionValidator {
       }
       field =
           level.fields().stream()
-              .filter(f -> ColumnMapping.getPhysicalName(f).equals(physicalName))
+              .filter(f -> ColumnMapping.getPhysicalName(f).equalsIgnoreCase(physicalName))
               .findFirst()
               .orElse(null);
       if (field == null) {

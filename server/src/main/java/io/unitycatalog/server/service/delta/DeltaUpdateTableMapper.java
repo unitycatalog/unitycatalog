@@ -686,9 +686,9 @@ public final class DeltaUpdateTableMapper {
    *   <li>Enabling column mapping (a table without column mapping, or a stored schema without
    *       identity keys): top-level physical names and all ids must be unique, and no column may be
    *       renamed in the same request.
-   *   <li>Otherwise at most one top-level column is renamed per request. When the request renames a
-   *       field, or keeps a field's id under a new name or physical name, Delta Kernel checks the
-   *       rest of the change ({@link DeltaSchemaEvolutionValidator}).
+   *   <li>Otherwise at most one top-level column is renamed per request. On a MANAGED table, when
+   *       the request renames a field, or keeps a field's id under a new name or physical name,
+   *       Delta Kernel checks the rest of the change ({@link DeltaSchemaEvolutionValidator}).
    * </ul>
    *
    * @param requestedMode the mode this request sets, {@code NONE} when it sets none
@@ -755,15 +755,19 @@ public final class DeltaUpdateTableMapper {
               + "]. Split them into separate ALTER statements.");
     }
 
-    // A rename, or a field that keeps its id under a new name or physical name, is checked against
-    // Delta's rules: Kernel checks identities, types and nullability, and the validator checks
-    // clustering columns. The check reads the whole stored schema, so when it runs, a stored
-    // column with an unreadable type fails it.
-    DeltaSchemaEvolutionValidator.validate(
-        ColumnInfoDAO.toList(dao.getColumns()),
-        ColumnUtils.toColumnInfos(incoming),
-        currentProperties,
-        !topLevelRenames.isEmpty());
+    // On a MANAGED table, a rename, or a field that keeps its id under a new name or physical name,
+    // is checked against Delta's rules: Kernel checks identities, types and nullability, and the
+    // validator checks clustering columns. The check reads the whole stored schema, so when it
+    // runs, a stored column with an unreadable type fails it. An EXTERNAL table's Delta log is the
+    // source of truth and its sync can follow commits the stored schema missed, so it is not
+    // compared against the stored schema.
+    if (TableType.MANAGED.toString().equals(dao.getType())) {
+      DeltaSchemaEvolutionValidator.validate(
+          ColumnInfoDAO.toList(dao.getColumns()),
+          ColumnUtils.toColumnInfos(incoming),
+          currentProperties,
+          !topLevelRenames.isEmpty());
+    }
   }
 
   /**
@@ -862,7 +866,7 @@ public final class DeltaUpdateTableMapper {
     }
   }
 
-  /** Rejects a column mapping id, compared as text, that two fields at any depth share. */
+  /** Rejects a column mapping id that two fields at any depth share. */
   private static void rejectDuplicateIds(List<DeltaStructField> incoming) {
     Set<String> seen = new HashSet<>();
     for (DeltaStructField f : allFields(incoming)) {

@@ -306,6 +306,13 @@ public class DeltaSchemaEvolutionValidatorTest {
             cols(fld("a", "long", 1, "col-1"), fld("c", "long", 2, "col-c")),
             cols(fld("b", "long", 1, "col-1"))),
         rejected(
+            "clustering path in another case",
+            "Cannot drop clustering column c",
+            with(NAME, "clusteringColumns", "[[\"COL-C\"]]"),
+            true,
+            cols(fld("a", "long", 1, "col-1"), fld("c", "long", 2, "col-c")),
+            cols(fld("b", "long", 1, "col-1"))),
+        rejected(
             "rename while dropping a nested clustering column",
             "Cannot drop clustering column x",
             with(NAME, "clusteringColumns", "[[\"col-s\",\"col-x\"]]"),
