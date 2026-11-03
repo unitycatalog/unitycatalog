@@ -135,7 +135,7 @@ class OpaInputBuilder {
   private <T> T required(Session session, Class<T> type, UUID id) {
     T value = session.get(type, id);
     if (value == null) {
-      throw new BaseException(ErrorCode.UNAVAILABLE, "Could not resolve authorization metadata");
+      throw new BaseException(ErrorCode.NOT_FOUND, "Could not resolve authorization metadata");
     }
     return value;
   }

@@ -78,19 +78,16 @@ public class OpaAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
               .reader()
               .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
               .readTree(response.contentUtf8());
-      JsonNode allow = body == null ? null : body.path("result").path("allow");
-      if (allow == null || !allow.isBoolean()) {
+      JsonNode allow = body.path("result").path("allow");
+      if (!allow.isBoolean()) {
         throw new BaseException(
             ErrorCode.UNAVAILABLE, "OPA response must contain a boolean result.allow");
       }
       return allow.booleanValue();
-    } catch (BaseException e) {
-      if (e.getErrorCode() == ErrorCode.UNAVAILABLE) {
-        throw e;
-      }
-      throw new BaseException(
-          ErrorCode.UNAVAILABLE, "Could not get an authorization decision from OPA", e);
     } catch (Exception e) {
+      if (e instanceof BaseException failure && failure.getErrorCode() == ErrorCode.NOT_FOUND) {
+        return false;
+      }
       throw new BaseException(
           ErrorCode.UNAVAILABLE, "Could not get an authorization decision from OPA", e);
     }

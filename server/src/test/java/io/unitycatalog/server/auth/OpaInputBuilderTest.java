@@ -212,9 +212,9 @@ public class OpaInputBuilderTest {
   @Test
   void rejectsUnresolvedPrincipalResourceOrParent() {
     UUID missingId = UUID.randomUUID();
-    assertUnavailable(missingId, CATALOG, catalog.getId());
+    assertNotFound(missingId, CATALOG, catalog.getId());
     for (SecurableType type : SecurableType.values()) {
-      assertUnavailable(user.getId(), type, missingId);
+      assertNotFound(user.getId(), type, missingId);
     }
 
     SchemaInfoDAO orphanSchema =
@@ -237,9 +237,9 @@ public class OpaInputBuilderTest {
             .build();
     persist(orphanSchema, missingSchemaTable, missingCatalogTable);
 
-    assertUnavailable(user.getId(), SCHEMA, orphanSchema.getId());
-    assertUnavailable(user.getId(), TABLE, missingSchemaTable.getId());
-    assertUnavailable(user.getId(), TABLE, missingCatalogTable.getId());
+    assertNotFound(user.getId(), SCHEMA, orphanSchema.getId());
+    assertNotFound(user.getId(), TABLE, missingSchemaTable.getId());
+    assertNotFound(user.getId(), TABLE, missingCatalogTable.getId());
   }
 
   private static Map<String, String> identity(SecurableType type, IdentifiableDAO resource) {
@@ -276,13 +276,13 @@ public class OpaInputBuilderTest {
                             expectedResource))));
   }
 
-  private void assertUnavailable(UUID principalId, SecurableType type, UUID resourceId) {
+  private void assertNotFound(UUID principalId, SecurableType type, UUID resourceId) {
     assertThatExceptionOfType(BaseException.class)
         .as("metadata for %s %s and principal %s", type, resourceId, principalId)
         .isThrownBy(() -> inputBuilder.build(principalId, type, resourceId, Privileges.SELECT))
         .withMessage("Could not resolve authorization metadata")
         .satisfies(
-            exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE));
+            exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND));
   }
 
   private void persist(Object... resources) {

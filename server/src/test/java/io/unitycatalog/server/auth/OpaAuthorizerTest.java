@@ -7,6 +7,8 @@ import static io.unitycatalog.server.persist.model.Privileges.SELECT;
 import static io.unitycatalog.server.persist.model.Privileges.USE_SCHEMA;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -190,10 +192,10 @@ class OpaAuthorizerTest {
   }
 
   @ParameterizedTest
-  @ValueSource(ints = {301, 307, 403, 500})
+  @ValueSource(ints = {301, 307, 403, 404, 500})
   void rejectsHttpErrorsAndDoesNotFollowRedirects(int responseStatus) {
     status = responseStatus;
-    assertThat(unavailableDecision()).hasMessage("OPA returned HTTP " + responseStatus);
+    assertThat(unavailableDecision()).hasRootCauseMessage("OPA returned HTTP " + responseStatus);
     assertThat(requests).hasSize(1);
   }
 
@@ -223,9 +225,21 @@ class OpaAuthorizerTest {
   void metadataFailureStopsBeforeHttpAndDoesNotExposeDatabaseDetails() {
     when(session.get(UserDAO.class, principal))
         .thenThrow(new IllegalStateException("private-db-detail"));
-    assertThat(unavailableDecision())
-        .hasMessage("Could not get an authorization decision from OPA");
+    assertThat(unavailableDecision()).hasRootCauseMessage("private-db-detail");
     assertThat(requests).isEmpty();
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      classes = {UserDAO.class, TableInfoDAO.class, SchemaInfoDAO.class, CatalogInfoDAO.class})
+  void missingMetadataDeniesWithoutCallingOpa(Class<?> missingType) {
+    when(session.get(eq(missingType), any())).thenReturn(null);
+
+    assertThat(authorizer.authorize(principal, TABLE, table, SELECT)).isFalse();
+    assertThat(authorizer.authorizeAny(principal, TABLE, table, OWNER, SELECT)).isFalse();
+    assertThat(authorizer.authorizeAll(principal, TABLE, table, SELECT, OWNER)).isFalse();
+    assertThat(requests).isEmpty();
+    verifyNoInteractions(nativeAuthorizer);
   }
 
   @Test
@@ -243,6 +257,7 @@ class OpaAuthorizerTest {
             () -> authorizer.authorize(principal, TABLE, table, SELECT), BaseException.class);
     assertThat(error).isNotNull();
     assertThat(error.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE);
+    assertThat(error).hasMessage("Could not get an authorization decision from OPA");
     verifyNoInteractions(nativeAuthorizer);
     return error;
   }
