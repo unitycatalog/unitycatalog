@@ -60,6 +60,11 @@ jobs:
           grep -A1 -- '- --port' <<<"$out" | grep -qF -- '- "9000"'
           ! grep -qF -- '--obs-port' <<<"$out" || exit 1
           grep -A1 'readinessProbe:' <<<"$out" | grep -qF 'tcpSocket:'
+          # The create-users job calls the server through its Service, so it uses the Service port.
+          out="$(helm template uc helm --set server.deployment.port=9000 --set auth.enabled=true \
+            --set 'auth.users[0].name=admin' --set 'auth.users[0].email=admin@example.com')"
+          grep -qF 'uc-unitycatalog-server:8080/api/' <<<"$out"
+          ! grep -qF 'uc-unitycatalog-server:9000' <<<"$out" || exit 1
           # With obsPort, the flag, the container port and the probes all use it.
           out="$(helm template uc helm --set server.deployment.obsPort=9099 \
             --set server.deployment.enableReadinessProbe=true \
