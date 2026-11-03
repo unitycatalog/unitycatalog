@@ -471,8 +471,9 @@ public final class DeltaUpdateTableMapper {
    * <ul>
    *   <li>a partition column named by set-partition-columns is missing from the resulting schema
    *       ({@code partition-columns references unknown column: ...});
-   *   <li>set-columns drops an existing partition column, or leaves one without its own identity on
-   *       a column-mapped table (see {@link #resolvePartitionColumns}).
+   *   <li>set-columns without set-partition-columns drops an existing partition column, or a stored
+   *       partition column has no identity while other stored columns have one (see {@link
+   *       #resolvePartitionColumns}).
    * </ul>
    *
    * <p>Swap semantics rely on the orphanRemoval mapping on {@link TableInfoDAO#getColumns()} to
@@ -724,21 +725,12 @@ public final class DeltaUpdateTableMapper {
                 + " supported.");
       }
     }
-    if (tableMode != ColumnMappingMode.NONE) {
-      rejectMalformedIdentities(allFields(incoming), TableProperties.COLUMN_MAPPING_ID);
-      if (tableMode == ColumnMappingMode.NAME) {
-        rejectMalformedIdentities(incoming, TableProperties.COLUMN_MAPPING_PHYSICAL_NAME);
-        rejectDuplicateTopLevelPhysicalNames(incoming);
-      }
-      rejectDuplicateIds(incoming);
-    }
+    validateColumnMappingIdentities(incoming, tableMode);
     boolean enabling =
         tableMode == ColumnMappingMode.NONE
             && (requestedMode != ColumnMappingMode.NONE || incomingHasKeys);
     if (enabling) {
       rejectMalformedIdentities(allFields(incoming), TableProperties.COLUMN_MAPPING_ID);
-    }
-    if (tableMode != ColumnMappingMode.NONE || enabling) {
       rejectFieldsWithoutIdentity(incoming);
     }
     if (!incomingHasKeys) {
@@ -832,6 +824,28 @@ public final class DeltaUpdateTableMapper {
     }
   }
 
+  /**
+   * Rejects a schema that a table in {@code mode} cannot store. Under column mapping, every column
+   * and nested field needs a well-formed physical name and column mapping id, and no two may share
+   * one. Table creation runs the same check, so a stored column-mapped table always has them.
+   *
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if an identity is missing,
+   *     malformed or shared
+   */
+  static void validateColumnMappingIdentities(
+      List<DeltaStructField> fields, ColumnMappingMode mode) {
+    if (mode == ColumnMappingMode.NONE) {
+      return;
+    }
+    rejectMalformedIdentities(allFields(fields), TableProperties.COLUMN_MAPPING_ID);
+    if (mode == ColumnMappingMode.NAME) {
+      rejectMalformedIdentities(fields, TableProperties.COLUMN_MAPPING_PHYSICAL_NAME);
+      rejectDuplicateTopLevelPhysicalNames(fields);
+    }
+    rejectDuplicateIds(fields);
+    rejectFieldsWithoutIdentity(fields);
+  }
+
   /** Rejects fields, at any depth, without a usable physical name and column mapping id. */
   private static void rejectFieldsWithoutIdentity(List<DeltaStructField> incoming) {
     List<String> missing =
@@ -849,7 +863,7 @@ public final class DeltaUpdateTableMapper {
     if (!missing.isEmpty()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
-          "set-columns: column mapping requires a physical column name and a column mapping id"
+          "column mapping requires a physical column name and a column mapping id"
               + " for every column and nested field; column(s) "
               + missing
               + " omit one.");
@@ -1066,8 +1080,9 @@ public final class DeltaUpdateTableMapper {
    * type cannot be read has no identity, see {@link #readableStoredFields}):
    *
    * <ul>
-   *   <li>the table has no column mapping, or the incoming schema carries no identity at all:
-   *       matched by logical name;
+   *   <li>the table has no column mapping: matched by logical name;
+   *   <li>two stored columns share an identity: rejected, because the identity cannot tell them
+   *       apart (table creation rejects such a schema, so only an older table can have one);
    *   <li>the column has a stored identity: matched to the incoming column with the same identity.
    *       If no incoming column carries it, an incoming column with the same name and an identity
    *       no stored column has keeps the partition: that is the column replaced in place, as a
@@ -1080,7 +1095,7 @@ public final class DeltaUpdateTableMapper {
    * </ul>
    *
    * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if a partition column is dropped
-   *     or has no identity on a column-mapped table
+   *     or has no identity on a column-mapped table, or two stored columns share an identity
    */
   private static List<String> resolvePartitionColumns(
       TableInfoDAO dao, List<ColumnInfo> incomingColumns, ColumnMappingMode columnMappingMode) {
@@ -1106,14 +1121,28 @@ public final class DeltaUpdateTableMapper {
         incomingKeyByLowerName.put(lowerName, key);
       }
     }
-    boolean byName = columnMappingMode == ColumnMappingMode.NONE || incomingNameByKey.isEmpty();
     Map<String, String> currentKeyByLowerName = new HashMap<>();
-    if (!byName) {
+    if (columnMappingMode != ColumnMappingMode.NONE) {
+      Map<String, String> currentNameByKey = new HashMap<>();
       for (DeltaStructField cur : readableStoredFields(dao)) {
         String key = identityKeyOf(cur, columnMappingMode);
-        if (key != null) {
-          currentKeyByLowerName.put(cur.getName().toLowerCase(Locale.ROOT), key);
+        if (key == null) {
+          continue;
         }
+        String other = currentNameByKey.putIfAbsent(key, cur.getName());
+        if (other != null) {
+          // Matching by this identity could move a partition onto the other column.
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              "stored columns '"
+                  + other
+                  + "' and '"
+                  + cur.getName()
+                  + "' share the column mapping identity '"
+                  + key
+                  + "'; send set-partition-columns with this update.");
+        }
+        currentKeyByLowerName.put(cur.getName().toLowerCase(Locale.ROOT), key);
       }
     }
 

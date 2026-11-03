@@ -2225,8 +2225,9 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
 
   /**
    * One set-columns scenario: create a table, apply each setup request, then send {@code update}. A
-   * null {@code rejection} expects success; otherwise the request fails with
-   * INVALID_PARAMETER_VALUE and a message containing {@code rejection}.
+   * null {@code rejection} expects success; otherwise the request fails with {@code errorType}
+   * (INVALID_PARAMETER_VALUE unless set with {@link #asError}) and a message containing {@code
+   * rejection}.
    */
   private record SchemaCase(
       String name,
@@ -2615,8 +2616,9 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
         // A stored column without keys has no identity to rename from, so it may gain them.
         ok(
                 "stored column without keys gains them",
-                (t, n) -> t.createManaged(n, "name", 1, fld("a", prim("long"), false, null, null)),
+                (t, n) -> t.createManaged(n, "none", 0, fld("a", prim("long"), false, null, null)),
                 setColumns(fld("a", prim("long"), false, 1, "a")))
+            .after(cmMode("name"))
             .expectColumns("a"),
         // Replacing every column with new ids and physical names is a drop and an add of each.
         ok(
@@ -2702,14 +2704,14 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
             },
             setColumns(
                 fld("b", prim("long"), false, 1, "col-1"), fld("v", prim("long"), 2, "col-v"))),
-        // A partition column follows its column through a rename.
+        // A partition column follows its column through a rename and keeps its partition order.
         ok(
                 "rename one of two partition columns",
                 NAME_AB,
                 setColumns(
                     fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 2, "col-2")))
-            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("a", "b")))
-            .expectPartitions("a", "b2"),
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b", "a")))
+            .expectPartitions("b2", "a"),
         ok(
                 "name mode partition follows the physical name",
                 NAME_AB,
@@ -2788,13 +2790,14 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 (t, n) ->
                     t.createManaged(
                         n,
-                        "name",
-                        2,
+                        "none",
+                        0,
                         fld("a", prim("long"), false, null, null),
                         fld("b", prim("long"), null, null)),
                 setColumns(
                     fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 2, "col-2")))
             .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .after(cmMode("name"))
             .expectPartitions("b"));
   }
 

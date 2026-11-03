@@ -421,9 +421,10 @@ public class DeltaUpdateTableMapperTest {
   // --- set-columns column-mapping guards ---
 
   /**
-   * Rejections from the set-columns column-mapping guards and the Delta Kernel check. Each one is
-   * raised in the mapper before anything is stored, so the cases run against an in-memory table.
-   * {@code SdkUpdateTableTest} keeps the rejections that need the server, and the accepted cases.
+   * Rejections from the set-columns column-mapping guards, the Delta Kernel check and the
+   * partition-column resolution. Each one is raised in the mapper before anything is stored, so the
+   * cases run against an in-memory table. {@code SdkUpdateTableTest} keeps the rejections that need
+   * the server, and the accepted cases.
    */
   @ParameterizedTest(name = "{0}")
   @MethodSource({"guardRejections", "kernelRejections", "partitionRejections"})
@@ -880,6 +881,18 @@ public class DeltaUpdateTableMapperTest {
             NAME_AB.partitionedBy("b"),
             setColumns(
                 fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), null, null))),
+        rejected(
+            "two stored columns share a physical name",
+            "share the column mapping identity 'col-1'",
+            new StoredTable(
+                    "EXTERNAL",
+                    Map.of(TableProperties.COLUMN_MAPPING_MODE, "name"),
+                    List.of(),
+                    fld("a", prim("long"), false, 1, "col-1"),
+                    fld("b", prim("long"), 2, "col-1"))
+                .partitionedBy("b"),
+            setColumns(
+                fld("a", prim("long"), false, 1, "col-1"), fld("c", prim("long"), 3, "col-3"))),
         rejected(
             "no column mapping: the partition follows the logical name, not a leftover key",
             "partition column 'b' dropped",

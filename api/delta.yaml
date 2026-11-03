@@ -732,6 +732,10 @@ components:
           description: Table comment
         columns:
           $ref: '#/components/schemas/DeltaStructType'
+          description: |
+            Table columns. When delta.columnMapping.mode is name or id, every column and nested
+            field must carry a physical name and a column mapping id, and no two may share one;
+            otherwise the request is rejected with InvalidParameterValueException (400).
         partition-columns:
           type: array
           description: Partition column names
@@ -1029,10 +1033,12 @@ components:
       description: |
         Set table columns. The metadata field on each field carries Spark/Delta field metadata
         from metaData.schemaString in the Delta commit log. Without set-partition-columns, existing
-        partition columns follow a rename by column-mapping identity on a column-mapped table when
-        the request carries identity keys; otherwise they are matched by logical name. A dropped
-        partition column, or one without an identity on a column-mapped table, is rejected with a
-        400 invalid-argument error.
+        partition columns follow a rename by their stored column-mapping identity; a column replaced
+        under the same name with a new identity keeps its partition. On a table without column
+        mapping, or whose stored columns carry no identity, they are matched by logical name. The
+        request is rejected with InvalidParameterValueException (400) when it drops a partition
+        column, when a partition column has no stored identity while other columns have one, or
+        when two stored columns share an identity.
       properties:
         action:
           type: string
