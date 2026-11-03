@@ -429,6 +429,7 @@ public class ServerPropertiesTest {
                 "UC_S3_SECRETKEY_0", "env-s3-secret\r\n",
                 "UC_S3_SESSIONTOKEN_0", "env-session-token",
                 "UC_ADLS_CLIENTSECRET_0", "env-adls-secret",
+                "UC_HIBERNATE_CONNECTION_PASSWORD", "env-db-password",
                 // Any key, not only a secret.
                 "UC_S3_REGION_0", "eu-west-1",
                 // An empty variable does not replace the file value.
@@ -442,6 +443,8 @@ public class ServerPropertiesTest {
     assertThat(serverProperties.get(Property.CLIENT_SECRET)).isEqualTo("env-client-secret");
     assertThat(serverProperties.get(Property.AWS_SECRET_KEY)).isEqualTo("file-aws-secret");
     assertThat(serverProperties.get(Property.AWS_REGION)).isEqualTo("us-west-2");
+    assertThat(serverProperties.getEnv("hibernate.connection.password"))
+        .isEqualTo("env-db-password");
     S3StorageConfig s3 =
         serverProperties.getS3Configurations().get(NormalizedURL.from("s3://bucket0"));
     assertThat(s3.getSecretKey()).isEqualTo("env-s3-secret");

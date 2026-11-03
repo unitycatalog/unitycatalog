@@ -41,11 +41,14 @@ public class ServerProperties {
   // their own use, such as AWS_REGION, from changing settings.
   private static final String ENV_PREFIX = "UC_";
 
-  // Secrets, which log a deprecation warning when they are read from server.properties.
+  // Secrets, which log a deprecation warning when they are read from server.properties. The server
+  // never reads the database password from this file (it comes from the environment or
+  // hibernate.properties), so there it is reported as ignored.
   private static final Pattern SECRET_KEY =
       Pattern.compile(
           "server\\.client-secret|aws\\.secretKey"
-              + "|(s3\\.secretKey|s3\\.sessionToken|adls\\.clientSecret)\\.\\d+");
+              + "|(s3\\.secretKey|s3\\.sessionToken|adls\\.clientSecret)\\.\\d+"
+              + "|hibernate\\.connection\\.password");
 
   private final Properties properties = new Properties(generateDefaults());
   private final Map<String, String> env;
@@ -452,7 +455,15 @@ public class ServerProperties {
             name,
             propertiesFile,
             envName(name));
-      } else if (System.getProperty(name) == null && getEnv(name) == null) {
+      } else if (getOverride(name) != null) {
+        continue;
+      } else if (name.equals("hibernate.connection.password")) {
+        LOGGER.warn(
+            "{} in {} is ignored; set the {} environment variable instead.",
+            name,
+            propertiesFile,
+            envName(name));
+      } else {
         LOGGER.warn(
             "{} is set in {}. Keeping secrets in this file is deprecated; set the {} environment"
                 + " variable instead.",
@@ -582,19 +593,28 @@ public class ServerProperties {
 
   /** Get a property value by key name. */
   private String getProperty(String key) {
-    if (System.getProperty(key) != null) {
-      return System.getProperty(key);
-    }
-    String envValue = getEnv(key);
-    if (envValue != null) {
-      return envValue;
+    String override = getOverride(key);
+    if (override != null) {
+      return override;
     }
     // Finally try properties. If not found in properties, this would return default value or null
     // if no default value.
     return properties.getProperty(key);
   }
 
-  private String getEnv(String key) {
+  // A value set for the key in a system property or an environment variable, or null.
+  private String getOverride(String key) {
+    String value = System.getProperty(key);
+    return value != null ? value : getEnv(key);
+  }
+
+  /**
+   * Get a value set for a key in the environment, or null: the variable named exactly as the key,
+   * then the one named by {@link #envName}. System properties are not consulted. Settings kept in
+   * other files, such as the database password in hibernate.properties, use this to let the
+   * environment override the file.
+   */
+  public String getEnv(String key) {
     String name = key;
     String value = env.get(key);
     if (value == null) {
