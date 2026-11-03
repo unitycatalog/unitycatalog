@@ -7,7 +7,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -154,8 +153,7 @@ public class FileAuditSink implements AuditSink {
 
   private static void put(Map<String, Object> m, String key, Object value) {
     if (value != null) {
-      // Enums and UUIDs as strings.
-      m.put(key, value instanceof Enum<?> || value instanceof UUID ? value.toString() : value);
+      m.put(key, value);
     }
   }
 }
