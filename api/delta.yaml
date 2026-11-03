@@ -1040,12 +1040,7 @@ components:
       description: |
         Set table columns. The metadata field on each field carries Spark/Delta field metadata
         from metaData.schemaString in the Delta commit log. Without set-partition-columns, existing
-        partition columns follow a rename by their stored column-mapping identity; a column replaced
-        under the same name with a new identity keeps its partition. On a table without column
-        mapping, or whose stored columns carry no identity, they are matched by logical name. The
-        request is rejected with InvalidParameterValueException (400) when it drops a partition
-        column, when a partition column has no stored identity while other columns have one, or
-        when two stored columns share an identity.
+        partition columns follow a rename by their stored column-mapping identity.
       properties:
         action:
           type: string
