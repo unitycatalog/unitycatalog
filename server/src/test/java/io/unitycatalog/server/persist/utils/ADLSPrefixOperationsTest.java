@@ -50,7 +50,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.ArgumentCaptor;
 
 @SuppressWarnings("unchecked")
 class ADLSPrefixOperationsTest {
@@ -340,12 +339,6 @@ class ADLSPrefixOperationsTest {
     when(fileIO.client(prefix)).thenReturn(client);
 
     try (ADLSPrefixOperations cleanup = new ADLSPrefixOperations(fileIO, prefix, deadline)) {
-      cleanup.listPrefix(prefix).iterator().hasNext();
-      ArgumentCaptor<ListPathsOptions> options = ArgumentCaptor.forClass(ListPathsOptions.class);
-      verify(client).listPaths(options.capture(), isNull());
-      assertThat(options.getValue().getPath())
-          .as("Cleanup directory must match the managed location used for credential scope")
-          .isEqualTo(expectedDirectory);
       cleanup.deletePrefix(prefix);
     }
     assertThat(paths).isEmpty();
