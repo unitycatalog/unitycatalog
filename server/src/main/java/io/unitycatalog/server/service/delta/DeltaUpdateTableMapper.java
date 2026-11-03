@@ -539,10 +539,8 @@ public final class DeltaUpdateTableMapper {
           ValidationUtils.checkNotNull(
               setPartition.get().getPartitionColumns(),
               "set-partition-columns requires a partition-columns list.");
-    } else if (setSchema.isPresent()) {
-      partitionNames = resolvePartitionColumns(dao, newColumns, columnMappingMode);
     } else {
-      partitionNames = currentPartitionColumnNames(dao);
+      partitionNames = resolvePartitionColumns(dao, newColumns, columnMappingMode);
     }
     ColumnUtils.applyPartitionColumns(newColumns, partitionNames);
     // Build the new DAO list. Every column receives a fresh UUID.
@@ -703,8 +701,8 @@ public final class DeltaUpdateTableMapper {
    *   <li>A retained field keeps the identity key it has, and a schema that has identity keys keeps
    *       them.
    *   <li>An identity value that is present must be usable: the mode's key on a top-level column,
-   *       and a column mapping id on any field. In name mode, top-level physical names are unique
-   *       ignoring case. In both modes, ids are unique across the schema.
+   *       and a column mapping id on any field. In both modes, top-level physical names are unique
+   *       ignoring case and ids are unique across the schema.
    *   <li>With column mapping, stored or being enabled, every field at any depth has a physical
    *       name and a column mapping id, as the Delta protocol requires in both modes.
    *   <li>Without column mapping there is no rename to find: a missing name is a drop and an add,
@@ -1089,15 +1087,6 @@ public final class DeltaUpdateTableMapper {
             ErrorCode.INVALID_ARGUMENT, "Invalid column mapping mode: " + rawMode);
       }
     }
-  }
-
-  /** Names of the DAO's partition columns, ordered by partition index. */
-  private static List<String> currentPartitionColumnNames(TableInfoDAO dao) {
-    return ColumnInfoDAO.toList(dao.getColumns()).stream()
-        .filter(c -> c.getPartitionIndex() != null)
-        .sorted(Comparator.comparingInt(ColumnInfo::getPartitionIndex))
-        .map(ColumnInfo::getName)
-        .collect(Collectors.toList());
   }
 
   /**
