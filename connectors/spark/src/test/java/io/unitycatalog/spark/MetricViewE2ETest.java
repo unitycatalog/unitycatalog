@@ -127,6 +127,12 @@ public class MetricViewE2ETest extends BaseSparkIntegrationTest {
             .map(r -> r.getString(1))
             .collect(java.util.stream.Collectors.toList());
     assertThat(afterRename).contains("mv_e2e").doesNotContain("mv_renamed");
+    // ALTER TABLE ... RENAME TO on a view must not rename it through the table path either.
+    assertThatThrownBy(() -> sql("ALTER TABLE %s RENAME TO %s", tbl("mv_e2e"), tbl("mv_renamed")));
+    assertThat(
+            sql("SHOW VIEWS IN %s.%s", CATALOG_NAME, SCHEMA_NAME).stream().map(r -> r.getString(1)))
+        .contains("mv_e2e")
+        .doesNotContain("mv_renamed");
 
     // DROP VIEW removes it; it no longer shows up.
     sql("DROP VIEW %s", tbl("mv_e2e"));

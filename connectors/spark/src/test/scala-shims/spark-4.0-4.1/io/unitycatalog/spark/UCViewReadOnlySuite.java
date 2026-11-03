@@ -185,19 +185,11 @@ public class UCViewReadOnlySuite {
         .isInstanceOf(IllegalArgumentException.class);
   }
 
-  // -- alterTable / renameTable: unsupported for any table (no view escape hatch) --
+  // -- alterTable: unsupported for any table (renameTable on views: see UCProxySuite) --
 
   @Test
   public void testAlterTableUnsupported() {
     assertThatThrownBy(() -> proxy.alterTable(Identifier.of(NAMESPACE, "mv1"), new TableChange[0]))
-        .isInstanceOf(UnsupportedOperationException.class);
-  }
-
-  @Test
-  public void testRenameTableUnsupported() {
-    assertThatThrownBy(
-            () ->
-                proxy.renameTable(Identifier.of(NAMESPACE, "mv1"), Identifier.of(NAMESPACE, "mv2")))
         .isInstanceOf(UnsupportedOperationException.class);
   }
 

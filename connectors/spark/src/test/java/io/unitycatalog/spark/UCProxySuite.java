@@ -5,15 +5,24 @@ import static io.unitycatalog.spark.UCProxyTestFixture.NAMESPACE;
 import static io.unitycatalog.spark.UCProxyTestFixture.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.model.DeltaRenameTableRequest;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.ListSchemasResponse;
 import io.unitycatalog.client.model.ListTablesResponse;
 import io.unitycatalog.client.model.SchemaInfo;
@@ -21,12 +30,18 @@ import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Stream;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
+import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.SupportsNamespaces;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Version-agnostic unit tests for {@code UCProxy} (the table/namespace surface that exists on every
@@ -44,6 +59,7 @@ public class UCProxySuite {
 
   private TablesApi mockTablesApi;
   private SchemasApi mockSchemasApi;
+  private DeltaTablesApi mockDeltaTablesApi;
   private TableCatalog proxy;
   private SupportsNamespaces proxyNs;
 
@@ -52,6 +68,7 @@ public class UCProxySuite {
     UCProxyTestFixture fixture = new UCProxyTestFixture().build();
     mockTablesApi = fixture.mockTablesApi;
     mockSchemasApi = fixture.mockSchemasApi;
+    mockDeltaTablesApi = fixture.mockDeltaTablesApi;
     proxy = fixture.proxy;
     proxyNs = fixture.proxyNs;
   }
@@ -304,5 +321,173 @@ public class UCProxySuite {
 
     assertThat(result).hasNumberOfRows(1);
     assertThat(result[0]).containsExactly("schema1");
+  }
+
+  // -- renameTable tests --
+
+  private static final Identifier RENAME_SOURCE = Identifier.of(NAMESPACE, "src");
+  private static final Identifier RENAME_TARGET = Identifier.of(NAMESPACE, "dst");
+
+  private void stubRenameSource(TableType tableType, DataSourceFormat format) throws Exception {
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.src"), eq(false), eq(false)))
+        .thenReturn(
+            new TableInfo()
+                .catalogName(CATALOG_NAME)
+                .schemaName(SCHEMA_NAME)
+                .name("src")
+                .tableType(tableType)
+                .dataSourceFormat(format));
+  }
+
+  private void stubRenameFailure(ApiException e) throws Exception {
+    doThrow(e).when(mockDeltaTablesApi).renameTable(anyString(), anyString(), anyString(), any());
+  }
+
+  private void verifyRenameCalled(String newName) throws Exception {
+    verify(mockDeltaTablesApi)
+        .renameTable(
+            eq(CATALOG_NAME),
+            eq(SCHEMA_NAME),
+            eq("src"),
+            eq(new DeltaRenameTableRequest().newName(newName)));
+  }
+
+  private void verifyRenameNotCalled() throws Exception {
+    verify(mockDeltaTablesApi, never()).renameTable(anyString(), anyString(), anyString(), any());
+  }
+
+  private static ApiException deltaError(int code, String type) {
+    return new ApiException(
+        code,
+        "renameTable call failed",
+        null,
+        "{\"error\":{\"code\":" + code + ",\"type\":\"" + type + "\",\"message\":\"m\"}}");
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = TableType.class,
+      names = {"MANAGED", "EXTERNAL"})
+  public void testRenameTableCallsDeltaRenameForDeltaTables(TableType tableType) throws Exception {
+    stubRenameSource(tableType, DataSourceFormat.DELTA);
+    proxy.renameTable(RENAME_SOURCE, RENAME_TARGET);
+    verifyRenameCalled("dst");
+  }
+
+  // Each namespace is wrapped in Arguments: a bare String[] would be spread into one argument per
+  // element.
+  static Stream<Arguments> sameSchemaRenameTargetNamespaces() {
+    return Stream.of(
+            new String[0], new String[] {SCHEMA_NAME}, new String[] {CATALOG_NAME, SCHEMA_NAME})
+        .map(ns -> Arguments.of((Object) ns));
+  }
+
+  @ParameterizedTest
+  @MethodSource("sameSchemaRenameTargetNamespaces")
+  public void testRenameTableAcceptsTargetInSameSchema(String[] namespace) throws Exception {
+    stubRenameSource(TableType.MANAGED, DataSourceFormat.DELTA);
+    proxy.renameTable(RENAME_SOURCE, Identifier.of(namespace, "dst"));
+    verifyRenameCalled("dst");
+  }
+
+  static Stream<Arguments> otherSchemaRenameTargetNamespaces() {
+    return Stream.of(
+            new String[] {"other_schema"},
+            new String[] {"other_catalog", SCHEMA_NAME},
+            new String[] {CATALOG_NAME, "other_schema"},
+            new String[] {CATALOG_NAME, SCHEMA_NAME, "x"})
+        .map(ns -> Arguments.of((Object) ns));
+  }
+
+  @ParameterizedTest
+  @MethodSource("otherSchemaRenameTargetNamespaces")
+  public void testRenameTableRejectsTargetInOtherCatalogOrSchema(String[] namespace)
+      throws Exception {
+    assertThatThrownBy(() -> proxy.renameTable(RENAME_SOURCE, Identifier.of(namespace, "dst")))
+        .isInstanceOf(UnsupportedOperationException.class)
+        .hasMessageContaining("another catalog or schema");
+    // Rejected before any RPC.
+    verify(mockTablesApi, never()).getTable(anyString(), anyBoolean(), anyBoolean());
+    verifyRenameNotCalled();
+  }
+
+  @Test
+  public void testRenameTableMissingSourceThrowsNoSuchTable() throws Exception {
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.src"), eq(false), eq(false)))
+        .thenThrow(new ApiException(404, "not found"));
+    assertThatThrownBy(() -> proxy.renameTable(RENAME_SOURCE, RENAME_TARGET))
+        .isInstanceOf(NoSuchTableException.class);
+    verifyRenameNotCalled();
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = TableType.class,
+      names = {"VIEW", "METRIC_VIEW", "MATERIALIZED_VIEW"})
+  public void testRenameTableRejectsViews(TableType viewType) throws Exception {
+    stubRenameSource(viewType, null);
+    assertThatThrownBy(() -> proxy.renameTable(RENAME_SOURCE, RENAME_TARGET))
+        .isInstanceOf(UnsupportedOperationException.class)
+        .hasMessageContaining("has type " + viewType.getValue() + ", not a table");
+    verifyRenameNotCalled();
+  }
+
+  static Stream<Arguments> nonDeltaRenameSources() {
+    return Stream.of(
+        Arguments.of(TableType.EXTERNAL, DataSourceFormat.ICEBERG),
+        Arguments.of(TableType.EXTERNAL, DataSourceFormat.PARQUET),
+        Arguments.of(TableType.EXTERNAL, DataSourceFormat.CSV),
+        // A Delta-format streaming table is not a plain table either.
+        Arguments.of(TableType.STREAMING_TABLE, DataSourceFormat.DELTA));
+  }
+
+  @ParameterizedTest
+  @MethodSource("nonDeltaRenameSources")
+  public void testRenameTableRejectsNonDeltaTables(TableType tableType, DataSourceFormat format)
+      throws Exception {
+    stubRenameSource(tableType, format);
+    assertThatThrownBy(() -> proxy.renameTable(RENAME_SOURCE, RENAME_TARGET))
+        .isInstanceOf(UnsupportedOperationException.class)
+        .hasMessageContaining("only supported for Delta tables")
+        .hasMessageContaining(
+            "has type " + tableType.getValue() + " and format " + format.getValue());
+    verifyRenameNotCalled();
+  }
+
+  static Stream<Arguments> mappedRenameErrors() {
+    return Stream.of(
+        Arguments.of(
+            deltaError(409, "AlreadyExistsException"), TableAlreadyExistsException.class, ""),
+        // The source was dropped between the lookup and the rename.
+        Arguments.of(deltaError(404, "NoSuchTableException"), NoSuchTableException.class, ""),
+        Arguments.of(
+            deltaError(400, "UnsupportedTableFormatException"),
+            UnsupportedOperationException.class,
+            "only supported for Delta tables"),
+        // A 404 with no Delta error body: the server has no rename route.
+        Arguments.of(
+            new ApiException(404, "renameTable call failed", null, "Not Found"),
+            UnsupportedOperationException.class,
+            "not supported by this Unity Catalog server"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("mappedRenameErrors")
+  public void testRenameTableMapsServerErrors(
+      ApiException serverError, Class<? extends Throwable> expectedType, String expectedMessage)
+      throws Exception {
+    stubRenameSource(TableType.MANAGED, DataSourceFormat.DELTA);
+    stubRenameFailure(serverError);
+    assertThatThrownBy(() -> proxy.renameTable(RENAME_SOURCE, RENAME_TARGET))
+        .isInstanceOf(expectedType)
+        .hasMessageContaining(expectedMessage);
+  }
+
+  @Test
+  public void testRenameTablePassesThroughOtherServerErrors() throws Exception {
+    stubRenameSource(TableType.MANAGED, DataSourceFormat.DELTA);
+    ApiException denied = deltaError(403, "PermissionDeniedException");
+    stubRenameFailure(denied);
+    assertThatThrownBy(() -> proxy.renameTable(RENAME_SOURCE, RENAME_TARGET)).isSameAs(denied);
   }
 }

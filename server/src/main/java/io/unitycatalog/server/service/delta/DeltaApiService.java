@@ -280,7 +280,8 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
 
   /**
    * Rename a table by three-part name, within the same catalog and schema. Cross-catalog and
-   * cross-schema moves are not supported per {@code delta.yaml}.
+   * cross-schema moves are not supported per {@code delta.yaml}. Only Delta tables can be renamed
+   * here; views and other formats are rejected with {@code UNSUPPORTED_TABLE_FORMAT}.
    */
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename")
   @AuthorizeExpression(AuthorizeExpressions.RENAME_TABLE)
@@ -292,7 +293,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
     if (request == null || request.getNewName() == null || request.getNewName().isBlank()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "New table name is required.");
     }
-    tableRepository.renameTable(catalog, schema, table, request.getNewName());
+    tableRepository.renameTableForDelta(catalog, schema, table, request.getNewName());
     return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
