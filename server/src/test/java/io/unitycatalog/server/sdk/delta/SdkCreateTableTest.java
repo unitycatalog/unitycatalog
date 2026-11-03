@@ -120,6 +120,15 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     assertThat(extResp.getMetadata().getTableType()).isEqualTo(DeltaTableType.EXTERNAL);
     assertThat(extResp.getMetadata().getLocation()).isEqualTo(externalLocation);
 
+    // -------- EXTERNAL location that is not a URI rejected (Delta sends URIs) --------
+    assertDeltaInvalidParam(
+        () ->
+            deltaTablesApi.createTable(
+                TestUtils.CATALOG_NAME2,
+                TestUtils.SCHEMA_NAME2,
+                externalTableRequest("tbl_raw_space", "s3://test-bucket0/team reports/t")),
+        "not a valid URI");
+
     // -------- name missing --------
     assertDeltaInvalidParam(
         () ->

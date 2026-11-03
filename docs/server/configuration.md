@@ -150,14 +150,15 @@ either, so `s3://bucket/%2F` is not a bucket root: it can be used as an external
 location, and credentials for it are scoped to the prefix `%2F`.
 
 A cloud location cannot contain `?` or `#`. A stored table, volume, external location or UniForm
-metadata location that contains one returns an error when it is used, and most of these can no
-longer be dropped (only a forced delete of an external location still works). Before upgrading,
-drop or move any such object to a location without `?` or `#`.
+metadata location that contains one returns an error when it is used. Volumes, managed tables and,
+with authorization enabled, external tables at such a location can no longer be dropped, and an
+external location can be deleted only with `force`. Before upgrading, drop or move any such object
+to a location without `?` or `#`.
 
-The UC REST API accepts and returns the literal stored location. The Delta REST API exchanges
-locations as URIs, as Delta clients do: the server decodes a
-location it receives once, and returns staging, table and UniForm metadata locations and credential
-prefixes URI-encoded. For example, Delta sends `s3://bucket/team%20reports/t` for the folder
+The UC REST API accepts and returns the literal stored location, except the Delta commits endpoint,
+whose `table_uri` and UniForm `metadata_location` are URIs. The Delta REST API exchanges locations
+as URIs, as Delta clients do: the server decodes a location it receives once, and returns staging,
+table and UniForm metadata locations and credential prefixes URI-encoded. For example, Delta sends `s3://bucket/team%20reports/t` for the folder
 `team reports`, and `s3://bucket/team%2520reports/t` for a folder named `team%20reports`.
 
 ## Logging

@@ -51,6 +51,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
@@ -357,9 +358,13 @@ public class DeltaUpdateTableMapperTest {
         .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
   }
 
-  @Test
-  public void applyUpdatesDecodesTheUniformMetadataLocation() {
-    // Delta sends the add-commit UniForm metadata location URI-encoded, like the table location.
+  @ParameterizedTest
+  @CsvSource({
+    "s3://b/team%20reports/t/_u/v1.json, s3://b/team reports/t/_u/v1.json",
+    "s3://b/team%2520reports/t/_u/v1.json, s3://b/team%20reports/t/_u/v1.json"
+  })
+  public void applyUpdatesDecodesTheUniformMetadataLocation(String sent, String stored) {
+    // Delta sends the add-commit UniForm metadata location URI-encoded; it is decoded once.
     CommitDispatch dispatch =
         DeltaUpdateTableMapper.applyUpdates(
                 null,
@@ -378,14 +383,14 @@ public class DeltaUpdateTableMapperTest {
                             new DeltaUniformMetadata()
                                 .iceberg(
                                     new DeltaUniformMetadataIceberg()
-                                        .metadataLocation("s3://b/team%20reports/t/_u/v1.json")
+                                        .metadataLocation(sent)
                                         .convertedDeltaVersion(1L)
                                         .convertedDeltaTimestamp(1700000001L)))),
                 new ServerProperties())
             .orElseThrow();
 
     assertThat(dispatch.uniformFields().orElseThrow().metadataLocation().toString())
-        .isEqualTo("s3://b/team reports/t/_u/v1.json");
+        .isEqualTo(stored);
   }
 
   @Test

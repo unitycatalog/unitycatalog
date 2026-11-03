@@ -2999,7 +2999,8 @@ components:
           description: |
             The URI of the storage location of the table. If the table_id exists but the table_uri is 
             different from the one previously registered (e.g., if the client moved the table), the request will fail.
-            A cloud location is URI-encoded: the folder `team reports` is `team%20reports`.
+            A cloud location is URI-encoded: the folder `team reports` is `team%20reports` and a folder
+            named `team%20reports` is `team%2520reports`. A location containing `?` or `#` is rejected.
             Example: s3://bucket-name/tables/some-table-id
         commit_info:
           $ref: '#/components/schemas/DeltaCommitInfo'
