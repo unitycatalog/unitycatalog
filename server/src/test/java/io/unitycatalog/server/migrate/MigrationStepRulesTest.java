@@ -48,6 +48,14 @@ public class MigrationStepRulesTest {
           + ")?";
 
   /**
+   * What a step may hold outside its {@code '...'} strings and {@code --} comments. The allowed
+   * changes need no more, and other quotes and comments ({@code "}, a backtick, MySQL's {@code #},
+   * H2's {@code //}, block comments, which PostgreSQL nests, and {@code $$} strings) could hide a
+   * {@code ;} from this test.
+   */
+  private static final Pattern PLAIN = Pattern.compile("[\\w\\s(),.-]");
+
+  /**
    * The changes a step may make, each matched against the whole statement, ignoring case. Not
    * listed, so refused: data changes, unique indexes and key, foreign key, CHECK or NOT NULL rules
    * on an existing table (existing rows can break them; a MySQL {@code MODIFY} restates NOT NULL,
@@ -137,13 +145,16 @@ public class MigrationStepRulesTest {
   }
 
   /**
-   * The file's statements, without comments; quoted text is kept as it is.
+   * The file's statements, without {@code --} comments; {@code '...'} strings are kept as they are.
    *
-   * @throws IllegalArgumentException for quoting this splitter doesn't read, which could hide a
-   *     {@code ;}: text in {@code "} or {@code `} quotes, or a backslash in a string (MySQL's
-   *     escape)
+   * @throws IllegalArgumentException for text this splitter may not read the way the database does:
+   *     a character that {@link #PLAIN} doesn't list, a backslash in a string (MySQL's escape), or
+   *     a carriage return that doesn't end a line
    */
   private static List<String> statements(String sql) {
+    if (sql.replace("\r\n", "\n").indexOf('\r') >= 0) {
+      throw new IllegalArgumentException("has a carriage return that doesn't end a line");
+    }
     List<String> statements = new ArrayList<>();
     StringBuilder current = new StringBuilder();
     int i = 0;
@@ -153,26 +164,26 @@ public class MigrationStepRulesTest {
         int end = sql.indexOf('\'', i + 1);
         end = end < 0 ? sql.length() : end + 1;
         if (sql.substring(i, end).contains("\\")) {
-          throw new IllegalArgumentException("has a backslash in a string");
+          throw new IllegalArgumentException(
+              "has a backslash in a string, which MySQL reads as an escape: write a quote as ''");
         }
         current.append(sql, i, end);
         i = end;
       } else if (sql.startsWith("--", i)) {
         int end = sql.indexOf('\n', i);
         i = end < 0 ? sql.length() : end;
-      } else if (sql.startsWith("/*", i)) {
-        int end = sql.indexOf("*/", i + 2);
-        i = end < 0 ? sql.length() : end + 2;
-        current.append(' ');
-      } else if (c == '"' || c == '`') {
-        throw new IllegalArgumentException(
-            "has text in \" or ` quotes: leave names unquoted and put strings in '...'");
       } else if (c == ';') {
         addIfNotBlank(statements, current);
         i++;
-      } else {
+      } else if (PLAIN.matcher(String.valueOf(c)).matches()) {
         current.append(c);
         i++;
+      } else {
+        throw new IllegalArgumentException(
+            "has "
+                + c
+                + " outside a string: write names unquoted, strings in '...' and comments after"
+                + " --");
       }
     }
     addIfNotBlank(statements, current);

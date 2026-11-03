@@ -1,5 +1,6 @@
 package io.unitycatalog.server.migrate;
 
+import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
@@ -43,14 +44,15 @@ record SchemaSnapshot(List<String> entries) {
       """;
 
   static SchemaSnapshot of(DataSource dataSource) {
+    DatabaseKind kind = DatabaseKind.of(dataSource);
     try (Connection connection = dataSource.getConnection()) {
-      return read(connection);
+      return read(connection, kind);
     } catch (SQLException e) {
       throw new IllegalStateException("Could not read the schema", e);
     }
   }
 
-  private static SchemaSnapshot read(Connection connection) throws SQLException {
+  private static SchemaSnapshot read(Connection connection, DatabaseKind kind) throws SQLException {
     DatabaseMetaData metaData = connection.getMetaData();
     String catalog = connection.getCatalog();
     String schema = connection.getSchema();
@@ -108,17 +110,16 @@ record SchemaSnapshot(List<String> entries) {
         }
       }
     }
-    entries.addAll(checks(connection));
+    entries.addAll(checks(connection, kind));
     return new SchemaSnapshot(entries.stream().sorted().toList());
   }
 
-  private static List<String> checks(Connection connection) throws SQLException {
+  private static List<String> checks(Connection connection, DatabaseKind kind) throws SQLException {
     String query =
-        switch (connection.getMetaData().getDatabaseProductName()) {
-          case "H2" -> STANDARD_CHECKS.formatted("current_schema");
-          case "MySQL" -> STANDARD_CHECKS.formatted("database()");
-          case "PostgreSQL" -> POSTGRES_CHECKS;
-          default -> throw new IllegalStateException(connection.getMetaData().getURL());
+        switch (kind) {
+          case H2 -> STANDARD_CHECKS.formatted("current_schema");
+          case MYSQL -> STANDARD_CHECKS.formatted("database()");
+          case POSTGRESQL -> POSTGRES_CHECKS;
         };
     List<String> checks = new ArrayList<>();
     try (Statement statement = connection.createStatement();
