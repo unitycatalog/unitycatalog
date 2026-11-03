@@ -89,9 +89,7 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
             }
 
           // Write: INSERT OVERWRITE DIRECTORY '<cloud path>' USING <format> ...
-          // Spark writes to `CatalogUtils.URIToString(locationUri)`, not `locationUri.toString`
-          // (which keeps the URI escaping, e.g. `%2520` for a literal `%20`), so use the same
-          // path here.
+          // Spark writes to `CatalogUtils.URIToString(locationUri)`, so request that path.
           case i: InsertIntoDir
               if !isDeltaProvider(i.provider) &&
                 i.storage.locationUri.exists { u =>
