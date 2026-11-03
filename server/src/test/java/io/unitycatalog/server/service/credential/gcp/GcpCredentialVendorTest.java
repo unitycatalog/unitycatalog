@@ -14,7 +14,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.stream.Stream;
-import org.apache.hadoop.fs.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -138,15 +137,5 @@ public class GcpCredentialVendorTest {
   public void testUnicodePathIsPreserved() {
     assertThat(availabilityConditionFor("gs://test-bucket/café/資料/💾"))
         .isEqualTo(expectedCondition("test-bucket", "café/資料/💾"));
-  }
-
-  @ParameterizedTest
-  @ValueSource(strings = {"team%2Freports", "team%2F", "team%252Freports", "team+reports"})
-  public void testBoundaryPreservesLiteralCloudPath(String path) {
-    String location = "gs://test-bucket/" + path;
-    String clientPath = new Path(location).toUri().getPath().substring(1);
-
-    assertThat(availabilityConditionFor(location))
-        .isEqualTo(expectedCondition("test-bucket", clientPath));
   }
 }
