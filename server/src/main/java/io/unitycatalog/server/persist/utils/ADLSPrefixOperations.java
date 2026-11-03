@@ -35,12 +35,10 @@ final class ADLSPrefixOperations implements SupportsPrefixOperations {
 
   /**
    * @param fileIO credentialed FileIO owned and closed by these prefix operations
-   * @param boundPrefix ADLS directory location as stored, with a literal path and a trailing slash
+   * @param boundPrefix ADLS directory location as stored, including its trailing slash
    * @param deadline shared attempt deadline and shutdown interruption check
    */
   ADLSPrefixOperations(ADLSFileIO fileIO, String boundPrefix, CooperativeDeadline deadline) {
-    // ADLS names are literal, as in the stored location and the cleanup credential's scope: the
-    // path is read as written, so a space or percent sequence is part of a name.
     int schemeEnd = boundPrefix.indexOf("://");
     int pathStart = schemeEnd < 0 ? -1 : boundPrefix.indexOf('/', schemeEnd + 3);
     String scheme = schemeEnd < 0 ? "" : boundPrefix.substring(0, schemeEnd);
@@ -63,8 +61,7 @@ final class ADLSPrefixOperations implements SupportsPrefixOperations {
   }
 
   /**
-   * Lists files lazily as URL-encoded absolute ADLS URLs (the bound prefix itself is literal); a
-   * missing directory is already empty.
+   * Lists files lazily as absolute ADLS URLs; a missing directory is already empty.
    *
    * @param prefix the exact bound prefix
    */
