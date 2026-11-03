@@ -61,8 +61,8 @@ public class Oauth2CliExchange {
     String authorizationUrl = serverProperties.getProperty("server.authorization-url");
     String tokenUrl = serverProperties.getProperty("server.token-url");
     String clientId = serverProperties.getProperty("server.client-id");
-    // Read UC_SERVER_CLIENT_SECRET first, then server.client-secret from the file. The variable
-    // name and the line-break trimming match the server (see Secrets in configuration.md).
+    // The variable name and the line-break trimming match the server (see Secrets in
+    // configuration.md).
     String clientSecret =
         System.getenv().getOrDefault("UC_SERVER_CLIENT_SECRET", "").replaceAll("[\\r\\n]+$", "");
     if (clientSecret.isEmpty()) {
