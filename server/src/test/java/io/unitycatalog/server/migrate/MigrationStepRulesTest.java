@@ -14,11 +14,13 @@ import org.junit.jupiter.api.Test;
 /**
  * Every SQL step of every database holds one statement, and the statement is one of the changes
  * {@link #ALLOWED} lists: an allow-list of changes that existing rows can't make fail and that
- * servers of the previous release keep working with. A step either applies whole or not at all. A
- * step without statements (a version that changes nothing on that database) is allowed. The first
- * step, the 0.7 baseline, builds the whole schema at once; later baselines are Flyway baseline
- * migrations ({@code B<version>__*.sql}, next to the steps, run only on a new database), which this
- * test does not read.
+ * servers of the previous release keep working with. The test reads the statement, not the column
+ * it changes, so review checks that a type change widens the column and that a MySQL {@code MODIFY}
+ * keeps the column's nullability. A step either applies whole or not at all. A step without
+ * statements (a version that changes nothing on that database) is allowed. The first step, the 0.7
+ * baseline, builds the whole schema at once; later baselines are Flyway baseline migrations ({@code
+ * B<version>__*.sql}, next to the steps, run only on a new database), which this test does not
+ * read.
  */
 public class MigrationStepRulesTest {
 
@@ -48,8 +50,8 @@ public class MigrationStepRulesTest {
   /**
    * The changes a step may make, each matched against the whole statement, ignoring case. Not
    * listed, so refused: data changes, unique indexes and key, foreign key, CHECK or NOT NULL rules
-   * on an existing table (existing rows can break them), type changes with a conversion, and drops
-   * and renames (servers of the previous release still use the old schema during an upgrade).
+   * on an existing table (existing rows can break them), and drops and renames (servers of the
+   * previous release still use the old schema during an upgrade).
    */
   private static final List<Pattern> ALLOWED =
       Stream.of(
@@ -122,7 +124,7 @@ public class MigrationStepRulesTest {
         .as(
             "Each SQL step holds one statement that creates a table, creates an index that is not"
                 + " unique, adds a column (NOT NULL only with a DEFAULT, without a key or CHECK),"
-                + " changes a column's type or drops its NOT NULL. Other changes are not supported"
+                + " widens a column's type or drops its NOT NULL. Other changes are not supported"
                 + " yet; see ALLOWED in this test")
         .isEmpty();
   }

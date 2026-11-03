@@ -27,7 +27,7 @@ if ! merge_base=$(git merge-base "$1" HEAD); then
   exit 2
 fi
 
-changed=$(git diff --diff-filter=MDR --name-status "$merge_base" HEAD -- "$steps_dir")
+changed=$(git diff --diff-filter=MDRT --name-status "$merge_base" HEAD -- "$steps_dir")
 if [[ -n "$changed" ]]; then
   echo "These merged migration steps changed since $1:" >&2
   echo "$changed" >&2
