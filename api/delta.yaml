@@ -587,7 +587,7 @@ components:
       properties:
         prefix:
           type: string
-          description: "Storage path prefix this credential applies to. A cloud location is URI-encoded: the folder `team reports` is `team%20reports` and a folder named `team%20reports` is `team%2520reports`."
+          description: Storage path prefix this credential applies to
         operation:
           $ref: '#/components/schemas/DeltaCredentialOperation'
         config:
@@ -674,7 +674,7 @@ components:
           description: Table type (always MANAGED for staging tables)
         location:
           type: string
-          description: "UC allocated storage location for this table. A cloud location is URI-encoded: the folder `team reports` is `team%20reports` and a folder named `team%20reports` is `team%2520reports`."
+          description: UC allocated storage location for this table
         storage-credentials:
           type: array
           description: Temporary credentials for initial commit
@@ -724,7 +724,7 @@ components:
           description: The table name
         location:
           type: string
-          description: "Storage location. A cloud location is URI-encoded: the folder `team reports` is `team%20reports` and a folder named `team%20reports` is `team%2520reports`. A location containing `?` or `#` is rejected."
+          description: Storage location
         table-type:
           $ref: '#/components/schemas/DeltaTableType'
         comment:
@@ -842,7 +842,7 @@ components:
           description: Unique identifier for the table
         location:
           type: string
-          description: "Storage location of the table. A cloud location is URI-encoded: the folder `team reports` is `team%20reports` and a folder named `team%20reports` is `team%2520reports`."
+          description: Storage location of the table
         created-time:
           type: integer
           format: int64
@@ -1250,7 +1250,7 @@ components:
           properties:
             metadata-location:
               type: string
-              description: "Iceberg metadata file location. A cloud location is URI-encoded: the folder `team reports` is `team%20reports` and a folder named `team%20reports` is `team%2520reports`. A location containing `?` or `#` is rejected."
+              description: Iceberg metadata file location
             converted-delta-version:
               type: integer
               format: int64

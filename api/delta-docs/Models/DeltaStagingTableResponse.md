@@ -5,7 +5,7 @@
 |------------ | ------------- | ------------- | -------------|
 | **table-id** | **UUID** | Table UUID allocated by UC | [default to null] |
 | **table-type** | [**DeltaTableType**](DeltaTableType.md) | Table type (always MANAGED for staging tables) | [default to null] |
-| **location** | **String** | UC allocated storage location for this table. A cloud location is URI-encoded: the folder &#x60;team reports&#x60; is &#x60;team%20reports&#x60; and a folder named &#x60;team%20reports&#x60; is &#x60;team%2520reports&#x60;. | [default to null] |
+| **location** | **String** | UC allocated storage location for this table | [default to null] |
 | **storage-credentials** | [**List**](DeltaStorageCredential.md) | Temporary credentials for initial commit | [default to null] |
 | **required-protocol** | [**DeltaStagingTableResponse_required_protocol**](DeltaStagingTableResponse_required_protocol.md) |  | [default to null] |
 | **suggested-protocol** | [**DeltaStagingTableResponse_suggested_protocol**](DeltaStagingTableResponse_suggested_protocol.md) |  | [optional] [default to null] |
