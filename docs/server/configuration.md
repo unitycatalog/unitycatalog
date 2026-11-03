@@ -87,9 +87,8 @@ The server config file is at the location `etc/conf/server.properties` (relative
         When the key file is not set, the server signs with a key it keeps in `etc/conf`
         (`private_key.der`, `public_key.der`), generating it on first start; with authorization enabled it logs a
         warning at each start. This still works, but is deprecated; set the key file setting instead. A newly
-        generated private key is readable by its owner only. The server ignores `key_id.txt` and doesn't write
-        `certs.json`. Keep `key_id.txt` while you may still roll back: without it, an earlier version generates a new
-        key, and existing tokens stop working.
+        generated private key is readable by its owner only. Before rolling back to an earlier version, see
+        [Upgrading](auth.md#upgrading) in the authentication docs.
 - `server.shutdown-timeout`: How long the server waits for in-flight requests when it stops, for example on SIGTERM.
     Defaults to `PT5S`. Stopping takes longer than this: up to 5 seconds more if a storage cleanup attempt is
     running, plus about 2 seconds to stop the HTTP server. With the default, give `docker stop` 15 seconds or more
