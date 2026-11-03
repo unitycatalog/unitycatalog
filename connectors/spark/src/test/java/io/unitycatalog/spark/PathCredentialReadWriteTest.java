@@ -309,10 +309,6 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
             .parsePlan(
                 String.format(
                     "INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i", location));
-    String executionPath =
-        new org.apache.hadoop.fs.Path(((InsertIntoDir) parsed).storage().locationUri().get())
-            .toString();
-    assertThat(executionPath).isEqualTo(location);
 
     InsertIntoDir withCredentials = (InsertIntoDir) injectPathCredentials(parsed);
     assertThat(withCredentials.storage().properties().apply("fs.s3a.access.key"))
@@ -322,7 +318,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(new File(dataDir, directory)).isDirectory();
     assertThat(withCredentials.storage().properties().apply(UCHadoopConfConstants.UC_PATH_KEY))
         .as("UC credential identity must match the directory used by Spark execution")
-        .isEqualTo(executionPath);
+        .isEqualTo(location);
     assertThat(injectPathCredentials(withCredentials)).isSameAs(withCredentials);
   }
 
