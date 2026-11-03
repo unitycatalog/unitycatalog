@@ -77,7 +77,13 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
     // Local paths stay URI-decoded, like the server's local file access.
     "file:///tmp/uc-cli-volume-test/my%20vol,, /tmp/uc-cli-volume-test/my vol",
     "file:///tmp/uc-cli-volume-test/my%20vol, Q3 report.pdf, /tmp/uc-cli-volume-test/my vol/Q3"
-        + " report.pdf"
+        + " report.pdf",
+    // On a local volume --path is a URI reference, as in earlier releases.
+    "file:///tmp/uc-cli-volume-test/my%20vol, Q3%20report.pdf, /tmp/uc-cli-volume-test/my vol/Q3"
+        + " report.pdf",
+    "file:///tmp/uc-cli-volume-test/my%20vol, file:///tmp/uc-cli-volume-test/my%20vol/a.txt,"
+        + " /tmp/uc-cli-volume-test/my vol/a.txt",
+    "file:///tmp/uc-cli-volume-test/my%20vol, ../my%20vol2/x,"
   })
   public void testReadVolumePathMatchesRegisteredLiteralLocation(
       String location, String relativePath, String expectedPath) throws Exception {
