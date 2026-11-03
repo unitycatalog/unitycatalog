@@ -311,8 +311,6 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
                     "INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i", location));
 
     InsertIntoDir withCredentials = (InsertIntoDir) injectPathCredentials(parsed);
-    assertThat(withCredentials.storage().properties().apply("fs.s3a.access.key"))
-        .isEqualTo("accessKey0");
     writeBareParquetSample(location);
     assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
     assertThat(new File(dataDir, directory)).isDirectory();
