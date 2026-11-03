@@ -194,10 +194,9 @@ must also set `ignoreExceptions = false` and have no filter; other appenders are
 shipped configuration meets all of this. If a requirement is not met, for example in a custom or
 copied log configuration without the `audit` logger, the server does not start.
 
-In the default distribution, `audit.log` rolls over with the same settings as `server.log`: every
-hour and at 10MB, keeping archives for up to 7 days or 1GB. The Helm chart has no `server.log`
-file and configures `audit.log` the same way. Ship `etc/logs/audit.log` continuously to your log or
-security service to keep the records longer.
+`audit.log` rolls over with the same settings as `server.log` in the default distribution, and the
+Helm chart configures it the same way. Ship it continuously to your log or security service to keep
+the records longer.
 
 ## Logging
 
