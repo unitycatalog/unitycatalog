@@ -572,7 +572,7 @@ bin/uc volume read \
 
 1. `full_name`: The full name of the volume, which is a concatenation of the catalog name,
    schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
-2. `path`: _\[Optional\]_ The path relative to the volume root, read literally like `hadoop fs`: `Q3 report.pdf` and `Q3%20report.pdf` name different objects, and a path that leads outside the volume is rejected. If no path is provided, the volume root is read. If the final path is a directory, the contents of the directory are listed(`ls`). If the final path is a file, the contents of the file are displayed(`cat`).
+2. `path`: _\[Optional\]_ The path relative to the volume root, read literally like `hadoop fs`: `Q3 report.pdf` and `Q3%20report.pdf` name different objects, and a path that leads outside the volume is rejected. A full URI or a path starting with `/` is accepted when it stays inside the volume; prefix a name that starts with `scheme://` with `./`. Listed names are printed the same way, so they can be passed back as `path`. If no path is provided, the volume root is read. If the final path is a directory, the contents of the directory are listed(`ls`). If the final path is a file, the contents of the file are displayed(`cat`).
 
 ### Write Sample Data to a Volume
 
