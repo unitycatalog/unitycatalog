@@ -77,7 +77,6 @@ public final class DeltaCreateTableMapper {
     DeltaUniformUtils.validateConsistency(req.getProperties(), req.getUniform() != null);
     Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields =
         DeltaUniformUtils.getUniformFields(req.getUniform());
-    // Delta sends the location as a URI; UC stores the literal path it names.
     NormalizedURL location = DeltaLocations.fromDelta(req.getLocation());
     DeltaUniformUtils.validateCreate(uniformFields, location);
 

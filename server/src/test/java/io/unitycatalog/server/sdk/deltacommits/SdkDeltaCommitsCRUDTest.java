@@ -1637,11 +1637,6 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     }
   }
 
-  /**
-   * Delta sends {@code table_uri} and the UniForm metadata location URI-encoded, so a commit to a
-   * table whose literal location has a space, or a literal {@code %20}, is accepted when it carries
-   * the encoded form.
-   */
   @Test
   public void testCommitWithEncodedTableUri() throws Exception {
     String[] folders = {"team reports", "team%20reports"};
@@ -1668,7 +1663,6 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
       assertThat(table.getStorageLocation()).startsWith("s3://test-bucket0/" + folders[i] + "/");
       String encoded = new org.apache.hadoop.fs.Path(table.getStorageLocation()).toUri().toString();
 
-      // The UniForm metadata location arrives URI-encoded too and is stored literally.
       deltaCommitsApi.commit(
           createCommitObject(table.getTableId(), 1L, encoded)
               .metadata(

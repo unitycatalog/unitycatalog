@@ -140,14 +140,6 @@ The cache is controlled by these keys:
 
 Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is five minutes).
 
-## Cloud storage locations
-
-A cloud location (`s3`, `gs`, `abfs`, `abfss`) is stored and used as its literal path, the way Hadoop
-and Spark read it: a space or `%` is part of the name. `s3://bucket/team reports` names the folder
-`team reports`, and `s3://bucket/team%20reports` names the folder `team%20reports`. A cloud location
-cannot contain `?` or `#`. The Delta REST API exchanges locations as URIs, as Delta clients do, so
-there the folder `team reports` is sent as `team%20reports`.
-
 ## Logging
 
 The server logs are located at `etc/logs/server.log`. The log level and log rolling policy can be set in log4j2 config

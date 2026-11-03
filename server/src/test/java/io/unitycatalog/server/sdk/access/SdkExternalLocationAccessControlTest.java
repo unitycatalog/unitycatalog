@@ -508,11 +508,6 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
         TestUtils::assertDeltaPermissionDenied);
   }
 
-  /**
-   * Delta sends {@code location} URI-encoded, so createTable authorizes the decoded path: {@code
-   * team%20reports/t1} is checked against the external location at {@code team reports}, and {@code
-   * team%2520reports/t2} against the one stored literally as {@code team%20reports}.
-   */
   @Test
   public void testDeltaCreateTableAuthorizesTheDecodedLocation() throws Exception {
     String grantedLocation = "spaced_loc";

@@ -143,21 +143,17 @@ public class NormalizedURLTest {
     // Cloud locations keep their escapes, since an object key may contain a literal '%'.
     assertNormalizedURL("s3://bucket/a%2Fb", "s3://bucket/a%2Fb");
     assertNormalizedURL("gs://bucket/%2e%2e/x", "gs://bucket/%2e%2e/x");
-    // Iceberg's S3 and GCS FileIO cut a path at '?' or '#', so cleanup could reach a different
-    // prefix. UC rejects them for ADLS too, so one rule covers every cloud.
     assertRejected("s3://bucket/t?x");
     assertRejected("gs://bucket/t#x");
     assertRejected("s3://bucket#x/data");
     assertRejected("abfss://container@account.dfs.core.windows.net/t?x");
     assertRejected("s3:bucket/t?x");
     assertRejected("gs:bucket/t#x");
-    // A bucket name is not a path, so it cannot hold a space.
     assertRejected("s3://bad bucket/x");
   }
 
   @Test
   public void testFromUriKeepsTheLiteralCloudPath() {
-    // A client's URI escapes the path; the stored location is the literal Hadoop path string.
     for (String location : List.of("s3://bucket/team reports", "s3://bucket/team%20reports")) {
       assertThat(NormalizedURL.from(new Path(location).toUri()))
           .isEqualTo(NormalizedURL.from(location));

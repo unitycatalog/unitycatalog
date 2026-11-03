@@ -152,9 +152,8 @@ public final class DeltaUniformUtils {
    * <p>Create-time-specific rules ({@code converted-delta-version} must be 0 or 1, {@code
    * base-converted-delta-version} must be unset, subpath) live in {@link #validateCreate}, where
    * the table location is also available. Returns {@code Optional.empty()} when no UniForm metadata
-   * was supplied; otherwise returns a record whose metadata-location has been decoded from Delta's
-   * URI form ({@link DeltaLocations#fromDelta}) exactly once and is reused downstream by {@link
-   * #applyToDao}. Used by create and by the update-table add-commit path.
+   * was supplied; otherwise returns a record whose metadata-location has been normalized exactly
+   * once and is reused downstream by {@link #applyToDao}.
    */
   public static Optional<UniformIcebergFields> getUniformFields(DeltaUniformMetadata uniform) {
     if (uniform == null) {
@@ -186,9 +185,8 @@ public final class DeltaUniformUtils {
    *       commit.commitInfo.version} when commit-info is present.
    * </ul>
    *
-   * <p>The metadata-location, typed as a URI, is decoded into its literal path ({@link
-   * NormalizedURL#from(java.net.URI)}) exactly once and the RFC 3339 timestamp parsed exactly once;
-   * both are returned in {@link UniformIcebergFields} so the subpath check ({@code
+   * <p>The metadata-location is normalized exactly once and the RFC 3339 timestamp parsed exactly
+   * once; both are returned in {@link UniformIcebergFields} so the subpath check ({@code
    * DeltaCommitRepository.validateTableForCommit}) and the DAO write ({@link #applyToDao}) reuse
    * them without re-doing the work. Returns {@code Optional.empty()} when no UniForm metadata was
    * supplied.

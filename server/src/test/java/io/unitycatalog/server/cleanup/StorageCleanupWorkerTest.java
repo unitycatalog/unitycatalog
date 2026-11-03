@@ -333,7 +333,6 @@ class StorageCleanupWorkerTest {
     setClaim(ManagedResourceType.TABLE, LOCATION + suffix);
     assertThat(worker.runOnce()).isTrue();
     verifyNoInteractions(fileOperations);
-    // NormalizedURL rejects '?' and '#' in a cloud location before the task is checked.
     verifyFailure("Storage cleanup failed: BaseException");
   }
 

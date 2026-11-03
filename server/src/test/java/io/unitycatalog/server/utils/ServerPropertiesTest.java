@@ -61,7 +61,6 @@ public class ServerPropertiesTest {
     testValidProperty(
         Property.MODEL_STORAGE_ROOT, "abfs://my-container@my-storage.dfs.core.windows.net/my-path");
     testValidProperty(Property.TABLE_STORAGE_ROOT, "gs://my-bucket/my-path");
-    // A cloud storage root is a literal path, so it can name a folder with a space.
     testValidProperty(Property.TABLE_STORAGE_ROOT, "s3://my-bucket/team reports");
     testValidProperty(Property.MODEL_STORAGE_ROOT, "gs://my-bucket/team reports");
 
@@ -97,7 +96,7 @@ public class ServerPropertiesTest {
         "Invalid storage path",
         "storage-root.models");
 
-    // Invalid - '?' in a cloud location, which stops the server from starting
+    // Invalid - '?' in a cloud location
     testInvalidProperty(
         Property.TABLE_STORAGE_ROOT,
         "s3://my-bucket/t?x",

@@ -120,7 +120,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     assertThat(extResp.getMetadata().getTableType()).isEqualTo(DeltaTableType.EXTERNAL);
     assertThat(extResp.getMetadata().getLocation()).isEqualTo(externalLocation);
 
-    // -------- EXTERNAL location that is not a URI rejected (Delta sends URIs) --------
+    // -------- EXTERNAL location that is not a URI rejected --------
     assertDeltaInvalidParam(
         () ->
             deltaTablesApi.createTable(
@@ -335,7 +335,6 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
                         .convertedDeltaVersion(0L)
                         .convertedDeltaTimestamp(1700000000000L)),
         "must be a subpath");
-    // An encoded ".." is decoded before the check, so it cannot leave the table location either.
     assertDeltaInvalidParam(
         () ->
             createTableWithUniform(
@@ -407,12 +406,6 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     return props;
   }
 
-  /**
-   * Delta clients exchange locations as URIs, so for a catalog root whose folder has a space, or a
-   * literal {@code %20}, staging, create and load all return the URI-encoded form of the stored
-   * literal location, and create accepts that encoded form back, for the UniForm metadata location
-   * too.
-   */
   @Test
   public void testLocationsAreUrisUnderEncodedCatalogRoot() throws ApiException {
     TablesApi ucTablesApi = new TablesApi(TestUtils.createApiClient(serverConfig));

@@ -9,24 +9,12 @@ import io.unitycatalog.server.utils.UriScheme;
 import java.net.URI;
 import java.net.URISyntaxException;
 
-/**
- * Converts locations at the Delta API boundary. Delta clients exchange a location as a URI ({@code
- * new Path(p).toUri().toString()} when sending, {@code new URI(location)} when reading), while UC
- * stores a cloud location as the literal path string: folder {@code team reports} is stored as
- * {@code s3://b/team reports} and sent as {@code s3://b/team%20reports}. Local file locations are
- * already URIs and pass through unchanged.
- */
+/** Converts locations at the Delta API boundary, where Delta clients exchange URIs. */
 public final class DeltaLocations {
 
   private DeltaLocations() {}
 
-  /**
-   * Parses a location a Delta client sent. A cloud location is decoded once into its literal path.
-   * Returns null if the input is null.
-   *
-   * @throws BaseException with {@code INVALID_ARGUMENT} if a cloud location is not a valid URI, is
-   *     opaque ({@code s3:bucket/x}), or contains '?' or '#'
-   */
+  /** Decodes a location a Delta client sent; returns null if the input is null. */
   public static NormalizedURL fromDelta(String location) {
     NormalizedURL literal = NormalizedURL.from(location);
     if (literal == null || !isCloud(literal)) {
@@ -40,10 +28,7 @@ public final class DeltaLocations {
     }
   }
 
-  /**
-   * Formats a non-null stored location for a Delta client: a cloud location becomes its encoded
-   * URI.
-   */
+  /** Encodes a non-null stored location for a Delta client. */
   public static String toDelta(String location) {
     return NormalizedURL.from(location).toUri().toString();
   }
@@ -55,10 +40,7 @@ public final class DeltaLocations {
     };
   }
 
-  /**
-   * The literal storage path of a Delta create-table request's {@code location}, so authorization
-   * resolves the same path the table is created at.
-   */
+  /** The decoded {@code location} of a Delta create-table request, for authorization. */
   public static class CreateTableLocationExtractor implements AuthorizeValueExtractor {
 
     @Override

@@ -481,7 +481,6 @@ public class TableRepository {
     metadata.setEtag(DeltaUpdateTableMapper.computeEtag(dao));
     metadata.setTableType(toDeltaTableType(dao.getType()));
     metadata.setTableUuid(dao.getId());
-    // Delta clients read the location as a URI, so a cloud location is returned encoded.
     metadata.setLocation(DeltaLocations.toDelta(dao.getUrl()));
     metadata.setCreatedTime(dao.getCreatedAt() != null ? dao.getCreatedAt().getTime() : null);
     metadata.setUpdatedTime(dao.getUpdatedAt() != null ? dao.getUpdatedAt().getTime() : null);

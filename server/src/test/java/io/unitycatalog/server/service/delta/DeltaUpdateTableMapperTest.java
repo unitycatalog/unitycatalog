@@ -364,7 +364,6 @@ public class DeltaUpdateTableMapperTest {
     "s3://b/team%2520reports/t/_u/v1.json, s3://b/team%20reports/t/_u/v1.json"
   })
   public void applyUpdatesDecodesTheUniformMetadataLocation(String sent, String stored) {
-    // Delta sends the add-commit UniForm metadata location URI-encoded; it is decoded once.
     CommitDispatch dispatch =
         DeltaUpdateTableMapper.applyUpdates(
                 null,

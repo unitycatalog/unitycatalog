@@ -18,8 +18,7 @@ import org.apache.hadoop.fs.Path;
  * <ul>
  *   <li>Local file paths are converted to proper file:/// URIs
  *   <li>Local file URIs whose escapes would change the path they name are rejected
- *   <li>Cloud storage URLs (s3://, gs://, abfs://) have consistent formatting, and are literal
- *       Hadoop path strings: a space or '%' is part of the object name, and '?' or '#' is rejected
+ *   <li>Cloud storage URLs (s3://, gs://, abfs://) have consistent formatting
  *   <li>Trailing slashes are removed
  *   <li>Multiple consecutive slashes are collapsed
  * </ul>
@@ -69,9 +68,7 @@ public final class NormalizedURL {
 
   /**
    * Creates a normalized URL from the given URI. Returns null if the input is null. A cloud URI's
-   * decoded path is the literal object name, so {@code s3://b/team%20reports} names {@code team
-   * reports}. An opaque cloud URI ({@code s3:bucket/x}) or one with a query or fragment is
-   * rejected.
+   * decoded path is the literal object name.
    *
    * @param uri the URI to normalize
    */
@@ -79,7 +76,6 @@ public final class NormalizedURL {
     if (uri == null) {
       return null;
     }
-    // A cloud URI escapes its path, but the stored location is the literal path string.
     return switch (UriScheme.fromURI(uri)) {
       case S3, GS, ABFS, ABFSS -> {
         if (uri.isOpaque()) {
@@ -112,9 +108,6 @@ public final class NormalizedURL {
   /**
    * Converts the normalized URL to a URI object.
    *
-   * <p>For a cloud location this is the URI Hadoop builds from the path string, so its decoded path
-   * is the literal object name.
-   *
    * @return the URI representation of this normalized URL
    * @throws IllegalArgumentException if a non-cloud URL string violates RFC 2396
    */
@@ -123,7 +116,6 @@ public final class NormalizedURL {
     return cloudUri != null ? cloudUri : URI.create(url);
   }
 
-  /** Returns the URI Hadoop builds for a cloud location, or null for any other location. */
   private static URI cloudUri(String location) {
     URI uri;
     try {
@@ -139,9 +131,6 @@ public final class NormalizedURL {
 
   /**
    * Returns the path as interpreted by storage clients, with a leading slash when it is nonempty.
-   *
-   * <p>Cloud object names keep percent sequences literally, matching the stored location and Hadoop
-   * string paths. Local file paths use URI decoding to identify the file-system path.
    */
   public String getStoragePath() {
     return toUri().getPath();
@@ -169,15 +158,14 @@ public final class NormalizedURL {
    * that local file paths are correctly formatted as file URIs and that URIs for different storage
    * providers (e.g., S3, Azure, GCS) are handled appropriately.
    *
-   * <p>A cloud location ("s3", "gs", "abfs", "abfss") is a literal path string, as in Hadoop: a
-   * space or '%' stays part of the object name, so the result need not be a valid URI. Any other
-   * input with a recognized scheme is returned as a standardized URI. If the input is not a valid
-   * URI, it treats the input as a local file path and converts it to a "file://" URI.
+   * <p>A cloud location ("s3", "gs", "abfs", "abfss") is returned as a literal path string. Any
+   * other input with a recognized scheme is returned as a standardized URI. If the input is not a
+   * valid URI, it treats the input as a local file path and converts it to a "file://" URI.
    *
    * @param inputPath the input path or URI to be standardized.
    * @return the standardized location string.
-   * @throws BaseException if the input path has an unsupported URI scheme, or is a cloud location
-   *     containing '?' or '#' or an invalid bucket or container.
+   * @throws BaseException if the input path has an unsupported URI scheme or is an invalid cloud
+   *     location.
    *     <p>Examples of input and output:
    *     <pre>
    * // Local File System Example:
@@ -209,11 +197,9 @@ public final class NormalizedURL {
       // In any case we reject it.
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Ambiguous path: " + inputPath);
     }
-    // A cloud object name is literal, as in Hadoop: a space or '%' is part of the name.
     URI cloudUri = cloudUri(inputPath);
     if (cloudUri != null) {
       rejectQueryOrFragment(inputPath);
-      // Only the object path is literal: the bucket or container must still be a valid authority.
       String root = cloudUri.getScheme() + "://" + Objects.toString(cloudUri.getAuthority(), "");
       if (cloudUri.getAuthority() != null) {
         try {
@@ -241,7 +227,6 @@ public final class NormalizedURL {
       // A host is read as the first directory (file://tmp/x is /tmp/x): check after folding it in.
       case FILE -> validateLocalFileURI(localFileURIToString(uri), inputPath);
       case S3, GS, ABFS, ABFSS -> {
-        // Hadoop's Path can't parse an opaque location (s3:bucket/x), so it skips the branch above.
         rejectQueryOrFragment(inputPath);
         yield removeExtraSlashes(uri.toString());
       }
@@ -249,9 +234,7 @@ public final class NormalizedURL {
   }
 
   /**
-   * Rejects a cloud location containing '?' or '#'. Iceberg's S3 and GCS FileIO cut a path there,
-   * so such a name can't be addressed safely. UC rejects them for ADLS too, so one rule covers
-   * every cloud.
+   * Iceberg's S3 and GCS FileIO cut a path at '?' or '#', so cloud locations can't contain them.
    */
   private static void rejectQueryOrFragment(String location) {
     if (location.indexOf('?') >= 0 || location.indexOf('#') >= 0) {

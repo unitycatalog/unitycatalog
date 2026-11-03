@@ -105,7 +105,6 @@ public class GcpCredentialVendorTest {
         .isEqualTo(expectedCondition("test-bucket", escapedPath));
   }
 
-  /** A raw quote, backslash or control character in a stored path is escaped for CEL. */
   @ParameterizedTest
   @MethodSource("rawCelSpecialCharacters")
   public void testRawCelSpecialCharactersAreEscaped(String path, String escapedPath) {

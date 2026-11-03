@@ -1495,7 +1495,6 @@ public class DeltaCommitRepository {
       TableInfoDAO tableInfoDAO,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields) {
     validateTable(tableInfoDAO);
-    // Delta sends table_uri as a URI; decode it once into the literal path UC stores.
     NormalizedURL commitTableUri = DeltaLocations.fromDelta(commit.getTableUri());
     NormalizedURL tableUri = NormalizedURL.from(tableInfoDAO.getUrl());
     ValidationUtils.checkArgument(

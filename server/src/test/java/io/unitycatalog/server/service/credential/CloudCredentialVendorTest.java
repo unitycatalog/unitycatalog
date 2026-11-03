@@ -228,7 +228,6 @@ public class CloudCredentialVendorTest {
               .getAzureUserDelegationSas()
               .getSasToken();
 
-      // The SAS must sign the literal directory name that ABFS clients send.
       ArgumentCaptor<OffsetDateTime> start = ArgumentCaptor.forClass(OffsetDateTime.class);
       ArgumentCaptor<OffsetDateTime> expiry = ArgumentCaptor.forClass(OffsetDateTime.class);
       verify(dataLakeClient).getUserDelegationKey(start.capture(), expiry.capture());
