@@ -145,21 +145,28 @@ public class GcpCredentialVendor {
                   format("projects/_/buckets/%s/objects/", locationUri.getHost());
 
               // for reading/writing objects
-              String resourceNameExpr =
+              String objectStartsWithExpr =
                   format(
-                      "resource.name == %s || resource.name.startsWith(%s)",
-                      celStringLiteral(objectsPrefix + path),
-                      celStringLiteral(objectsPrefix + dirPrefix));
+                      "resource.name.startsWith(%s)", celStringLiteral(objectsPrefix + dirPrefix));
 
               // for listing objects
-              String objectListPrefixExpr =
+              String listStartsWithExpr =
                   format(
-                      "api.getAttribute('storage.googleapis.com/objectListPrefix', '') == %s"
-                          + " || api.getAttribute('storage.googleapis.com/objectListPrefix',"
+                      "api.getAttribute('storage.googleapis.com/objectListPrefix',"
                           + " '').startsWith(%s)",
-                      celStringLiteral(path), celStringLiteral(dirPrefix));
+                      celStringLiteral(dirPrefix));
 
-              String combinedExpr = resourceNameExpr + " || " + objectListPrefixExpr;
+              // At a bucket root the startsWith clauses already match everything.
+              String combinedExpr =
+                  path.isEmpty()
+                      ? objectStartsWithExpr + " || " + listStartsWithExpr
+                      : format(
+                          "resource.name == %s || %s || api.getAttribute("
+                              + "'storage.googleapis.com/objectListPrefix', '') == %s || %s",
+                          celStringLiteral(objectsPrefix + path),
+                          objectStartsWithExpr,
+                          celStringLiteral(path),
+                          listStartsWithExpr);
 
               boundaryBuilder.addRule(
                   CredentialAccessBoundary.AccessBoundaryRule.newBuilder()

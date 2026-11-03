@@ -67,9 +67,7 @@ public class GcpCredentialVendorTest {
   public void testBucketRootCoversWholeBucket() {
     assertThat(availabilityConditionFor("gs://test-bucket"))
         .isEqualTo(
-            "resource.name == \"projects/_/buckets/test-bucket/objects/\""
-                + " || resource.name.startsWith(\"projects/_/buckets/test-bucket/objects/\")"
-                + " || api.getAttribute('storage.googleapis.com/objectListPrefix', '') == \"\""
+            "resource.name.startsWith(\"projects/_/buckets/test-bucket/objects/\")"
                 + " || api.getAttribute('storage.googleapis.com/objectListPrefix', '')"
                 + ".startsWith(\"\")");
   }
