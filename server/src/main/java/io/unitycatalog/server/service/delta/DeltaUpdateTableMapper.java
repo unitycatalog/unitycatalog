@@ -1090,31 +1090,15 @@ public final class DeltaUpdateTableMapper {
   }
 
   /**
-   * Resolves the current partition columns to their names in the incoming schema, so a partition
-   * column that is renamed keeps its partition. Columns are matched by the identity Delta reads
-   * them by in the table's stored mode (see {@link #identityKeyOf}), top-level only so a nested
-   * field cannot collide with a partition column's key.
+   * Resolves the current partition columns to their names in the incoming schema, so a renamed
+   * partition column keeps its partition. Top-level columns are matched by the stored identity
+   * Delta reads them by ({@link #identityKeyOf}), or by logical name when the table has no column
+   * mapping or no stored identity. A same-name column with an identity no stored column has keeps
+   * the partition, as a {@code REPLACE TABLE} that changes its type sends.
    *
-   * <p>Per partition column, using the identities stored before this update (a stored column whose
-   * type cannot be read has no identity, see {@link #readableStoredFields}):
-   *
-   * <ul>
-   *   <li>the table has no column mapping: matched by logical name;
-   *   <li>two stored columns share an identity: rejected, because the identity cannot tell them
-   *       apart (Delta API table creation rejects such a schema);
-   *   <li>the column has a stored identity: matched to the incoming column with the same identity.
-   *       If no incoming column carries it, an incoming column with the same name and an identity
-   *       no stored column has keeps the partition: that is the column replaced in place, as a
-   *       {@code REPLACE TABLE} that changes its type sends. Otherwise it is rejected as dropped,
-   *       even if another stored column now uses its name;
-   *   <li>the column has no stored identity but other stored columns do: rejected as having no
-   *       column mapping identity, because matching by name could move the partition onto a
-   *       different column that reuses the old name;
-   *   <li>no stored column has an identity: matched by logical name.
-   * </ul>
-   *
-   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if a partition column is dropped
-   *     or has no identity on a column-mapped table, or two stored columns share an identity
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if a partition column is dropped,
+   *     has no identity while other stored columns do (matching by name could move the partition
+   *     onto another column), or two stored columns share an identity
    */
   private static List<String> resolvePartitionColumns(
       TableInfoDAO dao, List<ColumnInfo> incomingColumns, ColumnMappingMode columnMappingMode) {
