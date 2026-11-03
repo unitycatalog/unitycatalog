@@ -10,8 +10,11 @@ import static org.mockito.Mockito.spy;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
+import io.unitycatalog.client.model.PermissionsChange;
+import io.unitycatalog.client.model.Privilege;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.TableOperation;
+import io.unitycatalog.client.model.UpdatePermissions;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.IcebergRestClient;
@@ -126,8 +129,35 @@ public class SdkIcebergCredentialMigrationTest extends SdkAccessControlBaseCRUDT
     // Metadata access does not supply credentials during migration.
     grantPermissions(
         "no-table-access@localhost", SecurableType.TABLE, fullName, Privileges.READ_METADATA);
-    assertThat(noTableAccess.loadTable(CATALOG, SCHEMA, TABLE).config()).isEmpty();
-    assertIcebergApiException(
-        () -> noTableAccess.loadCredentials(CATALOG, SCHEMA, TABLE), 403, "Access denied");
+
+    // Schema ownership still needs USE CATALOG for credentials.
+    grantPermissions(PRINCIPAL_2, SecurableType.CATALOG, CATALOG, Privileges.READ_METADATA);
+    grantsApi.update(
+        SecurableType.CATALOG,
+        CATALOG,
+        new UpdatePermissions()
+            .changes(
+                List.of(
+                    new PermissionsChange()
+                        .principal(PRINCIPAL_2)
+                        .remove(List.of(Privilege.USE_CATALOG)))));
+
+    // MODIFY still needs USE SCHEMA for credentials.
+    grantPermissions(REGULAR_2, SecurableType.CATALOG, CATALOG, Privileges.READ_METADATA);
+    grantsApi.update(
+        SecurableType.SCHEMA,
+        CATALOG + "." + SCHEMA,
+        new UpdatePermissions()
+            .changes(
+                List.of(
+                    new PermissionsChange()
+                        .principal(REGULAR_2)
+                        .remove(List.of(Privilege.USE_SCHEMA)))));
+
+    for (IcebergRestClient client : List.of(noTableAccess, schemaOwner, modifier)) {
+      assertThat(client.loadTable(CATALOG, SCHEMA, TABLE).config()).isEmpty();
+      assertIcebergApiException(
+          () -> client.loadCredentials(CATALOG, SCHEMA, TABLE), 403, "Access denied");
+    }
   }
 }
