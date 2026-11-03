@@ -24,6 +24,7 @@ import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.api.VolumesApi;
+import io.unitycatalog.client.delta.api.DeltaConfigurationApi;
 import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
@@ -357,6 +358,7 @@ public class SdkReadMetadataAccessControlTest extends SdkAccessControlBaseCRUDTe
         SCHEMA_NAME,
         CreateTableRequest.builder().withName(hiddenTable).withSchema(icebergSchema).build());
     IcebergRestClient iceberg = new IcebergRestClient(createTestUserServerConfig(REGULAR_1));
+    DeltaConfigurationApi deltaConfig = new DeltaConfigurationApi(reader);
     DeltaTablesApi delta = new DeltaTablesApi(reader);
     TemporaryCredentialsApi credentials = new TemporaryCredentialsApi(reader);
     DeltaTemporaryCredentialsApi deltaCredentials = new DeltaTemporaryCredentialsApi(reader);
@@ -377,6 +379,7 @@ public class SdkReadMetadataAccessControlTest extends SdkAccessControlBaseCRUDTe
             Privileges.READ_METADATA);
       }
       if (scope == SecurableType.SCHEMA || scope == SecurableType.TABLE) {
+        assertDeltaPermissionDenied(() -> deltaConfig.getConfig(CATALOG_NAME, "1.0"));
         assertDeltaPermissionDenied(() -> delta.loadTable(CATALOG_NAME, SCHEMA_NAME, TABLE));
         assertIcebergApiException(
             () -> iceberg.loadTable(CATALOG_NAME, SCHEMA_NAME, icebergTable), 403, "Access denied");
@@ -389,6 +392,8 @@ public class SdkReadMetadataAccessControlTest extends SdkAccessControlBaseCRUDTe
         grantPermissions(REGULAR_1, SecurableType.SCHEMA, SCHEMA_FULL_NAME, Privileges.USE_SCHEMA);
       }
       assertThat(iceberg.config(CATALOG_NAME)).isNotNull();
+      assertThat(deltaConfig.getConfig(CATALOG_NAME, "1.0"))
+          .isEqualTo(new DeltaConfigurationApi(adminApiClient).getConfig(CATALOG_NAME, "1.0"));
       assertThat(iceberg.loadNamespace(CATALOG_NAME, SCHEMA_NAME).namespace().toString())
           .isEqualTo(SCHEMA_NAME);
       assertThat(iceberg.namespaceExists(CATALOG_NAME, SCHEMA_NAME)).isTrue();
