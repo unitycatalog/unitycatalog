@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
@@ -78,12 +77,16 @@ public class MigratorTest {
 
   @Test
   void setsUpADatabaseOfAPoolConfiguredByDataSourceClass() {
-    assumeTrue(isH2(), "the data source class is H2's");
     Properties byClass = db.hibernateProperties();
     byClass.remove("hibernate.connection.url");
     byClass.remove("hibernate.connection.driver_class");
-    byClass.setProperty("hibernate.hikari.dataSourceClassName", "org.h2.jdbcx.JdbcDataSource");
+    byClass.setProperty("hibernate.hikari.dataSourceClassName", dataSourceClass());
     byClass.setProperty("hibernate.hikari.dataSource.url", db.jdbcUrl());
+    byClass.setProperty(
+        "hibernate.hikari.dataSource.user", byClass.getProperty("hibernate.connection.username"));
+    byClass.setProperty(
+        "hibernate.hikari.dataSource.password",
+        byClass.getProperty("hibernate.connection.password"));
 
     try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(byClass)) {
       assertThat(migrator.migrate()).isEqualTo(releaseSteps(migrator));
@@ -253,6 +256,15 @@ public class MigratorTest {
       assertThat(System.nanoTime()).as("timed out waiting").isLessThan(deadline);
       Thread.sleep(50);
     }
+  }
+
+  /** The DataSource class of {@code db}'s database. */
+  private String dataSourceClass() {
+    return switch (DatabaseKind.of(db.dataSource())) {
+      case H2 -> "org.h2.jdbcx.JdbcDataSource";
+      case POSTGRESQL -> "org.postgresql.ds.PGSimpleDataSource";
+      case MYSQL -> "com.mysql.cj.jdbc.MysqlDataSource";
+    };
   }
 
   private boolean isH2() {
