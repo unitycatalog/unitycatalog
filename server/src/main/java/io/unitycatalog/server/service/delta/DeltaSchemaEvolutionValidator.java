@@ -27,7 +27,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -51,7 +50,7 @@ final class DeltaSchemaEvolutionValidator {
 
   private DeltaSchemaEvolutionValidator() {}
 
-  /** A field's name and physical name, as Kernel compares them for one column-mapping id. */
+  /** A field's name and physical name: what a rename or a new physical name changes under an id. */
   private record Identity(String name, Object physicalName) {}
 
   /**
@@ -95,7 +94,10 @@ final class DeltaSchemaEvolutionValidator {
     }
   }
 
-  /** The stored {@code maxColumnId}; a value outside the int range is rejected, not truncated. */
+  /**
+   * The stored {@code maxColumnId}, 0 when absent. Kernel rejects a negative value; a value above
+   * the int range is rejected here, not truncated.
+   */
   private static int maxColumnId(Map<String, String> properties) {
     long max;
     try {
@@ -109,7 +111,7 @@ final class DeltaSchemaEvolutionValidator {
               + e.getMessage(),
           e);
     }
-    if (max < 0 || max > Integer.MAX_VALUE) {
+    if (max > Integer.MAX_VALUE) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           "set-columns: the stored property "
@@ -140,8 +142,8 @@ final class DeltaSchemaEvolutionValidator {
 
   /**
    * Paths of the clustering columns, from the stored {@code clusteringColumns} property only. A
-   * path lists the physical name of each field from the top level down. Null or empty paths and
-   * null segments are skipped.
+   * path lists the physical name of each field from the top level down. A path that is null, empty
+   * or has a null segment names no field and is skipped.
    */
   private static List<List<String>> clusteringPaths(Map<String, String> properties) {
     String json = properties.get(DeltaConsts.TableProperties.CLUSTERING_COLUMNS);
@@ -156,17 +158,14 @@ final class DeltaSchemaEvolutionValidator {
           ErrorCode.INVALID_ARGUMENT,
           "set-columns: the stored property "
               + DeltaConsts.TableProperties.CLUSTERING_COLUMNS
-              + " cannot be read: "
-              + e.getOriginalMessage(),
+              + " is not a JSON array of column paths",
           e);
     }
     if (paths == null) {
       return List.of();
     }
     return paths.stream()
-        .filter(Objects::nonNull)
-        .map(path -> path.stream().filter(Objects::nonNull).collect(Collectors.toList()))
-        .filter(path -> !path.isEmpty())
+        .filter(path -> path != null && !path.isEmpty() && !path.contains(null))
         .collect(Collectors.toList());
   }
 

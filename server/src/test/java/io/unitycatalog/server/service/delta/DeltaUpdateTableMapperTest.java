@@ -420,9 +420,9 @@ public class DeltaUpdateTableMapperTest {
   // --- set-columns column-mapping guards ---
 
   /**
-   * Rejections from the set-columns column-mapping guards. Each one is raised in the mapper before
-   * anything is stored, so the cases run against an in-memory table. {@code SdkUpdateTableTest}
-   * keeps one rejection that goes through the server, and the accepted cases.
+   * Rejections from the set-columns column-mapping guards and the Delta Kernel check. Each one is
+   * raised in the mapper before anything is stored, so the cases run against an in-memory table.
+   * {@code SdkUpdateTableTest} keeps the rejections that need the server, and the accepted cases.
    */
   @ParameterizedTest(name = "{0}")
   @MethodSource({"guardRejections", "kernelRejections"})
@@ -836,8 +836,22 @@ public class DeltaUpdateTableMapperTest {
                 fld("b", prim("long"), false, 1, "col-1"),
                 fld("d", prim("long"), 2, "col-d"),
                 fld("c", prim("long"), 3, "col-c")),
-            new DeltaSetPropertiesUpdate()
-                .updates(Map.of("delta.columnMapping.maxColumnId", "0"))));
+            new DeltaSetPropertiesUpdate().updates(Map.of("delta.columnMapping.maxColumnId", "0"))),
+        rejected(
+            "rename while dropping a stored clustering column",
+            "Cannot drop clustering column c",
+            new StoredTable(
+                "MANAGED",
+                Map.of(
+                    TableProperties.COLUMN_MAPPING_MODE,
+                    "name",
+                    "delta.columnMapping.maxColumnId",
+                    "2",
+                    TableProperties.CLUSTERING_COLUMNS,
+                    "[[\"col-c\"]]"),
+                fld("a", prim("long"), false, 1, "col-1"),
+                fld("c", prim("long"), 2, "col-c")),
+            setColumns(fld("b", prim("long"), false, 1, "col-1"))));
   }
 
   /** A column-mapping key sent with an explicit JSON null value (as opposed to left out). */

@@ -2587,7 +2587,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 NAME_AB,
                 setColumns(fld("x", prim("long"), 3, "col-3"), fld("y", prim("long"), 4, "col-4")))
             .expectColumns("x", "y"),
-        // Delta Kernel checks what the guards above leave: renames, type changes, physical names.
+        // Past the guards, Delta Kernel checks a rename or an id kept under a new name or physical
+        // name; other changes skip it.
         ok(
                 "same name with a new id is a drop and add",
                 ID_A,

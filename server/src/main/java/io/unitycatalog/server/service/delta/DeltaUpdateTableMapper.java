@@ -686,7 +686,8 @@ public final class DeltaUpdateTableMapper {
    *   <li>Enabling column mapping (a table without column mapping, or a stored schema without
    *       identity keys): top-level physical names and all ids must be unique, and no column may be
    *       renamed in the same request.
-   *   <li>Otherwise at most one top-level column is renamed per request. Delta Kernel checks the
+   *   <li>Otherwise at most one top-level column is renamed per request. When the request renames a
+   *       field, or keeps a field's id under a new name or physical name, Delta Kernel checks the
    *       rest of the change ({@link DeltaSchemaEvolutionValidator}).
    * </ul>
    *
@@ -754,8 +755,10 @@ public final class DeltaUpdateTableMapper {
               + "]. Split them into separate ALTER statements.");
     }
 
-    // Delta Kernel decides the rest: identities, types, nullability and clustering columns. It
-    // reads the whole stored schema, so a stored column with an unreadable type fails the check.
+    // A rename, or a field that keeps its id under a new name or physical name, is checked against
+    // Delta's rules: Kernel checks identities, types and nullability, and the validator checks
+    // clustering columns. The check reads the whole stored schema, so when it runs, a stored
+    // column with an unreadable type fails it.
     DeltaSchemaEvolutionValidator.validate(
         ColumnInfoDAO.toList(dao.getColumns()),
         ColumnUtils.toColumnInfos(incoming),
