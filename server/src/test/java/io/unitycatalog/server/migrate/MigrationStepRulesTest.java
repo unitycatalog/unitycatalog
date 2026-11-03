@@ -113,7 +113,13 @@ public class MigrationStepRulesTest {
       if (step.getFileName().toString().equals(BASELINE)) {
         continue;
       }
-      List<String> statements = statements(Files.readString(step));
+      List<String> statements;
+      try {
+        statements = statements(Files.readString(step));
+      } catch (IllegalArgumentException e) {
+        problems.add(name + " " + e.getMessage());
+        continue;
+      }
       if (statements.size() > 1) {
         problems.add(name + " has " + statements.size() + " statements");
       } else if (statements.size() == 1
@@ -130,7 +136,13 @@ public class MigrationStepRulesTest {
         .isEmpty();
   }
 
-  /** The file's statements, without comments; quoted text is kept as it is. */
+  /**
+   * The file's statements, without comments; quoted text is kept as it is.
+   *
+   * @throws IllegalArgumentException for quoting this splitter doesn't read, which could hide a
+   *     {@code ;}: text in {@code "} or {@code `} quotes, or a backslash in a string (MySQL's
+   *     escape)
+   */
   private static List<String> statements(String sql) {
     List<String> statements = new ArrayList<>();
     StringBuilder current = new StringBuilder();
@@ -140,6 +152,9 @@ public class MigrationStepRulesTest {
       if (c == '\'') {
         int end = sql.indexOf('\'', i + 1);
         end = end < 0 ? sql.length() : end + 1;
+        if (sql.substring(i, end).contains("\\")) {
+          throw new IllegalArgumentException("has a backslash in a string");
+        }
         current.append(sql, i, end);
         i = end;
       } else if (sql.startsWith("--", i)) {
@@ -149,6 +164,9 @@ public class MigrationStepRulesTest {
         int end = sql.indexOf("*/", i + 2);
         i = end < 0 ? sql.length() : end + 2;
         current.append(' ');
+      } else if (c == '"' || c == '`') {
+        throw new IllegalArgumentException(
+            "has text in \" or ` quotes: leave names unquoted and put strings in '...'");
       } else if (c == ';') {
         addIfNotBlank(statements, current);
         i++;
