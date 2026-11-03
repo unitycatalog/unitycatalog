@@ -486,7 +486,8 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
                   Privileges.USE_SCHEMA)
               && authorizer.authorizeAny(
                   principalId, TABLE, state.tableId(), Privileges.OWNER, Privileges.SELECT);
-      // Keep the previous owner and MODIFY access during migration, independently of metadata.
+      // With strict checks disabled, metastore/catalog owners, schema owners with USE_CATALOG,
+      // and MODIFY holders with both usage grants also qualify for credentials.
       // TODO(#2024): Remove with the strict-privilege flag.
       boolean legacyAccess =
           !serverProperties.isStrictPrivilegeChecksEnabled()

@@ -231,7 +231,12 @@ public final class AuthorizeExpressions {
               #authorizeAll(#principal, #table, SELECT, MODIFY)))
       """;
 
-  /** Iceberg credentials keep the existing read and migration rules without metadata grants. */
+  /**
+   * Iceberg credentials require the read permissions in {@link #VEND_TABLE_CREDENTIAL}. With strict
+   * checks disabled, metastore or catalog ownership, schema ownership with {@code USE_CATALOG}, or
+   * {@code MODIFY} with both usage grants also permits credentials. {@code READ_METADATA} alone
+   * does not permit credentials.
+   */
   // TODO(#2024): Reuse VEND_TABLE_CREDENTIAL with a fixed READ operation after removing the flag.
   public static final String VEND_ICEBERG_TABLE_CREDENTIAL =
       """
