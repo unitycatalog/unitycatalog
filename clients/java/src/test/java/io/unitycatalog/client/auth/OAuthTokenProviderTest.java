@@ -422,6 +422,19 @@ public class OAuthTokenProviderTest {
   }
 
   @Test
+  public void testTokenWithPastJwtExpClaimIsNotCached() throws Exception {
+    String jwt = jwtWithExp(Instant.MIN.getEpochSecond());
+    mockTokenResponses(
+        tokenResponse("{\"access_token\":\"" + jwt + "\"}"),
+        tokenResponse(ACCESS_TOKEN_2, EXPIRES_IN_SECONDS));
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
+
+    assertThat(provider.accessToken()).isEqualTo(jwt);
+    assertThat(provider.accessToken()).isEqualTo(ACCESS_TOKEN_2);
+    verifyOAuthRequest(2);
+  }
+
+  @Test
   public void testTokenWithoutAnyExpiryIsNotCached() throws Exception {
     mockTokenResponses(
         tokenResponse("{\"access_token\":\"" + ACCESS_TOKEN_1 + "\"}"),

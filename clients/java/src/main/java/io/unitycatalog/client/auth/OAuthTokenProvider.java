@@ -292,8 +292,9 @@ class OAuthTokenProvider implements TokenProvider {
   }
 
   /**
-   * Caches the token until {@code expires_in}, else until its JWT {@code exp} claim. A token with
-   * neither is used once: it gets no expiry, so the next request fetches a new one.
+   * Caches the token until {@code expires_in}, else until its JWT {@code exp} claim if that is
+   * later than the renewal lead time. Any other token is used once: it gets no expiry, so the next
+   * request fetches a new one.
    */
   private TempToken tempTokenOf(JsonNode response) throws IOException {
     String accessToken = accessTokenOf(response);
@@ -303,15 +304,18 @@ class OAuthTokenProvider implements TokenProvider {
     if (expiresInSeconds >= 0) {
       return new TempToken(accessToken, clock.now().plusSeconds(expiresInSeconds));
     }
-    Optional<Instant> jwtExpiration = jwtExpirationOf(accessToken);
+    // Also drops an exp so far in the past that isReadyToRenew couldn't subtract the lead time.
+    Optional<Instant> jwtExpiration =
+        jwtExpirationOf(accessToken)
+            .filter(exp -> exp.isAfter(clock.now().plusSeconds(leadRenewalTimeSeconds)));
     if (jwtExpiration.isPresent()) {
       return new TempToken(accessToken, jwtExpiration.get());
     }
     if (!hasWarnedUncacheableToken) {
       hasWarnedUncacheableToken = true;
       LOGGER.warn(
-          "Token response has no 'expires_in' and the token has no 'exp' claim, so it cannot be"
-              + " cached: a new token is fetched for every request.");
+          "Token response has no 'expires_in' and the token has no usable 'exp' claim, so it"
+              + " cannot be cached: a new token is fetched for every request.");
     }
     return new TempToken(accessToken, /* expirationTime= */ null);
   }
