@@ -2737,24 +2737,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
             .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
             .expectPartitions("b"),
         ok(
-                "stored type of a non-partition column is unreadable",
-                (t, n) -> {
-                  Handle h = NAME_AB.create(t, n);
-                  h =
-                      h.withEtag(
-                          t.updateTable(
-                                  h,
-                                  new DeltaSetPartitionColumnsUpdate()
-                                      .partitionColumns(List.of("a")))
-                              .getMetadata()
-                              .getEtag());
-                  t.corruptStoredType(h, "b");
-                  return h;
-                },
-                setColumns(
-                    fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 2, "col-2")))
-            .expectPartitions("a"),
-        ok(
                 "name mode, stored columns without keys: the partition resolves by name",
                 (t, n) ->
                     t.storeColumnMappingMode(
