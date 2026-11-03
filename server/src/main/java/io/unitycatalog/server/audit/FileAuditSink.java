@@ -94,8 +94,6 @@ public class FileAuditSink implements AuditSink {
       }
     }
     for (Appender appender : config.getAppenders().values()) {
-      // Another appender (for example one that ships records off the host) is the operator's
-      // choice.
       if (CHECKED_APPENDERS.stream().noneMatch(kind -> kind.isInstance(appender))) {
         continue;
       }
