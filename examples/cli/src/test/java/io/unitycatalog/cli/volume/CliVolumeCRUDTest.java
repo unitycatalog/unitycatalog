@@ -76,14 +76,7 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
   })
   public void testReadVolumePathMatchesRegisteredLiteralLocation(
       String location, String relativePath, String expectedPath) throws Exception {
-    VolumeInfo volume =
-        volumeOperations.createVolume(
-            new CreateVolumeRequestContent()
-                .name("literal_path")
-                .catalogName(CATALOG_NAME)
-                .schemaName(SCHEMA_NAME)
-                .volumeType(VolumeType.EXTERNAL)
-                .storageLocation(location));
+    VolumeInfo volume = createExternalVolume("literal_path", location);
 
     FileSystem fileSystem = mock(FileSystem.class);
     when(fileSystem.exists(any(Path.class))).thenReturn(true);
@@ -97,21 +90,13 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
     }
     TestUtils.addServerAndAuthParams(arguments, serverConfig);
 
-    try (MockedStatic<DeltaKernelUtils> ignored =
-        mockStatic(
-            DeltaKernelUtils.class,
-            invocation ->
-                invocation.getMethod().getName().equals("getFileSystem")
-                    ? fileSystem
-                    : invocation.callRealMethod())) {
-      if (expectedPath == null) {
-        assertThatThrownBy(() -> UnityCatalogCli.main(arguments.toArray(String[]::new)))
-            .isInstanceOf(CliException.class)
-            .hasMessageContaining("Path is outside the volume location");
-        return;
-      }
-      UnityCatalogCli.main(arguments.toArray(String[]::new));
+    if (expectedPath == null) {
+      assertThatThrownBy(() -> runCli(arguments, fileSystem))
+          .isInstanceOf(CliException.class)
+          .hasMessageContaining("Path is outside the volume location");
+      return;
     }
+    runCli(arguments, fileSystem);
 
     ArgumentCaptor<Path> path = ArgumentCaptor.forClass(Path.class);
     verify(fileSystem).exists(path.capture());
@@ -127,14 +112,7 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
   })
   public void testReadVolumeListsNamesThatPathReads(
       String location, String listedSpaceName, String listedPercentName) throws Exception {
-    VolumeInfo volume =
-        volumeOperations.createVolume(
-            new CreateVolumeRequestContent()
-                .name("literal_listing")
-                .catalogName(CATALOG_NAME)
-                .schemaName(SCHEMA_NAME)
-                .volumeType(VolumeType.EXTERNAL)
-                .storageLocation(location));
+    VolumeInfo volume = createExternalVolume("literal_listing", location);
     FileSystem fileSystem = mock(FileSystem.class);
     when(fileSystem.exists(any(Path.class))).thenReturn(true);
     when(fileSystem.getFileStatus(any(Path.class)))
@@ -159,15 +137,9 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
 
     PrintStream stdout = System.out;
     ByteArrayOutputStream output = new ByteArrayOutputStream();
-    try (MockedStatic<DeltaKernelUtils> ignored =
-        mockStatic(
-            DeltaKernelUtils.class,
-            invocation ->
-                invocation.getMethod().getName().equals("getFileSystem")
-                    ? fileSystem
-                    : invocation.callRealMethod())) {
+    try {
       System.setOut(new PrintStream(output, true));
-      UnityCatalogCli.main(arguments.toArray(String[]::new));
+      runCli(arguments, fileSystem);
     } finally {
       System.setOut(stdout);
     }
@@ -178,20 +150,31 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
 
   @Test
   public void testWriteVolumeAtLiteralLocation() throws Exception {
-    VolumeInfo volume =
-        volumeOperations.createVolume(
-            new CreateVolumeRequestContent()
-                .name("literal_write")
-                .catalogName(CATALOG_NAME)
-                .schemaName(SCHEMA_NAME)
-                .volumeType(VolumeType.EXTERNAL)
-                .storageLocation("s3://test-bucket0/team reports"));
+    VolumeInfo volume = createExternalVolume("literal_write", "s3://test-bucket0/team reports");
     FileSystem fileSystem = mock(FileSystem.class);
     when(fileSystem.create(any(Path.class), eq(true))).thenReturn(mock(FSDataOutputStream.class));
     List<String> arguments =
         new ArrayList<>(List.of("volume", "write", "--full_name", volume.getFullName()));
     TestUtils.addServerAndAuthParams(arguments, serverConfig);
 
+    runCli(arguments, fileSystem);
+
+    ArgumentCaptor<Path> path = ArgumentCaptor.forClass(Path.class);
+    verify(fileSystem).create(path.capture(), eq(true));
+    assertThat(path.getValue().getParent().toUri().getPath()).isEqualTo("/team reports");
+  }
+
+  private VolumeInfo createExternalVolume(String name, String location) throws Exception {
+    return volumeOperations.createVolume(
+        new CreateVolumeRequestContent()
+            .name(name)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .volumeType(VolumeType.EXTERNAL)
+            .storageLocation(location));
+  }
+
+  private void runCli(List<String> arguments, FileSystem fileSystem) throws Exception {
     try (MockedStatic<DeltaKernelUtils> ignored =
         mockStatic(
             DeltaKernelUtils.class,
@@ -201,10 +184,6 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
                     : invocation.callRealMethod())) {
       UnityCatalogCli.main(arguments.toArray(String[]::new));
     }
-
-    ArgumentCaptor<Path> path = ArgumentCaptor.forClass(Path.class);
-    verify(fileSystem).create(path.capture(), eq(true));
-    assertThat(path.getValue().getParent().toUri().getPath()).isEqualTo("/team reports");
   }
 
   @Override
