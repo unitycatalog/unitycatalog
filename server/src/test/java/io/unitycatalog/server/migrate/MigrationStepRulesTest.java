@@ -30,6 +30,11 @@ public class MigrationStepRulesTest {
 
   private static final String NAME = "\\w+";
 
+  /**
+   * An index name, but not CONCURRENTLY, which PostgreSQL can't run inside a step's transaction.
+   */
+  private static final String INDEX_NAME = "(?!concurrently\\b)\\w+";
+
   /** A column name, but not a keyword that starts a constraint or an index. */
   private static final String COLUMN =
       "(?!(?:constraint|primary|unique|foreign|check|index|key)\\b)\\w+";
@@ -50,10 +55,10 @@ public class MigrationStepRulesTest {
   /**
    * What a step may hold outside its {@code '...'} strings and {@code --} comments. The allowed
    * changes need no more, and other quotes and comments ({@code "}, a backtick, MySQL's {@code #},
-   * H2's {@code //}, block comments, which PostgreSQL nests, and {@code $$} strings) could hide a
-   * {@code ;} from this test.
+   * H2's {@code //}, block comments, which PostgreSQL and H2 nest, and {@code $$} strings) could
+   * hide a {@code ;} from this test.
    */
-  private static final Pattern PLAIN = Pattern.compile("[\\w\\s(),.-]");
+  private static final Pattern PLAIN = Pattern.compile("[\\w\\s(),.=<>-]");
 
   /**
    * The changes a step may make, each matched against the whole statement, ignoring case. Not
@@ -68,7 +73,7 @@ public class MigrationStepRulesTest {
               "create\\s+table\\s+" + NAME + "\\s*\\(.*",
               // An index that is not unique.
               "create\\s+index\\s+"
-                  + NAME
+                  + INDEX_NAME
                   + "\\s+on\\s+"
                   + NAME
                   + "\\s*\\(\\s*"
@@ -148,12 +153,12 @@ public class MigrationStepRulesTest {
    * The file's statements, without {@code --} comments; {@code '...'} strings are kept as they are.
    *
    * @throws IllegalArgumentException for text this splitter may not read the way the database does:
-   *     a character that {@link #PLAIN} doesn't list, a backslash in a string (MySQL's escape), or
-   *     a carriage return that doesn't end a line
+   *     a character that {@link #PLAIN} doesn't list, a backslash in a string (MySQL's escape), a
+   *     {@code --} that MySQL doesn't read as a comment, or a carriage return without a line feed
    */
   private static List<String> statements(String sql) {
     if (sql.replace("\r\n", "\n").indexOf('\r') >= 0) {
-      throw new IllegalArgumentException("has a carriage return that doesn't end a line");
+      throw new IllegalArgumentException("has a carriage return without a line feed after it");
     }
     List<String> statements = new ArrayList<>();
     StringBuilder current = new StringBuilder();
@@ -170,6 +175,10 @@ public class MigrationStepRulesTest {
         current.append(sql, i, end);
         i = end;
       } else if (sql.startsWith("--", i)) {
+        // MySQL reads -- as a comment only when a space or a line end follows it.
+        if (i + 2 < sql.length() && !Character.isWhitespace(sql.charAt(i + 2))) {
+          throw new IllegalArgumentException("has -- without a space after it: write '-- '");
+        }
         int end = sql.indexOf('\n', i);
         i = end < 0 ? sql.length() : end;
       } else if (c == ';') {
