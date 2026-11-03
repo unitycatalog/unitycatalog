@@ -33,7 +33,10 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import javax.sql.DataSource;
+import org.assertj.core.api.AbstractThrowableAssert;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 public class MigratorTest {
 
@@ -197,29 +200,34 @@ public class MigratorTest {
         .hasMessageContaining("Detected failed migration to version 2");
   }
 
-  @Test
-  void stopsWhenTheLockCallFails() {
+  @ParameterizedTest
+  @EnumSource(RefusedLock.class)
+  void stopsWhenTheRunLockIsRefused(RefusedLock refused) {
     assumeFalse(isH2(), "H2 has no run lock");
-    DataSource failing = withLockCall(MigratorTest::isTryLock, sql -> null);
+    DataSource refusing =
+        switch (refused) {
+          case CALL_FAILS -> withLockCall(MigratorTest::isTryLock, sql -> null);
+          case NOT_GRANTED ->
+              withLockCall(
+                  sql -> isTryLock(sql) || isBlockingLock(sql),
+                  sql -> "SELECT " + (isTryLock(sql) ? "false" : "NULL"));
+        };
 
-    assertThatThrownBy(new SchemaMigrator(failing)::migrate)
-        .hasMessageContaining("Could not take the schema migration lock");
+    AbstractThrowableAssert<?, ? extends Throwable> thrown =
+        assertThatThrownBy(new SchemaMigrator(refusing)::migrate)
+            .hasMessageContaining("Could not take the schema migration lock");
+    if (refused == RefusedLock.NOT_GRANTED) {
+      thrown.hasMessageContaining("returned NULL");
+    }
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
   }
 
-  @Test
-  void stopsWhenTheLockIsNotGranted() {
-    assumeFalse(isH2(), "H2 has no run lock");
-    // Another run holds the lock, and the blocking call returns NULL (on MySQL: interrupted).
-    DataSource refusing =
-        withLockCall(
-            sql -> isTryLock(sql) || isBlockingLock(sql),
-            sql -> "SELECT " + (isTryLock(sql) ? "false" : "NULL"));
-
-    assertThatThrownBy(new SchemaMigrator(refusing)::migrate)
-        .hasMessageContaining("Could not take the schema migration lock")
-        .hasMessageContaining("returned NULL");
-    assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
+  /** How the database refuses the run lock. */
+  private enum RefusedLock {
+    /** The lock call fails. */
+    CALL_FAILS,
+    /** The lock is not granted: the blocking call returns NULL (on MySQL: interrupted). */
+    NOT_GRANTED
   }
 
   @Test
