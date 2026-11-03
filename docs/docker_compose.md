@@ -59,12 +59,6 @@ services:
 Compose fills in each `${...}` from your shell or a `.env` file, so the secrets stay
 out of `compose.yaml`.
 
-The server also keeps the key it signs its tokens with in the mounted `./etc/conf`,
-generating it on first start. That is deprecated: put your private key in the
-container, for example in `./etc/conf`, and set `server.token-signing-private-key-file`
-to its path inside the container (see [Configuration](./server/configuration.md#configuration)).
-To keep existing tokens, point it at the generated `private_key.der`.
-
 The configuration will also create a persistent, named volume to store the
 server's data. This will persist between restarts of the container. See the
 [deployment](./server/deployment.md) page for more details on how to configure other
