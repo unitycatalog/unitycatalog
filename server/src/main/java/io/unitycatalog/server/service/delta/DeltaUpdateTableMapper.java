@@ -844,8 +844,8 @@ public final class DeltaUpdateTableMapper {
 
   /**
    * Rejects ({@link ErrorCode#INVALID_ARGUMENT}) a schema a table in {@code mode} cannot store: a
-   * missing, malformed or shared physical name or column mapping id. Create and set-columns both
-   * run it.
+   * missing or malformed physical name or column mapping id, an id shared by two fields, or a
+   * physical name shared by two top-level columns. Create and set-columns both run it.
    */
   static void validateColumnMappingIdentities(
       List<DeltaStructField> fields, ColumnMappingMode mode) {
@@ -1081,8 +1081,9 @@ public final class DeltaUpdateTableMapper {
    * Resolves the current partition columns to their names in the incoming schema, so a renamed
    * partition column keeps its partition. Top-level columns are matched by the stored identity
    * Delta reads them by ({@link #identityKeyOf}), or by logical name when the table has no column
-   * mapping or no stored identity. A same-name column with an identity no stored column has keeps
-   * the partition, as a {@code REPLACE TABLE} that changes its type sends.
+   * mapping or no stored column has an identity. If no incoming column carries the stored identity,
+   * a same-name column with an identity no stored column has keeps the partition, as a {@code
+   * REPLACE TABLE} that changes its type sends.
    *
    * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if a partition column is dropped,
    *     has no identity while other stored columns do (matching by name could move the partition
