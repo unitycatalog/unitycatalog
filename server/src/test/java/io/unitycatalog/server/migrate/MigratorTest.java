@@ -10,8 +10,8 @@ import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -306,7 +306,7 @@ public class MigratorTest {
     DataSource real = db.dataSource();
     return proxy(
         DataSource.class,
-        (method, args) -> {
+        (proxy, method, args) -> {
           Object result = method.invoke(real, args);
           if (!method.getName().equals("getConnection")) {
             return result;
@@ -314,7 +314,7 @@ public class MigratorTest {
           Connection connection = (Connection) result;
           return proxy(
               Connection.class,
-              (connectionMethod, connectionArgs) -> {
+              (connectionProxy, connectionMethod, connectionArgs) -> {
                 Object created = connectionMethod.invoke(connection, connectionArgs);
                 if (!connectionMethod.getName().equals("createStatement")) {
                   return created;
@@ -322,7 +322,7 @@ public class MigratorTest {
                 Statement statement = (Statement) created;
                 return proxy(
                     Statement.class,
-                    (statementMethod, statementArgs) -> {
+                    (statementProxy, statementMethod, statementArgs) -> {
                       if (statementArgs != null
                           && statementArgs.length == 1
                           && statementArgs[0] instanceof String sql
@@ -344,7 +344,7 @@ public class MigratorTest {
     DataSource real = db.dataSource();
     return proxy(
         DataSource.class,
-        (method, args) -> {
+        (proxy, method, args) -> {
           Object result = method.invoke(real, args);
           if (!method.getName().equals("getConnection")) {
             return result;
@@ -352,14 +352,14 @@ public class MigratorTest {
           Connection connection = (Connection) result;
           return proxy(
               Connection.class,
-              (connectionMethod, connectionArgs) -> {
+              (connectionProxy, connectionMethod, connectionArgs) -> {
                 Object metaData = connectionMethod.invoke(connection, connectionArgs);
                 if (!connectionMethod.getName().equals("getMetaData")) {
                   return metaData;
                 }
                 return proxy(
                     DatabaseMetaData.class,
-                    (metaMethod, metaArgs) ->
+                    (metaProxy, metaMethod, metaArgs) ->
                         metaMethod.getName().equals("getDatabaseProductName")
                             ? productName
                             : metaMethod.invoke(metaData, metaArgs));
@@ -368,22 +368,18 @@ public class MigratorTest {
   }
 
   @SuppressWarnings("unchecked")
-  private static <T> T proxy(Class<T> type, InvocationHandlerBody body) {
+  private static <T> T proxy(Class<T> type, InvocationHandler handler) {
     return (T)
         Proxy.newProxyInstance(
             type.getClassLoader(),
             new Class<?>[] {type},
             (proxy, method, args) -> {
               try {
-                return body.invoke(method, args);
+                return handler.invoke(proxy, method, args);
               } catch (InvocationTargetException e) {
                 throw e.getCause();
               }
             });
-  }
-
-  private interface InvocationHandlerBody {
-    Object invoke(Method method, Object[] args) throws Throwable;
   }
 
   /** The quote for identifiers: Flyway's history table has quoted lower-case column names. */
