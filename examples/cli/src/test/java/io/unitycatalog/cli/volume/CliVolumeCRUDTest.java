@@ -57,37 +57,27 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
     "s3://test-bucket0/team%20reports,, /team%20reports",
     "s3://test-bucket0/team%2Freports,, /team%2Freports",
     "s3://test-bucket0/team reports,, /team reports",
-    // --path names the object literally, like the stored location.
     "s3://test-bucket0/team_reports, Q3 report.pdf, /team_reports/Q3 report.pdf",
     "s3://test-bucket0/team_reports, Q3%20report.pdf, /team_reports/Q3%20report.pdf",
-    // A ':' is part of the name, not a URI scheme.
     "s3://test-bucket0/team_reports, Q3:report.pdf, /team_reports/Q3:report.pdf",
-    // A full URI inside the volume is accepted; "://" later in a name is not a URI.
     "s3://test-bucket0/team_reports, s3://test-bucket0/team_reports/a.txt, /team_reports/a.txt",
     "s3://test-bucket0/team_reports, dir/a://b, /team_reports/dir/a:/b",
     "s3://test-bucket0/team_reports, ., /team_reports",
-    // Outside the volume; it looks inside only when both paths are decoded.
     "s3://test-bucket0/team%2Freports, ../team/reports/data,",
-    // Outside the volume: a sibling whose name starts with the volume name.
     "s3://test-bucket0/team_reports, ../team_reports2/data,",
-    // Outside the volume: the same path in another bucket.
     "s3://test-bucket0/team_reports, s3://other-bucket/team_reports/x,",
     "s3://test-bucket0/team_reports, gs://test-bucket0/team_reports/x,",
     "s3://test-bucket0/team_reports, /other/x,",
-    // Local paths stay URI-decoded, like the server's local file access.
     "file:///tmp/uc-cli-volume-test/my%20vol,, /tmp/uc-cli-volume-test/my vol",
     "file:///tmp/uc-cli-volume-test/my%20vol, Q3 report.pdf, /tmp/uc-cli-volume-test/my vol/Q3"
         + " report.pdf",
-    // On a local volume --path is a URI reference.
     "file:///tmp/uc-cli-volume-test/my%20vol, Q3%20report.pdf, /tmp/uc-cli-volume-test/my vol/Q3"
         + " report.pdf",
     "file:///tmp/uc-cli-volume-test/my%20vol, file:///tmp/uc-cli-volume-test/my%20vol/a.txt,"
         + " /tmp/uc-cli-volume-test/my vol/a.txt",
     "file:///tmp/uc-cli-volume-test/my%20vol, ../my%20vol2/x,",
-    // Encoded dot segments can't leave the volume either.
     "file:///tmp/uc-cli-volume-test/my%20vol, %2E%2E/my%20vol2/x,",
     "file:///tmp/uc-cli-volume-test/my%20vol, a/..%2F..%2Fmy%20vol2/x,",
-    // A ':' is part of the name, and '#' or '?' are read literally, not as a URI fragment or query.
     "file:///tmp/uc-cli-volume-test/my%20vol, Q3:report.pdf, /tmp/uc-cli-volume-test/my"
         + " vol/Q3:report.pdf",
     "file:///tmp/uc-cli-volume-test/my%20vol, report#1.txt, /tmp/uc-cli-volume-test/my"
@@ -117,7 +107,6 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
     }
     TestUtils.addServerAndAuthParams(arguments, serverConfig);
 
-    // Keep CLI parsing, both HTTP requests, credential configuration and path conversion real.
     try (MockedStatic<DeltaKernelUtils> ignored =
         mockStatic(
             DeltaKernelUtils.class,
@@ -129,7 +118,6 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
         assertThatThrownBy(() -> UnityCatalogCli.main(arguments.toArray(String[]::new)))
             .isInstanceOf(CliException.class)
             .hasMessageContaining("Path is outside the volume location");
-        // Rejected before credentials are configured and a FileSystem is opened.
         ignored.verify(() -> DeltaKernelUtils.getHDFSConfiguration(any(), any()), never());
         ignored.verify(() -> DeltaKernelUtils.getFileSystem(any(), any()), never());
         verify(fileSystem, never()).exists(any(Path.class));
@@ -140,15 +128,11 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
 
     ArgumentCaptor<Path> path = ArgumentCaptor.forClass(Path.class);
     verify(fileSystem).exists(path.capture());
-    // Compare without a trailing slash: the cloud Path(String) drops it, the local Path(URI) keeps
-    // it.
     assertThat(path.getValue().toUri().getPath().replaceAll("/$", ""))
         .as("CLI read path must be the registered location joined with --path")
         .isEqualTo(expectedPath);
   }
 
-  // A cloud listing prints literal names; a local listing prints the URI form, which local --path
-  // reads.
   @ParameterizedTest
   @CsvSource({
     "s3://test-bucket0/team_reports, Q3 report.pdf, Q3%20report.pdf",
@@ -168,7 +152,6 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
     when(fileSystem.exists(any(Path.class))).thenReturn(true);
     when(fileSystem.getFileStatus(any(Path.class)))
         .thenAnswer(invocation -> new FileStatus(0, true, 1, 0, 0, invocation.getArgument(0)));
-    // S3A and the local file system build child paths from the names, as new Path(parent, name).
     when(fileSystem.listStatus(any(Path.class)))
         .thenAnswer(
             invocation ->
