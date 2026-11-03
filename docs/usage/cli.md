@@ -572,7 +572,7 @@ bin/uc volume read \
 
 1. `full_name`: The full name of the volume, which is a concatenation of the catalog name,
    schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
-2. `path`: _\[Optional\]_ The path relative to the volume root. On a cloud volume it is read literally; on a local `file:` volume it is a URI reference. If no path is provided, the volume root is read. If the final path is a directory, the contents of the directory are listed(`ls`). If the final path is a file, the contents of the file are displayed(`cat`).
+2. `path`: _\[Optional\]_ The path relative to the volume root. If no path is provided, the volume root is read. If the final path is a directory, the contents of the directory are listed(`ls`). If the final path is a file, the contents of the file are displayed(`cat`).
 
 ### Write Sample Data to a Volume
 

@@ -187,8 +187,6 @@ public class VolumeCli {
       if (fileStatus.isDirectory()) {
         List<String> fileList = new ArrayList<>();
         FileStatus[] fileStatuses = fs.listStatus(path);
-        // Print each name the way --path reads it: literal on a cloud volume, a URI reference on
-        // a local one.
         boolean isLocal = Constants.URI_SCHEME_FILE.equals(basePath.toUri().getScheme());
         for (FileStatus status : fileStatuses) {
           URI name = path.toUri().relativize(status.getPath().toUri());
@@ -220,11 +218,6 @@ public class VolumeCli {
     }
   }
 
-  /**
-   * Returns the volume location as a Hadoop path. A cloud location names objects literally, like
-   * {@code hadoop fs}: a space or {@code %XX} stays part of the name. A local file location is
-   * stored URI-encoded, so it is decoded.
-   */
   private static org.apache.hadoop.fs.Path volumePath(String volumeLocation) {
     String location = DeltaKernelUtils.substituteSchemeForS3(volumeLocation);
     return Constants.SUPPORTED_CLOUD_SCHEMES.contains(
@@ -233,11 +226,6 @@ public class VolumeCli {
         : new org.apache.hadoop.fs.Path(URI.create(location));
   }
 
-  /**
-   * Joins {@code --path} to the volume path. On a cloud volume {@code --path} names objects
-   * literally; on a local volume it is a URI reference. The result, including a full URI, must stay
-   * inside the volume.
-   */
   private static org.apache.hadoop.fs.Path resolvePath(
       org.apache.hadoop.fs.Path basePath, String relativePath) {
     if (relativePath.isEmpty()) {
@@ -258,11 +246,6 @@ public class VolumeCli {
     return resolvedPath;
   }
 
-  /**
-   * Reads {@code --path} literally. A full URI names its own bucket, and a path starting with '/'
-   * starts at the root. Any other path is a name under the volume, where "./" keeps a ':' in it
-   * from being read as a URI scheme.
-   */
   private static org.apache.hadoop.fs.Path literalPath(
       org.apache.hadoop.fs.Path basePath, String relativePath) {
     return relativePath.matches("[a-zA-Z][a-zA-Z0-9+.-]*://.*")
@@ -271,12 +254,6 @@ public class VolumeCli {
             basePath, relativePath.startsWith("/") ? relativePath : "./" + relativePath);
   }
 
-  /**
-   * Resolves {@code --path} against a local volume as a URI reference, so {@code a%20b} names
-   * {@code a b}. A path that is not a valid URI reference, such as one with a space, or that would
-   * carry a URI query or fragment ('?', '#'), is read literally. Dot segments are removed after
-   * decoding, so an encoded {@code %2E%2E} can't leave the volume.
-   */
   private static org.apache.hadoop.fs.Path localPath(
       org.apache.hadoop.fs.Path basePath, String relativePath) {
     boolean isName =
