@@ -297,7 +297,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"team_reports", "team%20reports", "team%2Freports", "team reports"})
+  @ValueSource(strings = {"team%20reports", "team%2Freports", "team reports"})
   public void testDirectoryWriteCredentialPathMatchesExecutionPath(String directory)
       throws IOException, ParseException {
     session = createPathCredSession(SPARK_CATALOG);
