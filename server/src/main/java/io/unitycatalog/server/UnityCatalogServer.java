@@ -88,6 +88,7 @@ public class UnityCatalogServer implements AutoCloseable {
   /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private UnityCatalogAuthorizer authorizer;
 
+  /** Set during {@link #initializeServer}; null when auditing is off or not yet set up. */
   private Auditor auditor;
 
   /** Set during {@link #initializeServer}; may be null if construction fails early. */

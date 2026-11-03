@@ -82,6 +82,24 @@ public class UnityCatalogServerTest extends BaseServerTest {
   }
 
   @Test
+  public void closeClosesTheAuditSinkOnce() {
+    Properties audited = new Properties();
+    audited.putAll(serverProperties);
+    audited.setProperty(Property.AUDIT_SINK.getKey(), CapturingAuditSink.class.getName());
+    CapturingAuditSink.reset();
+    UnityCatalogServer server =
+        UnityCatalogServer.builder()
+            .port(0)
+            .serverProperties(new ServerProperties(audited))
+            .hibernateConfigurator(hibernateConfigurator)
+            .build();
+    server.start();
+    server.close();
+    server.close();
+    assertThat(CapturingAuditSink.CLOSE_COUNT.get()).isEqualTo(1);
+  }
+
+  @Test
   public void leavesObservabilityPortUnboundWhenDisabled() throws Exception {
     int observabilityPort = URI.create(observabilityServerConfig.getServerUrl()).getPort();
     try (ServerSocket unusedObservabilityPort = new ServerSocket(observabilityPort)) {

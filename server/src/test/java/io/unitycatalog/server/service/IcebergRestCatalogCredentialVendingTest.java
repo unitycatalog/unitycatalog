@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.model.CreateCatalog;
+import io.unitycatalog.server.audit.AuditRecord;
+import io.unitycatalog.server.audit.CapturingAuditSink;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
@@ -17,6 +19,7 @@ import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.IcebergRestClient;
 import io.unitycatalog.server.utils.LocalMappingFileOperations;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -65,6 +68,13 @@ public class IcebergRestCatalogCredentialVendingTest extends BaseCRUDTestWithMoc
   @Override
   protected SchemaOperations createSchemaOperations(ServerConfig serverConfig) {
     return new SdkSchemaOperations(TestUtils.createApiClient(serverConfig));
+  }
+
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    serverProperties.setProperty(Property.AUDIT_SINK.getKey(), CapturingAuditSink.class.getName());
+    CapturingAuditSink.reset();
   }
 
   @Override
@@ -213,5 +223,28 @@ public class IcebergRestCatalogCredentialVendingTest extends BaseCRUDTestWithMoc
 
     FileIO readWrite = mappingFileOperations.getFileIO(location, CredentialContext.READ_WRITE);
     assertThatCode(() -> readWrite.newOutputFile(file)).doesNotThrowAnyException();
+  }
+
+  /** With authorization off, audit records for the vended credentials carry no user. */
+  @Test
+  public void auditRecordsCredentialsWithoutUser() throws Exception {
+    String root = "s3://" + CONFIGURED_BUCKET + testDirectoryRoot.toAbsolutePath() + "/audit";
+    createCloudCatalog(CLOUD_CATALOG, root, testDirectoryRoot.toAbsolutePath().resolve("audit"));
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+    icebergClient.createTable(
+        CLOUD_CATALOG,
+        TestUtils.SCHEMA_NAME,
+        CreateTableRequest.builder().withName(TestUtils.TABLE_NAME).withSchema(schema).build());
+    icebergClient.loadTable(CLOUD_CATALOG, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
+
+    assertThat(CapturingAuditSink.RECORDS)
+        .isNotEmpty()
+        .allSatisfy(
+            r -> {
+              assertThat(r.getAction()).isEqualTo(AuditRecord.Action.ISSUE_CREDENTIAL);
+              assertThat(r.getUser()).isNull(); // authorization off: no user
+              assertThat(r.getLocation()).startsWith("s3://");
+              assertThat(r.getRequestId()).isNotBlank(); // joins to the server.log lines
+            });
   }
 }

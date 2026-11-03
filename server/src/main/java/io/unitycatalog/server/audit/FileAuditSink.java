@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.logging.log4j.Level;
@@ -12,20 +13,37 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.ConsoleAppender;
+import org.apache.logging.log4j.core.appender.FileAppender;
+import org.apache.logging.log4j.core.appender.MemoryMappedFileAppender;
+import org.apache.logging.log4j.core.appender.RandomAccessFileAppender;
+import org.apache.logging.log4j.core.appender.RollingFileAppender;
+import org.apache.logging.log4j.core.appender.RollingRandomAccessFileAppender;
 import org.apache.logging.log4j.core.config.AppenderRef;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.apache.logging.log4j.core.filter.Filterable;
 
 /**
- * Writes each record as one JSON line to the {@code audit} logger. The Log4j configuration must
- * give that logger its own appender with {@code ignoreExceptions = false}, {@code additivity =
- * false} and level INFO; see etc/conf/server.log4j2.properties.
+ * Writes each record as one JSON line to the {@code audit} logger. The logger needs {@code
+ * additivity = false} and level INFO. It writes to {@code etc/logs/audit.log} as shipped (see
+ * etc/conf/server.log4j2.properties), or to any Log4j appender, such as one that ships records to a
+ * cloud service. A file or console appender needs {@code ignoreExceptions = false}.
  */
 public class FileAuditSink implements AuditSink {
   static final String LOGGER_NAME = "audit";
   private static final String FIX =
       " Copy the audit appender and logger.audit block from etc/conf/server.log4j2.properties.";
+
+  // The appender kinds whose settings are checked: those that write to a local file or the console.
+  private static final List<Class<? extends Appender>> CHECKED_APPENDERS =
+      List.of(
+          FileAppender.class,
+          RollingFileAppender.class,
+          RandomAccessFileAppender.class,
+          RollingRandomAccessFileAppender.class,
+          MemoryMappedFileAppender.class,
+          ConsoleAppender.class);
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final DateTimeFormatter TIME =
@@ -38,7 +56,7 @@ public class FileAuditSink implements AuditSink {
     this.logger = LogManager.getLogger(LOGGER_NAME);
   }
 
-  /** Fails unless audit records reach their own appender, and only that appender. */
+  /** Fails when the Log4j configuration can drop audit records or hide a failed write. */
   static void validate(Configuration configuration) {
     LoggerConfig config = configuration.getLoggers().get(LOGGER_NAME);
     if (config == null) {
@@ -88,6 +106,11 @@ public class FileAuditSink implements AuditSink {
       }
     }
     for (Appender appender : config.getAppenders().values()) {
+      // Another appender (for example one that ships records off the host) is the operator's
+      // choice.
+      if (CHECKED_APPENDERS.stream().noneMatch(kind -> kind.isInstance(appender))) {
+        continue;
+      }
       if (appender.ignoreExceptions()) {
         throw new IllegalStateException(
             "The Log4j 'audit' logger's appender "

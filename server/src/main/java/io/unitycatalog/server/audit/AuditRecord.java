@@ -1,6 +1,5 @@
 package io.unitycatalog.server.audit;
 
-import io.unitycatalog.server.service.credential.Purpose;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.Builder;
@@ -22,6 +21,16 @@ public class AuditRecord {
     REVOKE,
     CLEAR_RESOURCE_GRANTS,
     CLEAR_PRINCIPAL_GRANTS
+  }
+
+  /** Who a credential is for. */
+  public enum Purpose {
+    /** Returned to the API caller. */
+    CLIENT,
+    /** Used by the server itself while handling a request. */
+    SERVER,
+    /** Used by the background storage cleanup. */
+    CLEANUP
   }
 
   /** What a credential allows. */
