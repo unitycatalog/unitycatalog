@@ -17,6 +17,7 @@ from unitycatalog.ai.core.utils.callable_utils import (
     construct_secrets_statement,
     dynamically_construct_python_function,
     extract_function_metadata,
+    format_default_value,
     generate_sql_function_body,
     generate_wrapped_sql_function_body,
 )
@@ -1280,6 +1281,50 @@ def test_function_with_default_string_value():
 
     expected_sql = """
 CREATE FUNCTION `test_catalog`.`test_schema`.`func_with_default_str`(a STRING DEFAULT 'hello' COMMENT 'Optional string parameter with default value "hello".')
+RETURNS STRING
+LANGUAGE PYTHON
+COMMENT 'A function with an optional string parameter.'
+AS $$
+    return a
+$$;
+    """
+    assert sql_body.strip() == expected_sql.strip()
+
+
+@pytest.mark.parametrize(
+    ("default", "expected"),
+    [
+        ("plain", "'plain'"),
+        ("", "''"),
+        ("don't", "'don''t'"),
+        ("o'clock", "'o''clock'"),
+        ("a'b'c", "'a''b''c'"),
+        ("'", "''''"),
+        (None, "NULL"),
+        (42, "42"),
+    ],
+)
+def test_format_default_value(default, expected):
+    assert format_default_value(default) == expected
+
+
+def test_function_with_default_string_containing_quote():
+    def func_with_default_quote(a: str = "don't") -> str:
+        """
+        A function with an optional string parameter.
+
+        Args:
+            a: Optional string parameter whose default contains an apostrophe.
+
+        Returns:
+            str: The input value.
+        """
+        return a
+
+    sql_body = generate_sql_function_body(func_with_default_quote, "test_catalog", "test_schema")
+
+    expected_sql = """
+CREATE FUNCTION `test_catalog`.`test_schema`.`func_with_default_quote`(a STRING DEFAULT 'don''t' COMMENT 'Optional string parameter whose default contains an apostrophe.')
 RETURNS STRING
 LANGUAGE PYTHON
 COMMENT 'A function with an optional string parameter.'
