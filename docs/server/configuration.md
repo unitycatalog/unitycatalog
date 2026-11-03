@@ -175,9 +175,11 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
   vends no credential, so it has no `CLEANUP` record.
 - `principal_id`: on `GRANT`, `REVOKE` and `CLEAR_PRINCIPAL_GRANTS`, the ID of the user whose grants
   changed.
-- `privilege`: on `GRANT` and `REVOKE`, the API's privilege name (for example `USE CATALOG`).
+- `privilege`: on `GRANT` and `REVOKE`, the privilege name, for example `USE CATALOG`, or `OWNER` for the
+  ownership grant made when an object is created.
 - `request_id`: the ID of the request being served, the same as `request_id` in the `server.log` lines of
-  that request. It is absent on `CLEANUP` records, which are not made while serving a request.
+  that request. It is absent on records not made while serving a request: `CLEANUP` records and
+  `system:server` records.
 - `location`: the storage location (on `QUEUE_CLEANUP`, the location queued for deletion), with
   scheme, authority and path only. The query string and
   fragment are removed. User info is removed too, except that for ABFS the part before the `@` is
@@ -188,8 +190,9 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 
 A record is written for every credential issued, including ones served from the credential cache.
 Permission changes are recorded only when authorization is on. A `GRANT` is recorded when it adds a grant.
-`REVOKE` and the two `CLEAR_*` actions are recorded whenever the server applies them, also when there was
-nothing to remove, because with several servers sharing one database a server can't always tell.
+`REVOKE` and the two `CLEAR_*` actions are recorded once the server has run them without an error, whether or
+not they removed a grant, because with several servers sharing one database a server can't always tell. If the
+database delete fails, the request fails and nothing is recorded.
 Changes to the parent and child links between objects are not recorded. Audit
 records are best effort: one can be lost when the sink fails, or when a request is still running as the
 server shuts down.

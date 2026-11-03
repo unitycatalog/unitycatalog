@@ -496,6 +496,12 @@ lazy val server = (project in file("server"))
     dependencyOverrides ++= Seq(
       // One PostgreSQL driver: jdbc-adapter brings 42.7.2. Keep in step with the direct dependency.
       "org.postgresql" % "postgresql" % postgresqlVersion,
+      // jdbc-adapter 2.13.0 calls ExecutionContext.getLastFailure, which Failsafe 3.3.0 removed, so on
+      // the 3.3.2 that iceberg-aws brings a failed policy write throws NoSuchMethodError. iceberg-aws
+      // only uses Failsafe APIs that 3.2.3 has.
+      // TODO(https://github.com/apache/casbin-jcasbin-jdbc-adapter/pull/94): drop this pin once a
+      // jdbc-adapter release includes that change.
+      "dev.failsafe" % "failsafe" % "3.2.3",
       "software.amazon.awssdk" % "sso" % awsSdkV2Version,
       "software.amazon.awssdk" % "ssooidc" % awsSdkV2Version,
       "software.amazon.awssdk" % "s3" % awsSdkV2Version,

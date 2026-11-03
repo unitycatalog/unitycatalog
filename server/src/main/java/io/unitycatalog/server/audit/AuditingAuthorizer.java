@@ -8,12 +8,11 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Records each permission change. A grant is recorded when it added a grant. A revoke or a clear is
- * recorded whenever the call returns normally, also when there was nothing to remove. A call that
- * throws is not recorded. Public because {@code UnityAccessEvaluator} resolves {@code authorize} on
- * the authorizer's class through a method handle.
+ * Records each permission change. A grant is recorded only when it added a grant. A revoke or a
+ * clear is recorded once it finishes without throwing, whether or not it removed a grant. A call
+ * that throws, for example because the database delete failed, is not recorded.
  */
-public final class AuditingAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
+final class AuditingAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
   private final UnityCatalogAuthorizer delegate;
   private final Auditor auditor;
 
@@ -34,7 +33,7 @@ public final class AuditingAuthorizer implements UnityCatalogAuthorizer, AutoClo
   @Override
   public boolean revokeAuthorization(UUID principal, UUID resource, Privileges action) {
     boolean changed = delegate.revokeAuthorization(principal, resource, action);
-    // Recorded whatever the flag says. In jCasbin 1.99.0, removePolicy and removeFilteredPolicy
+    // Recorded whatever the flag says. In jCasbin, removePolicy and removeFilteredPolicy
     // delete the rows through the adapter before they check the in-memory model, so a server that
     // has not reloaded the policy deletes the rows and still returns false. A failed delete throws.
     auditor.recordPermission(AuditRecord.Action.REVOKE, principal, resource, action);
