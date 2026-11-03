@@ -185,9 +185,8 @@ A record is written for every credential issued, including ones served from the 
 Permission changes are recorded only when authorization is on. A `GRANT` is recorded when it adds a grant.
 `REVOKE` and the two `CLEAR_*` actions are recorded once the server has run them without an error, whether or
 not they removed a grant. If the database delete fails, the request fails and nothing is recorded.
-Changes to the parent and child links between objects are not recorded. Audit
-records are best effort: one can be lost when the sink fails, or when a request is still running as the
-server shuts down.
+Audit records are best effort: one can be lost when the sink fails, or when a request is still running as
+the server shuts down.
 
 There are two ways to send records:
 
