@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
@@ -14,7 +15,11 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
+import java.sql.Driver;
+import java.sql.DriverManager;
+import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -59,11 +64,30 @@ public class MigratorTest {
   }
 
   @Test
-  void recognizesMySqlUrlsThatLookUpTheHostInDns() {
-    assertThat(DatabaseKind.fromJdbcUrl("jdbc:mysql://db.example:3306/uc"))
-        .isEqualTo(DatabaseKind.MYSQL);
-    assertThat(DatabaseKind.fromJdbcUrl("jdbc:mysql+srv://db.example/uc"))
-        .isEqualTo(DatabaseKind.MYSQL);
+  void setsUpADatabaseBehindAWrappingDriver() {
+    Properties wrapped = db.hibernateProperties();
+    wrapped.setProperty("hibernate.connection.driver_class", WrappingDriver.class.getName());
+    wrapped.setProperty(
+        "hibernate.connection.url",
+        WrappingDriver.PREFIX + db.jdbcUrl().substring("jdbc:".length()));
+
+    try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(wrapped)) {
+      assertThat(migrator.migrate()).isEqualTo(releaseSteps(migrator));
+    }
+  }
+
+  @Test
+  void setsUpADatabaseOfAPoolConfiguredByDataSourceClass() {
+    assumeTrue(isH2(), "the data source class is H2's");
+    Properties byClass = db.hibernateProperties();
+    byClass.remove("hibernate.connection.url");
+    byClass.remove("hibernate.connection.driver_class");
+    byClass.setProperty("hibernate.hikari.dataSourceClassName", "org.h2.jdbcx.JdbcDataSource");
+    byClass.setProperty("hibernate.hikari.dataSource.url", db.jdbcUrl());
+
+    try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(byClass)) {
+      assertThat(migrator.migrate()).isEqualTo(releaseSteps(migrator));
+    }
   }
 
   @Test
@@ -132,8 +156,7 @@ public class MigratorTest {
     try {
       List<Future<Integer>> runs = new ArrayList<>();
       try (SchemaMigrator.RunLock held =
-          SchemaMigrator.RunLock.acquire(
-              db.dataSource(), SchemaMigrator.DatabaseKind.fromJdbcUrl(db.jdbcUrl()))) {
+          SchemaMigrator.RunLock.acquire(db.dataSource(), DatabaseKind.of(db.dataSource()))) {
         for (int i = 0; i < 2; i++) {
           runs.add(executor.submit(() -> new SchemaMigrator(watched).migrate()));
         }
@@ -313,6 +336,48 @@ public class MigratorTest {
       return connection.getMetaData().getIdentifierQuoteString();
     } catch (SQLException e) {
       throw new IllegalStateException(e);
+    }
+  }
+
+  /** A driver that wraps the real one, like P6Spy's or AWS's: {@code jdbc:wrapper:h2:...}. */
+  public static class WrappingDriver implements Driver {
+    static final String PREFIX = "jdbc:wrapper:";
+
+    @Override
+    public Connection connect(String url, Properties info) throws SQLException {
+      return acceptsURL(url)
+          ? DriverManager.getConnection("jdbc:" + url.substring(PREFIX.length()), info)
+          : null;
+    }
+
+    @Override
+    public boolean acceptsURL(String url) {
+      return url.startsWith(PREFIX);
+    }
+
+    @Override
+    public DriverPropertyInfo[] getPropertyInfo(String url, Properties info) {
+      return new DriverPropertyInfo[0];
+    }
+
+    @Override
+    public int getMajorVersion() {
+      return 1;
+    }
+
+    @Override
+    public int getMinorVersion() {
+      return 0;
+    }
+
+    @Override
+    public boolean jdbcCompliant() {
+      return false;
+    }
+
+    @Override
+    public java.util.logging.Logger getParentLogger() throws SQLFeatureNotSupportedException {
+      throw new SQLFeatureNotSupportedException();
     }
   }
 }

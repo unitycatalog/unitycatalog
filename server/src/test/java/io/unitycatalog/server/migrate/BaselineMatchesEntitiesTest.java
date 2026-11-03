@@ -4,7 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import java.util.Properties;
+import jakarta.persistence.metamodel.EntityType;
+import org.hibernate.cfg.Configuration;
+import org.hibernate.cfg.JdbcSettings;
+import org.hibernate.cfg.SchemaToolingSettings;
 import org.junit.jupiter.api.Test;
 
 public class BaselineMatchesEntitiesTest {
@@ -18,12 +21,20 @@ public class BaselineMatchesEntitiesTest {
   @Test
   void stepsBuildTheEntitySchema() {
     new SchemaMigrator(fromSteps.dataSource()).migrate();
-    Properties create = fromEntities.hibernateProperties();
+    // The entities build the second. The server's configurator refuses to let Hibernate change
+    // the schema, so Hibernate runs here on the server's entities.
+    Configuration entities = new Configuration();
+    fromEntities.sessionFactory().getMetamodel().getEntities().stream()
+        .map(EntityType::getJavaType)
+        .forEach(entities::addAnnotatedClass);
     // "update", as the baseline release ran: unlike "create", it names the unique constraints.
-    create.setProperty("hibernate.hbm2ddl.auto", "update");
+    entities.setProperty(SchemaToolingSettings.HBM2DDL_AUTO, "update");
     // MySQL rejects one index of the entities (key too long); the baseline schema never had it.
-    create.setProperty("hibernate.hbm2ddl.halt_on_error", "false");
-    fromEntities.openHibernateConfigurator(create); // the entities build the second
+    entities.setProperty(SchemaToolingSettings.HBM2DDL_HALT_ON_ERROR, "false");
+    entities
+        .getProperties()
+        .put(JdbcSettings.JAKARTA_NON_JTA_DATASOURCE, fromEntities.dataSource());
+    entities.buildSessionFactory().close();
     // On a mismatch, AssertJ also lists the missing and unexpected entries.
     assertThat(SchemaSnapshot.of(fromSteps.dataSource()).entries())
         .containsExactlyElementsOf(SchemaSnapshot.of(fromEntities.dataSource()).entries());

@@ -55,11 +55,19 @@ public class SchemaGateTest {
 
   @Test
   void refusesAConfiguratorThatLetsHibernateChangeTheSchema() {
-    Properties update = db.hibernateProperties();
-    update.setProperty("hibernate.hbm2ddl.auto", "update");
+    for (String setting :
+        List.of(
+            "hibernate.hbm2ddl.auto",
+            "jakarta.persistence.schema-generation.database.action",
+            "javax.persistence.schema-generation.database.action")) {
+      Properties create = db.hibernateProperties();
+      create.setProperty(setting, "create");
 
-    assertThatThrownBy(() -> TestServer.start(db, update, storageRoot))
-        .hasMessageContaining("hibernate.hbm2ddl.auto=update is not supported");
+      assertThatThrownBy(() -> TestServer.start(db, create, storageRoot))
+          .hasMessageContaining(setting + "=create is not supported");
+      // Refused before Hibernate created any table.
+      assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
+    }
   }
 
   @Test
