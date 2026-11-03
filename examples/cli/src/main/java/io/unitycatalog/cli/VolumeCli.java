@@ -24,7 +24,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.net.URI;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -238,7 +237,7 @@ public class VolumeCli {
         Constants.URI_SCHEME_FILE.equals(basePath.toUri().getScheme())
             ? localPath(basePath, relativePath)
             : literalPath(basePath, relativePath);
-    // Ensure the resolved path stays inside the volume.
+    // Ensure the resolved path stays under the volume's path.
     String base = basePath.toUri().getPath().replaceAll("/$", "") + "/";
     String resolved = resolvedPath.toUri().getPath();
     if (!(resolved + "/").startsWith(base)) {
@@ -268,9 +267,7 @@ public class VolumeCli {
     }
     URI decoded = new org.apache.hadoop.fs.Path(resolved).toUri();
     return new org.apache.hadoop.fs.Path(
-        decoded.getScheme(),
-        decoded.getAuthority(),
-        Paths.get(decoded.getPath()).normalize().toString());
+        decoded.getScheme(), decoded.getAuthority(), decoded.getPath());
   }
 
   private static String updateVolume(VolumesApi apiClient, JSONObject json)
