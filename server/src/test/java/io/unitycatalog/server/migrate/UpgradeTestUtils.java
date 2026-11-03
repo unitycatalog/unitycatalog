@@ -18,7 +18,7 @@ final class UpgradeTestUtils {
   /** Builds a database of the baseline release: its schema without Flyway's history. */
   static void create07Schema(TestDatabase db) {
     String path =
-        "db/migration/" + DatabaseKind.fromJdbcUrl(db.jdbcUrl()).folder() + "/V1__baseline_0_7.sql";
+        "db/migration/" + DatabaseKind.of(db.dataSource()).folder() + "/V1__baseline_0_7.sql";
     String sql;
     try (InputStream in = UpgradeTestUtils.class.getClassLoader().getResourceAsStream(path)) {
       sql = new String(in.readAllBytes(), StandardCharsets.UTF_8);

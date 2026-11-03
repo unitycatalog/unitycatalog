@@ -60,25 +60,27 @@ public final class SchemaMigrator implements AutoCloseable {
     MYSQL;
 
     /**
-     * The database of a JDBC URL, from its prefix.
+     * The database behind {@code dataSource}, from the name its driver reports. The URL can't tell:
+     * a wrapping driver's URL starts with its own prefix ({@code jdbc:aws-wrapper:}, {@code
+     * jdbc:p6spy:}), and a pool set up by data source class has none.
      *
-     * @throws IllegalArgumentException for a URL of any other database
+     * @throws IllegalArgumentException for any other database
      */
-    static DatabaseKind fromJdbcUrl(String url) {
-      // MySQL Connector/J also finds its hosts through DNS SRV records.
-      if (url.startsWith("jdbc:mysql+srv:")) {
-        return MYSQL;
+    static DatabaseKind of(DataSource dataSource) {
+      String product;
+      try (Connection connection = dataSource.getConnection()) {
+        product = connection.getMetaData().getDatabaseProductName();
+      } catch (SQLException e) {
+        throw new IllegalStateException("Could not connect to the database: " + e.getMessage(), e);
       }
-      for (DatabaseKind kind : values()) {
-        if (url.startsWith("jdbc:" + kind.folder() + ":")) {
-          return kind;
-        }
-      }
-      // Only the scheme: the rest of a URL can hold a password.
-      throw new IllegalArgumentException(
-          "Unsupported database "
-              + url.substring(0, Math.max(url.indexOf(':', "jdbc:".length()), 0))
-              + ": use jdbc:h2:, jdbc:postgresql: or jdbc:mysql:");
+      return switch (product) {
+        case "H2" -> H2;
+        case "PostgreSQL" -> POSTGRESQL;
+        case "MySQL" -> MYSQL;
+        default ->
+            throw new IllegalArgumentException(
+                "Unsupported database " + product + ": use H2, PostgreSQL or MySQL");
+      };
     }
 
     /** The folder under {@code db/migration} holding this database's steps. */
@@ -148,7 +150,12 @@ public final class SchemaMigrator implements AutoCloseable {
     config.setMinimumIdle(0);
     config.setPoolName("schema-migrator");
     HikariDataSource pool = new HikariDataSource(config);
-    return new SchemaMigrator(pool, DatabaseKind.fromJdbcUrl(config.getJdbcUrl()), List.of(), pool);
+    try {
+      return new SchemaMigrator(pool, DatabaseKind.of(pool), List.of(), pool);
+    } catch (RuntimeException e) {
+      pool.close();
+      throw e;
+    }
   }
 
   /** Applies this release's steps to {@code dataSource}; closing it stays with the caller. */
@@ -158,7 +165,7 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /** Also applies the steps in {@code extraLocations} (tests' own steps). */
   SchemaMigrator(DataSource dataSource, List<String> extraLocations) {
-    this(dataSource, DatabaseKind.fromJdbcUrl(jdbcUrl(dataSource)), extraLocations, null);
+    this(dataSource, DatabaseKind.of(dataSource), extraLocations, null);
   }
 
   private SchemaMigrator(
@@ -173,14 +180,6 @@ public final class SchemaMigrator implements AutoCloseable {
     locations.addAll(extraLocations);
     this.locations = locations.toArray(String[]::new);
     this.ownedPool = ownedPool;
-  }
-
-  private static String jdbcUrl(DataSource dataSource) {
-    try (Connection connection = dataSource.getConnection()) {
-      return connection.getMetaData().getURL();
-    } catch (SQLException e) {
-      throw new IllegalStateException("Could not connect to the database: " + e.getMessage(), e);
-    }
   }
 
   private Flyway flyway(String baselineVersion) { // null: no baselining

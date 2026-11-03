@@ -31,6 +31,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
@@ -39,6 +40,7 @@ import org.hibernate.SessionFactory;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.cfg.JdbcSettings;
+import org.hibernate.cfg.SchemaToolingSettings;
 import org.hibernate.service.ServiceRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,6 +72,7 @@ public class HibernateConfigurator implements AutoCloseable {
    */
   public HibernateConfigurator(Properties hibernateProperties) {
     requireSchemaFromConnection(hibernateProperties);
+    requireNoSchemaChanges(hibernateProperties);
     this.hibernateProperties = hibernateProperties;
     this.dataSource = createDataSource(hibernateProperties);
     try {
@@ -93,6 +96,29 @@ public class HibernateConfigurator implements AutoCloseable {
             name
                 + " is not supported: the schema migration uses the connection's schema. Remove it"
                 + " and set the schema in the JDBC URL instead (PostgreSQL: currentSchema=...).");
+      }
+    }
+  }
+
+  /**
+   * The schema steps own the schema. Refuses the settings that let Hibernate change it while it
+   * builds the session factory, before it builds it.
+   */
+  private static void requireNoSchemaChanges(Properties properties) {
+    for (String name :
+        new String[] {
+          SchemaToolingSettings.HBM2DDL_AUTO,
+          SchemaToolingSettings.JAKARTA_HBM2DDL_DATABASE_ACTION,
+          SchemaToolingSettings.HBM2DDL_DATABASE_ACTION
+        }) {
+      // Hibernate also takes an Action object, and an empty value means none.
+      String value = Objects.toString(properties.get(name), "").trim();
+      if (!value.isEmpty() && !"none".equalsIgnoreCase(value)) {
+        throw new IllegalStateException(
+            name
+                + "="
+                + value
+                + " is not supported: the schema steps manage the schema. Set it to none.");
       }
     }
   }

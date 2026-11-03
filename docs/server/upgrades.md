@@ -87,10 +87,11 @@ Messages that the server prints when it refuses to start, and what to do.
 : The database has no schema history and lacks tables of the baseline release. Follow
   [The baseline release](#the-baseline-release).
 
-`hibernate.hbm2ddl.auto=<value> is not supported: the schema steps manage the schema. Set it to none.`
-: A server embedded in an application was given Hibernate settings that let Hibernate change the
-  schema. Set `hibernate.hbm2ddl.auto=none`; the server's own `etc/conf/hibernate.properties` is
-  always read with `none`.
+`<setting>=<value> is not supported: the schema steps manage the schema. Set it to none.`
+: The Hibernate settings let Hibernate change the schema: `hibernate.hbm2ddl.auto` in a server
+  embedded in an application, or `jakarta.persistence.schema-generation.database.action` (or its
+  `javax.` form). Set it to `none` or remove it; the server reads `hibernate.hbm2ddl.auto` in its
+  own `etc/conf/hibernate.properties` as `none`.
 
 `The schema is newer than this release (version <n>, this release ends at <m>). Run the newer release.`
 : The database was upgraded by a newer release than the one you ran. Run the newer release again.
@@ -118,9 +119,9 @@ Messages that the server prints when it refuses to start, and what to do.
 : Releasing the lock failed at the end of the run. The server closed the lock's database
   connection, which releases the lock. Start the server again.
 
-`Unsupported database jdbc:<name>: use jdbc:h2:, jdbc:postgresql: or jdbc:mysql:`
-: `hibernate.connection.url` points at a database that Unity Catalog does not support. Use H2,
-  PostgreSQL or MySQL.
+`Unsupported database <name>: use H2, PostgreSQL or MySQL`
+: The server is connected to a database that Unity Catalog does not support; `<name>` is the
+  name its JDBC driver reports. Use H2, PostgreSQL or MySQL.
 
 `Could not connect to the database: <reason>` or `Could not list the database's tables: <reason>`
 : The server could not read the database. Check the connection settings and the user's
