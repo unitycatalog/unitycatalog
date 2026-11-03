@@ -7,7 +7,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -60,72 +59,57 @@ public class FileAuditSink implements AuditSink {
   static void validate(Configuration configuration) {
     LoggerConfig config = configuration.getLoggers().get(LOGGER_NAME);
     if (config == null) {
-      throw new IllegalStateException(
-          "FileAuditSink needs a Log4j logger named 'audit' (logger.audit)." + FIX);
+      throw misconfigured("FileAuditSink needs a Log4j logger named 'audit' (logger.audit).");
     }
     if (config.getAppenders().isEmpty()) {
-      throw new IllegalStateException("The Log4j 'audit' logger has no appender." + FIX);
+      throw misconfigured("The Log4j 'audit' logger has no appender.");
     }
     if (config.isAdditive()) {
-      throw new IllegalStateException(
+      throw misconfigured(
           "The Log4j 'audit' logger must set additivity = false, or audit records also go to the"
-              + " server log."
-              + FIX);
+              + " server log.");
     }
     if (!config.getLevel().isLessSpecificThan(Level.INFO)) {
-      throw new IllegalStateException(
+      throw misconfigured(
           "The Log4j 'audit' logger must enable INFO; level "
               + config.getLevel()
-              + " drops every audit record."
-              + FIX);
+              + " drops every audit record.");
     }
     if (configuration.hasFilter()) {
-      throw new IllegalStateException(
-          "The Log4j configuration must not have a filter, which can drop audit records." + FIX);
+      throw misconfigured(
+          "The Log4j configuration must not have a filter, which can drop audit records.");
     }
     if (config.hasFilter()) {
-      throw new IllegalStateException(
-          "The Log4j 'audit' logger must not have a filter, which can drop audit records." + FIX);
+      throw misconfigured(
+          "The Log4j 'audit' logger must not have a filter, which can drop audit records.");
     }
     for (AppenderRef ref : config.getAppenderRefs()) {
+      String name = "The Log4j 'audit' logger's appender reference " + ref.getRef();
       if (ref.getLevel() != null && !ref.getLevel().isLessSpecificThan(Level.INFO)) {
-        throw new IllegalStateException(
-            "The Log4j 'audit' logger's appender reference "
-                + ref.getRef()
-                + " has level "
-                + ref.getLevel()
-                + ", which drops every audit record."
-                + FIX);
+        throw misconfigured(
+            name + " has level " + ref.getLevel() + ", which drops every audit record.");
       }
       if (ref.getFilter() != null) {
-        throw new IllegalStateException(
-            "The Log4j 'audit' logger's appender reference "
-                + ref.getRef()
-                + " must not have a filter, which can drop audit records."
-                + FIX);
+        throw misconfigured(name + " must not have a filter, which can drop audit records.");
       }
     }
     for (Appender appender : config.getAppenders().values()) {
-      // Another appender (for example one that ships records off the host) is the operator's
-      // choice.
       if (CHECKED_APPENDERS.stream().noneMatch(kind -> kind.isInstance(appender))) {
         continue;
       }
+      String name = "The Log4j 'audit' logger's appender " + appender.getName();
       if (appender.ignoreExceptions()) {
-        throw new IllegalStateException(
-            "The Log4j 'audit' logger's appender "
-                + appender.getName()
-                + " must set ignoreExceptions = false, or failed writes lose records silently."
-                + FIX);
+        throw misconfigured(
+            name + " must set ignoreExceptions = false, or failed writes lose records silently.");
       }
       if (appender instanceof Filterable filterable && filterable.hasFilter()) {
-        throw new IllegalStateException(
-            "The Log4j 'audit' logger's appender "
-                + appender.getName()
-                + " must not have a filter, which can drop audit records."
-                + FIX);
+        throw misconfigured(name + " must not have a filter, which can drop audit records.");
       }
     }
+  }
+
+  private static IllegalStateException misconfigured(String problem) {
+    return new IllegalStateException(problem + FIX);
   }
 
   @Override
@@ -156,8 +140,7 @@ public class FileAuditSink implements AuditSink {
 
   private static void put(Map<String, Object> m, String key, Object value) {
     if (value != null) {
-      // Enums and UUIDs as strings.
-      m.put(key, value instanceof Enum<?> || value instanceof UUID ? value.toString() : value);
+      m.put(key, value);
     }
   }
 }

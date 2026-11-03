@@ -196,7 +196,10 @@ There are two ways to send records:
   shipped, that logger writes to `etc/logs/audit.log`, but you can point it at any Log4j appender,
   for example one that ships records to a cloud service.
 - Your own class that implements `io.unitycatalog.server.audit.AuditSink`, for example one that
-  sends records to Kinesis or SQS. See the end of this section.
+  sends records to Kinesis or SQS. It needs a public no-arg constructor and must be on the server
+  classpath; the server does not start if it can't be loaded. `record` is called concurrently, so
+  it must be thread-safe, and should queue records instead of sending them inline. See the
+  `AuditSink` Javadoc for the full contract.
 
 `FileAuditSink` needs the `audit` logger in `etc/conf/server.log4j2.properties`, set to
 `additivity = false` and level `INFO`. Neither the Log4j configuration nor the `audit` logger may
@@ -206,17 +209,9 @@ must also set `ignoreExceptions = false` and have no filter; other appenders are
 shipped configuration meets all of this. If a requirement is not met, for example in a custom or
 copied log configuration without the `audit` logger, the server does not start.
 
-In the default distribution, `audit.log` rolls over with the same settings as `server.log`: every
-hour and at 10MB, keeping archives for up to 7 days or 1GB. The Helm chart has no `server.log`
-file and configures `audit.log` the same way. Ship `etc/logs/audit.log` continuously to your log or
-security service to keep the records longer.
-
-To send records somewhere else, set `server.audit.sink` to your own class that implements
-`io.unitycatalog.server.audit.AuditSink` and has a public no-arg constructor. It must be on the
-server classpath, and the server does not start if it can't be loaded. `record` is called
-concurrently, from request threads and the server's own threads, so it must be thread-safe and should hand records to a queue
-instead of sending them inline. `close` is called once at shutdown. A failure thrown from either
-method is logged (in `server.log`, or on the console with the Helm chart) and never fails a request.
+`audit.log` rolls over with the same settings as `server.log` in the default distribution, and the
+Helm chart configures it the same way. Ship it continuously to your log or security service to keep
+the records longer.
 
 ## Logging
 
