@@ -81,7 +81,6 @@ spec:
               mountPath: /home/unitycatalog/etc/conf
             - name: jwt-key-volume
               mountPath: /home/unitycatalog/etc/confJwtKey
-              readOnly: true
           env:
           {{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.ssl.enabled }}
           {{- if .Values.server.db.postgresqlConfig.ssl.rootCert }}
@@ -191,7 +190,6 @@ spec:
               mountPath: /home/unitycatalog/etc/conf
             - name: jwt-key-volume
               mountPath: /home/unitycatalog/etc/confJwtKey
-              readOnly: true
           {{- if eq .Values.server.db.type "file" }}
             - name: db-volume
               mountPath: /home/unitycatalog/etc/db
