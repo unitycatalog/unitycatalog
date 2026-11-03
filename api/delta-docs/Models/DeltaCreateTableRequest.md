@@ -7,7 +7,7 @@
 | **location** | **String** | Storage location | [default to null] |
 | **table-type** | [**DeltaTableType**](DeltaTableType.md) |  | [default to null] |
 | **comment** | **String** | Table comment | [optional] [default to null] |
-| **columns** | [**DeltaStructType**](DeltaStructType.md) | Table columns. When delta.columnMapping.mode is name or id, every column and nested field must carry a physical name and a column mapping id (a 32-bit integer JSON number), no two fields may share an id, and no two top-level columns may share a physical name. The request is rejected with InvalidParameterValueException (400) when they do not, or when delta.columnMapping.mode is not none, name or id.  | [default to null] |
+| **columns** | [**DeltaStructType**](DeltaStructType.md) |  | [default to null] |
 | **partition-columns** | **List** | Partition column names | [optional] [default to null] |
 | **protocol** | [**DeltaProtocol**](DeltaProtocol.md) | Delta protocol version and feature requirements | [default to null] |
 | **properties** | **Map** | Delta table properties | [default to null] |
