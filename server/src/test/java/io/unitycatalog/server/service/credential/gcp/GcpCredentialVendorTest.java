@@ -13,9 +13,12 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.stream.Stream;
 import org.apache.hadoop.fs.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 public class GcpCredentialVendorTest {
@@ -100,6 +103,21 @@ public class GcpCredentialVendorTest {
 
     assertThat(availabilityConditionFor("gs://test-bucket/team/%5Cn%5Cx27%5Cu0027"))
         .isEqualTo(expectedCondition("test-bucket", escapedPath));
+  }
+
+  /** A raw quote, backslash or control character in a stored path is escaped for CEL. */
+  @ParameterizedTest
+  @MethodSource("rawCelSpecialCharacters")
+  public void testRawCelSpecialCharactersAreEscaped(String path, String escapedPath) {
+    assertThat(availabilityConditionFor("gs://test-bucket/" + path))
+        .isEqualTo(expectedCondition("test-bucket", escapedPath));
+  }
+
+  private static Stream<Arguments> rawCelSpecialCharacters() {
+    return Stream.of(
+        Arguments.of("team/data\") || (\"1\"==\"1", "team/data\\\") || (\\\"1\\\"==\\\"1"),
+        Arguments.of("team/data\\\") || (\"1", "team/data\\\\\\\") || (\\\"1"),
+        Arguments.of("team/\u0007\b\f\n\r\t\u000Bdata", "team/\\a\\b\\f\\n\\r\\t\\vdata"));
   }
 
   @Test

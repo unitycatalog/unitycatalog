@@ -143,11 +143,14 @@ public class NormalizedURLTest {
     // Cloud locations keep their escapes, since an object key may contain a literal '%'.
     assertNormalizedURL("s3://bucket/a%2Fb", "s3://bucket/a%2Fb");
     assertNormalizedURL("gs://bucket/%2e%2e/x", "gs://bucket/%2e%2e/x");
-    // Iceberg FileIO cuts a cloud path at '?' or '#', so cleanup could reach a different prefix.
+    // Iceberg's S3 and GCS FileIO cut a path at '?' or '#', so cleanup could reach a different
+    // prefix; ADLS rejects them too, for one rule across clouds.
     assertRejected("s3://bucket/t?x");
     assertRejected("gs://bucket/t#x");
     assertRejected("s3://bucket#x/data");
     assertRejected("abfss://container@account.dfs.core.windows.net/t?x");
+    // A bucket name is not a path, so it cannot hold a space.
+    assertRejected("s3://bad bucket/x");
   }
 
   @Test

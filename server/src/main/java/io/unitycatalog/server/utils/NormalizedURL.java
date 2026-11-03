@@ -109,7 +109,7 @@ public final class NormalizedURL {
    * is the literal object name.
    *
    * @return the URI representation of this normalized URL
-   * @throws IllegalArgumentException if the URL string violates RFC 2396
+   * @throws IllegalArgumentException if a non-cloud URL string violates RFC 2396
    */
   public URI toUri() {
     URI cloudUri = cloudUri(url);
@@ -162,13 +162,15 @@ public final class NormalizedURL {
    * local file paths are correctly formatted as file URIs and that URIs for different storage
    * providers (e.g., S3, Azure, GCS) are handled appropriately.
    *
-   * <p>If the input is a valid URI with a recognized scheme (e.g., "file", "s3", "abfs", etc.), the
-   * method returns a standardized version of the URI. If the input is not a valid URI, it treats
-   * the input as a local file path and converts it to a "file://" URI.
+   * <p>A cloud location ("s3", "gs", "abfs", "abfss") is a literal path string, as in Hadoop: a
+   * space or '%' stays part of the object name, so the result need not be a valid URI. Any other
+   * input with a recognized scheme is returned as a standardized URI. If the input is not a valid
+   * URI, it treats the input as a local file path and converts it to a "file://" URI.
    *
    * @param inputPath the input path or URI to be standardized.
-   * @return the standardized URI string.
-   * @throws BaseException if the input path has an unsupported URI scheme.
+   * @return the standardized location string.
+   * @throws BaseException if the input path has an unsupported URI scheme, or is a cloud location
+   *     containing '?' or '#' or an invalid bucket or container.
    *     <p>Examples of input and output:
    *     <pre>
    * // Local File System Example:
@@ -203,7 +205,8 @@ public final class NormalizedURL {
     // A cloud object name is literal, as in Hadoop: a space or '%' is part of the name.
     URI cloudUri = cloudUri(inputPath);
     if (cloudUri != null) {
-      // Iceberg FileIO cuts a cloud path at '?' or '#', so such a name can't be addressed safely.
+      // Iceberg's S3 and GCS FileIO cut a path at '?' or '#', so such a name can't be addressed
+      // safely; ADLS rejects them too, for one rule across clouds.
       if (inputPath.indexOf('?') >= 0 || inputPath.indexOf('#') >= 0) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,

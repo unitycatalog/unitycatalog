@@ -508,6 +508,48 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
         TestUtils::assertDeltaPermissionDenied);
   }
 
+  /**
+   * Delta sends {@code location} URI-encoded, so createTable authorizes the decoded path: {@code
+   * team%20reports/t1} is checked against the external location at {@code team reports}, and {@code
+   * team%2520reports/t2} against the one stored literally as {@code team%20reports}.
+   */
+  @Test
+  public void testDeltaCreateTableAuthorizesTheDecodedLocation() throws Exception {
+    String grantedLocation = "spaced_loc";
+    for (String[] location :
+        List.of(
+            new String[] {grantedLocation, "s3://ext-bucket/team reports"},
+            new String[] {"literal_percent_loc", "s3://ext-bucket/team%20reports"})) {
+      userCApi.createExternalLocation(
+          new CreateExternalLocation()
+              .name(location[0])
+              .url(location[1])
+              .credentialName(CREDENTIAL_NAME));
+    }
+    String email = "delta_decoded_location@example.com";
+    createTestUser(email);
+    grantPermissions(email, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
+    grantPermissions(
+        email, SecurableType.SCHEMA, TestUtils.SCHEMA_FULL_NAME, Privileges.USE_SCHEMA);
+    grantPermissions(
+        email, SecurableType.SCHEMA, TestUtils.SCHEMA_FULL_NAME, Privileges.CREATE_TABLE);
+    grantPermissions(
+        email, SecurableType.EXTERNAL_LOCATION, grantedLocation, Privileges.CREATE_EXTERNAL_TABLE);
+    DeltaTablesApi deltaTablesApi =
+        new DeltaTablesApi(TestUtils.createApiClient(createTestUserServerConfig(email)));
+
+    deltaTablesApi.createTable(
+        TestUtils.CATALOG_NAME,
+        TestUtils.SCHEMA_NAME,
+        deltaExternalTableRequest("t1", "s3://ext-bucket/team%20reports/t1"));
+    TestUtils.assertDeltaPermissionDenied(
+        () ->
+            deltaTablesApi.createTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                deltaExternalTableRequest("t2", "s3://ext-bucket/team%2520reports/t2")));
+  }
+
   @FunctionalInterface
   private interface ExternalTableCreator {
     /** Creates the table and returns the resulting storage location; throws on denial. */

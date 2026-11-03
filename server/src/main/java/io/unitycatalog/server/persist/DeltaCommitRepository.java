@@ -1500,9 +1500,10 @@ public class DeltaCommitRepository {
     NormalizedURL tableUri = NormalizedURL.from(tableInfoDAO.getUrl());
     ValidationUtils.checkArgument(
         commitTableUri.equals(tableUri),
-        "Table URI in commit %s does not match the table path %s",
+        "Table URI in commit %s does not match the table path %s (the commit URI decodes to %s)",
         commit.getTableUri(),
-        tableInfoDAO.getUrl());
+        tableInfoDAO.getUrl(),
+        commitTableUri);
     uniformFields.ifPresent(
         uf -> DeltaUniformUtils.requireMetadataLocationSubpath(uf.metadataLocation(), tableUri));
     validateUniformMetadataPresence(session, commit, tableInfoDAO);

@@ -114,18 +114,6 @@ server acts on behalf of every principal that can write those directories:
 For a deployment shared by users who should not have each other's file access, use cloud storage, where the server
 vends credentials scoped to each location.
 
-## Cloud storage locations
-
-Temporary credentials for S3, GCS, and Azure are scoped to the location's path as stored, the way
-Hadoop and Spark read it. A space or a percent sequence in a cloud location is part of the object
-name: for example, `s3://bucket/team reports` names the prefix `team reports`,
-`s3://bucket/team%20reports` names the prefix `team%20reports`, and `%2F` is not a directory
-separator. A cloud location cannot contain `?` or `#`.
-
-Because `%2F` is part of an object name, a location such as `s3://bucket/%2F` is not a bucket root:
-it can be used as an external table or volume location, and credentials for it are
-scoped to the prefix `%2F`.
-
 ### Storage credential cache
 
 When the server vends temporary cloud storage credentials, it can reuse a recently vended credential
@@ -151,6 +139,23 @@ The cache is controlled by these keys:
 | `server.storage-credential-cache.max-age` | `PT5M` | The longest a vended credential is reused. It is counted from when the credential was vended, and serving the credential from the cache does not extend it. A cached credential is handed out with its remaining lifetime, so clients receive at least the credential's lifetime minus the max age (55 minutes for a 1-hour credential with the default); lower it if clients need more. A credential is never reused within one minute of its expiry, and one that lives one minute or less is not cached. Keep it short so that a cloud-side change, such as a trust-policy update, takes effect for new requests within this time. |
 
 Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is five minutes).
+
+## Cloud storage locations
+
+Temporary credentials for S3, GCS, and Azure are scoped to the location's path as stored, the way
+Hadoop and Spark read it. A space or a percent sequence in a cloud location is part of the object
+name: for example, `s3://bucket/team reports` names the prefix `team reports`, and
+`s3://bucket/team%20reports` names the prefix `team%20reports`. `%2F` is not a directory separator
+either, so `s3://bucket/%2F` is not a bucket root: it can be used as an external table or volume
+location, and credentials for it are scoped to the prefix `%2F`.
+
+A cloud location cannot contain `?` or `#`. A table, volume or external location stored with one
+before this rule returns an error when it is used, and needs to be registered again at a location
+without it.
+
+The Delta REST API exchanges locations as URIs, as Delta clients do: the server
+decodes a location it receives once and returns stored locations URI-encoded. For example, Delta
+sends `s3://bucket/team%20reports/t` for the folder `team reports`.
 
 ## Logging
 
