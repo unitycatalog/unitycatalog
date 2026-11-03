@@ -169,6 +169,7 @@ public class VolumeCli {
       volumeLocation = volumeLocation + "/";
     }
     org.apache.hadoop.fs.Path basePath = volumePath(volumeLocation);
+    org.apache.hadoop.fs.Path path = resolvePath(basePath, relativePath);
     Configuration conf =
         DeltaKernelUtils.getHDFSConfiguration(
             new org.apache.hadoop.fs.Path(volumeLocation).toUri(),
@@ -177,7 +178,6 @@ public class VolumeCli {
                     .volumeId(volumeInfo.getVolumeId())
                     .operation(VolumeOperation.READ_VOLUME)));
     FileSystem fs = DeltaKernelUtils.getFileSystem(basePath.toUri(), conf);
-    org.apache.hadoop.fs.Path path = resolvePath(basePath, relativePath);
     try {
       if (!fs.exists(path)) {
         throw new CliException("Volume location does not exist " + path);
@@ -238,8 +238,9 @@ public class VolumeCli {
     if (relativePath.isEmpty()) {
       return basePath;
     }
-    // A full URI names its own bucket. Any other path is a name under the volume, where "./" keeps
-    // a ':' in it from being read as a URI scheme.
+    // A full URI names its own bucket, and a path starting with '/' starts at the bucket root. Any
+    // other path is a name under the volume, where "./" keeps a ':' in it from being read as a URI
+    // scheme.
     org.apache.hadoop.fs.Path resolvedPath =
         relativePath.matches("[a-zA-Z][a-zA-Z0-9+.-]*://.*")
             ? new org.apache.hadoop.fs.Path(DeltaKernelUtils.substituteSchemeForS3(relativePath))
