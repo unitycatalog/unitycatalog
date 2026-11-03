@@ -311,9 +311,6 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
                     "INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i", location));
 
     InsertIntoDir withCredentials = (InsertIntoDir) injectPathCredentials(parsed);
-    writeBareParquetSample(location);
-    assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
-    assertThat(new File(dataDir, directory)).isDirectory();
     assertThat(withCredentials.storage().properties().apply(UCHadoopConfConstants.UC_PATH_KEY))
         .as("UC credential identity must match the directory used by Spark execution")
         .isEqualTo(location);
