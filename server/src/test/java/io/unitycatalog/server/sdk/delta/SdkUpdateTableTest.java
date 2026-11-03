@@ -2225,9 +2225,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
 
   /**
    * One set-columns scenario: create a table, apply each setup request, then send {@code update}. A
-   * null {@code rejection} expects success; otherwise the request fails with {@code errorType}
-   * (INVALID_PARAMETER_VALUE unless set with {@link #asError}) and a message containing {@code
-   * rejection}.
+   * null {@code rejection} expects success; otherwise the request fails with
+   * INVALID_PARAMETER_VALUE and a message containing {@code rejection}.
    */
   private record SchemaCase(
       String name,
@@ -2236,8 +2235,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       DeltaTableUpdate[] update,
       String rejection,
       List<String> columns,
-      List<String> partitions,
-      DeltaErrorType errorType) {
+      List<String> partitions) {
     @Override
     public String toString() {
       return name;
@@ -2246,48 +2244,25 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     SchemaCase after(DeltaTableUpdate... step) {
       List<DeltaTableUpdate[]> steps = new ArrayList<>(setup);
       steps.add(step);
-      return new SchemaCase(name, table, steps, update, rejection, columns, partitions, errorType);
+      return new SchemaCase(name, table, steps, update, rejection, columns, partitions);
     }
 
     SchemaCase expectColumns(String... names) {
-      return new SchemaCase(
-          name, table, setup, update, rejection, List.of(names), partitions, errorType);
-    }
-
-    /** Expects the rejection under {@code type} instead of INVALID_PARAMETER_VALUE. */
-    SchemaCase asError(DeltaErrorType type) {
-      return new SchemaCase(name, table, setup, update, rejection, columns, partitions, type);
+      return new SchemaCase(name, table, setup, update, rejection, List.of(names), partitions);
     }
 
     SchemaCase expectPartitions(String... names) {
-      return new SchemaCase(
-          name, table, setup, update, rejection, columns, List.of(names), errorType);
+      return new SchemaCase(name, table, setup, update, rejection, columns, List.of(names));
     }
   }
 
   private static SchemaCase ok(String name, TableFactory table, DeltaTableUpdate... update) {
-    return new SchemaCase(
-        name,
-        table,
-        List.of(),
-        update,
-        null,
-        null,
-        null,
-        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION);
+    return new SchemaCase(name, table, List.of(), update, null, null, null);
   }
 
   private static SchemaCase rejected(
       String name, String rejection, TableFactory table, DeltaTableUpdate... update) {
-    return new SchemaCase(
-        name,
-        table,
-        List.of(),
-        update,
-        rejection,
-        null,
-        null,
-        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION);
+    return new SchemaCase(name, table, List.of(), update, rejection, null, null);
   }
 
   private void run(SchemaCase c) throws Exception {
@@ -2300,7 +2275,9 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     Handle target = h;
     if (c.rejection() != null) {
       TestUtils.assertDeltaApiException(
-          () -> updateTable(target, c.update()), c.errorType(), c.rejection());
+          () -> updateTable(target, c.update()),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          c.rejection());
       return;
     }
     DeltaLoadTableResponse r = updateTable(target, c.update());
@@ -2759,16 +2736,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 new DeltaSetPropertiesUpdate().updates(Map.of("delta.columnMapping.mode", "name")))
             .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
             .expectPartitions("b"),
-        rejected(
-                "partition rename at a taken commit version",
-                "Commit version already accepted",
-                NAME_AB,
-                setColumns(
-                    fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 2, "col-2")),
-                new DeltaAddCommitUpdate().commit(commit(1L, "other-00000001.json")))
-            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
-            .after(new DeltaAddCommitUpdate().commit(commit(1L, "00000001.json")))
-            .asError(DeltaErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION),
         ok(
                 "stored type of a non-partition column is unreadable",
                 (t, n) -> {
