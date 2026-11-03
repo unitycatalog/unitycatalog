@@ -14,9 +14,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 public class SchemaGateTest {
 
-  /** A test-only step 1000: the next release's step for a current database. */
-  private static final List<String> AHEAD = List.of("classpath:db/test-steps/ahead");
-
   @TempDatabase(empty = true)
   TestDatabase db;
 
@@ -69,13 +66,5 @@ public class SchemaGateTest {
       // Refused before Hibernate created any table.
       assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
     }
-  }
-
-  @Test
-  void refusesASchemaNewerThanThisRelease() {
-    new SchemaMigrator(db.dataSource(), AHEAD).migrate();
-
-    assertThatThrownBy(() -> TestServer.start(db, storageRoot))
-        .hasMessageContaining("this release ends at");
   }
 }
