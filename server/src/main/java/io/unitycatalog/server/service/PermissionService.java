@@ -370,17 +370,40 @@ public class PermissionService implements UnityCatalogRestService {
       for (Privilege privilege : change.getAdd()) {
         Set<SecurableType> validTypes =
             switch (privilege) {
+              case BROWSE -> Set.of(CATALOG, EXTERNAL_LOCATION);
+              case MANAGE ->
+                  Set.of(
+                      CATALOG,
+                      SCHEMA,
+                      TABLE,
+                      VOLUME,
+                      FUNCTION,
+                      REGISTERED_MODEL,
+                      EXTERNAL_LOCATION,
+                      CREDENTIAL);
               case CREATE_CATALOG, CREATE_STORAGE_CREDENTIAL -> Set.of(METASTORE);
               case USE_CATALOG, CREATE_SCHEMA -> Set.of(CATALOG);
               case USE_SCHEMA, CREATE_TABLE, CREATE_FUNCTION, CREATE_VOLUME, CREATE_MODEL ->
                   Set.of(CATALOG, SCHEMA);
               case SELECT, MODIFY -> Set.of(CATALOG, SCHEMA, TABLE);
               case EXECUTE -> Set.of(CATALOG, SCHEMA, FUNCTION, REGISTERED_MODEL);
-              case READ_VOLUME -> Set.of(CATALOG, SCHEMA, VOLUME);
+              case CREATE_MODEL_VERSION -> Set.of(CATALOG, SCHEMA, REGISTERED_MODEL);
+              case READ_VOLUME, WRITE_VOLUME -> Set.of(CATALOG, SCHEMA, VOLUME);
               case CREATE_EXTERNAL_LOCATION -> Set.of(METASTORE, CREDENTIAL);
               case READ_FILES, WRITE_FILES, CREATE_EXTERNAL_TABLE ->
                   Set.of(EXTERNAL_LOCATION, CREDENTIAL);
               case CREATE_EXTERNAL_VOLUME, CREATE_MANAGED_STORAGE -> Set.of(EXTERNAL_LOCATION);
+              case READ_METADATA ->
+                  Set.of(
+                      METASTORE,
+                      CATALOG,
+                      SCHEMA,
+                      TABLE,
+                      FUNCTION,
+                      VOLUME,
+                      REGISTERED_MODEL,
+                      EXTERNAL_LOCATION,
+                      CREDENTIAL);
             };
         if (!validTypes.contains(securableType)) {
           throw new BaseException(
