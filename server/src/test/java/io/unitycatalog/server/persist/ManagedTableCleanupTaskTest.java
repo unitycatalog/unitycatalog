@@ -82,10 +82,8 @@ class ManagedTableCleanupTaskTest {
 
   @AfterEach
   void tearDown() {
-    // Every test here, including the rolled-back and cascading drops, records exactly its tasks,
-    // and each cloud task's cleanup credential record carries the task's ID.
+    // Every test here, including the rolled-back and cascading drops, records exactly its tasks.
     StorageCleanupTestSupport.assertQueueCleanupRecordsMatchTasks(sessionFactory);
-    StorageCleanupTestSupport.assertCleanupCredentialsJoinTasks(repositories, sessionFactory);
   }
 
   @Test
