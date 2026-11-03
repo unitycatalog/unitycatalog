@@ -115,6 +115,9 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
         assertThatThrownBy(() -> UnityCatalogCli.main(arguments.toArray(String[]::new)))
             .isInstanceOf(CliException.class)
             .hasMessageContaining("Path is outside the volume location");
+        // Rejected before credentials are configured and a FileSystem is opened.
+        ignored.verify(() -> DeltaKernelUtils.getHDFSConfiguration(any(), any()), never());
+        ignored.verify(() -> DeltaKernelUtils.getFileSystem(any(), any()), never());
         verify(fileSystem, never()).exists(any(Path.class));
         return;
       }
