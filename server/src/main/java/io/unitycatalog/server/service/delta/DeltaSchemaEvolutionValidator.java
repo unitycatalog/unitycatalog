@@ -63,8 +63,9 @@ final class DeltaSchemaEvolutionValidator {
    * COLUMN TYPE, while a rename commit carries the stored entries unchanged.
    *
    * @param currentProperties the table properties before this request is applied
-   * @throws BaseException {@link ErrorCode#INVALID_ARGUMENT} when Delta would reject the change, or
-   *     when Kernel cannot read a schema the check has to run on
+   * @throws BaseException {@link ErrorCode#INVALID_ARGUMENT} when Delta would reject the change,
+   *     when Kernel cannot read a schema the check has to run on, or when the stored {@code
+   *     maxColumnId} or {@code clusteringColumns} property cannot be read
    */
   static void validate(
       List<ColumnInfo> currentColumns,

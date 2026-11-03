@@ -2625,8 +2625,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 setColumns(
                     withTypeChange(fld("a", prim("long"), false, 1, "col-1"), "integer", "long")))
             .expectColumns("a"),
-        // An EXTERNAL table's Delta log is the source of truth, so a sync from a client is taken as
-        // is, even when the stored schema is behind it.
+        // An EXTERNAL table's Delta log is the source of truth, so its sync skips the Kernel check,
+        // even when the stored schema is behind it.
         ok(
                 "EXTERNAL sync of a rename after a widening the catalog missed",
                 (t, n) ->

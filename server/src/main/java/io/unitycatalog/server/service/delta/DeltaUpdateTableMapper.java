@@ -759,8 +759,8 @@ public final class DeltaUpdateTableMapper {
     // is checked against Delta's rules: Kernel checks identities, types and nullability, and the
     // validator checks clustering columns. The check reads the whole stored schema, so when it
     // runs, a stored column with an unreadable type fails it. An EXTERNAL table's Delta log is the
-    // source of truth and its sync can follow commits the stored schema missed, so it is not
-    // compared against the stored schema.
+    // source of truth and its sync can follow commits the stored schema missed, so the Kernel
+    // check does not run for it; the guards above still apply.
     if (TableType.MANAGED.toString().equals(dao.getType())) {
       DeltaSchemaEvolutionValidator.validate(
           ColumnInfoDAO.toList(dao.getColumns()),
