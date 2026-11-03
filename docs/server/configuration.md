@@ -169,10 +169,9 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 - `resource_id`: on a permission change, the object whose grants changed (absent for
   `CLEAR_PRINCIPAL_GRANTS`). On a `QUEUE_CLEANUP` record and on a `CLEANUP` credential, the ID of the
   dropped object, so match the two on `resource_id`; they can be written in either order. Other
-  credential records do not carry it. Records are best effort: a drop whose record fails to
-  write, whose commit reports an error after the database applied it, or that was queued before
-  audit records were turned on, has no `QUEUE_CLEANUP` record. Cleanup of local `file:` storage
-  vends no credential, so it has no `CLEANUP` record.
+  credential records do not carry it. A `CLEANUP` record can have no matching `QUEUE_CLEANUP`
+  record, for example when the drop was queued before audit records were turned on. Cleanup of
+  local `file:` storage vends no credential, so it has no `CLEANUP` record.
 - `principal_id`: on `GRANT`, `REVOKE` and `CLEAR_PRINCIPAL_GRANTS`, the ID of the user whose grants
   changed.
 - `privilege`: on `GRANT` and `REVOKE`, the privilege name, for example `USE CATALOG`, or `OWNER` for the
