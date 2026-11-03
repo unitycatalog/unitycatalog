@@ -91,6 +91,49 @@ The server config file is at the location `etc/conf/server.properties` (relative
     lowercase hex, raw non-ASCII) is rejected with `400`, and an external location whose URL has such an escape
     cannot hold one.
 
+### Secrets
+
+Any setting can also come from an environment variable named `UC_`, then the key in upper case, with `_` for each
+character that is not a letter or digit. For example, `s3.region.0` is `UC_S3_REGION_0`. Set secrets this way, not in
+`server.properties`:
+
+| Key in `server.properties` | Environment variable |
+| --- | --- |
+| `server.client-secret` | `UC_SERVER_CLIENT_SECRET` |
+| `aws.secretKey` | `UC_AWS_SECRETKEY` |
+| `s3.secretKey.<n>`, `s3.sessionToken.<n>` | `UC_S3_SECRETKEY_<n>`, `UC_S3_SESSIONTOKEN_<n>` |
+| `adls.clientSecret.<n>` | `UC_ADLS_CLIENTSECRET_<n>` |
+
+```sh
+export UC_S3_SECRETKEY_0='<secret key>'
+bin/start-uc-server
+```
+
+A variable takes precedence over the same key in `server.properties`, and a variable named exactly as the key comes
+before the `UC_` one. An empty `UC_` variable is ignored, and line breaks at the end of its value are dropped, as a
+Kubernetes Secret made from a file often ends with one. The prefix keeps variables that runtimes set for their own use,
+such as `AWS_REGION`, from changing settings. The server logs the name of each environment variable it uses for a
+setting, never its value. `server.client-secret` is read by `bin/uc auth login`, not by the server.
+The Helm chart passes `UC_S3_SECRETKEY_<n>` and `UC_ADLS_CLIENTSECRET_<n>` to the server container from Kubernetes
+Secrets.
+
+!!! warning "Deprecated: secrets in `server.properties`"
+    Secrets in `server.properties` still work, but this is deprecated. The server logs a warning at startup for each
+    secret it reads from the file. Move them to environment variables.
+
+#### Upgrading
+
+- A `UC_` variable that is already set in the server's environment now takes precedence over the same key in
+  `server.properties`.
+- `bin/uc auth login` reads `UC_SERVER_CLIENT_SECRET` before `server.client-secret` in `etc/conf/server.properties`.
+- Helm: use the server image from the chart's release, which is the default. An older server image doesn't read these
+  variables, so S3 and ADLS lose their secrets.
+- Helm: the rendered `server.properties` no longer holds `server.client-secret`, `s3.secretKey.<n>` or
+  `adls.clientSecret.<n>`, and the init container no longer has `OAUTH_CLIENT_SECRET`, `S3_SECRET_KEY_<n>` or
+  `ADLS_CLIENT_SECRET_<n>`. A container added through `extraInitContainers` or `extraContainers` that needs these
+  secrets must read them from the Kubernetes Secret itself. In a `server.config.override` template, remove the lines
+  that use the old variables: the server reads those secrets from its environment.
+
 ## Local file system storage
 
 Unity Catalog can store data on the server's local file system, which is convenient for development and single-machine

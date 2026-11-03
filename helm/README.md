@@ -342,6 +342,8 @@ extraProperties:
   my-config.property1: my-value1
   my-config.property2: my-value2
 ```
+
+Do not put secrets here: a secret in `server.properties` is deprecated.
 </td>
 		</tr>
 		<tr>
@@ -359,6 +361,11 @@ server.env=prod
 server.port=8080
 ...other config properties...
 ```
+
+Do not put secrets here: the chart passes them to the server as environment variables, and
+a secret in `server.properties` is deprecated. If the template uses `${OAUTH_CLIENT_SECRET}`,
+`${S3_SECRET_KEY_<n>}` or `${ADLS_CLIENT_SECRET_<n>}`, remove those lines: the server reads the
+secrets from environment variables.
 </td>
 		</tr>
 		<tr>
@@ -794,7 +801,11 @@ not set
 {{ .Chart.AppVersion }}
 </pre>
 </td>
-			<td>Tag for the server image</td>
+			<td>Tag for the server image
+
+Use the server image from the same release as the chart. The chart passes secrets to
+the server as environment variables that older server images don't read.
+</td>
 		</tr>
 		<tr>
 			<td>server.deployment.imagePullSecrets</td>
