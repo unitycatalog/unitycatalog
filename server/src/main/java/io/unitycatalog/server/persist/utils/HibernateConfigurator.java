@@ -101,9 +101,6 @@ public class HibernateConfigurator implements AutoCloseable {
    * Storage paths compare exactly, but MySQL's default collation ignores case. Warns when any text
    * column in the connected MySQL schema has a case-insensitive ({@code _ci}) collation. A failed
    * check never fails startup.
-   *
-   * <p>TODO: decide whether a schema step should convert such a database to a case-sensitive
-   * collation instead of only warning.
    */
   private void warnIfMySqlIsCaseInsensitive(Properties properties) {
     if (!properties.getProperty("hibernate.connection.url", "").startsWith("jdbc:mysql")) {

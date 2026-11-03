@@ -65,6 +65,10 @@ public final class SchemaMigrator implements AutoCloseable {
      * @throws IllegalArgumentException for a URL of any other database
      */
     static DatabaseKind fromJdbcUrl(String url) {
+      // MySQL Connector/J also finds its hosts through DNS SRV records.
+      if (url.startsWith("jdbc:mysql+srv:")) {
+        return MYSQL;
+      }
       for (DatabaseKind kind : values()) {
         if (url.startsWith("jdbc:" + kind.folder() + ":")) {
           return kind;
