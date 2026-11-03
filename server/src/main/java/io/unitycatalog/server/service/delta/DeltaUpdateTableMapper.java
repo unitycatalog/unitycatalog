@@ -845,13 +845,9 @@ public final class DeltaUpdateTableMapper {
   }
 
   /**
-   * Rejects a schema that a table in {@code mode} cannot store. Under column mapping, every column
-   * and nested field needs a well-formed physical name and column mapping id; no two fields share
-   * an id, and no two top-level columns share a physical name. Delta API table creation runs the
-   * same check.
-   *
-   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if an identity is missing,
-   *     malformed or shared
+   * Rejects ({@link ErrorCode#INVALID_ARGUMENT}) a schema a table in {@code mode} cannot store: a
+   * missing, malformed or shared physical name or column mapping id. Create and set-columns both
+   * run it.
    */
   static void validateColumnMappingIdentities(
       List<DeltaStructField> fields, ColumnMappingMode mode) {
