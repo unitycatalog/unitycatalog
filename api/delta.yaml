@@ -1028,8 +1028,7 @@ components:
         - $ref: '#/components/schemas/DeltaTableUpdate'
       description: |
         Set table columns. The metadata field on each field carries Spark/Delta field metadata
-        from metaData.schemaString in the Delta commit log. Without set-partition-columns, existing
-        partition columns follow a rename by their stored column-mapping identity.
+        from metaData.schemaString in the Delta commit log.
       properties:
         action:
           type: string
