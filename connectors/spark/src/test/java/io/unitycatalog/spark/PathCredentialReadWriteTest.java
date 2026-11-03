@@ -309,7 +309,6 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
             .parsePlan(
                 String.format(
                     "INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i", location));
-    assertThat(parsed).isInstanceOf(InsertIntoDir.class);
     String executionPath =
         new org.apache.hadoop.fs.Path(((InsertIntoDir) parsed).storage().locationUri().get())
             .toString();
