@@ -78,12 +78,20 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
     "file:///tmp/uc-cli-volume-test/my%20vol,, /tmp/uc-cli-volume-test/my vol",
     "file:///tmp/uc-cli-volume-test/my%20vol, Q3 report.pdf, /tmp/uc-cli-volume-test/my vol/Q3"
         + " report.pdf",
-    // On a local volume --path is a URI reference, as in earlier releases.
+    // On a local volume --path is a URI reference.
     "file:///tmp/uc-cli-volume-test/my%20vol, Q3%20report.pdf, /tmp/uc-cli-volume-test/my vol/Q3"
         + " report.pdf",
     "file:///tmp/uc-cli-volume-test/my%20vol, file:///tmp/uc-cli-volume-test/my%20vol/a.txt,"
         + " /tmp/uc-cli-volume-test/my vol/a.txt",
-    "file:///tmp/uc-cli-volume-test/my%20vol, ../my%20vol2/x,"
+    "file:///tmp/uc-cli-volume-test/my%20vol, ../my%20vol2/x,",
+    // Encoded dot segments can't leave the volume either.
+    "file:///tmp/uc-cli-volume-test/my%20vol, %2E%2E/my%20vol2/x,",
+    "file:///tmp/uc-cli-volume-test/my%20vol, a/..%2F..%2Fmy%20vol2/x,",
+    // A ':' is part of the name, and '#' or '?' are read literally, not as a URI fragment or query.
+    "file:///tmp/uc-cli-volume-test/my%20vol, Q3:report.pdf, /tmp/uc-cli-volume-test/my"
+        + " vol/Q3:report.pdf",
+    "file:///tmp/uc-cli-volume-test/my%20vol, report#1.txt, /tmp/uc-cli-volume-test/my"
+        + " vol/report#1.txt"
   })
   public void testReadVolumePathMatchesRegisteredLiteralLocation(
       String location, String relativePath, String expectedPath) throws Exception {
@@ -135,7 +143,7 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
     // Compare without a trailing slash: the cloud Path(String) drops it, the local Path(URI) keeps
     // it.
     assertThat(path.getValue().toUri().getPath().replaceAll("/$", ""))
-        .as("CLI read path must be the registered location joined with --path, both literal")
+        .as("CLI read path must be the registered location joined with --path")
         .isEqualTo(expectedPath);
   }
 

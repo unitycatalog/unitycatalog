@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.net.URI;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -231,8 +232,8 @@ public class VolumeCli {
 
   /**
    * Joins {@code --path} to the volume path. On a cloud volume {@code --path} names objects
-   * literally; on a local volume it is a URI reference, as in earlier releases. The result,
-   * including a full URI, must stay inside the volume.
+   * literally; on a local volume it is a URI reference. The result, including a full URI, must stay
+   * inside the volume.
    */
   private static org.apache.hadoop.fs.Path resolvePath(
       org.apache.hadoop.fs.Path basePath, String relativePath) {
@@ -240,7 +241,7 @@ public class VolumeCli {
       return basePath;
     }
     org.apache.hadoop.fs.Path resolvedPath =
-        "file".equals(basePath.toUri().getScheme())
+        Constants.URI_SCHEME_FILE.equals(basePath.toUri().getScheme())
             ? localPath(basePath, relativePath)
             : literalPath(basePath, relativePath);
     // Ensure the resolved path stays inside the volume.
@@ -255,9 +256,9 @@ public class VolumeCli {
   }
 
   /**
-   * A full URI names its own bucket, and a path starting with '/' starts at the bucket root. Any
-   * other path is a name under the volume, where "./" keeps a ':' in it from being read as a URI
-   * scheme.
+   * Reads {@code --path} literally. A full URI names its own bucket, and a path starting with '/'
+   * starts at the root. Any other path is a name under the volume, where "./" keeps a ':' in it
+   * from being read as a URI scheme.
    */
   private static org.apache.hadoop.fs.Path literalPath(
       org.apache.hadoop.fs.Path basePath, String relativePath) {
@@ -269,17 +270,29 @@ public class VolumeCli {
 
   /**
    * Resolves {@code --path} against a local volume as a URI reference, so {@code a%20b} names
-   * {@code a b}. A path that is not a valid URI reference, such as one with a space, is read
-   * literally.
+   * {@code a b}. A path that is not a valid URI reference, such as one with a space, or that would
+   * carry a URI query or fragment ('?', '#'), is read literally. Dot segments are removed after
+   * decoding, so an encoded {@code %2E%2E} can't leave the volume.
    */
   private static org.apache.hadoop.fs.Path localPath(
       org.apache.hadoop.fs.Path basePath, String relativePath) {
+    boolean isName =
+        !relativePath.matches("[a-zA-Z][a-zA-Z0-9+.-]*://.*") && !relativePath.startsWith("/");
+    URI resolved;
     try {
-      return new org.apache.hadoop.fs.Path(
-          URI.create(basePath.toUri() + "/").resolve(relativePath));
+      resolved =
+          URI.create(basePath.toUri() + "/").resolve(isName ? "./" + relativePath : relativePath);
     } catch (IllegalArgumentException e) {
       return literalPath(basePath, relativePath);
     }
+    if (resolved.getRawQuery() != null || resolved.getRawFragment() != null) {
+      return literalPath(basePath, relativePath);
+    }
+    URI decoded = new org.apache.hadoop.fs.Path(resolved).toUri();
+    return new org.apache.hadoop.fs.Path(
+        decoded.getScheme(),
+        decoded.getAuthority(),
+        Paths.get(decoded.getPath()).normalize().toString());
   }
 
   private static String updateVolume(VolumesApi apiClient, JSONObject json)
