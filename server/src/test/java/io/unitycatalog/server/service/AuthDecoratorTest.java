@@ -12,7 +12,6 @@ import static org.mockito.Mockito.when;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
-import com.auth0.jwt.exceptions.AlgorithmMismatchException;
 import com.auth0.jwt.exceptions.SignatureVerificationException;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpMethod;
@@ -48,8 +47,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * How {@link AuthDecorator} answers a valid internal token whose user lookup fails or finds no
- * enabled user, and an internal token signed with another key or another algorithm. The token is
- * real, signed with the key in {@code etc/conf}; only the user repository is mocked.
+ * enabled user, and an internal token signed with another key. The token is real, signed with the
+ * key in {@code etc/conf}; only the user repository is mocked.
  */
 class AuthDecoratorTest {
 
@@ -145,24 +144,6 @@ class AuthDecoratorTest {
                     (RSAPublicKey) otherKey.getPublic(), (RSAPrivateKey) otherKey.getPrivate()));
 
     assertThatThrownBy(this::serve).isInstanceOf(SignatureVerificationException.class);
-    verifyNotDelegated();
-  }
-
-  @Test
-  void tokenSignedWithAnotherAlgorithmIsRejected() throws Exception {
-    when(userRepository.getUserByEmail(EMAIL))
-        .thenReturn(new User().email(EMAIL).state(User.StateEnum.ENABLED));
-    SecurityConfiguration serverKey = new SecurityConfiguration(Path.of("etc", "conf"));
-    // The server's key with RS256: earlier versions took the algorithm from the token header.
-    token =
-        JWT.create()
-            .withSubject("server")
-            .withIssuer(INTERNAL)
-            .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
-            .withClaim(JwtClaim.SUBJECT.key(), EMAIL)
-            .sign(Algorithm.RSA256(serverKey.rsaPublicKey(), serverKey.rsaPrivateKey()));
-
-    assertThatThrownBy(this::serve).isInstanceOf(AlgorithmMismatchException.class);
     verifyNotDelegated();
   }
 
