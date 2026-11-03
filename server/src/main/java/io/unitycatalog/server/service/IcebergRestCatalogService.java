@@ -474,11 +474,19 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       // Check cached permissions directly to avoid UnityAccessEvaluator's policy refresh.
       boolean canRead =
           authorizer.authorizeAny(
-                  principalId, resourceIds.get(CATALOG), Privileges.OWNER, Privileges.USE_CATALOG)
+                  principalId,
+                  CATALOG,
+                  resourceIds.get(CATALOG),
+                  Privileges.OWNER,
+                  Privileges.USE_CATALOG)
               && authorizer.authorizeAny(
-                  principalId, resourceIds.get(SCHEMA), Privileges.OWNER, Privileges.USE_SCHEMA)
+                  principalId,
+                  SCHEMA,
+                  resourceIds.get(SCHEMA),
+                  Privileges.OWNER,
+                  Privileges.USE_SCHEMA)
               && authorizer.authorizeAny(
-                  principalId, state.tableId(), Privileges.OWNER, Privileges.SELECT);
+                  principalId, TABLE, state.tableId(), Privileges.OWNER, Privileges.SELECT);
       if (!canRead) {
         return Set.of();
       }
@@ -490,9 +498,9 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     // 1. with auth off: AllowingAuthorizer allows READ_WRITE anyway even if it's null
     // 2. with auth on and principalId==null: It should have failed earlier before hitting here.
     boolean canWrite =
-        authorizer.authorize(principalId, state.tableId(), Privileges.OWNER)
+        authorizer.authorize(principalId, TABLE, state.tableId(), Privileges.OWNER)
             || authorizer.authorizeAll(
-                principalId, state.tableId(), Privileges.SELECT, Privileges.MODIFY);
+                principalId, TABLE, state.tableId(), Privileges.SELECT, Privileges.MODIFY);
     return canWrite ? READ_WRITE : READ_ONLY;
   }
 

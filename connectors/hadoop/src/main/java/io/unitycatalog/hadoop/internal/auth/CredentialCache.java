@@ -1,7 +1,7 @@
 package io.unitycatalog.hadoop.internal.auth;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
+import io.unitycatalog.client.internal.BoundedKeyedCache;
 import java.util.List;
 import java.util.stream.Collectors;
 

@@ -1,5 +1,6 @@
 package io.unitycatalog.server.auth;
 
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
 import java.util.List;
 import java.util.Map;
@@ -32,11 +33,13 @@ public interface UnityCatalogAuthorizer {
 
   UUID getHierarchyParent(UUID resource);
 
-  boolean authorize(UUID principal, UUID resource, Privileges action);
+  boolean authorize(UUID principal, SecurableType resourceType, UUID resource, Privileges action);
 
-  boolean authorizeAny(UUID principal, UUID resource, Privileges... actions);
+  boolean authorizeAny(
+      UUID principal, SecurableType resourceType, UUID resource, Privileges... actions);
 
-  boolean authorizeAll(UUID principal, UUID resource, Privileges... actions);
+  boolean authorizeAll(
+      UUID principal, SecurableType resourceType, UUID resource, Privileges... actions);
 
   List<Privileges> listAuthorizations(UUID principal, UUID resource);
 

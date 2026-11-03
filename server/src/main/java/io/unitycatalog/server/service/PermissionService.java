@@ -1,5 +1,6 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.auth.decorator.UnityAccessUtil.getHierarchyParentType;
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.CREDENTIAL;
 import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
@@ -150,13 +151,20 @@ public class PermissionService implements UnityCatalogRestService {
     // For now this is sufficient in that it covers owner on resources parentage.
     UUID parentId = authorizer.getHierarchyParent(resourceId);
     UUID grandparentId = (parentId != null) ? authorizer.getHierarchyParent(parentId) : null;
+    SecurableType parentType = getHierarchyParentType(securableType);
+    SecurableType grandparentType = parentType != null ? getHierarchyParentType(parentType) : null;
 
     boolean isOwner =
-        authorizer.authorize(principalId, metastoreRepository.getMetastoreId(), Privileges.OWNER)
-            || authorizer.authorize(principalId, resourceId, Privileges.OWNER)
-            || (parentId != null && authorizer.authorize(principalId, parentId, Privileges.OWNER))
-            || (grandparentId != null
-                && authorizer.authorize(principalId, grandparentId, Privileges.OWNER));
+        authorizer.authorize(
+                principalId, METASTORE, metastoreRepository.getMetastoreId(), Privileges.OWNER)
+            || authorizer.authorize(principalId, securableType, resourceId, Privileges.OWNER)
+            || (parentType != null
+                && parentId != null
+                && authorizer.authorize(principalId, parentType, parentId, Privileges.OWNER))
+            || (grandparentType != null
+                && grandparentId != null
+                && authorizer.authorize(
+                    principalId, grandparentType, grandparentId, Privileges.OWNER));
 
     Map<UUID, List<Privileges>> authorizations =
         isOwner
