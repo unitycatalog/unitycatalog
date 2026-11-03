@@ -46,7 +46,7 @@ public final class DeltaLocations {
     @Override
     public Object extract(Object body) {
       String location = ((DeltaCreateTableRequest) body).getLocation();
-      // KeyMapper reads a value without '/' as an external location name; leave those as they are.
+      // A value without '/' is an external location name; leave it as it is.
       return location == null || !location.contains("/")
           ? location
           : fromDelta(location).toString();
