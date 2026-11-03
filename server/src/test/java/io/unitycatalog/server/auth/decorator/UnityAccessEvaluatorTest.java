@@ -194,6 +194,31 @@ class UnityAccessEvaluatorTest {
     verify(authorizer).authorize(principal, TABLE, deniedTable, Privileges.OWNER);
   }
 
+  @Test
+  void listFilteringPropagatesFailureAfterAnAllowedItem() {
+    UnityAccessEvaluator evaluator = mock(UnityAccessEvaluator.class);
+    BaseException failure =
+        new BaseException(ErrorCode.UNAVAILABLE, "Authorization service is unavailable");
+    when(evaluator.evaluate(any(), any(), any(), any(), anyLong()))
+        .thenReturn(true)
+        .thenThrow(failure);
+    List<TableInfo> items =
+        new ArrayList<>(
+            List.of(
+                new TableInfo().tableId(UUID.randomUUID().toString()),
+                new TableInfo().tableId(UUID.randomUUID().toString())));
+    ResultFilter filter =
+        new ResultFilter(
+            evaluator,
+            UUID.randomUUID(),
+            "#authorize(#principal, #table, OWNER)",
+            Map.of(),
+            Map.of(),
+            mock(KeyMapper.class));
+
+    assertThatThrownBy(() -> filter.filter(TABLE, items)).isSameAs(failure);
+  }
+
   @ParameterizedTest
   @MethodSource("unrelatedAuthorizationFailures")
   void listFilteringKeepsOtherFailuresAsDenials(RuntimeException failure) {
