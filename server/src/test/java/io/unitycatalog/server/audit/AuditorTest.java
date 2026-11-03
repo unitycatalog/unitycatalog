@@ -242,10 +242,6 @@ class AuditorTest {
     }
   }
 
-  /**
-   * A default method added to a wrapped interface is inherited silently, so it would bypass the
-   * decorator. Each decorator must declare every default method.
-   */
   @Test
   void permissionChangeThatThrowsIsNotRecorded() {
     UnityCatalogAuthorizer delegate = mock(UnityCatalogAuthorizer.class);
@@ -265,6 +261,10 @@ class AuditorTest {
     assertThat(CapturingAuditSink.RECORDS).isEmpty();
   }
 
+  /**
+   * A default method added to a wrapped interface is inherited silently, so it would bypass the
+   * decorator. Each decorator must declare every default method.
+   */
   @Test
   void decoratorsForwardEveryDefaultMethod() {
     assertDeclaresDefaults(UnityCatalogAuthorizer.class, AuditingAuthorizer.class);
