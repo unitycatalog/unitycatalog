@@ -71,6 +71,7 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
         + " /tmp/uc-cli-volume-test/my vol/a.txt",
     "file:///tmp/uc-cli-volume-test/my%20vol, file:/tmp/uc-cli-volume-test/my%20vol/a.txt,"
         + " /tmp/uc-cli-volume-test/my vol/a.txt",
+    "file:///tmp/uc-cli-volume-test/my%20vol, %2E%2E/my%20vol2/x,",
     "file:///tmp/uc-cli-volume-test/my%20vol, Q3:report.pdf, /tmp/uc-cli-volume-test/my"
         + " vol/Q3:report.pdf"
   })
