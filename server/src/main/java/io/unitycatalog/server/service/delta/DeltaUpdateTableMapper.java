@@ -387,27 +387,21 @@ public final class DeltaUpdateTableMapper {
     // request's property changes apply, and against the mode the request sets, which only enabling
     // reads. The modes are parsed only for set-columns, so an unknown mode value never blocks other
     // updates.
+    String storedModeValue = properties.get(TableProperties.COLUMN_MAPPING_MODE);
+    String requestedModeValue =
+        c.setProperties
+            .map(DeltaSetPropertiesUpdate::getUpdates)
+            .map(u -> u.get(TableProperties.COLUMN_MAPPING_MODE))
+            .orElse(null);
     ColumnMappingMode columnMappingMode =
-        c.setSchema.isPresent()
-            ? ColumnMappingMode.parse(properties.get(TableProperties.COLUMN_MAPPING_MODE))
-            : ColumnMappingMode.NONE;
+        c.setSchema.isPresent() ? ColumnMappingMode.parse(storedModeValue) : ColumnMappingMode.NONE;
     ColumnMappingMode requestedMode =
         c.setSchema.isPresent()
-            ? ColumnMappingMode.parse(
-                c.setProperties
-                    .map(DeltaSetPropertiesUpdate::getUpdates)
-                    .map(u -> u.get(TableProperties.COLUMN_MAPPING_MODE))
-                    .orElse(null))
+            ? ColumnMappingMode.parse(requestedModeValue)
             : ColumnMappingMode.NONE;
     // Delta sends set-columns with keys on every field when it turns the mode on; without it the
     // table would store mapped columns without keys.
-    if (c.setSchema.isEmpty()
-        && turnsOnColumnMapping(
-            properties.get(TableProperties.COLUMN_MAPPING_MODE),
-            c.setProperties
-                .map(DeltaSetPropertiesUpdate::getUpdates)
-                .map(u -> u.get(TableProperties.COLUMN_MAPPING_MODE))
-                .orElse(null))) {
+    if (c.setSchema.isEmpty() && turnsOnColumnMapping(storedModeValue, requestedModeValue)) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           "Turning on column mapping requires set-columns with a physical column name and a column"
