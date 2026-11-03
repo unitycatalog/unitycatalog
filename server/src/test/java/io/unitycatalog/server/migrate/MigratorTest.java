@@ -14,6 +14,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.DriverPropertyInfo;
@@ -145,6 +146,13 @@ public class MigratorTest {
     assertThat(migrator.state()).isEqualTo(SchemaState.AHEAD);
 
     assertThatThrownBy(migrator::migrate).hasMessageContaining("newer than this release");
+  }
+
+  @Test
+  void refusesADatabaseOfAnotherProduct() {
+    assertThatThrownBy(() -> new SchemaMigrator(withProductName("Oracle")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Unsupported database Oracle: use H2, PostgreSQL or MySQL");
   }
 
   @Test
@@ -327,6 +335,34 @@ public class MigratorTest {
                       }
                       return statementMethod.invoke(statement, statementArgs);
                     });
+              });
+        });
+  }
+
+  /** {@code db}'s data source, but its metadata names {@code productName} as the database. */
+  private DataSource withProductName(String productName) {
+    DataSource real = db.dataSource();
+    return proxy(
+        DataSource.class,
+        (method, args) -> {
+          Object result = method.invoke(real, args);
+          if (!method.getName().equals("getConnection")) {
+            return result;
+          }
+          Connection connection = (Connection) result;
+          return proxy(
+              Connection.class,
+              (connectionMethod, connectionArgs) -> {
+                Object metaData = connectionMethod.invoke(connection, connectionArgs);
+                if (!connectionMethod.getName().equals("getMetaData")) {
+                  return metaData;
+                }
+                return proxy(
+                    DatabaseMetaData.class,
+                    (metaMethod, metaArgs) ->
+                        metaMethod.getName().equals("getDatabaseProductName")
+                            ? productName
+                            : metaMethod.invoke(metaData, metaArgs));
               });
         });
   }
