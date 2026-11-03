@@ -2616,9 +2616,11 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
         // A stored column without keys has no identity to rename from, so it may gain them.
         ok(
                 "stored column without keys gains them",
-                (t, n) -> t.createManaged(n, "none", 0, fld("a", prim("long"), false, null, null)),
+                (t, n) ->
+                    t.storeColumnMappingMode(
+                        t.createManaged(n, "none", 0, fld("a", prim("long"), false, null, null)),
+                        "name"),
                 setColumns(fld("a", prim("long"), false, 1, "a")))
-            .after(cmMode("name"))
             .expectColumns("a"),
         // Replacing every column with new ids and physical names is a drop and an add of each.
         ok(
@@ -2788,16 +2790,17 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
         ok(
                 "name mode, stored columns without keys: the partition resolves by name",
                 (t, n) ->
-                    t.createManaged(
-                        n,
-                        "none",
-                        0,
-                        fld("a", prim("long"), false, null, null),
-                        fld("b", prim("long"), null, null)),
+                    t.storeColumnMappingMode(
+                        t.createManaged(
+                            n,
+                            "none",
+                            0,
+                            fld("a", prim("long"), false, null, null),
+                            fld("b", prim("long"), null, null)),
+                        "name"),
                 setColumns(
                     fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 2, "col-2")))
             .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
-            .after(cmMode("name"))
             .expectPartitions("b"));
   }
 
@@ -2807,6 +2810,27 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
   }
 
   /** Makes the stored type of one column unreadable. */
+  /**
+   * Stores {@code mode} as the table's column mapping mode, leaving its columns as they are: the
+   * state of a table stored in name mode without column mapping keys, which the Delta API no longer
+   * creates.
+   */
+  private Handle storeColumnMappingMode(Handle h, String mode) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction tx = session.beginTransaction();
+      session
+          .createMutationQuery(
+              "update PropertyDAO p set p.value = :mode"
+                  + " where p.entityId = :id and p.key = :key")
+          .setParameter("mode", mode)
+          .setParameter("id", h.tableId())
+          .setParameter("key", "delta.columnMapping.mode")
+          .executeUpdate();
+      tx.commit();
+    }
+    return h;
+  }
+
   private void corruptStoredType(Handle h, String columnName) {
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
       Transaction tx = session.beginTransaction();

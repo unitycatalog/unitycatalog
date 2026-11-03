@@ -445,6 +445,13 @@ public class DeltaUpdateTableMapperTest {
 
   static Stream<GuardCase> guardRejections() {
     return Stream.of(
+        // Delta sends the keys with the mode, so a mode change alone is rejected.
+        rejected(
+            "turn on column mapping without set-columns",
+            "Turning on column mapping requires set-columns",
+            external(fld("a", prim("long"), false, null, null)),
+            new DeltaSetPropertiesUpdate()
+                .updates(Map.of(TableProperties.COLUMN_MAPPING_MODE, "name"))),
         // Enabling needs a physical name on every column and nested field.
         rejected(
             "enable without a physical name on one column",

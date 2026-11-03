@@ -398,6 +398,21 @@ public final class DeltaUpdateTableMapper {
                     .map(u -> u.get(TableProperties.COLUMN_MAPPING_MODE))
                     .orElse(null))
             : ColumnMappingMode.NONE;
+    // Delta writes column mapping keys into every field in the commit that turns the mode on, so
+    // the request carries set-columns; without it the table would store mapped columns without
+    // keys.
+    if (c.setSchema.isEmpty()
+        && turnsOnColumnMapping(
+            properties.get(TableProperties.COLUMN_MAPPING_MODE),
+            c.setProperties
+                .map(DeltaSetPropertiesUpdate::getUpdates)
+                .map(u -> u.get(TableProperties.COLUMN_MAPPING_MODE))
+                .orElse(null))) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Turning on column mapping requires set-columns with a physical column name and a column"
+              + " mapping id for every column and nested field.");
+    }
     applySchemaAndPartitionColumns(
         session,
         dao,
@@ -822,6 +837,18 @@ public final class DeltaUpdateTableMapper {
               + malformed
               + " with malformed column mapping identity metadata.");
     }
+  }
+
+  /**
+   * True when a request sets the column mapping mode to name or id on a table stored without column
+   * mapping. Neither value is parsed, so an unknown stored mode does not block the request.
+   */
+  private static boolean turnsOnColumnMapping(String storedMode, String requestedMode) {
+    boolean storedNone = storedMode == null || storedMode.trim().equalsIgnoreCase("none");
+    return storedNone
+        && requestedMode != null
+        && (requestedMode.trim().equalsIgnoreCase("name")
+            || requestedMode.trim().equalsIgnoreCase("id"));
   }
 
   /**
