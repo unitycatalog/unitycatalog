@@ -9,9 +9,8 @@ import java.util.UUID;
 
 /**
  * Records each permission change. A grant is recorded when it added a grant. A revoke or a clear is
- * recorded whenever the call returns, so the record means it was attempted: also when there was
- * nothing to remove, and when the database delete failed, which jCasbin logs and does not report. A
- * call that throws is not recorded.
+ * recorded whenever the call returns, also when there was nothing to remove. A call that throws,
+ * for example because the database delete failed, is not recorded.
  */
 final class AuditingAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
   private final UnityCatalogAuthorizer delegate;
@@ -36,8 +35,7 @@ final class AuditingAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
     boolean changed = delegate.revokeAuthorization(principal, resource, action);
     // Recorded whatever the flag says. In jCasbin, removePolicy and removeFilteredPolicy
     // delete the rows through the adapter before they check the in-memory model, so a server that
-    // has not reloaded the policy deletes the rows and still returns false. A failed delete also
-    // returns false, because jCasbin catches the adapter's exception.
+    // has not reloaded the policy deletes the rows and still returns false. A failed delete throws.
     auditor.recordPermission(AuditRecord.Action.REVOKE, principal, resource, action);
     return changed;
   }
