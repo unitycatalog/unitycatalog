@@ -150,8 +150,9 @@ either, so `s3://bucket/%2F` is not a bucket root: it can be used as an external
 location, and credentials for it are scoped to the prefix `%2F`.
 
 A cloud location cannot contain `?` or `#`. A stored table, volume, external location or UniForm
-metadata location that contains one returns an error when it is used, and needs to be registered
-again at a location without it.
+metadata location that contains one returns an error when it is used, and most of these can no
+longer be dropped (only a forced delete of an external location still works). Before upgrading,
+drop or move any such object to a location without `?` or `#`.
 
 The UC REST API accepts and returns the literal stored location. The Delta REST API exchanges
 locations as URIs, as Delta clients do: the server decodes a
