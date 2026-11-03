@@ -399,9 +399,8 @@ public final class DeltaUpdateTableMapper {
                     .map(u -> u.get(TableProperties.COLUMN_MAPPING_MODE))
                     .orElse(null))
             : ColumnMappingMode.NONE;
-    // Delta writes column mapping keys into every field in the commit that turns the mode on, so
-    // the request carries set-columns; without it the table would store mapped columns without
-    // keys.
+    // Delta sends set-columns with keys on every field when it turns the mode on; without it the
+    // table would store mapped columns without keys.
     if (c.setSchema.isEmpty()
         && turnsOnColumnMapping(
             properties.get(TableProperties.COLUMN_MAPPING_MODE),
@@ -831,9 +830,8 @@ public final class DeltaUpdateTableMapper {
   }
 
   /**
-   * True when a request sets the column mapping mode to name or id on a table whose stored mode is
-   * neither, including an unknown stored value. Neither value is parsed, so an unknown mode does
-   * not block other updates.
+   * True when the request sets the mode to name or id and the stored mode is neither. Neither value
+   * is parsed, so an unknown mode does not block other updates.
    */
   private static boolean turnsOnColumnMapping(String storedMode, String requestedMode) {
     return !isNameOrIdMode(storedMode) && isNameOrIdMode(requestedMode);
