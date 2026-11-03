@@ -486,6 +486,13 @@ public class DeltaSchemaEvolutionValidatorTest {
             true,
             cols(fld("a", "long", 1, "col-1"), fld("v", "void", 2, "col-v")),
             cols(fld("b", "long", 1, "col-1"), fld("v", "void", 2, "col-v"))),
+        rejected(
+            "unreadable requested schema with a rename",
+            "the requested schema cannot be read",
+            NAME,
+            true,
+            cols(fld("a", "long", 1, "col-1")),
+            cols(fld("b", "long", 1, "col-1"), fld("v", "void", 2, "col-v"))),
         ok(
             "unreadable stored schema without a rename",
             NAME,

@@ -72,17 +72,8 @@ final class DeltaSchemaEvolutionValidator {
     if (!renamesTopLevelColumn && !keepsAnIdUnderANewIdentity(currentColumns, incomingColumns)) {
       return;
     }
-    StructType currentSchema;
-    StructType incomingSchema;
-    try {
-      currentSchema = toKernelSchema(currentColumns);
-      incomingSchema = toKernelSchema(incomingColumns);
-    } catch (RuntimeException e) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "set-columns: the table schema cannot be read: " + e.getMessage(),
-          e);
-    }
+    StructType currentSchema = toKernelSchema(currentColumns, "the table schema");
+    StructType incomingSchema = toKernelSchema(incomingColumns, "the requested schema");
     // Clustering columns are checked below by full path. Kernel compares only the last physical
     // name of a path, so it takes an unclustered field for a clustered one when both end in the
     // same physical name.
@@ -129,11 +120,22 @@ final class DeltaSchemaEvolutionValidator {
     return (int) max;
   }
 
-  /** Each column's {@code type_json} is a full Delta struct field, so the list is a struct. */
-  private static StructType toKernelSchema(List<ColumnInfo> columns) {
+  /**
+   * Each column's {@code type_json} is a full Delta struct field, so the list is a struct.
+   *
+   * @param schemaName names the schema in the error when Kernel cannot read it
+   */
+  private static StructType toKernelSchema(List<ColumnInfo> columns, String schemaName) {
     String fields = columns.stream().map(ColumnInfo::getTypeJson).collect(Collectors.joining(","));
-    return DataTypeJsonSerDe.deserializeStructType(
-        "{\"type\":\"struct\",\"fields\":[" + fields + "]}");
+    try {
+      return DataTypeJsonSerDe.deserializeStructType(
+          "{\"type\":\"struct\",\"fields\":[" + fields + "]}");
+    } catch (RuntimeException e) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "set-columns: " + schemaName + " cannot be read: " + e.getMessage(),
+          e);
+    }
   }
 
   /**
@@ -226,15 +228,15 @@ final class DeltaSchemaEvolutionValidator {
 
   private static boolean keepsAnIdUnderANewIdentity(
       List<ColumnInfo> currentColumns, List<ColumnInfo> incomingColumns) {
-    Map<Long, Identity> current = identitiesById(currentColumns);
+    Map<Integer, Identity> current = identitiesById(currentColumns);
     return identitiesById(incomingColumns).entrySet().stream()
         .anyMatch(
             e -> current.containsKey(e.getKey()) && !current.get(e.getKey()).equals(e.getValue()));
   }
 
   /** The identity of every field with an integer column-mapping id, at any depth. */
-  private static Map<Long, Identity> identitiesById(List<ColumnInfo> columns) {
-    Map<Long, Identity> byId = new HashMap<>();
+  private static Map<Integer, Identity> identitiesById(List<ColumnInfo> columns) {
+    Map<Integer, Identity> byId = new HashMap<>();
     for (ColumnInfo column : columns) {
       try {
         collect(ColumnUtils.toStructField(column), byId);
@@ -246,19 +248,19 @@ final class DeltaSchemaEvolutionValidator {
     return byId;
   }
 
-  private static void collect(DeltaStructField field, Map<Long, Identity> byId) {
+  private static void collect(DeltaStructField field, Map<Integer, Identity> byId) {
     DeltaStructFieldMetadata meta = field.getMetadata();
     if (meta != null
-        && meta.get(DeltaConsts.TableProperties.COLUMN_MAPPING_ID) instanceof Number id) {
+        && meta.get(DeltaConsts.TableProperties.COLUMN_MAPPING_ID) instanceof Integer id) {
       byId.put(
-          id.longValue(),
+          id,
           new Identity(
               field.getName(), meta.get(DeltaConsts.TableProperties.COLUMN_MAPPING_PHYSICAL_NAME)));
     }
     collectIn(field.getType(), byId);
   }
 
-  private static void collectIn(DeltaDataType type, Map<Long, Identity> byId) {
+  private static void collectIn(DeltaDataType type, Map<Integer, Identity> byId) {
     if (type instanceof DeltaStructType struct && struct.getFields() != null) {
       struct.getFields().forEach(f -> collect(f, byId));
     } else if (type instanceof DeltaArrayType array) {

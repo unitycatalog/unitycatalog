@@ -678,7 +678,7 @@ public final class DeltaUpdateTableMapper {
    *       them.
    *   <li>An identity value that is present must be usable: the mode's key on a top-level column,
    *       and a column mapping id on any field. In name mode, top-level physical names are unique
-   *       ignoring case. In id mode, ids are unique across the schema.
+   *       ignoring case. In both modes, ids are unique across the schema.
    *   <li>With column mapping, stored or being enabled, every field at any depth has a physical
    *       name and a column mapping id, as the Delta protocol requires in both modes.
    *   <li>Without column mapping there is no rename to find: a missing name is a drop and an add,
@@ -720,8 +720,6 @@ public final class DeltaUpdateTableMapper {
         rejectMalformedIdentities(incoming, TableProperties.COLUMN_MAPPING_PHYSICAL_NAME);
         rejectDuplicateTopLevelPhysicalNames(incoming);
       }
-    }
-    if (mode == ColumnMappingMode.ID) {
       rejectDuplicateIds(incoming);
     }
     boolean enabling =
@@ -789,11 +787,14 @@ public final class DeltaUpdateTableMapper {
   }
 
   /**
-   * A usable identity value is a non-empty string; a column mapping id may also be a JSON number.
+   * A usable physical name is a non-empty string. A usable column mapping id is a 32-bit integer,
+   * as the Delta protocol defines it; Jackson reads a JSON integer in that range as an {@link
+   * Integer}.
    */
   private static boolean isUsableIdentity(Object value, String key) {
-    return (key.equals(TableProperties.COLUMN_MAPPING_ID) && value instanceof Number)
-        || (value instanceof String s && !s.isEmpty());
+    return key.equals(TableProperties.COLUMN_MAPPING_ID)
+        ? value instanceof Integer
+        : value instanceof String s && !s.isEmpty();
   }
 
   /** Rejects fields that carry {@code key} with an unusable value. */

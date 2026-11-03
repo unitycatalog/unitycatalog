@@ -2545,20 +2545,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 cmMode("name"),
                 setColumns(fld("s", struct(fld("x", prim("long"), 2, "x")), false, 1, "s")))
             .expectColumns("s"),
-        // An integer id sent as a string is usable.
-        ok(
-                "integer id sent as a string",
-                NAME_A,
-                setColumns(fld("a", prim("long"), false, "1", "col-1")))
-            .expectColumns("a"),
-        ok(
-                "ids 01 and 2147483648 as strings",
-                ID_A,
-                setColumns(
-                    fld("a", prim("long"), false, 1, "col-1"),
-                    fld("b", prim("long"), "01", "col-b"),
-                    fld("c", prim("long"), "2147483648", "col-c")))
-            .expectColumns("a", "b", "c"),
         // A table whose stored schema has no physical names is being enabled when the request
         // carries them. A rename is found only by a physical name that names a stored column, so
         // a new physical name is a drop and an add.
