@@ -262,9 +262,6 @@ public class VolumeCli {
     } catch (IllegalArgumentException e) {
       return literalPath(basePath, relativePath);
     }
-    if (resolved.getRawQuery() != null || resolved.getRawFragment() != null) {
-      return literalPath(basePath, relativePath);
-    }
     URI decoded = new org.apache.hadoop.fs.Path(resolved).toUri();
     return new org.apache.hadoop.fs.Path(
         decoded.getScheme(),

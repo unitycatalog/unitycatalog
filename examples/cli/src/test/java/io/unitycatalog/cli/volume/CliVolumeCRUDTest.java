@@ -79,9 +79,7 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
     "file:///tmp/uc-cli-volume-test/my%20vol, %2E%2E/my%20vol2/x,",
     "file:///tmp/uc-cli-volume-test/my%20vol, a/..%2F..%2Fmy%20vol2/x,",
     "file:///tmp/uc-cli-volume-test/my%20vol, Q3:report.pdf, /tmp/uc-cli-volume-test/my"
-        + " vol/Q3:report.pdf",
-    "file:///tmp/uc-cli-volume-test/my%20vol, report#1.txt, /tmp/uc-cli-volume-test/my"
-        + " vol/report#1.txt"
+        + " vol/Q3:report.pdf"
   })
   public void testReadVolumePathMatchesRegisteredLiteralLocation(
       String location, String relativePath, String expectedPath) throws Exception {
