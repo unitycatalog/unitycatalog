@@ -27,7 +27,6 @@ import java.net.URI;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import org.apache.commons.cli.CommandLine;
 import org.apache.hadoop.conf.Configuration;
@@ -238,9 +237,7 @@ public class VolumeCli {
     // Ensure the resolved path stays inside the volume.
     String base = basePath.toUri().getPath().replaceAll("/$", "") + "/";
     String resolved = resolvedPath.toUri().getPath();
-    if (!Objects.equals(resolvedPath.toUri().getScheme(), basePath.toUri().getScheme())
-        || !Objects.equals(resolvedPath.toUri().getAuthority(), basePath.toUri().getAuthority())
-        || !(resolved + "/").startsWith(base)) {
+    if (!(resolved + "/").startsWith(base)) {
       throw new CliException("Path is outside the volume location. Read failed: " + resolvedPath);
     }
     return resolvedPath;
