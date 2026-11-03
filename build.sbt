@@ -32,6 +32,8 @@ lazy val sparkVersion = CrossSparkVersions.getSparkArtifactVersion()
 lazy val hadoopVersion = sys.props.getOrElse("hadoopVersion", "3.4.2")
 
 // Library versions
+// When bumping Iceberg, re-check the Failsafe pin in the server dependencyOverrides: iceberg-aws
+// must not need a Failsafe API that the pinned version lacks.
 lazy val icebergVersion = "1.11.0"
 lazy val jacksonVersion = "2.18.10"
 lazy val openApiToolsJacksonBindNullableVersion = "0.2.11"
