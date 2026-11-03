@@ -34,59 +34,94 @@ record SchemaSnapshot(List<String> entries) {
     String schema = connection.getSchema();
     List<String> entries = new ArrayList<>();
     for (String tableName : tables(metaData, catalog, schema)) {
-      String table = lower(tableName);
-      entries.add("table " + table);
-      try (ResultSet rs = metaData.getColumns(catalog, schema, tableName, null)) {
-        while (rs.next()) {
-          entries.add(
-              "column %s.%s type=%s size=%d nullable=%s default=%s"
-                  .formatted(
-                      table,
-                      lower(rs.getString("COLUMN_NAME")),
-                      rs.getString("TYPE_NAME").toLowerCase(Locale.ROOT),
-                      rs.getInt("COLUMN_SIZE"),
-                      rs.getString("IS_NULLABLE"),
-                      rs.getString("COLUMN_DEF")));
-        }
-      }
-      try (ResultSet rs = metaData.getPrimaryKeys(catalog, schema, tableName)) {
-        while (rs.next()) {
-          entries.add(
-              "pk %s.%s#%d"
-                  .formatted(table, lower(rs.getString("COLUMN_NAME")), rs.getInt("KEY_SEQ")));
-        }
-      }
-      try (ResultSet rs = metaData.getIndexInfo(catalog, schema, tableName, false, false)) {
-        while (rs.next()) {
-          if (rs.getString("INDEX_NAME") == null) {
-            continue;
-          }
-          entries.add(
-              "index %s.%s unique=%s column=%s#%d"
-                  .formatted(
-                      table,
-                      indexName(rs.getString("INDEX_NAME")),
-                      !rs.getBoolean("NON_UNIQUE"),
-                      lower(rs.getString("COLUMN_NAME")),
-                      rs.getInt("ORDINAL_POSITION")));
-        }
-      }
-      try (ResultSet rs = metaData.getImportedKeys(catalog, schema, tableName)) {
-        while (rs.next()) {
-          entries.add(
-              "fk %s.%s %s.%s -> %s.%s#%d"
-                  .formatted(
-                      table,
-                      lower(rs.getString("FK_NAME")),
-                      table,
-                      lower(rs.getString("FKCOLUMN_NAME")),
-                      lower(rs.getString("PKTABLE_NAME")),
-                      lower(rs.getString("PKCOLUMN_NAME")),
-                      rs.getInt("KEY_SEQ")));
-        }
-      }
+      entries.add("table " + lower(tableName));
+      entries.addAll(columns(metaData, catalog, schema, tableName));
+      entries.addAll(primaryKeys(metaData, catalog, schema, tableName));
+      entries.addAll(indexes(metaData, catalog, schema, tableName));
+      entries.addAll(foreignKeys(metaData, catalog, schema, tableName));
     }
     return new SchemaSnapshot(entries.stream().sorted().toList());
+  }
+
+  private static List<String> columns(
+      DatabaseMetaData metaData, String catalog, String schema, String tableName)
+      throws SQLException {
+    String table = lower(tableName);
+    List<String> entries = new ArrayList<>();
+    try (ResultSet rs = metaData.getColumns(catalog, schema, tableName, null)) {
+      while (rs.next()) {
+        entries.add(
+            "column %s.%s type=%s size=%d nullable=%s default=%s"
+                .formatted(
+                    table,
+                    lower(rs.getString("COLUMN_NAME")),
+                    rs.getString("TYPE_NAME").toLowerCase(Locale.ROOT),
+                    rs.getInt("COLUMN_SIZE"),
+                    rs.getString("IS_NULLABLE"),
+                    rs.getString("COLUMN_DEF")));
+      }
+    }
+    return entries;
+  }
+
+  private static List<String> primaryKeys(
+      DatabaseMetaData metaData, String catalog, String schema, String tableName)
+      throws SQLException {
+    String table = lower(tableName);
+    List<String> entries = new ArrayList<>();
+    try (ResultSet rs = metaData.getPrimaryKeys(catalog, schema, tableName)) {
+      while (rs.next()) {
+        entries.add(
+            "pk %s.%s#%d"
+                .formatted(table, lower(rs.getString("COLUMN_NAME")), rs.getInt("KEY_SEQ")));
+      }
+    }
+    return entries;
+  }
+
+  private static List<String> indexes(
+      DatabaseMetaData metaData, String catalog, String schema, String tableName)
+      throws SQLException {
+    String table = lower(tableName);
+    List<String> entries = new ArrayList<>();
+    try (ResultSet rs = metaData.getIndexInfo(catalog, schema, tableName, false, false)) {
+      while (rs.next()) {
+        if (rs.getString("INDEX_NAME") == null) {
+          continue;
+        }
+        entries.add(
+            "index %s.%s unique=%s column=%s#%d"
+                .formatted(
+                    table,
+                    indexName(rs.getString("INDEX_NAME")),
+                    !rs.getBoolean("NON_UNIQUE"),
+                    lower(rs.getString("COLUMN_NAME")),
+                    rs.getInt("ORDINAL_POSITION")));
+      }
+    }
+    return entries;
+  }
+
+  private static List<String> foreignKeys(
+      DatabaseMetaData metaData, String catalog, String schema, String tableName)
+      throws SQLException {
+    String table = lower(tableName);
+    List<String> entries = new ArrayList<>();
+    try (ResultSet rs = metaData.getImportedKeys(catalog, schema, tableName)) {
+      while (rs.next()) {
+        entries.add(
+            "fk %s.%s %s.%s -> %s.%s#%d"
+                .formatted(
+                    table,
+                    lower(rs.getString("FK_NAME")),
+                    table,
+                    lower(rs.getString("FKCOLUMN_NAME")),
+                    lower(rs.getString("PKTABLE_NAME")),
+                    lower(rs.getString("PKCOLUMN_NAME")),
+                    rs.getInt("KEY_SEQ")));
+      }
+    }
+    return entries;
   }
 
   private static List<String> tables(DatabaseMetaData metaData, String catalog, String schema)

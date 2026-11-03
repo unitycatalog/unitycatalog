@@ -122,39 +122,15 @@ final class OldServer {
       Path conf = Files.createDirectories(home.resolve("etc/conf"));
       Files.writeString(conf.resolve("server.properties"), serverProperties());
       Files.writeString(conf.resolve("hibernate.properties"), hibernateProperties(db));
-      // The shaded jar leaves out Vert.x's version file, which releases that still use Vert.x read
-      // at start; the test's own Vert.x jar, after it, supplies the file.
-      String classpath =
-          jar(tag, workDir)
-              + File.pathSeparator
-              + jarOf(io.vertx.core.Vertx.class)
-              + (db.jdbcUrl().startsWith("jdbc:mysql:")
-                  ? File.pathSeparator + jarOf(com.mysql.cj.jdbc.Driver.class)
-                  : "");
       int port = freePortPair();
-      Process process =
-          new ProcessBuilder(
-                  Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-                  "-cp",
-                  classpath,
-                  "io.unitycatalog.server.UnityCatalogServer",
-                  "-p",
-                  String.valueOf(port))
-              .directory(home.toFile())
-              .inheritIO()
-              .start();
+      Process process = start(tag, db, workDir, home, port);
       try {
         URI uri = URI.create("http://localhost:" + port);
         awaitServing(process, uri);
         String token = Files.readString(conf.resolve("token.txt")).trim();
         callback.accept(createApiClient(new ServerConfig(uri.toString(), token)));
       } finally {
-        // SIGTERM, so the server closes the database cleanly.
-        process.destroy();
-        if (!process.waitFor(2, TimeUnit.MINUTES)) {
-          process.destroyForcibly().waitFor();
-        }
-        LOGGER.info("{} stopped with exit code {}", tag, process.exitValue());
+        stop(tag, process);
       }
     } catch (IOException e) {
       throw new UncheckedIOException(e);
@@ -162,6 +138,39 @@ final class OldServer {
       Thread.currentThread().interrupt();
       throw new IllegalStateException(e);
     }
+  }
+
+  /** Starts {@code tag}'s server on {@code port} in {@code home}, as a child process. */
+  private static Process start(String tag, TestDatabase db, Path workDir, Path home, int port)
+      throws IOException {
+    // The shaded jar leaves out Vert.x's version file, which releases that still use Vert.x read
+    // at start; the test's own Vert.x jar, after it, supplies the file.
+    String classpath =
+        jar(tag, workDir)
+            + File.pathSeparator
+            + jarOf(io.vertx.core.Vertx.class)
+            + (db.jdbcUrl().startsWith("jdbc:mysql:")
+                ? File.pathSeparator + jarOf(com.mysql.cj.jdbc.Driver.class)
+                : "");
+    return new ProcessBuilder(
+            Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+            "-cp",
+            classpath,
+            "io.unitycatalog.server.UnityCatalogServer",
+            "-p",
+            String.valueOf(port))
+        .directory(home.toFile())
+        .inheritIO()
+        .start();
+  }
+
+  /** SIGTERM, so the server closes the database cleanly; SIGKILL after two minutes. */
+  private static void stop(String tag, Process process) throws InterruptedException {
+    process.destroy();
+    if (!process.waitFor(2, TimeUnit.MINUTES)) {
+      process.destroyForcibly().waitFor();
+    }
+    LOGGER.info("{} stopped with exit code {}", tag, process.exitValue());
   }
 
   /** Waits until the server answers below 500. */
