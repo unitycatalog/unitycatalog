@@ -87,6 +87,28 @@ helm upgrade --install unitycatalog oci://registry-1.docker.io/unitycatalog/unit
   --version X.Y.Z --namespace unitycatalog --values values.yaml
 ```
 
+## Token signing key
+
+The server signs its tokens with the RSA private key in the Secret named by `server.jwtKeypairSecret.name` (by
+default, the server's full name plus `-jwt-key`, for example `unitycatalog-server-jwt-key`). By default
+(`server.jwtKeypairSecret.create: true`), the chart generates that Secret on install and keeps it on upgrade. This is
+deprecated, and a later release will stop generating the key.
+
+For an existing release, keep its key: set `create: false` and `name` to the Secret the chart generated. A new key makes
+every token issued so far fail with 401. For a new install, create the Secret yourself:
+
+```sh
+openssl genrsa -out private_key.pem 2048
+kubectl create secret generic uc-token-signing-key --namespace unitycatalog --from-file=private_key.pem
+```
+
+```yaml
+server:
+  jwtKeypairSecret:
+    create: false
+    name: uc-token-signing-key
+```
+
 ## Upgrade and uninstall
 
 To upgrade, read the release notes, then run `helm upgrade` with the new `--version` and the same `--values` file.

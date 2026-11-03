@@ -175,7 +175,6 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
         .withIssuer(INTERNAL)
         .withIssuedAt(issuedAt)
         .withExpiresAt(expiresAt)
-        .withKeyId(securityContext.getKeyId())
         .withJWTId(UUID.randomUUID().toString())
         .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
         .withClaim(JwtClaim.SUBJECT.key(), "admin")

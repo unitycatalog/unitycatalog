@@ -45,43 +45,26 @@ spec:
             - /bin/sh
             - -c
             - |-
-              apk add --no-cache envsubst openssl curl
+              apk add --no-cache envsubst curl
               envsubst < /home/unitycatalog/etc/confTemplates/server.properties.template > /home/unitycatalog/etc/conf/server.properties
               # Copied, not envsubst-ed: envsubst would blank the Log4j ${hostName} lookup.
               cp /home/unitycatalog/etc/confTemplates/server.log4j2.properties.template /home/unitycatalog/etc/conf/server.log4j2.properties
               envsubst < /home/unitycatalog/etc/confTemplates/hibernate.properties.template > /home/unitycatalog/etc/conf/hibernate.properties
 
-              echo "Generating DER format keys (private_key.der and public_key.der) if they do not exist..."
-              if [ -f /home/unitycatalog/etc/conf/private_key.der ] && [ -f /home/unitycatalog/etc/conf/public_key.der ]; then
-                echo "DER format keys already exist, skipping generation."
-              elif [ -f /home/unitycatalog/etc/confJwtKey/private_key.der ]; then
-                echo "Using /home/unitycatalog/etc/confJwtKey/private_key.der..."
-                cp /home/unitycatalog/etc/confJwtKey/private_key.der /home/unitycatalog/etc/conf/private_key.der
-                openssl rsa -pubout -inform DER -outform DER \
-                    -in /home/unitycatalog/etc/confJwtKey/private_key.der \
-                    -out /home/unitycatalog/etc/conf/public_key.der
-              elif [ -f /home/unitycatalog/etc/confJwtKey/private_key.pem ]; then
-                echo "Using /home/unitycatalog/etc/confJwtKey/private_key.pem..."
-                openssl pkcs8 -topk8 -inform PEM -outform DER -nocrypt \
-                    -in /home/unitycatalog/etc/confJwtKey/private_key.pem \
-                    -out /home/unitycatalog/etc/conf/private_key.der
-                openssl rsa -pubout -inform PEM -outform DER \
-                    -in /home/unitycatalog/etc/confJwtKey/private_key.pem \
-                    -out /home/unitycatalog/etc/conf/public_key.der
+              # The server reads the private key from the Secret mount and derives the public key.
+              KEY_DIR=/home/unitycatalog/etc/confJwtKey
+              if [ -f "$KEY_DIR/private_key.pem" ]; then
+                PRIVATE_KEY="$KEY_DIR/private_key.pem"
+              elif [ -f "$KEY_DIR/private_key.der" ]; then
+                PRIVATE_KEY="$KEY_DIR/private_key.der"
               else
-                echo "ERROR: No private_key.der or private_key.pem found in /home/unitycatalog/etc/conf or /home/unitycatalog/etc/confJwtKey"
+                echo "ERROR: No private_key.pem or private_key.der in the token signing key Secret"
                 exit 1
               fi
-
-              echo "Looking up key_id.txt..."
-              if [ -f /home/unitycatalog/etc/conf/key_id.txt ]; then
-                echo "Key ID file already exists, skipping..."
-              elif [ -f /home/unitycatalog/etc/confJwtKey/key_id.txt ]; then
-                echo "Using /home/unitycatalog/etc/confJwtKey/key_id.txt..."
-                cp /home/unitycatalog/etc/confJwtKey/key_id.txt /home/unitycatalog/etc/conf/key_id.txt
-              else
-                echo "ERROR: No key_id.txt found in /home/unitycatalog/etc/confJwtKey"
-                exit 1
+              # A key file set to a non-empty value through server.config.override or extraProperties is kept.
+              if ! grep -q -E '^[[:space:]]*server\.token-signing-private-key-file(([[:space:]]*[=:][[:space:]]*[^[:space:]])|([[:space:]]+[^[:space:]=:]))' \
+                  /home/unitycatalog/etc/conf/server.properties; then
+                printf '\nserver.token-signing-private-key-file=%s\n' "$PRIVATE_KEY" >> /home/unitycatalog/etc/conf/server.properties
               fi
 
               {{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.ssl.enabled }}
@@ -98,6 +81,7 @@ spec:
               mountPath: /home/unitycatalog/etc/conf
             - name: jwt-key-volume
               mountPath: /home/unitycatalog/etc/confJwtKey
+              readOnly: true
           env:
           {{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.ssl.enabled }}
           {{- if .Values.server.db.postgresqlConfig.ssl.rootCert }}
@@ -205,6 +189,9 @@ spec:
           volumeMounts:
             - name: config-volume
               mountPath: /home/unitycatalog/etc/conf
+            - name: jwt-key-volume
+              mountPath: /home/unitycatalog/etc/confJwtKey
+              readOnly: true
           {{- if eq .Values.server.db.type "file" }}
             - name: db-volume
               mountPath: /home/unitycatalog/etc/db

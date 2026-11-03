@@ -31,6 +31,7 @@ import java.net.ServerSocket;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.ServiceLoader;
 import java.util.concurrent.CompletionException;
 import org.apache.logging.log4j.core.util.ContextDataProvider;
@@ -54,6 +55,21 @@ public class UnityCatalogServerTest extends BaseServerTest {
           .hasCauseInstanceOf(ServerPortBindException.class);
       assertThatCode(server::close).doesNotThrowAnyException();
     }
+  }
+
+  @Test
+  public void startupUsesTheTokenSigningKeyFileSettings() {
+    Properties properties = new Properties();
+    properties.putAll(serverProperties);
+    properties.setProperty("server.token-signing-private-key-file", "/no/such/private_key.pem");
+    assertThatThrownBy(
+            () ->
+                UnityCatalogServer.builder()
+                    .port(0)
+                    .serverProperties(new ServerProperties(properties))
+                    .hibernateConfigurator(hibernateConfigurator)
+                    .build())
+        .hasMessageContaining("No token signing key file");
   }
 
   @Test
