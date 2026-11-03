@@ -142,66 +142,11 @@ Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is f
 
 ## Cloud storage locations
 
-Temporary credentials for S3, GCS, and Azure are scoped to the location's path as stored, the way
-Hadoop and Spark read it. A space or a percent sequence in a cloud location is part of the object
-name: for example, `s3://bucket/team reports` names the prefix `team reports`, and
-`s3://bucket/team%20reports` names the prefix `team%20reports`. `%2F` is not a directory separator
-either, so `s3://bucket/%2F` is not a bucket root: it can be used as an external table or volume
-location, and credentials for it are scoped to the prefix `%2F`.
-
-A cloud location cannot contain `?` or `#`. A stored table, volume, registered model, model version,
-external location or UniForm or Iceberg metadata location that contains one returns an error when it
-is used. A table, volume or registered model at such a location also blocks deleting its schema and
-catalog, even with `force`, and a table or volume there makes listing its schema's tables or volumes
-fail. Volumes, managed tables, registered models, model versions and, with authorization enabled,
-external tables at such a location cannot be dropped, and an external location can be deleted only
-with `force`. A `storage-root.tables` or `storage-root.models` setting with `?` or `#` stops the
-server from starting, and managed objects cannot be created where the schema's storage location has
-one (or the catalog's, for a schema without its own). Before upgrading, drop or move any such object
-to a location without `?` or `#`, change those settings, and update those catalog and schema storage
-roots and storage locations in the database.
-
-Earlier releases scoped credentials to the decoded folder of a cloud location: for
-`s3://bucket/team%20reports`, UC vended credentials for `team reports`, and Delta REST API clients
-used that folder too, while Spark and other Hadoop clients that read the location through the UC
-REST API used the literal folder `team%20reports`. Credentials are now scoped to the literal folder.
-To name a folder with a space, write the space, for example
-`storage-root.tables=s3://bucket/team reports`. Earlier releases reject a raw space, so the values
-are rewritten after the new release is installed and before any server starts:
-
-1. Before upgrading, commit pending Delta REST API table creates: a create started before the
-   upgrade whose staging location contains `%` cannot be committed after it.
-2. Stop every server that shares the database, then back up the database and the server settings.
-   Downgrading after step 3 means restoring both, which loses changes made after the backup. Install
-   the new release. Find the values that contain `%` and whose data is in the decoded folder (for a
-   setting or storage root, the data of the objects under it). A value whose data is in the literal
-   folder stays as it is. Check:
-    - the `storage-root.tables` and `storage-root.models` settings;
-    - the storage root and storage location of each catalog and schema;
-    - the stored locations of tables, UniForm and Iceberg metadata, volumes, registered models,
-      model versions, external locations and pending storage cleanup tasks. External tables and
-      UniForm metadata locations created through the Delta REST API were stored with the client's
-      URI text, which escapes a space and characters such as `{`, `|` and `[`.
-3. Before starting any server, rewrite those values with the decoded characters: change the settings
-   on every server, and update the stored locations in the database. A catalog or schema's storage
-   location is not recomputed from its storage root, and a model version's location is not
-   recomputed from its model, so update each of them. Rewrite an external location or storage root
-   together with the objects under it, so each object stays under its parent, and check that no
-   rewritten location now overlaps another table, volume, external location or managed storage
-   location: a direct database update skips the overlap checks the API runs. Pending cleanup tasks
-   can run soon after a server starts, so rewrite them in this step too.
-
-If decoding gives `?` or `#` (from `%3F` or `%23`), or an empty, `.` or `..` path segment (from
-`%2F%2F` or `%2E`), move the data to a name without them instead: such a value is rejected or
-resolves to a different folder.
-Apart from `?` and `#`, locations without `%` are unaffected.
-
-The UC REST API accepts and returns the literal stored location, except the Delta commits endpoint,
-whose `table_uri` and UniForm `metadata_location` are URIs. The Delta REST API exchanges locations
-as URIs, as Delta clients do: the server decodes a location it receives once, and returns staging,
-table and UniForm metadata locations and credential prefixes URI-encoded. For example, Delta sends
-`s3://bucket/team%20reports/t` for the folder `team reports`, and `s3://bucket/team%2520reports/t`
-for a folder named `team%20reports`.
+A cloud location (`s3`, `gs`, `abfs`, `abfss`) is stored and used as its literal path, the way Hadoop
+and Spark read it: a space or `%` is part of the name. `s3://bucket/team reports` names the folder
+`team reports`, and `s3://bucket/team%20reports` names the folder `team%20reports`. A cloud location
+cannot contain `?` or `#`. The Delta REST API exchanges locations as URIs, as Delta clients do, so
+there the folder `team reports` is sent as `team%20reports`.
 
 ## Logging
 
