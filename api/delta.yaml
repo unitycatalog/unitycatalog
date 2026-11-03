@@ -734,8 +734,10 @@ components:
           $ref: '#/components/schemas/DeltaStructType'
           description: |
             Table columns. When delta.columnMapping.mode is name or id, every column and nested
-            field must carry a physical name and a column mapping id, and no two may share one;
-            otherwise the request is rejected with InvalidParameterValueException (400).
+            field must carry a physical name and a column mapping id, no two fields may share an id,
+            and no two top-level columns may share a physical name. The request is rejected with
+            InvalidParameterValueException (400) when they do not, or when
+            delta.columnMapping.mode is not none, name or id.
         partition-columns:
           type: array
           description: Partition column names
@@ -1006,7 +1008,11 @@ components:
           const: "set-properties"
         updates:
           type: object
-          description: Properties to set
+          description: |
+            Properties to set. Setting delta.columnMapping.mode to name or id on a table whose
+            stored mode is neither requires set-columns in the same request, with a physical name
+            and a column mapping id on every column and nested field; otherwise the request is
+            rejected with InvalidParameterValueException (400).
           additionalProperties:
             type: string
 

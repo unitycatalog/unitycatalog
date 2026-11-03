@@ -80,11 +80,11 @@ public class DeltaCreateTableMapperTest {
   @ParameterizedTest(name = "{0}")
   @MethodSource("columnMappingIdentityRejections")
   public void columnMappedTableRequiresUniqueIdentities(
-      String name, List<DeltaStructField> fields, String rejection) {
+      String name, String mode, List<DeltaStructField> fields, String rejection) {
     DeltaCreateTableRequest req =
         baseExternalRequest()
             .columns(new DeltaStructType().type("struct").fields(fields))
-            .properties(Map.of(TableProperties.COLUMN_MAPPING_MODE, "name"));
+            .properties(Map.of(TableProperties.COLUMN_MAPPING_MODE, mode));
     assertThatThrownBy(
             () -> DeltaCreateTableMapper.toCreateTable("cat", "sch", req, new ServerProperties()))
         .isInstanceOf(BaseException.class)
@@ -95,12 +95,24 @@ public class DeltaCreateTableMapperTest {
     return Stream.of(
         Arguments.of(
             "a column without a physical name",
+            "name",
             List.of(cmField("a", 1, "col-1"), cmField("b", 2, null)),
             "requires a physical column name"),
         Arguments.of(
             "two columns share a physical name",
+            "name",
             List.of(cmField("a", 1, "col-1"), cmField("b", 2, "col-1")),
-            "Duplicate column mapping physicalName 'col-1'"));
+            "Duplicate column mapping physicalName 'col-1'"),
+        Arguments.of(
+            "id mode: two columns share a physical name",
+            "id",
+            List.of(cmField("a", 1, "col-1"), cmField("b", 2, "col-1")),
+            "Duplicate column mapping physicalName 'col-1'"),
+        Arguments.of(
+            "an unknown column mapping mode",
+            "foo",
+            List.of(cmField("a", 1, "col-1")),
+            "Invalid column mapping mode: foo"));
   }
 
   // ---------- allowMissingDvForUniformV2 flag ----------

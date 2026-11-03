@@ -385,7 +385,8 @@ public final class DeltaUpdateTableMapper {
     CollectedUpdates c = collected.updates();
     // set-columns is validated against the table's stored mode and properties, before this
     // request's property changes apply, and against the mode the request sets, which only enabling
-    // reads. The modes are read only for set-columns, so a mode value never blocks other updates.
+    // reads. The modes are parsed only for set-columns, so an unknown mode value never blocks other
+    // updates.
     ColumnMappingMode columnMappingMode =
         c.setSchema.isPresent()
             ? ColumnMappingMode.parse(properties.get(TableProperties.COLUMN_MAPPING_MODE))
@@ -486,9 +487,9 @@ public final class DeltaUpdateTableMapper {
    * <ul>
    *   <li>a partition column named by set-partition-columns is missing from the resulting schema
    *       ({@code partition-columns references unknown column: ...});
-   *   <li>set-columns without set-partition-columns drops an existing partition column, or a stored
-   *       partition column has no identity while other stored columns have one (see {@link
-   *       #resolvePartitionColumns}).
+   *   <li>set-columns without set-partition-columns drops an existing partition column, a stored
+   *       partition column has no identity while other stored columns have one, or two stored
+   *       columns share an identity (see {@link #resolvePartitionColumns}).
    * </ul>
    *
    * <p>Swap semantics rely on the orphanRemoval mapping on {@link TableInfoDAO#getColumns()} to
@@ -833,28 +834,29 @@ public final class DeltaUpdateTableMapper {
     if (!malformed.isEmpty()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
-          "set-columns has column(s) "
-              + malformed
-              + " with malformed column mapping identity metadata.");
+          "column(s) " + malformed + " have malformed column mapping identity metadata.");
     }
   }
 
   /**
-   * True when a request sets the column mapping mode to name or id on a table stored without column
-   * mapping. Neither value is parsed, so an unknown stored mode does not block the request.
+   * True when a request sets the column mapping mode to name or id on a table whose stored mode is
+   * neither, including an unknown stored value. Neither value is parsed, so an unknown mode does
+   * not block other updates.
    */
   private static boolean turnsOnColumnMapping(String storedMode, String requestedMode) {
-    boolean storedNone = storedMode == null || storedMode.trim().equalsIgnoreCase("none");
-    return storedNone
-        && requestedMode != null
-        && (requestedMode.trim().equalsIgnoreCase("name")
-            || requestedMode.trim().equalsIgnoreCase("id"));
+    return !isNameOrIdMode(storedMode) && isNameOrIdMode(requestedMode);
+  }
+
+  private static boolean isNameOrIdMode(String mode) {
+    return mode != null
+        && (mode.trim().equalsIgnoreCase("name") || mode.trim().equalsIgnoreCase("id"));
   }
 
   /**
    * Rejects a schema that a table in {@code mode} cannot store. Under column mapping, every column
-   * and nested field needs a well-formed physical name and column mapping id, and no two may share
-   * one. Table creation runs the same check, so a stored column-mapped table always has them.
+   * and nested field needs a well-formed physical name and column mapping id; no two fields share
+   * an id, and no two top-level columns share a physical name. Delta API table creation runs the
+   * same check.
    *
    * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if an identity is missing,
    *     malformed or shared
@@ -867,8 +869,9 @@ public final class DeltaUpdateTableMapper {
     rejectMalformedIdentities(allFields(fields), TableProperties.COLUMN_MAPPING_ID);
     if (mode == ColumnMappingMode.NAME) {
       rejectMalformedIdentities(fields, TableProperties.COLUMN_MAPPING_PHYSICAL_NAME);
-      rejectDuplicateTopLevelPhysicalNames(fields);
     }
+    // Delta reads partition values and statistics by physical name in both modes.
+    rejectDuplicateTopLevelPhysicalNames(fields);
     rejectDuplicateIds(fields);
     rejectFieldsWithoutIdentity(fields);
   }
@@ -910,7 +913,7 @@ public final class DeltaUpdateTableMapper {
             ErrorCode.INVALID_ARGUMENT,
             "Duplicate column mapping physicalName '"
                 + phys
-                + "' on top-level columns in incoming schema; each top-level column must"
+                + "' on top-level columns; each top-level column must"
                 + " have a unique physical name.");
       }
     }
@@ -925,7 +928,7 @@ public final class DeltaUpdateTableMapper {
         if (!seen.add(id)) {
           throw new BaseException(
               ErrorCode.INVALID_ARGUMENT,
-              "Duplicate column mapping id '" + id + "' in incoming schema.");
+              "Duplicate column mapping id '" + id + "' in the schema.");
         }
       }
     }
@@ -1109,7 +1112,7 @@ public final class DeltaUpdateTableMapper {
    * <ul>
    *   <li>the table has no column mapping: matched by logical name;
    *   <li>two stored columns share an identity: rejected, because the identity cannot tell them
-   *       apart (table creation rejects such a schema, so only an older table can have one);
+   *       apart (Delta API table creation rejects such a schema);
    *   <li>the column has a stored identity: matched to the incoming column with the same identity.
    *       If no incoming column carries it, an incoming column with the same name and an identity
    *       no stored column has keeps the partition: that is the column replaced in place, as a

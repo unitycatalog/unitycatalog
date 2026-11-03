@@ -452,6 +452,16 @@ public class DeltaUpdateTableMapperTest {
             external(fld("a", prim("long"), false, null, null)),
             new DeltaSetPropertiesUpdate()
                 .updates(Map.of(TableProperties.COLUMN_MAPPING_MODE, "name"))),
+        rejected(
+            "turn on column mapping without set-columns over an unknown stored mode",
+            "Turning on column mapping requires set-columns",
+            new StoredTable(
+                "EXTERNAL",
+                Map.of(TableProperties.COLUMN_MAPPING_MODE, "foo"),
+                List.of(),
+                fld("a", prim("long"), false, null, null)),
+            new DeltaSetPropertiesUpdate()
+                .updates(Map.of(TableProperties.COLUMN_MAPPING_MODE, "name"))),
         // Enabling needs a physical name on every column and nested field.
         rejected(
             "enable without a physical name on one column",

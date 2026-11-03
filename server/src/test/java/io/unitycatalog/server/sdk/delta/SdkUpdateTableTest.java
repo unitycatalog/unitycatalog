@@ -2809,11 +2809,9 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     return field;
   }
 
-  /** Makes the stored type of one column unreadable. */
   /**
-   * Stores {@code mode} as the table's column mapping mode, leaving its columns as they are: the
-   * state of a table stored in name mode without column mapping keys, which the Delta API no longer
-   * creates.
+   * Stores {@code mode} as the table's column mapping mode, leaving its columns as they are: a
+   * table stored in name mode without column mapping keys, which the Delta API rejects.
    */
   private Handle storeColumnMappingMode(Handle h, String mode) {
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
@@ -2831,6 +2829,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     return h;
   }
 
+  /** Makes the stored type of one column unreadable. */
   private void corruptStoredType(Handle h, String columnName) {
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
       Transaction tx = session.beginTransaction();
