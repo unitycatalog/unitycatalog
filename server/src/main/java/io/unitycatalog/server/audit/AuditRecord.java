@@ -39,8 +39,8 @@ public class AuditRecord {
   @NonNull Action action;
 
   /**
-   * The caller's token subject (an email, {@code admin} or a service name), {@code
-   * system:storage-cleanup}, or null.
+   * The caller's token subject (an email or {@code admin}), {@code system:storage-cleanup}, or
+   * null.
    */
   String user;
 

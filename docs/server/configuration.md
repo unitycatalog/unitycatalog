@@ -157,8 +157,8 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 - `time`: when the record was made, in ISO 8601 UTC.
 - `action`: `ISSUE_CREDENTIAL`.
 - `user`: `system:storage-cleanup` on `CLEANUP` records, whether or not authorization is on. On other
-  records, the caller's identity from the token (`sub`): the user's email, `admin` for the bootstrap
-  admin token, or a service name. It is absent when authorization is off.
+  records, the caller's identity from the token (`sub`): the user's email, or `admin` for the
+  bootstrap admin token. It is absent when authorization is off.
 - `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
   itself while handling the request, and `CLEANUP` for the background storage cleanup.
 - `resource_id`: on a `CLEANUP` credential, the ID of the dropped object.
