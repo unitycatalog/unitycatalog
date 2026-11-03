@@ -602,7 +602,6 @@ public class ServerProperties {
     return properties.getProperty(key);
   }
 
-  // A value set for the key in a system property or an environment variable, or null.
   private String getOverride(String key) {
     String value = System.getProperty(key);
     return value != null ? value : getEnv(key);
