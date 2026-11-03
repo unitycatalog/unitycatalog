@@ -132,7 +132,7 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
       @Param("page_token") Optional<String> pageToken,
       @Param("include_browse") Optional<Boolean> includeBrowse) {
     ListVolumesResponseContent listVolumesResponse =
-        volumeRepository.listVolumes(catalogName, schemaName, maxResults, pageToken, includeBrowse);
+        volumeRepository.listVolumes(catalogName, schemaName, maxResults, pageToken);
     applyResponseFilter(
         SecurableType.VOLUME, listVolumesResponse.getVolumes(), BrowseOnlyConverter::toBrowseOnly);
     return HttpResponse.ofJson(listVolumesResponse);

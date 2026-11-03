@@ -72,7 +72,7 @@ No authorization required
 
 Get an external location
 
-    Gets an external location from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location. 
+    Gets an external location from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location. A BROWSE grant alone requires include_browse&#x3D;true and returns discovery metadata with browse_only&#x3D;true. 
 
 ### Parameters
 
@@ -100,7 +100,7 @@ No authorization required
 
 List external locations
 
-    Gets an array of external locations (ExternalLocationInfo objects) from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location. 
+    Gets an array of external locations (ExternalLocationInfo objects) from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location. Locations visible only through BROWSE are included only with include_browse&#x3D;true and return discovery metadata with browse_only&#x3D;true. 
 
 ### Parameters
 

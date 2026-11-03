@@ -1352,6 +1352,8 @@ paths:
       summary: List external locations
       description: |
         Gets an array of external locations (ExternalLocationInfo objects) from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location.
+        Locations visible only through BROWSE are included only with include_browse=true
+        and return discovery metadata with browse_only=true.
       operationId: listExternalLocations
       parameters:
         - name: max_results
@@ -1391,6 +1393,8 @@ paths:
       summary: Get an external location
       description: |
         Gets an external location from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location.
+        A BROWSE grant alone requires include_browse=true and returns discovery metadata
+        with browse_only=true.
       operationId: getExternalLocation
       parameters:
         - $ref: '#/components/parameters/IncludeBrowse'

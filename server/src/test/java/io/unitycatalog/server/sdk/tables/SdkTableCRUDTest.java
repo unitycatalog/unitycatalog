@@ -121,6 +121,26 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
         .usingRecursiveComparison()
         .ignoringFields("columns", "storageLocation")
         .isEqualTo(testingTable);
+
+    // With authorization disabled, include_browse must keep full metadata.
+    TableInfo fullTable = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
+    assertThat(fullTable).isEqualTo(testingTable);
+    assertThat(fullTable.getBrowseOnly()).isNull();
+    assertThat(
+            localTablesApi.getTable(
+                TestUtils.TABLE_FULL_NAME,
+                /* readStreamingTableAsManaged= */ true,
+                /* readMaterializedViewAsManaged= */ true,
+                /* includeBrowse= */ true))
+        .isEqualTo(fullTable);
+    assertThat(
+            localTablesApi.listTables(
+                testingTable.getCatalogName(),
+                testingTable.getSchemaName(),
+                100,
+                null,
+                /* includeBrowse= */ true))
+        .isEqualTo(resp);
   }
 
   @Test
