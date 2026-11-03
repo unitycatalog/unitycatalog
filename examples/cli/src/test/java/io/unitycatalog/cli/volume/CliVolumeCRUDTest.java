@@ -168,7 +168,7 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
     when(fileSystem.exists(any(Path.class))).thenReturn(true);
     when(fileSystem.getFileStatus(any(Path.class)))
         .thenAnswer(invocation -> new FileStatus(0, true, 1, 0, 0, invocation.getArgument(0)));
-    // S3A builds child paths from the object names, as new Path(parent, name).
+    // S3A and the local file system build child paths from the names, as new Path(parent, name).
     when(fileSystem.listStatus(any(Path.class)))
         .thenAnswer(
             invocation ->
@@ -202,7 +202,7 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
       System.setOut(stdout);
     }
 
-    assertThat(output.toString())
+    assertThat(output.toString().lines())
         .contains(listedSpaceName + " [file]", listedPercentName + " [file]");
   }
 
