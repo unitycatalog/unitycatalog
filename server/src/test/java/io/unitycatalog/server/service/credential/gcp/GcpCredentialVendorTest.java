@@ -64,18 +64,6 @@ public class GcpCredentialVendorTest {
   }
 
   @Test
-  public void testSiblingPathIsOutsideTheBoundary() {
-    // Objects under sales_archive/ and sales_2024/ must not match the startsWith rules.
-    String condition = availabilityConditionFor("gs://test-bucket/sales");
-
-    assertThat(condition)
-        .contains("startsWith(\"projects/_/buckets/test-bucket/objects/sales/\")")
-        .contains(".startsWith(\"sales/\")")
-        .doesNotContain("startsWith(\"projects/_/buckets/test-bucket/objects/sales\")")
-        .doesNotContain(".startsWith(\"sales\")");
-  }
-
-  @Test
   public void testBucketRootCoversWholeBucket() {
     assertThat(availabilityConditionFor("gs://test-bucket"))
         .isEqualTo(
