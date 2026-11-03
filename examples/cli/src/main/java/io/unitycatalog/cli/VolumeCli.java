@@ -28,6 +28,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.apache.commons.cli.CommandLine;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -217,6 +218,9 @@ public class VolumeCli {
     }
   }
 
+  private static final Pattern CLOUD_FULL_URI = Pattern.compile("[a-zA-Z][a-zA-Z0-9+.-]*://.*");
+  private static final Pattern LOCAL_FULL_URI = Pattern.compile("[a-zA-Z][a-zA-Z0-9+.-]*:/.*");
+
   private static org.apache.hadoop.fs.Path volumePath(String volumeLocation) {
     String location = DeltaKernelUtils.substituteSchemeForS3(volumeLocation);
     return Constants.SUPPORTED_CLOUD_SCHEMES.contains(
@@ -245,7 +249,7 @@ public class VolumeCli {
 
   private static org.apache.hadoop.fs.Path literalPath(
       org.apache.hadoop.fs.Path basePath, String relativePath) {
-    return relativePath.matches("[a-zA-Z][a-zA-Z0-9+.-]*://.*")
+    return CLOUD_FULL_URI.matcher(relativePath).matches()
         ? new org.apache.hadoop.fs.Path(DeltaKernelUtils.substituteSchemeForS3(relativePath))
         : new org.apache.hadoop.fs.Path(
             basePath, relativePath.startsWith("/") ? relativePath : "./" + relativePath);
@@ -254,7 +258,7 @@ public class VolumeCli {
   private static org.apache.hadoop.fs.Path localPath(
       org.apache.hadoop.fs.Path basePath, String relativePath) {
     boolean isName =
-        !relativePath.matches("[a-zA-Z][a-zA-Z0-9+.-]*:/.*") && !relativePath.startsWith("/");
+        !LOCAL_FULL_URI.matcher(relativePath).matches() && !relativePath.startsWith("/");
     URI resolved;
     try {
       resolved =
