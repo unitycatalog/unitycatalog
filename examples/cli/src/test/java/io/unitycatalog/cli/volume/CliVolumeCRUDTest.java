@@ -147,8 +147,15 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
         .isEqualTo(expectedPath);
   }
 
-  @Test
-  public void testReadVolumeListsLiteralNames() throws Exception {
+  // A cloud listing prints literal names; a local listing prints the URI form, which local --path
+  // reads.
+  @ParameterizedTest
+  @CsvSource({
+    "s3://test-bucket0/team_reports, Q3 report.pdf, Q3%20report.pdf",
+    "file:///tmp/uc-cli-volume-test/listing, Q3%20report.pdf, Q3%2520report.pdf"
+  })
+  public void testReadVolumeListsNamesThatPathReads(
+      String location, String listedSpaceName, String listedPercentName) throws Exception {
     VolumeInfo volume =
         volumeOperations.createVolume(
             new CreateVolumeRequestContent()
@@ -156,7 +163,7 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
                 .catalogName(CATALOG_NAME)
                 .schemaName(SCHEMA_NAME)
                 .volumeType(VolumeType.EXTERNAL)
-                .storageLocation("s3://test-bucket0/team_reports"));
+                .storageLocation(location));
     FileSystem fileSystem = mock(FileSystem.class);
     when(fileSystem.exists(any(Path.class))).thenReturn(true);
     when(fileSystem.getFileStatus(any(Path.class)))
@@ -195,8 +202,8 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
       System.setOut(stdout);
     }
 
-    // The listed names are the ones --path reads.
-    assertThat(output.toString()).contains("Q3 report.pdf [file]", "Q3%20report.pdf [file]");
+    assertThat(output.toString())
+        .contains(listedSpaceName + " [file]", listedPercentName + " [file]");
   }
 
   @Test

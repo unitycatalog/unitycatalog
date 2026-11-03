@@ -187,10 +187,13 @@ public class VolumeCli {
       if (fileStatus.isDirectory()) {
         List<String> fileList = new ArrayList<>();
         FileStatus[] fileStatuses = fs.listStatus(path);
+        // Print each name the way --path reads it: literal on a cloud volume, a URI reference on
+        // a local one.
+        boolean isLocal = Constants.URI_SCHEME_FILE.equals(basePath.toUri().getScheme());
         for (FileStatus status : fileStatuses) {
-          URI entityPath = status.getPath().toUri();
+          URI name = path.toUri().relativize(status.getPath().toUri());
           fileList.add(
-              path.toUri().relativize(entityPath).getPath()
+              (isLocal ? name.getRawPath() : name.getPath())
                   + " "
                   + (status.isDirectory() ? "[directory]" : "[file]"));
         }
