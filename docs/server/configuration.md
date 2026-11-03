@@ -181,10 +181,9 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
   that request. It is absent on records not made while serving a request: `CLEANUP` records and
   `system:server` records.
 - `location`: the storage location (on `QUEUE_CLEANUP`, the location queued for deletion), with
-  scheme, authority and path only. The query string and
-  fragment are removed. User info is removed too, except that for ABFS the part before the `@` is
-  kept when it looks like a container name (3 to 63 lowercase letters, digits and hyphens) and is
-  replaced by `[REDACTED]` otherwise.
+  scheme, authority and path only. The query string and fragment are removed. User info is removed
+  too, except that for ABFS the part before the `@` is kept when it looks like a container name (3
+  to 63 lowercase letters, digits and hyphens) and is replaced by `[REDACTED]` otherwise.
 - `access` is `READ` or `READ_WRITE`, and `expires_at` is when the credential expires. Records never
   contain credential values.
 
