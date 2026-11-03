@@ -34,14 +34,11 @@ The command deletes the release. It keeps the H2 database PersistentVolumeClaim 
 delete both to remove the data.
 
 ## Audit records
-The server can write one JSON audit record per issued storage credential, permission change, and
-queued storage cleanup to `/home/unitycatalog/etc/logs/audit.log` (see the
-[server configuration docs](https://github.com/unitycatalog/unitycatalog/blob/main/docs/server/configuration.md#audit-records)).
-The chart's log configuration already has the `audit` logger; turn records on and ship the
-file with your log shipper (for example a sidecar in `server.deployment.extraContainers` that
-shares `/home/unitycatalog/etc/logs` through `extraVolumes` and `extraVolumeMounts`). The file lives in
-the container, so it is lost when the pod restarts unless it is shipped continuously or the directory is on
-a volume:
+Turn on [audit records](https://github.com/unitycatalog/unitycatalog/blob/main/docs/server/configuration.md#audit-records)
+to write one JSON line per issued storage credential, permission change and queued storage cleanup
+to `/home/unitycatalog/etc/logs/audit.log`; the chart already configures the `audit` logger. The
+file is lost when the pod restarts, so ship it continuously (for example from a sidecar in
+`server.deployment.extraContainers`) or keep the directory on a volume:
 
 ```yaml
 server:

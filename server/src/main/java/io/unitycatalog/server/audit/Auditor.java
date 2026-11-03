@@ -193,9 +193,6 @@ public final class Auditor implements AutoCloseable {
    * that can't be parsed is logged and left out of the record.
    */
   String sanitizeLocation(String url) {
-    if (url == null) {
-      return null;
-    }
     try {
       URI uri = URI.create(url);
       String authority = uri.getRawAuthority();

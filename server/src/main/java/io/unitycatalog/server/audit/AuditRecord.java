@@ -55,7 +55,6 @@ public class AuditRecord {
 
   Access access;
 
-  /** When the credential expires. */
   Instant expiresAt;
 
   UUID resourceId;
