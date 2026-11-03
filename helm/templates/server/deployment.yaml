@@ -179,15 +179,15 @@ spec:
           {{- end }}
           image: "{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
-          {{- with $obsPort }}
           command:
             - ./bin/start-uc-server
           args:
             - --port
-            - {{ $.Values.server.deployment.port | quote }}
+            - {{ .Values.server.deployment.port | quote }}
+            {{- with $obsPort }}
             - --obs-port
             - {{ . | quote }}
-          {{- end }}
+            {{- end }}
           ports:
             - name: api
               containerPort: {{ .Values.server.deployment.port }}

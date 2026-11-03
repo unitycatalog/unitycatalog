@@ -904,8 +904,8 @@ not set (observability off)
 </td>
 			<td>Observability port for the server deployment
 
-When set, the server starts with `--port` and `--obs-port`, and serves `/livez`, `/readyz`
-and `/metrics` on this port, without authentication. The readiness and liveness probes, when turned on,
+When set, the server starts with `--obs-port` and serves `/livez`, `/readyz` and `/metrics`
+on this port, without authentication. The readiness and liveness probes, when turned on,
 then check `/readyz` and `/livez`; without it they check that the API port accepts a
 connection. The Service doesn't expose the port, but other pods can reach it
 on the pod IP; restrict it with a NetworkPolicy if needed, and allow the kubelet to reach it
