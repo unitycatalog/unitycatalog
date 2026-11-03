@@ -578,6 +578,11 @@ Map<String, String> configs = Map.of(
 --conf "spark.sql.catalog.<catalog_name>.auth.oauth.scope="
 ```
 
+The provider caches the token and renews it shortly before it expires. It takes the expiry from the
+token response's `expires_in`, or, when the Identity Provider omits it, from the token's own `exp`
+claim if the token is a JWT. A token with neither is used for one request only, so every request
+fetches a new token; the provider logs a warning the first time.
+
 ### Exchanging the OAuth token for a Unity Catalog token
 
 By default the OAuth token provider sends the Identity Provider's token to Unity Catalog as is.
