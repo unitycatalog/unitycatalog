@@ -58,24 +58,37 @@ jobs:
           out="$(helm template uc helm --set server.deployment.enableReadinessProbe=true)"
           ! grep -qF -- '--obs-port' <<<"$out" || exit 1
           grep -A1 'readinessProbe:' <<<"$out" | grep -qF 'tcpSocket:'
-          # With obsPort, the flag, the container port and the probes all use it.
-          out="$(helm template uc helm --set server.deployment.obsPort=9099 \
+          # With obsPort, the flags, the container port and the probes all use it.
+          out="$(helm template uc helm --set server.deployment.port=9000 \
+            --set server.deployment.obsPort=9099 \
             --set server.deployment.enableReadinessProbe=true \
             --set server.deployment.enableLivenessProbe=true)"
-          grep -qF -- '- "9099"' <<<"$out"
+          grep -A1 -- '- --port' <<<"$out" | grep -qF -- '- "9000"'
+          grep -A1 -- '- --obs-port' <<<"$out" | grep -qF -- '- "9099"'
           grep -qF 'containerPort: 9099' <<<"$out"
-          grep -qF 'path: /readyz' <<<"$out"
-          grep -qF 'path: /livez' <<<"$out"
+          ready="$(grep -A3 'readinessProbe:' <<<"$out")"
+          grep -qF 'path: /readyz' <<<"$ready"
+          grep -qF 'port: obs' <<<"$ready"
+          live="$(grep -A3 'livenessProbe:' <<<"$out")"
+          grep -qF 'path: /livez' <<<"$live"
+          grep -qF 'port: obs' <<<"$live"
+          # obsPort must differ from port.
+          ! helm template uc helm --set server.deployment.obsPort=8080 >/dev/null 2>&1 || exit 1
           # Custom probes render as given, not as the whole chart context.
-          out="$(helm template uc helm --set ui.enabled=true \
-            --set server.deployment.enableReadinessProbe=true \
-            --set server.deployment.readinessProbe.httpGet.path=/custom-ready \
-            --set server.deployment.readinessProbe.httpGet.port=api \
-            --set ui.deployment.enableReadinessProbe=true \
-            --set ui.deployment.readinessProbe.httpGet.path=/custom-ui-ready \
-            --set ui.deployment.readinessProbe.httpGet.port=ui)"
-          grep -qF 'path: /custom-ready' <<<"$out"
-          grep -qF 'path: /custom-ui-ready' <<<"$out"
+          args=(--set ui.enabled=true)
+          for c in server ui; do
+            for probe in readiness liveness startup; do
+              args+=(--set "$c.deployment.enable${probe^}Probe=true"
+                --set "$c.deployment.${probe}Probe.httpGet.path=/custom-$c-$probe"
+                --set "$c.deployment.${probe}Probe.httpGet.port=8080")
+            done
+          done
+          out="$(helm template uc helm "${args[@]}")"
+          for c in server ui; do
+            for probe in readiness liveness startup; do
+              grep -qF "path: /custom-$c-$probe" <<<"$out"
+            done
+          done
           ! grep -qE '^ +(Capabilities|Release|Values):' <<<"$out" || exit 1
           # An explicit grace period of 0 is kept.
           out="$(helm template uc helm --set server.deployment.terminationGracePeriodSeconds=0)"

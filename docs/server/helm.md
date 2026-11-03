@@ -91,7 +91,7 @@ helm upgrade --install unitycatalog oci://registry-1.docker.io/unitycatalog/unit
 
 The server serves `/livez`, `/readyz` and `/metrics` only when it starts with an observability port. Set
 `server.deployment.obsPort` to start it with one, and turn on the readiness probe so a pod receives traffic only
-while it can reach its database:
+while it can reach its database. The observability port needs server image v0.7.0 or later:
 
 ```yaml
 server:

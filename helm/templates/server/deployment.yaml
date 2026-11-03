@@ -183,6 +183,8 @@ spec:
           command:
             - ./bin/start-uc-server
           args:
+            - --port
+            - {{ $.Values.server.deployment.port | quote }}
             - --obs-port
             - {{ . | quote }}
           {{- end }}
