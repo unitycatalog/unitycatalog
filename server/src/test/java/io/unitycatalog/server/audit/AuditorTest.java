@@ -149,11 +149,10 @@ class AuditorTest {
         .hasMessageContaining("AuditSink");
 
     // FileAuditSink accepts the shipped Log4j config and rejects one without the audit logger.
-    assertThatCode(() -> FileAuditSink.validate(load("etc/conf/server.log4j2.properties")))
-        .doesNotThrowAnyException();
+    assertThatCode(() -> validate("etc/conf/server.log4j2.properties")).doesNotThrowAnyException();
     Path noAuditLogger = Files.createTempFile("log4j2", ".properties");
     Files.writeString(noAuditLogger, "rootLogger.level = info\n");
-    assertThatThrownBy(() -> FileAuditSink.validate(load(noAuditLogger.toString())))
+    assertThatThrownBy(() -> validate(noAuditLogger.toString()))
         .hasMessageContaining("logger.audit");
     Path ignoringFailures = Files.createTempFile("log4j2", ".properties");
     Files.writeString(
@@ -167,7 +166,7 @@ class AuditorTest {
             "logger.audit.level = info",
             "logger.audit.additivity = false",
             "logger.audit.appenderRef.a.ref = A"));
-    assertThatThrownBy(() -> FileAuditSink.validate(load(ignoringFailures.toString())))
+    assertThatThrownBy(() -> validate(ignoringFailures.toString()))
         .hasMessageContaining("ignoreExceptions");
     // A level on the link to the appender can drop every record although the logger passes INFO.
     Path droppingRecords = Files.createTempFile("log4j2", ".properties");
@@ -183,7 +182,7 @@ class AuditorTest {
             "logger.audit.additivity = false",
             "logger.audit.appenderRef.a.ref = A",
             "logger.audit.appenderRef.a.level = warn"));
-    assertThatThrownBy(() -> FileAuditSink.validate(load(droppingRecords.toString())))
+    assertThatThrownBy(() -> validate(droppingRecords.toString()))
         .hasMessageContaining("appender reference");
     // Appender rules apply to file and console appenders only. Others, such as a socket appender
     // that ships records off the host, are the operator's choice even if they ignore exceptions.
@@ -202,8 +201,7 @@ class AuditorTest {
               "logger.audit.level = info",
               "logger.audit.additivity = false",
               "logger.audit.appenderRef.s.ref = S"));
-      assertThatCode(() -> FileAuditSink.validate(load(otherAppender.toString())))
-          .doesNotThrowAnyException();
+      assertThatCode(() -> validate(otherAppender.toString())).doesNotThrowAnyException();
     }
     // A filter on the configuration, the audit logger or a console appender can drop records too.
     for (String filter :
@@ -224,19 +222,24 @@ class AuditorTest {
               "logger.audit.additivity = false",
               "logger.audit.appenderRef.a.ref = A",
               filter));
-      assertThatThrownBy(() -> FileAuditSink.validate(load(filtered.toString())))
+      assertThatThrownBy(() -> validate(filtered.toString()))
           .hasMessageContaining("must not have a filter");
     }
   }
 
-  private static Configuration load(String file) throws Exception {
+  /** Validates the Log4j properties file, then stops its appenders, which can hold sockets. */
+  private static void validate(String file) throws Exception {
     Configuration config =
         new PropertiesConfigurationFactory()
             .getConfiguration(
                 new LoggerContext("audit-test"),
                 ConfigurationSource.fromUri(Path.of(file).toUri()));
     config.initialize();
-    return config;
+    try {
+      FileAuditSink.validate(config);
+    } finally {
+      config.stop();
+    }
   }
 
   /**
