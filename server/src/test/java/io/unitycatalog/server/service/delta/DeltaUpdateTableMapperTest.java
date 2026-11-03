@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.server.delta.model.DeltaAddCommitUpdate;
 import io.unitycatalog.server.delta.model.DeltaArrayType;
 import io.unitycatalog.server.delta.model.DeltaAssertEtag;
 import io.unitycatalog.server.delta.model.DeltaAssertTableUUID;
 import io.unitycatalog.server.delta.model.DeltaClusteringDomainMetadata;
+import io.unitycatalog.server.delta.model.DeltaCommit;
 import io.unitycatalog.server.delta.model.DeltaDataType;
 import io.unitycatalog.server.delta.model.DeltaDomainMetadataUpdates;
 import io.unitycatalog.server.delta.model.DeltaMapType;
@@ -26,6 +28,8 @@ import io.unitycatalog.server.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableRequirement;
 import io.unitycatalog.server.delta.model.DeltaTableUpdate;
+import io.unitycatalog.server.delta.model.DeltaUniformMetadata;
+import io.unitycatalog.server.delta.model.DeltaUniformMetadataIceberg;
 import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -36,6 +40,7 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.service.delta.DeltaUpdateTableMapper.CollectedRequest;
+import io.unitycatalog.server.service.delta.DeltaUpdateTableMapper.CommitDispatch;
 import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Date;
@@ -350,6 +355,37 @@ public class DeltaUpdateTableMapperTest {
                     new ServerProperties()))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
+  }
+
+  @Test
+  public void applyUpdatesDecodesTheUniformMetadataLocation() {
+    // Delta sends the add-commit UniForm metadata location URI-encoded, like the table location.
+    CommitDispatch dispatch =
+        DeltaUpdateTableMapper.applyUpdates(
+                null,
+                managedDao(),
+                propsFrom(Map.of(TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS, "iceberg")),
+                collectUpdatesRequest(
+                    new DeltaAddCommitUpdate()
+                        .commit(
+                            new DeltaCommit()
+                                .version(1L)
+                                .timestamp(1700000001L)
+                                .fileName("00000001.json")
+                                .fileSize(1024L)
+                                .fileModificationTimestamp(1700000001L))
+                        .uniform(
+                            new DeltaUniformMetadata()
+                                .iceberg(
+                                    new DeltaUniformMetadataIceberg()
+                                        .metadataLocation("s3://b/team%20reports/t/_u/v1.json")
+                                        .convertedDeltaVersion(1L)
+                                        .convertedDeltaTimestamp(1700000001L)))),
+                new ServerProperties())
+            .orElseThrow();
+
+    assertThat(dispatch.uniformFields().orElseThrow().metadataLocation().toString())
+        .isEqualTo("s3://b/team reports/t/_u/v1.json");
   }
 
   @Test
