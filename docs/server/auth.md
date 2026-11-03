@@ -125,6 +125,8 @@ HTTP errors, and missing or invalid decisions fail the UC request with HTTP 503.
 back to native grants. Decisions are not cached. The response timeout applies to each OPA call;
 an operation or list response can require several calls.
 
+If the user, resource, or a parent is missing from UC, the privilege check is denied.
+
 **Native permission APIs remain available.** Grant/revoke/list APIs still manage UC's native
 records, but those grants do not affect OPA decisions. Resource creation and deletion also
 maintain native owner and hierarchy records. Switching back to Casbin uses those records,

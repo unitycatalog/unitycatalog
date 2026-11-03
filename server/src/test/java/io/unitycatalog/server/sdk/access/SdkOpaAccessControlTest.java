@@ -265,19 +265,19 @@ public class SdkOpaAccessControlTest extends SdkAccessControlBaseCRUDTest {
                   externalTable(
                       "must_not_exist", testDirectoryRoot.resolve("new").toUri().toString())),
           ErrorCode.UNAVAILABLE,
-          "OPA response must contain a boolean result.allow");
+          "Could not get an authorization decision from OPA");
       assertApiException(
           () -> listAllTables(aliceTables, TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME),
           ErrorCode.UNAVAILABLE,
-          "OPA response must contain a boolean result.allow");
+          "Could not get an authorization decision from OPA");
       assertIcebergApiException(
           () -> iceberg.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, request.name()),
           503,
-          "OPA response must contain a boolean result.allow");
+          "Could not get an authorization decision from OPA");
       assertDeltaApiException(
           () -> new DeltaConfigurationApi(aliceClient).getConfig(TestUtils.CATALOG_NAME, "1.0"),
           DeltaErrorType.SERVICE_UNAVAILABLE_EXCEPTION,
-          "OPA response must contain a boolean result.allow");
+          "Could not get an authorization decision from OPA");
     } finally {
       installPolicy();
     }
