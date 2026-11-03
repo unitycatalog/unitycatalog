@@ -116,11 +116,12 @@ final class OldServer {
    * serves requests, passes {@code callback} a client authenticated as the server's admin, then
    * stops the server.
    */
-  static void run(String tag, TestDatabase db, Path workDir, Consumer<ApiClient> callback) {
+  static void run(
+      String tag, TestDatabase db, Path workDir, Path storageRoot, Consumer<ApiClient> callback) {
     try {
       Path home = Files.createDirectories(workDir.resolve(tag));
       Path conf = Files.createDirectories(home.resolve("etc/conf"));
-      Files.writeString(conf.resolve("server.properties"), serverProperties());
+      Files.writeString(conf.resolve("server.properties"), serverProperties(storageRoot));
       Files.writeString(conf.resolve("hibernate.properties"), hibernateProperties(db));
       int port = freePortPair();
       Process process = start(tag, db, workDir, home, port);
@@ -207,12 +208,13 @@ final class OldServer {
     }
   }
 
-  private static String serverProperties() {
+  /** The table storage root, and the external local root that holds the external tables. */
+  private static String serverProperties(Path storageRoot) {
     return String.join(
         "\n",
         "server.authorization=enable",
-        "storage-root.tables=file:///tmp/uc-storage",
-        "server.external-local-roots=/tmp/uc-storage",
+        "storage-root.tables=" + storageRoot.toUri(),
+        "server.external-local-roots=" + storageRoot,
         "");
   }
 

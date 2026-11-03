@@ -27,17 +27,17 @@ public class RealUpgradeTest {
 
   @Test
   @EnabledIfEnvironmentVariable(named = "UC_TEST_UPGRADES", matches = "true")
-  void upgradesAndKeepsTheData(@TempDir Path workDir) {
+  void upgradesAndKeepsTheData(@TempDir Path workDir, @TempDir Path storageRoot) {
     List<String> chain = OldServer.releaseChain();
     assertThat(chain).as("no release tags found: git fetch --tags").isNotEmpty();
     List<DataSet> copies = new ArrayList<>();
     for (String release : chain) {
-      DataSet copy = new DataSet(release);
-      OldServer.run(release, db, workDir, copy::write);
+      DataSet copy = new DataSet(release, storageRoot);
+      OldServer.run(release, db, workDir, storageRoot, copy::write);
       copies.add(copy);
     }
 
-    try (TestServer server = TestServer.start(db, workDir.resolve("storage"))) {
+    try (TestServer server = TestServer.start(db, storageRoot)) {
       assertThat(SchemaSnapshot.of(db.dataSource()))
           .isEqualTo(UpgradeTestUtils.freshInstallSnapshot());
       copies.forEach(copy -> copy.assertReadBack(server.apiClient()));
@@ -47,12 +47,13 @@ public class RealUpgradeTest {
   /** This commit's shaded jar sets up an empty database, as a packaged deployment runs it. */
   @Test
   @EnabledIfEnvironmentVariable(named = "UC_TEST_UPGRADES", matches = "true")
-  void packagedServerSetsUpTheSchema(@TempDir Path workDir) {
-    DataSet data = new DataSet("HEAD");
+  void packagedServerSetsUpTheSchema(@TempDir Path workDir, @TempDir Path storageRoot) {
+    DataSet data = new DataSet("HEAD", storageRoot);
     OldServer.run(
         "HEAD",
         db,
         workDir,
+        storageRoot,
         api -> {
           data.write(api);
           data.assertReadBack(api);
