@@ -58,6 +58,7 @@ public class SchemaGateTest {
     for (String setting :
         List.of(
             "hibernate.hbm2ddl.auto",
+            "hibernate.hbm2ddl.auto.orm",
             "jakarta.persistence.schema-generation.database.action",
             "javax.persistence.schema-generation.database.action")) {
       Properties create = db.hibernateProperties();

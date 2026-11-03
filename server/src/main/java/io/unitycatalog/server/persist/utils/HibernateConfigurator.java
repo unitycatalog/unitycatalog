@@ -31,17 +31,21 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.Objects;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Stream;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.Configuration;
+import org.hibernate.cfg.Environment;
 import org.hibernate.cfg.JdbcSettings;
 import org.hibernate.cfg.SchemaToolingSettings;
 import org.hibernate.service.ServiceRegistry;
+import org.hibernate.tool.schema.Action;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -101,26 +105,42 @@ public class HibernateConfigurator implements AutoCloseable {
   }
 
   /**
-   * The schema steps own the schema. Refuses the settings that let Hibernate change it while it
-   * builds the session factory, before it builds it.
+   * The schema steps own the schema. Refuses every Hibernate schema action but none, validate too,
+   * before the pool or the session factory exists. Reads the settings Hibernate adds itself as
+   * well: JVM system properties and a {@code hibernate.properties} on the classpath.
    */
   private static void requireNoSchemaChanges(Properties properties) {
-    for (String name :
-        new String[] {
-          SchemaToolingSettings.HBM2DDL_AUTO,
-          SchemaToolingSettings.JAKARTA_HBM2DDL_DATABASE_ACTION,
-          SchemaToolingSettings.HBM2DDL_DATABASE_ACTION
-        }) {
-      // Hibernate also takes an Action object, and an empty value means none.
-      String value = Objects.toString(properties.get(name), "").trim();
-      if (!value.isEmpty() && !"none".equalsIgnoreCase(value)) {
-        throw new IllegalStateException(
-            name
-                + "="
-                + value
-                + " is not supported: the schema steps manage the schema. Set it to none.");
-      }
-    }
+    Map<Object, Object> settings = new HashMap<>(Environment.getProperties());
+    settings.putAll(properties);
+    settings.forEach(
+        (name, value) -> {
+          if (isSchemaAction(name) && !isNone(value)) {
+            throw new IllegalStateException(
+                name
+                    + "="
+                    + value
+                    + " is not supported: the schema steps manage the schema. Set it to none.");
+          }
+        });
+  }
+
+  /**
+   * A schema action setting, or its form for one contributor ({@code hibernate.hbm2ddl.auto.orm}).
+   */
+  private static boolean isSchemaAction(Object name) {
+    return name instanceof String setting
+        && Stream.of(
+                SchemaToolingSettings.HBM2DDL_AUTO,
+                SchemaToolingSettings.JAKARTA_HBM2DDL_DATABASE_ACTION,
+                SchemaToolingSettings.HBM2DDL_DATABASE_ACTION)
+            .anyMatch(action -> setting.equals(action) || setting.startsWith(action + "."));
+  }
+
+  /** Hibernate takes an {@link Action} or its name, and reads an empty value as none. */
+  private static boolean isNone(Object value) {
+    return value instanceof Action action
+        ? action == Action.NONE
+        : value.toString().isBlank() || "none".equalsIgnoreCase(value.toString().trim());
   }
 
   /**

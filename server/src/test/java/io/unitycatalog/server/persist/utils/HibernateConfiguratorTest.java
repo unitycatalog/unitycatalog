@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Properties;
 import java.util.UUID;
+import org.hibernate.tool.schema.Action;
 import org.junit.jupiter.api.Test;
 
 class HibernateConfiguratorTest {
@@ -76,6 +77,16 @@ class HibernateConfiguratorTest {
     assertThat(
             HibernateConfigurator.setupHibernateProperties(new ServerProperties(new Properties())))
         .containsEntry("hibernate.hbm2ddl.auto", "none");
+  }
+
+  @Test
+  void acceptsHibernatesNoneActionObject() {
+    Properties properties = h2Properties();
+    properties.put("hibernate.hbm2ddl.auto", Action.NONE);
+
+    try (HibernateConfigurator configurator = new HibernateConfigurator(properties)) {
+      assertThat(configurator.getSessionFactory().isOpen()).isTrue();
+    }
   }
 
   @Test
