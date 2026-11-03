@@ -22,8 +22,8 @@ public final class DeltaCredentialsMapper {
 
   /**
    * Build a {@link DeltaCredentialsResponse} from UC {@link TemporaryCredentials} for a given
-   * operation. The storage prefix is taken from the credential's own {@code url}, which the
-   * credential vendor scopes to the requested location.
+   * operation. The storage prefix is the credential's own {@code url}, which the credential vendor
+   * scopes to the requested location, in the URI form the Delta API uses for locations.
    */
   public static DeltaCredentialsResponse toCredentialsResponse(
       TemporaryCredentials credentials, DeltaCredentialOperation operation) {
@@ -49,8 +49,10 @@ public final class DeltaCredentialsMapper {
       config.setGcsOauthToken(gcp.getOauthToken());
     }
 
+    // Delta clients read the prefix as a URI, like the table location it covers.
+    String url = credentials.getUrl();
     return new DeltaStorageCredential()
-        .prefix(credentials.getUrl())
+        .prefix(url == null ? null : DeltaLocations.toDelta(url))
         .operation(operation)
         .config(config)
         .expirationTimeMs(credentials.getExpirationTime());

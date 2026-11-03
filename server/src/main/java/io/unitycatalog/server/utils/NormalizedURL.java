@@ -18,7 +18,8 @@ import org.apache.hadoop.fs.Path;
  * <ul>
  *   <li>Local file paths are converted to proper file:/// URIs
  *   <li>Local file URIs whose escapes would change the path they name are rejected
- *   <li>Cloud storage URLs (s3://, gs://, abfs://) have consistent formatting
+ *   <li>Cloud storage URLs (s3://, gs://, abfs://) have consistent formatting, and are literal
+ *       Hadoop path strings: a space or '%' is part of the object name, and '?' or '#' is rejected
  *   <li>Trailing slashes are removed
  *   <li>Multiple consecutive slashes are collapsed
  * </ul>
@@ -69,7 +70,8 @@ public final class NormalizedURL {
   /**
    * Creates a normalized URL from the given URI. Returns null if the input is null. A cloud URI's
    * decoded path is the literal object name, so {@code s3://b/team%20reports} names {@code team
-   * reports}. A cloud URI with a query or fragment is rejected.
+   * reports}. An opaque cloud URI ({@code s3:bucket/x}) or one with a query or fragment is
+   * rejected.
    *
    * @param uri the URI to normalize
    */
@@ -80,6 +82,11 @@ public final class NormalizedURL {
     // A cloud URI escapes its path, but the stored location is the literal path string.
     return switch (UriScheme.fromURI(uri)) {
       case S3, GS, ABFS, ABFSS -> {
+        if (uri.isOpaque()) {
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              "Cloud storage location must start with scheme://: " + uri);
+        }
         if (uri.getRawQuery() != null || uri.getRawFragment() != null) {
           throw new BaseException(
               ErrorCode.INVALID_ARGUMENT,

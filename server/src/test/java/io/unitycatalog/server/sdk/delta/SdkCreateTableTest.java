@@ -424,6 +424,8 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
               TestUtils.SCHEMA_NAME2,
               new DeltaCreateStagingTableRequest().name("tbl_encoded"));
       assertThat(staging.getLocation()).startsWith(cases[i][1]);
+      assertThat(staging.getStorageCredentials().get(0).getPrefix())
+          .isEqualTo(staging.getLocation());
 
       String metadataLocation = staging.getLocation() + "/_uniform/v1.json";
       DeltaLoadTableResponse created =

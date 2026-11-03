@@ -160,7 +160,7 @@ public class NormalizedURLTest {
       assertThat(NormalizedURL.from(new Path(location).toUri()))
           .isEqualTo(NormalizedURL.from(location));
     }
-    for (String uri : List.of("s3://bucket/x?y", "s3://bucket/x#y")) {
+    for (String uri : List.of("s3://bucket/x?y", "s3://bucket/x#y", "s3:bucket/x", "gs:bucket/x")) {
       assertThatThrownBy(() -> NormalizedURL.from(URI.create(uri)))
           .isInstanceOf(BaseException.class)
           .extracting(e -> ((BaseException) e).getErrorCode())

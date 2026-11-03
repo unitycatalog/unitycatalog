@@ -153,9 +153,10 @@ A cloud location cannot contain `?` or `#`. A stored table, volume, external loc
 metadata location that contains one returns an error when it is used, and needs to be registered
 again at a location without it.
 
-The Delta REST API exchanges table and UniForm metadata locations as URIs, as Delta clients do:
-the server decodes a location it receives once and returns these locations URI-encoded. For example, Delta
-sends `s3://bucket/team%20reports/t` for the folder `team reports`.
+The Delta REST API exchanges locations as URIs, as Delta clients do: the server decodes a
+location it receives once, and returns staging, table and UniForm metadata locations and credential
+prefixes URI-encoded. For example, Delta sends `s3://bucket/team%20reports/t` for the folder
+`team reports`, and `s3://bucket/team%2520reports/t` for a folder named `team%20reports`.
 
 ## Logging
 

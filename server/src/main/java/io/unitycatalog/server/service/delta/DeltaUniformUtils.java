@@ -186,8 +186,9 @@ public final class DeltaUniformUtils {
    *       commit.commitInfo.version} when commit-info is present.
    * </ul>
    *
-   * <p>The metadata-location is normalized exactly once and the RFC 3339 timestamp parsed exactly
-   * once; both are returned in {@link UniformIcebergFields} so the subpath check ({@code
+   * <p>The metadata-location, typed as a URI, is decoded into its literal path ({@link
+   * NormalizedURL#from(java.net.URI)}) exactly once and the RFC 3339 timestamp parsed exactly once;
+   * both are returned in {@link UniformIcebergFields} so the subpath check ({@code
    * DeltaCommitRepository.validateTableForCommit}) and the DAO write ({@link #applyToDao}) reuse
    * them without re-doing the work. Returns {@code Optional.empty()} when no UniForm metadata was
    * supplied.
