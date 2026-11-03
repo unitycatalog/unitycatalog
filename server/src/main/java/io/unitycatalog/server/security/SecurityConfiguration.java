@@ -34,8 +34,7 @@ import org.slf4j.LoggerFactory;
  * unencrypted PEM key (PKCS #8 or PKCS #1), or a PKCS #8 DER key. The public key is derived from it
  * once, when the configuration is loaded. Leaving the setting unset is deprecated: the server then
  * uses {@code private_key.der} and {@code public_key.der} in the UC configuration folder,
- * generating them on first start. To create a key for the setting: {@code openssl genrsa -out
- * private_key.pem 2048}.
+ * generating them on first start.
  */
 public class SecurityConfiguration {
 
