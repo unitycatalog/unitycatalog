@@ -88,10 +88,11 @@ Messages that the server prints when it refuses to start, and what to do.
   [The baseline release](#the-baseline-release).
 
 `<setting>=<value> is not supported: the schema steps manage the schema. Set it to none.`
-: The Hibernate settings let Hibernate change the schema: `hibernate.hbm2ddl.auto` in a server
-  embedded in an application, or `jakarta.persistence.schema-generation.database.action` (or its
-  `javax.` form). Set it to `none` or remove it; the server reads `hibernate.hbm2ddl.auto` in its
-  own `etc/conf/hibernate.properties` as `none`.
+: A Hibernate setting asks Hibernate to create, update or validate the schema itself:
+  `hibernate.hbm2ddl.auto` in a server embedded in an application, or
+  `jakarta.persistence.schema-generation.database.action` (or its `javax.` form), also as a JVM
+  system property or in a `hibernate.properties` on the classpath. Set it to `none` or remove it;
+  the server reads `hibernate.hbm2ddl.auto` in its own `etc/conf/hibernate.properties` as `none`.
 
 `The schema is newer than this release (version <n>, this release ends at <m>). Run the newer release.`
 : The database was upgraded by a newer release than the one you ran. Run the newer release again.
