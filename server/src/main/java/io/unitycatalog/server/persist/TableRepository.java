@@ -597,7 +597,7 @@ public class TableRepository {
       return;
     }
     DeltaUniformMetadataIceberg iceberg =
-        new DeltaUniformMetadataIceberg().metadataLocation(uniformLocation);
+        new DeltaUniformMetadataIceberg().metadataLocation(DeltaLocations.toDelta(uniformLocation));
     if (dao.getUniformIcebergConvertedDeltaVersion() != null) {
       iceberg.convertedDeltaVersion(dao.getUniformIcebergConvertedDeltaVersion());
     }

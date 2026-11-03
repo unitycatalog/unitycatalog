@@ -390,7 +390,8 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
   /**
    * Delta clients exchange locations as URIs, so for a catalog root whose folder has a space, or a
    * literal {@code %20}, staging, create and load all return the URI-encoded form of the stored
-   * literal location, and create accepts that encoded form back.
+   * literal location, and create accepts that encoded form back, for the UniForm metadata location
+   * too.
    */
   @Test
   public void testLocationsAreUrisUnderEncodedCatalogRoot() throws ApiException {
@@ -413,21 +414,33 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
               new DeltaCreateStagingTableRequest().name("tbl_encoded"));
       assertThat(staging.getLocation()).startsWith(cases[i][1]);
 
+      String metadataLocation = staging.getLocation() + "/_uniform/v1.json";
       DeltaLoadTableResponse created =
           deltaTablesApi.createTable(
-              catalog, TestUtils.SCHEMA_NAME2, managedTableRequest("tbl_encoded", staging));
+              catalog,
+              TestUtils.SCHEMA_NAME2,
+              managedTableRequest("tbl_encoded", staging)
+                  .properties(uniformEnabledProperties(staging.getTableId().toString()))
+                  .uniform(
+                      new DeltaUniformMetadata()
+                          .iceberg(
+                              new DeltaUniformMetadataIceberg()
+                                  .metadataLocation(metadataLocation)
+                                  .convertedDeltaVersion(0L)
+                                  .convertedDeltaTimestamp(1700000000000L))));
       assertThat(created.getMetadata().getLocation()).isEqualTo(staging.getLocation());
+      assertThat(created.getUniform().getIceberg().getMetadataLocation())
+          .isEqualTo(metadataLocation);
 
       String fullName = catalog + "." + TestUtils.SCHEMA_NAME2 + ".tbl_encoded";
       String stored = ucTablesApi.getTable(fullName, null, null).getStorageLocation();
       assertThat(stored).startsWith("s3://test-bucket0/" + cases[i][0] + "/");
       assertThat(new Path(stored).toUri().toString()).isEqualTo(staging.getLocation());
-      assertThat(
-              deltaTablesApi
-                  .loadTable(catalog, TestUtils.SCHEMA_NAME2, "tbl_encoded")
-                  .getMetadata()
-                  .getLocation())
-          .isEqualTo(staging.getLocation());
+      DeltaLoadTableResponse loaded =
+          deltaTablesApi.loadTable(catalog, TestUtils.SCHEMA_NAME2, "tbl_encoded");
+      assertThat(loaded.getMetadata().getLocation()).isEqualTo(staging.getLocation());
+      assertThat(loaded.getUniform().getIceberg().getMetadataLocation())
+          .isEqualTo(metadataLocation);
     }
   }
 

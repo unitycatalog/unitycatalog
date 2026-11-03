@@ -1638,8 +1638,9 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   }
 
   /**
-   * Delta sends {@code table_uri} URI-encoded, so a commit to a table whose literal location has a
-   * space, or a literal {@code %20}, is accepted when it carries the encoded form.
+   * Delta sends {@code table_uri} and the UniForm metadata location URI-encoded, so a commit to a
+   * table whose literal location has a space, or a literal {@code %20}, is accepted when it carries
+   * the encoded form.
    */
   @Test
   public void testCommitWithEncodedTableUri() throws Exception {
@@ -1667,7 +1668,25 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
       assertThat(table.getStorageLocation()).startsWith("s3://test-bucket0/" + folders[i] + "/");
       String encoded = new org.apache.hadoop.fs.Path(table.getStorageLocation()).toUri().toString();
 
-      deltaCommitsApi.commit(createCommitObject(table.getTableId(), 1L, encoded));
+      // The UniForm metadata location arrives URI-encoded too and is stored literally.
+      DeltaUniform uniform = new DeltaUniform();
+      uniform.setIceberg(
+          new DeltaUniformIceberg()
+              .metadataLocation(URI.create(encoded + "/_u/v1.json"))
+              .convertedDeltaVersion(1L)
+              .convertedDeltaTimestamp(Instant.now().toString()));
+      deltaCommitsApi.commit(
+          createCommitObject(table.getTableId(), 1L, encoded)
+              .metadata(
+                  new DeltaMetadata().properties(constructProperties(table.getTableId(), true)))
+              .uniform(uniform));
+      try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+        assertThat(
+                session
+                    .get(TableInfoDAO.class, UUID.fromString(table.getTableId()))
+                    .getIcebergMetadataLocation())
+            .isEqualTo(table.getStorageLocation() + "/_u/v1.json");
+      }
 
       DeltaGetCommitsResponse response =
           deltaCommitsApi.getCommits(

@@ -164,7 +164,7 @@ public final class DeltaUniformUtils {
             uniform.getIceberg(), "uniform.iceberg is required when uniform is set.");
     UniformIcebergFields fields =
         new UniformIcebergFields(
-            NormalizedURL.from(iceberg.getMetadataLocation()),
+            DeltaLocations.fromDelta(iceberg.getMetadataLocation()),
             iceberg.getConvertedDeltaVersion(),
             iceberg.getConvertedDeltaTimestamp(),
             Optional.ofNullable(iceberg.getBaseConvertedDeltaVersion()));
