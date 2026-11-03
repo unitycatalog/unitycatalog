@@ -149,6 +149,8 @@ public class NormalizedURLTest {
     assertRejected("gs://bucket/t#x");
     assertRejected("s3://bucket#x/data");
     assertRejected("abfss://container@account.dfs.core.windows.net/t?x");
+    assertRejected("s3:bucket/t?x");
+    assertRejected("gs:bucket/t#x");
     // A bucket name is not a path, so it cannot hold a space.
     assertRejected("s3://bad bucket/x");
   }

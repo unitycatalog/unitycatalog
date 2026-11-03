@@ -155,6 +155,12 @@ with authorization enabled, external tables at such a location can no longer be 
 external location can be deleted only with `force`. Before upgrading, drop or move any such object
 to a location without `?` or `#`.
 
+A table created through the Delta REST API by an earlier release was stored with the client's URI
+text, for example `s3://bucket/team%20reports/t` for the folder `team reports`. It is now read as the
+literal folder `team%20reports`, so its credentials and Delta load no longer point at its data.
+Register such a table again at its literal location. Locations without a space or `%` are
+unaffected.
+
 The UC REST API accepts and returns the literal stored location, except the Delta commits endpoint,
 whose `table_uri` and UniForm `metadata_location` are URIs. The Delta REST API exchanges locations
 as URIs, as Delta clients do: the server decodes a location it receives once, and returns staging,

@@ -212,13 +212,7 @@ public final class NormalizedURL {
     // A cloud object name is literal, as in Hadoop: a space or '%' is part of the name.
     URI cloudUri = cloudUri(inputPath);
     if (cloudUri != null) {
-      // Iceberg's S3 and GCS FileIO cut a path at '?' or '#', so such a name can't be addressed
-      // safely. UC rejects them for ADLS too, so one rule covers every cloud.
-      if (inputPath.indexOf('?') >= 0 || inputPath.indexOf('#') >= 0) {
-        throw new BaseException(
-            ErrorCode.INVALID_ARGUMENT,
-            "Cloud storage location cannot contain '?' or '#': " + inputPath);
-      }
+      rejectQueryOrFragment(inputPath);
       // Only the object path is literal: the bucket or container must still be a valid authority.
       String root = cloudUri.getScheme() + "://" + Objects.toString(cloudUri.getAuthority(), "");
       if (cloudUri.getAuthority() != null) {
@@ -246,8 +240,25 @@ public final class NormalizedURL {
               inputPath);
       // A host is read as the first directory (file://tmp/x is /tmp/x): check after folding it in.
       case FILE -> validateLocalFileURI(localFileURIToString(uri), inputPath);
-      case S3, GS, ABFS, ABFSS -> removeExtraSlashes(uri.toString());
+      case S3, GS, ABFS, ABFSS -> {
+        // A cloud location without "//" (s3:bucket/x) misses the literal branch above.
+        rejectQueryOrFragment(inputPath);
+        yield removeExtraSlashes(uri.toString());
+      }
     };
+  }
+
+  /**
+   * Rejects a cloud location containing '?' or '#'. Iceberg's S3 and GCS FileIO cut a path there,
+   * so such a name can't be addressed safely. UC rejects them for ADLS too, so one rule covers
+   * every cloud.
+   */
+  private static void rejectQueryOrFragment(String location) {
+    if (location.indexOf('?') >= 0 || location.indexOf('#') >= 0) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Cloud storage location cannot contain '?' or '#': " + location);
+    }
   }
 
   /**
