@@ -189,7 +189,6 @@ public final class SchemaMigrator implements AutoCloseable {
             .locations(locations)
             .table(HISTORY_TABLE)
             .failOnMissingLocations(true)
-            .cleanDisabled(true)
             .validateMigrationNaming(true);
     if (baselineVersion != null) {
       configuration
