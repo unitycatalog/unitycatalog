@@ -1669,17 +1669,17 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
       String encoded = new org.apache.hadoop.fs.Path(table.getStorageLocation()).toUri().toString();
 
       // The UniForm metadata location arrives URI-encoded too and is stored literally.
-      DeltaUniform uniform = new DeltaUniform();
-      uniform.setIceberg(
-          new DeltaUniformIceberg()
-              .metadataLocation(URI.create(encoded + "/_u/v1.json"))
-              .convertedDeltaVersion(1L)
-              .convertedDeltaTimestamp(Instant.now().toString()));
       deltaCommitsApi.commit(
           createCommitObject(table.getTableId(), 1L, encoded)
               .metadata(
                   new DeltaMetadata().properties(constructProperties(table.getTableId(), true)))
-              .uniform(uniform));
+              .uniform(
+                  new DeltaUniform()
+                      .iceberg(
+                          new DeltaUniformIceberg()
+                              .metadataLocation(URI.create(encoded + "/_u/v1.json"))
+                              .convertedDeltaVersion(1L)
+                              .convertedDeltaTimestamp(Instant.now().toString()))));
       try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
         assertThat(
                 session

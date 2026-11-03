@@ -326,6 +326,17 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
                         .convertedDeltaVersion(0L)
                         .convertedDeltaTimestamp(1700000000000L)),
         "must be a subpath");
+    // An encoded ".." is decoded before the check, so it cannot leave the table location either.
+    assertDeltaInvalidParam(
+        () ->
+            createTableWithUniform(
+                "tbl_uniform_encoded_dot_dot",
+                s ->
+                    new DeltaUniformMetadataIceberg()
+                        .metadataLocation(s.getLocation() + "/%2E%2E/elsewhere/v1.json")
+                        .convertedDeltaVersion(0L)
+                        .convertedDeltaTimestamp(1700000000000L)),
+        "must be a subpath");
 
     // -------- converted-delta-version != 0 or 1 rejected --------
     // At create time the only legal values are 0 (V2 catalog-managed) and 1 (V3). Anything else

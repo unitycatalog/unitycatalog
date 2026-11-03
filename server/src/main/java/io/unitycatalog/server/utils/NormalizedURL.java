@@ -158,8 +158,8 @@ public final class NormalizedURL {
   }
 
   /**
-   * Converts a given input path or URI into a standardized URI string. This method ensures that
-   * local file paths are correctly formatted as file URIs and that URIs for different storage
+   * Converts a given input path or URI into a standardized location string. This method ensures
+   * that local file paths are correctly formatted as file URIs and that URIs for different storage
    * providers (e.g., S3, Azure, GCS) are handled appropriately.
    *
    * <p>A cloud location ("s3", "gs", "abfs", "abfss") is a literal path string, as in Hadoop: a
@@ -206,7 +206,7 @@ public final class NormalizedURL {
     URI cloudUri = cloudUri(inputPath);
     if (cloudUri != null) {
       // Iceberg's S3 and GCS FileIO cut a path at '?' or '#', so such a name can't be addressed
-      // safely; ADLS rejects them too, for one rule across clouds.
+      // safely. UC rejects them for ADLS too, so one rule covers every cloud.
       if (inputPath.indexOf('?') >= 0 || inputPath.indexOf('#') >= 0) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,

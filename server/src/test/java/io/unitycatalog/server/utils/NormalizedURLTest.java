@@ -144,7 +144,7 @@ public class NormalizedURLTest {
     assertNormalizedURL("s3://bucket/a%2Fb", "s3://bucket/a%2Fb");
     assertNormalizedURL("gs://bucket/%2e%2e/x", "gs://bucket/%2e%2e/x");
     // Iceberg's S3 and GCS FileIO cut a path at '?' or '#', so cleanup could reach a different
-    // prefix; ADLS rejects them too, for one rule across clouds.
+    // prefix. UC rejects them for ADLS too, so one rule covers every cloud.
     assertRejected("s3://bucket/t?x");
     assertRejected("gs://bucket/t#x");
     assertRejected("s3://bucket#x/data");

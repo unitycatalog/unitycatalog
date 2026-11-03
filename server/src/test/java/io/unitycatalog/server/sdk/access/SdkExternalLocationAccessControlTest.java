@@ -516,16 +516,16 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   @Test
   public void testDeltaCreateTableAuthorizesTheDecodedLocation() throws Exception {
     String grantedLocation = "spaced_loc";
-    for (String[] location :
-        List.of(
-            new String[] {grantedLocation, "s3://ext-bucket/team reports"},
-            new String[] {"literal_percent_loc", "s3://ext-bucket/team%20reports"})) {
-      userCApi.createExternalLocation(
-          new CreateExternalLocation()
-              .name(location[0])
-              .url(location[1])
-              .credentialName(CREDENTIAL_NAME));
-    }
+    userCApi.createExternalLocation(
+        new CreateExternalLocation()
+            .name(grantedLocation)
+            .url("s3://ext-bucket/team reports")
+            .credentialName(CREDENTIAL_NAME));
+    userCApi.createExternalLocation(
+        new CreateExternalLocation()
+            .name("literal_percent_loc")
+            .url("s3://ext-bucket/team%20reports")
+            .credentialName(CREDENTIAL_NAME));
     String email = "delta_decoded_location@example.com";
     createTestUser(email);
     grantPermissions(email, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);

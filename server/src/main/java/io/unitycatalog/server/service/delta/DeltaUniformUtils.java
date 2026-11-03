@@ -152,8 +152,9 @@ public final class DeltaUniformUtils {
    * <p>Create-time-specific rules ({@code converted-delta-version} must be 0 or 1, {@code
    * base-converted-delta-version} must be unset, subpath) live in {@link #validateCreate}, where
    * the table location is also available. Returns {@code Optional.empty()} when no UniForm metadata
-   * was supplied; otherwise returns a record whose metadata-location has been normalized exactly
-   * once and is reused downstream by {@link #applyToDao}.
+   * was supplied; otherwise returns a record whose metadata-location has been decoded from Delta's
+   * URI form ({@link DeltaLocations#fromDelta}) exactly once and is reused downstream by {@link
+   * #applyToDao}. Used by create and by the update-table add-commit path.
    */
   public static Optional<UniformIcebergFields> getUniformFields(DeltaUniformMetadata uniform) {
     if (uniform == null) {
