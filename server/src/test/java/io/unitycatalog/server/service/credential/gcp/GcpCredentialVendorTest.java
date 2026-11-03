@@ -60,7 +60,12 @@ public class GcpCredentialVendorTest {
         .isEqualTo("//storage.googleapis.com/projects/_/buckets/test-bucket");
     assertThat(rule.getAvailablePermissions()).containsExactly("inRole:roles/storage.objectViewer");
     assertThat(rule.getAvailabilityCondition().getExpression())
-        .isEqualTo(expectedCondition("test-bucket", "team/data"));
+        .isEqualTo(
+            "resource.name == \"projects/_/buckets/test-bucket/objects/team/data\" ||"
+                + " resource.name.startsWith(\"projects/_/buckets/test-bucket/objects/team/data/\")"
+                + " || api.getAttribute('storage.googleapis.com/objectListPrefix', '') =="
+                + " \"team/data\" || api.getAttribute('storage.googleapis.com/objectListPrefix',"
+                + " '').startsWith(\"team/data/\")");
   }
 
   @Test
