@@ -27,6 +27,7 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.JsonUtils;
+import java.io.StringWriter;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -37,6 +38,12 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.appender.WriterAppender;
+import org.apache.logging.log4j.core.config.Configurator;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -225,7 +232,9 @@ class OpaAuthorizerTest {
   void metadataFailureStopsBeforeHttpAndDoesNotExposeDatabaseDetails() {
     when(session.get(UserDAO.class, principal))
         .thenThrow(new IllegalStateException("private-db-detail"));
-    assertThat(unavailableDecision()).hasRootCauseMessage("private-db-detail");
+    assertThat(unavailableDecision())
+        .hasMessage("Could not get an authorization decision from OPA")
+        .hasRootCauseMessage("private-db-detail");
     assertThat(requests).isEmpty();
   }
 
@@ -240,6 +249,38 @@ class OpaAuthorizerTest {
     assertThat(authorizer.authorizeAll(principal, TABLE, table, SELECT, OWNER)).isFalse();
     assertThat(requests).isEmpty();
     verifyNoInteractions(nativeAuthorizer);
+  }
+
+  @Test
+  void missingMetadataLogsTheCheckAndMissingRecord() {
+    when(session.get(CatalogInfoDAO.class, catalog)).thenReturn(null);
+    StringWriter warnings = new StringWriter();
+    WriterAppender appender =
+        WriterAppender.newBuilder()
+            .setName("OpaAuthorizerTest")
+            .setLayout(PatternLayout.newBuilder().setPattern("%level %msg%n").build())
+            .setTarget(warnings)
+            .build();
+    Logger logger = (Logger) LogManager.getLogger(OpaAuthorizer.class);
+    Level previousLevel = logger.getLevel();
+    appender.start();
+    try {
+      Configurator.setLevel(logger.getName(), Level.WARN);
+      logger.addAppender(appender);
+      assertThat(authorizer.authorize(principal, TABLE, table, SELECT)).isFalse();
+      assertThat(requests).isEmpty();
+      assertThat(warnings.toString())
+          .contains(
+              "WARN Authorization check denied",
+              "principal=" + principal,
+              "privilege=SELECT",
+              "resource=table " + table,
+              "CatalogInfoDAO " + catalog);
+    } finally {
+      logger.removeAppender(appender);
+      Configurator.setLevel(logger.getName(), previousLevel);
+      appender.stop();
+    }
   }
 
   @Test

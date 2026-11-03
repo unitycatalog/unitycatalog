@@ -18,12 +18,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.hibernate.SessionFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Delegates each privilege decision to OPA. Native grants and hierarchy remain available for
  * permission management and resource bookkeeping, but do not affect OPA decisions.
  */
 public class OpaAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
+  private static final Logger LOGGER = LoggerFactory.getLogger(OpaAuthorizer.class);
   private static final int MAX_RESPONSE_LENGTH = 64 * 1024;
 
   private final JCasbinAuthorizer nativeAuthorizer;
@@ -58,9 +61,23 @@ public class OpaAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
   public boolean authorize(
       UUID principal, SecurableType resourceType, UUID resource, Privileges action) {
     try {
-      String request =
-          JsonUtils.getInstance()
-              .writeValueAsString(inputBuilder.build(principal, resourceType, resource, action));
+      JsonNode input;
+      try {
+        input = inputBuilder.build(principal, resourceType, resource, action);
+      } catch (BaseException e) {
+        if (e.getErrorCode() != ErrorCode.NOT_FOUND) {
+          throw e;
+        }
+        LOGGER.warn(
+            "Authorization check denied: principal={}, privilege={}, resource={} {}: {}",
+            principal,
+            action,
+            resourceType,
+            resource,
+            e.getMessage());
+        return false;
+      }
+      String request = JsonUtils.getInstance().writeValueAsString(input);
       AggregatedHttpResponse response =
           webClient
               .prepare()
@@ -85,9 +102,6 @@ public class OpaAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
       }
       return allow.booleanValue();
     } catch (Exception e) {
-      if (e instanceof BaseException failure && failure.getErrorCode() == ErrorCode.NOT_FOUND) {
-        return false;
-      }
       throw new BaseException(
           ErrorCode.UNAVAILABLE, "Could not get an authorization decision from OPA", e);
     }

@@ -212,9 +212,9 @@ public class OpaInputBuilderTest {
   @Test
   void rejectsUnresolvedPrincipalResourceOrParent() {
     UUID missingId = UUID.randomUUID();
-    assertNotFound(missingId, CATALOG, catalog.getId());
+    assertNotFound(missingId, CATALOG, catalog.getId(), missingId);
     for (SecurableType type : SecurableType.values()) {
-      assertNotFound(user.getId(), type, missingId);
+      assertNotFound(user.getId(), type, missingId, missingId);
     }
 
     SchemaInfoDAO orphanSchema =
@@ -237,9 +237,9 @@ public class OpaInputBuilderTest {
             .build();
     persist(orphanSchema, missingSchemaTable, missingCatalogTable);
 
-    assertNotFound(user.getId(), SCHEMA, orphanSchema.getId());
-    assertNotFound(user.getId(), TABLE, missingSchemaTable.getId());
-    assertNotFound(user.getId(), TABLE, missingCatalogTable.getId());
+    assertNotFound(user.getId(), SCHEMA, orphanSchema.getId(), missingId);
+    assertNotFound(user.getId(), TABLE, missingSchemaTable.getId(), missingId);
+    assertNotFound(user.getId(), TABLE, missingCatalogTable.getId(), missingId);
   }
 
   private static Map<String, String> identity(SecurableType type, IdentifiableDAO resource) {
@@ -276,11 +276,13 @@ public class OpaInputBuilderTest {
                             expectedResource))));
   }
 
-  private void assertNotFound(UUID principalId, SecurableType type, UUID resourceId) {
+  private void assertNotFound(
+      UUID principalId, SecurableType type, UUID resourceId, UUID missingId) {
     assertThatExceptionOfType(BaseException.class)
         .as("metadata for %s %s and principal %s", type, resourceId, principalId)
         .isThrownBy(() -> inputBuilder.build(principalId, type, resourceId, Privileges.SELECT))
-        .withMessage("Could not resolve authorization metadata")
+        .withMessageStartingWith("Could not resolve authorization metadata: ")
+        .withMessageEndingWith(" " + missingId)
         .satisfies(
             exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND));
   }
