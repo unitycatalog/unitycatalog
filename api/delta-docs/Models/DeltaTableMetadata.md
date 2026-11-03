@@ -6,7 +6,7 @@
 | **etag** | **String** | Entity tag for optimistic concurrency control | [default to null] |
 | **table-type** | [**DeltaTableType**](DeltaTableType.md) |  | [default to null] |
 | **table-uuid** | **UUID** | Unique identifier for the table | [default to null] |
-| **location** | **String** | Storage location of the table | [default to null] |
+| **location** | **String** | Storage location of the table. A cloud location is URI-encoded: the folder &#x60;team reports&#x60; is &#x60;team%20reports&#x60; and a folder named &#x60;team%20reports&#x60; is &#x60;team%2520reports&#x60;. | [default to null] |
 | **created-time** | **Long** | Creation time in epoch milliseconds | [default to null] |
 | **updated-time** | **Long** | Last update time in epoch milliseconds | [default to null] |
 | **columns** | [**DeltaStructType**](DeltaStructType.md) |  | [default to null] |

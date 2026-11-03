@@ -3,7 +3,7 @@
 
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
-| **prefix** | **String** | Storage path prefix this credential applies to | [default to null] |
+| **prefix** | **String** | Storage path prefix this credential applies to. A cloud location is URI-encoded: the folder &#x60;team reports&#x60; is &#x60;team%20reports&#x60; and a folder named &#x60;team%20reports&#x60; is &#x60;team%2520reports&#x60;. | [default to null] |
 | **operation** | [**DeltaCredentialOperation**](DeltaCredentialOperation.md) |  | [default to null] |
 | **config** | [**DeltaStorageCredential_config**](DeltaStorageCredential_config.md) |  | [default to null] |
 | **expiration-time-ms** | **Long** | Credential expiration time in epoch milliseconds. This standardized field avoids the need for provider-specific expiration keys (e.g., s3.session-token-expires-at-ms, adls.sas-token-expires-at-ms, etc.)  | [default to null] |
