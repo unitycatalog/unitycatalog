@@ -33,11 +33,8 @@ public class StorageCredentialVendorImpl implements StorageCredentialVendor {
   }
 
   /**
-   * Vends temporary credentials for accessing the specified storage path.
+   * {@inheritDoc}
    *
-   * @param path the normalized storage location URL (e.g., s3://bucket/path)
-   * @param privileges the set of privileges required (SELECT, UPDATE)
-   * @return temporary credentials scoped to the requested path and privileges
    * @throws BaseException if the path is null or a cloud storage root, or credentials cannot be
    *     generated
    */

@@ -194,13 +194,21 @@ Changes to the parent and child links between objects are not recorded. Audit
 records are best effort: one can be lost when the sink fails, or when a request is still running as the
 server shuts down.
 
+There are two ways to send records:
+
+- `FileAuditSink`, shipped with the server, writes each record to the Log4j `audit` logger. As
+  shipped, that logger writes to `etc/logs/audit.log`, but you can point it at any Log4j appender,
+  for example one that ships records to a cloud service.
+- Your own class that implements `io.unitycatalog.server.audit.AuditSink`, for example one that
+  sends records to Kinesis or SQS. See the end of this section.
+
 `FileAuditSink` needs the `audit` logger in `etc/conf/server.log4j2.properties`, set to
-`additivity = false` and level `INFO`, with its own appender set to `ignoreExceptions = false`.
-Neither the Log4j configuration, the `audit` logger nor its appender may have a filter, and the
-link to the appender (`logger.audit.appenderRef.*`) may have neither a filter nor a level above
-`INFO`, because any of these drops records silently. The shipped configuration meets all of this.
-If a requirement is not met, for example in a custom or copied log configuration without the
-`audit` logger, the server does not start, so audit records never end up in `server.log`.
+`additivity = false` and level `INFO`. Neither the Log4j configuration nor the `audit` logger may
+have a filter, and the link to the appender (`logger.audit.appenderRef.*`) may have neither a filter
+nor a level above `INFO`, because any of these drops records silently. A file or console appender
+must also set `ignoreExceptions = false` and have no filter; other appenders are not checked. The
+shipped configuration meets all of this. If a requirement is not met, for example in a custom or
+copied log configuration without the `audit` logger, the server does not start.
 
 In the default distribution, `audit.log` rolls over with the same settings as `server.log`: every
 hour and at 10MB, keeping archives for up to 7 days or 1GB. The Helm chart has no `server.log`

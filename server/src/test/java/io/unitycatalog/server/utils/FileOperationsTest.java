@@ -359,7 +359,8 @@ public class FileOperationsTest {
   @Test
   public void testGetFileIOConfigGcsIncludesExpiry() {
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
-    when(vendor.vendCredential(any(), any(), any()))
+    // The config is handed to a client, so the credential is labeled CLIENT.
+    when(vendor.vendCredential(any(), any(), eq(CredentialUse.CLIENT)))
         .thenReturn(
             new TemporaryCredentials()
                 .gcpOauthToken(new GcpOauthToken().oauthToken("gcs-token"))

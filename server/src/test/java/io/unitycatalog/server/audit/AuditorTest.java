@@ -19,13 +19,13 @@ import io.unitycatalog.server.persist.CleanupTaskRepository;
 import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialUse;
-import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.Method;
+import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -78,7 +78,7 @@ class AuditorTest {
         .thenReturn(credential);
     audited.vendCredential(clientPath, CredentialContext.READ_ONLY, CredentialUse.CLIENT);
     AuditRecord client = CapturingAuditSink.RECORDS.get(1);
-    assertThat(client.getPurpose()).isEqualTo(Purpose.CLIENT);
+    assertThat(client.getPurpose()).isEqualTo(AuditRecord.Purpose.CLIENT);
     assertThat(client.getAccess()).isEqualTo(AuditRecord.Access.READ);
     assertThat(client.getResourceId()).isNull();
     // With a decoded token on the request, the caller is the token's subject.
@@ -190,7 +190,27 @@ class AuditorTest {
             "logger.audit.appenderRef.a.level = warn"));
     assertThatThrownBy(() -> FileAuditSink.validate(load(droppingRecords.toString())))
         .hasMessageContaining("appender reference");
-    // So can a filter on the configuration, the audit logger or its appender.
+    // Appender rules apply to file and console appenders only. Others, such as a socket appender
+    // that ships records off the host, are the operator's choice even if they ignore exceptions.
+    try (ServerSocket collector = new ServerSocket(0)) {
+      Path otherAppender = Files.createTempFile("log4j2", ".properties");
+      Files.writeString(
+          otherAppender,
+          String.join(
+              "\n",
+              "appender.s.type = Socket",
+              "appender.s.name = S",
+              "appender.s.host = localhost",
+              "appender.s.port = " + collector.getLocalPort(),
+              "appender.s.layout.type = PatternLayout",
+              "logger.audit.name = audit",
+              "logger.audit.level = info",
+              "logger.audit.additivity = false",
+              "logger.audit.appenderRef.s.ref = S"));
+      assertThatCode(() -> FileAuditSink.validate(load(otherAppender.toString())))
+          .doesNotThrowAnyException();
+    }
+    // A filter on the configuration, the audit logger or a console appender can drop records too.
     for (String filter :
         List.of(
             "filter.t.type = ThresholdFilter\nfilter.t.level = warn",

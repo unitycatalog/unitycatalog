@@ -17,7 +17,6 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.Purpose;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -119,7 +118,7 @@ public final class StorageCleanupTestSupport {
         assertThat(CapturingAuditSink.RECORDS)
             .filteredOn(
                 r ->
-                    r.getPurpose() == Purpose.CLEANUP
+                    r.getPurpose() == AuditRecord.Purpose.CLEANUP
                         && location.toString().equals(r.getLocation()))
             .isNotEmpty()
             .allSatisfy(r -> assertThat(r.getResourceId()).isEqualTo(task.getId()));
@@ -129,7 +128,8 @@ public final class StorageCleanupTestSupport {
         assertThat(CapturingAuditSink.RECORDS)
             .filteredOn(
                 r ->
-                    r.getPurpose() == Purpose.SERVER && location.toString().equals(r.getLocation()))
+                    r.getPurpose() == AuditRecord.Purpose.SERVER
+                        && location.toString().equals(r.getLocation()))
             .isNotEmpty()
             .allSatisfy(r -> assertThat(r.getResourceId()).isNull());
       }
