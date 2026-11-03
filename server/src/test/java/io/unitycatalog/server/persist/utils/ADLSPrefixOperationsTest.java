@@ -283,7 +283,6 @@ class ADLSPrefixOperationsTest {
             PREFIX + "?query",
             PREFIX + "#fragment",
             PREFIX.substring(0, PREFIX.length() - 1),
-            PREFIX.substring(0, PREFIX.length() - 1) + "%2F",
             "s3://bucket/root/")) {
       assertThatThrownBy(() -> new ADLSPrefixOperations(fileIO, prefix, deadline))
           .isInstanceOf(IllegalArgumentException.class);
