@@ -230,22 +230,19 @@ public class VolumeCli {
   }
 
   /**
-   * Joins {@code --path} to the volume path. {@code --path} names objects literally, and the
-   * result, including a full URI, must stay inside the volume.
+   * Joins {@code --path} to the volume path. On a cloud volume {@code --path} names objects
+   * literally; on a local volume it is a URI reference, as in earlier releases. The result,
+   * including a full URI, must stay inside the volume.
    */
   private static org.apache.hadoop.fs.Path resolvePath(
       org.apache.hadoop.fs.Path basePath, String relativePath) {
     if (relativePath.isEmpty()) {
       return basePath;
     }
-    // A full URI names its own bucket, and a path starting with '/' starts at the bucket root. Any
-    // other path is a name under the volume, where "./" keeps a ':' in it from being read as a URI
-    // scheme.
     org.apache.hadoop.fs.Path resolvedPath =
-        relativePath.matches("[a-zA-Z][a-zA-Z0-9+.-]*://.*")
-            ? new org.apache.hadoop.fs.Path(DeltaKernelUtils.substituteSchemeForS3(relativePath))
-            : new org.apache.hadoop.fs.Path(
-                basePath, relativePath.startsWith("/") ? relativePath : "./" + relativePath);
+        "file".equals(basePath.toUri().getScheme())
+            ? localPath(basePath, relativePath)
+            : literalPath(basePath, relativePath);
     // Ensure the resolved path stays inside the volume.
     String base = basePath.toUri().getPath().replaceAll("/$", "") + "/";
     String resolved = resolvedPath.toUri().getPath();
@@ -255,6 +252,34 @@ public class VolumeCli {
       throw new CliException("Path is outside the volume location. Read failed: " + resolvedPath);
     }
     return resolvedPath;
+  }
+
+  /**
+   * A full URI names its own bucket, and a path starting with '/' starts at the bucket root. Any
+   * other path is a name under the volume, where "./" keeps a ':' in it from being read as a URI
+   * scheme.
+   */
+  private static org.apache.hadoop.fs.Path literalPath(
+      org.apache.hadoop.fs.Path basePath, String relativePath) {
+    return relativePath.matches("[a-zA-Z][a-zA-Z0-9+.-]*://.*")
+        ? new org.apache.hadoop.fs.Path(DeltaKernelUtils.substituteSchemeForS3(relativePath))
+        : new org.apache.hadoop.fs.Path(
+            basePath, relativePath.startsWith("/") ? relativePath : "./" + relativePath);
+  }
+
+  /**
+   * Resolves {@code --path} against a local volume as a URI reference, so {@code a%20b} names
+   * {@code a b}. A path that is not a valid URI reference, such as one with a space, is read
+   * literally.
+   */
+  private static org.apache.hadoop.fs.Path localPath(
+      org.apache.hadoop.fs.Path basePath, String relativePath) {
+    try {
+      return new org.apache.hadoop.fs.Path(
+          URI.create(basePath.toUri() + "/").resolve(relativePath));
+    } catch (IllegalArgumentException e) {
+      return literalPath(basePath, relativePath);
+    }
   }
 
   private static String updateVolume(VolumesApi apiClient, JSONObject json)
