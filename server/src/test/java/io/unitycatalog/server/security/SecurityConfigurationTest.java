@@ -33,6 +33,7 @@ class SecurityConfigurationTest {
     switch (privateKeyFormat) {
       case "PKCS #8 DER" -> Files.write(privateKey, pkcs8);
       case "PKCS #8 PEM" -> Files.writeString(privateKey, pem("PRIVATE" + " KEY", pkcs8));
+      // A 2048-bit PKCS #8 key is a 26-byte header followed by the PKCS #1 key.
       case "PKCS #1 PEM" ->
           Files.writeString(
               privateKey, pem("RSA PRIVATE" + " KEY", Arrays.copyOfRange(pkcs8, 26, pkcs8.length)));
@@ -62,16 +63,6 @@ class SecurityConfigurationTest {
 
     assertThatThrownBy(() -> SecurityConfiguration.load(settings(privateKey), configurationFolder))
         .hasMessageContaining("is encrypted");
-  }
-
-  @Test
-  void wrapsAPkcs1KeyAsPkcs8() throws Exception {
-    byte[] pkcs8 = newKeyPair().getPrivate().getEncoded();
-    // A 2048-bit PKCS #8 key is a 26-byte header followed by the PKCS #1 key.
-    assertThat(pkcs8[22]).isEqualTo((byte) 0x04);
-    byte[] pkcs1 = Arrays.copyOfRange(pkcs8, 26, pkcs8.length);
-
-    assertThat(SecurityConfiguration.pkcs1ToPkcs8(pkcs1)).isEqualTo(pkcs8);
   }
 
   @Test

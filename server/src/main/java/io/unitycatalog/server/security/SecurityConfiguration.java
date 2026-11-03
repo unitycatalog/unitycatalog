@@ -241,7 +241,7 @@ public class SecurityConfiguration {
   }
 
   /** Wraps a PKCS #1 RSA private key in a PKCS #8 PrivateKeyInfo structure. */
-  static byte[] pkcs1ToPkcs8(byte[] pkcs1) {
+  private static byte[] pkcs1ToPkcs8(byte[] pkcs1) {
     ByteArrayOutputStream privateKeyInfo = new ByteArrayOutputStream();
     privateKeyInfo.writeBytes(new byte[] {0x02, 0x01, 0x00}); // version 0
     privateKeyInfo.writeBytes(RSA_ALGORITHM_IDENTIFIER);
