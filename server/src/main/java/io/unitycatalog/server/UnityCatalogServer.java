@@ -125,6 +125,7 @@ public class UnityCatalogServer implements AutoCloseable {
       try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(hibernateProperties)) {
         migrator.migrate();
       }
+      hibernateConfigurator.warnIfMySqlIsCaseInsensitive();
       createdBlockingTaskExecutor =
           BlockingTaskExecutor.builder()
               .numThreads(hibernateConfigurator.getDataSource().getMaximumPoolSize())

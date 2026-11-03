@@ -86,7 +86,6 @@ public class HibernateConfigurator implements AutoCloseable {
       dataSource.close();
       throw t;
     }
-    warnIfMySqlIsCaseInsensitive(hibernateProperties);
   }
 
   /**
@@ -152,16 +151,24 @@ public class HibernateConfigurator implements AutoCloseable {
   }
 
   /**
-   * Storage paths compare exactly, but MySQL's default collation ignores case. Warns when any text
-   * column in the connected MySQL schema has a case-insensitive ({@code _ci}) collation. A failed
-   * check never fails startup.
+   * Storage paths compare exactly, but MySQL's default collation ignores case. On MySQL, warns when
+   * any text column in the connected schema has a case-insensitive ({@code _ci}) collation. Call it
+   * after the schema migration, when the tables exist. A failed check never fails startup.
    */
-  private void warnIfMySqlIsCaseInsensitive(Properties properties) {
-    if (!properties.getProperty("hibernate.connection.url", "").startsWith("jdbc:mysql")) {
-      return;
+  public void warnIfMySqlIsCaseInsensitive() {
+    try (Connection connection = dataSource.getConnection()) {
+      if (!"MySQL".equals(connection.getMetaData().getDatabaseProductName())) {
+        return;
+      }
+      warnIfCaseInsensitive(connection);
+    } catch (SQLException | RuntimeException e) {
+      // Only the warning is lost; an exception here would stop the server from starting.
+      LOGGER.warn("Could not check whether the MySQL database compares text case-insensitively", e);
     }
-    try (Connection connection = dataSource.getConnection();
-        Statement statement = connection.createStatement();
+  }
+
+  private static void warnIfCaseInsensitive(Connection connection) throws SQLException {
+    try (Statement statement = connection.createStatement();
         ResultSet collations =
             statement.executeQuery(
                 "SELECT DISTINCT COLLATION_NAME FROM information_schema.COLUMNS "
@@ -181,10 +188,6 @@ public class HibernateConfigurator implements AutoCloseable {
                 + " docs/server/deployment.md.",
             caseInsensitive);
       }
-    } catch (SQLException | RuntimeException e) {
-      // Only a warning is lost, and an exception here would leak the pool: the constructor does not
-      // close it after this point.
-      LOGGER.warn("Could not check whether the MySQL database compares text case-insensitively", e);
     }
   }
 
