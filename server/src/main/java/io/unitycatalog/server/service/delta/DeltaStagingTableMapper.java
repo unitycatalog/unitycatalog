@@ -44,7 +44,7 @@ public final class DeltaStagingTableMapper {
     return new DeltaStagingTableResponse()
         .tableId(UUID.fromString(info.getId()))
         .tableType(DeltaTableType.MANAGED)
-        .location(info.getStagingLocation())
+        .location(DeltaLocations.toDelta(info.getStagingLocation()))
         .storageCredentials(creds.getStorageCredentials())
         .requiredProtocol(
             new DeltaStagingTableResponseRequiredProtocol()
