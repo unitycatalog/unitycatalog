@@ -23,22 +23,15 @@ final class SharedTokenProviders {
   private static final String MAX_SIZE_KEY = "unitycatalog.oauth.tokenProviders.cache.maxSize";
   private static final int DEFAULT_MAX_SIZE = 100;
 
-  private static final SharedTokenProviders INSTANCE =
-      new SharedTokenProviders(Integer.getInteger(MAX_SIZE_KEY, DEFAULT_MAX_SIZE));
+  private static final BoundedKeyedCache<Map<String, String>, TokenProvider> PROVIDERS =
+      new BoundedKeyedCache<>(
+          Integer.getInteger(MAX_SIZE_KEY, DEFAULT_MAX_SIZE), BoundedKeyedCache.noOpListener());
 
-  private final BoundedKeyedCache<Map<String, String>, TokenProvider> providers;
-
-  SharedTokenProviders(int maxSize) {
-    this.providers = new BoundedKeyedCache<>(maxSize, BoundedKeyedCache.noOpListener());
-  }
-
-  static SharedTokenProviders instance() {
-    return INSTANCE;
-  }
+  private SharedTokenProviders() {}
 
   /** Returns the shared OAuth provider for {@code configs}, creating it on first use. */
-  TokenProvider get(Map<String, String> configs) {
-    return providers.getOrLoad(
+  static TokenProvider get(Map<String, String> configs) {
+    return PROVIDERS.getOrLoad(
         cacheKey(configs),
         () -> {
           OAuthTokenProvider provider = new OAuthTokenProvider();
@@ -47,11 +40,10 @@ final class SharedTokenProviders {
         });
   }
 
-  int size() {
-    return providers.size();
-  }
-
-  /** The entries with lower-cased keys, so lookups ignore key casing like the configs do. */
+  /**
+   * The entries with lower-cased keys. The configs are a case-insensitive map, whose hash code
+   * still depends on key casing, so they can't be the key as they are.
+   */
   private static Map<String, String> cacheKey(Map<String, String> configs) {
     Map<String, String> key = new HashMap<>();
     configs.forEach((name, value) -> key.put(name.toLowerCase(Locale.ROOT), value));

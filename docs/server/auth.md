@@ -656,8 +656,10 @@ different clients never share a token and a rotated secret gets a new provider. 
 are kept, and the least recently used one is dropped beyond that; set the JVM system property
 `unitycatalog.oauth.tokenProviders.cache.maxSize` to change the limit.
 
-If renewing a token fails while the current token is still valid, the provider keeps using it and
-tries again on the next request. The failure only reaches callers once the token has expired.
+Only one caller renews a provider's token at a time. While the current token is still valid, other
+callers keep using it instead of waiting. If renewing fails, the provider keeps using the current
+token, logs a warning, and tries again after 5 seconds. Callers only wait for a renewal, and only
+see its failure, once the token has expired.
 
 ## Using Google Identity with Unity Catalog UI
 

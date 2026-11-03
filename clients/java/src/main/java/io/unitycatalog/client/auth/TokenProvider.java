@@ -66,10 +66,9 @@ public interface TokenProvider {
    *
    * <p>OAuth providers are shared JVM-wide: every call with the same configuration returns the same
    * provider, so callers that build a client per operation reuse its cached token instead of
-   * fetching a new one each time. Configurations that differ in any entry, such as the client
-   * secret, get separate providers. This includes entries the provider ignores or fills in with a
-   * default: {@link #configs()} always carries {@code "oauth.scope"}, so passing it here may give a
-   * different provider than one created without a scope.
+   * fetching a new one each time. Configurations that differ in any entry get separate providers,
+   * even entries the provider ignores or fills in with a default, such as {@code "oauth.scope"} in
+   * {@link #configs()}.
    *
    * <p>Example usage with static token:
    *
@@ -136,7 +135,7 @@ public interface TokenProvider {
 
       case AuthConfigs.OAUTH_TYPE_VALUE:
         // Shared JVM-wide, and initialized on first use.
-        return SharedTokenProviders.instance().get(normalizedConfigs);
+        return SharedTokenProviders.get(normalizedConfigs);
 
       default:
         try {

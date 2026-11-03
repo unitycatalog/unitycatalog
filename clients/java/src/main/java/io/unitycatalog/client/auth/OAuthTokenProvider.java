@@ -171,11 +171,12 @@ class OAuthTokenProvider implements TokenProvider {
   @Override
   public String accessToken() {
     TempToken current = tempToken;
-    if (current != null && !current.isReadyToRenew()) {
-      return current.token();
-    }
     if (current != null && !current.isExpired()) {
-      if (clock.now().isBefore(nextRenewalAttempt) || !renewalLock.tryLock()) {
+      // Keep the valid token unless it's time to renew, the last failure is still backing off, or
+      // another caller is already renewing.
+      if (!current.isReadyToRenew()
+          || clock.now().isBefore(nextRenewalAttempt)
+          || !renewalLock.tryLock()) {
         return current.token();
       }
     } else {

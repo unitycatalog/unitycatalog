@@ -320,11 +320,8 @@ public class OAuthTokenProviderTest {
   }
 
   @Test
-  @SuppressWarnings("unchecked")
-  public void testFailedRenewalKeepsTokenUntilItExpires() throws Exception {
-    HttpResponse<String> failure = mock(HttpResponse.class);
-    when(failure.statusCode()).thenReturn(503);
-    when(failure.body()).thenReturn("Unavailable");
+  public void testFailedRenewalKeepsTokenWithBackoffUntilItExpires() throws Exception {
+    HttpResponse<String> failure = errorResponse(503, "Unavailable");
     mockTokenResponses(tokenResponse(ACCESS_TOKEN_1, 60L), failure);
     OAuthTokenProvider provider = defaultOAuthTokenProvider();
     assertThat(provider.accessToken()).isEqualTo(ACCESS_TOKEN_1);
@@ -334,37 +331,22 @@ public class OAuthTokenProviderTest {
     assertThat(provider.accessToken()).isEqualTo(ACCESS_TOKEN_1);
     verifyOAuthRequest(2);
 
-    // Once the token has expired, the failure reaches the caller.
-    clock.sleep(Duration.ofSeconds(29));
-    assertThatThrownBy(provider::accessToken)
-        .isInstanceOf(RuntimeException.class)
-        .hasMessageContaining("Failed to renew OAuth token");
-    verifyOAuthRequest(3);
-  }
-
-  @Test
-  @SuppressWarnings("unchecked")
-  public void testFailedRenewalBacksOffWhileTokenIsValid() throws Exception {
-    HttpResponse<String> failure = mock(HttpResponse.class);
-    when(failure.statusCode()).thenReturn(503);
-    when(failure.body()).thenReturn("Unavailable");
-    mockTokenResponses(
-        tokenResponse(ACCESS_TOKEN_1, 60L), failure, tokenResponse(ACCESS_TOKEN_2, 60L));
-    OAuthTokenProvider provider = defaultOAuthTokenProvider();
-    provider.accessToken();
-
-    clock.sleep(Duration.ofSeconds(31));
-    assertThat(provider.accessToken()).isEqualTo(ACCESS_TOKEN_1);
-    verifyOAuthRequest(2);
-
-    // Within the backoff, the valid token is returned without asking the identity provider.
+    // Within the backoff, the identity provider isn't asked again.
     clock.sleep(OAuthTokenProvider.RENEWAL_BACKOFF.minusSeconds(1));
     assertThat(provider.accessToken()).isEqualTo(ACCESS_TOKEN_1);
     verifyOAuthRequest(2);
 
+    // After the backoff, renewal is tried again and the valid token is still kept.
     clock.sleep(Duration.ofSeconds(2));
-    assertThat(provider.accessToken()).isEqualTo(ACCESS_TOKEN_2);
+    assertThat(provider.accessToken()).isEqualTo(ACCESS_TOKEN_1);
     verifyOAuthRequest(3);
+
+    // Once the token has expired, the failure reaches the caller.
+    clock.sleep(Duration.ofSeconds(23));
+    assertThatThrownBy(provider::accessToken)
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("Failed to renew OAuth token");
+    verifyOAuthRequest(4);
   }
 
   @Test
@@ -695,6 +677,14 @@ public class OAuthTokenProviderTest {
             String.format(
                 "{\"access_token\":\"%s\",\"token_type\":\"Bearer\",\"expires_in\":%d}",
                 accessToken, expiresIn));
+    return response;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static HttpResponse<String> errorResponse(int statusCode, String body) {
+    HttpResponse<String> response = mock(HttpResponse.class);
+    when(response.statusCode()).thenReturn(statusCode);
+    when(response.body()).thenReturn(body);
     return response;
   }
 

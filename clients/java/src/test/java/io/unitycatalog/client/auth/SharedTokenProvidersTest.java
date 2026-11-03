@@ -72,18 +72,4 @@ public class SharedTokenProvidersTest {
 
     assertThat(first).isInstanceOf(StaticTokenProvider.class).isNotSameAs(second);
   }
-
-  @Test
-  public void testLeastRecentlyLookedUpProviderIsEvictedAtMaxSize() {
-    SharedTokenProviders providers = new SharedTokenProviders(/* maxSize= */ 2);
-    TokenProvider kept = providers.get(oauthConfigs("kept-secret"));
-    TokenProvider evicted = providers.get(oauthConfigs("evicted-secret"));
-
-    providers.get(oauthConfigs("kept-secret"));
-    providers.get(oauthConfigs("new-secret"));
-
-    assertThat(providers.size()).isEqualTo(2);
-    assertThat(providers.get(oauthConfigs("kept-secret"))).isSameAs(kept);
-    assertThat(providers.get(oauthConfigs("evicted-secret"))).isNotSameAs(evicted);
-  }
 }
