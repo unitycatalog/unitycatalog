@@ -98,7 +98,7 @@ public final class Auditor implements AutoCloseable {
 
   /**
    * Wraps an authorizer so each permission change is recorded: a grant when it adds one, and a
-   * revoke or clear whenever the call returns.
+   * revoke or clear once it finishes without throwing, whether or not it removed a grant.
    */
   public UnityCatalogAuthorizer wrap(UnityCatalogAuthorizer delegate) {
     return new AuditingAuthorizer(delegate, this);

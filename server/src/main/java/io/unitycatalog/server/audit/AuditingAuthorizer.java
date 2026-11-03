@@ -8,9 +8,9 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Records each permission change. A grant is recorded when it added a grant. A revoke or a clear is
- * recorded whenever the call returns, also when there was nothing to remove. A call that throws,
- * for example because the database delete failed, is not recorded.
+ * Records each permission change. A grant is recorded only when it added a grant. A revoke or a
+ * clear is recorded once it finishes without throwing, whether or not it removed a grant. A call
+ * that throws, for example because the database delete failed, is not recorded.
  */
 final class AuditingAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
   private final UnityCatalogAuthorizer delegate;
