@@ -257,7 +257,7 @@ public class VolumeCli {
   private static org.apache.hadoop.fs.Path localPath(
       org.apache.hadoop.fs.Path basePath, String relativePath) {
     boolean isName =
-        !relativePath.matches("[a-zA-Z][a-zA-Z0-9+.-]*://.*") && !relativePath.startsWith("/");
+        !relativePath.matches("[a-zA-Z][a-zA-Z0-9+.-]*:/.*") && !relativePath.startsWith("/");
     URI resolved;
     try {
       resolved =
