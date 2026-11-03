@@ -197,7 +197,7 @@ public class MigratorTest {
   @Test
   void refusesADatabaseWithAFailedStep() {
     new SchemaMigrator(db.dataSource()).migrate();
-    // What a run that failed in step 2 leaves behind on H2 and MySQL; PostgreSQL rolls it back.
+    // What a run that failed in step 2 leaves behind on H2 and MySQL.
     String q = identifierQuote(db.dataSource());
     UpgradeTestUtils.execute(
         db,
@@ -299,8 +299,7 @@ public class MigratorTest {
 
   /**
    * {@code db}'s data source, but a run lock call that {@code matches} runs {@code rewrite}'s SQL
-   * instead, or fails when that is {@code null}. Flyway sends its own lock calls as prepared
-   * statements, so only the run lock's plain statements match.
+   * instead, or fails when that is {@code null}.
    */
   private DataSource withLockCall(Predicate<String> matches, UnaryOperator<String> rewrite) {
     DataSource real = db.dataSource();

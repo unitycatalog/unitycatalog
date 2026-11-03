@@ -108,8 +108,7 @@ public final class SchemaMigrator implements AutoCloseable {
    * The tables of {@link #BASELINE_RELEASE}'s schema. A database without history that lacks one is
    * from an earlier release.
    *
-   * <p>TODO(#2053): compare the whole schema with the recorded baseline schema, not only its
-   * tables.
+   * <p>Only the tables are compared, not the whole schema.
    */
   private static final Set<String> BASELINE_TABLES =
       Set.of(
@@ -132,7 +131,7 @@ public final class SchemaMigrator implements AutoCloseable {
           "uc_users",
           "uc_volumes");
 
-  /** The run lock's connection plus Flyway's two (PostgreSQL uses both; MySQL one). */
+  /** The run lock's connection plus Flyway's. */
   private static final int POOL_SIZE = 3;
 
   private final DataSource dataSource;
@@ -499,7 +498,8 @@ public final class SchemaMigrator implements AutoCloseable {
     }
 
     /**
-     * Runs a lock call; whether it returned true (MySQL's 1). NULL, MySQL's error result, throws.
+     * Runs a lock call and returns whether it returned true (MySQL's 1). A NULL result throws
+     * (MySQL's error result); a false result returns false.
      */
     private static boolean isTrue(Connection connection, String sql) throws SQLException {
       try (Statement statement = connection.createStatement();

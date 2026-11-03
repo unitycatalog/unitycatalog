@@ -28,8 +28,8 @@ public class SchemaGateTest {
 
   @Test
   void setsUpTheSchemaWithASmallConnectionPool() {
-    // Two connections run the server (Casbin keeps one), but not the migration (its lock plus
-    // Flyway's two on PostgreSQL); the migration has its own pool. A regression fails within the
+    // Two connections run the server, but not the migration; the migration has its own pool. A
+    // regression fails within the
     // short connection timeout instead of Hikari's 30 seconds.
     Properties smallPool = db.hibernateProperties();
     smallPool.setProperty("hibernate.hikari.maximumPoolSize", "2");

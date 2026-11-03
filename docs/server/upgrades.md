@@ -17,8 +17,7 @@ database it cannot upgrade and tells you what to do (see [Messages](#messages)).
 
 The first baseline release is 0.7.0: schema version 1 is its schema, and a 0.7.0 database without
 schema history is adopted as version 1. A database from an earlier release must be upgraded to
-0.7.0 first: start a 0.7.0 server on it once, stop it, then start this release. This holds until a
-later release migrates older schemas too.
+0.7.0 first: start a 0.7.0 server on it once, stop it, then start this release.
 
 ## Schema versions
 
@@ -94,8 +93,7 @@ Messages that the server prints when it refuses to start, and what to do.
 : A Hibernate setting asks Hibernate to create, update or validate the schema itself:
   `hibernate.hbm2ddl.auto` in a server embedded in an application, or
   `jakarta.persistence.schema-generation.database.action` (or its `javax.` form), also as a JVM
-  system property or in a `hibernate.properties` on the classpath. Set it to `none` or remove it;
-  the server reads `hibernate.hbm2ddl.auto` in its own `etc/conf/hibernate.properties` as `none`.
+  system property or in a `hibernate.properties` on the classpath. Set it to `none` or remove it.
 
 `The schema is newer than this release (version <n>, this release ends at <m>). Run the newer release.`
 : The database was upgraded by a newer release than the one you ran. Run the newer release again.
@@ -122,14 +120,6 @@ Messages that the server prints when it refuses to start, and what to do.
 `Could not release the schema migration lock: <reason>. The database releases it when the connection closes; start the server again.`
 : Releasing the lock failed at the end of the run. The server closed the lock's database
   connection, which releases the lock. Start the server again.
-
-`Unsupported database <name>: use H2, PostgreSQL or MySQL`
-: The server is connected to a database that Unity Catalog does not support; `<name>` is the
-  name its JDBC driver reports. Use H2, PostgreSQL or MySQL.
-
-`Could not connect to the database: <reason>` or `Could not list the database's tables: <reason>`
-: The server could not read the database. Check the connection settings and the user's
-  privileges.
 
 `hibernate.default_schema is not supported: the schema migration uses the connection's schema. Remove it and set the schema in the JDBC URL instead (PostgreSQL: currentSchema=...).`
 : The same holds for `hibernate.default_catalog`. Put the schema in `hibernate.connection.url`, for

@@ -52,12 +52,12 @@ import java.util.Set;
 /**
  * The data an upgrade must keep: a catalog, a schema, a managed and an external table with one
  * column of every type, a volume, a function with one parameter of every type and return
- * parameters, a user, and a grant to that user on each. {@link #write} creates it through any
+ * parameters, a user, and a grant to that user on each. {@link #write} creates it through a
  * server's API; {@link #assertReadBack} checks it through another's, as whole objects. It writes
  * only fields {@link SchemaMigrator#BASELINE_RELEASE} stores.
  *
  * <p>Each copy is named for the release that writes it ({@code v0.7.0} writes {@code v0_7_0}): its
- * catalog, its user's email and its storage directories, which are siblings of the other copies'.
+ * catalog, user and storage directories.
  */
 final class DataSet {
 

@@ -45,8 +45,7 @@ public final class TestDatabase implements AutoCloseable {
       config.setJdbcUrl(url);
       config.setUsername(user);
       config.setPassword(password);
-      // Two migration runs at once: one holds its run lock's connection and Flyway's two, the other
-      // waits for the lock on its own.
+      // Two migration runs at once: one holds the run lock, the other waits for it.
       config.setMaximumPoolSize(4);
       dataSource = new HikariDataSource(config);
     }

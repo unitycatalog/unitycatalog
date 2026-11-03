@@ -144,8 +144,9 @@ final class OldServer {
   /** Starts {@code tag}'s server on {@code port} in {@code home}, as a child process. */
   private static Process start(String tag, TestDatabase db, Path workDir, Path home, int port)
       throws IOException {
-    // The shaded jar leaves out Vert.x's version file, which releases that still use Vert.x read
-    // at start; the test's own Vert.x jar, after it, supplies the file.
+    // The shaded jar leaves out Vert.x's version file; the test's own Vert.x jar, after it,
+    // supplies
+    // the file.
     String classpath =
         jar(tag, workDir)
             + File.pathSeparator
