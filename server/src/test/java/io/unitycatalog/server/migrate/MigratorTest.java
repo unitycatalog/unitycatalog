@@ -177,14 +177,14 @@ public class MigratorTest {
         if (isH2()) {
           awaitUntil(() -> held.h2Waiting() == 2);
         } else {
-          assertThat(waitingInTheDatabase.await(1, TimeUnit.MINUTES)).isTrue();
+          assertThat(waitingInTheDatabase.await(30, TimeUnit.SECONDS)).isTrue();
         }
         assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
       }
 
       int applied = 0;
       for (Future<Integer> run : runs) {
-        applied += run.get(2, TimeUnit.MINUTES);
+        applied += run.get(1, TimeUnit.MINUTES);
       }
       SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
       assertThat(applied).isEqualTo(releaseSteps(migrator));
@@ -256,7 +256,7 @@ public class MigratorTest {
       other.setPassword(properties.getProperty("hibernate.connection.password"));
       assertThat(
               assertTimeoutPreemptively(
-                  Duration.ofMinutes(1), () -> new SchemaMigrator(other).migrate()))
+                  Duration.ofSeconds(30), () -> new SchemaMigrator(other).migrate()))
           .isZero();
     }
   }
