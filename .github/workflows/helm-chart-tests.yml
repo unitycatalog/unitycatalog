@@ -73,7 +73,8 @@ jobs:
           grep -qF 'path: /livez' <<<"$live"
           grep -qF 'port: obs' <<<"$live"
           # obsPort must differ from port.
-          ! helm template uc helm --set server.deployment.obsPort=8080 >/dev/null 2>&1 || exit 1
+          if err="$(helm template uc helm --set server.deployment.obsPort=8080 2>&1)"; then exit 1; fi
+          grep -qF 'obsPort must differ' <<<"$err"
           # Custom probes render as given, not as the whole chart context.
           args=(--set ui.enabled=true)
           for c in server ui; do

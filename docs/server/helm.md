@@ -100,6 +100,8 @@ server:
     enableReadinessProbe: true
 ```
 
+With `obsPort` set, the liveness probe, when turned on, checks `/livez` on the same port.
+
 The endpoints are unauthenticated. See [Observability](observability.md) for restricting access to the port.
 
 ## Upgrade and uninstall

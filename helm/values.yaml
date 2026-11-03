@@ -349,7 +349,7 @@ server:
     #
     replicaCount: 1
 
-    # -- (int) Port for the server deployment
+    # -- (int) Port the server listens on for API requests
     port: 8080
 
     # -- (int) Observability port for the server deployment
@@ -383,7 +383,7 @@ server:
       securityContext:
 
     image:
-      # -- (string) Repository for the server image
+      # -- (string) Repository for the server image. The chart starts it with `./bin/start-uc-server`, so a custom image must provide that script
       repository: unitycatalog/unitycatalog
       # -- (string) Pull policy for the server image
       pullPolicy: IfNotPresent

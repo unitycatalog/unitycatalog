@@ -785,7 +785,7 @@ not set
 "unitycatalog/unitycatalog"
 </pre>
 </td>
-			<td>Repository for the server image</td>
+			<td>Repository for the server image. The chart starts it with `./bin/start-uc-server`, so a custom image must provide that script</td>
 		</tr>
 		<tr>
 			<td>server.deployment.image.tag</td>
@@ -936,7 +936,7 @@ to write to the mounted volumes.
 8080
 </pre>
 </td>
-			<td>Port for the server deployment</td>
+			<td>Port the server listens on for API requests</td>
 		</tr>
 		<tr>
 			<td>server.deployment.readinessProbe</td>
