@@ -34,8 +34,8 @@ public interface TokenProvider {
   /**
    * Returns the configuration associated with this token provider.
    *
-   * <p>The returned configuration map can be passed to {@link #create(Map)} to create a new token
-   * provider instance with the same configuration:
+   * <p>The returned configuration map can be passed to {@link #create(Map)} to create a token
+   * provider with the same configuration:
    *
    * <pre>{@code
    * TokenProvider existingProvider = ...;
@@ -67,7 +67,9 @@ public interface TokenProvider {
    * <p>OAuth providers are shared JVM-wide: every call with the same configuration returns the same
    * provider, so callers that build a client per operation reuse its cached token instead of
    * fetching a new one each time. Configurations that differ in any entry, such as the client
-   * secret, get separate providers.
+   * secret, get separate providers. This includes entries the provider ignores or fills in with a
+   * default: {@link #configs()} always carries {@code "oauth.scope"}, so passing it here may give a
+   * different provider than one created without a scope.
    *
    * <p>Example usage with static token:
    *
@@ -99,7 +101,7 @@ public interface TokenProvider {
    * }</pre>
    *
    * <p>You can also use {@link #configs()} to obtain the configuration from an existing token
-   * provider and pass it to this method to create a new instance:
+   * provider and pass it to this method to create a provider with the same configuration:
    *
    * <pre>{@code
    * TokenProvider existingProvider = ...;

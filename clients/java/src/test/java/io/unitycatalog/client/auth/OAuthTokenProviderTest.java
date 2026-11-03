@@ -2,6 +2,7 @@ package io.unitycatalog.client.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -22,7 +23,10 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Flow;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -336,6 +340,87 @@ public class OAuthTokenProviderTest {
         .isInstanceOf(RuntimeException.class)
         .hasMessageContaining("Failed to renew OAuth token");
     verifyOAuthRequest(3);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testFailedRenewalBacksOffWhileTokenIsValid() throws Exception {
+    HttpResponse<String> failure = mock(HttpResponse.class);
+    when(failure.statusCode()).thenReturn(503);
+    when(failure.body()).thenReturn("Unavailable");
+    mockTokenResponses(
+        tokenResponse(ACCESS_TOKEN_1, 60L), failure, tokenResponse(ACCESS_TOKEN_2, 60L));
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
+    provider.accessToken();
+
+    clock.sleep(Duration.ofSeconds(31));
+    assertThat(provider.accessToken()).isEqualTo(ACCESS_TOKEN_1);
+    verifyOAuthRequest(2);
+
+    // Within the backoff, the valid token is returned without asking the identity provider.
+    clock.sleep(OAuthTokenProvider.RENEWAL_BACKOFF.minusSeconds(1));
+    assertThat(provider.accessToken()).isEqualTo(ACCESS_TOKEN_1);
+    verifyOAuthRequest(2);
+
+    clock.sleep(Duration.ofSeconds(2));
+    assertThat(provider.accessToken()).isEqualTo(ACCESS_TOKEN_2);
+    verifyOAuthRequest(3);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testCallersKeepValidTokenWhileAnotherRenews() throws Exception {
+    CountDownLatch renewalStarted = new CountDownLatch(1);
+    CountDownLatch finishRenewal = new CountDownLatch(1);
+    HttpResponse<String> initial = tokenResponse(ACCESS_TOKEN_1, 60L);
+    HttpResponse<String> renewed = tokenResponse(ACCESS_TOKEN_2, 60L);
+    when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+        .thenReturn(initial)
+        .thenAnswer(
+            invocation -> {
+              renewalStarted.countDown();
+              finishRenewal.await();
+              return renewed;
+            });
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
+    provider.accessToken();
+    clock.sleep(Duration.ofSeconds(31));
+
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      Future<String> renewing = executor.submit(provider::accessToken);
+      assertThat(renewalStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+      // A slow renewal doesn't block other callers while the current token is valid.
+      assertThat(assertTimeoutPreemptively(Duration.ofSeconds(5), provider::accessToken))
+          .isEqualTo(ACCESS_TOKEN_1);
+
+      finishRenewal.countDown();
+      assertThat(renewing.get(5, TimeUnit.SECONDS)).isEqualTo(ACCESS_TOKEN_2);
+      verifyOAuthRequest(2);
+    } finally {
+      finishRenewal.countDown();
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testInterruptedRenewalFailsEvenWithValidToken() throws Exception {
+    HttpResponse<String> initial = tokenResponse(ACCESS_TOKEN_1, 60L);
+    when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+        .thenReturn(initial)
+        .thenThrow(new InterruptedException());
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
+    provider.accessToken();
+    clock.sleep(Duration.ofSeconds(31));
+
+    assertThatThrownBy(provider::accessToken)
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("Interrupted while renewing OAuth token")
+        .hasCauseInstanceOf(InterruptedException.class);
+    // Thread.interrupted() also clears the flag again for the other tests.
+    assertThat(Thread.interrupted()).isTrue();
   }
 
   @Test

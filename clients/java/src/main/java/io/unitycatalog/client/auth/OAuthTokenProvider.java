@@ -23,6 +23,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.locks.ReentrantLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,6 +54,9 @@ class OAuthTokenProvider implements TokenProvider {
   // Bounds connecting and receiving the response headers of each token request, so a hung
   // identity provider or UC server can't hold the renewal lock of a shared provider indefinitely.
   static final Duration TOKEN_REQUEST_TIMEOUT = Duration.ofSeconds(10);
+  // After a failed renewal, callers with a still-valid token wait this long before trying again,
+  // so a failing identity provider isn't asked again on every call.
+  static final Duration RENEWAL_BACKOFF = Duration.ofSeconds(5);
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
   private static final Logger LOGGER = LoggerFactory.getLogger(OAuthTokenProvider.class);
   private static final String TOKEN_EXCHANGE_PATH = "/api/1.0/unity-control/auth/tokens";
@@ -72,7 +76,9 @@ class OAuthTokenProvider implements TokenProvider {
   private HttpClient httpClient;
   private Clock clock;
 
+  private final ReentrantLock renewalLock = new ReentrantLock();
   private volatile TempToken tempToken;
+  private volatile Instant nextRenewalAttempt = Instant.MIN;
   private boolean hasWarnedUncacheableToken;
 
   OAuthTokenProvider() {}
@@ -156,16 +162,30 @@ class OAuthTokenProvider implements TokenProvider {
     this.clock = Clock.systemClock();
   }
 
+  /**
+   * Returns the cached token, renewing it once it is within the lead time of expiring. One caller
+   * renews at a time. While the current token is still valid, the others keep using it instead of
+   * waiting, so a slow or failing identity provider doesn't block every caller of a shared
+   * provider. Callers only wait for a renewal once the token has expired.
+   */
   @Override
   public String accessToken() {
-    if (tempToken == null || tempToken.isReadyToRenew()) {
-      synchronized (this) {
-        if (tempToken == null || tempToken.isReadyToRenew()) {
-          tempToken = renewOrKeepValidToken();
-        }
-      }
+    TempToken current = tempToken;
+    if (current != null && !current.isReadyToRenew()) {
+      return current.token();
     }
-    return tempToken.token();
+    if (current != null && !current.isExpired()) {
+      if (clock.now().isBefore(nextRenewalAttempt) || !renewalLock.tryLock()) {
+        return current.token();
+      }
+    } else {
+      renewalLock.lock();
+    }
+    try {
+      return renewIfNeeded().token();
+    } finally {
+      renewalLock.unlock();
+    }
   }
 
   @Override
@@ -184,18 +204,29 @@ class OAuthTokenProvider implements TokenProvider {
   }
 
   /**
-   * A failed renewal fails the caller only once the current token has expired. Until then, renewal
-   * is retried on the next call, so an identity provider outage during the renewal lead time
-   * doesn't fail every caller of a shared provider.
+   * Renews the token unless another caller already has; called with the renewal lock held. A failed
+   * renewal fails the caller only once the current token has expired, or if the renewal was
+   * interrupted. Until then, the current token is kept and renewal is retried after {@link
+   * #RENEWAL_BACKOFF}.
    */
-  private TempToken renewOrKeepValidToken() {
+  private TempToken renewIfNeeded() {
+    TempToken current = tempToken;
+    if (current != null && !current.isReadyToRenew()) {
+      return current;
+    }
     try {
-      return renewToken();
+      tempToken = renewToken();
+      return tempToken;
     } catch (RuntimeException e) {
-      if (tempToken == null || tempToken.isExpired()) {
+      if (current == null || current.isExpired() || Thread.currentThread().isInterrupted()) {
         throw e;
       }
-      return tempToken;
+      nextRenewalAttempt = clock.now().plus(RENEWAL_BACKOFF);
+      LOGGER.warn(
+          "Failed to renew OAuth token, using the current token until it expires at {}",
+          current.expirationTime,
+          e);
+      return current;
     }
   }
 
@@ -207,6 +238,9 @@ class OAuthTokenProvider implements TokenProvider {
       }
       // The OAuth token is used once, to get the UC token, so only the UC token's expiry matters.
       return tempTokenOf(exchangeOAuthToken(accessTokenOf(oauthResponse)));
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new RuntimeException("Interrupted while renewing OAuth token", e);
     } catch (Exception e) {
       throw new RuntimeException("Failed to renew OAuth token", e);
     }
@@ -408,7 +442,7 @@ class OAuthTokenProvider implements TokenProvider {
     }
 
     public boolean isExpired() {
-      return !clock.now().isBefore(expirationTime);
+      return expirationTime == null || !clock.now().isBefore(expirationTime);
     }
   }
 }
