@@ -183,8 +183,10 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 
 A record is written for every credential issued, including ones served from the credential cache.
 Permission changes are recorded only when authorization is on. A `GRANT` is recorded when it adds a grant.
-`REVOKE` and the two `CLEAR_*` actions are recorded whenever the server applies them, also when there was
-nothing to remove, because with several servers sharing one database a server can't always tell.
+`REVOKE` and the two `CLEAR_*` actions are recorded whenever the server attempts them, also when there was
+nothing to remove, because with several servers sharing one database a server can't always tell. They are
+also recorded when the database delete fails, which jCasbin logs as one `INFO` line in `server.log`
+instead of failing the request, so confirm a revoke against the current grants when it matters.
 Changes to the parent and child links between objects are not recorded. Audit
 records are best effort: one can be lost when the sink fails, or when a request is still running as the
 server shuts down.
