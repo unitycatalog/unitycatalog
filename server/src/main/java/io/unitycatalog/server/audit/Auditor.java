@@ -158,32 +158,28 @@ public final class Auditor implements AutoCloseable {
    * Runs {@code action} only once the session's transaction commits; not on rollback or failure.
    */
   void afterCommit(Session session, Runnable action) {
-    try {
-      session
-          .getTransaction()
-          .registerSynchronization(
-              new Synchronization() {
-                @Override
-                public void beforeCompletion() {}
+    session
+        .getTransaction()
+        .registerSynchronization(
+            new Synchronization() {
+              @Override
+              public void beforeCompletion() {}
 
-                @Override
-                public void afterCompletion(int status) {
-                  // Hibernate rethrows from commit() anything thrown here, which would turn a
-                  // committed drop into an error, so everything stays inside the guard.
-                  try {
-                    // Only on commit: with resource-local transactions Hibernate reports a
-                    // rollback as STATUS_UNKNOWN, not STATUS_ROLLEDBACK.
-                    if (status == Status.STATUS_COMMITTED) {
-                      action.run();
-                    }
-                  } catch (Throwable t) {
-                    reportFailure(t);
+              @Override
+              public void afterCompletion(int status) {
+                // Hibernate rethrows from commit() anything thrown here, which would turn a
+                // committed drop into an error, so everything stays inside the guard.
+                try {
+                  // Only on commit: with resource-local transactions Hibernate reports a
+                  // rollback as STATUS_UNKNOWN, not STATUS_ROLLEDBACK.
+                  if (status == Status.STATUS_COMMITTED) {
+                    action.run();
                   }
+                } catch (Throwable t) {
+                  reportFailure(t);
                 }
-              });
-    } catch (Throwable t) {
-      reportFailure(t);
-    }
+              }
+            });
   }
 
   /**
