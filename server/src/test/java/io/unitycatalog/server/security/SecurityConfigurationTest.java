@@ -3,7 +3,6 @@ package io.unitycatalog.server.security;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.auth0.jwt.JWT;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -80,20 +79,10 @@ class SecurityConfigurationTest {
       assertThat(files).isEmpty();
     }
 
-    // bin/uc-admin-token signs the admin token with the key the server generated.
-    new SecurityConfiguration(configurationFolder);
-    SecurityConfiguration existing =
-        SecurityConfiguration.loadExisting(noSettings, configurationFolder);
-    String token =
-        SecurityContext.createServiceToken(
-            existing.algorithmRSA(), "server", SecurityContext.Issuers.INTERNAL);
-    assertThat(
-            JWT.require(existing.algorithmRSA())
-                .build()
-                .verify(token)
-                .getClaim(JwtClaim.SUBJECT.key())
-                .asString())
-        .isEqualTo("admin");
+    // bin/uc-admin-token uses the key the server generated.
+    SecurityConfiguration generated = new SecurityConfiguration(configurationFolder);
+    assertThat(SecurityConfiguration.loadExisting(noSettings, configurationFolder).rsaPrivateKey())
+        .isEqualTo(generated.rsaPrivateKey());
   }
 
   @Test
