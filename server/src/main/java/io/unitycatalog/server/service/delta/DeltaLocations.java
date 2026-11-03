@@ -23,6 +23,9 @@ public final class DeltaLocations {
   /**
    * Parses a location a Delta client sent. A cloud location is decoded once into its literal path.
    * Returns null if the input is null.
+   *
+   * @throws BaseException with {@code INVALID_ARGUMENT} if a cloud location is not a valid URI, is
+   *     opaque ({@code s3:bucket/x}), or contains '?' or '#'
    */
   public static NormalizedURL fromDelta(String location) {
     NormalizedURL literal = NormalizedURL.from(location);
@@ -37,7 +40,10 @@ public final class DeltaLocations {
     }
   }
 
-  /** Formats a stored location for a Delta client: a cloud location becomes its encoded URI. */
+  /**
+   * Formats a non-null stored location for a Delta client: a cloud location becomes its encoded
+   * URI.
+   */
   public static String toDelta(String location) {
     return NormalizedURL.from(location).toUri().toString();
   }
