@@ -469,6 +469,9 @@ lazy val server = (project in file("server"))
       "org.casbin" % "jdbc-adapter" % "2.13.0"
         exclude("com.microsoft.sqlserver", "mssql-jdbc")
         exclude("com.oracle.database.jdbc", "ojdbc6"),
+      // Also a direct dependency so the published POM carries the Failsafe pin from
+      // dependencyOverrides below; see the TODO there.
+      "dev.failsafe" % "failsafe" % "3.2.3",
       "org.postgresql" % "postgresql" % postgresqlVersion,
       "org.springframework" % "spring-expression" % "6.2.19",
       "com.auth0" % "java-jwt" % "4.6.1",
