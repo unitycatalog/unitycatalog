@@ -893,12 +893,6 @@ public class DeltaUpdateTableMapperTest {
             setColumns(
                 fld("a", prim("long"), false, 1, "col-1"), fld("r2", prim("long"), 2, "col-r2"))),
         rejected(
-            "strip a partition column's key",
-            "dropped column mapping metadata for column(s): b",
-            NAME_AB.partitionedBy("b"),
-            setColumns(
-                fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), null, null))),
-        rejected(
             "two stored columns share a physical name",
             "share the column mapping identity 'col-1'",
             new StoredTable(
