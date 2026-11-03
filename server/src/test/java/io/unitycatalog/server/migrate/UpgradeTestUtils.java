@@ -16,7 +16,7 @@ final class UpgradeTestUtils {
   private UpgradeTestUtils() {}
 
   /** Builds a database of the baseline release: its schema without Flyway's history. */
-  static void create07Schema(TestDatabase db) {
+  static void createBaselineSchema(TestDatabase db) {
     String path =
         "db/migration/" + DatabaseKind.of(db.dataSource()).folder() + "/V1__baseline_0_7.sql";
     String sql;

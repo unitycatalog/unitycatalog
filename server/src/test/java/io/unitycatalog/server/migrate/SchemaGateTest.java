@@ -41,8 +41,8 @@ public class SchemaGateTest {
   }
 
   @Test
-  void upgradesA07Database() {
-    UpgradeTestUtils.create07Schema(db);
+  void upgradesABaselineDatabase() {
+    UpgradeTestUtils.createBaselineSchema(db);
 
     try (TestServer server = TestServer.start(db, storageRoot)) {
       assertThat(SchemaSnapshot.of(db.dataSource()))

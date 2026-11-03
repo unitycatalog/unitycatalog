@@ -39,7 +39,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
-public class MigratorTest {
+public class SchemaMigratorTest {
 
   /** A test-only step 1000: the next release's step for a current database. */
   private static final List<String> NEXT_RELEASE = List.of("classpath:db/test-steps/ahead");
@@ -98,8 +98,8 @@ public class MigratorTest {
   }
 
   @Test
-  void adoptsA07Database() {
-    UpgradeTestUtils.create07Schema(db);
+  void adoptsABaselineDatabase() {
+    UpgradeTestUtils.createBaselineSchema(db);
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
     assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
 
@@ -110,7 +110,7 @@ public class MigratorTest {
 
   @Test
   void refusesADatabaseFromBeforeTheBaselineRelease() {
-    UpgradeTestUtils.create07Schema(db);
+    UpgradeTestUtils.createBaselineSchema(db);
     UpgradeTestUtils.execute(db, "DROP TABLE uc_storage_cleanup_tasks");
     SchemaSnapshot before = SchemaSnapshot.of(db.dataSource());
 
@@ -161,7 +161,7 @@ public class MigratorTest {
     CountDownLatch waitingInTheDatabase = new CountDownLatch(2);
     DataSource watched =
         withLockCall(
-            MigratorTest::isBlockingLock,
+            SchemaMigratorTest::isBlockingLock,
             sql -> {
               waitingInTheDatabase.countDown();
               return sql;
@@ -214,7 +214,7 @@ public class MigratorTest {
     assumeFalse(isH2(), "H2 has no run lock");
     DataSource refusing =
         switch (refused) {
-          case CALL_FAILS -> withLockCall(MigratorTest::isTryLock, sql -> null);
+          case CALL_FAILS -> withLockCall(SchemaMigratorTest::isTryLock, sql -> null);
           case NOT_GRANTED ->
               withLockCall(
                   sql -> isTryLock(sql) || isBlockingLock(sql),
