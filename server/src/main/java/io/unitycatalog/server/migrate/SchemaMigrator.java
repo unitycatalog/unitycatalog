@@ -241,7 +241,10 @@ public final class SchemaMigrator implements AutoCloseable {
       int cmp =
           MigrationVersion.fromVersion(current)
               .compareTo(MigrationVersion.fromVersion(latestVersion(info)));
-      return cmp == 0 ? SchemaState.CURRENT : cmp > 0 ? SchemaState.AHEAD : SchemaState.PENDING;
+      if (cmp == 0) {
+        return SchemaState.CURRENT;
+      }
+      return cmp > 0 ? SchemaState.AHEAD : SchemaState.PENDING;
     }
     if (tables.isEmpty()) {
       return SchemaState.EMPTY;
@@ -384,6 +387,24 @@ public final class SchemaMigrator implements AutoCloseable {
 
     private static final ConcurrentMap<String, ReentrantLock> H2_LOCKS = new ConcurrentHashMap<>();
 
+    /**
+     * The lock calls of one database: the try that returns at once, the blocking one, the unlock.
+     */
+    private record LockCalls(String tryLock, String lock, String unlock) {
+
+      static final LockCalls POSTGRESQL =
+          new LockCalls(
+              "SELECT pg_try_advisory_lock(" + POSTGRES_KEY + ")",
+              "SELECT true FROM pg_advisory_lock(" + POSTGRES_KEY + ")",
+              "SELECT pg_advisory_unlock(" + POSTGRES_KEY + ")");
+
+      static final LockCalls MYSQL =
+          new LockCalls(
+              "SELECT GET_LOCK(" + MYSQL_NAME + ", 0)",
+              "SELECT GET_LOCK(" + MYSQL_NAME + ", -1)",
+              "SELECT RELEASE_LOCK(" + MYSQL_NAME + ")");
+    }
+
     private final Connection connection; // PostgreSQL and MySQL
     private final String unlockSql;
     private final ReentrantLock h2Lock; // H2
@@ -408,31 +429,19 @@ public final class SchemaMigrator implements AutoCloseable {
         }
         return new RunLock(null, null, lock);
       }
-      boolean postgres = kind == DatabaseKind.POSTGRESQL;
-      String tryLock =
-          postgres
-              ? "SELECT pg_try_advisory_lock(" + POSTGRES_KEY + ")"
-              : "SELECT GET_LOCK(" + MYSQL_NAME + ", 0)";
-      String lock =
-          postgres
-              ? "SELECT true FROM pg_advisory_lock(" + POSTGRES_KEY + ")"
-              : "SELECT GET_LOCK(" + MYSQL_NAME + ", -1)";
-      String unlock =
-          postgres
-              ? "SELECT pg_advisory_unlock(" + POSTGRES_KEY + ")"
-              : "SELECT RELEASE_LOCK(" + MYSQL_NAME + ")";
+      LockCalls calls = kind == DatabaseKind.POSTGRESQL ? LockCalls.POSTGRESQL : LockCalls.MYSQL;
       Connection connection = null;
       try {
         connection = dataSource.getConnection();
         // Outside a transaction, so the run doesn't keep one open while it holds the lock.
         connection.setAutoCommit(true);
-        if (!isTrue(connection, tryLock)) {
+        if (!isTrue(connection, calls.tryLock())) {
           logWaiting();
-          if (!isTrue(connection, lock)) {
+          if (!isTrue(connection, calls.lock())) {
             throw new SQLException("the database did not grant it");
           }
         }
-        return new RunLock(connection, unlock, null);
+        return new RunLock(connection, calls.unlock(), null);
       } catch (SQLException e) {
         close(connection);
         throw new IllegalStateException(
