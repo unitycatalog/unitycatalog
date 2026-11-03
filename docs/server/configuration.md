@@ -169,9 +169,11 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
   credential records do not carry it.
 - `principal_id`: on `GRANT`, `REVOKE` and `CLEAR_PRINCIPAL_GRANTS`, the ID of the user whose grants
   changed.
-- `privilege`: on `GRANT` and `REVOKE`, the API's privilege name (for example `USE CATALOG`).
+- `privilege`: on `GRANT` and `REVOKE`, the privilege name, for example `USE CATALOG`, or `OWNER` for the
+  ownership grant made when an object is created.
 - `request_id`: the ID of the request being served, the same as `request_id` in the `server.log` lines of
-  that request. It is absent on `CLEANUP` records, which are not made while serving a request.
+  that request. It is absent on records not made while serving a request: `CLEANUP` records and
+  `system:server` records.
 - `location`: the storage location, with scheme, authority and path only. The query string and
   fragment are removed. User info is removed too, except that for ABFS the part before the `@` is
   kept when it looks like a container name (3 to 63 lowercase letters, digits and hyphens) and is
