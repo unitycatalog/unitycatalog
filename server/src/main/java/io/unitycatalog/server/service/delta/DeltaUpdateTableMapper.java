@@ -1113,30 +1113,7 @@ public final class DeltaUpdateTableMapper {
         incomingKeyByLowerName.put(lowerName, key);
       }
     }
-    Map<String, String> currentKeyByLowerName = new HashMap<>();
-    if (columnMappingMode != ColumnMappingMode.NONE) {
-      Map<String, String> currentNameByKey = new HashMap<>();
-      for (DeltaStructField cur : readableStoredFields(dao)) {
-        String key = identityKeyOf(cur, columnMappingMode);
-        if (key == null) {
-          continue;
-        }
-        String other = currentNameByKey.putIfAbsent(key, cur.getName());
-        if (other != null) {
-          // Matching by this identity could move a partition onto the other column.
-          throw new BaseException(
-              ErrorCode.INVALID_ARGUMENT,
-              "stored columns '"
-                  + other
-                  + "' and '"
-                  + cur.getName()
-                  + "' share the column mapping identity '"
-                  + key
-                  + "'; send set-partition-columns with this update.");
-        }
-        currentKeyByLowerName.put(cur.getName().toLowerCase(Locale.ROOT), key);
-      }
-    }
+    Map<String, String> currentKeyByLowerName = storedKeysByLowerName(dao, columnMappingMode);
 
     List<String> resolved = new ArrayList<>();
     for (ColumnInfo cur : partitionCols) {
@@ -1169,6 +1146,41 @@ public final class DeltaUpdateTableMapper {
       resolved.add(newName);
     }
     return resolved;
+  }
+
+  /**
+   * The stored top-level identity keys by lowercased column name; empty without column mapping.
+   *
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if two stored columns share a key
+   */
+  private static Map<String, String> storedKeysByLowerName(
+      TableInfoDAO dao, ColumnMappingMode columnMappingMode) {
+    Map<String, String> keyByLowerName = new HashMap<>();
+    if (columnMappingMode == ColumnMappingMode.NONE) {
+      return keyByLowerName;
+    }
+    Map<String, String> nameByKey = new HashMap<>();
+    for (DeltaStructField cur : readableStoredFields(dao)) {
+      String key = identityKeyOf(cur, columnMappingMode);
+      if (key == null) {
+        continue;
+      }
+      String other = nameByKey.putIfAbsent(key, cur.getName());
+      if (other != null) {
+        // Matching by this identity could move a partition onto the other column.
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "stored columns '"
+                + other
+                + "' and '"
+                + cur.getName()
+                + "' share the column mapping identity '"
+                + key
+                + "'; send set-partition-columns with this update.");
+      }
+      keyByLowerName.put(cur.getName().toLowerCase(Locale.ROOT), key);
+    }
+    return keyByLowerName;
   }
 
   private static void applySetDomainMetadata(
