@@ -83,11 +83,7 @@ public final class NormalizedURL {
               ErrorCode.INVALID_ARGUMENT,
               "Cloud storage location must start with scheme://: " + uri);
         }
-        if (uri.getRawQuery() != null || uri.getRawFragment() != null) {
-          throw new BaseException(
-              ErrorCode.INVALID_ARGUMENT,
-              "Cloud storage location cannot contain '?' or '#': " + uri);
-        }
+        rejectQueryOrFragment(uri.toString());
         yield new NormalizedURL(
             uri.getScheme() + "://" + Objects.toString(uri.getRawAuthority(), "") + uri.getPath());
       }
