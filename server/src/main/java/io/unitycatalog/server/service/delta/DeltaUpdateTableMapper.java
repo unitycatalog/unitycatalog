@@ -482,15 +482,9 @@ public final class DeltaUpdateTableMapper {
    * swapping the DAO column collection. The spec frames {@code set-columns} and {@code
    * set-partition-columns} as independent actions; the absent action's concern is preserved from
    * the existing DAO so a column-only request can't silently desync the partition list (and vice
-   * versa). The request is rejected when:
-   *
-   * <ul>
-   *   <li>a partition column named by set-partition-columns is missing from the resulting schema
-   *       ({@code partition-columns references unknown column: ...});
-   *   <li>set-columns without set-partition-columns drops an existing partition column, a stored
-   *       partition column has no identity while other stored columns have one, or two stored
-   *       columns share an identity (see {@link #resolvePartitionColumns}).
-   * </ul>
+   * versa). The request is rejected if a partition column is missing from the resulting schema
+   * ({@code partition-columns references unknown column: ...}) or cannot be resolved (see {@link
+   * #resolvePartitionColumns}).
    *
    * <p>Swap semantics rely on the orphanRemoval mapping on {@link TableInfoDAO#getColumns()} to
    * clean up the old rows; the intervening flush ensures the deletes hit the DB before the inserts,
