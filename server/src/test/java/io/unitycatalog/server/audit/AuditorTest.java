@@ -243,6 +243,20 @@ class AuditorTest {
   }
 
   @Test
+  void grantRecordsThePrincipalAndThePublicPrivilegeName() {
+    UnityCatalogAuthorizer delegate = mock(UnityCatalogAuthorizer.class);
+    UUID principal = UUID.randomUUID();
+    when(delegate.grantAuthorization(principal, ID, Privileges.USE_CATALOG)).thenReturn(true);
+    auditor.wrap(delegate).grantAuthorization(principal, ID, Privileges.USE_CATALOG);
+    assertThat(FileAuditSink.toJson(CapturingAuditSink.RECORDS.get(0)))
+        .contains(
+            "\"action\":\"GRANT\"",
+            "\"resource_id\":\"" + ID + "\"",
+            "\"principal_id\":\"" + principal + "\"",
+            "\"privilege\":\"USE CATALOG\"");
+  }
+
+  @Test
   void permissionChangeThatThrowsIsNotRecorded() {
     UnityCatalogAuthorizer delegate = mock(UnityCatalogAuthorizer.class);
     UUID principal = UUID.randomUUID();
