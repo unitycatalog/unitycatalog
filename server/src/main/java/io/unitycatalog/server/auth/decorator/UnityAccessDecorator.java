@@ -367,12 +367,13 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
         String expression,
         Map<SecurableType, UUID> resourceIds,
         Map<String, Object> nonResourceValues) {
+      // Handlers declare @Param("include_browse") so Armeria validates the value.
       resultFilter =
           new ResultFilter(
               evaluator,
               principal,
               expression,
-              Boolean.parseBoolean(ctx.queryParam("include_browse"))
+              ctx.queryParams().getBoolean("include_browse", false)
                   ? method().getAnnotation(ResponseAuthorizeFilter.class).browse()
                   : "",
               resourceIds,

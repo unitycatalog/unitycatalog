@@ -343,8 +343,12 @@ public class SdkBrowseAccessControlTest extends SdkAccessControlBaseCRUDTest {
       assertHttpApiException(
           sendRawGet(objectOwner, BASE + path + "?include_browse=true"),
           ErrorCode.PERMISSION_DENIED);
-      assertThat(getJson(browser, path + "?include_browse=true"))
-          .isEqualTo(browseMetadata(collection, entry.getValue()));
+      for (String value : List.of("true", "1")) {
+        assertThat(getJson(browser, path + "?include_browse=" + value))
+            .isEqualTo(browseMetadata(collection, entry.getValue()));
+      }
+      assertThat(sendRawGet(browser, BASE + path + "?include_browse=invalid").statusCode())
+          .isEqualTo(400);
       assertThat(getJson(adminConfig, path)).isEqualTo(entry.getValue());
     }
     assertThat(fullMetadata.get("/tables/" + NAMESPACE + ".a_table").path("properties").size())
