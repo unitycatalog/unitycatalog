@@ -306,6 +306,13 @@ public class DeltaSchemaEvolutionValidatorTest {
             cols(fld("a", "long", 1, "col-1"), fld("c", "long", 2, "col-c")),
             cols(fld("b", "long", 1, "col-1"))),
         rejected(
+            "clustering path in another case",
+            "Cannot drop clustering column c",
+            with(NAME, "clusteringColumns", "[[\"COL-C\"]]"),
+            true,
+            cols(fld("a", "long", 1, "col-1"), fld("c", "long", 2, "col-c")),
+            cols(fld("b", "long", 1, "col-1"))),
+        rejected(
             "rename while dropping a nested clustering column",
             "Cannot drop clustering column x",
             with(NAME, "clusteringColumns", "[[\"col-s\",\"col-x\"]]"),
@@ -382,6 +389,12 @@ public class DeltaSchemaEvolutionValidatorTest {
             cols(fld("a", "long", 1, "col-1"), fld("c", "long", 2, "col-c")),
             cols(fld("b", "long", 1, "col-1"))),
         ok(
+            "clustering path with a null segment names no field",
+            with(NAME, "clusteringColumns", "[[null,\"col-c\"]]"),
+            true,
+            cols(fld("a", "long", 1, "col-1"), fld("c", "long", 2, "col-c")),
+            cols(fld("b", "long", 1, "col-1"))),
+        ok(
             "clustering paths with null entries",
             with(NAME, "clusteringColumns", "[null,[null],[\"col-1\",null]]"),
             true,
@@ -395,7 +408,7 @@ public class DeltaSchemaEvolutionValidatorTest {
             cols(fld("b", "long", 1, "col-1"))),
         rejected(
             "clustering property that is not json",
-            "clusteringColumns",
+            "the stored property clusteringColumns is not a JSON array of column paths",
             with(NAME, "clusteringColumns", "not json"),
             true,
             cols(fld("a", "long", 1, "col-1")),
@@ -466,7 +479,7 @@ public class DeltaSchemaEvolutionValidatorTest {
             cols(fld("b", "long", 1, "col-1"))),
         rejected(
             "negative maxColumnId",
-            "maxColumnId",
+            "Invalid value for table property 'delta.columnMapping.maxColumnId'",
             with(NAME, "delta.columnMapping.maxColumnId", "-1"),
             true,
             cols(fld("a", "long", 1, "col-1")),
@@ -478,13 +491,20 @@ public class DeltaSchemaEvolutionValidatorTest {
             true,
             cols(fld("a", "long", 1, "col-1")),
             cols(fld("b", "long", 1, "col-1"))),
-        // The stored schema cannot be read
+        // A schema Kernel cannot read
         rejected(
             "unreadable stored schema with a rename",
             "the table schema cannot be read",
             NAME,
             true,
             cols(fld("a", "long", 1, "col-1"), fld("v", "void", 2, "col-v")),
+            cols(fld("b", "long", 1, "col-1"), fld("v", "void", 2, "col-v"))),
+        rejected(
+            "unreadable requested schema with a rename",
+            "the requested schema cannot be read",
+            NAME,
+            true,
+            cols(fld("a", "long", 1, "col-1")),
             cols(fld("b", "long", 1, "col-1"), fld("v", "void", 2, "col-v"))),
         ok(
             "unreadable stored schema without a rename",
@@ -523,6 +543,14 @@ public class DeltaSchemaEvolutionValidatorTest {
             false,
             cols(fld("a", 12345, 1, "col-1")),
             cols(fld("b", "long", 1, "col-1"))),
+        // A nested rename alone runs Kernel
+        rejected(
+            "nested rename and type change",
+            "Cannot change the type of existing field",
+            NAME,
+            false,
+            cols(fld("s", struct(fld("x", "long", 2, "col-x")), 1, "col-s")),
+            cols(fld("s", struct(fld("y", "string", 2, "col-x")), 1, "col-s"))),
         // A case-only rename runs Kernel and passes
         ok(
             "case-only rename",

@@ -244,10 +244,8 @@ public class TableRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          String[] parts = fullName.split("\\.");
-          if (parts.length != 3) {
-            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
-          }
+          String[] parts =
+              ValidationUtils.splitFullName(fullName, 3, "Invalid table name: " + fullName);
           String catalogName = parts[0];
           String schemaName = parts[1];
           String tableName = parts[2];
@@ -1220,10 +1218,7 @@ public class TableRepository {
    * single dotted string.
    */
   public TableInfoDAO deleteTable(String fullName) {
-    String[] parts = fullName.split("\\.");
-    if (parts.length != 3) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
-    }
+    String[] parts = ValidationUtils.splitFullName(fullName, 3, "Invalid table name: " + fullName);
     return deleteTable(parts[0], parts[1], parts[2]);
   }
 

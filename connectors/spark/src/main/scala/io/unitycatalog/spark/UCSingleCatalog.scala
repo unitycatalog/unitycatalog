@@ -110,7 +110,7 @@ class UCSingleCatalog
         delegate = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
           .getDeclaredConstructor().newInstance().asInstanceOf[TableCatalog]
         delegate.asInstanceOf[DelegatingCatalogExtension].setDelegateCatalog(ucProxy)
-        delegate.initialize(name, options)
+        delegate.initialize(name, AuthConfigUtils.withAuthCatalogUri(options))
         UCSingleCatalog.DELTA_CATALOG_LOADED.set(true)
         deltaCatalogLoaded = true
       } catch {

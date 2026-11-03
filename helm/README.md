@@ -848,6 +848,30 @@ not set
 </td>
 		</tr>
 		<tr>
+			<td>server.deployment.lifecycle</td>
+			<td>object</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>Lifecycle hooks for the server container
+
+On SIGTERM the server stops taking new requests and finishes the ones in flight, for up to
+the `server.shutdown-timeout` server property (set under `server.config.extraProperties`).
+Kubernetes can still route requests to the pod for a few seconds after it starts terminating,
+so a `preStop` sleep keeps the server serving until they stop arriving:
+
+```yaml
+lifecycle:
+  preStop:
+    exec:
+      command: ["sleep", "10"]
+```
+
+[Kubernetes docs](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/)
+</td>
+		</tr>
+		<tr>
 			<td>server.deployment.livenessProbe</td>
 			<td>object</td>
 			<td><pre lang="">
@@ -955,6 +979,22 @@ tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureT
 			<td>Startup probe
 
 [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
+</td>
+		</tr>
+		<tr>
+			<td>server.deployment.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td><pre lang="">
+not set (Kubernetes uses 30)
+</pre>
+</td>
+			<td>Seconds Kubernetes waits for the pod to stop before killing it
+
+Set it to more than the `preStop` sleep plus the whole shutdown time. The `server.shutdown-timeout`
+entry in the server configuration reference describes it: the timeout plus time for storage
+cleanup and for stopping the HTTP server.
+
+[Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-termination)
 </td>
 		</tr>
 		<tr>

@@ -2,6 +2,7 @@ package io.unitycatalog.server.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import java.util.Arrays;
 import java.util.regex.Pattern;
 
 public class ValidationUtils {
@@ -75,5 +76,18 @@ public class ValidationUtils {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, message);
     }
     return value;
+  }
+
+  /**
+   * Splits a dotted full name into exactly {@code expectedParts} non-empty parts. Throws {@code
+   * INVALID_ARGUMENT} with {@code errorMessage} otherwise, including when any part is empty (such
+   * as {@code a..b} or a trailing dot).
+   */
+  public static String[] splitFullName(String fullName, int expectedParts, String errorMessage) {
+    String[] parts = fullName.split("\\.", -1);
+    if (parts.length != expectedParts || Arrays.stream(parts).anyMatch(String::isEmpty)) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, errorMessage);
+    }
+    return parts;
   }
 }

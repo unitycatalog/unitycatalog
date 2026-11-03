@@ -27,23 +27,25 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Checks a set-columns rename against Delta's schema evolution rules with Delta Kernel. Kernel
- * pairs fields by column-mapping id and rejects what Delta rejects: a new physical name under the
- * same id, a new field reusing an id at or below {@code delta.columnMapping.maxColumnId}, a field
- * moved to another struct, a type change that type widening does not allow, tightened nullability,
- * a new non-nullable field, and a field without an id.
+ * Checks a set-columns on a MANAGED table that renames a top-level column, or keeps a
+ * column-mapping id under a new name or physical name, against Delta's schema evolution rules with
+ * Delta Kernel. Kernel pairs fields by column-mapping id and rejects what Delta rejects: a new
+ * physical name under the same id, a new field reusing an id at or below {@code
+ * delta.columnMapping.maxColumnId}, a field moved to another struct, a type change that type
+ * widening does not allow, tightened nullability, a new non-nullable field, and a field without an
+ * id.
  *
  * <p>A dropped clustering column is checked here, by its full physical path. Kernel compares only
  * the last physical name of a path, so it would take an unclustered field for a clustered one when
  * both end in the same physical name.
  *
- * <p>This is the only class that uses Kernel. The Kernel methods it calls are internal APIs with no
- * compatibility guarantee; {@code DeltaSchemaEvolutionValidatorTest} pins each behavior used.
+ * <p>This is the only server class that uses Kernel. The Kernel methods it calls are internal APIs
+ * with no compatibility guarantee; {@code DeltaSchemaEvolutionValidatorTest} pins each behavior
+ * used.
  */
 final class DeltaSchemaEvolutionValidator {
 
@@ -51,7 +53,7 @@ final class DeltaSchemaEvolutionValidator {
 
   private DeltaSchemaEvolutionValidator() {}
 
-  /** A field's name and physical name, as Kernel compares them for one column-mapping id. */
+  /** A field's name and physical name: what a rename or a new physical name changes under an id. */
   private record Identity(String name, Object physicalName) {}
 
   /**
@@ -61,8 +63,9 @@ final class DeltaSchemaEvolutionValidator {
    * COLUMN TYPE, while a rename commit carries the stored entries unchanged.
    *
    * @param currentProperties the table properties before this request is applied
-   * @throws BaseException {@link ErrorCode#INVALID_ARGUMENT} when Delta would reject the change, or
-   *     when Kernel cannot read a schema the check has to run on
+   * @throws BaseException {@link ErrorCode#INVALID_ARGUMENT} when Delta would reject the change,
+   *     when Kernel cannot read a schema the check has to run on, or when the stored {@code
+   *     maxColumnId} or {@code clusteringColumns} property cannot be read
    */
   static void validate(
       List<ColumnInfo> currentColumns,
@@ -72,17 +75,8 @@ final class DeltaSchemaEvolutionValidator {
     if (!renamesTopLevelColumn && !keepsAnIdUnderANewIdentity(currentColumns, incomingColumns)) {
       return;
     }
-    StructType currentSchema;
-    StructType incomingSchema;
-    try {
-      currentSchema = toKernelSchema(currentColumns);
-      incomingSchema = toKernelSchema(incomingColumns);
-    } catch (RuntimeException e) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "set-columns: the table schema cannot be read: " + e.getMessage(),
-          e);
-    }
+    StructType currentSchema = toKernelSchema(currentColumns, "the table schema");
+    StructType incomingSchema = toKernelSchema(incomingColumns, "the requested schema");
     // Clustering columns are checked below by full path. Kernel compares only the last physical
     // name of a path, so it takes an unclustered field for a clustered one when both end in the
     // same physical name.
@@ -104,7 +98,10 @@ final class DeltaSchemaEvolutionValidator {
     }
   }
 
-  /** The stored {@code maxColumnId}; a value outside the int range is rejected, not truncated. */
+  /**
+   * The stored {@code maxColumnId}, 0 when absent. Kernel rejects a negative value; a value above
+   * the int range is rejected here, not truncated.
+   */
   private static int maxColumnId(Map<String, String> properties) {
     long max;
     try {
@@ -118,7 +115,7 @@ final class DeltaSchemaEvolutionValidator {
               + e.getMessage(),
           e);
     }
-    if (max < 0 || max > Integer.MAX_VALUE) {
+    if (max > Integer.MAX_VALUE) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           "set-columns: the stored property "
@@ -129,17 +126,28 @@ final class DeltaSchemaEvolutionValidator {
     return (int) max;
   }
 
-  /** Each column's {@code type_json} is a full Delta struct field, so the list is a struct. */
-  private static StructType toKernelSchema(List<ColumnInfo> columns) {
+  /**
+   * Each column's {@code type_json} is a full Delta struct field, so the list is a struct.
+   *
+   * @param schemaName names the schema in the error when Kernel cannot read it
+   */
+  private static StructType toKernelSchema(List<ColumnInfo> columns, String schemaName) {
     String fields = columns.stream().map(ColumnInfo::getTypeJson).collect(Collectors.joining(","));
-    return DataTypeJsonSerDe.deserializeStructType(
-        "{\"type\":\"struct\",\"fields\":[" + fields + "]}");
+    try {
+      return DataTypeJsonSerDe.deserializeStructType(
+          "{\"type\":\"struct\",\"fields\":[" + fields + "]}");
+    } catch (RuntimeException e) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "set-columns: " + schemaName + " cannot be read: " + e.getMessage(),
+          e);
+    }
   }
 
   /**
    * Paths of the clustering columns, from the stored {@code clusteringColumns} property only. A
-   * path lists the physical name of each field from the top level down. Null or empty paths and
-   * null segments are skipped.
+   * path lists the physical name of each field from the top level down. A path that is null, empty
+   * or has a null segment names no field and is skipped.
    */
   private static List<List<String>> clusteringPaths(Map<String, String> properties) {
     String json = properties.get(DeltaConsts.TableProperties.CLUSTERING_COLUMNS);
@@ -154,17 +162,14 @@ final class DeltaSchemaEvolutionValidator {
           ErrorCode.INVALID_ARGUMENT,
           "set-columns: the stored property "
               + DeltaConsts.TableProperties.CLUSTERING_COLUMNS
-              + " cannot be read: "
-              + e.getOriginalMessage(),
+              + " is not a JSON array of column paths",
           e);
     }
     if (paths == null) {
       return List.of();
     }
     return paths.stream()
-        .filter(Objects::nonNull)
-        .map(path -> path.stream().filter(Objects::nonNull).collect(Collectors.toList()))
-        .filter(path -> !path.isEmpty())
+        .filter(path -> path != null && !path.isEmpty() && !path.contains(null))
         .collect(Collectors.toList());
   }
 
@@ -198,7 +203,7 @@ final class DeltaSchemaEvolutionValidator {
       }
       field =
           level.fields().stream()
-              .filter(f -> ColumnMapping.getPhysicalName(f).equals(physicalName))
+              .filter(f -> ColumnMapping.getPhysicalName(f).equalsIgnoreCase(physicalName))
               .findFirst()
               .orElse(null);
       if (field == null) {
@@ -226,15 +231,15 @@ final class DeltaSchemaEvolutionValidator {
 
   private static boolean keepsAnIdUnderANewIdentity(
       List<ColumnInfo> currentColumns, List<ColumnInfo> incomingColumns) {
-    Map<Long, Identity> current = identitiesById(currentColumns);
+    Map<Integer, Identity> current = identitiesById(currentColumns);
     return identitiesById(incomingColumns).entrySet().stream()
         .anyMatch(
             e -> current.containsKey(e.getKey()) && !current.get(e.getKey()).equals(e.getValue()));
   }
 
   /** The identity of every field with an integer column-mapping id, at any depth. */
-  private static Map<Long, Identity> identitiesById(List<ColumnInfo> columns) {
-    Map<Long, Identity> byId = new HashMap<>();
+  private static Map<Integer, Identity> identitiesById(List<ColumnInfo> columns) {
+    Map<Integer, Identity> byId = new HashMap<>();
     for (ColumnInfo column : columns) {
       try {
         collect(ColumnUtils.toStructField(column), byId);
@@ -246,19 +251,19 @@ final class DeltaSchemaEvolutionValidator {
     return byId;
   }
 
-  private static void collect(DeltaStructField field, Map<Long, Identity> byId) {
+  private static void collect(DeltaStructField field, Map<Integer, Identity> byId) {
     DeltaStructFieldMetadata meta = field.getMetadata();
     if (meta != null
-        && meta.get(DeltaConsts.TableProperties.COLUMN_MAPPING_ID) instanceof Number id) {
+        && meta.get(DeltaConsts.TableProperties.COLUMN_MAPPING_ID) instanceof Integer id) {
       byId.put(
-          id.longValue(),
+          id,
           new Identity(
               field.getName(), meta.get(DeltaConsts.TableProperties.COLUMN_MAPPING_PHYSICAL_NAME)));
     }
     collectIn(field.getType(), byId);
   }
 
-  private static void collectIn(DeltaDataType type, Map<Long, Identity> byId) {
+  private static void collectIn(DeltaDataType type, Map<Integer, Identity> byId) {
     if (type instanceof DeltaStructType struct && struct.getFields() != null) {
       struct.getFields().forEach(f -> collect(f, byId));
     } else if (type instanceof DeltaArrayType array) {

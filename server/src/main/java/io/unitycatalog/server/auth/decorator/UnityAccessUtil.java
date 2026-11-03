@@ -4,6 +4,7 @@ import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
@@ -19,6 +20,20 @@ public class UnityAccessUtil {
   public UnityAccessUtil(Repositories repositories) {
     this.userRepository = repositories.getUserRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
+  }
+
+  /**
+   * Returns the parent type in the stored authorization hierarchy, or null at a root.
+   *
+   * <p>Metastore ownership is checked separately; catalogs, external locations, and credentials
+   * have no stored parent.
+   */
+  public static SecurableType getHierarchyParentType(SecurableType type) {
+    return switch (type) {
+      case TABLE, VOLUME, FUNCTION, REGISTERED_MODEL -> SecurableType.SCHEMA;
+      case SCHEMA -> SecurableType.CATALOG;
+      case METASTORE, CATALOG, EXTERNAL_LOCATION, CREDENTIAL -> null;
+    };
   }
 
   public void initializeAdmin(UnityCatalogAuthorizer authorizer) {

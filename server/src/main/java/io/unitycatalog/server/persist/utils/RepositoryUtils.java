@@ -13,6 +13,7 @@ import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.ValidationUtils;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
@@ -158,13 +159,9 @@ public class RepositoryUtils {
     }
   }
 
-  public static String[] parseFullName(String fullName) {
-    String[] parts = fullName.split("\\.");
-    if (parts.length != 3) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Invalid registered model name: " + fullName);
-    }
-    return parts;
+  /** Splits a registered model full name (catalog.schema.model) into its three parts. */
+  public static String[] parseRegisteredModelFullName(String fullName) {
+    return ValidationUtils.splitFullName(fullName, 3, "Invalid registered model name: " + fullName);
   }
 
   public static String getAssetFullName(String catalogName, String schemaName, String assetName) {

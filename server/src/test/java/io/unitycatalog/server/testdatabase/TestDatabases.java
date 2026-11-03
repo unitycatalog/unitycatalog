@@ -22,6 +22,7 @@ public final class TestDatabases {
     return switch (selected) {
       case H2 -> h2(name);
       case POSTGRES_18 -> PostgresDatabases.get().newDatabase(name);
+      case MYSQL_8 -> MySqlDatabases.get().newDatabase(name);
     };
   }
 

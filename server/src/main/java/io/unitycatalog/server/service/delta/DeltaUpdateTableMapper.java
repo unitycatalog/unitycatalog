@@ -687,7 +687,7 @@ public final class DeltaUpdateTableMapper {
    *       them.
    *   <li>An identity value that is present must be usable: the mode's key on a top-level column,
    *       and a column mapping id on any field. In name mode, top-level physical names are unique
-   *       ignoring case. In id mode, ids are unique across the schema.
+   *       ignoring case. In both modes, ids are unique across the schema.
    *   <li>With column mapping, stored or being enabled, every field at any depth has a physical
    *       name and a column mapping id, as the Delta protocol requires in both modes.
    *   <li>Without column mapping there is no rename to find: a missing name is a drop and an add,
@@ -695,8 +695,9 @@ public final class DeltaUpdateTableMapper {
    *   <li>Enabling column mapping (a table without column mapping, or a stored schema without
    *       identity keys): top-level physical names and all ids must be unique, and no column may be
    *       renamed in the same request.
-   *   <li>Otherwise at most one top-level column is renamed per request. Delta Kernel checks the
-   *       rest of the change ({@link DeltaSchemaEvolutionValidator}).
+   *   <li>Otherwise at most one top-level column is renamed per request. On a MANAGED table, when
+   *       the request renames a field, or keeps a field's id under a new name or physical name,
+   *       Delta Kernel checks the rest of the change ({@link DeltaSchemaEvolutionValidator}).
    * </ul>
    *
    * @param requestedMode the mode this request sets, {@code NONE} when it sets none
@@ -729,8 +730,6 @@ public final class DeltaUpdateTableMapper {
         rejectMalformedIdentities(incoming, TableProperties.COLUMN_MAPPING_PHYSICAL_NAME);
         rejectDuplicateTopLevelPhysicalNames(incoming);
       }
-    }
-    if (mode == ColumnMappingMode.ID) {
       rejectDuplicateIds(incoming);
     }
     boolean enabling =
@@ -765,13 +764,19 @@ public final class DeltaUpdateTableMapper {
               + "]. Split them into separate ALTER statements.");
     }
 
-    // Delta Kernel decides the rest: identities, types, nullability and clustering columns. It
-    // reads the whole stored schema, so a stored column with an unreadable type fails the check.
-    DeltaSchemaEvolutionValidator.validate(
-        ColumnInfoDAO.toList(dao.getColumns()),
-        ColumnUtils.toColumnInfos(incoming),
-        currentProperties,
-        !topLevelRenames.isEmpty());
+    // On a MANAGED table, a rename, or a field that keeps its id under a new name or physical name,
+    // is checked against Delta's rules: Kernel checks identities, types and nullability, and the
+    // validator checks clustering columns. The check reads the whole stored schema, so when it
+    // runs, a stored column with an unreadable type fails it. An EXTERNAL table's Delta log is the
+    // source of truth and its sync can follow commits the stored schema missed, so the Kernel
+    // check does not run for it; the guards above still apply.
+    if (TableType.MANAGED.toString().equals(dao.getType())) {
+      DeltaSchemaEvolutionValidator.validate(
+          ColumnInfoDAO.toList(dao.getColumns()),
+          ColumnUtils.toColumnInfos(incoming),
+          currentProperties,
+          !topLevelRenames.isEmpty());
+    }
   }
 
   /**
@@ -798,11 +803,14 @@ public final class DeltaUpdateTableMapper {
   }
 
   /**
-   * A usable identity value is a non-empty string; a column mapping id may also be a JSON number.
+   * A usable physical name is a non-empty string. A usable column mapping id is a 32-bit integer,
+   * as the Delta protocol defines it; Jackson reads a JSON integer in that range as an {@link
+   * Integer}.
    */
   private static boolean isUsableIdentity(Object value, String key) {
-    return (key.equals(TableProperties.COLUMN_MAPPING_ID) && value instanceof Number)
-        || (value instanceof String s && !s.isEmpty());
+    return key.equals(TableProperties.COLUMN_MAPPING_ID)
+        ? value instanceof Integer
+        : value instanceof String s && !s.isEmpty();
   }
 
   /** Rejects fields that carry {@code key} with an unusable value. */
@@ -867,7 +875,7 @@ public final class DeltaUpdateTableMapper {
     }
   }
 
-  /** Rejects a column mapping id, compared as text, that two fields at any depth share. */
+  /** Rejects a column mapping id that two fields at any depth share. */
   private static void rejectDuplicateIds(List<DeltaStructField> incoming) {
     Set<String> seen = new HashSet<>();
     for (DeltaStructField f : allFields(incoming)) {
