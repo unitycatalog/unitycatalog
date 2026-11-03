@@ -1002,11 +1002,7 @@ components:
           const: "set-properties"
         updates:
           type: object
-          description: |
-            Properties to set. Setting delta.columnMapping.mode to name or id on a table whose
-            stored mode is neither requires set-columns in the same request, with a physical name
-            and a column mapping id on every column and nested field; otherwise the request is
-            rejected with InvalidParameterValueException (400).
+          description: Properties to set
           additionalProperties:
             type: string
 
