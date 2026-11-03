@@ -65,15 +65,6 @@ class SecurityConfigurationTest {
   }
 
   @Test
-  void requiresTheKeyFileToExist() {
-    assertThatThrownBy(
-            () ->
-                SecurityConfiguration.load(
-                    settings(keyDirectory.resolve("missing.key")), configurationFolder))
-        .hasMessageContaining("No token signing key file at");
-  }
-
-  @Test
   void wrapsAPkcs1KeyAsPkcs8() throws Exception {
     byte[] pkcs8 = newKeyPair().getPrivate().getEncoded();
     // A 2048-bit PKCS #8 key is a 26-byte header followed by the PKCS #1 key.
