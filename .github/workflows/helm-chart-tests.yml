@@ -56,6 +56,63 @@ jobs:
       - name: Lint the chart
         run: ct lint --charts helm --validate-maintainers=false --check-version-increment=false
 
+      - name: Check how non-default values render
+        run: |
+          set -euo pipefail
+          # Without obsPort the server gets --port but no --obs-port, and the probes check the API port.
+          out="$(helm template uc helm --set server.deployment.port=9000 \
+            --set server.deployment.enableReadinessProbe=true)"
+          grep -A1 -- '- --port' <<<"$out" | grep -qF -- '- "9000"'
+          ! grep -qF -- '--obs-port' <<<"$out" || exit 1
+          grep -A1 'readinessProbe:' <<<"$out" | grep -qF 'tcpSocket:'
+          grep -A1 'command:' <<<"$out" | grep -qF -- '- ./bin/start-uc-server'
+          # A custom command replaces the default one.
+          out="$(helm template uc helm --set 'server.deployment.command={/entrypoint.sh,./bin/start-uc-server}')"
+          grep -A2 'command:' <<<"$out" | grep -qF -- '- /entrypoint.sh'
+          ! grep -A1 'command:' <<<"$out" | grep -qF -- '- ./bin/start-uc-server' || exit 1
+          # An upgrade with --reuse-values from an older release has no command value; keep the default.
+          out="$(helm template uc helm --set server.deployment.command=null)"
+          grep -A1 'command:' <<<"$out" | grep -qF -- '- ./bin/start-uc-server'
+          # The create-users job calls the server through its Service, so it uses the Service port.
+          out="$(helm template uc helm --set server.deployment.port=9000 --set server.service.port=8181 \
+            --set auth.enabled=true --set 'auth.users[0].name=admin' --set 'auth.users[0].email=admin@example.com')"
+          grep -qF 'uc-unitycatalog-server:8181/api/' <<<"$out"
+          ! grep -qF 'uc-unitycatalog-server:9000' <<<"$out" || exit 1
+          # With obsPort, the flag, the container port and the probes all use it.
+          out="$(helm template uc helm --set server.deployment.obsPort=9099 \
+            --set server.deployment.enableReadinessProbe=true \
+            --set server.deployment.enableLivenessProbe=true)"
+          grep -A1 -- '- --obs-port' <<<"$out" | grep -qF -- '- "9099"'
+          grep -qF 'containerPort: 9099' <<<"$out"
+          ready="$(grep -A3 'readinessProbe:' <<<"$out")"
+          grep -qF 'path: /readyz' <<<"$ready"
+          grep -qF 'port: obs' <<<"$ready"
+          live="$(grep -A3 'livenessProbe:' <<<"$out")"
+          grep -qF 'path: /livez' <<<"$live"
+          grep -qF 'port: obs' <<<"$live"
+          # obsPort must differ from port.
+          if err="$(helm template uc helm --set server.deployment.obsPort=8080 2>&1)"; then exit 1; fi
+          grep -qF 'obsPort must differ' <<<"$err"
+          # Custom probes render as given, not as the whole chart context.
+          args=(--set ui.enabled=true)
+          for c in server ui; do
+            for probe in readiness liveness startup; do
+              args+=(--set "$c.deployment.enable${probe^}Probe=true"
+                --set "$c.deployment.${probe}Probe.httpGet.path=/custom-$c-$probe"
+                --set "$c.deployment.${probe}Probe.httpGet.port=8080")
+            done
+          done
+          out="$(helm template uc helm "${args[@]}")"
+          for c in server ui; do
+            for probe in readiness liveness startup; do
+              grep -qF "path: /custom-$c-$probe" <<<"$out"
+            done
+          done
+          ! grep -qE '^ +(Capabilities|Release|Values):' <<<"$out" || exit 1
+          # An explicit grace period of 0 is kept.
+          out="$(helm template uc helm --set server.deployment.terminationGracePeriodSeconds=0)"
+          grep -qE '^ +terminationGracePeriodSeconds: 0$' <<<"$out"
+
       - name: Build the server and UI images
         run: |
           docker build -t unitycatalog:ci .
@@ -124,6 +181,8 @@ jobs:
             "${values[@]}" \
             --set server.deployment.image.repository=unitycatalog \
             --set server.deployment.image.pullPolicy=Never \
+            --set server.deployment.obsPort=8090 \
+            --set server.deployment.enableReadinessProbe=true \
             --set ui.deployment.image.repository=unitycatalog-ui \
             --set ui.deployment.image.pullPolicy=Never
           helm test uc --namespace uc --logs
