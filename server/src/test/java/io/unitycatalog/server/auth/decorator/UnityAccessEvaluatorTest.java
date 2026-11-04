@@ -5,6 +5,7 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.persist.model.Privileges.MODIFY;
+import static io.unitycatalog.server.persist.model.Privileges.READ_METADATA;
 import static io.unitycatalog.server.persist.model.Privileges.SELECT;
 import static io.unitycatalog.server.persist.model.Privileges.USE_CATALOG;
 import static io.unitycatalog.server.persist.model.Privileges.USE_SCHEMA;
@@ -201,7 +202,7 @@ class UnityAccessEvaluatorTest {
   }
 
   @Test
-  void getTableRequiresSelectOrAnOwnerRule() throws Exception {
+  void getTableRequiresReadAccessOrAnOwnerRule() throws Exception {
     assertGetTable(null, Set.of(), false, false);
     assertGetTable(null, Set.of(USE_CATALOG, USE_SCHEMA), false, false);
     // MODIFY without SELECT passes only with strict checks off.
@@ -219,10 +220,31 @@ class UnityAccessEvaluatorTest {
     assertGetTable(TABLE, Set.of(USE_SCHEMA), false, false);
     assertGetTable(TABLE, Set.of(USE_CATALOG), false, false);
     assertGetTable(TABLE, Set.of(USE_CATALOG, USE_SCHEMA), true, true);
+
+    for (SecurableType scope : List.of(METASTORE, CATALOG)) {
+      assertGetTable(null, scope, Set.of(), true, true);
+    }
+    assertGetTable(null, SCHEMA, Set.of(), false, false);
+    assertGetTable(null, SCHEMA, Set.of(USE_SCHEMA), false, false);
+    assertGetTable(null, SCHEMA, Set.of(USE_CATALOG), true, true);
+    assertGetTable(null, TABLE, Set.of(), false, false);
+    assertGetTable(null, TABLE, Set.of(USE_SCHEMA), false, false);
+    assertGetTable(null, TABLE, Set.of(USE_CATALOG), false, false);
+    assertGetTable(null, TABLE, Set.of(USE_CATALOG, USE_SCHEMA), true, true);
   }
 
   private void assertGetTable(
       SecurableType ownedResource,
+      Set<Privileges> grants,
+      boolean expectedStrict,
+      boolean expectedLegacy)
+      throws Exception {
+    assertGetTable(ownedResource, null, grants, expectedStrict, expectedLegacy);
+  }
+
+  private void assertGetTable(
+      SecurableType ownedResource,
+      SecurableType metadataResource,
       Set<Privileges> grants,
       boolean expectedStrict,
       boolean expectedLegacy)
@@ -234,49 +256,58 @@ class UnityAccessEvaluatorTest {
             SecurableType.CATALOG, UUID.randomUUID(),
             SecurableType.SCHEMA, UUID.randomUUID(),
             SecurableType.TABLE, UUID.randomUUID());
+    Map<UUID, Set<Privileges>> assignments = new HashMap<>();
+    for (UUID resource : resources.values()) {
+      assignments.put(resource, EnumSet.noneOf(Privileges.class));
+    }
+    for (Privileges grant : grants) {
+      SecurableType type =
+          switch (grant) {
+            case USE_CATALOG -> CATALOG;
+            case USE_SCHEMA -> SCHEMA;
+            default -> TABLE;
+          };
+      assignments.get(resources.get(type)).add(grant);
+    }
+    if (ownedResource != null) {
+      assignments.get(resources.get(ownedResource)).add(Privileges.OWNER);
+    }
+    if (metadataResource != null) {
+      assignments.get(resources.get(metadataResource)).add(READ_METADATA);
+    }
+
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
     when(authorizer.authorize(
-            eq(principal), any(SecurableType.class), any(UUID.class), eq(Privileges.OWNER)))
+            eq(principal), any(SecurableType.class), any(UUID.class), any(Privileges.class)))
         .thenAnswer(
             invocation ->
-                ownedResource != null
-                    && invocation.getArgument(2).equals(resources.get(ownedResource)));
-    when(authorizer.authorize(
-            principal, CATALOG, resources.get(SecurableType.CATALOG), Privileges.USE_CATALOG))
-        .thenReturn(grants.contains(USE_CATALOG));
-    when(authorizer.authorize(
-            principal, SCHEMA, resources.get(SecurableType.SCHEMA), Privileges.USE_SCHEMA))
-        .thenReturn(grants.contains(USE_SCHEMA));
-    when(authorizer.authorize(
-            principal, TABLE, resources.get(SecurableType.TABLE), Privileges.MODIFY))
-        .thenReturn(grants.contains(MODIFY));
-
-    Set<Privileges> tableGrants = EnumSet.noneOf(Privileges.class);
-    if (ownedResource == SecurableType.TABLE) {
-      tableGrants.add(Privileges.OWNER);
-    }
-    if (grants.contains(SELECT)) {
-      tableGrants.add(Privileges.SELECT);
-    }
-    if (grants.contains(MODIFY)) {
-      tableGrants.add(Privileges.MODIFY);
-    }
+                assignments.get(invocation.getArgument(2)).contains(invocation.getArgument(3)));
     when(authorizer.authorizeAny(
-            eq(principal),
-            eq(TABLE),
-            eq(resources.get(SecurableType.TABLE)),
-            any(Privileges[].class)))
+            eq(principal), any(SecurableType.class), any(UUID.class), any(Privileges[].class)))
         .thenAnswer(
             invocation ->
                 Arrays.stream((Privileges[]) invocation.getRawArguments()[3])
-                    .anyMatch(tableGrants::contains));
+                    .anyMatch(assignments.get(invocation.getArgument(2))::contains));
 
     for (boolean strictPrivilegeChecks : new boolean[] {true, false}) {
-      assertThat(
-              new UnityAccessEvaluator(authorizer, strictPrivilegeChecks)
-                  .evaluate(principal, AuthorizeExpressions.GET_TABLE, resources, Map.of()))
-          .as("owner=%s, grants=%s, strict=%s", ownedResource, grants, strictPrivilegeChecks)
+      UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer, strictPrivilegeChecks);
+      assertThat(evaluator.evaluate(principal, AuthorizeExpressions.GET_TABLE, resources, Map.of()))
+          .as(
+              "owner=%s, metadata=%s, grants=%s, strict=%s",
+              ownedResource, metadataResource, grants, strictPrivilegeChecks)
           .isEqualTo(strictPrivilegeChecks ? expectedStrict : expectedLegacy);
+      if (metadataResource != null) {
+        assertThat(
+                evaluator.evaluate(
+                    principal,
+                    AuthorizeExpressions.VEND_ICEBERG_TABLE_CREDENTIAL,
+                    resources,
+                    Map.of()))
+            .as(
+                "metadata=%s, grants=%s, strict=%s",
+                metadataResource, grants, strictPrivilegeChecks)
+            .isFalse();
+      }
     }
   }
 

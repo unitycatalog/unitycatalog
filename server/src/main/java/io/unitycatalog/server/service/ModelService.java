@@ -12,6 +12,7 @@ import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
@@ -89,12 +90,13 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
 
   private static final String LIST_AND_GET_AUTH_EXPRESSION =
       """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorizeAny(#principal, #registered_model, OWNER, EXECUTE) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #catalog, USE_CATALOG))
+      #authorizeAny(#principal, #metastore, OWNER, READ_METADATA) ||
+      #authorizeAny(#principal, #catalog, OWNER, READ_METADATA) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorizeAny(#principal, #schema, OWNER, READ_METADATA)) ||
+      (#authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorizeAny(#principal, #registered_model, OWNER, EXECUTE, READ_METADATA))
       """;
 
   @Get("")
@@ -172,14 +174,7 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Post("/versions")
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #registered_model, OWNER))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.CREATE_MODEL_VERSION)
   public HttpResponse createModelVersion(
       @AuthorizeResourceKeys({
             @AuthorizeResourceKey(value = CATALOG, key = "catalog_name"),
@@ -198,15 +193,7 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Get("/{full_name}/versions")
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorizeAny(#principal, #registered_model, OWNER, EXECUTE) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #catalog, USE_CATALOG))
-      """)
+  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listModelVersions(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullName,
@@ -216,15 +203,7 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Get("/{full_name}/versions/{version}")
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorizeAny(#principal, #registered_model, OWNER, EXECUTE) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #catalog, USE_CATALOG))
-      """)
+  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getModelVersion(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullName,
@@ -272,14 +251,7 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Patch("/{full_name}/versions/{version}/finalize")
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #registered_model, OWNER))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.CREATE_MODEL_VERSION)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse finalizeModelVersion(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullName,
