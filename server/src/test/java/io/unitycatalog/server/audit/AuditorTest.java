@@ -95,7 +95,7 @@ class AuditorTest {
     // Anything else before the @ may be a secret.
     assertThat(auditor.sanitizeLocation("abfss://user:pw@acct.dfs.core.windows.net/p"))
         .isEqualTo("abfss://[REDACTED]@acct.dfs.core.windows.net/p");
-    // Vending decodes the authority, so an encoded @ and : delimit user info too.
+    // Vending decodes the authority, so an encoded @ ends user info too.
     assertThat(auditor.sanitizeLocation("abfss://user%3Apw%40acct.dfs.core.windows.net/p"))
         .isEqualTo("abfss://[REDACTED]@acct.dfs.core.windows.net/p");
     assertThat(FileAuditSink.toJson(r))
@@ -181,7 +181,13 @@ class AuditorTest {
     vend.run();
     vend.run();
     assertThat(flaky.unreported).hasValue(2);
-    // A minute later, the next record reports the count.
+    // A minute later, the next failure reports the count, and counting starts again.
+    now.addAndGet(Duration.ofMinutes(1).toMillis());
+    vend.run();
+    assertThat(flaky.unreported).hasValue(0);
+    vend.run();
+    assertThat(flaky.unreported).hasValue(1);
+    // A minute later, a record that is written reports the count.
     now.addAndGet(Duration.ofMinutes(1).toMillis());
     failing.set(false);
     vend.run();

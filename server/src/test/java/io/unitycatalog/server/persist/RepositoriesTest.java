@@ -94,14 +94,7 @@ class RepositoriesTest {
   @ParameterizedTest
   @ValueSource(booleans = {false, true})
   void defaultCloudCredentialVendorCachesOnlyWhenTheCacheIsEnabled(boolean cacheEnabled) {
-    Properties properties = new Properties();
-    properties.setProperty("server.env", "test");
-    properties.setProperty("server.storage-credential-cache.enabled", String.valueOf(cacheEnabled));
-    // A static per-bucket credential, so the vend needs no cloud call.
-    properties.setProperty("s3.bucketPath.0", "s3://bucket");
-    properties.setProperty("s3.accessKey.0", "AK");
-    properties.setProperty("s3.secretKey.0", "SK");
-    properties.setProperty("s3.sessionToken.0", "TK");
+    Properties properties = staticS3Properties(cacheEnabled);
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
 
     CloudCredentialVendor vendor =
@@ -119,6 +112,18 @@ class RepositoriesTest {
     assertThat(cacheRequests(registry, UcMetricConstants.MISS)).isEqualTo(cacheEnabled ? 1.0 : 0.0);
   }
 
+  /** A static per-bucket S3 credential, so a vend needs no cloud call. */
+  private static Properties staticS3Properties(boolean cacheEnabled) {
+    Properties properties = new Properties();
+    properties.setProperty("server.env", "test");
+    properties.setProperty("server.storage-credential-cache.enabled", String.valueOf(cacheEnabled));
+    properties.setProperty("s3.bucketPath.0", "s3://bucket");
+    properties.setProperty("s3.accessKey.0", "AK");
+    properties.setProperty("s3.secretKey.0", "SK");
+    properties.setProperty("s3.sessionToken.0", "TK");
+    return properties;
+  }
+
   private static double cacheRequests(SimpleMeterRegistry registry, String result) {
     return TestUtils.counterCount(
         registry, UcMetric.STORAGE_CREDENTIAL_CACHE_REQUESTS, UcMetricConstants.RESULT, result);
@@ -126,15 +131,8 @@ class RepositoriesTest {
 
   @Test
   void auditRecordsCredentialsServedFromTheCache() {
-    Properties properties = new Properties();
-    properties.setProperty("server.env", "test");
-    properties.setProperty("server.storage-credential-cache.enabled", "true");
+    Properties properties = staticS3Properties(/* cacheEnabled= */ true);
     properties.setProperty(Property.AUDIT_SINK.getKey(), CapturingAuditSink.class.getName());
-    // A static per-bucket credential, so the vend needs no cloud call.
-    properties.setProperty("s3.bucketPath.0", "s3://bucket");
-    properties.setProperty("s3.accessKey.0", "AK");
-    properties.setProperty("s3.secretKey.0", "SK");
-    properties.setProperty("s3.sessionToken.0", "TK");
     ServerProperties audited = new ServerProperties(properties);
     SimpleMeterRegistry registry = new SimpleMeterRegistry();
     CapturingAuditSink.reset();
