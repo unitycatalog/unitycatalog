@@ -1,0 +1,12 @@
+# Renders the MySQL database values so that chart lint covers them.
+server:
+  db:
+    type: mysql
+    mysqlConfig:
+      host: mysql
+      passwordSecretName: db-password
+      driver:
+        volume:
+          persistentVolumeClaim:
+            claimName: mysql-driver
+        subPath: connector-j
