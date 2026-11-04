@@ -2,7 +2,10 @@ package io.unitycatalog.server.migrate;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
@@ -24,6 +27,28 @@ public class SchemaGateTest {
 
   @TempDatabase(empty = true)
   TestDatabase db;
+
+  @TempDir Path storageRoot;
+
+  @Test
+  void refusesToStartOnADatabaseThatIsNotSetUp() {
+    assertThatThrownBy(() -> TestServer.start(db, storageRoot))
+        .hasMessageContaining("bin/start-uc-server --upgrade-schema");
+    assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
+  }
+
+  @Test
+  void setsUpAnInMemoryDatabaseAtStart() throws ApiException {
+    // It lasts only as long as the server, so no command can set it up before the server starts.
+    Properties inMemory = db.hibernateProperties();
+    inMemory.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    inMemory.setProperty("hibernate.connection.url", "jdbc:h2:mem:gate;DB_CLOSE_DELAY=-1");
+
+    try (TestServer server = TestServer.start(db, inMemory, storageRoot)) {
+      assertThat(new CatalogsApi(server.apiClient()).listCatalogs(null, null).getCatalogs())
+          .isEmpty();
+    }
+  }
 
   @Test
   void upgradeSchemaCommandSetsUpTheConfiguredDatabase(@TempDir Path conf) throws IOException {
