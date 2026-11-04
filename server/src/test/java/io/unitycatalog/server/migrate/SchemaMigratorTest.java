@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
@@ -140,6 +141,21 @@ public class SchemaMigratorTest {
     assertThat(migrator.state()).isEqualTo(SchemaState.NOT_UC);
 
     assertThatThrownBy(migrator::migrate).hasMessageContaining("not a Unity Catalog database");
+  }
+
+  @Test
+  void readsOnlyTheConfiguredSchema() {
+    assumeFalse(db.jdbcUrl().startsWith("jdbc:mysql:"), "MySQL has no schemas within a database");
+    // In a metadata search, "_" matches any character: uc_a would also list ucxa's tables.
+    UpgradeTestUtils.execute(db, "CREATE SCHEMA uc_a");
+    UpgradeTestUtils.execute(db, "CREATE SCHEMA ucxa");
+    UpgradeTestUtils.execute(db, "CREATE TABLE ucxa.orders (id INT)");
+    HikariConfig config = new HikariConfig();
+    config.setDataSource(db.dataSource());
+    config.setSchema(isH2() ? "UC_A" : "uc_a");
+    try (HikariDataSource onUcA = new HikariDataSource(config)) {
+      assertThat(new SchemaMigrator(onUcA).state()).isEqualTo(SchemaState.EMPTY);
+    }
   }
 
   @Test

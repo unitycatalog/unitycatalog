@@ -366,7 +366,7 @@ public class HibernateConfigurator implements AutoCloseable {
    */
   static Properties withSchemaUpdatesOff(Properties properties) {
     String auto = properties.getProperty("hibernate.hbm2ddl.auto");
-    if (auto != null && !"none".equals(auto)) {
+    if (auto != null && !isNone(auto)) {
       LOGGER.warn(
           "Ignoring hibernate.hbm2ddl.auto={}: the schema is managed by the schema migration"
               + " steps.",
