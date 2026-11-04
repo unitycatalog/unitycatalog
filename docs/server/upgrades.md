@@ -4,10 +4,14 @@ Unity Catalog uses [Flyway](https://flywaydb.org/) to manage the schema of its d
 release ships the schema steps it needs, and each step is applied once and recorded in the
 `uc_schema_history` table.
 
-For now the schema steps are optional, and you run them by hand. The server still lets Hibernate
-update the schema when it starts (`hibernate.hbm2ddl.auto=update` in
-`etc/conf/hibernate.properties`). The steps build the same schema, so on a database that the steps
-set up, Hibernate changes nothing.
+Hibernate no longer changes the schema. If your `etc/conf/hibernate.properties` still sets
+`hibernate.hbm2ddl.auto=update`, the server ignores it and logs a warning. You can delete the line.
+
+The server doesn't change the schema when it starts. It starts only on a database at the schema
+version of its release whose schema history passes Flyway's checks. Otherwise it refuses to start
+and tells you to run `bin/start-uc-server --upgrade-schema`. The one exception is an in-memory
+database (`server.env=test`, or a `jdbc:h2:mem:` URL), which only the server's own process can
+reach: the server sets up its schema at start.
 
 Two options of `bin/start-uc-server` check and change the schema. Neither starts the server. Both
 exit with 0 when they succeed, and with 1 and the reasons when they refuse (see
@@ -26,10 +30,9 @@ exit with 0 when they succeed, and with 1 and the reasons when they refuse (see
 
 The first baseline release is 0.7.0: schema version 1 is its schema. A database without schema
 history is adopted as version 1 when its schema matches version 1 exactly, and as the latest version
-when it matches that exactly, such as a database that a server of this release set up when it
-started; `--check-schema` lists every difference. A database from an earlier release must be
-upgraded to 0.7.0 first: start a 0.7.0 server on it once, stop it, then upgrade it to this release.
-Such a database still differs from version 1 in two checks, so repair it first (see
+when it matches that exactly; `--check-schema` lists every difference. A database from an earlier
+release must be upgraded to 0.7.0 first: start a 0.7.0 server on it once, stop it, then upgrade it
+to this release. Such a database still differs from version 1 in two checks, so repair it first (see
 [Repairing a database from before 0.7.0](#repairing-a-database-from-before-070)).
 
 ### Repairing a database from before 0.7.0
@@ -118,6 +121,9 @@ stop the servers, to find out early whether the upgrade would go through.
     bin/start-uc-server
     ```
 
+With the Helm chart, an init container in each server pod runs `--upgrade-schema`; see
+[Deploy with Helm](helm.md#upgrade-and-uninstall).
+
 On PostgreSQL and MySQL, `--upgrade-schema` takes a lock, so when several run at the same time, one
 applies the steps and the others wait for it. It holds that lock on one database session for the
 whole run, so connect to the database directly or through a pooler in session mode, not in
@@ -154,7 +160,16 @@ widened) while the schema history still records the step.
 
 ## Messages
 
-Messages that `--check-schema` and `--upgrade-schema` print when they refuse, and what to do.
+Messages that the server prints when it refuses to start, and that `--check-schema` and
+`--upgrade-schema` print when they refuse, and what to do.
+
+`The database schema is at version <n>, and this release needs version <m>. Stop every server of the previous release, run bin/start-uc-server --upgrade-schema with this release, then start the server.`
+: The server refuses to start on a database that is not at its release's schema version: `none`
+  for a database without schema history, such as one from the baseline release. Follow
+  [Upgrading to a new release](#upgrading-to-a-new-release).
+
+  After a failed `--upgrade-schema`, fix the cause it printed and run it again. Do not edit
+  `uc_schema_history` by hand.
 
 `The database schema is neither the schema of version <n-1> nor that of version <n>, so schema step <n> can't run. It differs from version <v> in:`
 : Followed by one line per difference (`missing ...` or `unexpected ...`). Repair the differences or
@@ -174,6 +189,12 @@ Messages that `--check-schema` and `--upgrade-schema` print when they refuse, an
   this release's step of the same version (its checksum), or this release lacks a recorded step.
   `<reasons>` may advise Flyway's `repair` command, which Unity Catalog doesn't have. Run the release
   that applied the steps, or restore the backup. Do not edit `uc_schema_history` by hand.
+
+`<setting>=<value> is not supported: the schema steps manage the schema. Set it to none.`
+: A Hibernate setting asks Hibernate to create, update or validate the schema itself:
+  `hibernate.hbm2ddl.auto` in a server embedded in an application, or
+  `jakarta.persistence.schema-generation.database.action` (or its `javax.` form), also as a JVM
+  system property or in a `hibernate.properties` on the classpath. Set it to `none` or remove it.
 
 `Could not take the schema migration lock: <reason>`
 : The command could not get the lock that keeps two migration runs apart, so it changed nothing.
