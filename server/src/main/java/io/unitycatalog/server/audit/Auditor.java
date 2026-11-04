@@ -121,13 +121,17 @@ public final class Auditor implements AutoCloseable {
     try {
       URI uri = URI.create(url);
       String authority = uri.getRawAuthority();
-      if (authority != null && authority.contains("@")) {
-        int at = authority.lastIndexOf('@');
-        String host = authority.substring(at + 1);
+      // Vending reads the decoded authority, so an encoded @ also ends user info.
+      String decoded = uri.getAuthority();
+      if (decoded != null && decoded.contains("@")) {
+        int at = decoded.lastIndexOf('@');
+        String host = decoded.substring(at + 1);
         boolean abfs = uri.getScheme().startsWith("abfs");
         if (!abfs) {
           authority = host;
-        } else if (!ABFS_CONTAINER.matcher(authority.substring(0, at)).matches()) {
+        } else if (ABFS_CONTAINER.matcher(decoded.substring(0, at)).matches()) {
+          authority = decoded;
+        } else {
           authority = "[REDACTED]@" + host;
         }
       }
