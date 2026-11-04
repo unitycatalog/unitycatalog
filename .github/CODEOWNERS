@@ -13,6 +13,9 @@
 /.github/actions/ @tdas @yili-db
 /.github/workflows/ @tdas @yili-db
 
+# Misc
+/.gitignore @tdas @yili-db
+
 # Etc
 /etc/ @tdas @yili-db
 
