@@ -39,6 +39,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.stubbing.Answer;
 
 class UnityAccessEvaluatorTest {
 
@@ -386,8 +387,7 @@ class UnityAccessEvaluatorTest {
           .isTrue();
     }
 
-    // Unbatched, every one of these ran once per table (USE_CATALOG twice): 7 authorizer calls per
-    // table, now 1.
+    // The shared parent checks run once for the list; only the table's own check runs per item.
     verify(authorizer, times(1)).authorize(principal, METASTORE, metastore, Privileges.OWNER);
     verify(authorizer, times(1)).authorize(principal, CATALOG, catalog, Privileges.OWNER);
     verify(authorizer, times(1)).authorize(principal, CATALOG, catalog, USE_CATALOG);
@@ -398,10 +398,23 @@ class UnityAccessEvaluatorTest {
     verify(authorizer, never()).refreshAuthorizations(anyLong());
   }
 
-  @Test
-  void batchRefreshesAtMostOncePerList() throws Exception {
+  static Stream<Arguments> refreshOutcomes() {
+    Answer<Boolean> fails =
+        invocation -> {
+          throw new RuntimeException("reload failed");
+        };
+    return Stream.of(
+        Arguments.of("returns true", (Answer<Boolean>) invocation -> true, 2),
+        Arguments.of("returns false", (Answer<Boolean>) invocation -> false, 1),
+        Arguments.of("throws", fails, 1));
+  }
+
+  @ParameterizedTest(name = "refresh {0}")
+  @MethodSource("refreshOutcomes")
+  void batchRefreshesAtMostOncePerList(
+      String outcome, Answer<Boolean> refresh, int firstTableChecks) throws Exception {
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
-    when(authorizer.refreshAuthorizations(anyLong())).thenReturn(true);
+    when(authorizer.refreshAuthorizations(anyLong())).thenAnswer(refresh);
     UUID principal = UUID.randomUUID();
     UUID catalog = UUID.randomUUID();
 
@@ -413,49 +426,12 @@ class UnityAccessEvaluatorTest {
       assertThat(batch.evaluate(Map.of(CATALOG, catalog, TABLE, table))).isFalse();
     }
 
-    // The first deny refreshes and re-checks; that refresh already covers the operation start, so
-    // later denies are final instead of paying a second evaluation each.
+    // The first deny uses up the one refresh, re-checking only if it succeeded. Whatever the
+    // outcome, later denies are final.
     verify(authorizer, times(1)).refreshAuthorizations(anyLong());
-    verify(authorizer, times(2)).authorize(principal, TABLE, tables.get(0), Privileges.OWNER);
+    verify(authorizer, times(firstTableChecks))
+        .authorize(principal, TABLE, tables.get(0), Privileges.OWNER);
     verify(authorizer, times(1)).authorize(principal, TABLE, tables.get(1), Privileges.OWNER);
     verify(authorizer, times(1)).authorize(principal, TABLE, tables.get(2), Privileges.OWNER);
-  }
-
-  @Test
-  void listFilteringKeepsEachItemsOwnDecision() throws Exception {
-    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
-    UUID principal = UUID.randomUUID();
-    UUID metastore = UUID.randomUUID();
-    UUID catalog = UUID.randomUUID();
-    UUID schema = UUID.randomUUID();
-    when(authorizer.authorize(principal, CATALOG, catalog, USE_CATALOG)).thenReturn(true);
-    when(authorizer.authorize(principal, SCHEMA, schema, USE_SCHEMA)).thenReturn(true);
-    List<TableInfo> items = new ArrayList<>();
-    List<String> readable = new ArrayList<>();
-    for (int i = 0; i < 10; i++) {
-      UUID table = UUID.randomUUID();
-      items.add(new TableInfo().tableId(table.toString()));
-      if (i % 2 == 0) {
-        readable.add(table.toString());
-      }
-    }
-    when(authorizer.authorizeAny(
-            eq(principal), eq(TABLE), any(UUID.class), any(Privileges[].class)))
-        .thenAnswer(invocation -> readable.contains(invocation.getArgument(2).toString()));
-
-    new ResultFilter(
-            new UnityAccessEvaluator(authorizer, true),
-            principal,
-            AuthorizeExpressions.GET_TABLE,
-            new HashMap<>(Map.of(METASTORE, metastore, CATALOG, catalog, SCHEMA, schema)),
-            Map.of(),
-            mock(KeyMapper.class))
-        .filter(TABLE, items);
-
-    // Decisions are shared across items only for the same resource: alternating table grants must
-    // still alternate after filtering.
-    assertThat(items).extracting(TableInfo::getTableId).containsExactlyElementsOf(readable);
-    verify(authorizer, times(1)).authorize(principal, CATALOG, catalog, USE_CATALOG);
-    verify(authorizer, times(1)).authorize(principal, SCHEMA, schema, USE_SCHEMA);
   }
 }

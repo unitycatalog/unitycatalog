@@ -33,8 +33,7 @@ import org.springframework.expression.spel.support.StandardEvaluationContext;
  *
  * <p>To check one expression against many resources (list filtering), use {@link #batch}: a {@link
  * Batch} remembers each authorizer decision, so checks on the shared parents (metastore, catalog,
- * schema) run once per list instead of once per item. That matters because each {@code
- * JCasbinAuthorizer} check scans every policy row.
+ * schema) run once per list instead of once per item, since authorizer checks can be expensive.
  */
 public class UnityAccessEvaluator {
 
@@ -105,14 +104,15 @@ public class UnityAccessEvaluator {
   /**
    * Starts evaluating one expression for one principal against many resources, as list filtering
    * does. The returned batch is not thread-safe and should not outlive the operation: it remembers
-   * authorizer decisions, so a grant or revoke made while it is in use is not seen by it.
+   * each authorizer decision and clears them only once, when its single refresh runs. A grant or
+   * revoke made while it is in use is seen only by checks it has not made yet.
    *
    * @param principal The principal UUID
    * @param expression The SpEL authorization expression
    * @param nonResourceValues Map of parameter names to their values (from @AuthorizeKey)
    * @param operationStartNanos {@link System#nanoTime()} from the start of this operation
    */
-  public Batch batch(
+  Batch batch(
       UUID principal,
       String expression,
       Map<String, Object> nonResourceValues,
@@ -128,7 +128,7 @@ public class UnityAccessEvaluator {
       String function, UUID principal, Resource resource, List<Privileges> actions) {}
 
   /** One expression evaluated for one principal against many resources; see {@link #batch}. */
-  public final class Batch {
+  final class Batch {
     private final UUID principal;
     private final Expression expression;
     private final Map<String, Object> nonResourceValues;
@@ -158,12 +158,13 @@ public class UnityAccessEvaluator {
      *
      * <p>On deny, refreshes policy if needed, forgets the remembered decisions, and re-evaluates.
      * That happens at most once per batch: one refresh already brings the policy up to the start of
-     * the operation, so later denies in the same batch are final. If refresh is disabled or throws,
-     * the original deny is kept.
+     * the operation, so later denies in the same batch are final. The first deny uses up that one
+     * attempt whatever the outcome: if refresh returns false (disabled, failed probe, interrupt) or
+     * throws, that deny and every later one in the batch are kept without retrying.
      *
      * @param resourceIds Map of resource types to their UUIDs
      */
-    public boolean evaluate(Map<SecurableType, UUID> resourceIds) {
+    boolean evaluate(Map<SecurableType, UUID> resourceIds) {
       StandardEvaluationContext context = newContext(resourceIds);
       if (eval(context)) {
         return true;
