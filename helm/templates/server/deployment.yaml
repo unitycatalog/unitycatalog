@@ -1,4 +1,7 @@
 {{- if .Values.server.enabled -}}
+{{- if and (eq .Values.server.db.type "file") (gt (int .Values.server.deployment.replicaCount) 1) }}
+{{- fail "server.deployment.replicaCount must be 1 with server.db.type=file: the H2 file database supports one server. Use PostgreSQL for more replicas." }}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -165,6 +168,16 @@ spec:
       {{- with .Values.server.deployment.extraInitContainers }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- /* The server never changes the schema at start. This container brings it up to date
+      first, after extraInitContainers so that a database proxy run as a native sidecar is up. */}}
+        - name: upgrade-schema
+          {{- with .Values.server.deployment.securityContext }}
+          securityContext: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: {{ include "unitycatalog.server.image" . | quote }}
+          imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
+          command: ["./bin/start-uc-server", "--upgrade-schema"]
+          volumeMounts: {{- include "unitycatalog.server.volumeMounts" . | nindent 12 }}
       containers:
         - name: server
           {{- with .Values.server.deployment.securityContext }}
@@ -173,7 +186,7 @@ spec:
           {{- with .Values.server.deployment.lifecycle }}
           lifecycle: {{- toYaml . | nindent 12 }}
           {{- end }}
-          image: "{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}"
+          image: {{ include "unitycatalog.server.image" . | quote }}
           imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
           ports:
             - name: api
@@ -219,22 +232,7 @@ spec:
           {{- end }}
           {{- end }}
 
-          volumeMounts:
-            - name: config-volume
-              mountPath: /home/unitycatalog/etc/conf
-          {{- if eq .Values.server.db.type "file" }}
-            - name: db-volume
-              mountPath: /home/unitycatalog/etc/db
-          {{- end }}
-          {{- range $index, $config := .Values.storage.credentials.gcs }}
-            - name: gcs-credentials-{{ $index }}
-              mountPath: /home/unitycatalog/etc/conf/gcs-credentials-{{ $index }}.json
-              subPath: jsonKey
-              readOnly: true
-          {{- end }}
-          {{- with .Values.server.deployment.extraVolumeMounts }}
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+          volumeMounts: {{- include "unitycatalog.server.volumeMounts" . | nindent 12 }}
       {{- with .Values.server.deployment.extraContainers }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -272,12 +270,12 @@ spec:
       {{- with .Values.server.deployment.tolerations }}
       tolerations: {{- toYaml . | nindent 8 }}
       {{- end }}
-  strategy:
-  {{- if .Values.server.deployment.updateStrategy }}
-    {{- toYaml .Values.server.deployment.updateStrategy | nindent 4 }}
-  {{- else if and (eq .Values.server.db.type "file") (eq (int .Values.server.deployment.replicaCount) 1) }}
-    type: Recreate
-  {{- else }}
-    type: RollingUpdate
+  {{- /* An upgrade changes the schema, so every old server stops before a new pod starts. */}}
+  {{- with .Values.server.deployment.updateStrategy }}
+  {{- if ne .type "Recreate" }}
+  {{- fail "server.deployment.updateStrategy.type must be Recreate: an upgrade changes the database schema, so the old servers must stop before the new ones start." }}
   {{- end }}
+  {{- end }}
+  strategy:
+    type: Recreate
 {{- end -}}

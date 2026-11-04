@@ -112,6 +112,34 @@ UI full name
 {{- end }}
 
 {{/*
+Server image
+*/}}
+{{- define "unitycatalog.server.image" -}}
+{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}
+{{- end }}
+
+{{/*
+Volume mounts of the server container, which the upgrade-schema init container shares
+*/}}
+{{- define "unitycatalog.server.volumeMounts" -}}
+- name: config-volume
+  mountPath: /home/unitycatalog/etc/conf
+{{- if eq .Values.server.db.type "file" }}
+- name: db-volume
+  mountPath: /home/unitycatalog/etc/db
+{{- end }}
+{{- range $index, $config := .Values.storage.credentials.gcs }}
+- name: gcs-credentials-{{ $index }}
+  mountPath: /home/unitycatalog/etc/conf/gcs-credentials-{{ $index }}.json
+  subPath: jsonKey
+  readOnly: true
+{{- end }}
+{{- with .Values.server.deployment.extraVolumeMounts }}
+{{ toYaml . }}
+{{- end }}
+{{- end }}
+
+{{/*
 File DB PVC name}}
 */}}
 {{- define "unitycatalog.server.db.filePvcName" -}}

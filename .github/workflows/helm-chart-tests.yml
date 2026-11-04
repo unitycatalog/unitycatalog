@@ -7,6 +7,13 @@ on:
       - "helm/**"
       - "ui/**"
       - "Dockerfile"
+      # The chart runs the server's schema upgrade command before the server starts.
+      - "server/src/main/java/io/unitycatalog/server/migrate/**"
+      - "server/src/main/resources/db/**"
+      - "server/src/main/resources/schema-effects/**"
+      - "server/src/main/java/io/unitycatalog/server/UnityCatalogServer.java"
+      - "server/src/main/java/io/unitycatalog/server/utils/OptionParser.java"
+      - "bin/start-uc-server"
       - ".github/workflows/helm-chart-tests.yml"
 
 permissions:
@@ -26,6 +33,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # HEAD^1, the first parent of the merge commit, is the code this change starts from. The
+          # upgrade test installs its chart and server first.
+          fetch-depth: 2
 
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
@@ -55,6 +65,9 @@ jobs:
         run: |
           docker build -t unitycatalog:ci .
           docker build -t unitycatalog-ui:ci ui
+          mkdir "$RUNNER_TEMP/base"
+          git archive HEAD^1 | tar -x -C "$RUNNER_TEMP/base"
+          docker build -t unitycatalog:base "$RUNNER_TEMP/base"
 
       - name: Create kind cluster
         uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
@@ -68,7 +81,7 @@ jobs:
         run: |
           docker tag unitycatalog:ci unitycatalog:v0.0.0-ci
           docker tag unitycatalog-ui:ci unitycatalog-ui:v0.0.0-ci
-          kind load docker-image unitycatalog:v0.0.0-ci unitycatalog-ui:v0.0.0-ci --name chart-testing
+          kind load docker-image unitycatalog:v0.0.0-ci unitycatalog-ui:v0.0.0-ci unitycatalog:base --name chart-testing
 
       - name: Package the chart as a release, install it and run helm test
         run: |
@@ -85,3 +98,46 @@ jobs:
             --set ui.deployment.image.repository=unitycatalog-ui \
             --set ui.deployment.image.pullPolicy=Never
           helm test uc --namespace uc --logs
+          helm uninstall uc --namespace uc --wait
+
+      - name: Upgrade from the base chart and check that the data is kept
+        run: |
+          # Installs the chart and server this change starts from, creates a catalog, upgrades to this
+          # change's chart and server, then reads the catalog back.
+          common=(--wait --timeout 600s --set fullnameOverride=upg --set ui.enabled=false
+            --set server.deployment.image.repository=unitycatalog --set server.deployment.image.pullPolicy=Never)
+          catalogs=http://localhost:8080/api/2.1/unity-catalog/catalogs
+          upgrade_test() {
+            local ns=$1
+            shift
+            helm install upg "$RUNNER_TEMP/base/helm" --namespace "$ns" --create-namespace "${common[@]}" \
+              --set server.deployment.image.tag=base "$@"
+            kubectl exec --namespace "$ns" deploy/upg-server -c server -- wget -q -O - \
+              --header "Content-Type: application/json" --post-data '{"name":"kept_by_upgrade"}' "$catalogs"
+            helm upgrade upg "$RUNNER_TEMP/unitycatalog-chart-0.0.0-ci.tgz" --namespace "$ns" "${common[@]}" "$@"
+            kubectl rollout status --namespace "$ns" deploy/upg-server --timeout 300s
+            kubectl logs --namespace "$ns" deploy/upg-server -c upgrade-schema
+            kubectl exec --namespace "$ns" deploy/upg-server -c server -- wget -q -O - "$catalogs/kept_by_upgrade" \
+              | grep -q '"name":"kept_by_upgrade"' || { echo "::error::The catalog is gone after the upgrade ($ns)"; exit 1; }
+            helm test upg --namespace "$ns" --logs
+            helm uninstall upg --namespace "$ns" --wait
+          }
+
+          upgrade_test upgrade-h2
+
+          # PostgreSQL with two replicas, whose init containers both run the schema upgrade. The image is
+          # the one the PostgreSQL tests use.
+          kubectl create namespace upgrade-pg
+          kubectl run postgres --namespace upgrade-pg --port 5432 --expose \
+            --image postgres@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5 \
+            --env POSTGRES_USER=uc --env POSTGRES_PASSWORD=uc --env POSTGRES_DB=ucdb
+          kubectl wait --namespace upgrade-pg --for=condition=Ready pod/postgres --timeout 300s
+          # Over TCP, so that the server the image runs while it initializes the database does not count.
+          for i in $(seq 1 60); do
+            kubectl exec --namespace upgrade-pg postgres -- pg_isready -h 127.0.0.1 -U uc -d ucdb && break
+            sleep 2
+          done
+          kubectl create secret generic db-password --namespace upgrade-pg --from-literal=password=uc
+          upgrade_test upgrade-pg --set server.deployment.replicaCount=2 --set server.db.type=postgresql \
+            --set server.db.postgresqlConfig.host=postgres --set server.db.postgresqlConfig.username=uc \
+            --set server.db.postgresqlConfig.passwordSecretName=db-password
