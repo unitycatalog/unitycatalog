@@ -478,6 +478,16 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /** Throws for a database that {@link #upgradeSchema()} must not change. */
   private void refuseIfUnsupported(SchemaState state) {
+    String repeatable =
+        Arrays.stream(flyway().load().info().all())
+            .filter(m -> m.getVersion() == null && !m.getType().isSynthetic())
+            .map(MigrationInfo::getScript)
+            .findFirst()
+            .orElse(null);
+    if (repeatable != null) {
+      throw new IllegalStateException(
+          "This build has a repeatable schema step, which is not supported: " + repeatable);
+    }
     String refusal =
         switch (state) {
           case AHEAD ->
