@@ -21,7 +21,12 @@ from unitycatalog.ai.core.utils.callable_utils import (
     generate_sql_function_body,
     generate_wrapped_sql_function_body,
 )
+from unitycatalog.ai.core.utils.callable_utils_oss import generate_function_info
+from unitycatalog.ai.core.utils.function_processing_utils import (
+    process_function_parameter_defaults,
+)
 from unitycatalog.ai.core.utils.type_utils import SQL_TYPE_TO_PYTHON_TYPE_MAPPING
+from unitycatalog.client.models import FunctionInfo, FunctionParameterInfos
 
 # ---------------------------
 # Tests for Simple Functions and Docstrings
@@ -1296,10 +1301,11 @@ $$;
     [
         ("plain", "'plain'"),
         ("", "''"),
-        ("don't", "'don''t'"),
-        ("o'clock", "'o''clock'"),
-        ("a'b'c", "'a''b''c'"),
-        ("'", "''''"),
+        ("don't", "'don\\'t'"),
+        ("o'clock", "'o\\'clock'"),
+        ("a'b'c", "'a\\'b\\'c'"),
+        ("'", "'\\''"),
+        ("C:\\path", "'C:\\\\path'"),
         (None, "NULL"),
         (42, "42"),
     ],
@@ -1324,7 +1330,7 @@ def test_function_with_default_string_containing_quote():
     sql_body = generate_sql_function_body(func_with_default_quote, "test_catalog", "test_schema")
 
     expected_sql = """
-CREATE FUNCTION `test_catalog`.`test_schema`.`func_with_default_quote`(a STRING DEFAULT 'don''t' COMMENT 'Optional string parameter whose default contains an apostrophe.')
+CREATE FUNCTION `test_catalog`.`test_schema`.`func_with_default_quote`(a STRING DEFAULT 'don\\'t' COMMENT 'Optional string parameter whose default contains an apostrophe.')
 RETURNS STRING
 LANGUAGE PYTHON
 COMMENT 'A function with an optional string parameter.'
@@ -1333,6 +1339,38 @@ AS $$
 $$;
     """
     assert sql_body.strip() == expected_sql.strip()
+
+
+@pytest.mark.parametrize("default", ["don't", "'", "C:\\path"])
+def test_string_default_round_trip(default):
+    # The formatted default stored as parameter metadata must parse back to
+    # the original value when the function is executed with defaults.
+    def make_func(value: str):
+        def func_with_default(a: str = value) -> str:
+            """
+            A function with an optional string parameter.
+
+            Args:
+                a: Optional string parameter.
+
+            Returns:
+                str: The input value.
+            """
+            return a
+
+        return func_with_default
+
+    definition = generate_function_info(make_func(default))
+    function_info = FunctionInfo(
+        catalog_name="test_catalog",
+        schema_name="test_schema",
+        name="func_with_default",
+        input_params=FunctionParameterInfos(parameters=definition.parameters),
+    )
+
+    result = process_function_parameter_defaults(function_info, {})
+
+    assert result["a"] == default
 
 
 def test_function_with_default_string_value_using_single_quote():
