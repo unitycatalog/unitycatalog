@@ -140,9 +140,7 @@ public class PermissionService implements UnityCatalogRestService {
 
   private HttpResponse getAuthorization(SecurableType securableType, String name) {
 
-    // Only show permissions for the authenticated identity unless they are the owner
-    // or if the authenticated identity is the owner of the parent resource(s)
-    // of the resource or the metastore itself.
+    // Owners and metadata readers can view all direct grants. Other users see their own grants.
 
     UUID resourceId = getResourceId(securableType, name);
     UUID principalId = userRepository.findPrincipalId();
@@ -166,8 +164,45 @@ public class PermissionService implements UnityCatalogRestService {
                 && authorizer.authorize(
                     principalId, grandparentType, grandparentId, Privileges.OWNER));
 
-    Map<UUID, List<Privileges>> authorizations =
+    boolean canReadAllGrants =
         isOwner
+            || authorizer.authorize(
+                principalId,
+                METASTORE,
+                metastoreRepository.getMetastoreId(),
+                Privileges.READ_METADATA)
+            || switch (securableType) {
+              case METASTORE, CATALOG, CREDENTIAL, EXTERNAL_LOCATION ->
+                  authorizer.authorize(
+                      principalId, securableType, resourceId, Privileges.READ_METADATA);
+              case SCHEMA ->
+                  parentId != null
+                      && (authorizer.authorize(
+                              principalId, CATALOG, parentId, Privileges.READ_METADATA)
+                          || (authorizer.authorize(
+                                  principalId, CATALOG, parentId, Privileges.USE_CATALOG)
+                              && authorizer.authorize(
+                                  principalId, SCHEMA, resourceId, Privileges.READ_METADATA)));
+              case TABLE, FUNCTION, VOLUME, REGISTERED_MODEL ->
+                  parentId != null
+                      && grandparentId != null
+                      && (authorizer.authorize(
+                              principalId, CATALOG, grandparentId, Privileges.READ_METADATA)
+                          || (authorizer.authorize(
+                                  principalId, CATALOG, grandparentId, Privileges.USE_CATALOG)
+                              && (authorizer.authorize(
+                                      principalId, SCHEMA, parentId, Privileges.READ_METADATA)
+                                  || (authorizer.authorize(
+                                          principalId, SCHEMA, parentId, Privileges.USE_SCHEMA)
+                                      && authorizer.authorize(
+                                          principalId,
+                                          securableType,
+                                          resourceId,
+                                          Privileges.READ_METADATA)))));
+            };
+
+    Map<UUID, List<Privileges>> authorizations =
+        canReadAllGrants
             ? authorizer.listAuthorizations(resourceId)
             : Map.of(principalId, authorizer.listAuthorizations(principalId, resourceId));
 
@@ -370,17 +405,40 @@ public class PermissionService implements UnityCatalogRestService {
       for (Privilege privilege : change.getAdd()) {
         Set<SecurableType> validTypes =
             switch (privilege) {
+              case BROWSE -> Set.of(CATALOG, EXTERNAL_LOCATION);
+              case MANAGE ->
+                  Set.of(
+                      CATALOG,
+                      SCHEMA,
+                      TABLE,
+                      VOLUME,
+                      FUNCTION,
+                      REGISTERED_MODEL,
+                      EXTERNAL_LOCATION,
+                      CREDENTIAL);
               case CREATE_CATALOG, CREATE_STORAGE_CREDENTIAL -> Set.of(METASTORE);
               case USE_CATALOG, CREATE_SCHEMA -> Set.of(CATALOG);
               case USE_SCHEMA, CREATE_TABLE, CREATE_FUNCTION, CREATE_VOLUME, CREATE_MODEL ->
                   Set.of(CATALOG, SCHEMA);
               case SELECT, MODIFY -> Set.of(CATALOG, SCHEMA, TABLE);
               case EXECUTE -> Set.of(CATALOG, SCHEMA, FUNCTION, REGISTERED_MODEL);
-              case READ_VOLUME -> Set.of(CATALOG, SCHEMA, VOLUME);
+              case CREATE_MODEL_VERSION -> Set.of(CATALOG, SCHEMA, REGISTERED_MODEL);
+              case READ_VOLUME, WRITE_VOLUME -> Set.of(CATALOG, SCHEMA, VOLUME);
               case CREATE_EXTERNAL_LOCATION -> Set.of(METASTORE, CREDENTIAL);
               case READ_FILES, WRITE_FILES, CREATE_EXTERNAL_TABLE ->
                   Set.of(EXTERNAL_LOCATION, CREDENTIAL);
               case CREATE_EXTERNAL_VOLUME, CREATE_MANAGED_STORAGE -> Set.of(EXTERNAL_LOCATION);
+              case READ_METADATA ->
+                  Set.of(
+                      METASTORE,
+                      CATALOG,
+                      SCHEMA,
+                      TABLE,
+                      FUNCTION,
+                      VOLUME,
+                      REGISTERED_MODEL,
+                      EXTERNAL_LOCATION,
+                      CREDENTIAL);
             };
         if (!validTypes.contains(securableType)) {
           throw new BaseException(
