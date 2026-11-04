@@ -46,8 +46,9 @@ example.
 
 ## Use PostgreSQL
 
-The H2 database supports a single server. To run more than one server replica, use PostgreSQL. The server then starts
-with an empty database; the chart leaves H2 data on its volume. Store the password in a Secret:
+The H2 database supports a single server. To run more than one server replica, use PostgreSQL or
+[MySQL](#use-mysql). The server then starts with an empty database; the chart leaves H2 data on its volume. Store the
+password in a Secret:
 
 ```sh
 kubectl create secret generic db-password --namespace unitycatalog --from-literal=password='<password>'
@@ -87,6 +88,42 @@ helm upgrade --install unitycatalog oci://registry-1.docker.io/unitycatalog/unit
   --version X.Y.Z --namespace unitycatalog --values values.yaml
 ```
 
+## Use MySQL
+
+The server image does not include the MySQL JDBC driver. Put the driver jar
+([MySQL Connector/J](https://dev.mysql.com/downloads/connector/j/)) on a volume and point
+`server.db.mysqlConfig.driver.volume` at it, and `server.db.mysqlConfig.driver.subPath` at a directory on it if the
+jar is not at the top. The chart puts every entry of that directory on the Java module path, so it must hold exactly
+one driver jar and nothing else: two driver versions, or a directory the server cannot read, such as the `lost+found`
+of a new file system, stop the server before it starts. To replace the driver, replace the jar. Every server replica
+mounts the volume, and so does the new server during an upgrade, so use a volume that several pods can mount, for
+example a PersistentVolumeClaim with access mode `ReadOnlyMany`. The jar is too large for a ConfigMap.
+
+Create the database with a binary collation, as described in
+[Example MySQL Connection](deployment.md#example-mysql-connection), and store the password in a Secret as for
+PostgreSQL. Then set:
+
+```yaml
+server:
+  db:
+    type: mysql
+    mysqlConfig:
+      host: my-mysql.example.com
+      port: 3306
+      dbName: ucdb
+      username: uc
+      passwordSecretName: db-password
+      passwordSecretKey: password
+      driver:
+        volume:
+          persistentVolumeClaim:
+            claimName: mysql-driver
+        subPath: connector-j
+```
+
+`server.db.mysqlConfig.extraParams` adds parameters to the JDBC URL, for example `sslMode`. With authentication on,
+set `server.authorization.policy-refresh: "true"` as for PostgreSQL.
+
 ## Upgrade and uninstall
 
 To upgrade, read the release notes, then run `helm upgrade` with the new `--version` and the same `--values` file.
@@ -119,7 +156,7 @@ server:
     terminationGracePeriodSeconds: 30
 ```
 
-This avoids downtime only with a rolling update, which the chart uses with PostgreSQL or more than one replica
+This avoids downtime only with a rolling update, which the chart uses with PostgreSQL, MySQL or more than one replica
 unless you set `server.deployment.updateStrategy`. The default single replica on the file database is recreated, so
 it is briefly unavailable during an upgrade.
 
