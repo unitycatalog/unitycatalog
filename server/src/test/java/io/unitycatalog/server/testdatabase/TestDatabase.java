@@ -20,24 +20,16 @@ public final class TestDatabase implements AutoCloseable {
   private final String url;
   private final String user;
   private final String password;
-  private final String hbm2ddlAuto;
   private final Runnable release;
   private final List<HibernateConfigurator> openedConfigurators = new ArrayList<>();
   private HibernateConfigurator defaultConfigurator;
   private HikariDataSource dataSource;
 
-  TestDatabase(
-      String driver,
-      String url,
-      String user,
-      String password,
-      String hbm2ddlAuto,
-      Runnable release) {
+  TestDatabase(String driver, String url, String user, String password, Runnable release) {
     this.driver = driver;
     this.url = url;
     this.user = user;
     this.password = password;
-    this.hbm2ddlAuto = hbm2ddlAuto;
     this.release = release;
   }
 
@@ -61,8 +53,8 @@ public final class TestDatabase implements AutoCloseable {
   }
 
   /**
-   * The server's Hibernate properties from {@code etc/conf/hibernate.properties}, pointed at this
-   * database, with a failed schema statement made to throw instead of being logged.
+   * The server's Hibernate properties pointed at this database, with {@code hbm2ddl.auto=none}: the
+   * migration steps own the schema.
    */
   public Properties hibernateProperties() {
     Properties properties =
@@ -71,8 +63,7 @@ public final class TestDatabase implements AutoCloseable {
     properties.setProperty("hibernate.connection.url", url);
     properties.setProperty("hibernate.connection.username", user);
     properties.setProperty("hibernate.connection.password", password);
-    properties.setProperty("hibernate.hbm2ddl.auto", hbm2ddlAuto);
-    properties.setProperty("hibernate.hbm2ddl.halt_on_error", "true");
+    properties.setProperty("hibernate.hbm2ddl.auto", "none");
     return properties;
   }
 
