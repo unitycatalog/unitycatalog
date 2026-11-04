@@ -232,6 +232,20 @@ public final class AuthorizeExpressions {
       """;
 
   /**
+   * Volume credentials require parent usage. Reads need OWNER or READ_VOLUME; writes need OWNER or
+   * both READ_VOLUME and WRITE_VOLUME.
+   */
+  public static final String VEND_VOLUME_CREDENTIAL =
+      """
+      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+      #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+      (#operation == 'READ_VOLUME'
+          ? #authorizeAny(#principal, #volume, OWNER, READ_VOLUME)
+          : (#authorize(#principal, #volume, OWNER) ||
+              #authorizeAll(#principal, #volume, READ_VOLUME, WRITE_VOLUME)))
+      """;
+
+  /**
    * Iceberg credentials require the read permissions in {@link #VEND_TABLE_CREDENTIAL}. With strict
    * checks disabled, metastore or catalog ownership, schema ownership with {@code USE_CATALOG}, or
    * {@code MODIFY} with both usage grants also permits credentials. {@code READ_METADATA} alone
@@ -252,6 +266,17 @@ public final class AuthorizeExpressions {
             #authorize(#principal, #schema, USE_SCHEMA) &&
             #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
       )
+      """;
+
+  /**
+   * Require USE_CATALOG and USE_SCHEMA, plus (model OWNER or CREATE_MODEL_VERSION). Catalog and
+   * schema ownership replace the usage check for the object they own.
+   */
+  public static final String CREATE_MODEL_VERSION =
+      """
+      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+      #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+      #authorizeAny(#principal, #registered_model, OWNER, CREATE_MODEL_VERSION)
       """;
 
   /**
