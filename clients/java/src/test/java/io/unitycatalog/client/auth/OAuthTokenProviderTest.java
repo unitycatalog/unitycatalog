@@ -23,6 +23,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Flow;
@@ -407,6 +408,86 @@ public class OAuthTokenProviderTest {
 
   @Test
   @SuppressWarnings("unchecked")
+  public void testWaitForRenewalCanBeInterrupted() throws Exception {
+    CountDownLatch renewalStarted = new CountDownLatch(1);
+    CountDownLatch finishRenewal = new CountDownLatch(1);
+    HttpResponse<String> initial = tokenResponse(ACCESS_TOKEN_1, 60L);
+    when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+        .thenAnswer(
+            invocation -> {
+              renewalStarted.countDown();
+              finishRenewal.await();
+              return initial;
+            });
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      Future<String> renewing = executor.submit(provider::accessToken);
+      assertThat(renewalStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+      // With no valid token the caller waits for the lock, and an interrupt ends that wait.
+      Future<String> waiting =
+          executor.submit(
+              () -> {
+                Thread.currentThread().interrupt();
+                return provider.accessToken();
+              });
+      assertThatThrownBy(() -> waiting.get(5, TimeUnit.SECONDS))
+          .isInstanceOf(ExecutionException.class)
+          .cause()
+          .hasMessageContaining("Interrupted while renewing OAuth token")
+          .hasCauseInstanceOf(InterruptedException.class);
+
+      finishRenewal.countDown();
+      assertThat(renewing.get(5, TimeUnit.SECONDS)).isEqualTo(ACCESS_TOKEN_1);
+      verifyOAuthRequest(1);
+    } finally {
+      finishRenewal.countDown();
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testCallersFetchTokensWithoutExpiryInParallel() throws Exception {
+    CountDownLatch fetchStarted = new CountDownLatch(1);
+    CountDownLatch finishFetch = new CountDownLatch(1);
+    HttpResponse<String> initial = tokenResponse("{\"access_token\":\"" + ACCESS_TOKEN_1 + "\"}");
+    HttpResponse<String> slow = tokenResponse("{\"access_token\":\"" + ACCESS_TOKEN_2 + "\"}");
+    HttpResponse<String> fast = tokenResponse("{\"access_token\":\"access-token-3\"}");
+    when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+        .thenReturn(initial)
+        .thenAnswer(
+            invocation -> {
+              fetchStarted.countDown();
+              finishFetch.await();
+              return slow;
+            })
+        .thenReturn(fast);
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
+    assertThat(provider.accessToken()).isEqualTo(ACCESS_TOKEN_1);
+
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      Future<String> fetching = executor.submit(provider::accessToken);
+      assertThat(fetchStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+      // A token that can't be cached is fetched without the lock, so a slow fetch blocks no one.
+      assertThat(assertTimeoutPreemptively(Duration.ofSeconds(5), provider::accessToken))
+          .isEqualTo("access-token-3");
+
+      finishFetch.countDown();
+      assertThat(fetching.get(5, TimeUnit.SECONDS)).isEqualTo(ACCESS_TOKEN_2);
+      verifyOAuthRequest(3);
+    } finally {
+      finishFetch.countDown();
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
   public void testExchangeForUcTokenHandlesHttpError() throws Exception {
     HttpResponse<String> exchangeFailure = mock(HttpResponse.class);
     when(exchangeFailure.statusCode()).thenReturn(401);
@@ -458,6 +539,19 @@ public class OAuthTokenProviderTest {
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("is not a valid URI");
     }
+  }
+
+  @Test
+  public void testInitializeTwiceIsRejected() {
+    OAuthTokenProvider provider = new OAuthTokenProvider();
+    provider.initialize(exchangeConfigs(CATALOG_URI));
+    Map<String, String> otherConfigs = new HashMap<>(exchangeConfigs(CATALOG_URI));
+    otherConfigs.put(AuthConfigs.OAUTH_CLIENT_SECRET, "other-secret");
+
+    assertThatThrownBy(() -> provider.initialize(otherConfigs))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("OAuth token provider is already initialized");
+    assertThat(provider.configs()).containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
   }
 
   @Test

@@ -117,6 +117,10 @@ class OAuthTokenProvider implements TokenProvider {
 
   @Override
   public void initialize(Map<String, String> configs) {
+    // The provider is shared by every caller with these configs, so re-initializing it would
+    // silently switch all of them to other credentials. The HTTP client is set last.
+    Preconditions.checkState(httpClient == null, "OAuth token provider is already initialized");
+
     // Parse and validate the OAuth URI.
     String oauthUri = configs.get(AuthConfigs.OAUTH_URI);
     Preconditions.checkArgument(
@@ -166,11 +170,18 @@ class OAuthTokenProvider implements TokenProvider {
    * Returns the cached token, renewing it once it is within the lead time of expiring. One caller
    * renews at a time. While the current token is still valid, the others keep using it instead of
    * waiting, so a slow or failing identity provider doesn't block every caller of a shared
-   * provider. Callers only wait for a renewal once the token has expired.
+   * provider. Callers only wait for a renewal once the token has expired, and that wait can be
+   * interrupted.
+   *
+   * <p>Once a token turns out to have no expiry, every caller fetches its own token without the
+   * lock, since none of them could be cached anyway.
    */
   @Override
   public String accessToken() {
     TempToken current = tempToken;
+    if (current != null && current.expirationTime == null) {
+      return renewToken().token();
+    }
     if (current != null && !current.isExpired()) {
       // Keep the valid token unless it's time to renew, the last failure is still backing off, or
       // another caller is already renewing.
@@ -180,7 +191,11 @@ class OAuthTokenProvider implements TokenProvider {
         return current.token();
       }
     } else {
-      renewalLock.lock();
+      try {
+        renewalLock.lockInterruptibly();
+      } catch (InterruptedException e) {
+        throw interruptedRenewal(e);
+      }
     }
     try {
       return renewIfNeeded().token();
@@ -240,11 +255,16 @@ class OAuthTokenProvider implements TokenProvider {
       // The OAuth token is used once, to get the UC token, so only the UC token's expiry matters.
       return tempTokenOf(exchangeOAuthToken(accessTokenOf(oauthResponse)));
     } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new RuntimeException("Interrupted while renewing OAuth token", e);
+      throw interruptedRenewal(e);
     } catch (Exception e) {
       throw new RuntimeException("Failed to renew OAuth token", e);
     }
+  }
+
+  /** Restores the interrupt flag and returns the exception for an interrupted renewal. */
+  private static RuntimeException interruptedRenewal(InterruptedException e) {
+    Thread.currentThread().interrupt();
+    return new RuntimeException("Interrupted while renewing OAuth token", e);
   }
 
   private boolean shouldExchangeForUcToken() {
