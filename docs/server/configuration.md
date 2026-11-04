@@ -171,9 +171,10 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 - `access` is `READ` or `READ_WRITE`, and `expires_at` is when the credential expires. Records never
   contain credential values.
 
-A record is written for every credential issued, including ones served from the credential cache. Audit
-records are best effort: one can be lost when the sink fails, or when a request is still running as the
-server shuts down.
+A record is written for every credential issued, including ones served from the credential cache.
+For local `file:` storage there is no credential to issue; the record marks the access the server
+granted, and has no `expires_at`. Audit records are best effort: one can be lost when the sink
+fails, or when a request is still running as the server shuts down.
 
 There are two ways to send records:
 
