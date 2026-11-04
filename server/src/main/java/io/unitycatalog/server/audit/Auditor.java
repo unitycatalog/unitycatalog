@@ -39,7 +39,7 @@ public final class Auditor implements AutoCloseable {
   private final AuditSink sink;
   private final Clock clock;
   private final AtomicLong lastReportMs;
-  private final AtomicLong unreported = new AtomicLong();
+  final AtomicLong unreported = new AtomicLong();
   private final AtomicBoolean closed = new AtomicBoolean();
 
   Auditor(AuditSink sink, Clock clock) {

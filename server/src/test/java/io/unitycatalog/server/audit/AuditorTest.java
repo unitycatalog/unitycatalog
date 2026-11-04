@@ -25,12 +25,16 @@ import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.ConfigurationSource;
@@ -131,6 +135,61 @@ class AuditorTest {
                     new TemporaryCredentials()))
         .doesNotThrowAnyException();
     assertThatCode(erroring::close).doesNotThrowAnyException();
+  }
+
+  @Test
+  void failuresWithinAMinuteAreCountedThenReportedOnce() {
+    AtomicLong now = new AtomicLong(clock.millis());
+    Clock ticking =
+        new Clock() {
+          @Override
+          public ZoneId getZone() {
+            return ZoneOffset.UTC;
+          }
+
+          @Override
+          public Clock withZone(ZoneId zone) {
+            return this;
+          }
+
+          @Override
+          public Instant instant() {
+            return Instant.ofEpochMilli(now.get());
+          }
+        };
+    AtomicBoolean failing = new AtomicBoolean(true);
+    Auditor flaky =
+        new Auditor(
+            r -> {
+              if (failing.get()) {
+                throw new IllegalStateException("sink down");
+              }
+            },
+            ticking);
+    Runnable vend =
+        () ->
+            flaky.recordCredential(
+                NormalizedURL.from("s3://bkt/t"),
+                CredentialContext.READ_ONLY,
+                CredentialUse.CLIENT,
+                new TemporaryCredentials());
+
+    // The first failure is reported at once; the next ones in the same minute are only counted.
+    vend.run();
+    vend.run();
+    vend.run();
+    assertThat(flaky.unreported).hasValue(2);
+    // A minute later, the next record reports the count.
+    now.addAndGet(Duration.ofMinutes(1).toMillis());
+    failing.set(false);
+    vend.run();
+    assertThat(flaky.unreported).hasValue(0);
+    // Close reports what is left.
+    failing.set(true);
+    vend.run();
+    assertThat(flaky.unreported).hasValue(1);
+    flaky.close();
+    assertThat(flaky.unreported).hasValue(0);
   }
 
   private static ServerProperties sinkProperty(String sink) {
