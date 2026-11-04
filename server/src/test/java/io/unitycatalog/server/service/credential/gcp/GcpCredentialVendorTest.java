@@ -2,19 +2,29 @@ package io.unitycatalog.server.service.credential.gcp;
 
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import com.google.api.client.testing.http.MockHttpTransport;
+import com.google.api.client.testing.http.MockLowLevelHttpResponse;
 import com.google.auth.oauth2.AccessToken;
+import com.google.auth.oauth2.CredentialAccessBoundary;
 import com.google.auth.oauth2.CredentialAccessBoundary.AccessBoundaryRule;
 import com.google.auth.oauth2.DownscopedCredentials;
 import com.google.auth.oauth2.GoogleCredentials;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.io.IOException;
+import java.util.Date;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 public class GcpCredentialVendorTest {
@@ -130,5 +140,46 @@ public class GcpCredentialVendorTest {
     assertThat(
             availabilityConditionFor("gs://test-bucket/caf%C3%A9/%E8%B3%87%E6%96%99/%F0%9F%92%BE"))
         .isEqualTo(expectedCondition("test-bucket", "café/資料/💾"));
+  }
+
+  @Test
+  public void testConditionAtTheLengthLimit() {
+    // With a 12-character bucket, a 440-character path makes a condition of exactly 2048.
+    assertThat(availabilityConditionFor("gs://test-bucket0/" + "a".repeat(440))).hasSize(2048);
+
+    assertThatThrownBy(() -> ruleFor("gs://test-bucket0/" + "a".repeat(441)))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("2052 characters, and the limit is 2048")
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+  }
+
+  @ParameterizedTest
+  @CsvSource({"invalid_request, INVALID_ARGUMENT", "invalid_grant, FAILED_PRECONDITION"})
+  public void testTokenServiceErrors(String oauthError, ErrorCode expected) {
+    MockHttpTransport tokenService =
+        new MockHttpTransport.Builder()
+            .setLowLevelHttpResponse(
+                new MockLowLevelHttpResponse()
+                    .setStatusCode(400)
+                    .setContentType("application/json")
+                    .setContent(
+                        format(
+                            "{\"error\": \"%s\", \"error_description\": \"rejected\"}",
+                            oauthError)))
+            .build();
+    DownscopedCredentials credentials =
+        DownscopedCredentials.newBuilder()
+            .setSourceCredential(
+                GoogleCredentials.create(new AccessToken("test-token", new Date(Long.MAX_VALUE))))
+            .setCredentialAccessBoundary(
+                CredentialAccessBoundary.newBuilder()
+                    .addRule(ruleFor("gs://test-bucket/t"))
+                    .build())
+            .setHttpTransportFactory(() -> tokenService)
+            .build();
+
+    IOException failure = catchThrowableOfType(IOException.class, credentials::refreshAccessToken);
+    assertThat(GcpCredentialVendor.credentialError(failure).getErrorCode()).isEqualTo(expected);
   }
 }
