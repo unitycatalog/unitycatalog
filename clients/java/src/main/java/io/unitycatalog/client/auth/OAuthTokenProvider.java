@@ -190,18 +190,14 @@ class OAuthTokenProvider implements TokenProvider {
           || !renewalLock.tryLock()) {
         return current.token();
       }
-    } else {
-      try {
-        renewalLock.lockInterruptibly();
-      } catch (InterruptedException e) {
-        throw interruptedRenewal(e);
-      }
+      return renewAndUnlock();
     }
     try {
-      return renewIfNeeded().token();
-    } finally {
-      renewalLock.unlock();
+      renewalLock.lockInterruptibly();
+    } catch (InterruptedException e) {
+      throw interruptedRenewal(e);
     }
+    return renewAndUnlock();
   }
 
   @Override
@@ -220,19 +216,19 @@ class OAuthTokenProvider implements TokenProvider {
   }
 
   /**
-   * Renews the token unless another caller already has; called with the renewal lock held. A failed
-   * renewal fails the caller only once the current token has expired, or if the renewal was
-   * interrupted. Until then, the current token is kept and renewal is retried after {@link
-   * #RENEWAL_BACKOFF}.
+   * Renews the token unless another caller already has, then releases the renewal lock, which the
+   * caller holds. A failed renewal fails the caller only once the current token has expired, or if
+   * the renewal was interrupted. Until then, the current token is kept and renewal is retried after
+   * {@link #RENEWAL_BACKOFF}.
    */
-  private TempToken renewIfNeeded() {
+  private String renewAndUnlock() {
     TempToken current = tempToken;
-    if (current != null && !current.isReadyToRenew()) {
-      return current;
-    }
     try {
+      if (current != null && !current.isReadyToRenew()) {
+        return current.token();
+      }
       tempToken = renewToken();
-      return tempToken;
+      return tempToken.token();
     } catch (RuntimeException e) {
       if (current == null || current.isExpired() || Thread.currentThread().isInterrupted()) {
         throw e;
@@ -242,7 +238,9 @@ class OAuthTokenProvider implements TokenProvider {
           "Failed to renew OAuth token, using the current token until it expires at {}",
           current.expirationTime,
           e);
-      return current;
+      return current.token();
+    } finally {
+      renewalLock.unlock();
     }
   }
 
