@@ -11,9 +11,6 @@ import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Proxy;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -22,7 +19,6 @@ import java.sql.DriverManager;
 import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
-import java.sql.Statement;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,7 +28,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import javax.sql.DataSource;
@@ -56,7 +51,7 @@ public class SchemaMigratorTest {
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
     assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
 
-    assertThat(migrator.migrate()).isEqualTo(releaseSteps(migrator));
+    assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
     assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
   }
 
@@ -66,7 +61,7 @@ public class SchemaMigratorTest {
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
     assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
 
-    assertThat(migrator.migrate()).isEqualTo(releaseSteps(migrator));
+    assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
     assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
   }
 
@@ -79,7 +74,7 @@ public class SchemaMigratorTest {
         WrappingDriver.PREFIX + db.jdbcUrl().substring("jdbc:".length()));
 
     try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(wrapped)) {
-      assertThat(migrator.migrate()).isEqualTo(releaseSteps(migrator));
+      assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
     }
   }
 
@@ -97,50 +92,41 @@ public class SchemaMigratorTest {
         byClass.getProperty("hibernate.connection.password"));
 
     try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(byClass)) {
-      assertThat(migrator.migrate()).isEqualTo(releaseSteps(migrator));
+      assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
     }
   }
 
   @Test
-  void adoptsABaselineDatabase() {
+  void refusesADatabaseWithoutSchemaHistory() {
     UpgradeTestUtils.createBaselineSchema(db);
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
     assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
 
-    // Version 1 is recorded as the baseline, not run; the steps after it run.
-    assertThat(migrator.migrate()).isEqualTo(releaseSteps(migrator) - 1);
-    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
-  }
-
-  @Test
-  void refusesADatabaseFromBeforeTheBaselineRelease() {
-    UpgradeTestUtils.createBaselineSchema(db);
-    UpgradeTestUtils.execute(db, "DROP TABLE uc_storage_cleanup_tasks");
-    SchemaSnapshot before = SchemaSnapshot.of(db.dataSource());
-
-    assertThatThrownBy(new SchemaMigrator(db.dataSource())::migrate)
-        .hasMessageContaining("from a release before " + SchemaMigrator.ADOPTED_RELEASE)
-        .hasMessageContaining("missing tables: uc_storage_cleanup_tasks)");
-    assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(before);
+    assertThatThrownBy(migrator::upgradeSchema)
+        .hasMessageContaining("adopting a database without schema history is not supported yet");
+    assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
   }
 
   @Test
   void upgradesAVersionedDatabase() {
-    new SchemaMigrator(db.dataSource()).migrate();
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
     assertThat(migrator.state()).isEqualTo(SchemaState.PENDING);
 
-    assertThat(migrator.migrate()).isOne();
-    assertThat(migrator.currentVersion()).isEqualTo("1000");
+    assertThat(migrator.upgradeSchema()).isOne();
+    assertThat(migrator.recordedVersion()).isEqualTo("1000");
   }
 
   @Test
-  void refusesADatabaseOfAnotherApplication() {
+  void setsUpADatabaseNextToAnotherApplicationsTables() {
     UpgradeTestUtils.execute(db, "CREATE TABLE orders (id INT)");
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
-    assertThat(migrator.state()).isEqualTo(SchemaState.NOT_UC);
+    assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
 
-    assertThatThrownBy(migrator::migrate).hasMessageContaining("not a Unity Catalog database");
+    assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+    // The other table is left alone.
+    UpgradeTestUtils.execute(db, "SELECT id FROM orders");
   }
 
   @Test
@@ -149,7 +135,7 @@ public class SchemaMigratorTest {
     // In a metadata search, "_" matches any character: uc_a would also list ucxa's tables.
     UpgradeTestUtils.execute(db, "CREATE SCHEMA uc_a");
     UpgradeTestUtils.execute(db, "CREATE SCHEMA ucxa");
-    UpgradeTestUtils.execute(db, "CREATE TABLE ucxa.orders (id INT)");
+    UpgradeTestUtils.execute(db, "CREATE TABLE ucxa.uc_orders (id INT)");
     HikariConfig config = new HikariConfig();
     config.setDataSource(db.dataSource());
     config.setSchema(isH2() ? "UC_A" : "uc_a");
@@ -160,11 +146,11 @@ public class SchemaMigratorTest {
 
   @Test
   void refusesASchemaNewerThanThisRelease() {
-    new SchemaMigrator(db.dataSource(), NEXT_RELEASE).migrate();
+    new SchemaMigrator(db.dataSource(), NEXT_RELEASE).upgradeSchema();
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
     assertThat(migrator.state()).isEqualTo(SchemaState.AHEAD);
 
-    assertThatThrownBy(migrator::migrate).hasMessageContaining("newer than this release");
+    assertThatThrownBy(migrator::upgradeSchema).hasMessageContaining("newer than this release");
   }
 
   @ParameterizedTest
@@ -207,6 +193,7 @@ public class SchemaMigratorTest {
 
   @Test
   void runsStartingAtOnceOnAnEmptyDatabaseTakeTurns() throws Exception {
+    assumeFalse(isH2(), "H2 has no run lock");
     // The test holds the run lock, so both runs must wait for it before they change anything.
     CountDownLatch waitingInTheDatabase = new CountDownLatch(2);
     DataSource watched =
@@ -222,13 +209,9 @@ public class SchemaMigratorTest {
       try (SchemaMigrator.RunLock held =
           SchemaMigrator.RunLock.acquire(db.dataSource(), DatabaseKind.of(db.dataSource()))) {
         for (int i = 0; i < 2; i++) {
-          runs.add(executor.submit(() -> new SchemaMigrator(watched).migrate()));
+          runs.add(executor.submit(() -> new SchemaMigrator(watched).upgradeSchema()));
         }
-        if (isH2()) {
-          awaitUntil(() -> held.h2Waiting() == 2);
-        } else {
-          assertThat(waitingInTheDatabase.await(30, TimeUnit.SECONDS)).isTrue();
-        }
+        assertThat(waitingInTheDatabase.await(30, TimeUnit.SECONDS)).isTrue();
         assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
       }
 
@@ -242,20 +225,6 @@ public class SchemaMigratorTest {
     } finally {
       executor.shutdownNow();
     }
-  }
-
-  @Test
-  void refusesADatabaseWithAFailedStep() {
-    new SchemaMigrator(db.dataSource()).migrate();
-    // What a run that failed in step 2 leaves behind on H2 and MySQL.
-    String q = identifierQuote(db.dataSource());
-    UpgradeTestUtils.execute(
-        db,
-        "UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false WHERE %1$sversion%1$s = '2'"
-            .formatted(q));
-
-    assertThatThrownBy(new SchemaMigrator(db.dataSource())::migrate)
-        .hasMessageContaining("Detected failed migration to version 2");
   }
 
   @ParameterizedTest
@@ -272,7 +241,7 @@ public class SchemaMigratorTest {
         };
 
     AbstractThrowableAssert<?, ? extends Throwable> thrown =
-        assertThatThrownBy(new SchemaMigrator(refusing)::migrate)
+        assertThatThrownBy(new SchemaMigrator(refusing)::upgradeSchema)
             .hasMessageContaining("Could not take the schema migration lock");
     if (refused == RefusedLock.NOT_GRANTED) {
       thrown.hasMessageContaining("returned NULL");
@@ -296,7 +265,7 @@ public class SchemaMigratorTest {
             sql -> sql.contains("pg_advisory_unlock(") || sql.contains("RELEASE_LOCK("),
             sql -> null);
 
-    assertThatThrownBy(new SchemaMigrator(failing)::migrate)
+    assertThatThrownBy(new SchemaMigrator(failing)::upgradeSchema)
         .hasMessageContaining("Could not release the schema migration lock");
     // The lock's database session was closed, so a run on other connections takes it at once.
     try (HikariDataSource other = new HikariDataSource()) {
@@ -306,7 +275,7 @@ public class SchemaMigratorTest {
       other.setPassword(properties.getProperty("hibernate.connection.password"));
       assertThat(
               assertTimeoutPreemptively(
-                  Duration.ofSeconds(30), () -> new SchemaMigrator(other).migrate()))
+                  Duration.ofSeconds(30), () -> new SchemaMigrator(other).upgradeSchema()))
           .isZero();
     }
   }
@@ -314,14 +283,6 @@ public class SchemaMigratorTest {
   /** The number of steps in this release: they are numbered 1, 2, 3 and so on. */
   static int releaseSteps(SchemaMigrator migrator) {
     return Integer.parseInt(migrator.latestVersion());
-  }
-
-  private static void awaitUntil(BooleanSupplier condition) throws InterruptedException {
-    long deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(1);
-    while (!condition.getAsBoolean()) {
-      assertThat(System.nanoTime()).as("timed out waiting").isLessThan(deadline);
-      Thread.sleep(50);
-    }
   }
 
   /** The DataSource class of {@code db}'s database. */
@@ -352,46 +313,24 @@ public class SchemaMigratorTest {
    * instead, or fails when that is {@code null}.
    */
   private DataSource withLockCall(Predicate<String> matches, UnaryOperator<String> rewrite) {
-    DataSource real = db.dataSource();
-    return proxy(
-        DataSource.class,
-        (proxy, method, args) -> {
-          Object result = method.invoke(real, args);
-          if (!method.getName().equals("getConnection")) {
-            return result;
+    return UpgradeTestUtils.watched(
+        db.dataSource(),
+        (sql, prepared) -> {
+          if (prepared || !matches.test(sql)) {
+            return sql;
           }
-          Connection connection = (Connection) result;
-          return proxy(
-              Connection.class,
-              (connectionProxy, connectionMethod, connectionArgs) -> {
-                Object created = connectionMethod.invoke(connection, connectionArgs);
-                if (!connectionMethod.getName().equals("createStatement")) {
-                  return created;
-                }
-                Statement statement = (Statement) created;
-                return proxy(
-                    Statement.class,
-                    (statementProxy, statementMethod, statementArgs) -> {
-                      if (statementArgs != null
-                          && statementArgs.length == 1
-                          && statementArgs[0] instanceof String sql
-                          && matches.test(sql)) {
-                        String rewritten = rewrite.apply(sql);
-                        if (rewritten == null) {
-                          throw new SQLException("Test: the lock call failed");
-                        }
-                        statementArgs = new Object[] {rewritten};
-                      }
-                      return statementMethod.invoke(statement, statementArgs);
-                    });
-              });
+          String rewritten = rewrite.apply(sql);
+          if (rewritten == null) {
+            throw new SQLException("Test: the lock call failed");
+          }
+          return rewritten;
         });
   }
 
   /** {@code db}'s data source, but its metadata names {@code productName} as the database. */
   private DataSource withProductName(String productName) {
     DataSource real = db.dataSource();
-    return proxy(
+    return UpgradeTestUtils.proxy(
         DataSource.class,
         (proxy, method, args) -> {
           Object result = method.invoke(real, args);
@@ -399,14 +338,14 @@ public class SchemaMigratorTest {
             return result;
           }
           Connection connection = (Connection) result;
-          return proxy(
+          return UpgradeTestUtils.proxy(
               Connection.class,
               (connectionProxy, connectionMethod, connectionArgs) -> {
                 Object metaData = connectionMethod.invoke(connection, connectionArgs);
                 if (!connectionMethod.getName().equals("getMetaData")) {
                   return metaData;
                 }
-                return proxy(
+                return UpgradeTestUtils.proxy(
                     DatabaseMetaData.class,
                     (metaProxy, metaMethod, metaArgs) ->
                         metaMethod.getName().equals("getDatabaseProductName")
@@ -414,30 +353,6 @@ public class SchemaMigratorTest {
                             : metaMethod.invoke(metaData, metaArgs));
               });
         });
-  }
-
-  @SuppressWarnings("unchecked")
-  private static <T> T proxy(Class<T> type, InvocationHandler handler) {
-    return (T)
-        Proxy.newProxyInstance(
-            type.getClassLoader(),
-            new Class<?>[] {type},
-            (proxy, method, args) -> {
-              try {
-                return handler.invoke(proxy, method, args);
-              } catch (InvocationTargetException e) {
-                throw e.getCause();
-              }
-            });
-  }
-
-  /** The quote for identifiers: Flyway's history table has quoted lower-case column names. */
-  private static String identifierQuote(DataSource dataSource) {
-    try (Connection connection = dataSource.getConnection()) {
-      return connection.getMetaData().getIdentifierQuoteString();
-    } catch (SQLException e) {
-      throw new IllegalStateException(e);
-    }
   }
 
   /** A driver that wraps the real one, like P6Spy's or AWS's: {@code jdbc:wrapper:h2:...}. */

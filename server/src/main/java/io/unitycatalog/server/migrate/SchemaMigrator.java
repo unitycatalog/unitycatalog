@@ -3,6 +3,10 @@ package io.unitycatalog.server.migrate;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.utils.ServerProperties;
+import java.io.PrintStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
@@ -15,10 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.Set;
-import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
@@ -30,15 +31,15 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Upgrades Unity Catalog's database schema with the steps of {@code db/migration/<database>}: sets
- * up an empty database, adopts a database of the baseline release (recording version 1 as the
- * baseline) and applies the pending steps. On PostgreSQL and MySQL, each {@link #migrate()} holds a
- * {@link RunLock} from classifying the database to the last step.
+ * up an empty database and applies the pending steps to one with schema history. On PostgreSQL and
+ * MySQL, each {@link #upgradeSchema()} holds a {@link RunLock} from classifying the database to the
+ * last step.
  */
 public final class SchemaMigrator implements AutoCloseable {
 
   /** What a database holds, compared with the schema steps of this build. */
   enum SchemaState {
-    /** No tables, apart from Casbin's authorization rules table. */
+    /** None of Unity Catalog's tables (names starting with {@code uc_}), but maybe others. */
     EMPTY,
     /** Every step of this build is applied. */
     CURRENT,
@@ -47,11 +48,7 @@ public final class SchemaMigrator implements AutoCloseable {
     /** A step newer than this build is applied: the database belongs to a newer release. */
     AHEAD,
     /** Unity Catalog's tables without Flyway's history: a database of the baseline release. */
-    UNVERSIONED_UC,
-    /** Unity Catalog's tables without Flyway's history, lacking some of the baseline's. */
-    BEFORE_BASELINE,
-    /** Tables, but none of Unity Catalog's. */
-    NOT_UC
+    UNVERSIONED_UC
   }
 
   /** The databases Unity Catalog's schema steps exist for; each has its folder of steps. */
@@ -94,47 +91,16 @@ public final class SchemaMigrator implements AutoCloseable {
   private static final String HISTORY_TABLE = "uc_schema_history";
 
   /**
-   * The release whose databases are adopted as version 1: one without schema history is recorded as
-   * version 1 without running step 1. A database from an earlier release has to be started on a
-   * {@value} server once first.
+   * The baseline Flyway records on a database that holds only other tables (Casbin's, another
+   * application's), below step 1 so that step 1 runs.
    */
-  static final String ADOPTED_RELEASE = "0.7.0";
-
-  /** The schema version of {@link #ADOPTED_RELEASE}, which Flyway records when it adopts one. */
-  private static final String BASELINE_VERSION = "1";
-
-  /** The baseline Flyway records on an empty database, below step 1 so that step 1 runs. */
   private static final String EMPTY_BASELINE_VERSION = "0";
 
   /**
-   * The tables of {@link #ADOPTED_RELEASE}'s schema. A database without history that lacks one is
-   * from an earlier release.
-   *
-   * <p>Only the tables are compared, not the whole schema.
+   * The run lock's connection, Flyway's two (PostgreSQL), and one to spare for reading the
+   * database's state.
    */
-  private static final Set<String> BASELINE_TABLES =
-      Set.of(
-          "uc_catalogs",
-          "uc_columns",
-          "uc_credentials",
-          "uc_delta_commits",
-          "uc_dependencies",
-          "uc_external_locations",
-          "uc_function_params",
-          "uc_functions",
-          "uc_metastore",
-          "uc_model_versions",
-          "uc_properties",
-          "uc_registered_models",
-          "uc_schemas",
-          "uc_staging_tables",
-          "uc_storage_cleanup_tasks",
-          "uc_tables",
-          "uc_users",
-          "uc_volumes");
-
-  /** The run lock's connection plus Flyway's. */
-  private static final int POOL_SIZE = 3;
+  private static final int POOL_SIZE = 4;
 
   private final DataSource dataSource;
   private final DatabaseKind kind;
@@ -146,6 +112,7 @@ public final class SchemaMigrator implements AutoCloseable {
    * #close()} closes. The server's pool can then be any size.
    */
   public static SchemaMigrator fromHibernateProperties(Properties hibernateProperties) {
+    HibernateConfigurator.requireSchemaFromConnection(hibernateProperties);
     HikariConfig config = HibernateConfigurator.hikariConfig(hibernateProperties);
     refuseH2ServerMode(config);
     config.setMaximumPoolSize(POOL_SIZE);
@@ -161,9 +128,59 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * The H2 run lock holds only within one JVM, so H2's server mode, where several processes open
-   * the database, could run steps twice at once. Read from the configuration, before any
-   * connection: the connection's URL leaves {@code AUTO_SERVER} out.
+   * Runs {@code bin/start-uc-server --upgrade-schema} on the database that the configuration files
+   * in {@code configurationFolder} set, printing what it found to {@code out}. Returns the exit
+   * code: 0 when the upgrade went through, 1 otherwise, also for a configuration with nothing to
+   * upgrade: a missing configuration file or an in-memory database.
+   */
+  public static int runCommand(Path configurationFolder, PrintStream out) {
+    String command = "bin/start-uc-server --upgrade-schema";
+    try {
+      Path serverFile = configurationFolder.resolve("server.properties");
+      Path hibernateFile = configurationFolder.resolve("hibernate.properties");
+      for (Path file : List.of(serverFile, hibernateFile)) {
+        if (!Files.isRegularFile(file)) {
+          throw new IllegalStateException(
+              "The configuration file "
+                  + file.toAbsolutePath()
+                  + " is not found: run "
+                  + command
+                  + " in the Unity Catalog folder, the one that holds etc/conf.");
+        }
+      }
+      ServerProperties serverProperties = new ServerProperties(serverFile.toString());
+      try (SchemaMigrator migrator =
+          fromHibernateProperties(
+              HibernateConfigurator.setupHibernateProperties(serverProperties, hibernateFile))) {
+        if (migrator.isInMemory()) {
+          throw new IllegalStateException(
+              "The configured database is in memory, so there is nothing to upgrade: the server"
+                  + " sets up an in-memory database itself.");
+        }
+        migrator.upgradeSchema();
+        out.println("The database schema is at version " + migrator.latestVersion() + ".");
+        return 0;
+      }
+    } catch (RuntimeException e) {
+      LOGGER.error("{} failed", command, e);
+      out.println(e.getMessage());
+      return 1;
+    }
+  }
+
+  /** Whether the database is an in-memory H2 database, which lasts only as long as its process. */
+  public boolean isInMemory() {
+    try (Connection connection = dataSource.getConnection()) {
+      return connection.getMetaData().getURL().startsWith("jdbc:h2:mem:");
+    } catch (SQLException e) {
+      throw new IllegalStateException("Could not connect to the database: " + e.getMessage(), e);
+    }
+  }
+
+  /**
+   * H2 takes no run lock, because it opens a database file in one process. Its server mode lets
+   * several processes open the database, so they could run steps twice at once. Read from the
+   * configuration, before any connection: the connection's URL leaves {@code AUTO_SERVER} out.
    */
   private static void refuseH2ServerMode(HikariConfig config) {
     Properties driver = config.getDataSourceProperties();
@@ -233,133 +250,146 @@ public final class SchemaMigrator implements AutoCloseable {
     this.ownedPool = ownedPool;
   }
 
-  private Flyway flyway(String baselineVersion) { // null: no baselining
-    FluentConfiguration configuration =
-        Flyway.configure()
-            .dataSource(dataSource)
-            .locations(locations)
-            .table(HISTORY_TABLE)
-            .failOnMissingLocations(true)
-            .validateMigrationNaming(true);
-    if (baselineVersion != null) {
-      configuration
-          .baselineOnMigrate(true)
-          .baselineVersion(baselineVersion)
-          .baselineDescription(
-              EMPTY_BASELINE_VERSION.equals(baselineVersion)
-                  ? "empty"
-                  : "baseline " + ADOPTED_RELEASE);
-    }
-    return configuration.load();
+  private FluentConfiguration flyway() {
+    return Flyway.configure()
+        .dataSource(dataSource)
+        .locations(locations)
+        .table(HISTORY_TABLE)
+        .failOnMissingLocations(true)
+        .validateMigrationNaming(true);
   }
 
   /**
-   * Under the run lock: classifies the database, then sets it up, adopts it and upgrades it, and
-   * checks that it ends at this build's schema version. On PostgreSQL and MySQL, a second run at
-   * the same time waits for the first. Returns the number of steps it applied.
+   * For {@code bin/start-uc-server --upgrade-schema}: under the run lock, applies this build's
+   * pending steps and checks that the database ends at this build's last step. This also sets up an
+   * empty database. A database with Unity Catalog's tables but no schema history is refused. On
+   * PostgreSQL and MySQL, a second run at the same time waits for the first. Returns the number of
+   * steps it ran.
    */
-  public int migrate() {
+  public int upgradeSchema() {
     try (RunLock lock = RunLock.acquire(dataSource, kind)) {
-      SchemaState state = state();
-      refuseIfUnsupported(state);
-      String from = state == SchemaState.UNVERSIONED_UC ? BASELINE_VERSION : currentVersion();
-      int applied = flyway(baselineFor(state)).migrate().migrationsExecuted;
-      if (applied > 0) {
-        LOGGER.info(
-            "Upgraded the database schema from version {} to {} ({} step(s))",
-            from == null ? "none" : from,
-            currentVersion(),
-            applied);
-      }
+      refuseIfUnsupported(state());
+      requireValidHistory(true);
+      int ran =
+          flyway()
+              .baselineOnMigrate(true)
+              .baselineVersion(EMPTY_BASELINE_VERSION)
+              .baselineDescription("empty")
+              .load()
+              .migrate()
+              .migrationsExecuted;
       requireCurrent();
-      return applied;
+      return ran;
+    }
+  }
+
+  /**
+   * Throws unless Flyway's validation of the schema history passes: no failed step, no edited step
+   * (checksum), no step missing below the recorded version. With {@code upgrading}, steps after the
+   * recorded version may be pending: the upgrade runs them.
+   */
+  private void requireValidHistory(boolean upgrading) {
+    if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
+      return;
+    }
+    FluentConfiguration configuration = flyway();
+    if (upgrading) {
+      configuration.ignoreMigrationPatterns("*:pending");
+    }
+    String errors =
+        configuration.load().validateWithResult().invalidMigrations.stream()
+            .map(m -> m.errorDetails.errorMessage)
+            .collect(Collectors.joining("\n"));
+    if (!errors.isEmpty()) {
+      throw new IllegalStateException(
+          "The database's schema history does not match this release's schema steps: " + errors);
     }
   }
 
   /**
    * Classifies the database against this build's steps. Changes nothing and does not take the run
-   * lock, so a run in progress can change the answer.
+   * lock, so a run in progress can change the answer. A step that failed counts as not applied.
    */
   SchemaState state() {
     Set<String> tables = tableNamesLowerCase();
-    tables.remove("casbin_rule"); // Casbin's adapter creates it on its own
     if (tables.contains(HISTORY_TABLE)) {
-      MigrationInfoService info = flyway(null).info();
-      String current = version(info.current());
-      if (current == null) {
+      String recorded = recordedVersion();
+      if (recorded == null) {
         return SchemaState.PENDING;
       }
       int cmp =
-          MigrationVersion.fromVersion(current)
-              .compareTo(MigrationVersion.fromVersion(latestVersion(info)));
+          MigrationVersion.fromVersion(recorded)
+              .compareTo(MigrationVersion.fromVersion(latestVersion()));
       if (cmp == 0) {
         return SchemaState.CURRENT;
       }
       return cmp > 0 ? SchemaState.AHEAD : SchemaState.PENDING;
     }
-    if (tables.isEmpty()) {
-      return SchemaState.EMPTY;
-    }
-    if (!tables.contains("uc_catalogs")) {
-      return SchemaState.NOT_UC;
-    }
-    return tables.containsAll(BASELINE_TABLES)
+    // Other tables (Casbin's, another application's) don't count: the steps run alongside them.
+    return tables.stream().anyMatch(t -> t.startsWith("uc_"))
         ? SchemaState.UNVERSIONED_UC
-        : SchemaState.BEFORE_BASELINE;
-  }
-
-  /** The highest applied version, {@code null} without history. */
-  String currentVersion() {
-    return version(flyway(null).info().current());
-  }
-
-  /** The highest step in this build. */
-  String latestVersion() {
-    return latestVersion(flyway(null).info());
-  }
-
-  private static String latestVersion(MigrationInfoService info) {
-    return Arrays.stream(info.all())
-        .filter(m -> m.getState().isResolved() && m.getVersion() != null)
-        .map(MigrationInfo::getVersion)
-        .max(MigrationVersion::compareTo)
-        .orElseThrow()
-        .getVersion();
+        : SchemaState.EMPTY;
   }
 
   /**
-   * The baseline Flyway records before the first step: below step 1 on an empty database so step 1
-   * runs, at 1 on a baseline-release database so step 1 is skipped, and none once history exists.
+   * The highest version the schema history records as applied, {@code null} without one. A step
+   * that failed does not count; Flyway's own {@code current()} counts it.
    */
-  private static String baselineFor(SchemaState state) {
-    return switch (state) {
-      case EMPTY -> EMPTY_BASELINE_VERSION;
-      case UNVERSIONED_UC -> BASELINE_VERSION;
-      default -> null;
-    };
+  String recordedVersion() {
+    if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
+      return null;
+    }
+    return recordedVersion(flyway().load().info());
   }
 
-  /** Throws for a database that {@link #migrate()} must not change. */
+  private static String recordedVersion(MigrationInfoService info) {
+    return Arrays.stream(info.applied())
+        .filter(m -> !m.getState().isFailed() && m.getVersion() != null)
+        .map(MigrationInfo::getVersion)
+        .max(MigrationVersion::compareTo)
+        .map(MigrationVersion::getVersion)
+        .orElse(null);
+  }
+
+  String latestVersion() {
+    List<String> steps = steps();
+    return steps.get(steps.size() - 1);
+  }
+
+  /** This build's steps, by version, oldest first. */
+  List<String> steps() {
+    return stepVersions(flyway().load().info());
+  }
+
+  private static List<String> stepVersions(MigrationInfoService info) {
+    return resolvedSteps(info).stream()
+        .map(MigrationInfo::getVersion)
+        .sorted()
+        .map(MigrationVersion::getVersion)
+        .toList();
+  }
+
+  /** The versioned steps that this build has. */
+  private static List<MigrationInfo> resolvedSteps(MigrationInfoService info) {
+    return Arrays.stream(info.all())
+        .filter(
+            m -> m.getState().isResolved() && m.getVersion() != null && !m.getType().isSynthetic())
+        .toList();
+  }
+
+  /** Throws for a database that {@link #upgradeSchema()} must not change. */
   private void refuseIfUnsupported(SchemaState state) {
     String refusal =
         switch (state) {
-          case NOT_UC ->
-              "The database has tables but none of Unity Catalog's: not a Unity Catalog database."
-                  + " Point the server at an empty database or a Unity Catalog one.";
           case AHEAD ->
               "The schema is newer than this release (version "
-                  + currentVersion()
+                  + recordedVersion()
                   + ", this release ends at "
                   + latestVersion()
                   + "). Run the newer release.";
-          case BEFORE_BASELINE ->
-              "The database is from a release before "
-                  + ADOPTED_RELEASE
-                  + " (missing tables: "
-                  + String.join(", ", missingBaselineTables())
-                  + "). Start a "
-                  + ADOPTED_RELEASE
-                  + " server on it once, then start this release.";
+          case UNVERSIONED_UC ->
+              "The database has Unity Catalog's tables but no schema history: adopting a database"
+                  + " without schema history is not supported yet. Keep running the server on it.";
           default -> null;
         };
     if (refusal != null) {
@@ -367,22 +397,17 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
-  /** Throws unless the database ends at this build's schema version. */
+  /**
+   * Throws unless the database is at this build's last step: recorded as applied, and Flyway's
+   * validation passes.
+   */
   private void requireCurrent() {
     SchemaState state = state();
     if (state != SchemaState.CURRENT) {
       throw new IllegalStateException(
-          "The database schema is "
-              + state
-              + " after migration; this release needs version "
-              + latestVersion());
+          "The database schema is " + state + "; this release needs version " + latestVersion());
     }
-  }
-
-  private Set<String> missingBaselineTables() {
-    Set<String> missing = new TreeSet<>(BASELINE_TABLES);
-    missing.removeAll(tableNamesLowerCase());
-    return missing;
+    requireValidHistory(false);
   }
 
   private Set<String> tableNamesLowerCase() {
@@ -419,11 +444,6 @@ public final class SchemaMigrator implements AutoCloseable {
         .replace("%", escape + "%");
   }
 
-  private static String version(MigrationInfo info) {
-    return info == null || info.getVersion() == null ? null : info.getVersion().getVersion();
-  }
-
-  /** Closes the migrator's own pool, if it has one. */
   @Override
   public void close() {
     if (ownedPool != null) {
@@ -432,12 +452,11 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * One lock per database for a whole migration run, so two servers never run the steps at the same
+   * One lock per database for a whole migration run, so two runs never run the steps at the same
    * time; Flyway's own lock is released between steps. PostgreSQL takes {@code pg_advisory_lock} on
    * a fixed key (advisory locks are per database), MySQL {@code GET_LOCK} on a name derived from
    * the database's (MySQL's locks are per server). The lock is held on one connection until {@link
-   * #close()}. H2 takes a lock inside this JVM, keyed by the database: an H2 file database is
-   * opened by one process.
+   * #close()}. H2 takes no lock: it locks its database file to one process.
    */
   static final class RunLock implements AutoCloseable {
 
@@ -449,8 +468,6 @@ public final class SchemaMigrator implements AutoCloseable {
      * keeps it within MySQL's 64-character limit.
      */
     private static final String MYSQL_NAME = "CONCAT('uc_migrate.', SHA1(DATABASE()))";
-
-    private static final ConcurrentMap<String, ReentrantLock> H2_LOCKS = new ConcurrentHashMap<>();
 
     /**
      * The lock calls of one database: the try that returns at once, the blocking one, the unlock.
@@ -470,14 +487,12 @@ public final class SchemaMigrator implements AutoCloseable {
               "SELECT RELEASE_LOCK(" + MYSQL_NAME + ")");
     }
 
-    private final Connection connection; // PostgreSQL and MySQL
+    private final Connection connection; // null on H2
     private final String unlockSql;
-    private final ReentrantLock h2Lock; // H2
 
-    private RunLock(Connection connection, String unlockSql, ReentrantLock h2Lock) {
+    private RunLock(Connection connection, String unlockSql) {
       this.connection = connection;
       this.unlockSql = unlockSql;
-      this.h2Lock = h2Lock;
     }
 
     /**
@@ -486,13 +501,7 @@ public final class SchemaMigrator implements AutoCloseable {
      */
     static RunLock acquire(DataSource dataSource, DatabaseKind kind) {
       if (kind == DatabaseKind.H2) {
-        ReentrantLock lock =
-            H2_LOCKS.computeIfAbsent(h2Key(dataSource), key -> new ReentrantLock());
-        if (!lock.tryLock()) {
-          logWaiting();
-          lock.lock();
-        }
-        return new RunLock(null, null, lock);
+        return new RunLock(null, null);
       }
       LockCalls calls = kind == DatabaseKind.POSTGRESQL ? LockCalls.POSTGRESQL : LockCalls.MYSQL;
       Connection connection = null;
@@ -506,7 +515,7 @@ public final class SchemaMigrator implements AutoCloseable {
             throw new SQLException("the database did not grant it");
           }
         }
-        return new RunLock(connection, calls.unlock(), null);
+        return new RunLock(connection, calls.unlock());
       } catch (SQLException e) {
         close(connection);
         throw new IllegalStateException(
@@ -515,14 +524,13 @@ public final class SchemaMigrator implements AutoCloseable {
     }
 
     /**
-     * Releases the lock. Throws when the release fails, so the server stops instead of starting
+     * Releases the lock. Throws when the release fails, so the command stops instead of finishing
      * with the lock state unknown. The database connection underneath is then closed too, which
      * ends its session and so releases the lock; closing a pooled connection only returns it.
      */
     @Override
     public void close() {
-      if (h2Lock != null) {
-        h2Lock.unlock();
+      if (connection == null) {
         return;
       }
       try {
@@ -534,33 +542,15 @@ public final class SchemaMigrator implements AutoCloseable {
         throw new IllegalStateException(
             "Could not release the schema migration lock: "
                 + e.getMessage()
-                + ". The database releases it when the connection closes; start the server again.",
+                + ". The database releases it when the connection closes; run the command again.",
             e);
       } finally {
         close(connection);
       }
     }
 
-    /** The number of runs waiting for this H2 lock (tests). */
-    int h2Waiting() {
-      return h2Lock.getQueueLength();
-    }
-
     private static void logWaiting() {
-      LOGGER.info("Another server is migrating the schema; waiting for it to finish.");
-    }
-
-    /** The database file's path, or the name of an in-memory database. */
-    private static String h2Key(DataSource dataSource) {
-      try (Connection connection = dataSource.getConnection();
-          Statement statement = connection.createStatement();
-          ResultSet rs = statement.executeQuery("SELECT COALESCE(DATABASE_PATH(), DATABASE())")) {
-        rs.next();
-        return rs.getString(1);
-      } catch (SQLException e) {
-        throw new IllegalStateException(
-            "Could not take the schema migration lock: " + e.getMessage(), e);
-      }
+      LOGGER.info("Another run is migrating the schema; waiting for it to finish.");
     }
 
     /**

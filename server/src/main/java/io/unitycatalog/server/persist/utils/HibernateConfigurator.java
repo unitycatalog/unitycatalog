@@ -36,16 +36,13 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.stream.Stream;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.cfg.Environment;
 import org.hibernate.cfg.JdbcSettings;
-import org.hibernate.cfg.SchemaToolingSettings;
 import org.hibernate.service.ServiceRegistry;
-import org.hibernate.tool.schema.Action;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,9 +72,6 @@ public class HibernateConfigurator implements AutoCloseable {
    * properties (e.g. point at PostgreSQL via Testcontainers) before construction.
    */
   public HibernateConfigurator(Properties hibernateProperties) {
-    Map<Object, Object> settings = settingsHibernateReads(hibernateProperties);
-    requireSchemaFromConnection(settings);
-    requireNoSchemaChanges(settings);
     this.hibernateProperties = hibernateProperties;
     this.dataSource = createDataSource(hibernateProperties);
     try {
@@ -86,6 +80,7 @@ public class HibernateConfigurator implements AutoCloseable {
       dataSource.close();
       throw t;
     }
+    warnIfMySqlIsCaseInsensitive(hibernateProperties);
   }
 
   /**
@@ -103,7 +98,8 @@ public class HibernateConfigurator implements AutoCloseable {
    * connection's. Refuses Hibernate's own default schema or catalog, which only Hibernate would
    * use.
    */
-  private static void requireSchemaFromConnection(Map<Object, Object> settings) {
+  public static void requireSchemaFromConnection(Properties hibernateProperties) {
+    Map<Object, Object> settings = settingsHibernateReads(hibernateProperties);
     for (String name : new String[] {"hibernate.default_schema", "hibernate.default_catalog"}) {
       if (settings.get(name) != null) {
         throw new IllegalArgumentException(
@@ -115,60 +111,16 @@ public class HibernateConfigurator implements AutoCloseable {
   }
 
   /**
-   * The schema steps own the schema. Refuses every Hibernate schema action but none, validate too,
-   * before the pool or the session factory exists.
+   * Storage paths compare exactly, but MySQL's default collation ignores case. Warns when any text
+   * column in the connected MySQL schema has a case-insensitive ({@code _ci}) collation. A failed
+   * check never fails startup.
    */
-  private static void requireNoSchemaChanges(Map<Object, Object> settings) {
-    settings.forEach(
-        (name, value) -> {
-          if (isSchemaAction(name) && !isNone(value)) {
-            throw new IllegalStateException(
-                name
-                    + "="
-                    + value
-                    + " is not supported: the schema steps manage the schema. Set it to none.");
-          }
-        });
-  }
-
-  /**
-   * A schema action setting, or its form for one contributor ({@code hibernate.hbm2ddl.auto.orm}).
-   */
-  private static boolean isSchemaAction(Object name) {
-    return name instanceof String setting
-        && Stream.of(
-                SchemaToolingSettings.HBM2DDL_AUTO,
-                SchemaToolingSettings.JAKARTA_HBM2DDL_DATABASE_ACTION,
-                SchemaToolingSettings.HBM2DDL_DATABASE_ACTION)
-            .anyMatch(action -> setting.equals(action) || setting.startsWith(action + "."));
-  }
-
-  /** Hibernate takes an {@link Action} or its name, and reads an empty value as none. */
-  private static boolean isNone(Object value) {
-    return value instanceof Action action
-        ? action == Action.NONE
-        : value.toString().isBlank() || "none".equalsIgnoreCase(value.toString().trim());
-  }
-
-  /**
-   * Storage paths compare exactly, but MySQL's default collation ignores case. On MySQL, warns when
-   * any text column in the connected schema has a case-insensitive ({@code _ci}) collation. Call it
-   * after the schema migration, when the tables exist. A failed check never fails startup.
-   */
-  public void warnIfMySqlIsCaseInsensitive() {
-    try (Connection connection = dataSource.getConnection()) {
-      if (!"MySQL".equals(connection.getMetaData().getDatabaseProductName())) {
-        return;
-      }
-      warnIfCaseInsensitive(connection);
-    } catch (SQLException | RuntimeException e) {
-      // Only the warning is lost; an exception here would stop the server from starting.
-      LOGGER.warn("Could not check whether the MySQL database compares text case-insensitively", e);
+  private void warnIfMySqlIsCaseInsensitive(Properties properties) {
+    if (!properties.getProperty("hibernate.connection.url", "").startsWith("jdbc:mysql")) {
+      return;
     }
-  }
-
-  private static void warnIfCaseInsensitive(Connection connection) throws SQLException {
-    try (Statement statement = connection.createStatement();
+    try (Connection connection = dataSource.getConnection();
+        Statement statement = connection.createStatement();
         ResultSet collations =
             statement.executeQuery(
                 "SELECT DISTINCT COLLATION_NAME FROM information_schema.COLUMNS "
@@ -188,6 +140,10 @@ public class HibernateConfigurator implements AutoCloseable {
                 + " docs/server/deployment.md.",
             caseInsensitive);
       }
+    } catch (SQLException | RuntimeException e) {
+      // Only a warning is lost, and an exception here would leak the pool: the constructor does not
+      // close it after this point.
+      LOGGER.warn("Could not check whether the MySQL database compares text case-insensitively", e);
     }
   }
 
@@ -295,13 +251,19 @@ public class HibernateConfigurator implements AutoCloseable {
   }
 
   public static Properties setupHibernateProperties(ServerProperties serverProperties) {
-    Path hibernatePropertiesPath = Paths.get("etc/conf/hibernate.properties");
+    return setupHibernateProperties(serverProperties, Paths.get("etc/conf/hibernate.properties"));
+  }
+
+  /** The same, from the Hibernate properties file at {@code hibernatePropertiesPath}. */
+  public static Properties setupHibernateProperties(
+      ServerProperties serverProperties, Path hibernatePropertiesPath) {
     Properties hibernateProperties = new Properties();
     if (!hibernatePropertiesPath.toFile().exists()) {
       LOGGER.warn("Hibernate properties file not found: {}", hibernatePropertiesPath);
       hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
       hibernateProperties.setProperty(
           "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
+      hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "update");
     } else {
       try (InputStream input = Files.newInputStream(hibernatePropertiesPath)) {
         hibernateProperties.load(input);
@@ -314,24 +276,9 @@ public class HibernateConfigurator implements AutoCloseable {
       hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
       hibernateProperties.setProperty(
           "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
+      hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
       LOGGER.debug("Hibernate configuration set for testing");
     }
-    return withSchemaUpdatesOff(hibernateProperties);
-  }
-
-  /**
-   * Flyway owns the schema, so Hibernate never changes it, even if an old {@code
-   * etc/conf/hibernate.properties} still says {@code update}.
-   */
-  static Properties withSchemaUpdatesOff(Properties properties) {
-    String auto = properties.getProperty("hibernate.hbm2ddl.auto");
-    if (auto != null && !isNone(auto)) {
-      LOGGER.warn(
-          "Ignoring hibernate.hbm2ddl.auto={}: the schema is managed by the schema migration"
-              + " steps.",
-          auto);
-    }
-    properties.setProperty("hibernate.hbm2ddl.auto", "none");
-    return properties;
+    return hibernateProperties;
   }
 }

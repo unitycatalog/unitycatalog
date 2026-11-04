@@ -58,7 +58,6 @@ import io.unitycatalog.server.utils.VersionUtils;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 import org.apache.logging.log4j.LogManager;
@@ -119,13 +118,6 @@ public class UnityCatalogServer implements AutoCloseable {
             : unityCatalogServerBuilder.hibernateConfigurator;
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
-      Properties hibernateProperties = hibernateConfigurator.getHibernateProperties();
-      // Upgrades the database to this release's schema, or refuses one it cannot upgrade. The
-      // migration uses its own small pool, so the server's pool size does not limit it.
-      try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(hibernateProperties)) {
-        migrator.migrate();
-      }
-      hibernateConfigurator.warnIfMySqlIsCaseInsensitive();
       createdBlockingTaskExecutor =
           BlockingTaskExecutor.builder()
               .numThreads(hibernateConfigurator.getDataSource().getMaximumPoolSize())
@@ -462,6 +454,12 @@ public class UnityCatalogServer implements AutoCloseable {
   public static void main(String[] args) {
     OptionParser options = new OptionParser();
     options.parse(args);
+    if (options.isUpgradeSchema()) {
+      // Upgrades the database's schema, then exits; the server does not start.
+      int exitCode = SchemaMigrator.runCommand(Path.of("etc", "conf"), System.out);
+      LogManager.shutdown();
+      System.exit(exitCode);
+    }
     int port = options.getPort();
     ServerProperties serverProperties = new ServerProperties(SERVER_PROPERTIES_FILE);
     UnityCatalogServer.Builder serverBuilder =

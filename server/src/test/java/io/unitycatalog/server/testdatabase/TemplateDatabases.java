@@ -1,20 +1,22 @@
 package io.unitycatalog.server.testdatabase;
 
-import io.unitycatalog.server.migrate.SchemaMigrator;
+import jakarta.persistence.Table;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.JdbcDatabaseContainer;
 
 /**
- * One database container per test JVM. The migration steps build the schema once into {@code
- * uc_template}; each test gets a clone of it and drops it afterwards. Testcontainers' reaper
- * removes the container when the JVM exits. Subclasses supply what differs between databases: the
- * container and its data directory, the driver and JDBC URL, how to create, clone and drop a
- * database, and an optional hook after the template build.
+ * One database container per test JVM. Hibernate builds the schema once into {@code uc_template};
+ * each test gets a clone of it and drops it afterwards. Testcontainers' reaper removes the
+ * container when the JVM exits. Subclasses supply what differs between databases: the container and
+ * its data directory, the driver and JDBC URL, how to create, clone and drop a database, and
+ * optional hooks around the template build.
  */
 abstract class TemplateDatabases {
 
@@ -50,8 +52,11 @@ abstract class TemplateDatabases {
 
   abstract String dropSql(String name);
 
-  /** Called once the template schema exists. */
-  void templateBuilt() {}
+  /** Adjusts how Hibernate builds the template schema. */
+  void configureTemplate(Properties hibernateProperties) {}
+
+  /** Called once the template schema exists; {@code mappedTables} are the tables Hibernate maps. */
+  void templateBuilt(List<String> mappedTables) {}
 
   /** Starts the container and builds the template. A failure is kept and reported by each use. */
   final void start() {
@@ -78,23 +83,34 @@ abstract class TemplateDatabases {
   private void buildTemplate() {
     createDatabase(TEMPLATE);
     // Closing releases every connection: PostgreSQL refuses to copy a template that is in use.
-    try (TestDatabase template = testDatabase(TEMPLATE, () -> {})) {
-      new SchemaMigrator(template.dataSource()).migrate();
+    List<String> mappedTables;
+    try (TestDatabase template = testDatabase(TEMPLATE, "create-only", () -> {})) {
+      Properties create = template.hibernateProperties();
+      configureTemplate(create);
+      mappedTables =
+          template
+              .openHibernateConfigurator(create)
+              .getSessionFactory()
+              .getMetamodel()
+              .getEntities()
+              .stream()
+              .map(entity -> entity.getJavaType().getAnnotation(Table.class).name())
+              .toList();
     }
-    templateBuilt();
+    templateBuilt(mappedTables);
   }
 
   final TestDatabase newDatabase(String name) {
     checkStarted();
     cloneTemplate(name);
-    return testDatabase(name, () -> execute(dropSql(name)));
+    return testDatabase(name, "none", () -> execute(dropSql(name)));
   }
 
   /** A database with no tables, for tests that build the schema themselves. */
   final TestDatabase newEmptyDatabase(String name) {
     checkStarted();
     createDatabase(name);
-    return testDatabase(name, () -> execute(dropSql(name)));
+    return testDatabase(name, "none", () -> execute(dropSql(name)));
   }
 
   private void checkStarted() {
@@ -103,9 +119,14 @@ abstract class TemplateDatabases {
     }
   }
 
-  private TestDatabase testDatabase(String name, Runnable release) {
+  private TestDatabase testDatabase(String name, String hbm2ddlAuto, Runnable release) {
     return new TestDatabase(
-        driver(), jdbcUrl(name), container.getUsername(), container.getPassword(), release);
+        driver(),
+        jdbcUrl(name),
+        container.getUsername(),
+        container.getPassword(),
+        hbm2ddlAuto,
+        release);
   }
 
   final void execute(String sql) {

@@ -11,6 +11,10 @@ import org.hibernate.cfg.JdbcSettings;
 import org.hibernate.cfg.SchemaToolingSettings;
 import org.junit.jupiter.api.Test;
 
+/**
+ * The steps build the schema Hibernate builds from the entities, so Hibernate's update at server
+ * start changes nothing on a database that the steps built.
+ */
 public class BaselineMatchesEntitiesTest {
 
   @TempDatabase(empty = true)
@@ -21,9 +25,8 @@ public class BaselineMatchesEntitiesTest {
 
   @Test
   void stepsBuildTheEntitySchema() {
-    new SchemaMigrator(fromSteps.dataSource()).migrate();
-    // Hibernate builds the second from the server's entities. The server's configurator refuses to
-    // let Hibernate change the schema, so this test runs Hibernate on those entities itself.
+    new SchemaMigrator(fromSteps.dataSource()).upgradeSchema();
+    // Hibernate builds the second from the server's entities, with the settings below.
     Configuration entities = new Configuration();
     fromEntities.sessionFactory().getMetamodel().getEntities().stream()
         .map(EntityType::getJavaType)
@@ -39,7 +42,8 @@ public class BaselineMatchesEntitiesTest {
         .getProperties()
         .put(JdbcSettings.JAKARTA_NON_JTA_DATASOURCE, fromEntities.dataSource());
     entities.buildSessionFactory().close();
-    assertThat(SchemaSnapshot.of(fromSteps.dataSource()))
-        .isEqualTo(SchemaSnapshot.of(fromEntities.dataSource()));
+    // On a mismatch, AssertJ also lists the missing and unexpected entries.
+    assertThat(SchemaSnapshot.of(fromSteps.dataSource()).entries())
+        .containsExactlyElementsOf(SchemaSnapshot.of(fromEntities.dataSource()).entries());
   }
 }

@@ -13,9 +13,8 @@ import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.TransactionManager;
-import io.unitycatalog.server.testdatabase.TempDatabase;
-import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Date;
 import java.util.HashMap;
@@ -23,6 +22,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
 import org.hibernate.SessionFactory;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -37,7 +37,6 @@ import org.junit.jupiter.api.Test;
  */
 public class KeyMapperTest {
 
-  @TempDatabase private TestDatabase testDatabase;
   private SessionFactory sessionFactory;
   private Repositories repositories;
 
@@ -51,7 +50,11 @@ public class KeyMapperTest {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
     ServerProperties serverProperties = new ServerProperties(properties);
-    sessionFactory = testDatabase.sessionFactory();
+    Properties hibernateProperties =
+        HibernateConfigurator.setupHibernateProperties(serverProperties);
+    hibernateProperties.setProperty(
+        "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
+    sessionFactory = new HibernateConfigurator(hibernateProperties).getSessionFactory();
     repositories = new Repositories(sessionFactory, serverProperties);
 
     // One catalog with two schemas; an external table lives in schema B at s3://bucket/tbl_b.
@@ -88,6 +91,11 @@ public class KeyMapperTest {
         },
         "Failed to seed test entities",
         /* readOnly= */ false);
+  }
+
+  @AfterEach
+  void tearDown() {
+    sessionFactory.close();
   }
 
   @Test
