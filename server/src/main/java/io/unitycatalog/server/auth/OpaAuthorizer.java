@@ -1,7 +1,9 @@
 package io.unitycatalog.server.auth;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linecorp.armeria.client.ResponseTimeoutMode;
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.client.redirect.RedirectConfig;
@@ -13,7 +15,6 @@ import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.JsonUtils;
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -24,6 +25,9 @@ import org.slf4j.LoggerFactory;
 /**
  * Delegates each privilege decision to OPA. Native grants and hierarchy remain available for
  * permission management and resource bookkeeping, but do not affect OPA decisions.
+ *
+ * <p>Metadata is reused only within one authorization call; each evaluated privilege is sent to OPA
+ * separately.
  */
 public class OpaAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
   private static final Logger LOGGER = LoggerFactory.getLogger(OpaAuthorizer.class);
@@ -60,10 +64,34 @@ public class OpaAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
   @Override
   public boolean authorize(
       UUID principal, SecurableType resourceType, UUID resource, Privileges action) {
+    return authorizeAny(principal, resourceType, resource, action);
+  }
+
+  @Override
+  public boolean authorizeAny(
+      UUID principal, SecurableType resourceType, UUID resource, Privileges... actions) {
+    return authorizePrivileges(principal, resourceType, resource, /* requireAll= */ false, actions);
+  }
+
+  @Override
+  public boolean authorizeAll(
+      UUID principal, SecurableType resourceType, UUID resource, Privileges... actions) {
+    return authorizePrivileges(principal, resourceType, resource, /* requireAll= */ true, actions);
+  }
+
+  private boolean authorizePrivileges(
+      UUID principal,
+      SecurableType resourceType,
+      UUID resource,
+      boolean requireAll,
+      Privileges... actions) {
+    if (actions.length == 0) {
+      return requireAll;
+    }
     try {
-      JsonNode input;
+      ObjectNode input;
       try {
-        input = inputBuilder.build(principal, resourceType, resource, action);
+        input = inputBuilder.build(principal, resourceType, resource, actions[0]);
       } catch (BaseException e) {
         if (e.getErrorCode() != ErrorCode.NOT_FOUND) {
           throw e;
@@ -71,54 +99,50 @@ public class OpaAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
         LOGGER.warn(
             "Authorization check denied: principal={}, privilege={}, resource={} {}: {}",
             principal,
-            action,
+            actions[0],
             resourceType,
             resource,
             e.getMessage());
         return false;
       }
-      String request = JsonUtils.getInstance().writeValueAsString(input);
-      AggregatedHttpResponse response =
-          webClient
-              .prepare()
-              .post(decisionUrl)
-              .content(MediaType.JSON, request)
-              .execute()
-              .aggregate()
-              .join();
-      if (!response.status().isSuccess()) {
-        throw new BaseException(
-            ErrorCode.UNAVAILABLE, "OPA returned HTTP " + response.status().code());
+      for (Privileges action : actions) {
+        ((ObjectNode) input.get("input")).put("privilege", action.name());
+        if (evaluate(input) != requireAll) {
+          return !requireAll;
+        }
       }
-      JsonNode body =
-          JsonUtils.getInstance()
-              .reader()
-              .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
-              .readTree(response.contentUtf8());
-      JsonNode allow = body.path("result").path("allow");
-      if (!allow.isBoolean()) {
-        throw new BaseException(
-            ErrorCode.UNAVAILABLE, "OPA response must contain a boolean result.allow");
-      }
-      return allow.booleanValue();
+      return requireAll;
     } catch (Exception e) {
       throw new BaseException(
           ErrorCode.UNAVAILABLE, "Could not get an authorization decision from OPA", e);
     }
   }
 
-  @Override
-  public boolean authorizeAny(
-      UUID principal, SecurableType resourceType, UUID resource, Privileges... actions) {
-    return Arrays.stream(actions)
-        .anyMatch(action -> authorize(principal, resourceType, resource, action));
-  }
-
-  @Override
-  public boolean authorizeAll(
-      UUID principal, SecurableType resourceType, UUID resource, Privileges... actions) {
-    return Arrays.stream(actions)
-        .allMatch(action -> authorize(principal, resourceType, resource, action));
+  private boolean evaluate(ObjectNode input) throws JsonProcessingException {
+    String request = JsonUtils.getInstance().writeValueAsString(input);
+    AggregatedHttpResponse response =
+        webClient
+            .prepare()
+            .post(decisionUrl)
+            .content(MediaType.JSON, request)
+            .execute()
+            .aggregate()
+            .join();
+    if (!response.status().isSuccess()) {
+      throw new BaseException(
+          ErrorCode.UNAVAILABLE, "OPA returned HTTP " + response.status().code());
+    }
+    JsonNode body =
+        JsonUtils.getInstance()
+            .reader()
+            .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .readTree(response.contentUtf8());
+    JsonNode allow = body.path("result").path("allow");
+    if (!allow.isBoolean()) {
+      throw new BaseException(
+          ErrorCode.UNAVAILABLE, "OPA response must contain a boolean result.allow");
+    }
+    return allow.booleanValue();
   }
 
   @Override
