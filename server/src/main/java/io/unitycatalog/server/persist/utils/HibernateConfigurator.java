@@ -348,7 +348,7 @@ public class HibernateConfigurator implements AutoCloseable {
         (name, value) -> {
           if (!isSchemaAction(name)) {
             withUpdates.put(name, value);
-          } else if (!isNone(value)) {
+          } else if (!isNone(value) && !"update".equalsIgnoreCase(value.toString().trim())) {
             LOGGER.warn(
                 "Ignoring {}={}: with server.schema-management=hibernate, Hibernate updates the"
                     + " schema.",

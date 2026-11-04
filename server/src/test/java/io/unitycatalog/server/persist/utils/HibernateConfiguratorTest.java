@@ -86,6 +86,7 @@ class HibernateConfiguratorTest {
   void hibernateModeUpdatesTheSchemaWhateverTheFileSays() throws SQLException {
     Properties properties = h2Properties();
     properties.setProperty("jakarta.persistence.schema-generation.database.action", "none");
+    properties.setProperty("jakarta.persistence.schema-generation.database.action.orm", "none");
 
     try (HibernateConfigurator configurator = new HibernateConfigurator(properties, true);
         Connection connection = configurator.getDataSource().getConnection();
