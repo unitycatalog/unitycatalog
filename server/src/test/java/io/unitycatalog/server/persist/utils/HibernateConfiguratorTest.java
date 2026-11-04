@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.utils.ServerProperties;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.Properties;
 import java.util.UUID;
 import org.hibernate.tool.schema.Action;
@@ -77,6 +80,31 @@ class HibernateConfiguratorTest {
     assertThat(
             HibernateConfigurator.setupHibernateProperties(new ServerProperties(new Properties())))
         .containsEntry("hibernate.hbm2ddl.auto", "none");
+  }
+
+  @Test
+  void hibernateModeUpdatesTheSchemaWhateverTheFileSays() throws SQLException {
+    Properties properties = h2Properties();
+    properties.setProperty("jakarta.persistence.schema-generation.database.action", "none");
+
+    try (HibernateConfigurator configurator = new HibernateConfigurator(properties, true);
+        Connection connection = configurator.getDataSource().getConnection();
+        ResultSet tables =
+            connection.getMetaData().getTables(null, null, "UC_CATALOGS", new String[] {"TABLE"})) {
+      assertThat(tables.next()).isTrue();
+    }
+  }
+
+  @Test
+  void readsHibernateModeFromTheServerProperties() {
+    Properties server = new Properties();
+    server.setProperty("server.env", "test");
+    server.setProperty("server.schema-management", "hibernate");
+
+    try (HibernateConfigurator configurator =
+        new HibernateConfigurator(new ServerProperties(server))) {
+      assertThat(configurator.isSchemaManagedByHibernate()).isTrue();
+    }
   }
 
   @Test

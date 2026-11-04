@@ -81,14 +81,12 @@ public class HibernateConfigurator implements AutoCloseable {
 
   /**
    * The same, where {@code schemaManagedByHibernate} lets Hibernate update the schema instead of
-   * the schema steps ({@code server.schema-management=hibernate}).
+   * the schema steps ({@code server.schema-management=hibernate}), whatever schema action the
+   * properties set.
    */
   public HibernateConfigurator(Properties hibernateProperties, boolean schemaManagedByHibernate) {
     if (schemaManagedByHibernate) {
-      Properties withUpdate = new Properties();
-      withUpdate.putAll(hibernateProperties);
-      hibernateProperties = withUpdate;
-      hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "update");
+      hibernateProperties = withSchemaUpdatesOn(hibernateProperties);
     }
     Map<Object, Object> settings = settingsHibernateReads(hibernateProperties);
     requireSchemaFromConnection(settings);
@@ -337,6 +335,29 @@ public class HibernateConfigurator implements AutoCloseable {
     return serverProperties.isSchemaManagedByHibernate()
         ? hibernateProperties
         : withSchemaUpdatesOff(hibernateProperties);
+  }
+
+  /**
+   * A copy of {@code properties} in which Hibernate updates the schema: the schema action is the
+   * server's, so the file's own schema action settings are dropped. Hibernate reads the JPA action
+   * before {@code hibernate.hbm2ddl.auto}, so the server sets that one.
+   */
+  static Properties withSchemaUpdatesOn(Properties properties) {
+    Properties withUpdates = new Properties();
+    properties.forEach(
+        (name, value) -> {
+          if (!isSchemaAction(name)) {
+            withUpdates.put(name, value);
+          } else if (!isNone(value)) {
+            LOGGER.warn(
+                "Ignoring {}={}: with server.schema-management=hibernate, Hibernate updates the"
+                    + " schema.",
+                name,
+                value);
+          }
+        });
+    withUpdates.setProperty(SchemaToolingSettings.JAKARTA_HBM2DDL_DATABASE_ACTION, "update");
+    return withUpdates;
   }
 
   /**

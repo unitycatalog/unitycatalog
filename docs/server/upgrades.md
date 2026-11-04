@@ -90,7 +90,7 @@ database, first set `hibernate.hbm2ddl.auto=none` in its `etc/conf/hibernate.pro
 A temporary fallback while the schema steps are new. With `server.schema-management=hibernate` in
 `etc/conf/server.properties` (Helm: `server.db.schemaManagement: hibernate`), the server runs no
 schema steps and none of their checks, and Hibernate updates the schema at start as in 0.7.0
-(`hibernate.hbm2ddl.auto=update`, whatever `hibernate.properties` says). The server logs a warning
+(`update`, whatever schema action `hibernate.properties` sets). The server logs a warning
 on every start. A `uc_schema_history` table, if the database has one, is left as it is.
 
 To go back to the schema steps, set `server.schema-management=flyway`, the default:
