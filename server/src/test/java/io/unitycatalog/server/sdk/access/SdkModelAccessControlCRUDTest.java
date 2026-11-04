@@ -44,7 +44,7 @@ import org.junit.jupiter.api.Test;
  *   <li>Model get requires ownership
  *   <li>Model list is filtered based on ownership
  *   <li>Model update requires ownership
- *   <li>Model version creation requires ownership of parent model
+ *   <li>Model version creation requires model ownership or CREATE MODEL VERSION
  *   <li>Model version get requires ownership
  *   <li>Model version list requires ownership
  *   <li>Model version update requires ownership
