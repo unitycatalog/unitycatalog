@@ -49,9 +49,8 @@ the others wait for it, then start. The server holds that lock on one database s
 whole run, so connect to the database directly or through a pooler in session mode, not in
 transaction mode (PgBouncer's `pool_mode = transaction`): there the lock can be released on
 another session, and the start fails.
-On MySQL the lock is a named lock (`GET_LOCK`), which a multi-primary cluster (Group Replication in
-multi-primary mode, Galera) does not share between primaries: there, start one server first and
-the others after it.
+On MySQL the lock is a named lock (`GET_LOCK`), which Group Replication in multi-primary mode does
+not share between primaries: there, start one server first and the others after it.
 
 A step waits for locks that other sessions hold on its table, for example an open transaction of
 a reporting tool. If a start stays at the steps for long, look for such sessions and end them:

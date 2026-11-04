@@ -13,6 +13,7 @@ import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.Driver;
@@ -36,9 +37,10 @@ import java.util.function.UnaryOperator;
 import javax.sql.DataSource;
 import org.assertj.core.api.AbstractThrowableAssert;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
-import org.junit.jupiter.params.provider.ValueSource;
 
 public class SchemaMigratorTest {
 
@@ -150,12 +152,30 @@ public class SchemaMigratorTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"jdbc:h2:file:./uc;AUTO_SERVER=TRUE", "jdbc:h2:tcp://localhost/./uc"})
-  void refusesH2InServerMode(String url) {
-    // Server mode lets several processes open the database; the H2 run lock is per JVM.
+  @CsvSource({
+    "jdbc:h2:file:{dir}/uc;AUTO_SERVER=TRUE,,",
+    "jdbc:h2:file:{dir}/uc;AUTO_SERVER=1,,",
+    "jdbc:h2:file:{dir}/uc;auto_server=yes,,",
+    "jdbc:h2:tcp://localhost/{dir}/uc,,",
+    "jdbc:h2:ssl://localhost/{dir}/uc,,",
+    "jdbc:p6spy:h2:file:{dir}/uc;AUTO_SERVER=TRUE,,",
+    "jdbc:h2:file:{dir}/uc,hibernate.hikari.dataSource.AUTO_SERVER,TRUE",
+    ",hibernate.hikari.dataSource.URL,jdbc:h2:file:{dir}/uc;AUTO_SERVER=TRUE",
+  })
+  void refusesH2InServerMode(String url, String key, String value, @TempDir Path dir) {
     Properties properties = db.hibernateProperties();
-    properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
-    properties.setProperty("hibernate.connection.url", url);
+    if (url == null) {
+      // A pool set up by data source class: the URL is a data source property.
+      properties.remove("hibernate.connection.url");
+      properties.remove("hibernate.connection.driver_class");
+      properties.setProperty("hibernate.hikari.dataSourceClassName", "org.h2.jdbcx.JdbcDataSource");
+    } else {
+      properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+      properties.setProperty("hibernate.connection.url", url.replace("{dir}", dir.toString()));
+    }
+    if (key != null) {
+      properties.setProperty(key, value.replace("{dir}", dir.toString()));
+    }
 
     assertThatThrownBy(() -> SchemaMigrator.fromHibernateProperties(properties))
         .isInstanceOf(IllegalStateException.class)

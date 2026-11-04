@@ -146,7 +146,7 @@ public final class SchemaMigrator implements AutoCloseable {
    */
   public static SchemaMigrator fromHibernateProperties(Properties hibernateProperties) {
     HikariConfig config = HibernateConfigurator.hikariConfig(hibernateProperties);
-    refuseH2ServerMode(config.getJdbcUrl());
+    refuseH2ServerMode(config);
     config.setMaximumPoolSize(POOL_SIZE);
     config.setMinimumIdle(0);
     config.setPoolName("schema-migrator");
@@ -161,18 +161,51 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * The H2 run lock holds only within one JVM, so H2's server mode, where several processes open
-   * the database, could run steps twice at once. Read from the configured URL: the connection's URL
-   * leaves {@code AUTO_SERVER} out.
+   * the database, could run steps twice at once. Read from the configuration, before any
+   * connection: the connection's URL leaves {@code AUTO_SERVER} out.
    */
-  private static void refuseH2ServerMode(String url) {
+  private static void refuseH2ServerMode(HikariConfig config) {
+    Properties driver = config.getDataSourceProperties();
+    String url = config.getJdbcUrl() != null ? config.getJdbcUrl() : property(driver, "url");
     String lower = url == null ? "" : url.toLowerCase(Locale.ROOT);
-    if (lower.startsWith("jdbc:h2:tcp:")
-        || lower.startsWith("jdbc:h2:ssl:")
-        || (lower.startsWith("jdbc:h2:") && lower.contains(";auto_server=true"))) {
+    if (!lower.contains(":h2:")) {
+      return;
+    }
+    if (lower.contains(":h2:tcp:")
+        || lower.contains(":h2:ssl:")
+        || isOn(setting(lower, "auto_server"))
+        || isOn(property(driver, "auto_server"))) {
       throw new IllegalStateException(
           "H2 in server mode is not supported: the schema migration needs one server per H2"
               + " file. Use a jdbc:h2:file: URL without AUTO_SERVER.");
     }
+  }
+
+  /** The value of a {@code ;name=value} setting in a lower-case H2 URL, or {@code null}. */
+  private static String setting(String lowerUrl, String name) {
+    String[] parts = lowerUrl.split(";");
+    for (int i = 1; i < parts.length; i++) {
+      int equals = parts[i].indexOf('=');
+      if (equals > 0 && parts[i].substring(0, equals).trim().equals(name)) {
+        return parts[i].substring(equals + 1);
+      }
+    }
+    return null;
+  }
+
+  /** A driver property whose name matches {@code name} in any case, or {@code null}. */
+  private static String property(Properties properties, String name) {
+    return properties.stringPropertyNames().stream()
+        .filter(key -> key.equalsIgnoreCase(name))
+        .map(properties::getProperty)
+        .findFirst()
+        .orElse(null);
+  }
+
+  /** H2 reads a setting as false only for 0, f, n, no and false (any case). */
+  private static boolean isOn(String value) {
+    return value != null
+        && !Set.of("0", "f", "n", "no", "false").contains(value.trim().toLowerCase(Locale.ROOT));
   }
 
   /** Applies this release's steps to {@code dataSource}; closing it stays with the caller. */
