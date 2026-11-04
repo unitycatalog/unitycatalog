@@ -49,7 +49,7 @@ public final class Auditor implements AutoCloseable {
   private final AuditSink sink;
   private final Clock clock;
   private final AtomicLong lastReportMs;
-  private final AtomicLong unreported = new AtomicLong();
+  final AtomicLong unreported = new AtomicLong();
   private final AtomicBoolean closed = new AtomicBoolean();
 
   Auditor(AuditSink sink, Clock clock) {
@@ -192,13 +192,17 @@ public final class Auditor implements AutoCloseable {
     try {
       URI uri = URI.create(url);
       String authority = uri.getRawAuthority();
-      if (authority != null && authority.contains("@")) {
-        int at = authority.lastIndexOf('@');
-        String host = authority.substring(at + 1);
+      // Vending reads the decoded authority, so an encoded @ also ends user info.
+      String decoded = uri.getAuthority();
+      if (decoded != null && decoded.contains("@")) {
+        int at = decoded.lastIndexOf('@');
+        String host = decoded.substring(at + 1);
         boolean abfs = uri.getScheme().startsWith("abfs");
         if (!abfs) {
           authority = host;
-        } else if (!ABFS_CONTAINER.matcher(authority.substring(0, at)).matches()) {
+        } else if (ABFS_CONTAINER.matcher(decoded.substring(0, at)).matches()) {
+          authority = decoded;
+        } else {
           authority = "[REDACTED]@" + host;
         }
       }
@@ -250,7 +254,7 @@ public final class Auditor implements AutoCloseable {
 
   private void emit(Supplier<AuditRecord> build) {
     if (closed.get()) {
-      // A request that outlived the shutdown drain; the lost records were already reported.
+      // A request that outlived the shutdown drain.
       LOGGER.warn("Audit record dropped: sink {} is closed", sink.getClass().getName());
       return;
     }
