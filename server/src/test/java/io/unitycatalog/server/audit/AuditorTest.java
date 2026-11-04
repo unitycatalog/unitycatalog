@@ -93,7 +93,7 @@ class AuditorTest {
     // Anything else before the @ may be a secret.
     assertThat(auditor.sanitizeLocation("abfss://user:pw@acct.dfs.core.windows.net/p"))
         .isEqualTo("abfss://[REDACTED]@acct.dfs.core.windows.net/p");
-    // Vending decodes the authority, so an encoded @ and : delimit user info too.
+    // Vending decodes the authority, so an encoded @ ends user info too.
     assertThat(auditor.sanitizeLocation("abfss://user%3Apw%40acct.dfs.core.windows.net/p"))
         .isEqualTo("abfss://[REDACTED]@acct.dfs.core.windows.net/p");
     assertThat(FileAuditSink.toJson(r))
