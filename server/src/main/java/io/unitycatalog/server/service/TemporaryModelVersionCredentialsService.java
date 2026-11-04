@@ -43,7 +43,7 @@ public class TemporaryModelVersionCredentialsService implements UnityCatalogRest
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
       (#operation == 'READ_MODEL_VERSION'
         ? #authorizeAny(#principal, #registered_model, OWNER, EXECUTE)
-        : #authorize(#principal, #registered_model, OWNER))
+        : #authorizeAny(#principal, #registered_model, OWNER, CREATE_MODEL_VERSION))
       """)
   public HttpResponse generateTemporaryModelVersionCredentials(
       @AuthorizeResourceKeys({
@@ -89,6 +89,15 @@ public class TemporaryModelVersionCredentialsService implements UnityCatalogRest
                   + " %s/%d",
               fullName, modelVersion);
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, errorMsg);
+    }
+    if (modelVersionInfo.getStatus() != ModelVersionStatus.READY
+        && requestedOperation == ModelVersionOperation.READ_MODEL_VERSION) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Cannot request read credentials on a model version that is not ready: "
+              + fullName
+              + "/"
+              + modelVersion);
     }
     return HttpResponse.ofJson(
         storageCredentialVendor.vendCredential(
