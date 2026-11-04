@@ -454,9 +454,10 @@ public class UnityCatalogServer implements AutoCloseable {
   public static void main(String[] args) {
     OptionParser options = new OptionParser();
     options.parse(args);
-    if (options.isUpgradeSchema()) {
-      // Upgrades the database's schema, then exits; the server does not start.
-      int exitCode = SchemaMigrator.runCommand(Path.of("etc", "conf"), System.out);
+    if (options.isCheckSchema() || options.isUpgradeSchema()) {
+      // Checks or upgrades the database's schema, then exits; the server does not start.
+      int exitCode =
+          SchemaMigrator.runCommand(options.isUpgradeSchema(), Path.of("etc", "conf"), System.out);
       LogManager.shutdown();
       System.exit(exitCode);
     }

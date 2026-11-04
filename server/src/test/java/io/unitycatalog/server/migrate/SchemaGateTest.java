@@ -13,6 +13,7 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.List;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,7 +34,7 @@ public class SchemaGateTest {
         "\nhibernate.hikari.maximumPoolSize=1\nhibernate.hikari.connectionTimeout=1000\n",
         StandardOpenOption.APPEND);
 
-    assertThat(SchemaMigrator.runCommand(conf, new PrintStream(new ByteArrayOutputStream())))
+    assertThat(SchemaMigrator.runCommand(true, conf, new PrintStream(new ByteArrayOutputStream())))
         .isZero();
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.CURRENT);
   }
@@ -63,9 +64,12 @@ public class SchemaGateTest {
       Files.delete(conf.resolve(setup.split(" ")[0]));
     }
 
-    ByteArrayOutputStream out = new ByteArrayOutputStream();
-    assertThat(SchemaMigrator.runCommand(conf, new PrintStream(out, true, UTF_8))).isOne();
-    assertThat(out.toString(UTF_8)).contains(message);
+    for (boolean upgrade : List.of(false, true)) {
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      assertThat(SchemaMigrator.runCommand(upgrade, conf, new PrintStream(out, true, UTF_8)))
+          .isOne();
+      assertThat(out.toString(UTF_8)).contains(message);
+    }
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
   }
 
