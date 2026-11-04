@@ -27,7 +27,6 @@ public class SecurityContext {
   @Getter private final String serviceName;
   @Getter private final String localIssuer;
 
-  @SneakyThrows
   public SecurityContext(
       Path configurationFolder,
       SecurityConfiguration securityConfiguration,
