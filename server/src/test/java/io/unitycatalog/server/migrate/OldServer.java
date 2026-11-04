@@ -49,7 +49,7 @@ final class OldServer {
 
   /**
    * The releases a database passes through before this build, oldest first: every {@code vX.Y.Z}
-   * tag from {@link SchemaMigrator#BASELINE_RELEASE} up to, not including, this build's version.
+   * tag from {@link SchemaMigrator#ADOPTED_RELEASE} up to, not including, this build's version.
    * Each one writes its own copy of the data, since an upgrade can break on rows only one release
    * wrote.
    */
@@ -59,7 +59,7 @@ final class OldServer {
         .filter(tag -> tag.matches("v\\d+\\.\\d+\\.\\d+"))
         .filter(
             tag ->
-                number(tag) >= number(SchemaMigrator.BASELINE_RELEASE)
+                number(tag) >= number(SchemaMigrator.ADOPTED_RELEASE)
                     && number(tag) < number(VersionUtils.VERSION))
         .sorted(Comparator.comparingLong(OldServer::number))
         .toList();

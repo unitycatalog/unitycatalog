@@ -93,19 +93,20 @@ public final class SchemaMigrator implements AutoCloseable {
   private static final String HISTORY_TABLE = "uc_schema_history";
 
   /**
-   * The release whose schema is version 1. A database without schema history from it is adopted as
-   * version 1; one from an earlier release has to be started on a {@value} server once first.
+   * The release whose databases are adopted as version 1: one without schema history is recorded as
+   * version 1 without running step 1. A database from an earlier release has to be started on a
+   * {@value} server once first.
    */
-  static final String BASELINE_RELEASE = "0.7.0";
+  static final String ADOPTED_RELEASE = "0.7.0";
 
-  /** The schema version of {@link #BASELINE_RELEASE}, which Flyway records when it adopts one. */
+  /** The schema version of {@link #ADOPTED_RELEASE}, which Flyway records when it adopts one. */
   private static final String BASELINE_VERSION = "1";
 
   /** The baseline Flyway records on an empty database, below step 1 so that step 1 runs. */
   private static final String EMPTY_BASELINE_VERSION = "0";
 
   /**
-   * The tables of {@link #BASELINE_RELEASE}'s schema. A database without history that lacks one is
+   * The tables of {@link #ADOPTED_RELEASE}'s schema. A database without history that lacks one is
    * from an earlier release.
    *
    * <p>Only the tables are compared, not the whole schema.
@@ -196,7 +197,7 @@ public final class SchemaMigrator implements AutoCloseable {
           .baselineDescription(
               EMPTY_BASELINE_VERSION.equals(baselineVersion)
                   ? "empty"
-                  : "baseline " + BASELINE_RELEASE);
+                  : "baseline " + ADOPTED_RELEASE);
     }
     return configuration.load();
   }
@@ -302,11 +303,11 @@ public final class SchemaMigrator implements AutoCloseable {
                   + "). Run the newer release.";
           case BEFORE_BASELINE ->
               "The database is from a release before "
-                  + BASELINE_RELEASE
+                  + ADOPTED_RELEASE
                   + " (missing tables: "
                   + String.join(", ", missingBaselineTables())
                   + "). Start a "
-                  + BASELINE_RELEASE
+                  + ADOPTED_RELEASE
                   + " server on it once, then start this release.";
           default -> null;
         };

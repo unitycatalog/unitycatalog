@@ -54,7 +54,7 @@ import java.util.Set;
  * column of every type, a volume, a function with one parameter of every type and return
  * parameters, a user, and a grant to that user on each. {@link #write} creates it through a
  * server's API; {@link #assertReadBack} checks it through another's, as whole objects. It writes
- * only fields {@link SchemaMigrator#BASELINE_RELEASE} stores.
+ * only fields {@link SchemaMigrator#ADOPTED_RELEASE} stores.
  *
  * <p>Each copy is named for the release that writes it ({@code v0.7.0} writes {@code v0_7_0}): its
  * catalog, user and storage directories.
