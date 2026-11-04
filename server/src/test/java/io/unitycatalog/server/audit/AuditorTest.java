@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.auth0.jwt.JWT;
@@ -31,14 +32,19 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.RollingFileAppender;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.ConfigurationSource;
 import org.apache.logging.log4j.core.config.properties.PropertiesConfigurationFactory;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -293,19 +299,56 @@ class AuditorTest {
     }
   }
 
+  @Test
+  void fileSinkWritesEachRecordAsItsJsonAtInfo() {
+    Logger logger = mock(Logger.class);
+    AuditRecord record =
+        AuditRecord.builder()
+            .time(clock.instant())
+            .action(AuditRecord.Action.ISSUE_CREDENTIAL)
+            .purpose(AuditRecord.Purpose.CLIENT)
+            .location("s3://bkt/t")
+            .build();
+    new FileAuditSink(logger).record(record);
+    verify(logger).info("{}", FileAuditSink.toJson(record));
+  }
+
+  @Test
+  void shippedConfigWritesAuditRecordsAsJsonLinesToTheirOwnFile() throws Exception {
+    Configuration config = load("etc/conf/server.log4j2.properties");
+    try {
+      Map<String, Appender> appenders =
+          config.getLoggers().get(FileAuditSink.LOGGER_NAME).getAppenders();
+      // Only its own appender, so no record reaches server.log.
+      assertThat(appenders).containsOnlyKeys("AuditFile");
+      RollingFileAppender file = (RollingFileAppender) appenders.get("AuditFile");
+      assertThat(file.getFileName()).isEqualTo("etc/logs/audit.log");
+      // One JSON line per record, with nothing added.
+      assertThat(((PatternLayout) file.getLayout()).getConversionPattern()).isEqualTo("%m%n");
+    } finally {
+      config.stop();
+    }
+  }
+
   /** Validates the Log4j properties file, then stops its appenders, which can hold sockets. */
   private static void validate(String file) throws Exception {
+    Configuration config = load(file);
+    try {
+      FileAuditSink.validate(config);
+    } finally {
+      config.stop();
+    }
+  }
+
+  /** Loads and starts a Log4j properties file; the caller stops it. */
+  private static Configuration load(String file) {
     Configuration config =
         new PropertiesConfigurationFactory()
             .getConfiguration(
                 new LoggerContext("audit-test"),
                 ConfigurationSource.fromUri(Path.of(file).toUri()));
     config.initialize();
-    try {
-      FileAuditSink.validate(config);
-    } finally {
-      config.stop();
-    }
+    return config;
   }
 
   /**
