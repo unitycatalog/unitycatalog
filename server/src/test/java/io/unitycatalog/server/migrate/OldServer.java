@@ -145,8 +145,7 @@ final class OldServer {
   private static Process start(String tag, TestDatabase db, Path workDir, Path home, int port)
       throws IOException {
     // The shaded jar leaves out Vert.x's version file; the test's own Vert.x jar, after it,
-    // supplies
-    // the file.
+    // supplies the file.
     String classpath =
         jar(tag, workDir)
             + File.pathSeparator
