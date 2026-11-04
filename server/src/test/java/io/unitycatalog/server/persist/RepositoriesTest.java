@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.unitycatalog.server.audit.Auditor;
+import io.unitycatalog.server.audit.CapturingAuditSink;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.observability.UcMetric;
 import io.unitycatalog.server.observability.UcMetricConstants;
@@ -23,6 +25,7 @@ import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.CooperativeDeadline;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.time.Duration;
 import java.util.Map;
@@ -119,6 +122,41 @@ class RepositoriesTest {
   private static double cacheRequests(SimpleMeterRegistry registry, String result) {
     return TestUtils.counterCount(
         registry, UcMetric.STORAGE_CREDENTIAL_CACHE_REQUESTS, UcMetricConstants.RESULT, result);
+  }
+
+  @Test
+  void auditRecordsCredentialsServedFromTheCache() {
+    Properties properties = new Properties();
+    properties.setProperty("server.env", "test");
+    properties.setProperty("server.storage-credential-cache.enabled", "true");
+    properties.setProperty(Property.AUDIT_SINK.getKey(), CapturingAuditSink.class.getName());
+    // A static per-bucket credential, so the vend needs no cloud call.
+    properties.setProperty("s3.bucketPath.0", "s3://bucket");
+    properties.setProperty("s3.accessKey.0", "AK");
+    properties.setProperty("s3.secretKey.0", "SK");
+    properties.setProperty("s3.sessionToken.0", "TK");
+    ServerProperties audited = new ServerProperties(properties);
+    SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    CapturingAuditSink.reset();
+    Repositories repositories =
+        new Repositories(
+            sessionFactory,
+            audited,
+            /* cloudCredentialVendor= */ null,
+            UnaryOperator.identity(),
+            new UnityCatalogMetrics(registry),
+            Auditor.fromProperties(audited));
+    NormalizedURL path = NormalizedURL.from("s3://bucket/table");
+
+    for (int i = 0; i < 2; i++) {
+      repositories
+          .getStorageCredentialVendor()
+          .vendCredential(path, CredentialContext.READ_ONLY, CredentialUse.CLIENT);
+    }
+
+    // The second vend is a cache hit and is recorded too.
+    assertThat(cacheRequests(registry, UcMetricConstants.HIT)).isEqualTo(1.0);
+    assertThat(CapturingAuditSink.RECORDS).hasSize(2);
   }
 
   @Test
