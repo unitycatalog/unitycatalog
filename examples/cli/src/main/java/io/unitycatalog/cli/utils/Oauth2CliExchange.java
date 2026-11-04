@@ -54,6 +54,16 @@ public class Oauth2CliExchange {
     }
   }
 
+  /**
+   * The client secret from {@code UC_SERVER_CLIENT_SECRET}, or else from {@code
+   * server.client-secret} in the file. The variable name and the line-break trimming match the
+   * server (see Secrets in configuration.md).
+   */
+  public static String clientSecret(Map<String, String> env, Properties fileProperties) {
+    String secret = env.getOrDefault("UC_SERVER_CLIENT_SECRET", "").replaceAll("[\\r\\n]+$", "");
+    return secret.isEmpty() ? fileProperties.getProperty("server.client-secret") : secret;
+  }
+
   // TODO: Some of this should probably be done server side.
   public String authenticate() throws IOException {
 
@@ -61,13 +71,7 @@ public class Oauth2CliExchange {
     String authorizationUrl = serverProperties.getProperty("server.authorization-url");
     String tokenUrl = serverProperties.getProperty("server.token-url");
     String clientId = serverProperties.getProperty("server.client-id");
-    // The variable name and the line-break trimming match the server (see Secrets in
-    // configuration.md).
-    String clientSecret =
-        System.getenv().getOrDefault("UC_SERVER_CLIENT_SECRET", "").replaceAll("[\\r\\n]+$", "");
-    if (clientSecret.isEmpty()) {
-      clientSecret = serverProperties.getProperty("server.client-secret");
-    }
+    String clientSecret = clientSecret(System.getenv(), serverProperties);
 
     // Find a random available port
     int port = findAvailablePort();
