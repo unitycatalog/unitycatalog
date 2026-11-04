@@ -227,6 +227,20 @@ public class SchemaMigratorTest {
     }
   }
 
+  @Test
+  void refusesADatabaseWithAFailedStep() {
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    // What a run that failed in step 2 leaves behind on H2 and MySQL.
+    UpgradeTestUtils.execute(
+        db,
+        "UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false WHERE %1$sversion%1$s = '2'"
+            .formatted(identifierQuote(db.dataSource())));
+
+    assertThatThrownBy(new SchemaMigrator(db.dataSource())::upgradeSchema)
+        .hasMessageContaining("schema history does not match")
+        .hasMessageContaining("Detected failed migration to version 2");
+  }
+
   @ParameterizedTest
   @EnumSource(RefusedLock.class)
   void stopsWhenTheRunLockIsRefused(RefusedLock refused) {
@@ -353,6 +367,15 @@ public class SchemaMigratorTest {
                             : metaMethod.invoke(metaData, metaArgs));
               });
         });
+  }
+
+  /** The quote for identifiers: Flyway's history table has quoted lower-case column names. */
+  private static String identifierQuote(DataSource dataSource) {
+    try (Connection connection = dataSource.getConnection()) {
+      return connection.getMetaData().getIdentifierQuoteString();
+    } catch (SQLException e) {
+      throw new IllegalStateException(e);
+    }
   }
 
   /** A driver that wraps the real one, like P6Spy's or AWS's: {@code jdbc:wrapper:h2:...}. */
