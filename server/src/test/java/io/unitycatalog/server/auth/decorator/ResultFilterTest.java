@@ -111,6 +111,21 @@ class ResultFilterTest {
     assertThat(browse.getBrowseOnly()).isNull();
     assertThat(filter.wasCalled()).isTrue();
     verify(authorizer, never()).authorize(principal, CATALOG, fullId, BROWSE);
+
+    items = new ArrayList<>(List.of(browse, full));
+    filter.filter(
+        CATALOG,
+        items,
+        item -> {
+          throw new IllegalStateException("projection failed");
+        });
+    assertThat(items).containsExactly(full);
+
+    when(authorizer.authorize(principal, CATALOG, browseId, BROWSE))
+        .thenThrow(new IllegalStateException("authorization failed"));
+    items = new ArrayList<>(List.of(browse, full));
+    filter.filter(CATALOG, items, BrowseOnlyConverter::toBrowseOnly);
+    assertThat(items).containsExactly(full);
   }
 
   @ParameterizedTest
