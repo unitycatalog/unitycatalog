@@ -4,6 +4,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -386,22 +387,36 @@ public final class SchemaMigrator implements AutoCloseable {
 
   private Set<String> tableNamesLowerCase() {
     Set<String> tables = new HashSet<>();
-    try (Connection connection = dataSource.getConnection();
-        ResultSet rs =
-            connection
-                .getMetaData()
-                .getTables(
-                    connection.getCatalog(),
-                    connection.getSchema(),
-                    null,
-                    new String[] {"TABLE"})) {
-      while (rs.next()) {
-        tables.add(rs.getString("TABLE_NAME").toLowerCase(Locale.ROOT));
+    try (Connection connection = dataSource.getConnection()) {
+      DatabaseMetaData metaData = connection.getMetaData();
+      try (ResultSet rs =
+          metaData.getTables(
+              connection.getCatalog(),
+              exactPattern(metaData, connection.getSchema()),
+              null,
+              new String[] {"TABLE"})) {
+        while (rs.next()) {
+          tables.add(rs.getString("TABLE_NAME").toLowerCase(Locale.ROOT));
+        }
       }
     } catch (SQLException e) {
       throw new IllegalStateException("Could not list the database's tables: " + e.getMessage(), e);
     }
     return tables;
+  }
+
+  /**
+   * {@code name} as a metadata search pattern that matches only itself: {@code _} and {@code %} are
+   * wildcards there, so the schema {@code uc_a} would also match {@code ucxa}.
+   */
+  static String exactPattern(DatabaseMetaData metaData, String name) throws SQLException {
+    if (name == null) {
+      return null;
+    }
+    String escape = metaData.getSearchStringEscape();
+    return name.replace(escape, escape + escape)
+        .replace("_", escape + "_")
+        .replace("%", escape + "%");
   }
 
   private static String version(MigrationInfo info) {
