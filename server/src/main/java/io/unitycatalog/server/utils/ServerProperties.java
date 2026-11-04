@@ -440,9 +440,19 @@ public class ServerProperties {
   private void warnAboutSecretsInFile(String propertiesFile) {
     for (Object key : properties.keySet()) {
       String name = key.toString();
-      if (SECRET_KEY.matcher(name).matches()
-          && System.getProperty(name) == null
-          && getEnv(name) == null) {
+      if (!SECRET_KEY.matcher(name).matches()) {
+        continue;
+      }
+      if (name.equals(Property.CLIENT_SECRET.getKey())) {
+        // Only bin/uc auth login reads it, so a variable in the server's environment does not help.
+        LOGGER.warn(
+            "{} is set in {}. Only bin/uc auth login reads it, and keeping it in this file is"
+                + " deprecated; set the {} environment variable in the shell that runs that command"
+                + " instead.",
+            name,
+            propertiesFile,
+            envName(name));
+      } else if (System.getProperty(name) == null && getEnv(name) == null) {
         LOGGER.warn(
             "{} is set in {}. Keeping secrets in this file is deprecated; set the {} environment"
                 + " variable instead.",
