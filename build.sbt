@@ -494,6 +494,8 @@ lazy val server = (project in file("server"))
         exclude("ch.qos.logback", "logback-classic")
         exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
+      // The upgrade tests run older releases, whose servers read Vert.x's version file at start.
+      "io.vertx" % "vertx-core" % "4.5.34" % Test,
 
       // Integration testing
       "org.testcontainers" % "junit-jupiter" % testcontainersVersion % Test,
