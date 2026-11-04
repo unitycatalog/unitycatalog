@@ -32,10 +32,11 @@ record SchemaSnapshot(List<String> entries) {
     DatabaseMetaData metaData = connection.getMetaData();
     String catalog = connection.getCatalog();
     String schema = connection.getSchema();
+    String schemaPattern = SchemaMigrator.exactPattern(metaData, schema);
     List<String> entries = new ArrayList<>();
-    for (String tableName : tables(metaData, catalog, schema)) {
+    for (String tableName : tables(metaData, catalog, schemaPattern)) {
       entries.add("table " + lower(tableName));
-      entries.addAll(columns(metaData, catalog, schema, tableName));
+      entries.addAll(columns(metaData, catalog, schemaPattern, tableName));
       entries.addAll(primaryKeys(metaData, catalog, schema, tableName));
       entries.addAll(indexes(metaData, catalog, schema, tableName));
       entries.addAll(foreignKeys(metaData, catalog, schema, tableName));
@@ -44,11 +45,13 @@ record SchemaSnapshot(List<String> entries) {
   }
 
   private static List<String> columns(
-      DatabaseMetaData metaData, String catalog, String schema, String tableName)
+      DatabaseMetaData metaData, String catalog, String schemaPattern, String tableName)
       throws SQLException {
     String table = lower(tableName);
     List<String> entries = new ArrayList<>();
-    try (ResultSet rs = metaData.getColumns(catalog, schema, tableName, null)) {
+    try (ResultSet rs =
+        metaData.getColumns(
+            catalog, schemaPattern, SchemaMigrator.exactPattern(metaData, tableName), null)) {
       while (rs.next()) {
         entries.add(
             "column %s.%s type=%s size=%d nullable=%s default=%s"
@@ -124,10 +127,10 @@ record SchemaSnapshot(List<String> entries) {
     return entries;
   }
 
-  private static List<String> tables(DatabaseMetaData metaData, String catalog, String schema)
-      throws SQLException {
+  private static List<String> tables(
+      DatabaseMetaData metaData, String catalog, String schemaPattern) throws SQLException {
     List<String> tables = new ArrayList<>();
-    try (ResultSet rs = metaData.getTables(catalog, schema, null, new String[] {"TABLE"})) {
+    try (ResultSet rs = metaData.getTables(catalog, schemaPattern, null, new String[] {"TABLE"})) {
       while (rs.next()) {
         String name = rs.getString("TABLE_NAME");
         if (!IGNORED_TABLES.contains(lower(name))) {
