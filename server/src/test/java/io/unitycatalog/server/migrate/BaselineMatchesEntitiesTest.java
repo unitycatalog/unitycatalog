@@ -30,10 +30,11 @@ public class BaselineMatchesEntitiesTest {
         .forEach(entities::addAnnotatedClass);
     // "update", as the baseline release ran: unlike "create", it names the unique constraints.
     entities.setProperty(SchemaToolingSettings.HBM2DDL_AUTO, "update");
-    // MySQL rejects one index of the entities (key too long); the baseline schema never had it.
-    if (DatabaseKind.of(fromEntities.dataSource()) == DatabaseKind.MYSQL) {
-      entities.setProperty(SchemaToolingSettings.HBM2DDL_HALT_ON_ERROR, "false");
-    }
+    // MySQL rejects one index of the entities (key too long); the baseline schema never had it. The
+    // other databases stop on the first entity DDL error.
+    entities.setProperty(
+        SchemaToolingSettings.HBM2DDL_HALT_ON_ERROR,
+        String.valueOf(DatabaseKind.of(fromEntities.dataSource()) != DatabaseKind.MYSQL));
     entities
         .getProperties()
         .put(JdbcSettings.JAKARTA_NON_JTA_DATASOURCE, fromEntities.dataSource());
