@@ -180,6 +180,16 @@ server:
     # Supported values: `file`, `postgresql`
     #
     type: file
+
+    # -- (string) Who changes the database schema
+    # @raw
+    #
+    # Supported values: `flyway` (the server upgrades the schema with its schema steps at start),
+    # `hibernate` (Hibernate updates the schema, as before 0.8; a temporary fallback).
+    # See docs/server/upgrades.md.
+    #
+    schemaManagement: flyway
+
     fileConfig:
       persistence:
         # -- (bool) Enable persistence for the file database volume

@@ -65,9 +65,10 @@ public class HibernateConfigurator implements AutoCloseable {
   private final SessionFactory sessionFactory;
   private final Properties hibernateProperties;
   private final HikariDataSource dataSource;
+  private final boolean schemaManagedByHibernate;
 
   public HibernateConfigurator(ServerProperties serverProperties) {
-    this(setupHibernateProperties(serverProperties));
+    this(setupHibernateProperties(serverProperties), serverProperties.isSchemaManagedByHibernate());
   }
 
   /**
@@ -75,9 +76,26 @@ public class HibernateConfigurator implements AutoCloseable {
    * properties (e.g. point at PostgreSQL via Testcontainers) before construction.
    */
   public HibernateConfigurator(Properties hibernateProperties) {
+    this(hibernateProperties, false);
+  }
+
+  /**
+   * The same, where {@code schemaManagedByHibernate} lets Hibernate update the schema instead of
+   * the schema steps ({@code server.schema-management=hibernate}).
+   */
+  public HibernateConfigurator(Properties hibernateProperties, boolean schemaManagedByHibernate) {
+    if (schemaManagedByHibernate) {
+      Properties withUpdate = new Properties();
+      withUpdate.putAll(hibernateProperties);
+      hibernateProperties = withUpdate;
+      hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "update");
+    }
     Map<Object, Object> settings = settingsHibernateReads(hibernateProperties);
     requireSchemaFromConnection(settings);
-    requireNoSchemaChanges(settings);
+    if (!schemaManagedByHibernate) {
+      requireNoSchemaChanges(settings);
+    }
+    this.schemaManagedByHibernate = schemaManagedByHibernate;
     this.hibernateProperties = hibernateProperties;
     this.dataSource = createDataSource(hibernateProperties);
     try {
@@ -316,7 +334,9 @@ public class HibernateConfigurator implements AutoCloseable {
           "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
       LOGGER.debug("Hibernate configuration set for testing");
     }
-    return withSchemaUpdatesOff(hibernateProperties);
+    return serverProperties.isSchemaManagedByHibernate()
+        ? hibernateProperties
+        : withSchemaUpdatesOff(hibernateProperties);
   }
 
   /**

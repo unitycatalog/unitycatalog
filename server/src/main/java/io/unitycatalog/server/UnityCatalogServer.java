@@ -120,10 +120,17 @@ public class UnityCatalogServer implements AutoCloseable {
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
       Properties hibernateProperties = hibernateConfigurator.getHibernateProperties();
-      // Upgrades the database to this release's schema, or refuses one it cannot upgrade. The
-      // migration uses its own small pool, so the server's pool size does not limit it.
-      try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(hibernateProperties)) {
-        migrator.migrate();
+      if (hibernateConfigurator.isSchemaManagedByHibernate()) {
+        LOGGER.warn(
+            "Hibernate manages the schema (server.schema-management=hibernate): the schema steps"
+                + " and their checks do not run. See docs/server/upgrades.md.");
+      } else {
+        // Upgrades the database to this release's schema, or refuses one it cannot upgrade. The
+        // migration uses its own small pool, so the server's pool size does not limit it.
+        try (SchemaMigrator migrator =
+            SchemaMigrator.fromHibernateProperties(hibernateProperties)) {
+          migrator.migrate();
+        }
       }
       hibernateConfigurator.warnIfMySqlIsCaseInsensitive();
       createdBlockingTaskExecutor =

@@ -6,6 +6,8 @@ release ships the schema steps it needs, and each step is applied once and recor
 
 Hibernate no longer changes the schema. If your `etc/conf/hibernate.properties` still sets
 `hibernate.hbm2ddl.auto=update`, the server ignores it and logs a warning. You can delete the line.
+For a temporary fallback to Hibernate, see
+[Letting Hibernate manage the schema](#letting-hibernate-manage-the-schema).
 
 Every server start brings the database to the schema version of its release before the server
 serves requests. It sets up an empty database (the first start of a new install), adopts a
@@ -82,6 +84,24 @@ Do not start the baseline release on the upgraded database as it is: its Hiberna
 `hibernate.hbm2ddl.auto=update` changes column types back (it narrows the column that step 2
 widened) while the schema history still records the step. If you must run 0.7.0 on the upgraded
 database, first set `hibernate.hbm2ddl.auto=none` in its `etc/conf/hibernate.properties`.
+
+## Letting Hibernate manage the schema
+
+A temporary fallback while the schema steps are new. With `server.schema-management=hibernate` in
+`etc/conf/server.properties` (Helm: `server.db.schemaManagement: hibernate`), the server runs no
+schema steps and none of their checks, and Hibernate updates the schema at start as in 0.7.0
+(`hibernate.hbm2ddl.auto=update`, whatever `hibernate.properties` says). The server logs a warning
+on every start. A `uc_schema_history` table, if the database has one, is left as it is.
+
+To go back to the schema steps, set `server.schema-management=flyway`, the default:
+
+- A database without schema history is adopted as version 1, like a baseline-release database, and
+  the later steps are applied. The server does not check what Hibernate created, so a difference
+  from the steps' schema stays.
+- A database with schema history still records the version from before the switch. If a step was
+  added since then, Hibernate may already have made its change; the step then fails (for example,
+  on a column that already exists) and the server does not start. Switch back on the release you
+  switched on, or restore the backup you took before the switch.
 
 ## Messages
 

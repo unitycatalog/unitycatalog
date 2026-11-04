@@ -632,6 +632,20 @@ postgres
 			<td>PostgreSQL username</td>
 		</tr>
 		<tr>
+			<td>server.db.schemaManagement</td>
+			<td>string</td>
+			<td><pre lang="json">
+"flyway"
+</pre>
+</td>
+			<td>Who changes the database schema
+
+Supported values: `flyway` (the server upgrades the schema with its schema steps at start),
+`hibernate` (Hibernate updates the schema, as before 0.8; a temporary fallback).
+See docs/server/upgrades.md.
+</td>
+		</tr>
+		<tr>
 			<td>server.db.type</td>
 			<td>string</td>
 			<td><pre lang="json">

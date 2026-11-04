@@ -4,6 +4,10 @@
 {{ .Values.server.config.override }}
 {{- else -}}
 server.env=prod
+{{- if not (has .Values.server.db.schemaManagement (list "flyway" "hibernate")) }}
+{{- fail "server.db.schemaManagement must be flyway or hibernate." }}
+{{- end }}
+server.schema-management={{ .Values.server.db.schemaManagement }}
 {{- if .Values.auth.enabled }}
 server.authorization=enable
 server.authorization-url={{ .Values.auth.authorizationUrl }}

@@ -5,6 +5,7 @@ import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
@@ -37,6 +38,15 @@ final class TestServer implements AutoCloseable {
 
   /** The same, with the given Hibernate properties for {@code db}. */
   static TestServer start(TestDatabase db, Properties hibernateProperties, Path storageRoot) {
+    return start(db.openHibernateConfigurator(hibernateProperties), storageRoot);
+  }
+
+  /** Starts the server on {@code db} with {@code server.schema-management=hibernate}. */
+  static TestServer startWithHibernateManagedSchema(TestDatabase db, Path storageRoot) {
+    return start(db.openHibernateConfigurator(db.hibernateProperties(), true), storageRoot);
+  }
+
+  private static TestServer start(HibernateConfigurator configurator, Path storageRoot) {
     try {
       int port;
       try (ServerSocket socket = new ServerSocket(0)) {
@@ -51,7 +61,7 @@ final class TestServer implements AutoCloseable {
           UnityCatalogServer.builder()
               .port(port)
               .serverProperties(new ServerProperties(properties))
-              .hibernateConfigurator(db.openHibernateConfigurator(hibernateProperties))
+              .hibernateConfigurator(configurator)
               .build();
       try {
         server.start();
