@@ -52,9 +52,9 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
 - If you configure local storage, the server reads and writes it with its own identity; see
     [Local file system storage](./configuration.md#local-file-system-storage) before letting other users write to it.
 - The `etc/db/` directory contains the backend database that is used by the UC server. By default
-    this is an H2 database file, which supports one server per file; to run more than one server, use
+    this is an H2 database file, `h2db.mv.db`. H2 supports one server per file; to run more than one server, use
     PostgreSQL or MySQL. H2's server mode (`AUTO_SERVER=TRUE`, `jdbc:h2:tcp:` or `jdbc:h2:ssl:`) is
-    refused at start.
+    refused by `bin/start-uc-server --upgrade-schema` (see [Upgrading the database schema](upgrades.md)).
 
 ### Configuring the database
 
@@ -104,9 +104,9 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
   The server logs a warning at startup if any text column in the database uses a case-insensitive
   collation.
 
-  For an existing database, `ALTER DATABASE ... COLLATE` changes only the default for tables created
-  later. Convert each existing table instead, for example
-  `ALTER TABLE <table> CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;`.
+  For an existing database, change the database's default and convert every table together, for
+  example `ALTER DATABASE <db> CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;` and then
+  `ALTER TABLE <table> CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;` for each table.
 
 - Modify the `etc/conf/hibernate.properties` file with your MySQL connection details:
 
@@ -150,13 +150,13 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
 
 ### Existing deployments and column type changes
 
-Flyway manages the database schema. See [Upgrading the database schema](upgrades.md).
+The server uses `hibernate.hbm2ddl.auto=update`. Hibernate can create missing tables and
+columns, but **it does not change the type or length of a column that already exists**.
 
 `uc_properties.property_value` used to be created as `varchar(255)`. Table and view properties
 (user `TBLPROPERTIES`, Spark `view.sqlConfig.*`, and any other REST-sent property) can exceed
-that. New installs get a wider column from the schema steps. **Databases created before 0.7.0 keep
-`varchar(255)` until a 0.7.0 server starts on them (its schema update widens the column on H2,
-PostgreSQL and MySQL) or you run one of the statements below**.
+that. New installs get a wider column from Hibernate. **Existing databases keep `varchar(255)`
+until you run one of the statements below**; upgrading the server JAR alone has no effect.
 
 PostgreSQL:
 

@@ -4,62 +4,49 @@ Unity Catalog uses [Flyway](https://flywaydb.org/) to manage the schema of its d
 release ships the schema steps it needs, and each step is applied once and recorded in the
 `uc_schema_history` table.
 
-Hibernate no longer changes the schema. If your `etc/conf/hibernate.properties` still sets
-`hibernate.hbm2ddl.auto=update`, the server ignores it and logs a warning. You can delete the line.
+For now the schema steps are optional, and you run them by hand. The server still lets Hibernate
+update the schema when it starts (`hibernate.hbm2ddl.auto=update` in
+`etc/conf/hibernate.properties`). The steps build the same schema, so on a database that the steps
+set up, Hibernate changes nothing.
 
-Every server start brings the database to the schema version of its release before the server
-serves requests. It sets up an empty database (the first start of a new install), adopts a
-database without schema history (one from the baseline release) and applies the steps that are not
-applied yet. It refuses to start on a
-database it cannot upgrade and tells you what to do (see [Messages](#messages)).
-
-## The baseline release
-
-The first baseline release is 0.7.0: schema version 1 is its schema, and a 0.7.0 database without
-schema history is adopted as version 1. A database from an earlier release must be upgraded to
-0.7.0 first: start a 0.7.0 server on it once, stop it, then start this release.
-
-## Schema versions
-
-| Version | Change |
-| ------- | ------ |
-| 1 | The schema of the baseline release. A database without schema history from that release already has it. |
-| 2 | Widens `uc_function_params.type_json`, so function parameter types can be longer. |
+`bin/start-uc-server --upgrade-schema` brings the database to the schema version of its release,
+then exits without starting the server: with 0 when it succeeds, and with 1 and the reason when it
+refuses. It sets up an empty database (a new install) and applies the steps that are not applied
+yet. It refuses a database that has Unity Catalog's tables but no schema history, such as one that
+a server set up when it started. Run it only after you stop all servers.
 
 ## Upgrading to a new release
 
-Use these steps for every database (H2, PostgreSQL, MySQL).
+Run the commands with the new release.
 
 1. Stop all servers.
 2. Back up the database (see [Backing up the database](#backing-up-the-database)).
-3. Start the new release:
+3. Upgrade the schema:
+
+    ```sh
+    bin/start-uc-server --upgrade-schema
+    ```
+
+    It applies the pending steps and logs what it applied.
+
+4. Start the new release:
 
     ```sh
     bin/start-uc-server
     ```
 
-    The server applies the pending steps, logs what it applied, then starts:
-
-    ```text
-    Upgraded the database schema from version 1 to 2 (1 step(s))
-    ```
-
-On PostgreSQL and MySQL, when several servers start at the same time, one applies the steps and
-the others wait for it, then start. The server holds that lock on one database session for the
+On PostgreSQL and MySQL, `--upgrade-schema` takes a lock, so when several run at the same time, one
+applies the steps and the others wait for it. It holds that lock on one database session for the
 whole run, so connect to the database directly or through a pooler in session mode, not in
 transaction mode (PgBouncer's `pool_mode = transaction`): there the lock can be released on
-another session, and the start fails.
+another session, and the command fails.
 On MySQL the lock is a named lock (`GET_LOCK`), which Group Replication in multi-primary mode does
-not share between primaries: there, start one server first and the others after it.
+not share between primaries: there, run `--upgrade-schema` on one host only.
 
 A step waits for locks that other sessions hold on its table, for example an open transaction of
-a reporting tool. If a start stays at the steps for long, look for such sessions and end them:
-`SELECT pid, state, query FROM pg_stat_activity WHERE datname = current_database()` on
+a reporting tool. If `--upgrade-schema` stays at a step for long, look for such sessions and end
+them: `SELECT pid, state, query FROM pg_stat_activity WHERE datname = current_database()` on
 PostgreSQL, `SHOW PROCESSLIST` on MySQL.
-
-The server opens its API port only after the steps finish, so a long step on a large table can
-outlast a startup or liveness probe. During an upgrade, lengthen or turn off those probes, or
-start one server first.
 
 ## Backing up the database
 
@@ -74,60 +61,18 @@ the database `ucdb`.
   `hibernate.connection.url`. To restore it, copy it back.
 - A managed database (for example Amazon RDS or Cloud SQL): a snapshot of the instance works too.
 
-## Going back to the baseline release
-
-To go back, stop the new release's servers and restore the backup you took before the upgrade.
-
-Do not start the baseline release on the upgraded database as it is: its Hibernate setting
-`hibernate.hbm2ddl.auto=update` changes column types back (it narrows the column that step 2
-widened) while the schema history still records the step. If you must run 0.7.0 on the upgraded
-database, first set `hibernate.hbm2ddl.auto=none` in its `etc/conf/hibernate.properties`.
-
 ## Messages
 
-Messages that the server prints when it refuses to start, and what to do.
+Messages that `--upgrade-schema` prints when it refuses, and what to do.
 
-`The database is from a release before 0.7.0 (missing tables: <tables>). Start a 0.7.0 server on it once, then start this release.`
-: The database has no schema history and lacks tables of the baseline release. Follow
-  [The baseline release](#the-baseline-release).
-
-`<setting>=<value> is not supported: the schema steps manage the schema. Set it to none.`
-: A Hibernate setting asks Hibernate to create, update or validate the schema itself:
-  `hibernate.hbm2ddl.auto` in a server embedded in an application, or
-  `jakarta.persistence.schema-generation.database.action` (or its `javax.` form), also as a JVM
-  system property or in a `hibernate.properties` on the classpath. Set it to `none` or remove it.
-
-`The schema is newer than this release (version <n>, this release ends at <m>). Run the newer release.`
-: The database was upgraded by a newer release than the one you ran. Run the newer release again.
-  To go back to an older release, restore a backup taken before the upgrade.
-
-`The database has tables but none of Unity Catalog's: not a Unity Catalog database. Point the server at an empty database or a Unity Catalog one.`
-: `hibernate.connection.url` points at a database that other applications use. Check the URL, or
-  use an empty database for Unity Catalog.
-
-`Validate failed: Migrations have failed validation. Detected failed migration to version <n> (<description>).`
-: On H2 and MySQL, step `<n>` failed and its failure is recorded in the history (PostgreSQL rolls a
-  failed step back and records nothing). Flyway's advice to run `repair` does not apply: Unity
-  Catalog has no repair command. Read the error that the failing start printed and fix its cause
-  (for example a full disk or missing privileges for the database user). Then restore the backup you
-  took before the upgrade and start the server again. Do not edit `uc_schema_history` by hand.
+`The database's schema history does not match this release's schema steps: <reasons>`
+: Flyway's check of `uc_schema_history` failed, for example because a recorded step differs from
+  this release's step of the same version (its checksum), or this release lacks a recorded step.
+  `<reasons>` may advise Flyway's `repair` command, which Unity Catalog doesn't have. Run the release
+  that applied the steps, or restore the backup. Do not edit `uc_schema_history` by hand. A step
+  that failed is reported here too: restore the backup, fix the cause, and run the command again.
 
 `Could not take the schema migration lock: <reason>`
-: The server could not get the lock that keeps two migration runs apart, so it changed nothing.
+: The command could not get the lock that keeps two migration runs apart, so it changed nothing.
   Check that the database is reachable and that its user can run the lock call
-  (`pg_advisory_lock` on PostgreSQL, `GET_LOCK` on MySQL), then start the server again. On MySQL,
-  `the lock call returned NULL` means the call failed or was interrupted, for example by
-  `KILL QUERY`.
-
-`Could not release the schema migration lock: <reason>. The database releases it when the connection closes; start the server again.`
-: Releasing the lock failed at the end of the run. The server closed the lock's database
-  connection, which releases the lock. Start the server again.
-
-`H2 in server mode is not supported: the schema migration needs one server per H2 file. Use a jdbc:h2:file: URL without AUTO_SERVER.`
-: `hibernate.connection.url` opens H2 in server mode (`AUTO_SERVER=TRUE`, `jdbc:h2:tcp:` or
-  `jdbc:h2:ssl:`), where several processes can open the database at once. Use a `jdbc:h2:file:` URL
-  and one server, or PostgreSQL or MySQL to run more than one server.
-
-`hibernate.default_schema is not supported: the schema migration uses the connection's schema. Remove it and set the schema in the JDBC URL instead (PostgreSQL: currentSchema=...).`
-: The same holds for `hibernate.default_catalog`. Put the schema in `hibernate.connection.url`, for
-  example `jdbc:postgresql://localhost:5432/ucdb?currentSchema=uc`.
+  (`pg_advisory_lock` on PostgreSQL, `GET_LOCK` on MySQL), then run the command again.
