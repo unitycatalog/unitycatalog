@@ -1,0 +1,11 @@
+version: v2
+clean: true
+plugins:
+  # TypeScript messages + Connect service descriptors (connect-es v2 needs only
+  # protoc-gen-es). Installed under web/node_modules by `bun install`. Run via bun
+  # so no separate Node.js runtime is required (the packaged bin has a `node`
+  # shebang). `bun run generate` in web/ cd's up to this directory first.
+  - local: [bun, web/node_modules/@bufbuild/protoc-gen-es/bin/protoc-gen-es]
+    out: web/src/gen
+    opt:
+      - target=ts
