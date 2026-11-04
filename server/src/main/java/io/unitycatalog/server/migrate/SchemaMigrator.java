@@ -146,6 +146,7 @@ public final class SchemaMigrator implements AutoCloseable {
    */
   public static SchemaMigrator fromHibernateProperties(Properties hibernateProperties) {
     HikariConfig config = HibernateConfigurator.hikariConfig(hibernateProperties);
+    refuseH2ServerMode(config.getJdbcUrl());
     config.setMaximumPoolSize(POOL_SIZE);
     config.setMinimumIdle(0);
     config.setPoolName("schema-migrator");
@@ -155,6 +156,22 @@ public final class SchemaMigrator implements AutoCloseable {
     } catch (RuntimeException e) {
       pool.close();
       throw e;
+    }
+  }
+
+  /**
+   * The H2 run lock holds only within one JVM, so H2's server mode, where several processes open
+   * the database, could run steps twice at once. Read from the configured URL: the connection's URL
+   * leaves {@code AUTO_SERVER} out.
+   */
+  private static void refuseH2ServerMode(String url) {
+    String lower = url == null ? "" : url.toLowerCase(Locale.ROOT);
+    if (lower.startsWith("jdbc:h2:tcp:")
+        || lower.startsWith("jdbc:h2:ssl:")
+        || (lower.startsWith("jdbc:h2:") && lower.contains(";auto_server=true"))) {
+      throw new IllegalStateException(
+          "H2 in server mode is not supported: the schema migration needs one server per H2"
+              + " file. Use a jdbc:h2:file: URL without AUTO_SERVER.");
     }
   }
 

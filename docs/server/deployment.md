@@ -53,7 +53,8 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
     [Local file system storage](./configuration.md#local-file-system-storage) before letting other users write to it.
 - The `etc/db/` directory contains the backend database that is used by the UC server. By default
     this is an H2 database file, which supports one server per file; to run more than one server, use
-    PostgreSQL or MySQL.
+    PostgreSQL or MySQL. H2's server mode (`AUTO_SERVER=TRUE`, `jdbc:h2:tcp:` or `jdbc:h2:ssl:`) is
+    refused at start.
 
 ### Configuring the database
 

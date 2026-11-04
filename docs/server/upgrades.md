@@ -124,6 +124,11 @@ Messages that the server prints when it refuses to start, and what to do.
 : Releasing the lock failed at the end of the run. The server closed the lock's database
   connection, which releases the lock. Start the server again.
 
+`H2 in server mode is not supported: the schema migration needs one server per H2 file. Use a jdbc:h2:file: URL without AUTO_SERVER.`
+: `hibernate.connection.url` opens H2 in server mode (`AUTO_SERVER=TRUE`, `jdbc:h2:tcp:` or
+  `jdbc:h2:ssl:`), where several processes can open the database at once. Use a `jdbc:h2:file:` URL
+  and one server, or PostgreSQL or MySQL to run more than one server.
+
 `hibernate.default_schema is not supported: the schema migration uses the connection's schema. Remove it and set the schema in the JDBC URL instead (PostgreSQL: currentSchema=...).`
 : The same holds for `hibernate.default_catalog`. Put the schema in `hibernate.connection.url`, for
   example `jdbc:postgresql://localhost:5432/ucdb?currentSchema=uc`.

@@ -38,6 +38,7 @@ import org.assertj.core.api.AbstractThrowableAssert;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class SchemaMigratorTest {
 
@@ -146,6 +147,19 @@ public class SchemaMigratorTest {
     assertThat(migrator.state()).isEqualTo(SchemaState.AHEAD);
 
     assertThatThrownBy(migrator::migrate).hasMessageContaining("newer than this release");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"jdbc:h2:file:./uc;AUTO_SERVER=TRUE", "jdbc:h2:tcp://localhost/./uc"})
+  void refusesH2InServerMode(String url) {
+    // Server mode lets several processes open the database; the H2 run lock is per JVM.
+    Properties properties = db.hibernateProperties();
+    properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    properties.setProperty("hibernate.connection.url", url);
+
+    assertThatThrownBy(() -> SchemaMigrator.fromHibernateProperties(properties))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("H2 in server mode is not supported");
   }
 
   @Test
