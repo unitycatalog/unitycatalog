@@ -59,12 +59,9 @@ class ManagedModelCleanupTaskTest {
 
   @AfterEach
   void tearDown() {
-    try {
-      // Every test here, including the rolled-back and cascading drops, records exactly its tasks.
-      StorageCleanupTestSupport.assertQueueCleanupRecordsMatchTasks(sessionFactory);
-    } finally {
-      requestContext.close();
-    }
+    requestContext.close();
+    // Every test here, including the rolled-back and cascading drops, records exactly its tasks.
+    StorageCleanupTestSupport.assertQueueCleanupRecordsMatchTasks(sessionFactory);
   }
 
   @ParameterizedTest
