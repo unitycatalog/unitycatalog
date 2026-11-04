@@ -274,6 +274,12 @@ public class SdkOpaAccessControlTest extends SdkAccessControlBaseCRUDTest {
           () -> iceberg.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, request.name()),
           503,
           "Could not get an authorization decision from OPA");
+      assertApiException(
+          () ->
+              grantsApi.get(
+                  SecurableType.TABLE, TestUtils.SCHEMA_FULL_NAME + "." + request.name(), null),
+          ErrorCode.UNAVAILABLE,
+          "Could not get an authorization decision from OPA");
       assertDeltaApiException(
           () -> new DeltaConfigurationApi(aliceClient).getConfig(TestUtils.CATALOG_NAME, "1.0"),
           DeltaErrorType.SERVICE_UNAVAILABLE_EXCEPTION,

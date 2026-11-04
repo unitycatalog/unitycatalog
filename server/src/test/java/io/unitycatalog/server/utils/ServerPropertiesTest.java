@@ -46,12 +46,16 @@ public class ServerPropertiesTest {
         .hasMessageContaining("server.authorization.opa.decision-url is required");
     for (String url :
         List.of(
-            "http://localhost:8181/v1/data/uc/authz", "https://opa.example.com/v1/data/uc/authz")) {
+            "http://localhost:8181/v1/data/uc/authz",
+            "https://opa.example.com/v1/data/uc/authz",
+            "http://opa_server:8181/v1/data/uc/authz",
+            "http://[::1]:8181/v1/data/uc/authz")) {
       properties.set(Property.OPA_DECISION_URL, url);
       assertThat(properties.getOpaDecisionUrl()).isEqualTo(url);
     }
-    testInvalidProperty(
-        Property.OPA_DECISION_URL, "not a URL", "server.authorization.opa.decision-url");
+    for (String url : List.of("not a URL", "http://opa_server:bad/policy")) {
+      testInvalidProperty(Property.OPA_DECISION_URL, url, "server.authorization.opa.decision-url");
+    }
     for (String url :
         List.of(
             "file:///policy",
@@ -60,7 +64,14 @@ public class ServerPropertiesTest {
             "http://user:pass@localhost:8181/policy",
             "http://localhost:8181/policy#fragment",
             "http://localhost:0/policy",
-            "http://localhost:65536/policy")) {
+            "http://localhost:65536/policy",
+            "http://user:pass@opa_server:8181/policy",
+            "http://opa_server:8181/policy#fragment",
+            "http://opa_server:0/policy",
+            "http://opa_server:65536/policy",
+            "http://opa_server:-1/policy",
+            "http://-opa_server:8181/policy",
+            "http://:8181/policy")) {
       properties.set(Property.OPA_DECISION_URL, url);
       assertThatThrownBy(properties::getOpaDecisionUrl)
           .isInstanceOf(BaseException.class)

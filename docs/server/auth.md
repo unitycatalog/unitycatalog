@@ -130,7 +130,8 @@ If the user, resource, or a parent is missing from UC, the privilege check is de
 **Native permission APIs remain available.** Grant/revoke/list APIs still manage UC's native
 records, but those grants do not affect OPA decisions. Resource creation and deletion also
 maintain native owner and hierarchy records. Switching back to Casbin uses those records,
-including changes made while OPA was selected.
+including changes made while OPA was selected. OPA's `OWNER` decisions control whether a caller
+can view other users' native grants.
 
 #### Try a policy
 
@@ -269,7 +270,8 @@ where you run `bin/uc auth login`; the server does not read it. The file still w
 
 `server.authorization.strict-privilege-checks` is a temporary migration setting. It defaults to
 `true` and will be removed in a future release. Permission fixes that use this setting apply the
-corrected rules by default.
+corrected rules by default. With OPA, this setting also changes which privileges UC asks OPA
+to authorize.
 
 The setting covers:
 
@@ -299,6 +301,9 @@ and grants. Set it back to `true` when the migration is complete.
 Use the same value on every server instance. Restart each instance after changing it.
 
 ### Multiple server instances
+
+This section applies to Casbin. With OPA, `server.authorization.policy-refresh` does not change
+authorization decisions.
 
 Authorization decisions use an in-memory Casbin policy loaded from the shared `casbin_rule` table.
 A grant or revoke written on one server process is not visible to other processes until they reload

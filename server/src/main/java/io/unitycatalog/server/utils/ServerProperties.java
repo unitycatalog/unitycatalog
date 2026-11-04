@@ -1,5 +1,6 @@
 package io.unitycatalog.server.utils;
 
+import com.linecorp.armeria.client.Endpoint;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.TableType;
@@ -652,7 +653,12 @@ public class ServerProperties {
     return "opa".equalsIgnoreCase(get(Property.AUTHORIZATION_PROVIDER));
   }
 
-  /** Returns the required decision URL when OPA is selected. */
+  /**
+   * Returns the required decision URL when OPA is selected.
+   *
+   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} for a missing URL, an unsupported
+   *     scheme, an invalid host or port, credentials, or a fragment
+   */
   public String getOpaDecisionUrl() {
     String value = get(Property.OPA_DECISION_URL);
     if (value == null) {
@@ -661,21 +667,28 @@ public class ServerProperties {
           "server.authorization.opa.decision-url is required when"
               + " server.authorization.provider=opa");
     }
-    URI uri = URI.create(value);
-    if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
-        || uri.getHost() == null
-        || uri.getRawUserInfo() != null
-        || uri.getRawFragment() != null
-        || uri.getPort() == 0
-        || uri.getPort() > 65535) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "server.authorization.opa.decision-url must be an absolute HTTP or HTTPS URL"
-              + " without credentials or a fragment");
+    String invalidUrlMessage =
+        "server.authorization.opa.decision-url must be an absolute HTTP or HTTPS URL"
+            + " without credentials or a fragment";
+    try {
+      URL url = new URL(value);
+      if (!("http".equalsIgnoreCase(url.getProtocol())
+              || "https".equalsIgnoreCase(url.getProtocol()))
+          || url.getHost().isEmpty()
+          || url.getUserInfo() != null
+          || url.getRef() != null
+          || url.getPort() == 0
+          || url.getPort() > 65535) {
+        throw new BaseException(ErrorCode.INVALID_ARGUMENT, invalidUrlMessage);
+      }
+      Endpoint.parse(url.getAuthority());
+    } catch (MalformedURLException | IllegalArgumentException e) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, invalidUrlMessage, e);
     }
     return value;
   }
 
+  /** Response timeout for each OPA call, not the complete UC request. */
   public Duration getOpaResponseTimeout() {
     return Duration.parse(get(Property.OPA_RESPONSE_TIMEOUT));
   }
