@@ -915,3 +915,12 @@ def testOnDatabase(database: String): String =
   s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database") ; test"""
 addCommandAlias("testPostgres18", testOnDatabase("POSTGRES_18"))
 addCommandAlias("testMySQL8", testOnDatabase("MYSQL_8"))
+
+// Rewrites the schema effect files (server/src/main/resources/schema-effects) from the steps, on
+// every database. PostgreSQL and MySQL need Docker.
+addCommandAlias(
+  "updateSchemaDumps",
+  Seq("H2", "POSTGRES_18", "MYSQL_8").map { database =>
+    s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database", "UC_TEST_MIGRATION_CHECKS" -> "true", "UC_UPDATE_SCHEMA_EFFECTS" -> "true")""" +
+      " ; server/testOnly io.unitycatalog.server.migrate.MigrationStepRulesTest"
+  }.mkString)

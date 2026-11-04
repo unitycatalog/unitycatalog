@@ -97,14 +97,43 @@ public class SchemaMigratorTest {
   }
 
   @Test
-  void refusesADatabaseWithoutSchemaHistory() {
+  void adoptsABaselineDatabase() {
     UpgradeTestUtils.createBaselineSchema(db);
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
     assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
 
+    // Step 1 is recorded without running; the steps after it run.
+    assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+    assertThat(SchemaSnapshot.of(db.dataSource()))
+        .isEqualTo(UpgradeTestUtils.freshInstallSnapshot());
+  }
+
+  @Test
+  void refusesABaselineDatabaseWhoseSchemaDiffers() {
+    UpgradeTestUtils.createBaselineSchema(db);
+    UpgradeTestUtils.execute(db, "ALTER TABLE uc_catalogs ADD extra INT");
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+
     assertThatThrownBy(migrator::upgradeSchema)
-        .hasMessageContaining("adopting a database without schema history is not supported yet");
+        .hasMessageContaining("differs from version 1 in:\nunexpected column uc_catalogs.extra ")
+        .hasMessageContaining("must be started once on a 0.7.0 server first");
     assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
+  }
+
+  @Test
+  void adoptsADatabaseWithThisReleasesSchemaWithoutHistory() {
+    // What a server that let Hibernate set up a new database leaves: this release's schema, and no
+    // schema history.
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    UpgradeTestUtils.execute(
+        db, "DROP TABLE %1$suc_schema_history%1$s".formatted(identifierQuote(db.dataSource())));
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
+
+    // Every step is recorded without running.
+    assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
   }
 
   @Test

@@ -1,0 +1,2 @@
++ table uc_test_only_step
++ column uc_test_only_step.id type=int4 size=10 nullable=YES default=null
