@@ -93,23 +93,23 @@ public final class SchemaMigrator implements AutoCloseable {
   private static final String HISTORY_TABLE = "uc_schema_history";
 
   /**
-   * The release whose schema is version 1. A database without schema history from it is adopted as
-   * version 1; one from an earlier release has to be started on a {@value} server once first.
+   * The release whose databases are adopted as version 1: one without schema history is recorded as
+   * version 1 without running step 1. A database from an earlier release has to be started on a
+   * {@value} server once first.
    */
-  static final String BASELINE_RELEASE = "0.7.0";
+  static final String ADOPTED_RELEASE = "0.7.0";
 
-  /** The schema version of {@link #BASELINE_RELEASE}, which Flyway records when it adopts one. */
+  /** The schema version of {@link #ADOPTED_RELEASE}, which Flyway records when it adopts one. */
   private static final String BASELINE_VERSION = "1";
 
   /** The baseline Flyway records on an empty database, below step 1 so that step 1 runs. */
   private static final String EMPTY_BASELINE_VERSION = "0";
 
   /**
-   * The tables of {@link #BASELINE_RELEASE}'s schema. A database without history that lacks one is
+   * The tables of {@link #ADOPTED_RELEASE}'s schema. A database without history that lacks one is
    * from an earlier release.
    *
-   * <p>TODO(#2053): compare the whole schema with the recorded baseline schema, not only its
-   * tables.
+   * <p>Only the tables are compared, not the whole schema.
    */
   private static final Set<String> BASELINE_TABLES =
       Set.of(
@@ -132,7 +132,7 @@ public final class SchemaMigrator implements AutoCloseable {
           "uc_users",
           "uc_volumes");
 
-  /** The run lock's connection plus Flyway's two (PostgreSQL uses both; MySQL one). */
+  /** The run lock's connection plus Flyway's. */
   private static final int POOL_SIZE = 3;
 
   private final DataSource dataSource;
@@ -146,6 +146,7 @@ public final class SchemaMigrator implements AutoCloseable {
    */
   public static SchemaMigrator fromHibernateProperties(Properties hibernateProperties) {
     HikariConfig config = HibernateConfigurator.hikariConfig(hibernateProperties);
+    refuseH2ServerMode(config);
     config.setMaximumPoolSize(POOL_SIZE);
     config.setMinimumIdle(0);
     config.setPoolName("schema-migrator");
@@ -156,6 +157,55 @@ public final class SchemaMigrator implements AutoCloseable {
       pool.close();
       throw e;
     }
+  }
+
+  /**
+   * The H2 run lock holds only within one JVM, so H2's server mode, where several processes open
+   * the database, could run steps twice at once. Read from the configuration, before any
+   * connection: the connection's URL leaves {@code AUTO_SERVER} out.
+   */
+  private static void refuseH2ServerMode(HikariConfig config) {
+    Properties driver = config.getDataSourceProperties();
+    String url = config.getJdbcUrl() != null ? config.getJdbcUrl() : property(driver, "url");
+    String lower = url == null ? "" : url.toLowerCase(Locale.ROOT);
+    if (!lower.contains(":h2:")) {
+      return;
+    }
+    if (lower.contains(":h2:tcp:")
+        || lower.contains(":h2:ssl:")
+        || isOn(setting(lower, "auto_server"))
+        || isOn(property(driver, "auto_server"))) {
+      throw new IllegalStateException(
+          "H2 in server mode is not supported: the schema migration needs one server per H2"
+              + " file. Use a jdbc:h2:file: URL without AUTO_SERVER.");
+    }
+  }
+
+  /** The value of a {@code ;name=value} setting in a lower-case H2 URL, or {@code null}. */
+  private static String setting(String lowerUrl, String name) {
+    String[] parts = lowerUrl.split(";");
+    for (int i = 1; i < parts.length; i++) {
+      int equals = parts[i].indexOf('=');
+      if (equals > 0 && parts[i].substring(0, equals).trim().equals(name)) {
+        return parts[i].substring(equals + 1);
+      }
+    }
+    return null;
+  }
+
+  /** A driver property whose name matches {@code name} in any case, or {@code null}. */
+  private static String property(Properties properties, String name) {
+    return properties.stringPropertyNames().stream()
+        .filter(key -> key.equalsIgnoreCase(name))
+        .map(properties::getProperty)
+        .findFirst()
+        .orElse(null);
+  }
+
+  /** H2 reads a setting as false only for 0, f, n, no and false (any case). */
+  private static boolean isOn(String value) {
+    return value != null
+        && !Set.of("0", "f", "n", "no", "false").contains(value.trim().toLowerCase(Locale.ROOT));
   }
 
   /** Applies this release's steps to {@code dataSource}; closing it stays with the caller. */
@@ -189,7 +239,6 @@ public final class SchemaMigrator implements AutoCloseable {
             .locations(locations)
             .table(HISTORY_TABLE)
             .failOnMissingLocations(true)
-            .cleanDisabled(true)
             .validateMigrationNaming(true);
     if (baselineVersion != null) {
       configuration
@@ -198,7 +247,7 @@ public final class SchemaMigrator implements AutoCloseable {
           .baselineDescription(
               EMPTY_BASELINE_VERSION.equals(baselineVersion)
                   ? "empty"
-                  : "baseline " + BASELINE_RELEASE);
+                  : "baseline " + ADOPTED_RELEASE);
     }
     return configuration.load();
   }
@@ -242,7 +291,10 @@ public final class SchemaMigrator implements AutoCloseable {
       int cmp =
           MigrationVersion.fromVersion(current)
               .compareTo(MigrationVersion.fromVersion(latestVersion(info)));
-      return cmp == 0 ? SchemaState.CURRENT : cmp > 0 ? SchemaState.AHEAD : SchemaState.PENDING;
+      if (cmp == 0) {
+        return SchemaState.CURRENT;
+      }
+      return cmp > 0 ? SchemaState.AHEAD : SchemaState.PENDING;
     }
     if (tables.isEmpty()) {
       return SchemaState.EMPTY;
@@ -301,11 +353,11 @@ public final class SchemaMigrator implements AutoCloseable {
                   + "). Run the newer release.";
           case BEFORE_BASELINE ->
               "The database is from a release before "
-                  + BASELINE_RELEASE
+                  + ADOPTED_RELEASE
                   + " (missing tables: "
                   + String.join(", ", missingBaselineTables())
                   + "). Start a "
-                  + BASELINE_RELEASE
+                  + ADOPTED_RELEASE
                   + " server on it once, then start this release.";
           default -> null;
         };
@@ -385,6 +437,24 @@ public final class SchemaMigrator implements AutoCloseable {
 
     private static final ConcurrentMap<String, ReentrantLock> H2_LOCKS = new ConcurrentHashMap<>();
 
+    /**
+     * The lock calls of one database: the try that returns at once, the blocking one, the unlock.
+     */
+    private record LockCalls(String tryLock, String lock, String unlock) {
+
+      static final LockCalls POSTGRESQL =
+          new LockCalls(
+              "SELECT pg_try_advisory_lock(" + POSTGRES_KEY + ")",
+              "SELECT true FROM pg_advisory_lock(" + POSTGRES_KEY + ")",
+              "SELECT pg_advisory_unlock(" + POSTGRES_KEY + ")");
+
+      static final LockCalls MYSQL =
+          new LockCalls(
+              "SELECT GET_LOCK(" + MYSQL_NAME + ", 0)",
+              "SELECT GET_LOCK(" + MYSQL_NAME + ", -1)",
+              "SELECT RELEASE_LOCK(" + MYSQL_NAME + ")");
+    }
+
     private final Connection connection; // PostgreSQL and MySQL
     private final String unlockSql;
     private final ReentrantLock h2Lock; // H2
@@ -409,31 +479,19 @@ public final class SchemaMigrator implements AutoCloseable {
         }
         return new RunLock(null, null, lock);
       }
-      boolean postgres = kind == DatabaseKind.POSTGRESQL;
-      String tryLock =
-          postgres
-              ? "SELECT pg_try_advisory_lock(" + POSTGRES_KEY + ")"
-              : "SELECT GET_LOCK(" + MYSQL_NAME + ", 0)";
-      String lock =
-          postgres
-              ? "SELECT true FROM pg_advisory_lock(" + POSTGRES_KEY + ")"
-              : "SELECT GET_LOCK(" + MYSQL_NAME + ", -1)";
-      String unlock =
-          postgres
-              ? "SELECT pg_advisory_unlock(" + POSTGRES_KEY + ")"
-              : "SELECT RELEASE_LOCK(" + MYSQL_NAME + ")";
+      LockCalls calls = kind == DatabaseKind.POSTGRESQL ? LockCalls.POSTGRESQL : LockCalls.MYSQL;
       Connection connection = null;
       try {
         connection = dataSource.getConnection();
         // Outside a transaction, so the run doesn't keep one open while it holds the lock.
         connection.setAutoCommit(true);
-        if (!isTrue(connection, tryLock)) {
+        if (!isTrue(connection, calls.tryLock())) {
           logWaiting();
-          if (!isTrue(connection, lock)) {
+          if (!isTrue(connection, calls.lock())) {
             throw new SQLException("the database did not grant it");
           }
         }
-        return new RunLock(connection, unlock, null);
+        return new RunLock(connection, calls.unlock(), null);
       } catch (SQLException e) {
         close(connection);
         throw new IllegalStateException(
@@ -491,7 +549,8 @@ public final class SchemaMigrator implements AutoCloseable {
     }
 
     /**
-     * Runs a lock call; whether it returned true (MySQL's 1). NULL, MySQL's error result, throws.
+     * Runs a lock call and returns whether it returned true (MySQL's 1). A NULL result throws
+     * (MySQL's error result); a false result returns false.
      */
     private static boolean isTrue(Connection connection, String sql) throws SQLException {
       try (Statement statement = connection.createStatement();

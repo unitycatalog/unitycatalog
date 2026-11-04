@@ -41,6 +41,7 @@ import io.unitycatalog.control.api.UsersApi;
 import io.unitycatalog.control.model.Email;
 import io.unitycatalog.control.model.UserResource;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -51,16 +52,15 @@ import java.util.Set;
 /**
  * The data an upgrade must keep: a catalog, a schema, a managed and an external table with one
  * column of every type, a volume, a function with one parameter of every type and return
- * parameters, a user, and a grant to that user on each. {@link #write} creates it through any
+ * parameters, a user, and a grant to that user on each. {@link #write} creates it through a
  * server's API; {@link #assertReadBack} checks it through another's, as whole objects. It writes
- * only fields {@link SchemaMigrator#BASELINE_RELEASE} stores.
+ * only fields {@link SchemaMigrator#ADOPTED_RELEASE} stores.
  *
  * <p>Each copy is named for the release that writes it ({@code v0.7.0} writes {@code v0_7_0}): its
- * catalog, its user's email and its storage directories, which are siblings of the other copies'.
+ * catalog, user and storage directories.
  */
 final class DataSet {
 
-  private static final String STORAGE = "file:///tmp/uc-storage/";
   private static final String COMMENT = "kept across upgrades";
   private static final Map<String, String> PROPERTIES = Map.of("upgrade.key", "upgrade value");
   private static final String TABLE_ID_PROPERTY = "io.unitycatalog.tableId";
@@ -90,10 +90,12 @@ final class DataSet {
   private final String volume;
   private final String function;
   private final String user;
+  private final String storage;
 
-  /** The copy {@code release} (a git ref) writes. */
-  DataSet(String release) {
+  /** The copy {@code release} (a git ref) writes, with its storage under {@code storageRoot}. */
+  DataSet(String release, Path storageRoot) {
     copy = release.replaceAll("\\W", "_");
+    storage = storageRoot.toUri().toString();
     catalog = "upgrade_catalog_" + copy;
     schema = catalog + ".upgrade_schema";
     managedTable = schema + ".managed_table";
@@ -249,7 +251,7 @@ final class DataSet {
   /** The external table: Parquet, so it can have every column type. */
   private TableInfo externalTable() {
     return table(externalTable, TableType.EXTERNAL, DataSourceFormat.PARQUET, externalColumns())
-        .storageLocation(STORAGE + copy + "_" + name(externalTable))
+        .storageLocation(storage + copy + "_" + name(externalTable))
         .properties(PROPERTIES);
   }
 
@@ -398,7 +400,7 @@ final class DataSet {
         .schemaName(name(schema))
         .name(name(volume))
         .volumeType(VolumeType.EXTERNAL)
-        .storageLocation(STORAGE + copy + "_" + name(volume))
+        .storageLocation(storage + copy + "_" + name(volume))
         .comment(COMMENT);
   }
 

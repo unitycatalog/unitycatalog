@@ -2,6 +2,7 @@ package io.unitycatalog.server.migrate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import jakarta.persistence.metamodel.EntityType;
@@ -29,8 +30,11 @@ public class BaselineMatchesEntitiesTest {
         .forEach(entities::addAnnotatedClass);
     // "update", as the baseline release ran: unlike "create", it names the unique constraints.
     entities.setProperty(SchemaToolingSettings.HBM2DDL_AUTO, "update");
-    // MySQL rejects one index of the entities (key too long); the baseline schema never had it.
-    entities.setProperty(SchemaToolingSettings.HBM2DDL_HALT_ON_ERROR, "false");
+    // MySQL rejects one index of the entities (key too long); the baseline schema never had it. The
+    // other databases stop on the first entity DDL error.
+    entities.setProperty(
+        SchemaToolingSettings.HBM2DDL_HALT_ON_ERROR,
+        String.valueOf(DatabaseKind.of(fromEntities.dataSource()) != DatabaseKind.MYSQL));
     entities
         .getProperties()
         .put(JdbcSettings.JAKARTA_NON_JTA_DATASOURCE, fromEntities.dataSource());

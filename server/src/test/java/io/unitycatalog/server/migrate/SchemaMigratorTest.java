@@ -4,17 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.nio.file.Path;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.DriverPropertyInfo;
@@ -34,9 +35,14 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import javax.sql.DataSource;
+import org.assertj.core.api.AbstractThrowableAssert;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 
-public class MigratorTest {
+public class SchemaMigratorTest {
 
   /** A test-only step 1000: the next release's step for a current database. */
   private static final List<String> NEXT_RELEASE = List.of("classpath:db/test-steps/ahead");
@@ -78,12 +84,16 @@ public class MigratorTest {
 
   @Test
   void setsUpADatabaseOfAPoolConfiguredByDataSourceClass() {
-    assumeTrue(isH2(), "the data source class is H2's");
     Properties byClass = db.hibernateProperties();
     byClass.remove("hibernate.connection.url");
     byClass.remove("hibernate.connection.driver_class");
-    byClass.setProperty("hibernate.hikari.dataSourceClassName", "org.h2.jdbcx.JdbcDataSource");
+    byClass.setProperty("hibernate.hikari.dataSourceClassName", dataSourceClass());
     byClass.setProperty("hibernate.hikari.dataSource.url", db.jdbcUrl());
+    byClass.setProperty(
+        "hibernate.hikari.dataSource.user", byClass.getProperty("hibernate.connection.username"));
+    byClass.setProperty(
+        "hibernate.hikari.dataSource.password",
+        byClass.getProperty("hibernate.connection.password"));
 
     try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(byClass)) {
       assertThat(migrator.migrate()).isEqualTo(releaseSteps(migrator));
@@ -91,8 +101,8 @@ public class MigratorTest {
   }
 
   @Test
-  void adoptsA07Database() {
-    UpgradeTestUtils.create07Schema(db);
+  void adoptsABaselineDatabase() {
+    UpgradeTestUtils.createBaselineSchema(db);
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
     assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
 
@@ -103,12 +113,12 @@ public class MigratorTest {
 
   @Test
   void refusesADatabaseFromBeforeTheBaselineRelease() {
-    UpgradeTestUtils.create07Schema(db);
+    UpgradeTestUtils.createBaselineSchema(db);
     UpgradeTestUtils.execute(db, "DROP TABLE uc_storage_cleanup_tasks");
     SchemaSnapshot before = SchemaSnapshot.of(db.dataSource());
 
     assertThatThrownBy(new SchemaMigrator(db.dataSource())::migrate)
-        .hasMessageContaining("from a release before " + SchemaMigrator.BASELINE_RELEASE)
+        .hasMessageContaining("from a release before " + SchemaMigrator.ADOPTED_RELEASE)
         .hasMessageContaining("missing tables: uc_storage_cleanup_tasks)");
     assertThat(SchemaSnapshot.of(db.dataSource())).isEqualTo(before);
   }
@@ -141,13 +151,51 @@ public class MigratorTest {
     assertThatThrownBy(migrator::migrate).hasMessageContaining("newer than this release");
   }
 
+  @ParameterizedTest
+  @CsvSource({
+    "jdbc:h2:file:{dir}/uc;AUTO_SERVER=TRUE,,",
+    "jdbc:h2:file:{dir}/uc;AUTO_SERVER=1,,",
+    "jdbc:h2:file:{dir}/uc;auto_server=yes,,",
+    "jdbc:h2:tcp://localhost/{dir}/uc,,",
+    "jdbc:h2:ssl://localhost/{dir}/uc,,",
+    "jdbc:p6spy:h2:file:{dir}/uc;AUTO_SERVER=TRUE,,",
+    "jdbc:h2:file:{dir}/uc,hibernate.hikari.dataSource.AUTO_SERVER,TRUE",
+    ",hibernate.hikari.dataSource.URL,jdbc:h2:file:{dir}/uc;AUTO_SERVER=TRUE",
+  })
+  void refusesH2InServerMode(String url, String key, String value, @TempDir Path dir) {
+    Properties properties = db.hibernateProperties();
+    if (url == null) {
+      // A pool set up by data source class: the URL is a data source property.
+      properties.remove("hibernate.connection.url");
+      properties.remove("hibernate.connection.driver_class");
+      properties.setProperty("hibernate.hikari.dataSourceClassName", "org.h2.jdbcx.JdbcDataSource");
+    } else {
+      properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+      properties.setProperty("hibernate.connection.url", url.replace("{dir}", dir.toString()));
+    }
+    if (key != null) {
+      properties.setProperty(key, value.replace("{dir}", dir.toString()));
+    }
+
+    assertThatThrownBy(() -> SchemaMigrator.fromHibernateProperties(properties))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("H2 in server mode is not supported");
+  }
+
+  @Test
+  void refusesADatabaseOfAnotherProduct() {
+    assertThatThrownBy(() -> new SchemaMigrator(withProductName("Oracle")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Unsupported database Oracle: use H2, PostgreSQL or MySQL");
+  }
+
   @Test
   void runsStartingAtOnceOnAnEmptyDatabaseTakeTurns() throws Exception {
     // The test holds the run lock, so both runs must wait for it before they change anything.
     CountDownLatch waitingInTheDatabase = new CountDownLatch(2);
     DataSource watched =
         withLockCall(
-            MigratorTest::isBlockingLock,
+            SchemaMigratorTest::isBlockingLock,
             sql -> {
               waitingInTheDatabase.countDown();
               return sql;
@@ -163,14 +211,14 @@ public class MigratorTest {
         if (isH2()) {
           awaitUntil(() -> held.h2Waiting() == 2);
         } else {
-          assertThat(waitingInTheDatabase.await(1, TimeUnit.MINUTES)).isTrue();
+          assertThat(waitingInTheDatabase.await(30, TimeUnit.SECONDS)).isTrue();
         }
         assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
       }
 
       int applied = 0;
       for (Future<Integer> run : runs) {
-        applied += run.get(2, TimeUnit.MINUTES);
+        applied += run.get(1, TimeUnit.MINUTES);
       }
       SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
       assertThat(applied).isEqualTo(releaseSteps(migrator));
@@ -183,7 +231,7 @@ public class MigratorTest {
   @Test
   void refusesADatabaseWithAFailedStep() {
     new SchemaMigrator(db.dataSource()).migrate();
-    // What a run that failed in step 2 leaves behind on H2 and MySQL; PostgreSQL rolls it back.
+    // What a run that failed in step 2 leaves behind on H2 and MySQL.
     String q = identifierQuote(db.dataSource());
     UpgradeTestUtils.execute(
         db,
@@ -194,29 +242,34 @@ public class MigratorTest {
         .hasMessageContaining("Detected failed migration to version 2");
   }
 
-  @Test
-  void stopsWhenTheLockCallFails() {
+  @ParameterizedTest
+  @EnumSource(RefusedLock.class)
+  void stopsWhenTheRunLockIsRefused(RefusedLock refused) {
     assumeFalse(isH2(), "H2 has no run lock");
-    DataSource failing = withLockCall(MigratorTest::isTryLock, sql -> null);
+    DataSource refusing =
+        switch (refused) {
+          case CALL_FAILS -> withLockCall(SchemaMigratorTest::isTryLock, sql -> null);
+          case NOT_GRANTED ->
+              withLockCall(
+                  sql -> isTryLock(sql) || isBlockingLock(sql),
+                  sql -> "SELECT " + (isTryLock(sql) ? "false" : "NULL"));
+        };
 
-    assertThatThrownBy(new SchemaMigrator(failing)::migrate)
-        .hasMessageContaining("Could not take the schema migration lock");
+    AbstractThrowableAssert<?, ? extends Throwable> thrown =
+        assertThatThrownBy(new SchemaMigrator(refusing)::migrate)
+            .hasMessageContaining("Could not take the schema migration lock");
+    if (refused == RefusedLock.NOT_GRANTED) {
+      thrown.hasMessageContaining("returned NULL");
+    }
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
   }
 
-  @Test
-  void stopsWhenTheLockIsNotGranted() {
-    assumeFalse(isH2(), "H2 has no run lock");
-    // Another run holds the lock, and the blocking call returns NULL (on MySQL: interrupted).
-    DataSource refusing =
-        withLockCall(
-            sql -> isTryLock(sql) || isBlockingLock(sql),
-            sql -> "SELECT " + (isTryLock(sql) ? "false" : "NULL"));
-
-    assertThatThrownBy(new SchemaMigrator(refusing)::migrate)
-        .hasMessageContaining("Could not take the schema migration lock")
-        .hasMessageContaining("returned NULL");
-    assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
+  /** How the database refuses the run lock. */
+  private enum RefusedLock {
+    /** The lock call fails. */
+    CALL_FAILS,
+    /** The lock is not granted: the blocking call returns NULL (on MySQL: interrupted). */
+    NOT_GRANTED
   }
 
   @Test
@@ -237,7 +290,7 @@ public class MigratorTest {
       other.setPassword(properties.getProperty("hibernate.connection.password"));
       assertThat(
               assertTimeoutPreemptively(
-                  Duration.ofMinutes(1), () -> new SchemaMigrator(other).migrate()))
+                  Duration.ofSeconds(30), () -> new SchemaMigrator(other).migrate()))
           .isZero();
     }
   }
@@ -253,6 +306,15 @@ public class MigratorTest {
       assertThat(System.nanoTime()).as("timed out waiting").isLessThan(deadline);
       Thread.sleep(50);
     }
+  }
+
+  /** The DataSource class of {@code db}'s database. */
+  private String dataSourceClass() {
+    return switch (DatabaseKind.of(db.dataSource())) {
+      case H2 -> "org.h2.jdbcx.JdbcDataSource";
+      case POSTGRESQL -> "org.postgresql.ds.PGSimpleDataSource";
+      case MYSQL -> "com.mysql.cj.jdbc.MysqlDataSource";
+    };
   }
 
   private boolean isH2() {
@@ -271,14 +333,13 @@ public class MigratorTest {
 
   /**
    * {@code db}'s data source, but a run lock call that {@code matches} runs {@code rewrite}'s SQL
-   * instead, or fails when that is {@code null}. Flyway sends its own lock calls as prepared
-   * statements, so only the run lock's plain statements match.
+   * instead, or fails when that is {@code null}.
    */
   private DataSource withLockCall(Predicate<String> matches, UnaryOperator<String> rewrite) {
     DataSource real = db.dataSource();
     return proxy(
         DataSource.class,
-        (method, args) -> {
+        (proxy, method, args) -> {
           Object result = method.invoke(real, args);
           if (!method.getName().equals("getConnection")) {
             return result;
@@ -286,7 +347,7 @@ public class MigratorTest {
           Connection connection = (Connection) result;
           return proxy(
               Connection.class,
-              (connectionMethod, connectionArgs) -> {
+              (connectionProxy, connectionMethod, connectionArgs) -> {
                 Object created = connectionMethod.invoke(connection, connectionArgs);
                 if (!connectionMethod.getName().equals("createStatement")) {
                   return created;
@@ -294,7 +355,7 @@ public class MigratorTest {
                 Statement statement = (Statement) created;
                 return proxy(
                     Statement.class,
-                    (statementMethod, statementArgs) -> {
+                    (statementProxy, statementMethod, statementArgs) -> {
                       if (statementArgs != null
                           && statementArgs.length == 1
                           && statementArgs[0] instanceof String sql
@@ -311,23 +372,47 @@ public class MigratorTest {
         });
   }
 
+  /** {@code db}'s data source, but its metadata names {@code productName} as the database. */
+  private DataSource withProductName(String productName) {
+    DataSource real = db.dataSource();
+    return proxy(
+        DataSource.class,
+        (proxy, method, args) -> {
+          Object result = method.invoke(real, args);
+          if (!method.getName().equals("getConnection")) {
+            return result;
+          }
+          Connection connection = (Connection) result;
+          return proxy(
+              Connection.class,
+              (connectionProxy, connectionMethod, connectionArgs) -> {
+                Object metaData = connectionMethod.invoke(connection, connectionArgs);
+                if (!connectionMethod.getName().equals("getMetaData")) {
+                  return metaData;
+                }
+                return proxy(
+                    DatabaseMetaData.class,
+                    (metaProxy, metaMethod, metaArgs) ->
+                        metaMethod.getName().equals("getDatabaseProductName")
+                            ? productName
+                            : metaMethod.invoke(metaData, metaArgs));
+              });
+        });
+  }
+
   @SuppressWarnings("unchecked")
-  private static <T> T proxy(Class<T> type, InvocationHandlerBody body) {
+  private static <T> T proxy(Class<T> type, InvocationHandler handler) {
     return (T)
         Proxy.newProxyInstance(
             type.getClassLoader(),
             new Class<?>[] {type},
             (proxy, method, args) -> {
               try {
-                return body.invoke(method, args);
+                return handler.invoke(proxy, method, args);
               } catch (InvocationTargetException e) {
                 throw e.getCause();
               }
             });
-  }
-
-  private interface InvocationHandlerBody {
-    Object invoke(Method method, Object[] args) throws Throwable;
   }
 
   /** The quote for identifiers: Flyway's history table has quoted lower-case column names. */

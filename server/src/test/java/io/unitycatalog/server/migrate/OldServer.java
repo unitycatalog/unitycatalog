@@ -49,7 +49,7 @@ final class OldServer {
 
   /**
    * The releases a database passes through before this build, oldest first: every {@code vX.Y.Z}
-   * tag from {@link SchemaMigrator#BASELINE_RELEASE} up to, not including, this build's version.
+   * tag from {@link SchemaMigrator#ADOPTED_RELEASE} up to, not including, this build's version.
    * Each one writes its own copy of the data, since an upgrade can break on rows only one release
    * wrote.
    */
@@ -59,7 +59,7 @@ final class OldServer {
         .filter(tag -> tag.matches("v\\d+\\.\\d+\\.\\d+"))
         .filter(
             tag ->
-                number(tag) >= number(SchemaMigrator.BASELINE_RELEASE)
+                number(tag) >= number(SchemaMigrator.ADOPTED_RELEASE)
                     && number(tag) < number(VersionUtils.VERSION))
         .sorted(Comparator.comparingLong(OldServer::number))
         .toList();
@@ -116,45 +116,22 @@ final class OldServer {
    * serves requests, passes {@code callback} a client authenticated as the server's admin, then
    * stops the server.
    */
-  static void run(String tag, TestDatabase db, Path workDir, Consumer<ApiClient> callback) {
+  static void run(
+      String tag, TestDatabase db, Path workDir, Path storageRoot, Consumer<ApiClient> callback) {
     try {
       Path home = Files.createDirectories(workDir.resolve(tag));
       Path conf = Files.createDirectories(home.resolve("etc/conf"));
-      Files.writeString(conf.resolve("server.properties"), serverProperties());
+      Files.writeString(conf.resolve("server.properties"), serverProperties(storageRoot));
       Files.writeString(conf.resolve("hibernate.properties"), hibernateProperties(db));
-      // The shaded jar leaves out Vert.x's version file, which releases that still use Vert.x read
-      // at start; the test's own Vert.x jar, after it, supplies the file.
-      String classpath =
-          jar(tag, workDir)
-              + File.pathSeparator
-              + jarOf(io.vertx.core.Vertx.class)
-              + (db.jdbcUrl().startsWith("jdbc:mysql:")
-                  ? File.pathSeparator + jarOf(com.mysql.cj.jdbc.Driver.class)
-                  : "");
       int port = freePortPair();
-      Process process =
-          new ProcessBuilder(
-                  Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-                  "-cp",
-                  classpath,
-                  "io.unitycatalog.server.UnityCatalogServer",
-                  "-p",
-                  String.valueOf(port))
-              .directory(home.toFile())
-              .inheritIO()
-              .start();
+      Process process = start(tag, db, workDir, home, port);
       try {
         URI uri = URI.create("http://localhost:" + port);
         awaitServing(process, uri);
         String token = Files.readString(conf.resolve("token.txt")).trim();
         callback.accept(createApiClient(new ServerConfig(uri.toString(), token)));
       } finally {
-        // SIGTERM, so the server closes the database cleanly.
-        process.destroy();
-        if (!process.waitFor(2, TimeUnit.MINUTES)) {
-          process.destroyForcibly().waitFor();
-        }
-        LOGGER.info("{} stopped with exit code {}", tag, process.exitValue());
+        stop(tag, process);
       }
     } catch (IOException e) {
       throw new UncheckedIOException(e);
@@ -162,6 +139,39 @@ final class OldServer {
       Thread.currentThread().interrupt();
       throw new IllegalStateException(e);
     }
+  }
+
+  /** Starts {@code tag}'s server on {@code port} in {@code home}, as a child process. */
+  private static Process start(String tag, TestDatabase db, Path workDir, Path home, int port)
+      throws IOException {
+    // The shaded jar leaves out Vert.x's version file; the test's own Vert.x jar, after it,
+    // supplies the file.
+    String classpath =
+        jar(tag, workDir)
+            + File.pathSeparator
+            + jarOf(io.vertx.core.Vertx.class)
+            + (db.jdbcUrl().startsWith("jdbc:mysql:")
+                ? File.pathSeparator + jarOf(com.mysql.cj.jdbc.Driver.class)
+                : "");
+    return new ProcessBuilder(
+            Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+            "-cp",
+            classpath,
+            "io.unitycatalog.server.UnityCatalogServer",
+            "-p",
+            String.valueOf(port))
+        .directory(home.toFile())
+        .inheritIO()
+        .start();
+  }
+
+  /** SIGTERM, so the server closes the database cleanly; SIGKILL after two minutes. */
+  private static void stop(String tag, Process process) throws InterruptedException {
+    process.destroy();
+    if (!process.waitFor(2, TimeUnit.MINUTES)) {
+      process.destroyForcibly().waitFor();
+    }
+    LOGGER.info("{} stopped with exit code {}", tag, process.exitValue());
   }
 
   /** Waits until the server answers below 500. */
@@ -198,12 +208,13 @@ final class OldServer {
     }
   }
 
-  private static String serverProperties() {
+  /** The table storage root, and the external local root that holds the external tables. */
+  private static String serverProperties(Path storageRoot) {
     return String.join(
         "\n",
         "server.authorization=enable",
-        "storage-root.tables=file:///tmp/uc-storage",
-        "server.external-local-roots=/tmp/uc-storage",
+        "storage-root.tables=" + storageRoot.toUri(),
+        "server.external-local-roots=" + storageRoot,
         "");
   }
 

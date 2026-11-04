@@ -14,9 +14,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 public class SchemaGateTest {
 
-  /** A test-only step 1000: the next release's step for a current database. */
-  private static final List<String> AHEAD = List.of("classpath:db/test-steps/ahead");
-
   @TempDatabase(empty = true)
   TestDatabase db;
 
@@ -31,9 +28,8 @@ public class SchemaGateTest {
 
   @Test
   void setsUpTheSchemaWithASmallConnectionPool() {
-    // Two connections run the server (Casbin keeps one), but not the migration (its lock plus
-    // Flyway's two on PostgreSQL); the migration has its own pool. A regression fails within the
-    // short connection timeout instead of Hikari's 30 seconds.
+    // Two connections run the server, but not the migration; the migration has its own pool. A
+    // regression fails within the short connection timeout instead of Hikari's 30 seconds.
     Properties smallPool = db.hibernateProperties();
     smallPool.setProperty("hibernate.hikari.maximumPoolSize", "2");
     smallPool.setProperty("hibernate.hikari.connectionTimeout", "1000");
@@ -44,8 +40,8 @@ public class SchemaGateTest {
   }
 
   @Test
-  void upgradesA07Database() {
-    UpgradeTestUtils.create07Schema(db);
+  void upgradesABaselineDatabase() {
+    UpgradeTestUtils.createBaselineSchema(db);
 
     try (TestServer server = TestServer.start(db, storageRoot)) {
       assertThat(SchemaSnapshot.of(db.dataSource()))
@@ -69,13 +65,5 @@ public class SchemaGateTest {
       // Refused before Hibernate created any table.
       assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
     }
-  }
-
-  @Test
-  void refusesASchemaNewerThanThisRelease() {
-    new SchemaMigrator(db.dataSource(), AHEAD).migrate();
-
-    assertThatThrownBy(() -> TestServer.start(db, storageRoot))
-        .hasMessageContaining("this release ends at");
   }
 }
