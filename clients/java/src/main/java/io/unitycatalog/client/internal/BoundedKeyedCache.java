@@ -1,6 +1,5 @@
-package io.unitycatalog.hadoop.internal.util;
+package io.unitycatalog.client.internal;
 
-import io.unitycatalog.client.internal.Preconditions;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -9,6 +8,12 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
+/**
+ * Internal API, not for external use.
+ *
+ * <p>A size-bounded LRU cache whose loads are serialized per key, so concurrent callers for the
+ * same key load the value once.
+ */
 public final class BoundedKeyedCache<K, V> {
   private final int maxSize;
   private final Consumer<V> evictionListener;
