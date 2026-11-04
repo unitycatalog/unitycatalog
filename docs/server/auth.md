@@ -224,10 +224,14 @@ Grant validation also runs when `server.authorization=disable`.
 | `SELECT`, `MODIFY` | Catalog, schema, table |
 | `EXECUTE` | Catalog, schema, function, registered model |
 | `CREATE MODEL VERSION` | Catalog, schema, registered model |
-| `READ VOLUME` | Catalog, schema, volume |
+| `READ VOLUME`, `WRITE VOLUME` | Catalog, schema, volume |
 | `CREATE EXTERNAL LOCATION` | Metastore, storage credential |
 | `READ FILES`, `WRITE FILES`, `CREATE EXTERNAL TABLE` | External location, storage credential |
 | `CREATE EXTERNAL VOLUME`, `CREATE MANAGED STORAGE` | External location |
+
+Volume write credentials require `USE CATALOG` and `USE SCHEMA`, plus both `READ VOLUME`
+and `WRITE VOLUME`. Volume ownership satisfies the volume check. Catalog or schema ownership
+satisfies only that parent's usage check. This applies to both volume and path credentials.
 
 For example, `USE CATALOG` on a schema is invalid. Grant it on the containing catalog instead.
 If any addition is invalid, the server rejects the full request with `INVALID_ARGUMENT` before
@@ -578,6 +582,11 @@ Map<String, String> configs = Map.of(
 ```sh
 --conf "spark.sql.catalog.<catalog_name>.auth.oauth.scope="
 ```
+
+The provider caches the token and renews it shortly before it expires. It takes the expiry from the
+token response's `expires_in`, or, when the Identity Provider omits it, from the token's own `exp`
+claim if the token is a JWT. A token with neither is used for one request only, so every request
+fetches a new token; the provider logs a warning the first time.
 
 ### Exchanging the OAuth token for a Unity Catalog token
 
