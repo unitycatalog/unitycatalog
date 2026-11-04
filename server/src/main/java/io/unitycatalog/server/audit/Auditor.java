@@ -180,7 +180,7 @@ public final class Auditor implements AutoCloseable {
 
   private void emit(Supplier<AuditRecord> build) {
     if (closed.get()) {
-      // A request that outlived the shutdown drain; the lost records were already reported.
+      // A request that outlived the shutdown drain.
       LOGGER.warn("Audit record dropped: sink {} is closed", sink.getClass().getName());
       return;
     }
