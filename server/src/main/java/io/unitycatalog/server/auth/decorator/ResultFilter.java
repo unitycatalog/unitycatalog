@@ -165,9 +165,12 @@ public class ResultFilter {
     LOGGER.debug("After filtering: {} items remain", items.size());
   }
 
-  /** Filters a GET result using the resource IDs already resolved from its request. */
-  public <T> T filterResult(T item, UnaryOperator<T> browseOnly) {
+  /** Filters a GET result only if its ID matches the resource resolved from the request. */
+  public <T> T filterResult(SecurableType securableType, T item, UnaryOperator<T> browseOnly) {
     called.set(true);
+    if (!resolveResourceId(securableType, item).equals(resourceIds.get(securableType))) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+    }
     long operationStartNanos = System.nanoTime();
     UnityAccessEvaluator.Batch batch =
         evaluator.batch(principalId, expression, nonResourceValues, operationStartNanos);

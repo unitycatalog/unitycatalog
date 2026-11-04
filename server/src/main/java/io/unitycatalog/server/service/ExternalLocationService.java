@@ -95,7 +95,8 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
       @Param("include_browse") Optional<Boolean> includeBrowse) {
     return HttpResponse.ofJson(
-        applyResponseFilter(
+        applyGetResponseFilter(
+            SecurableType.EXTERNAL_LOCATION,
             externalLocationRepository.getExternalLocation(name),
             BrowseOnlyConverter::toBrowseOnly));
   }

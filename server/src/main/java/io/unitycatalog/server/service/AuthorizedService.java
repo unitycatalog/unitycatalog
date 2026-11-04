@@ -145,9 +145,10 @@ public abstract class AuthorizedService {
   }
 
   /** Returns full or BROWSE-only metadata, or denies access to a GET result. */
-  protected <T> T applyResponseFilter(T item, UnaryOperator<T> browseOnly) {
+  protected <T> T applyGetResponseFilter(
+      SecurableType securableType, T item, UnaryOperator<T> browseOnly) {
     return serverProperties.isAuthorizationEnabled()
-        ? getResponseFilter().filterResult(item, browseOnly)
+        ? getResponseFilter().filterResult(securableType, item, browseOnly)
         : item;
   }
 

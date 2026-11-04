@@ -106,7 +106,8 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
       @Param("include_browse") Optional<Boolean> includeBrowse) {
     assert fullName != null;
     TableInfo tableInfo = tableRepository.getTable(fullName);
-    return HttpResponse.ofJson(applyResponseFilter(tableInfo, BrowseOnlyConverter::toBrowseOnly));
+    return HttpResponse.ofJson(
+        applyGetResponseFilter(SecurableType.TABLE, tableInfo, BrowseOnlyConverter::toBrowseOnly));
   }
 
   @Get("")

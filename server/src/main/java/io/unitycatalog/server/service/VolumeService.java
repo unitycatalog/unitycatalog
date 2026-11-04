@@ -146,8 +146,10 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
       @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName,
       @Param("include_browse") Optional<Boolean> includeBrowse) {
     return HttpResponse.ofJson(
-        applyResponseFilter(
-            volumeRepository.getVolume(fullName), BrowseOnlyConverter::toBrowseOnly));
+        applyGetResponseFilter(
+            SecurableType.VOLUME,
+            volumeRepository.getVolume(fullName),
+            BrowseOnlyConverter::toBrowseOnly));
   }
 
   @Patch("/{full_name}")

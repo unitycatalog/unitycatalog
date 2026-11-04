@@ -129,7 +129,10 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
     assert fullNameArg != null;
     RegisteredModelInfo registeredModelInfo = modelRepository.getRegisteredModel(fullNameArg);
     return HttpResponse.ofJson(
-        applyResponseFilter(registeredModelInfo, BrowseOnlyConverter::toBrowseOnly));
+        applyGetResponseFilter(
+            SecurableType.REGISTERED_MODEL,
+            registeredModelInfo,
+            BrowseOnlyConverter::toBrowseOnly));
   }
 
   @Patch("/{full_name}")

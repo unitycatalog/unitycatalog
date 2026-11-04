@@ -105,7 +105,10 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
       @Param("name") @AuthorizeResourceKey(CATALOG) String name,
       @Param("include_browse") Optional<Boolean> includeBrowse) {
     return HttpResponse.ofJson(
-        applyResponseFilter(catalogRepository.getCatalog(name), BrowseOnlyConverter::toBrowseOnly));
+        applyGetResponseFilter(
+            SecurableType.CATALOG,
+            catalogRepository.getCatalog(name),
+            BrowseOnlyConverter::toBrowseOnly));
   }
 
   @Patch("/{name}")

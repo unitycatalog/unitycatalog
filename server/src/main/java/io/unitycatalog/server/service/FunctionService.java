@@ -102,8 +102,10 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
       @Param("name") @AuthorizeResourceKey(FUNCTION) String name,
       @Param("include_browse") Optional<Boolean> includeBrowse) {
     return HttpResponse.ofJson(
-        applyResponseFilter(
-            functionRepository.getFunction(name), BrowseOnlyConverter::toBrowseOnly));
+        applyGetResponseFilter(
+            SecurableType.FUNCTION,
+            functionRepository.getFunction(name),
+            BrowseOnlyConverter::toBrowseOnly));
   }
 
   @Delete("/{name}")

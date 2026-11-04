@@ -109,8 +109,10 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
       @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,
       @Param("include_browse") Optional<Boolean> includeBrowse) {
     return HttpResponse.ofJson(
-        applyResponseFilter(
-            schemaRepository.getSchema(fullName), BrowseOnlyConverter::toBrowseOnly));
+        applyGetResponseFilter(
+            SecurableType.SCHEMA,
+            schemaRepository.getSchema(fullName),
+            BrowseOnlyConverter::toBrowseOnly));
   }
 
   @Patch("/{full_name}")

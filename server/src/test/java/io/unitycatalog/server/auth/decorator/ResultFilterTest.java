@@ -134,11 +134,47 @@ class ResultFilterTest {
         hasProjection ? BrowseOnlyConverter::toBrowseOnly : null;
 
     assertThatThrownBy(
-            () -> filter.filterResult(new CatalogInfo().id(catalogId.toString()), projection))
+            () ->
+                filter.filterResult(
+                    CATALOG, new CatalogInfo().id(catalogId.toString()), projection))
         .isInstanceOfSatisfying(
             BaseException.class,
             exception ->
                 assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PERMISSION_DENIED));
     assertThat(filter.wasCalled()).isTrue();
+  }
+
+  @ParameterizedTest
+  @CsvSource({"true,true", "false,true", "true,false", "false,false"})
+  void getRequiresMatchingResourceId(boolean fullAccess, boolean sameId) throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    UUID principal = UUID.randomUUID();
+    UUID catalogId = UUID.randomUUID();
+    CatalogInfo item =
+        new CatalogInfo().name("catalog").id((sameId ? catalogId : UUID.randomUUID()).toString());
+    when(authorizer.authorizeAny(principal, CATALOG, catalogId, OWNER, USE_CATALOG, READ_METADATA))
+        .thenReturn(fullAccess);
+    when(authorizer.authorize(principal, CATALOG, catalogId, BROWSE)).thenReturn(true);
+    ResultFilter filter =
+        new ResultFilter(
+            new UnityAccessEvaluator(authorizer, true),
+            principal,
+            AuthorizeExpressions.GET_CATALOG,
+            fullAccess ? "" : AuthorizeExpressions.BROWSE_CATALOG,
+            Map.of(CATALOG, catalogId, METASTORE, UUID.randomUUID()),
+            Map.of(),
+            mock(KeyMapper.class));
+
+    if (sameId) {
+      assertThat(filter.filterResult(CATALOG, item, BrowseOnlyConverter::toBrowseOnly))
+          .isEqualTo(fullAccess ? item : BrowseOnlyConverter.toBrowseOnly(item));
+    } else {
+      assertThatThrownBy(
+              () -> filter.filterResult(CATALOG, item, BrowseOnlyConverter::toBrowseOnly))
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              exception ->
+                  assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PERMISSION_DENIED));
+    }
   }
 }
