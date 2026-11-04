@@ -8,14 +8,20 @@ import io.unitycatalog.client.ApiResponse;
 import io.unitycatalog.client.delta.model.DeltaErrorType;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.client.delta.model.DeltaRenameTableRequest;
+import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.delta.DeltaBaseTableCRUDTestEnv;
 import io.unitycatalog.server.base.schema.SchemaOperations;
+import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -32,6 +38,12 @@ public class SdkRenameTableTest extends DeltaBaseTableCRUDTestEnv {
   @Override
   protected SchemaOperations createSchemaOperations(ServerConfig serverConfig) {
     return new SdkSchemaOperations(TestUtils.createApiClient(serverConfig));
+  }
+
+  @Override
+  protected TableOperations createTableOperations(ServerConfig serverConfig) {
+    // Needed to plant a Parquet EXTERNAL table, which the Delta API cannot create.
+    return new SdkTableOperations(TestUtils.createApiClient(serverConfig));
   }
 
   @Test
@@ -71,6 +83,34 @@ public class SdkRenameTableTest extends DeltaBaseTableCRUDTestEnv {
           DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
           "Table not found");
     }
+
+    // A non-Delta table is rejected before the same-name no-op and the name-taken conflict,
+    // and left in place.
+    TableInfo parquet =
+        createTestingTable(
+            "parquetSource",
+            TableType.EXTERNAL,
+            Optional.of(testDirectoryRoot.toString()),
+            DataSourceFormat.PARQUET,
+            tableOperations);
+    for (String newName : new String[] {unusedTarget, parquet.getName(), existingTarget}) {
+      TestUtils.assertDeltaApiException(
+          () ->
+              deltaTablesApi.renameTable(
+                  TestUtils.CATALOG_NAME,
+                  TestUtils.SCHEMA_NAME,
+                  parquet.getName(),
+                  new DeltaRenameTableRequest().newName(newName)),
+          DeltaErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
+          "Table is not a Delta table");
+    }
+    assertThat(
+            tableOperations
+                .getTable(
+                    String.join(
+                        ".", TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, parquet.getName()))
+                .getTableId())
+        .isEqualTo(parquet.getTableId());
 
     createDeltaManaged(source, Map.of());
     DeltaLoadTableResponse originalTable =

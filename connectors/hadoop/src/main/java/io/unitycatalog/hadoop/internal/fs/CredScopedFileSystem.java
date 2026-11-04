@@ -1,10 +1,10 @@
 package io.unitycatalog.hadoop.internal.fs;
 
+import io.unitycatalog.client.internal.BoundedKeyedCache;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.id.FileSystemCredId;
-import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
 import io.unitycatalog.hadoop.internal.util.CloseableUtils;
 import java.io.IOException;
 import java.net.URI;
