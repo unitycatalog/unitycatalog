@@ -179,7 +179,8 @@ spec:
           {{- end }}
           image: "{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
-          command: {{- toYaml .Values.server.deployment.command | nindent 12 }}
+          {{- /* An upgrade with --reuse-values from an older release has no command value. */}}
+          command: {{- toYaml (.Values.server.deployment.command | default (list "./bin/start-uc-server")) | nindent 12 }}
           args:
             - --port
             - {{ .Values.server.deployment.port | quote }}

@@ -65,10 +65,13 @@ jobs:
           out="$(helm template uc helm --set 'server.deployment.command={/entrypoint.sh,./bin/start-uc-server}')"
           grep -A2 'command:' <<<"$out" | grep -qF -- '- /entrypoint.sh'
           ! grep -A1 'command:' <<<"$out" | grep -qF -- '- ./bin/start-uc-server' || exit 1
+          # An upgrade with --reuse-values from an older release has no command value; keep the default.
+          out="$(helm template uc helm --set server.deployment.command=null)"
+          grep -A1 'command:' <<<"$out" | grep -qF -- '- ./bin/start-uc-server'
           # The create-users job calls the server through its Service, so it uses the Service port.
-          out="$(helm template uc helm --set server.deployment.port=9000 --set auth.enabled=true \
-            --set 'auth.users[0].name=admin' --set 'auth.users[0].email=admin@example.com')"
-          grep -qF 'uc-unitycatalog-server:8080/api/' <<<"$out"
+          out="$(helm template uc helm --set server.deployment.port=9000 --set server.service.port=8181 \
+            --set auth.enabled=true --set 'auth.users[0].name=admin' --set 'auth.users[0].email=admin@example.com')"
+          grep -qF 'uc-unitycatalog-server:8181/api/' <<<"$out"
           ! grep -qF 'uc-unitycatalog-server:9000' <<<"$out" || exit 1
           # With obsPort, the flag, the container port and the probes all use it.
           out="$(helm template uc helm --set server.deployment.obsPort=9099 \
