@@ -3,14 +3,21 @@ package io.unitycatalog.server.sdk.access;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.linecorp.armeria.common.HttpStatus;
 import io.unitycatalog.control.ApiException;
 import io.unitycatalog.control.api.UsersApi;
 import io.unitycatalog.control.model.UserResource;
 import io.unitycatalog.control.model.UserResourceList;
+import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.service.Scim2UserService;
+import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.http.HttpResponse;
 import java.util.Optional;
+import java.util.Properties;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -83,6 +90,13 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
             .orElseThrow();
     String ownerPath = SCIM_USERS_PATH + "/" + owner.getId();
 
+    // An update that leaves active out is not a deactivation, so it succeeds.
+    UserResource unchanged =
+        usersApi.updateUser(
+            owner.getId(),
+            new UserResource().id(owner.getId()).displayName(owner.getDisplayName()));
+    assertThat(unchanged.getActive()).isTrue();
+
     // Each request would leave no enabled metastore owner, so the server refuses it and the owner
     // can still call the API afterwards.
     HttpResponse<String> patch =
@@ -106,6 +120,33 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     assertThat(delete.getResponseBody()).contains("\"error_code\":\"INVALID_ARGUMENT\"");
     assertThat(delete.getResponseBody()).contains(OWNER_REFUSED);
     assertThat(usersApi.getUser(owner.getId()).getActive()).isTrue();
+  }
+
+  @Test
+  @SneakyThrows
+  public void testMetastoreOwnerCanBeDeletedWithAuthorizationDisabled() {
+    // With authorization disabled the server uses AllowingAuthorizer, so no user counts as the
+    // metastore owner and the owner can be deactivated and deleted.
+    String ownerId =
+        usersApi.listUsers(null, null, null).getResources().stream()
+            .filter(user -> "admin".equals(user.getEmails().get(0).getValue()))
+            .findFirst()
+            .orElseThrow()
+            .getId();
+    Properties properties = new Properties();
+    properties.putAll(serverProperties);
+    properties.setProperty(Property.AUTHORIZATION_ENABLED.getKey(), "disable");
+    ServerProperties disabled = new ServerProperties(properties);
+    Scim2UserService service =
+        new Scim2UserService(
+            new AllowingAuthorizer(),
+            new Repositories(hibernateConfigurator.getSessionFactory(), disabled),
+            disabled);
+
+    var owner = service.getUser(ownerId);
+    owner.setActive(false);
+    assertThat(service.updateUser(ownerId, owner).getActive()).isFalse();
+    assertThat(service.deleteUser(ownerId).aggregate().join().status()).isEqualTo(HttpStatus.OK);
   }
 
   private static void assertScimPermissionDenied(Executable request) {
