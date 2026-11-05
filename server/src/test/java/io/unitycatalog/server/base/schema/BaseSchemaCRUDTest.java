@@ -12,6 +12,7 @@ import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdateCatalog;
 import io.unitycatalog.client.model.UpdateSchema;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
@@ -299,6 +300,77 @@ public abstract class BaseSchemaCRUDTest extends BaseSchemaCRUDTestEnv {
     }
 
     assertThat(tableNames(schemaB)).containsExactly("b_table");
+  }
+
+  /** A schema create that waits for a delete of its catalog finds no catalog, leaving no orphan. */
+  @Test
+  public void createRacingACatalogDeleteFindsNoCatalog() throws Exception {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    UUID catalogId = UUID.fromString(catalogOperations.getCatalog(TestUtils.CATALOG_NAME).getId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> deleteRow(held, CatalogInfoDAO.class, catalogId),
+                () ->
+                    schemaOperations.createSchema(
+                        new CreateSchema()
+                            .name(TestUtils.SCHEMA_NAME)
+                            .catalogName(TestUtils.CATALOG_NAME))),
+        ErrorCode.CATALOG_NOT_FOUND,
+        "Catalog not found");
+
+    assertThat(countChildren(SchemaInfoDAO.class, "catalogId", catalogId)).isZero();
+  }
+
+  /** A force delete that waits for a table create deletes the new table with the schema. */
+  @Test
+  public void forceDeleteWaitsForATableCreateAndDeletesTheTable() throws Exception {
+    UUID schemaId = UUID.fromString(createCatalogAndSchema(Optional.empty()).getSchemaId());
+
+    runBlockedByHeldWrite(
+        held -> {
+          // Like a create in flight: it holds the schema row shared and has inserted its table.
+          lockShared(held, SchemaInfoDAO.class, schemaId);
+          held.persist(newTable(schemaId, "created"));
+        },
+        () -> {
+          schemaOperations.deleteSchema(TestUtils.SCHEMA_FULL_NAME, Optional.of(true));
+          return null;
+        });
+
+    assertThat(countChildren(TableInfoDAO.class, "schemaId", schemaId)).isZero();
+    TestUtils.assertApiException(
+        () -> schemaOperations.getSchema(TestUtils.SCHEMA_FULL_NAME),
+        ErrorCode.SCHEMA_NOT_FOUND,
+        "Schema not found");
+  }
+
+  /**
+   * A delete that waits for a table create sees the new table and rejects the schema as not empty.
+   */
+  @Test
+  public void deleteWaitsForATableCreateAndRejectsTheNonEmptySchema() throws Exception {
+    UUID schemaId = UUID.fromString(createCatalogAndSchema(Optional.empty()).getSchemaId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> {
+                  lockShared(held, SchemaInfoDAO.class, schemaId);
+                  held.persist(newTable(schemaId, "created"));
+                },
+                () -> {
+                  schemaOperations.deleteSchema(TestUtils.SCHEMA_FULL_NAME, Optional.of(false));
+                  return null;
+                }),
+        ErrorCode.FAILED_PRECONDITION,
+        "Cannot delete schema with tables");
+
+    assertThat(schemaOperations.getSchema(TestUtils.SCHEMA_FULL_NAME).getSchemaId())
+        .isEqualTo(schemaId.toString());
+    assertThat(tableNames(schemaId)).containsExactly("created");
   }
 
   private List<String> tableNames(UUID schemaId) {

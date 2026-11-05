@@ -177,6 +177,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SchemaInfo'
+        '503':
+          description: Service Unavailable. The catalog is being modified or dropped concurrently; retry the request.
     get:
       tags:
         - Schemas
@@ -312,6 +314,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StagingTableInfo'
+        '503':
+          description: Service Unavailable. The schema is being modified or dropped concurrently; retry the request.
   /tables:
     post:
       operationId: createTable
@@ -335,6 +339,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TableInfo'
+        '503':
+          description: Service Unavailable. The schema is being modified or dropped concurrently; retry the request.
     get:
       tags:
         - Tables
@@ -476,6 +482,8 @@ paths:
                     created_at: 1666369196203
                     updated_at: 1666369196203
                     comment: This is my first volume
+        '503':
+          description: Service Unavailable. The schema is being modified or dropped concurrently; retry the request.
     get:
       tags:
         - Volumes
@@ -729,6 +737,8 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/FunctionInfo"
+        '503':
+          description: Service Unavailable. The schema is being modified or dropped concurrently; retry the request.
     get:
       tags:
         - Functions
@@ -833,6 +843,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RegisteredModelInfo'
+        '503':
+          description: Service Unavailable. The schema is being modified or dropped concurrently; retry the request.
     get:
       tags:
         - RegisteredModels

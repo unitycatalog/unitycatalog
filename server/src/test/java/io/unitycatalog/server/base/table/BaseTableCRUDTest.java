@@ -9,13 +9,25 @@ import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdateSchema;
+import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import org.hibernate.Session;
+import org.hibernate.Transaction;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -56,6 +68,61 @@ public abstract class BaseTableCRUDTest extends BaseTableCRUDTestEnv {
 
     // Test schema update and deletion scenarios
     testTableAfterSchemaUpdateAndDeletion();
+  }
+
+  /** A table create that waits for a delete of its schema finds no schema and leaves no orphan. */
+  @Test
+  public void createRacingASchemaDeleteFindsNoSchema() throws Exception {
+    UUID id = UUID.fromString(schemaId);
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> deleteRow(held, SchemaInfoDAO.class, id),
+                () ->
+                    createTestingTable(
+                        TestUtils.TABLE_NAME,
+                        TableType.EXTERNAL,
+                        Optional.of(
+                            Files.createTempDirectory(testDirectoryRoot, "table").toString()),
+                        tableOperations)),
+        ErrorCode.SCHEMA_NOT_FOUND,
+        "Schema not found");
+
+    assertThat(countChildren(TableInfoDAO.class, "schemaId", id)).isZero();
+  }
+
+  /**
+   * Creates in one schema share its lock: on PostgreSQL and MySQL a create does not wait for the
+   * lock another create holds. H2 has no shared row lock, so there the second create waits for the
+   * first to commit.
+   */
+  @Test
+  public void createsInOneSchemaShareTheSchemaLock() throws Exception {
+    UUID id = UUID.fromString(schemaId);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try (Session held = testDatabase.sessionFactory().openSession()) {
+      Transaction transaction = held.beginTransaction();
+      // Like a create in flight: it holds the schema row shared.
+      lockShared(held, SchemaInfoDAO.class, id);
+      Future<TableInfo> create =
+          executor.submit(
+              () ->
+                  createTestingTable(
+                      TestUtils.TABLE_NAME,
+                      TableType.EXTERNAL,
+                      Optional.of(Files.createTempDirectory(testDirectoryRoot, "table").toString()),
+                      tableOperations));
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+      while (!create.isDone() && !testDatabase.hasLockWaiter() && System.nanoTime() < deadline) {
+        Thread.sleep(100);
+      }
+      assertThat(create.isDone()).isEqualTo(SupportedDatabase.selected() != SupportedDatabase.H2);
+      transaction.commit();
+      assertThat(create.get(30, TimeUnit.SECONDS).getName()).isEqualTo(TestUtils.TABLE_NAME);
+    } finally {
+      executor.shutdownNow();
+    }
   }
 
   private void verifyTableInfo(TableInfo retrievedTable, TableInfo expectedTable) {

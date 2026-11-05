@@ -75,6 +75,7 @@ public class SchemaRepository {
               repositories
                   .getCatalogRepository()
                   .getCatalogDaoOrThrow(session, createSchema.getCatalogName());
+          repositories.getCatalogRepository().lockCatalogForChildCreate(session, catalogDAO);
           validateSchemaNotExistInCatalog(session, catalogDAO, createSchema.getName());
           Long createTime = System.currentTimeMillis();
           UUID schemaId = UUID.randomUUID();
@@ -142,6 +143,22 @@ public class SchemaRepository {
         SchemaInfoDAO.class,
         schema.getId(),
         key,
+        "schema " + fullName,
+        () -> schemaNotFound(fullName));
+  }
+
+  /**
+   * Locks the schema row shared until the transaction ends, for a create of a child in it: a delete
+   * of the schema waits for the create, and a create after the delete finds no schema.
+   */
+  void lockSchemaForChildCreate(
+      Session session, UUID schemaId, String catalogName, String schemaName) {
+    String fullName = catalogName + "." + schemaName;
+    RepositoryUtils.lockSharedByKey(
+        session,
+        SchemaInfoDAO.class,
+        schemaId,
+        Map.of("name", schemaName),
         "schema " + fullName,
         () -> schemaNotFound(fullName));
   }

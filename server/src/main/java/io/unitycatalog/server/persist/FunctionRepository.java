@@ -91,6 +91,9 @@ public class FunctionRepository {
               repositories
                   .getSchemaRepository()
                   .getSchemaDaoOrThrow(session, catalogName, schemaName);
+          repositories
+              .getSchemaRepository()
+              .lockSchemaForChildCreate(session, schemaInfo.getId(), catalogName, schemaName);
           if (getFunctionDAO(session, catalogName, schemaName, createFunction.getName()) != null) {
             throw new BaseException(
                 ErrorCode.RESOURCE_ALREADY_EXISTS,

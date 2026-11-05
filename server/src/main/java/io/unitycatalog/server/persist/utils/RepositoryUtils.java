@@ -119,6 +119,35 @@ public class RepositoryUtils {
       Map<String, Object> key,
       String description,
       Supplier<BaseException> notFound) {
+    return lock(session, type, id, key, description, notFound, LockMode.PESSIMISTIC_WRITE);
+  }
+
+  /**
+   * As {@link #lockByKey}, but a shared lock: it waits for a concurrent exclusive lock on the row
+   * (a delete or update of it) and holds off a later one until the transaction ends, while shared
+   * locks of other transactions do not wait for each other on PostgreSQL and MySQL (H2 has no
+   * shared row lock and takes an exclusive one). A create takes it on its parent row, so that a
+   * delete of the parent and the create are serialized and a create after the delete finds no
+   * parent.
+   */
+  public static <T> T lockSharedByKey(
+      Session session,
+      Class<T> type,
+      UUID id,
+      Map<String, Object> key,
+      String description,
+      Supplier<BaseException> notFound) {
+    return lock(session, type, id, key, description, notFound, LockMode.PESSIMISTIC_READ);
+  }
+
+  private static <T> T lock(
+      Session session,
+      Class<T> type,
+      UUID id,
+      Map<String, Object> key,
+      String description,
+      Supplier<BaseException> notFound,
+      LockMode lockMode) {
     return unavailableOnLockFailure(
         description,
         () -> {
@@ -126,12 +155,12 @@ public class RepositoryUtils {
               session.createSelectionQuery(
                   "from " + type.getSimpleName() + " where " + predicate(key), type);
           bindKey(query, id, key);
-          T locked = query.setHibernateLockMode(LockMode.PESSIMISTIC_WRITE).getSingleResultOrNull();
+          T locked = query.setHibernateLockMode(lockMode).getSingleResultOrNull();
           if (locked == null) {
             throw notFound.get();
           }
           // The locking query returns an entity already in the session as it was first read.
-          session.refresh(locked, LockMode.PESSIMISTIC_WRITE);
+          session.refresh(locked, lockMode);
           return locked;
         });
   }

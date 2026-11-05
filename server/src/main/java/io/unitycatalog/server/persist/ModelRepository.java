@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist;
 
+import static java.sql.Connection.TRANSACTION_READ_COMMITTED;
+
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateModelVersion;
@@ -19,6 +21,7 @@ import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
+import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -260,6 +263,9 @@ public class ModelRepository {
           ExternalLocationUtils.getManagedLocationForModel(parentStorageLocation, modelId);
       SchemaInfoDAO schemaInfoDAO = catalogAndSchemaDao.schemaInfoDAO();
       try {
+        repositories
+            .getSchemaRepository()
+            .lockSchemaForChildCreate(session, schemaInfoDAO.getId(), catalogName, schemaName);
         // Check if registered model already exists
         RegisteredModelInfoDAO existingRegisteredModel =
             getRegisteredModelDao(session, schemaInfoDAO.getId(), registeredModelInfo.getName());
@@ -478,6 +484,9 @@ public class ModelRepository {
   public void deleteRegisteredModel(String fullName, boolean force) {
     LOGGER.info("Deleting Registered Model: {}", fullName);
     try (Session session = sessionFactory.openSession()) {
+      // READ COMMITTED, so that the reads after the model row's lock see a version created while
+      // the delete waited for it, as a repeatable-read snapshot would not.
+      TransactionManager.setIsolationLevel(session, TRANSACTION_READ_COMMITTED);
       Transaction tx = session.beginTransaction();
       String[] parts = RepositoryUtils.parseRegisteredModelFullName(fullName);
       String catalogName = parts[0];
