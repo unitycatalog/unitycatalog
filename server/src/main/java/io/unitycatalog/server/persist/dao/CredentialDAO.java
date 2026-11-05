@@ -18,6 +18,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import java.util.Date;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -155,6 +156,16 @@ public class CredentialDAO extends IdentifiableDAO {
 
   public void setAwsIamRole(AwsIamRoleRequest awsIamRole) {
     setCredential(CredentialType.AWS_IAM_ROLE, fromAwsIamRoleRequest(awsIamRole));
+  }
+
+  /**
+   * The columns {@link #setAwsIamRole} writes, for an update of only those columns. Their values
+   * come from a scratch instance, since the credential column has no setter or getter.
+   */
+  public static Map<String, Object> awsIamRoleColumns(AwsIamRoleRequest awsIamRole) {
+    CredentialDAO scratch = new CredentialDAO();
+    scratch.setAwsIamRole(awsIamRole);
+    return Map.of("credentialType", scratch.credentialType, "credential", scratch.credential);
   }
 
   private <T> void setCredential(CredentialType type, T inputCredential) {

@@ -20,7 +20,9 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.externallocation.ExternalLocationOperations;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TestUtils;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -151,5 +153,50 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
 
     // Delete without force should succeed
     credentialOperations.deleteCredential(credentialWithoutExternalLocationName, Optional.empty());
+  }
+
+  /** A drop that waits for a concurrent rename must not delete the renamed credential. */
+  @Test
+  public void dropRacingARenameDoesNotDeleteTheRenamedCredential() throws Exception {
+    UUID id = UUID.fromString(createCredential("drop_race").getId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> setColumn(held, CredentialDAO.class, id, "name", "drop_race_renamed"),
+                () -> {
+                  credentialOperations.deleteCredential("drop_race", Optional.empty());
+                  return null;
+                }),
+        ErrorCode.NOT_FOUND,
+        "Credential not found");
+
+    assertThat(credentialOperations.getCredential("drop_race_renamed").getId())
+        .isEqualTo(id.toString());
+  }
+
+  /** A rename that waits for a concurrent edit of another column keeps that edit. */
+  @Test
+  public void renameKeepsAConcurrentCommentEdit() throws Exception {
+    UUID id = UUID.fromString(createCredential("edit_race").getId());
+
+    runBlockedByHeldWrite(
+        held -> setColumn(held, CredentialDAO.class, id, "comment", "held comment"),
+        () ->
+            credentialOperations.updateCredential(
+                "edit_race", new UpdateCredentialRequest().newName("edited")));
+
+    CredentialInfo renamed = credentialOperations.getCredential("edited");
+    assertThat(renamed.getId()).isEqualTo(id.toString());
+    assertThat(renamed.getComment()).isEqualTo("held comment");
+  }
+
+  private CredentialInfo createCredential(String name) throws ApiException {
+    return credentialOperations.createCredential(
+        new CreateCredentialRequest()
+            .name(name)
+            .comment(COMMENT)
+            .purpose(CredentialPurpose.STORAGE)
+            .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN)));
   }
 }
