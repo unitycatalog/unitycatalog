@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist;
 
+import static java.sql.Connection.TRANSACTION_READ_COMMITTED;
+
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateSchema;
@@ -115,11 +117,22 @@ public class SchemaRepository {
   public SchemaInfoDAO getSchemaDaoOrThrow(
       Session session, UUID catalogId, String catalogName, String schemaName) {
     return RepositoryUtils.getSchemaDaoOpt(session, catalogId, schemaName)
-        .orElseThrow(
-            () ->
-                new BaseException(
-                    ErrorCode.SCHEMA_NOT_FOUND,
-                    "Schema not found: " + catalogName + "." + schemaName));
+        .orElseThrow(() -> schemaNotFound(catalogName + "." + schemaName));
+  }
+
+  private static BaseException schemaNotFound(String fullName) {
+    return new BaseException(ErrorCode.SCHEMA_NOT_FOUND, "Schema not found: " + fullName);
+  }
+
+  private void lockSchema(
+      Session session, SchemaInfoDAO schema, Map<String, Object> key, String fullName) {
+    RepositoryUtils.lockByKey(
+        session,
+        SchemaInfoDAO.class,
+        schema.getId(),
+        key,
+        "schema " + fullName,
+        () -> schemaNotFound(fullName));
   }
 
   public SchemaInfoDAO getSchemaDaoOrThrow(Session session, String catalogName, String schemaName) {
@@ -290,12 +303,15 @@ public class SchemaRepository {
               && (updateSchema.getProperties() == null || updateSchema.getProperties().isEmpty())) {
             return convertFromDAO(session, schemaInfoDAO, fullName);
           }
+          Map<String, Object> nameKey = Map.of("name", splitSchemaFullName(fullName).schemaName());
+          lockSchema(session, schemaInfoDAO, nameKey, fullName);
           // Update the schema with new values
+          Map<String, Object> changes = new HashMap<>();
           if (updateSchema.getComment() != null) {
-            schemaInfoDAO.setComment(updateSchema.getComment());
+            changes.put("comment", updateSchema.getComment());
           }
           if (updateSchema.getNewName() != null) {
-            schemaInfoDAO.setName(updateSchema.getNewName());
+            changes.put("name", updateSchema.getNewName());
           }
           if (updateSchema.getProperties() != null && !updateSchema.getProperties().isEmpty()) {
             PropertyRepository.findProperties(session, schemaInfoDAO.getId(), Constants.SCHEMA)
@@ -304,13 +320,15 @@ public class SchemaRepository {
             PropertyDAO.from(updateSchema.getProperties(), schemaInfoDAO.getId(), Constants.SCHEMA)
                 .forEach(session::persist);
           }
-          schemaInfoDAO.setUpdatedAt(new Date());
-          schemaInfoDAO.setUpdatedBy(callerId);
-          session.merge(schemaInfoDAO);
+          changes.put("updatedAt", new Date());
+          changes.put("updatedBy", callerId);
+          RepositoryUtils.updateByKey(
+              session, schemaInfoDAO, nameKey, changes, () -> schemaNotFound(fullName));
           return convertFromDAO(session, schemaInfoDAO, fullName);
         },
         "Failed to update schema",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        Optional.of(TRANSACTION_READ_COMMITTED));
   }
 
   public List<DeletedResource> deleteSchema(String fullName, boolean force) {
