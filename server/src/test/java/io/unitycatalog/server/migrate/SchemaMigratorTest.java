@@ -28,6 +28,7 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
@@ -35,6 +36,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import javax.sql.DataSource;
@@ -264,6 +266,37 @@ public class SchemaMigratorTest {
         .isEqualTo(UpgradeTestUtils.freshInstallSnapshot());
   }
 
+  /**
+   * Adopting a database at the last step's schema stopped after Flyway created the history table
+   * and before it wrote the first record: the history holds no applied step, and the rerun adopts
+   * again.
+   */
+  @Test
+  void adoptsAgainAfterAnAdoptionStoppedBeforeAnyStepWasRecorded() {
+    SchemaMigrator built = new SchemaMigrator(db.dataSource());
+    int steps = built.upgradeSchema();
+    UpgradeTestUtils.execute(
+        db, "DROP TABLE %1$suc_schema_history%1$s".formatted(identifierQuote(db.dataSource())));
+    AtomicInteger inserts = new AtomicInteger();
+    DataSource stopping =
+        UpgradeTestUtils.watched(
+            db.dataSource(),
+            (sql, prepared) -> {
+              if (sql.toLowerCase(Locale.ROOT).matches("(?s)\\s*insert into .*uc_schema_history.*")
+                  && inserts.incrementAndGet() == 1) {
+                throw new SQLException("Test: the run stops here");
+              }
+              return sql;
+            });
+    assertThatThrownBy(new SchemaMigrator(stopping)::upgradeSchema)
+        .hasStackTraceContaining("Test: the run stops here");
+
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    assertThat(migrator.upgradeSchema()).isEqualTo(steps);
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+    assertThat(migrator.recordedVersion()).isEqualTo(migrator.latestVersion());
+  }
+
   @Test
   void checksAnEmptyDatabaseWithoutChangingIt() {
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
@@ -357,6 +390,17 @@ public class SchemaMigratorTest {
   }
 
   @Test
+  void refusesWhenAnotherTablesIndexTookAStepsIndexName() {
+    assumeFalse(db.jdbcUrl().startsWith("jdbc:mysql:"), "MySQL names indexes per table");
+    UpgradeTestUtils.execute(db, "CREATE TABLE other_app (x INT)");
+    UpgradeTestUtils.execute(db, "CREATE INDEX idx_name ON other_app (x)");
+
+    assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()).upgradeSchema())
+        .hasMessageMatching("(?is).*index idx_name is used by table other_app.*")
+        .hasMessageContaining("rename that index");
+  }
+
+  @Test
   void readsOnlyTheConfiguredSchema() {
     assumeFalse(db.jdbcUrl().startsWith("jdbc:mysql:"), "MySQL has no schemas within a database");
     // In a metadata search, "_" matches any character: uc_a would also list ucxa's tables.
@@ -389,6 +433,7 @@ public class SchemaMigratorTest {
     "jdbc:h2:ssl://localhost/{dir}/uc,,",
     "jdbc:p6spy:h2:file:{dir}/uc;AUTO_SERVER=TRUE,,",
     "jdbc:h2:file:{dir}/uc,hibernate.hikari.dataSource.AUTO_SERVER,TRUE",
+    "jdbc:h2:file:{dir}/uc,hibernate.hikari.dataSource.URL,jdbc:h2:tcp://localhost/{dir}/uc",
     ",hibernate.hikari.dataSource.URL,jdbc:h2:file:{dir}/uc;AUTO_SERVER=TRUE",
   })
   void refusesH2InServerMode(String url, String key, String value, @TempDir Path dir) {
@@ -401,6 +446,11 @@ public class SchemaMigratorTest {
     } else {
       properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
       properties.setProperty("hibernate.connection.url", url.replace("{dir}", dir.toString()));
+      if (key != null && key.endsWith(".URL")) {
+        // Hikari then uses the data source class's URL, not the one above.
+        properties.setProperty(
+            "hibernate.hikari.dataSourceClassName", "org.h2.jdbcx.JdbcDataSource");
+      }
     }
     if (key != null) {
       properties.setProperty(key, value.replace("{dir}", dir.toString()));
@@ -409,6 +459,19 @@ public class SchemaMigratorTest {
     assertThatThrownBy(() -> SchemaMigrator.fromHibernateProperties(properties))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("H2 in server mode is not supported");
+  }
+
+  @Test
+  void refusesPostgresqlWithoutACurrentSchema() {
+    assumeFalse(!db.jdbcUrl().startsWith("jdbc:postgresql:"), "only PostgreSQL");
+    HikariConfig config = new HikariConfig();
+    config.setDataSource(db.dataSource());
+    config.setSchema("no_such_schema");
+    try (HikariDataSource noSchema = new HikariDataSource(config)) {
+      assertThatThrownBy(() -> new SchemaMigrator(noSchema))
+          .hasMessageContaining("The connection has no current schema")
+          .hasMessageContaining("currentSchema");
+    }
   }
 
   @Test
