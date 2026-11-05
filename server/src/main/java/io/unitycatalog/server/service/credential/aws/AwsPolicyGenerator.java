@@ -10,6 +10,7 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import java.net.URI;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -84,6 +85,36 @@ public class AwsPolicyGenerator {
   private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
   private static final ObjectMapper YAML_MAPPER = new ObjectMapper(new YAMLFactory());
 
+  /**
+   * AWS IAM KMS condition keys ({@code kms:ViaService}) are rejected by S3-compatible STS
+   * implementations such as MinIO ({@code invalid condition key}). Only attach the KMS statement
+   * when AssumeRole targets AWS STS.
+   *
+   * <p>A blank endpoint means the AWS SDK default (real AWS STS). Hosts under {@code amazonaws.com}
+   * / {@code amazonaws.com.cn} are treated as AWS; everything else (MinIO, localhost, custom
+   * gateways) is not.
+   */
+  public static boolean stsSupportsKmsPolicyConditions(String stsEndpointUrl) {
+    if (stsEndpointUrl == null || stsEndpointUrl.isBlank()) {
+      return true;
+    }
+    URI uri;
+    try {
+      uri = URI.create(stsEndpointUrl.trim());
+    } catch (IllegalArgumentException ignored) {
+      return false;
+    }
+    String host = uri.getHost();
+    if (host == null) {
+      return false;
+    }
+    String normalized = host.toLowerCase(Locale.ROOT);
+    return normalized.equals("amazonaws.com")
+        || normalized.endsWith(".amazonaws.com")
+        || normalized.equals("amazonaws.com.cn")
+        || normalized.endsWith(".amazonaws.com.cn");
+  }
+
   // This can support generating a policy across multiple buckets and paths, however, the assumed
   // role the policy is applied to for a scoped-session needs to have access across those buckets
   /**
@@ -94,6 +125,14 @@ public class AwsPolicyGenerator {
   static String generatePolicy(
       Set<CredentialContext.Privilege> privileges, List<NormalizedURL> locations) {
     return generatePolicy(privileges, locations, null, null);
+  }
+
+  @SneakyThrows
+  public static String generatePolicy(
+      Set<CredentialContext.Privilege> privileges,
+      List<NormalizedURL> locations,
+      boolean includeKmsPermissions) {
+    return generatePolicy(privileges, locations, null, null, includeKmsPermissions);
   }
 
   /**
@@ -110,26 +149,44 @@ public class AwsPolicyGenerator {
       List<NormalizedURL> locations,
       String roleArn,
       Region awsRegion) {
+    return generatePolicy(privileges, locations, roleArn, awsRegion, true);
+  }
+
+  @SneakyThrows
+  public static String generatePolicy(
+      Set<CredentialContext.Privilege> privileges,
+      List<NormalizedURL> locations,
+      String roleArn,
+      Region awsRegion,
+      boolean includeKmsPermissions) {
     PartitionMetadata partition = iamPartition(roleArn, awsRegion);
     JsonNode policyRoot = loadYaml(POLICY_STATEMENT);
     ArrayNode policyStatement = (ArrayNode) policyRoot.findPath("Statement");
     JsonNode operationsStatement = loadYaml(OPERATION_STATEMENT);
     policyStatement.add(operationsStatement);
-    JsonNode kmsStatement = loadYaml(KMS_STATEMENT);
-    ((ObjectNode) kmsStatement)
-        .putObject("Condition")
-        .putObject("StringLike")
-        .put("kms:ViaService", kmsViaService(partition));
+    JsonNode kmsStatement = null;
+    if (includeKmsPermissions) {
+      kmsStatement = loadYaml(KMS_STATEMENT);
+      ((ObjectNode) kmsStatement)
+          .putObject("Condition")
+          .putObject("StringLike")
+          .put("kms:ViaService", kmsViaService(partition));
+    }
 
     // Add the appropriate S3 and KMS operations for the privileges requested
     ArrayNode actions = (ArrayNode) operationsStatement.findPath("Action");
-    ArrayNode kmsActions = (ArrayNode) kmsStatement.findPath("Action");
+    ArrayNode kmsActions =
+        kmsStatement != null ? (ArrayNode) kmsStatement.findPath("Action") : null;
     if (privileges.contains(CredentialContext.Privilege.UPDATE)) {
       UPDATE_ACTIONS.forEach(actions::add);
-      UPDATE_KMS_ACTIONS.forEach(kmsActions::add);
+      if (kmsActions != null) {
+        UPDATE_KMS_ACTIONS.forEach(kmsActions::add);
+      }
     } else if (privileges.contains(CredentialContext.Privilege.SELECT)) {
       SELECT_ACTIONS.forEach(actions::add);
-      SELECT_KMS_ACTIONS.forEach(kmsActions::add);
+      if (kmsActions != null) {
+        SELECT_KMS_ACTIONS.forEach(kmsActions::add);
+      }
     } else {
       throw new NotAuthorizedException(
           String.format(
@@ -173,7 +230,9 @@ public class AwsPolicyGenerator {
 
     // Appended after the per-bucket statements so that the position of the S3 statements
     // within the policy doesn't change
-    policyStatement.add(kmsStatement);
+    if (kmsStatement != null) {
+      policyStatement.add(kmsStatement);
+    }
 
     return JSON_MAPPER.writeValueAsString(policyRoot);
   }
