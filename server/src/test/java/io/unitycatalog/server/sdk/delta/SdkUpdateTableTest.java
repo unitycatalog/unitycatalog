@@ -383,7 +383,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
 
     // -------- set-columns alone that drops a previously-partition column is rejected --------
     // Partition is on `id`; the new schema replaces `id` with `id2`. Silent partition clearing
-    // would leave the table inconsistent, so this must fail with the unknown-column error.
+    // would leave the table inconsistent, so this must fail with the dropped-partition error.
     {
       Handle h = createDeltaExternal("tbl_setcols_drop_part");
       Handle h1 =
@@ -407,7 +407,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                                           .nullable(false)
                                           .metadata(new DeltaStructFieldMetadata()))))),
           DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-          "partition-columns references unknown column: id");
+          "partition column 'id' dropped");
     }
 
     // -------- assert-etag conflict: mutate once to roll the etag, then resubmit with the stale
@@ -2307,6 +2307,14 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               2,
               fld("a", prim("long"), false, 1, "col-1"),
               fld("b", prim("long"), 2, "col-2"));
+  private static final TableFactory ID_AB =
+      (t, n) ->
+          t.createManaged(
+              n,
+              "id",
+              2,
+              fld("a", prim("long"), false, 1, "col-1"),
+              fld("b", prim("long"), 2, "col-2"));
   private static final TableFactory ID_S =
       (t, n) ->
           t.createManaged(
@@ -2585,7 +2593,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
         // A stored column without keys has no identity to rename from, so it may gain them.
         ok(
                 "stored column without keys gains them",
-                (t, n) -> t.createManaged(n, "name", 1, fld("a", prim("long"), false, null, null)),
+                (t, n) ->
+                    t.storeColumnMappingMode(
+                        t.createManaged(n, "none", 0, fld("a", prim("long"), false, null, null)),
+                        "name"),
                 setColumns(fld("a", prim("long"), false, 1, "a")))
             .expectColumns("a"),
         // Replacing every column with new ids and physical names is a drop and an add of each.
@@ -2671,12 +2682,107 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               return h;
             },
             setColumns(
-                fld("b", prim("long"), false, 1, "col-1"), fld("v", prim("long"), 2, "col-v"))));
+                fld("b", prim("long"), false, 1, "col-1"), fld("v", prim("long"), 2, "col-v"))),
+        // A partition column follows its column through a rename and keeps its partition order.
+        ok(
+                "rename one of two partition columns",
+                NAME_AB,
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 2, "col-2")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b", "a")))
+            .expectPartitions("b2", "a"),
+        ok(
+                "name mode partition follows the physical name",
+                NAME_AB,
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 9, "col-2")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .expectPartitions("b2"),
+        ok(
+                "id mode partition follows the id",
+                ID_AB,
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 2, "col-2")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .expectPartitions("b2"),
+        ok(
+                "name mode partition column renamed only in case",
+                NAME_AB,
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"), fld("B", prim("long"), 2, "col-2")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .expectPartitions("B"),
+        // REPLACE TABLE that changes a partition column's type: Delta gives the column a new id
+        // and physical name under the same name, and sends no set-partition-columns.
+        ok(
+                "name mode partition column replaced with a new type",
+                NAME_AB,
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"),
+                    fld("b", prim("string"), 3, "col-3")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .expectPartitions("b"),
+        ok(
+                "id mode partition column replaced with a new type",
+                ID_AB,
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"),
+                    fld("b", prim("string"), 3, "col-3")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .expectPartitions("b"),
+        ok(
+                "first enable on a partitioned table",
+                (t, n) ->
+                    t.createManaged(
+                        n,
+                        "none",
+                        0,
+                        fld("a", prim("long"), false, null, null),
+                        fld("b", prim("long"), null, null)),
+                setColumns(fld("a", prim("long"), false, 1, "a"), fld("b", prim("long"), 2, "b")),
+                new DeltaSetPropertiesUpdate().updates(Map.of("delta.columnMapping.mode", "name")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .expectPartitions("b"),
+        ok(
+                "name mode, stored columns without keys: the partition resolves by name",
+                (t, n) ->
+                    t.storeColumnMappingMode(
+                        t.createManaged(
+                            n,
+                            "none",
+                            0,
+                            fld("a", prim("long"), false, null, null),
+                            fld("b", prim("long"), null, null)),
+                        "name"),
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), 2, "col-2")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .expectPartitions("b"));
   }
 
   private static DeltaStructField withTypeChange(DeltaStructField field, String from, String to) {
     field.getMetadata().put("delta.typeChanges", List.of(Map.of("fromType", from, "toType", to)));
     return field;
+  }
+
+  /**
+   * Stores {@code mode} as the table's column mapping mode, leaving its columns as they are: a
+   * table stored in name mode without column mapping keys, which the Delta API rejects.
+   */
+  private Handle storeColumnMappingMode(Handle h, String mode) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction tx = session.beginTransaction();
+      session
+          .createMutationQuery(
+              "update PropertyDAO p set p.value = :mode"
+                  + " where p.entityId = :id and p.key = :key")
+          .setParameter("mode", mode)
+          .setParameter("id", h.tableId())
+          .setParameter("key", "delta.columnMapping.mode")
+          .executeUpdate();
+      tx.commit();
+    }
+    return h;
   }
 
   /** Makes the stored type of one column unreadable. */
