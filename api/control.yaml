@@ -104,6 +104,8 @@ paths:
             application/scim+json:
               schema:
                 $ref: '#/components/schemas/UserResource'
+        '400':
+          description: The request deactivates the metastore owner (FAILED_PRECONDITION).
     delete:
       tags:
         - Users
@@ -117,6 +119,8 @@ paths:
           content:
             application/scim+json:
               schema: {}
+        '400':
+          description: The user is the metastore owner (FAILED_PRECONDITION).
   /scim2/Me:
     get:
       tags:

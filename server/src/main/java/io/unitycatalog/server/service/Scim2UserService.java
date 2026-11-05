@@ -177,12 +177,13 @@ public class Scim2UserService implements ScimService {
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public UserResource updateUser(@Param("id") String id, UserResource userResource) {
-    UserResource user = asUserResource(userRepository.getUser(id));
+    User existing = userRepository.getUser(id);
+    UserResource user = asUserResource(existing);
     if (!id.equals(userResource.getId())) {
       throw new Scim2RuntimeException(new ResourceConflictException("User id mismatch."));
     }
     if (Boolean.FALSE.equals(userResource.getActive())) {
-      checkNotMetastoreOwner(user.getId(), user.getUserName());
+      checkNotMetastoreOwner(existing);
     }
 
     UpdateUser updateUser =
@@ -200,7 +201,7 @@ public class Scim2UserService implements ScimService {
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteUser(@Param("id") String id) {
     User user = userRepository.getUser(id);
-    checkNotMetastoreOwner(user.getId(), user.getEmail());
+    checkNotMetastoreOwner(user);
     authorizer.clearAuthorizationsForPrincipal(
         UUID.fromString(Objects.requireNonNull(user.getId())));
     userRepository.deleteUser(user.getId());
@@ -225,8 +226,7 @@ public class Scim2UserService implements ScimService {
     try {
       Boolean value = operation.getValues(Boolean.class).get(0);
       if (Boolean.FALSE.equals(value)) {
-        User user = userRepository.getUser(id);
-        checkNotMetastoreOwner(user.getId(), user.getEmail());
+        checkNotMetastoreOwner(userRepository.getUser(id));
       }
       UpdateUser updateUser = UpdateUser.builder().active(value).build();
       userRepository.updateUser(id, updateUser);
@@ -238,15 +238,16 @@ public class Scim2UserService implements ScimService {
 
   // With authorization disabled, every authorize() call returns true, so the owner check only
   // means something when authorization is enabled.
-  private void checkNotMetastoreOwner(String userId, String email) {
+  private void checkNotMetastoreOwner(User user) {
     if (!serverProperties.isAuthorizationEnabled()) {
       return;
     }
     UUID metastoreId = metastoreRepository.getMetastoreId();
-    if (authorizer.authorize(UUID.fromString(userId), METASTORE, metastoreId, Privileges.OWNER)) {
+    UUID userId = UUID.fromString(user.getId());
+    if (authorizer.authorize(userId, METASTORE, metastoreId, Privileges.OWNER)) {
       throw new BaseException(
           ErrorCode.FAILED_PRECONDITION,
-          "The metastore owner can't be deleted or deactivated: " + email);
+          "The metastore owner can't be deleted or deactivated: " + user.getEmail());
     }
   }
 
