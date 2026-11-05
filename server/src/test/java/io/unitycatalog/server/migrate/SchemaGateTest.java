@@ -37,6 +37,9 @@ public class SchemaGateTest {
     assertThat(SchemaMigrator.runCommand(true, conf, new PrintStream(new ByteArrayOutputStream())))
         .isZero();
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.CURRENT);
+    // On H2 the check opens the file that now exists, with IFEXISTS=TRUE added to its URL.
+    assertThat(SchemaMigrator.runCommand(false, conf, new PrintStream(new ByteArrayOutputStream())))
+        .isZero();
   }
 
   @ParameterizedTest
