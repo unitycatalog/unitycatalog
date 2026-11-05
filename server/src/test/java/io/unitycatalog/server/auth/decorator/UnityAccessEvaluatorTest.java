@@ -40,6 +40,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.stubbing.Answer;
 
 class UnityAccessEvaluatorTest {
 
@@ -387,5 +388,81 @@ class UnityAccessEvaluatorTest {
                   Map.of("strict_privilege_checks", !strictPrivilegeChecks)))
           .isEqualTo(strictPrivilegeChecks);
     }
+  }
+
+  @Test
+  void batchChecksSharedParentsOncePerList() throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    UUID principal = UUID.randomUUID();
+    UUID metastore = UUID.randomUUID();
+    UUID catalog = UUID.randomUUID();
+    UUID schema = UUID.randomUUID();
+    when(authorizer.authorize(principal, CATALOG, catalog, USE_CATALOG)).thenReturn(true);
+    when(authorizer.authorize(principal, SCHEMA, schema, USE_SCHEMA)).thenReturn(true);
+    when(authorizer.authorizeAny(
+            eq(principal), eq(TABLE), any(UUID.class), any(Privileges[].class)))
+        .thenReturn(true);
+
+    UnityAccessEvaluator.Batch batch =
+        new UnityAccessEvaluator(authorizer, true)
+            .batch(principal, AuthorizeExpressions.GET_TABLE, Map.of(), System.nanoTime());
+    int tables = 100;
+    for (int i = 0; i < tables; i++) {
+      assertThat(
+              batch.evaluate(
+                  Map.of(
+                      METASTORE, metastore,
+                      CATALOG, catalog,
+                      SCHEMA, schema,
+                      TABLE, UUID.randomUUID())))
+          .isTrue();
+    }
+
+    // The shared parent checks run once for the list; only the table's own check runs per item.
+    verify(authorizer, times(1)).authorize(principal, METASTORE, metastore, Privileges.OWNER);
+    verify(authorizer, times(1)).authorize(principal, CATALOG, catalog, Privileges.OWNER);
+    verify(authorizer, times(1)).authorize(principal, CATALOG, catalog, USE_CATALOG);
+    verify(authorizer, times(1)).authorize(principal, SCHEMA, schema, Privileges.OWNER);
+    verify(authorizer, times(1)).authorize(principal, SCHEMA, schema, USE_SCHEMA);
+    verify(authorizer, times(tables))
+        .authorizeAny(eq(principal), eq(TABLE), any(UUID.class), any(Privileges[].class));
+    verify(authorizer, never()).refreshAuthorizations(anyLong());
+  }
+
+  static Stream<Arguments> refreshOutcomes() {
+    Answer<Boolean> fails =
+        invocation -> {
+          throw new RuntimeException("reload failed");
+        };
+    return Stream.of(
+        Arguments.of("returns true", (Answer<Boolean>) invocation -> true, 2),
+        Arguments.of("returns false", (Answer<Boolean>) invocation -> false, 1),
+        Arguments.of("throws", fails, 1));
+  }
+
+  @ParameterizedTest(name = "refresh {0}")
+  @MethodSource("refreshOutcomes")
+  void batchRefreshesAtMostOncePerList(
+      String outcome, Answer<Boolean> refresh, int firstTableChecks) throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    when(authorizer.refreshAuthorizations(anyLong())).thenAnswer(refresh);
+    UUID principal = UUID.randomUUID();
+    UUID catalog = UUID.randomUUID();
+
+    UnityAccessEvaluator.Batch batch =
+        new UnityAccessEvaluator(authorizer, true)
+            .batch(principal, "#authorize(#principal, #table, OWNER)", Map.of(), System.nanoTime());
+    List<UUID> tables = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+    for (UUID table : tables) {
+      assertThat(batch.evaluate(Map.of(CATALOG, catalog, TABLE, table))).isFalse();
+    }
+
+    // The first deny uses up the one refresh, re-checking only if it succeeded. Whatever the
+    // outcome, later denies are final.
+    verify(authorizer, times(1)).refreshAuthorizations(anyLong());
+    verify(authorizer, times(firstTableChecks))
+        .authorize(principal, TABLE, tables.get(0), Privileges.OWNER);
+    verify(authorizer, times(1)).authorize(principal, TABLE, tables.get(1), Privileges.OWNER);
+    verify(authorizer, times(1)).authorize(principal, TABLE, tables.get(2), Privileges.OWNER);
   }
 }
