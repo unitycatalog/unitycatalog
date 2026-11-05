@@ -247,4 +247,26 @@ public class IcebergRestCatalogCredentialVendingTest extends BaseCRUDTestWithMoc
               assertThat(r.getRequestId()).isNotBlank(); // joins to the server.log lines
             });
   }
+
+  /** A local table has no credential to vend, but loading it is recorded like other vends. */
+  @Test
+  public void auditRecordsLocalTableLoadWithoutExpiry() throws Exception {
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+    icebergClient.createTable(
+        TestUtils.CATALOG_NAME,
+        TestUtils.SCHEMA_NAME,
+        CreateTableRequest.builder().withName(TestUtils.TABLE_NAME).withSchema(schema).build());
+    CapturingAuditSink.reset();
+    icebergClient.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
+
+    assertThat(CapturingAuditSink.RECORDS)
+        .singleElement()
+        .satisfies(
+            r -> {
+              assertThat(r.getAction()).isEqualTo(AuditRecord.Action.ISSUE_CREDENTIAL);
+              assertThat(r.getPurpose()).isEqualTo(AuditRecord.Purpose.CLIENT);
+              assertThat(r.getLocation()).startsWith("file:");
+              assertThat(r.getExpiresAt()).isNull(); // nothing was issued
+            });
+  }
 }
