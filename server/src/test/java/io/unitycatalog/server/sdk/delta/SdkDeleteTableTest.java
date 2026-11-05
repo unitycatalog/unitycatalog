@@ -16,11 +16,14 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.BaseTableCRUDTestEnv;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -103,6 +106,37 @@ public class SdkDeleteTableTest extends BaseServerTest {
                 TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "nonexistent"),
         DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
         "Table not found");
+  }
+
+  /** A rename that commits in between must not make the drop delete the renamed table. */
+  @Test
+  public void dropRacingARenameDoesNotDeleteTheRenamedTable() throws Exception {
+    String oldName = TestUtils.SCHEMA_FULL_NAME + ".tbl_drop_race";
+    TableInfo table =
+        BaseTableCRUDTestEnv.createTestingTable(
+            "tbl_drop_race",
+            TableType.EXTERNAL,
+            Optional.of("file:///tmp/uc_test/tbl_drop_race"),
+            tableOps);
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held ->
+                    setColumn(
+                        held,
+                        TableInfoDAO.class,
+                        UUID.fromString(table.getTableId()),
+                        "name",
+                        "tbl_drop_race_renamed"),
+                () -> {
+                  tableOps.deleteTable(oldName);
+                  return null;
+                }),
+        ErrorCode.TABLE_NOT_FOUND,
+        "Table not found");
+
+    assertThat(tableOps.getTable(oldName + "_renamed").getTableId()).isEqualTo(table.getTableId());
   }
 
   /**

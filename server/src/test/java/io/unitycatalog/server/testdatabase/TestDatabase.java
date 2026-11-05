@@ -1,11 +1,28 @@
 package io.unitycatalog.server.testdatabase;
 
+import static org.assertj.core.api.Assertions.fail;
+
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.Transaction;
 
 /**
  * One test's database on the selected backend. {@link #close()} closes every configurator opened
@@ -74,6 +91,79 @@ public final class TestDatabase implements AutoCloseable {
     HibernateConfigurator configurator = new HibernateConfigurator(hibernateProperties);
     openedConfigurators.add(configurator);
     return configurator;
+  }
+
+  /**
+   * Whether some connection to this database is blocked waiting for a row lock that another
+   * connection holds. Tests poll this to know a racing operation has reached its lock, instead of
+   * sleeping.
+   */
+  public boolean hasLockWaiter() {
+    String query =
+        switch (SupportedDatabase.selected()) {
+          case H2 ->
+              "SELECT COUNT(*) FROM INFORMATION_SCHEMA.SESSIONS WHERE BLOCKER_ID IS NOT NULL";
+          case POSTGRES_18 ->
+              "SELECT COUNT(*) FROM pg_stat_activity"
+                  + " WHERE datname = current_database() AND wait_event_type = 'Lock'";
+          case MYSQL_8 ->
+              "SELECT COUNT(*) FROM information_schema.innodb_trx WHERE trx_state = 'LOCK WAIT'";
+        };
+    try (Connection connection = DriverManager.getConnection(url, user, password);
+        Statement statement = connection.createStatement();
+        ResultSet result = statement.executeQuery(query)) {
+      result.next();
+      return result.getInt(1) > 0;
+    } catch (SQLException e) {
+      throw new IllegalStateException("Could not look for blocked connections on " + url, e);
+    }
+  }
+
+  /**
+   * Races {@code operation} against an uncommitted write. {@code heldWrite} runs in a raw session
+   * and is flushed, so its row locks stay held; {@code operation} then runs on another thread. Once
+   * the database reports a connection blocked on a row lock, the held write commits and the
+   * operation's result is returned (or its exception rethrown). Fails if the operation finishes
+   * without ever waiting for the lock, since the test would then not exercise the race.
+   */
+  public <T> T runBlockedByHeldWrite(Consumer<Session> heldWrite, Callable<T> operation)
+      throws Exception {
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try (Session held = sessionFactory().openSession()) {
+      Transaction transaction = held.beginTransaction();
+      heldWrite.accept(held);
+      held.flush();
+      Future<T> result = executor.submit(operation);
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+      while (!hasLockWaiter()) {
+        if (result.isDone() || System.nanoTime() > deadline) {
+          transaction.rollback();
+          fail("The operation did not wait for the held write's lock");
+        }
+        // Poll gently: on MySQL, reading innodb_trx every few milliseconds stalls the very
+        // statement being waited for.
+        Thread.sleep(100);
+      }
+      transaction.commit();
+      try {
+        return result.get(30, TimeUnit.SECONDS);
+      } catch (ExecutionException e) {
+        throw e.getCause() instanceof Exception cause ? cause : e;
+      }
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  /** Sets one column of the {@code entity} row {@code id} in {@code session}, for a held write. */
+  public static void setColumn(
+      Session session, Class<?> entity, UUID id, String attribute, Object value) {
+    session
+        .createMutationQuery(
+            "update " + entity.getSimpleName() + " set " + attribute + " = :value where id = :id")
+        .setParameter("value", value)
+        .setParameter("id", id)
+        .executeUpdate();
   }
 
   @Override
