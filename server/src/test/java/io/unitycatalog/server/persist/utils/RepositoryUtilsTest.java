@@ -239,18 +239,62 @@ public class RepositoryUtilsTest {
             });
   }
 
-  /** A delete whose key no longer matches changes nothing and reports not found. */
+  /**
+   * The update writes only the given columns, so a column another transaction changed after this
+   * one read the row keeps its committed value, and the entity is refreshed to show it.
+   */
   @Test
-  public void deleteByKeyMatchesNothingWhenTheKeyDiffers() {
+  public void updateByKeyWritesOnlyTheGivenColumns() {
+    UUID id = persistCatalog("update_by_key", "before");
+    try (Session stale = testDatabase.sessionFactory().openSession()) {
+      stale.beginTransaction();
+      CatalogInfoDAO entity = stale.get(CatalogInfoDAO.class, id);
+      inTransaction(
+          session -> {
+            session
+                .createMutationQuery("update CatalogInfoDAO set comment = 'after' where id = :id")
+                .setParameter("id", id)
+                .executeUpdate();
+            return null;
+          });
+
+      RepositoryUtils.updateByKey(
+          stale, entity, Map.of("name", "update_by_key"), Map.of("name", "updated"), NOT_FOUND);
+      assertThat(entity.getName()).isEqualTo("updated");
+      assertThat(entity.getComment()).isEqualTo("after");
+      stale.getTransaction().commit();
+    }
+
+    CatalogInfoDAO updated = findCatalog(id);
+    assertThat(updated.getName()).isEqualTo("updated");
+    assertThat(updated.getComment()).isEqualTo("after");
+  }
+
+  /** An update or delete whose key no longer matches changes nothing and reports not found. */
+  @Test
+  public void updateByKeyAndDeleteByKeyMatchNothingWhenTheKeyDiffers() {
     UUID id = persistCatalog("by_key", "c");
     inTransaction(
         session -> {
           CatalogInfoDAO entity = session.get(CatalogInfoDAO.class, id);
           assertThatThrownBy(
                   () ->
+                      RepositoryUtils.updateByKey(
+                          session,
+                          entity,
+                          Map.of("name", "renamed"),
+                          Map.of("comment", "x"),
+                          NOT_FOUND))
+              .isInstanceOfSatisfying(
+                  BaseException.class,
+                  e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.CATALOG_NOT_FOUND));
+          assertThatThrownBy(
+                  () ->
                       RepositoryUtils.deleteByKey(
                           session, entity, Map.of("name", "renamed"), NOT_FOUND))
-              .isInstanceOf(BaseException.class);
+              .isInstanceOfSatisfying(
+                  BaseException.class,
+                  e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.CATALOG_NOT_FOUND));
           return null;
         });
     assertThat(findCatalog(id).getComment()).isEqualTo("c");
