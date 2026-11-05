@@ -173,11 +173,11 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
   credential expires. Records never contain credential values.
 
 A record is written for every credential issued, including ones served from the credential cache.
-For local `file:` storage there is no credential to issue. A temporary-credentials or Delta API
-request still writes a record of the access the server granted, without `expires_at`. Iceberg table
-loads and the server's own reads, writes and cleanup of `file:` storage write no record. Audit
-records are best effort: one can be lost when the sink fails, or when a request is still running as
-the server shuts down.
+For local `file:` storage there is no credential to issue. A request for credentials, through the
+temporary-credentials endpoints, the Delta API or the Iceberg REST catalog, still writes a record of
+the access the server granted, without `expires_at`. The server's own reads, writes and cleanup of
+`file:` storage write no record. Audit records are best effort: one can be lost when the sink fails,
+or when a request is still running as the server shuts down.
 
 There are two ways to send records:
 
