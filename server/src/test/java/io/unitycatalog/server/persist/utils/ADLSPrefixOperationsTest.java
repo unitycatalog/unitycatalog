@@ -365,11 +365,11 @@ class ADLSPrefixOperationsTest {
               return true;
             });
     FileOperations factory = mock(FileOperations.class);
-    when(factory.getCleanupFileIO(eq(NormalizedURL.from(CONTAINER + DIRECTORY)), any()))
+    when(factory.getCleanupFileIO(eq(NormalizedURL.from(CONTAINER + DIRECTORY)), any(), any()))
         .thenAnswer(
             invocation -> {
               expectedThread = Thread.currentThread();
-              return new ADLSPrefixOperations(fileIO, PREFIX, invocation.getArgument(1));
+              return new ADLSPrefixOperations(fileIO, PREFIX, invocation.getArgument(2));
             });
 
     ServerProperties properties = new ServerProperties();

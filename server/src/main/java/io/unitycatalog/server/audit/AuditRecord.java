@@ -1,0 +1,64 @@
+package io.unitycatalog.server.audit;
+
+import java.time.Instant;
+import java.util.UUID;
+import lombok.Builder;
+import lombok.NonNull;
+import lombok.Value;
+
+/**
+ * One audit record. It holds no secrets: no credential values, and storage locations without query
+ * or fragment, and without user info except an ABFS container name before the {@code @}. Fields
+ * that don't apply to the record's action are null.
+ */
+@Value
+@Builder
+public class AuditRecord {
+  /** What the record records. */
+  public enum Action {
+    ISSUE_CREDENTIAL
+  }
+
+  /** Who a credential is for. */
+  public enum Purpose {
+    /** Returned to the API caller. */
+    CLIENT,
+    /** Used by the server itself while handling a request. */
+    SERVER,
+    /** Used by the background storage cleanup. */
+    CLEANUP
+  }
+
+  /**
+   * The access the request asked for. A static credential is returned as configured and can allow
+   * more.
+   */
+  public enum Access {
+    READ,
+    READ_WRITE
+  }
+
+  @NonNull Instant time;
+  @NonNull Action action;
+
+  /**
+   * The caller's token subject (an email or {@code admin}), {@code system:storage-cleanup}, or
+   * null.
+   */
+  String user;
+
+  String requestId;
+  Purpose purpose;
+  String location;
+
+  Access access;
+
+  Instant expiresAt;
+
+  UUID resourceId;
+
+  /**
+   * Declared so Javadoc, which runs without Lombok, can resolve the builder type; Lombok fills it.
+   */
+  public static class AuditRecordBuilder {}
+}
