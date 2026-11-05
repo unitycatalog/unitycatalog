@@ -54,6 +54,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.hibernate.Session;
@@ -427,6 +428,22 @@ public class TableRepository {
       throw new BaseException(
           ErrorCode.UNSUPPORTED_TABLE_FORMAT,
           "Table is not a Delta table: " + catalog + "." + schema + "." + table);
+    }
+  }
+
+  /**
+   * Only a table created through the Iceberg REST catalog may be changed through it: a UniForm
+   * table is a Delta table that those endpoints only read.
+   */
+  private static void requireIcebergTable(
+      TableInfoDAO dao, String catalog, String schema, String table, String operation) {
+    if (!DataSourceFormat.ICEBERG.toString().equals(dao.getDataSourceFormat())) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          String.format(
+              "Table %s.%s.%s was not created through the Iceberg REST catalog; %s it through the"
+                  + " Unity Catalog API instead.",
+              catalog, schema, table, operation));
     }
   }
 
@@ -1230,7 +1247,7 @@ public class TableRepository {
    * lazy fields.
    */
   public TableInfoDAO deleteTable(String catalog, String schema, String table) {
-    return deleteTable(catalog, schema, table, dao -> {});
+    return deleteTable(catalog, schema, table, dao -> {}, () -> tableNotFound(table));
   }
 
   /**
@@ -1239,17 +1256,38 @@ public class TableRepository {
    */
   public TableInfoDAO deleteTableForDelta(String catalog, String schema, String table) {
     return deleteTable(
-        catalog, schema, table, dao -> requireDeltaTable(dao, catalog, schema, table));
+        catalog,
+        schema,
+        table,
+        dao -> requireDeltaTable(dao, catalog, schema, table),
+        () -> tableNotFound(table));
+  }
+
+  /**
+   * Variant of {@link #deleteTable(String, String, String)} for the Iceberg REST catalog: rejects a
+   * table not created through it in the same transaction that deletes it.
+   */
+  public TableInfoDAO deleteTableForIceberg(String catalog, String schema, String table) {
+    return deleteTable(
+        catalog,
+        schema,
+        table,
+        dao -> requireIcebergTable(dao, catalog, schema, table, "drop"),
+        () -> tableNotFound(catalog + "." + schema + "." + table));
   }
 
   private TableInfoDAO deleteTable(
-      String catalog, String schema, String table, Consumer<TableInfoDAO> check) {
+      String catalog,
+      String schema,
+      String table,
+      Consumer<TableInfoDAO> check,
+      Supplier<BaseException> notFound) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           UUID schemaId =
               repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
-          return deleteTable(session, schemaId, table, check);
+          return deleteTable(session, schemaId, table, check, notFound);
         },
         "Failed to delete table",
         /* readOnly= */ false,
@@ -1257,26 +1295,25 @@ public class TableRepository {
   }
 
   TableInfoDAO deleteTable(Session session, UUID schemaId, String tableName) {
-    return deleteTable(session, schemaId, tableName, dao -> {});
+    return deleteTable(session, schemaId, tableName, dao -> {}, () -> tableNotFound(tableName));
   }
 
   private TableInfoDAO deleteTable(
-      Session session, UUID schemaId, String tableName, Consumer<TableInfoDAO> check) {
+      Session session,
+      UUID schemaId,
+      String tableName,
+      Consumer<TableInfoDAO> check,
+      Supplier<BaseException> notFound) {
     TableInfoDAO found = findBySchemaIdAndName(session, schemaId, tableName);
     if (found == null) {
-      throw tableNotFound(tableName);
+      throw notFound.get();
     }
     Map<String, Object> key = Map.of("name", tableName);
     // A commit rewrites the table's columns under this lock; waiting for it lets the column delete
     // below see the rows the commit wrote.
     TableInfoDAO tableInfoDAO =
         RepositoryUtils.lockByKey(
-            session,
-            TableInfoDAO.class,
-            found.getId(),
-            key,
-            "table " + tableName,
-            () -> tableNotFound(tableName));
+            session, TableInfoDAO.class, found.getId(), key, "table " + tableName, notFound);
     check.accept(tableInfoDAO);
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       repositories
@@ -1322,7 +1359,7 @@ public class TableRepository {
    * schema, and storage location are all unchanged.
    */
   public void renameTable(String catalog, String schema, String table, String newName) {
-    renameTable(catalog, schema, table, newName, dao -> {});
+    renameTable(catalog, schema, table, newName, dao -> {}, () -> tableNotFound(table));
   }
 
   /**
@@ -1331,11 +1368,36 @@ public class TableRepository {
    */
   public void renameTableForDelta(String catalog, String schema, String table, String newName) {
     renameTable(
-        catalog, schema, table, newName, dao -> requireDeltaTable(dao, catalog, schema, table));
+        catalog,
+        schema,
+        table,
+        newName,
+        dao -> requireDeltaTable(dao, catalog, schema, table),
+        () -> tableNotFound(table));
+  }
+
+  /**
+   * Variant of {@link #renameTable(String, String, String, String)} for the Iceberg REST catalog:
+   * rejects a table not created through it in the same transaction that renames it, before the
+   * no-op and conflict checks.
+   */
+  public void renameTableForIceberg(String catalog, String schema, String table, String newName) {
+    renameTable(
+        catalog,
+        schema,
+        table,
+        newName,
+        dao -> requireIcebergTable(dao, catalog, schema, table, "rename"),
+        () -> tableNotFound(catalog + "." + schema + "." + table));
   }
 
   private void renameTable(
-      String catalog, String schema, String table, String newName, Consumer<TableInfoDAO> check) {
+      String catalog,
+      String schema,
+      String table,
+      String newName,
+      Consumer<TableInfoDAO> check,
+      Supplier<BaseException> notFound) {
     ValidationUtils.validateSqlObjectName(newName);
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     TransactionManager.executeWithTransaction(
@@ -1345,17 +1407,12 @@ public class TableRepository {
               repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
           TableInfoDAO found = findBySchemaIdAndName(session, schemaId, table);
           if (found == null) {
-            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + table);
+            throw notFound.get();
           }
           Map<String, Object> key = Map.of("name", table);
           TableInfoDAO tableInfoDAO =
               RepositoryUtils.lockByKey(
-                  session,
-                  TableInfoDAO.class,
-                  found.getId(),
-                  key,
-                  "table " + table,
-                  () -> tableNotFound(table));
+                  session, TableInfoDAO.class, found.getId(), key, "table " + table, notFound);
           check.accept(tableInfoDAO);
           // Do the no-op check after the table lookup. A missing table must still return
           // TABLE_NOT_FOUND rather than succeed as a no-op.
@@ -1371,8 +1428,7 @@ public class TableRepository {
           changes.put("name", newName);
           changes.put("updatedAt", new Date());
           changes.put("updatedBy", callerId);
-          RepositoryUtils.updateByKey(
-              session, tableInfoDAO, key, changes, () -> tableNotFound(table));
+          RepositoryUtils.updateByKey(session, tableInfoDAO, key, changes, notFound);
           return null;
         },
         "Failed to rename table " + catalog + "." + schema + "." + table,

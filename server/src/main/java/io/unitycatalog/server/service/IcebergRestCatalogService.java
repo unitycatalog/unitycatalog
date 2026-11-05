@@ -744,19 +744,10 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     // Bound as a String rather than a Boolean so the spelling a client actually sends is accepted;
     // still validated, so a value that is not a boolean at all remains a clear 400.
     validatePurgeRequested(purgeRequested);
-    String fullName = catalog + "." + namespace + "." + table;
-    TableRepository.IcebergTableState state =
-        tableRepository.getIcebergTableState(catalog, namespace, table);
-    if (state.dataSourceFormat() != DataSourceFormat.ICEBERG) {
-      throw new BadRequestException(
-          "Table %s was not created through the Iceberg REST catalog; drop it through the Unity"
-              + " Catalog API instead.",
-          fullName);
-    }
     // EXTERNAL tables leave data and metadata files in place (purgeRequested is accepted for
     // spec compatibility but does not delete files); MANAGED tables have their storage directory
     // removed by the repository's delete path.
-    TableInfoDAO deleted = tableRepository.deleteTable(catalog, namespace, table);
+    TableInfoDAO deleted = tableRepository.deleteTableForIceberg(catalog, namespace, table);
     removeHierarchicalAuthorizations(deleted.getId().toString(), deleted.getSchemaId().toString());
     return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
@@ -872,19 +863,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
               + destination);
     }
     String namespace = source.toString();
-    String fullName = catalog + "." + namespace + "." + request.source().name();
-    // As with dropTable, only a table created through this API may be changed through it: a UniForm
-    // table is a Delta table that these endpoints read, and renaming it here would rename the Delta
-    // table under its own API.
-    TableRepository.IcebergTableState state =
-        tableRepository.getIcebergTableState(catalog, namespace, request.source().name());
-    if (state.dataSourceFormat() != DataSourceFormat.ICEBERG) {
-      throw new BadRequestException(
-          "Table %s was not created through the Iceberg REST catalog; rename it through the Unity"
-              + " Catalog API instead.",
-          fullName);
-    }
-    tableRepository.renameTable(
+    tableRepository.renameTableForIceberg(
         catalog, namespace, request.source().name(), request.destination().name());
     return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
