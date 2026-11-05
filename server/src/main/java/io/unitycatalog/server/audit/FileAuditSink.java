@@ -55,6 +55,11 @@ public class FileAuditSink implements AuditSink {
     this.logger = LogManager.getLogger(LOGGER_NAME);
   }
 
+  /** Writes to {@code logger} without checking the Log4j configuration. */
+  FileAuditSink(Logger logger) {
+    this.logger = logger;
+  }
+
   /** Fails when the Log4j configuration can drop audit records or hide a failed write. */
   static void validate(Configuration configuration) {
     LoggerConfig config = configuration.getLoggers().get(LOGGER_NAME);

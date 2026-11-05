@@ -153,6 +153,7 @@ class RepositoriesTest {
     }
 
     // The second vend is a cache hit and is recorded too.
+    assertThat(cacheRequests(registry, UcMetricConstants.MISS)).isEqualTo(1.0);
     assertThat(cacheRequests(registry, UcMetricConstants.HIT)).isEqualTo(1.0);
     assertThat(CapturingAuditSink.RECORDS).hasSize(2);
   }
