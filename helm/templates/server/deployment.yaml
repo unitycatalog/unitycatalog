@@ -127,7 +127,7 @@ spec:
                 secretKeyRef:
                   name: {{ $config.credentialsSecretName | quote }}
                   key: accessKey
-          {{- /* Deprecated: only for a custom server.properties template that still uses it. */}}
+          {{- /* Deprecated: only for a custom server.properties template that still uses these variables. */}}
           {{- if or $.Values.server.config.override $.Values.server.config.extraProperties }}
             - name: S3_SECRET_KEY_{{ $index }}
               valueFrom:
@@ -147,6 +147,7 @@ spec:
                 secretKeyRef:
                   name: {{ $config.credentialsSecretName | quote }}
                   key: clientId
+          {{- /* Deprecated: only for a custom server.properties template that still uses these variables. */}}
           {{- if or $.Values.server.config.override $.Values.server.config.extraProperties }}
             - name: ADLS_CLIENT_SECRET_{{ $index }}
               valueFrom:
@@ -161,13 +162,14 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.auth.clientSecretName | quote }}
                   key: clientId
+          {{- /* Deprecated: only for a custom server.properties template that still uses these variables. */}}
           {{- if or $.Values.server.config.override $.Values.server.config.extraProperties }}
             - name: OAUTH_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.auth.clientSecretName | quote }}
                   key: clientSecret
-                  # The chart no longer needs this key, so a Secret without it still works.
+                  # Nothing else in the chart reads this key, so a Secret without it still works.
                   optional: true
           {{- end }}
           {{- end }}

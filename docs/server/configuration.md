@@ -119,7 +119,8 @@ Secrets.
 
 !!! warning "Deprecated: secrets in `server.properties`"
     Secrets in `server.properties` still work, but this is deprecated. The server logs a warning at startup for each
-    secret it reads from the file. Move them to environment variables.
+    secret set in the file that no environment variable or system property supplies, and always for
+    `server.client-secret`. Move them to environment variables.
 
 #### Upgrading
 
