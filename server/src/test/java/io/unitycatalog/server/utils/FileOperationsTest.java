@@ -223,16 +223,17 @@ public class FileOperationsTest {
   }
 
   @Test
-  public void testGetFileIOConfigLocalPathSkipsVending() {
-    // Local paths must short-circuit to an empty config WITHOUT vending credentials.
+  public void testGetFileIOConfigLocalPathIsEmptyButStillVends() {
+    // Local paths get an empty config. They still go to the vendor once, so an audited vendor
+    // records the access.
     StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
     FileOperations fileOps = new FileOperationsImpl(vendor, new ServerProperties(new Properties()));
+    NormalizedURL path = NormalizedURL.from("file:///tmp/some/table");
 
-    Map<String, String> config =
-        fileOps.getFileIOConfig(NormalizedURL.from("file:///tmp/some/table"));
+    Map<String, String> config = fileOps.getFileIOConfig(path);
 
     assertThat(config).isEmpty();
-    verify(vendor, never()).vendCredential(any(), any(), any());
+    verify(vendor).vendCredential(path, CredentialContext.READ_ONLY, CredentialUse.CLIENT);
   }
 
   @Test

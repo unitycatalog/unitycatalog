@@ -6,6 +6,7 @@ import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.UriScheme;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Optional;
 import java.util.Set;
@@ -51,6 +52,11 @@ public class StorageCredentialVendorImpl implements StorageCredentialVendor {
         path);
     if (privileges == null || privileges.isEmpty()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Privileges cannot be null or empty.");
+    }
+    UriScheme scheme = UriScheme.fromURI(path.toUri());
+    if (scheme == UriScheme.FILE || scheme == UriScheme.NULL) {
+      // A local path has no credential to vend, so skip the external-location lookup.
+      return new TemporaryCredentials().url(path.toString());
     }
 
     // Permission authorization is already done before calling this function.

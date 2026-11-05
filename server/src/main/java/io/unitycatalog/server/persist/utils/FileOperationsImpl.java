@@ -135,9 +135,9 @@ public class FileOperationsImpl implements FileOperations {
       Optional<String> credentialsEndpoint) {
     UriScheme scheme = UriScheme.fromURI(path.toUri());
     if (scheme == UriScheme.FILE || scheme == UriScheme.NULL) {
-      // Local (file://) paths need no cloud credentials, so short-circuit before vending: the
-      // scheme is known here and vending would do a needless external-location lookup for local
-      // tables.
+      // Local (file://) paths need no FileIO config. The vend returns no credential, but an
+      // audited vendor records the access.
+      storageCredentialVendor.vendCredential(path, privileges, CredentialUse.CLIENT);
       return Map.of();
     }
     return toFileIOConfig(
