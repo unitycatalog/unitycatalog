@@ -1,4 +1,4 @@
-package io.unitycatalog.hadoop.internal.util;
+package io.unitycatalog.client.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

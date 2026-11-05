@@ -51,6 +51,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.hibernate.Session;
@@ -1227,22 +1228,42 @@ public class TableRepository {
    * lazy fields.
    */
   public TableInfoDAO deleteTable(String catalog, String schema, String table) {
+    return deleteTable(catalog, schema, table, dao -> {});
+  }
+
+  /**
+   * Variant of {@link #deleteTable(String, String, String)} for the UC Delta API: rejects a
+   * non-Delta table in the same transaction that deletes it.
+   */
+  public TableInfoDAO deleteTableForDelta(String catalog, String schema, String table) {
+    return deleteTable(
+        catalog, schema, table, dao -> requireDeltaTable(dao, catalog, schema, table));
+  }
+
+  private TableInfoDAO deleteTable(
+      String catalog, String schema, String table, Consumer<TableInfoDAO> check) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           UUID schemaId =
               repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
-          return deleteTable(session, schemaId, table);
+          return deleteTable(session, schemaId, table, check);
         },
         "Failed to delete table",
         /* readOnly= */ false);
   }
 
   TableInfoDAO deleteTable(Session session, UUID schemaId, String tableName) {
+    return deleteTable(session, schemaId, tableName, dao -> {});
+  }
+
+  private TableInfoDAO deleteTable(
+      Session session, UUID schemaId, String tableName, Consumer<TableInfoDAO> check) {
     TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
     if (tableInfoDAO == null) {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
     }
+    check.accept(tableInfoDAO);
     // A commit rewrites the table's columns under this lock; waiting for it keeps the cascade below
     // from deleting column rows the commit is replacing.
     RepositoryUtils.lockTableForCommit(
@@ -1279,6 +1300,20 @@ public class TableRepository {
    * schema, and storage location are all unchanged.
    */
   public void renameTable(String catalog, String schema, String table, String newName) {
+    renameTable(catalog, schema, table, newName, dao -> {});
+  }
+
+  /**
+   * Variant of {@link #renameTable(String, String, String, String)} for the UC Delta API: rejects a
+   * non-Delta table in the same transaction that renames it, before the no-op and conflict checks.
+   */
+  public void renameTableForDelta(String catalog, String schema, String table, String newName) {
+    renameTable(
+        catalog, schema, table, newName, dao -> requireDeltaTable(dao, catalog, schema, table));
+  }
+
+  private void renameTable(
+      String catalog, String schema, String table, String newName, Consumer<TableInfoDAO> check) {
     ValidationUtils.validateSqlObjectName(newName);
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     TransactionManager.executeWithTransaction(
@@ -1290,6 +1325,7 @@ public class TableRepository {
           if (tableInfoDAO == null) {
             throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + table);
           }
+          check.accept(tableInfoDAO);
           // Do the no-op check after the table lookup. A missing table must still return
           // TABLE_NOT_FOUND rather than succeed as a no-op.
           if (table.equals(newName)) {

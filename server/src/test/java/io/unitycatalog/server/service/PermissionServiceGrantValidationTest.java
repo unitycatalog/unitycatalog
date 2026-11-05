@@ -28,6 +28,8 @@ public class PermissionServiceGrantValidationTest {
                   Privilege.CREATE_EXTERNAL_LOCATION);
           case CATALOG ->
               Set.of(
+                  Privilege.BROWSE,
+                  Privilege.MANAGE,
                   Privilege.USE_CATALOG,
                   Privilege.CREATE_SCHEMA,
                   Privilege.USE_SCHEMA,
@@ -38,9 +40,12 @@ public class PermissionServiceGrantValidationTest {
                   Privilege.EXECUTE,
                   Privilege.CREATE_VOLUME,
                   Privilege.READ_VOLUME,
-                  Privilege.CREATE_MODEL);
+                  Privilege.WRITE_VOLUME,
+                  Privilege.CREATE_MODEL,
+                  Privilege.CREATE_MODEL_VERSION);
           case SCHEMA ->
               Set.of(
+                  Privilege.MANAGE,
                   Privilege.USE_SCHEMA,
                   Privilege.CREATE_TABLE,
                   Privilege.SELECT,
@@ -49,12 +54,18 @@ public class PermissionServiceGrantValidationTest {
                   Privilege.EXECUTE,
                   Privilege.CREATE_VOLUME,
                   Privilege.READ_VOLUME,
-                  Privilege.CREATE_MODEL);
-          case TABLE -> Set.of(Privilege.SELECT, Privilege.MODIFY);
-          case FUNCTION, REGISTERED_MODEL -> Set.of(Privilege.EXECUTE);
-          case VOLUME -> Set.of(Privilege.READ_VOLUME);
+                  Privilege.WRITE_VOLUME,
+                  Privilege.CREATE_MODEL,
+                  Privilege.CREATE_MODEL_VERSION);
+          case TABLE -> Set.of(Privilege.SELECT, Privilege.MODIFY, Privilege.MANAGE);
+          case FUNCTION -> Set.of(Privilege.EXECUTE, Privilege.MANAGE);
+          case REGISTERED_MODEL ->
+              Set.of(Privilege.EXECUTE, Privilege.CREATE_MODEL_VERSION, Privilege.MANAGE);
+          case VOLUME -> Set.of(Privilege.READ_VOLUME, Privilege.WRITE_VOLUME, Privilege.MANAGE);
           case EXTERNAL_LOCATION ->
               Set.of(
+                  Privilege.BROWSE,
+                  Privilege.MANAGE,
                   Privilege.READ_FILES,
                   Privilege.WRITE_FILES,
                   Privilege.CREATE_EXTERNAL_TABLE,
@@ -62,6 +73,7 @@ public class PermissionServiceGrantValidationTest {
                   Privilege.CREATE_MANAGED_STORAGE);
           case CREDENTIAL ->
               Set.of(
+                  Privilege.MANAGE,
                   Privilege.CREATE_EXTERNAL_LOCATION,
                   Privilege.READ_FILES,
                   Privilege.WRITE_FILES,
@@ -71,7 +83,7 @@ public class PermissionServiceGrantValidationTest {
     for (Privilege privilege : Privilege.values()) {
       List<PermissionsChange> changes =
           List.of(new PermissionsChange().principal("reader").add(List.of(privilege)));
-      if (validPrivileges.contains(privilege)) {
+      if (privilege == Privilege.READ_METADATA || validPrivileges.contains(privilege)) {
         assertThatCode(() -> PermissionService.validateAddedPrivileges(type, changes))
             .doesNotThrowAnyException();
       } else {
