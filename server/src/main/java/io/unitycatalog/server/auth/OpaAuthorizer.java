@@ -106,7 +106,7 @@ public class OpaAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
         return false;
       }
       for (Privileges action : actions) {
-        ((ObjectNode) input.get("input")).put("privilege", action.name());
+        inputBuilder.setPrivilege(input, action);
         if (evaluate(input) != requireAll) {
           return !requireAll;
         }

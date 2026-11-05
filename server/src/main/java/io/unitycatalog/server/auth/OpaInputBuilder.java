@@ -48,12 +48,16 @@ class OpaInputBuilder {
           if (user.getExternalId() != null) {
             principal.put("external_id", user.getExternalId());
           }
-          input.put("privilege", privilege.name());
+          setPrivilege(request, privilege);
           input.set("resource", resource(session, resourceType, resourceId));
           return request;
         },
         "Could not build OPA authorization input",
         /* readOnly= */ true);
+  }
+
+  void setPrivilege(ObjectNode request, Privileges privilege) {
+    ((ObjectNode) request.get("input")).put("privilege", privilege.name());
   }
 
   private ObjectNode resource(Session session, SecurableType type, UUID id) {
