@@ -375,12 +375,17 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Whether the database has no schema history and the schema of this build's last step, exactly:
-   * what Hibernate's update builds from the entities on a new database. Every step is then recorded
-   * without running.
+   * Whether the database has no applied step in its schema history (no history table, an empty one,
+   * or one holding only Flyway's baseline row, as a run leaves that stopped before step 1's record)
+   * and the schema of this build's last step, exactly: what Hibernate's update builds from the
+   * entities on a new database. Every step is then recorded without running.
    */
   private boolean hasLastStepsSchemaWithoutHistory() {
-    return state() == SchemaState.UNVERSIONED_UC
+    String recorded = recordedVersion();
+    boolean noAppliedStep = recorded == null || recorded.equals(EMPTY_BASELINE_VERSION);
+    return noAppliedStep
+        && tableNamesLowerCase().stream()
+            .anyMatch(t -> t.startsWith("uc_") && !t.equals(HISTORY_TABLE))
         && SchemaSnapshot.of(dataSource).equals(expected(latestVersion()));
   }
 

@@ -25,6 +25,7 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
@@ -32,6 +33,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import javax.sql.DataSource;
@@ -259,6 +261,37 @@ public class SchemaMigratorTest {
     assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
     assertThat(SchemaSnapshot.of(db.dataSource()))
         .isEqualTo(UpgradeTestUtils.freshInstallSnapshot());
+  }
+
+  /**
+   * Adopting a database at the last step's schema stopped after Flyway created the history table
+   * and before it wrote the first record: the history holds no applied step, and the rerun adopts
+   * again.
+   */
+  @Test
+  void adoptsAgainAfterAnAdoptionStoppedBeforeAnyStepWasRecorded() {
+    SchemaMigrator built = new SchemaMigrator(db.dataSource());
+    int steps = built.upgradeSchema();
+    UpgradeTestUtils.execute(
+        db, "DROP TABLE %1$suc_schema_history%1$s".formatted(identifierQuote(db.dataSource())));
+    AtomicInteger inserts = new AtomicInteger();
+    DataSource stopping =
+        UpgradeTestUtils.watched(
+            db.dataSource(),
+            (sql, prepared) -> {
+              if (sql.toLowerCase(Locale.ROOT).matches("(?s)\\s*insert into .*uc_schema_history.*")
+                  && inserts.incrementAndGet() == 1) {
+                throw new SQLException("Test: the run stops here");
+              }
+              return sql;
+            });
+    assertThatThrownBy(new SchemaMigrator(stopping)::upgradeSchema)
+        .hasStackTraceContaining("Test: the run stops here");
+
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    assertThat(migrator.upgradeSchema()).isEqualTo(steps);
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+    assertThat(migrator.recordedVersion()).isEqualTo(migrator.latestVersion());
   }
 
   @Test
