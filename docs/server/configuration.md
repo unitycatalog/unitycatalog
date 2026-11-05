@@ -129,10 +129,10 @@ Secrets.
 - Helm: use the server image from the chart's release, which is the default. An older server image doesn't read these
   variables, so S3 and ADLS lose their secrets.
 - Helm: the rendered `server.properties` no longer holds `server.client-secret`, `s3.secretKey.<n>` or
-  `adls.clientSecret.<n>`, and the init container no longer has `OAUTH_CLIENT_SECRET`, `S3_SECRET_KEY_<n>` or
-  `ADLS_CLIENT_SECRET_<n>`. A container added through `extraInitContainers` or `extraContainers` that needs these
-  secrets must read them from the Kubernetes Secret itself. In a `server.config.override` template, remove the lines
-  that use the old variables: the server reads those secrets from its environment.
+  `adls.clientSecret.<n>`. The init container has `OAUTH_CLIENT_SECRET`, `S3_SECRET_KEY_<n>` and
+  `ADLS_CLIENT_SECRET_<n>` only when `server.config.override` or `extraProperties` is set, so a template that uses
+  them keeps working; that is deprecated. A container added through `extraInitContainers` or `extraContainers` that
+  needs these secrets must read them from the Kubernetes Secret itself.
 
 ## Local file system storage
 

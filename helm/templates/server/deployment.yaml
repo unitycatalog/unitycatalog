@@ -127,6 +127,14 @@ spec:
                 secretKeyRef:
                   name: {{ $config.credentialsSecretName | quote }}
                   key: accessKey
+          {{- /* Deprecated: only for a custom server.properties template that still uses it. */}}
+          {{- if or $.Values.server.config.override $.Values.server.config.extraProperties }}
+            - name: S3_SECRET_KEY_{{ $index }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $config.credentialsSecretName | quote }}
+                  key: secretKey
+          {{- end }}
           {{- end }}
           {{- range $index, $config := .Values.storage.credentials.adls }}
             - name: ADLS_TENANT_ID_{{ $index }}
@@ -139,6 +147,13 @@ spec:
                 secretKeyRef:
                   name: {{ $config.credentialsSecretName | quote }}
                   key: clientId
+          {{- if or $.Values.server.config.override $.Values.server.config.extraProperties }}
+            - name: ADLS_CLIENT_SECRET_{{ $index }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $config.credentialsSecretName | quote }}
+                  key: clientSecret
+          {{- end }}
           {{- end }}
           {{- if .Values.auth.enabled }}
             - name: OAUTH_CLIENT_ID
@@ -146,6 +161,15 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.auth.clientSecretName | quote }}
                   key: clientId
+          {{- if or $.Values.server.config.override $.Values.server.config.extraProperties }}
+            - name: OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.clientSecretName | quote }}
+                  key: clientSecret
+                  # The chart no longer needs this key, so a Secret without it still works.
+                  optional: true
+          {{- end }}
           {{- end }}
       {{- with .Values.server.deployment.extraInitContainers }}
         {{- toYaml . | nindent 8 }}
