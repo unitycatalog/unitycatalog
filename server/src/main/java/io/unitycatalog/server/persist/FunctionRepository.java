@@ -16,8 +16,10 @@ import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -231,10 +233,32 @@ public class FunctionRepository {
   }
 
   public void deleteFunction(Session session, UUID schemaId, String functionName) {
-    FunctionInfoDAO functionInfoDAO = getFunctionDAO(session, schemaId, functionName);
-    if (functionInfoDAO == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Function not found: " + functionName);
+    FunctionInfoDAO found = getFunctionDAO(session, schemaId, functionName);
+    if (found == null) {
+      throw functionNotFound(functionName);
     }
-    session.remove(functionInfoDAO);
+    deleteFunction(session, found.getId(), functionName, () -> functionNotFound(functionName));
+  }
+
+  /**
+   * Deletes the function {@code functionId} named {@code functionName}; {@code notFound} is thrown
+   * if no such row exists, for example because it was dropped since the caller found it.
+   */
+  void deleteFunction(
+      Session session, UUID functionId, String functionName, Supplier<BaseException> notFound) {
+    Map<String, Object> key = Map.of("name", functionName);
+    FunctionInfoDAO functionInfoDAO =
+        RepositoryUtils.lockByKey(
+            session, FunctionInfoDAO.class, functionId, key, "function " + functionName, notFound);
+    // The bulk delete skips Hibernate's cascade, so delete the parameters first.
+    session
+        .createMutationQuery("delete from FunctionParameterInfoDAO where function.id = :id")
+        .setParameter("id", functionInfoDAO.getId())
+        .executeUpdate();
+    RepositoryUtils.deleteByKey(session, functionInfoDAO, key, notFound);
+  }
+
+  private static BaseException functionNotFound(String functionName) {
+    return new BaseException(ErrorCode.NOT_FOUND, "Function not found: " + functionName);
   }
 }
