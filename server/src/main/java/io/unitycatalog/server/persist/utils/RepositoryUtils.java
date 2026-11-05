@@ -37,10 +37,10 @@ public class RepositoryUtils {
 
   /**
    * Acquires the table row lock shared by the Delta and Iceberg commit paths, so concurrent commits
-   * on the same table serialize; table deletion waits for them through {@link #lockByKey}. A
-   * lock-wait timeout or deadlock victim is reported as {@code lockContentionError} (rolling back
-   * only this transaction) rather than leaking the ORM exception; each caller passes the code whose
-   * client reaction is safe for it:
+   * on the same table serialize; table deletion and rename wait for them through {@link
+   * #lockByKey}. A lock-wait timeout or deadlock victim is reported as {@code lockContentionError}
+   * (rolling back only this transaction) rather than leaking the ORM exception; each caller passes
+   * the code whose client reaction is safe for it:
    *
    * <ul>
    *   <li><b>Delta</b> passes {@code COMMIT_STATE_UNKNOWN} (500). Failing to acquire the lock does
@@ -135,6 +135,36 @@ public class RepositoryUtils {
           session.refresh(locked, LockMode.PESSIMISTIC_WRITE);
           return locked;
         });
+  }
+
+  /**
+   * Sets the {@code set} attributes (and no others) on the {@code locked} row, identified by its id
+   * and {@code key}, then refreshes {@code locked}. Attribute names must be code constants.
+   *
+   * @throws BaseException {@code notFound} if no row matches
+   */
+  public static void updateByKey(
+      Session session,
+      Object locked,
+      Map<String, Object> key,
+      Map<String, Object> set,
+      Supplier<BaseException> notFound) {
+    String assignments =
+        set.keySet().stream().map(a -> a + " = :set_" + a).collect(Collectors.joining(", "));
+    MutationQuery update =
+        session.createMutationQuery(
+            "update "
+                + Hibernate.getClass(locked).getSimpleName()
+                + " set "
+                + assignments
+                + " where "
+                + predicate(key));
+    bindKey(update, (UUID) session.getIdentifier(locked), key);
+    set.forEach((attribute, value) -> update.setParameter("set_" + attribute, value));
+    if (update.executeUpdate() == 0) {
+      throw notFound.get();
+    }
+    session.refresh(locked, LockMode.PESSIMISTIC_WRITE);
   }
 
   /**

@@ -46,6 +46,7 @@ import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -1335,10 +1336,19 @@ public class TableRepository {
         session -> {
           UUID schemaId =
               repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
-          TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, table);
-          if (tableInfoDAO == null) {
+          TableInfoDAO found = findBySchemaIdAndName(session, schemaId, table);
+          if (found == null) {
             throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + table);
           }
+          Map<String, Object> key = Map.of("name", table);
+          TableInfoDAO tableInfoDAO =
+              RepositoryUtils.lockByKey(
+                  session,
+                  TableInfoDAO.class,
+                  found.getId(),
+                  key,
+                  "table " + table,
+                  () -> tableNotFound(table));
           check.accept(tableInfoDAO);
           // Do the no-op check after the table lookup. A missing table must still return
           // TABLE_NOT_FOUND rather than succeed as a no-op.
@@ -1349,10 +1359,13 @@ public class TableRepository {
             throw new BaseException(
                 ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + newName);
           }
-          tableInfoDAO.setName(newName);
-          tableInfoDAO.setUpdatedAt(new Date());
-          tableInfoDAO.setUpdatedBy(callerId);
-          session.merge(tableInfoDAO);
+          // A HashMap: the caller id is null when authorization is off, which Map.of rejects.
+          Map<String, Object> changes = new HashMap<>();
+          changes.put("name", newName);
+          changes.put("updatedAt", new Date());
+          changes.put("updatedBy", callerId);
+          RepositoryUtils.updateByKey(
+              session, tableInfoDAO, key, changes, () -> tableNotFound(table));
           return null;
         },
         "Failed to rename table " + catalog + "." + schema + "." + table,
