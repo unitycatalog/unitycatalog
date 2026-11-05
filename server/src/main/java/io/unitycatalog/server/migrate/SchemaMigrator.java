@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
@@ -321,7 +323,7 @@ public final class SchemaMigrator implements AutoCloseable {
               + ". It differs from version "
               + first
               + " in:\n"
-              + schema.differencesFrom(expected(first))
+              + differences(schema, expected(first))
               + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup,"
               + " then run bin/start-uc-server --upgrade-schema again. A database from a release"
               + " before "
@@ -521,9 +523,88 @@ public final class SchemaMigrator implements AutoCloseable {
           "The database schema differs from the schema of version "
               + latestVersion()
               + ":\n"
-              + schema.differencesFrom(expected)
+              + differences(schema, expected)
               + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup.");
     }
+  }
+
+  /**
+   * {@code schema}'s differences from {@code expected}. Each missing index that another table's
+   * index of the same name took (see {@link #indexClashHint}) gets that clash appended.
+   */
+  private String differences(SchemaSnapshot schema, SchemaSnapshot expected) {
+    String differences = schema.differencesFrom(expected);
+    if (kind == DatabaseKind.MYSQL) {
+      return differences; // its index names are per table: no clash
+    }
+    try (Connection connection = dataSource.getConnection()) {
+      StringBuilder out = new StringBuilder();
+      for (String line : differences.split("\n")) {
+        out.append(line);
+        Matcher m = MISSING_INDEX.matcher(line);
+        String hint = m.find() ? indexClashHint(connection, m.group(2), m.group(1)) : null;
+        out.append(hint == null ? "" : " (" + hint + ")").append('\n');
+      }
+      return out.toString().stripTrailing();
+    } catch (SQLException e) {
+      throw new IllegalStateException("Could not check the schema's indexes: " + e.getMessage(), e);
+    }
+  }
+
+  private static final Pattern MISSING_INDEX = Pattern.compile("^missing index (uc_\\w+)\\.(\\w+)");
+
+  /**
+   * {@code null} when {@code table} has the index {@code index}. Otherwise, when a table that is
+   * not Unity Catalog's ({@code uc_*}) has an index of that name, the clash: "index idx on
+   * other_app, so ... could not create it on uc_x ...". {@code null} too when the index is missing
+   * for another reason.
+   */
+  static String indexClashHint(Connection connection, String index, String table)
+      throws SQLException {
+    DatabaseMetaData metaData = connection.getMetaData();
+    if (indexNames(metaData, connection, table).contains(index.toLowerCase(Locale.ROOT))) {
+      return null;
+    }
+    List<String> others = new ArrayList<>();
+    try (ResultSet rs =
+        metaData.getTables(
+            connection.getCatalog(),
+            exactPattern(metaData, connection.getSchema()),
+            null,
+            new String[] {"TABLE"})) {
+      while (rs.next()) {
+        others.add(rs.getString("TABLE_NAME"));
+      }
+    }
+    for (String other : others) {
+      if (!other.toLowerCase(Locale.ROOT).startsWith("uc_")
+          && indexNames(metaData, connection, other).contains(index.toLowerCase(Locale.ROOT))) {
+        return "index "
+            + index
+            + " is used by table "
+            + other
+            + ", so it could not be created on "
+            + table
+            + ": rename that index or give Unity Catalog its own schema";
+      }
+    }
+    return null;
+  }
+
+  private static Set<String> indexNames(
+      DatabaseMetaData metaData, Connection connection, String table) throws SQLException {
+    Set<String> names = new HashSet<>();
+    try (ResultSet rs =
+        metaData.getIndexInfo(
+            connection.getCatalog(), connection.getSchema(), table, false, false)) {
+      while (rs.next()) {
+        String name = rs.getString("INDEX_NAME");
+        if (name != null) {
+          names.add(name.toLowerCase(Locale.ROOT));
+        }
+      }
+    }
+    return names;
   }
 
   private Set<String> tableNamesLowerCase() {
