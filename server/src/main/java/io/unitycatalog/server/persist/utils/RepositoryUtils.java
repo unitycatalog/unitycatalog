@@ -187,6 +187,26 @@ public class RepositoryUtils {
     session.detach(locked);
   }
 
+  /** Whether any {@code type} row has {@code parentId} as its {@code parentAttribute}. */
+  public static boolean hasChildren(
+      Session session, Class<?> type, String parentAttribute, UUID parentId) {
+    return !session
+        .createSelectionQuery(
+            "select id from " + type.getSimpleName() + " where " + parentAttribute + " = :parentId",
+            UUID.class)
+        .setParameter("parentId", parentId)
+        .setMaxResults(1)
+        .getResultList()
+        .isEmpty();
+  }
+
+  /** The error for a change that raced this request: the request did nothing and can be retried. */
+  public static BaseException concurrentModification(String description) {
+    return new BaseException(
+        ErrorCode.UNAVAILABLE,
+        "Concurrent modification in progress on " + description + "; retry the request.");
+  }
+
   /**
    * Runs a locking read; a lock timeout or deadlock victim becomes {@code UNAVAILABLE} (503): the
    * row was not changed, and the request can be retried. The Iceberg REST spec lists 503, not 409,
@@ -199,9 +219,7 @@ public class RepositoryUtils {
       if (!isLockFailure(e) && !isLockFailure(e.getCause())) {
         throw e;
       }
-      throw new BaseException(
-          ErrorCode.UNAVAILABLE,
-          "Concurrent modification in progress on " + description + "; retry the request.");
+      throw concurrentModification(description);
     }
   }
 

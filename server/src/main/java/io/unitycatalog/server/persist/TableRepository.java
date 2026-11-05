@@ -54,6 +54,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.hibernate.Session;
@@ -1256,27 +1257,38 @@ public class TableRepository {
         Optional.of(TRANSACTION_READ_COMMITTED));
   }
 
-  TableInfoDAO deleteTable(Session session, UUID schemaId, String tableName) {
-    return deleteTable(session, schemaId, tableName, dao -> {});
-  }
-
   private TableInfoDAO deleteTable(
       Session session, UUID schemaId, String tableName, Consumer<TableInfoDAO> check) {
-    TableInfoDAO found = findBySchemaIdAndName(session, schemaId, tableName);
-    if (found == null) {
+    TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
+    if (tableInfoDAO == null) {
       throw tableNotFound(tableName);
     }
+    return deleteTable(
+        session, tableInfoDAO.getId(), tableName, () -> tableNotFound(tableName), check);
+  }
+
+  /**
+   * Deletes the table {@code tableId} named {@code tableName}; {@code notFound} is thrown if no
+   * such row exists, for example because it was renamed or dropped since the caller found it.
+   */
+  TableInfoDAO deleteTable(
+      Session session, UUID tableId, String tableName, Supplier<BaseException> notFound) {
+    return deleteTable(session, tableId, tableName, notFound, dao -> {});
+  }
+
+  /** As above, running {@code check} on the locked row, so it sees the row that is deleted. */
+  private TableInfoDAO deleteTable(
+      Session session,
+      UUID tableId,
+      String tableName,
+      Supplier<BaseException> notFound,
+      Consumer<TableInfoDAO> check) {
     Map<String, Object> key = Map.of("name", tableName);
     // A commit rewrites the table's columns under this lock; waiting for it lets the column delete
     // below see the rows the commit wrote.
     TableInfoDAO tableInfoDAO =
         RepositoryUtils.lockByKey(
-            session,
-            TableInfoDAO.class,
-            found.getId(),
-            key,
-            "table " + tableName,
-            () -> tableNotFound(tableName));
+            session, TableInfoDAO.class, tableId, key, "table " + tableName, notFound);
     check.accept(tableInfoDAO);
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       repositories

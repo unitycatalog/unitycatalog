@@ -14,9 +14,11 @@ import io.unitycatalog.client.model.CatalogInfo;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.UpdateCatalog;
 import io.unitycatalog.server.base.BaseCRUDTest;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -124,6 +126,25 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     assertThat(catalogList).isNotNull();
     assertCatalogNotExists(catalogList, CATALOG_NEW_NAME);
     assertCatalogNotExists(catalogList, COMMON_ENTITY_NAME);
+  }
+
+  /** A drop that waits for a concurrent rename must not delete the renamed catalog. */
+  @Test
+  public void dropRacingARenameDoesNotDeleteTheRenamedCatalog() throws Exception {
+    UUID id = UUID.fromString(catalogOperations.createCatalog(newCatalog("drop_race")).getId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> setColumn(held, CatalogInfoDAO.class, id, "name", "drop_race_renamed"),
+                () -> {
+                  catalogOperations.deleteCatalog("drop_race", Optional.empty());
+                  return null;
+                }),
+        ErrorCode.CATALOG_NOT_FOUND,
+        "Catalog not found");
+
+    assertThat(catalogOperations.getCatalog("drop_race_renamed").getId()).isEqualTo(id.toString());
   }
 
   /** A rename that waits for a concurrent edit of another column keeps that edit. */

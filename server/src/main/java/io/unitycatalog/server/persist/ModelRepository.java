@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -485,7 +486,14 @@ public class ModelRepository {
       try {
         UUID schemaId =
             repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
-        deleteRegisteredModel(session, schemaId, registeredModelName, force);
+        RegisteredModelInfoDAO found =
+            getRegisteredModelDaoOrThrow(session, schemaId, registeredModelName);
+        deleteRegisteredModel(
+            session,
+            found.getId(),
+            fullName,
+            force,
+            () -> registeredModelNotFound(registeredModelName));
         tx.commit();
       } catch (RuntimeException e) {
         if (tx != null && tx.getStatus().canRollback()) {
@@ -496,28 +504,46 @@ public class ModelRepository {
     }
   }
 
-  public void deleteRegisteredModel(
-      Session session, UUID schemaId, String registeredModelName, boolean force) {
-    RegisteredModelInfoDAO found =
-        getRegisteredModelDaoOrThrow(session, schemaId, registeredModelName);
+  /**
+   * Deletes the registered model {@code modelId} named by {@code fullName}; {@code notFound} is
+   * thrown if no such row exists, for example because it was renamed or dropped since the caller
+   * found it. With {@code force}, a version that vanishes while the model is deleted fails the
+   * delete closed.
+   */
+  void deleteRegisteredModel(
+      Session session,
+      UUID modelId,
+      String fullName,
+      boolean force,
+      Supplier<BaseException> notFound) {
+    String registeredModelName = RepositoryUtils.parseRegisteredModelFullName(fullName)[2];
     Map<String, Object> key = Map.of("name", registeredModelName);
     RegisteredModelInfoDAO registeredModelInfoDAO =
         RepositoryUtils.lockByKey(
             session,
             RegisteredModelInfoDAO.class,
-            found.getId(),
+            modelId,
             key,
             "registered model " + registeredModelName,
-            () -> registeredModelNotFound(registeredModelName));
+            notFound);
     if (force) {
-      // Remove all model versions
-      List<ModelVersionInfoDAO> versionList =
-          getModelVersionsDao(session, registeredModelInfoDAO.getId(), "0", 1);
-      while (versionList.size() > 0) {
-        for (ModelVersionInfoDAO modelVersionInfoDao : versionList) {
-          session.remove(modelVersionInfoDao);
+      // Remove all model versions, a page at a time until none is left.
+      Supplier<BaseException> versionVanished =
+          () -> RepositoryUtils.concurrentModification("registered model " + fullName);
+      for (List<ModelVersionInfoDAO> versions = nextVersions(session, modelId);
+          !versions.isEmpty();
+          versions = nextVersions(session, modelId)) {
+        for (ModelVersionInfoDAO version : versions) {
+          Map<String, Object> versionKey = versionKey(version);
+          RepositoryUtils.lockByKey(
+              session,
+              ModelVersionInfoDAO.class,
+              version.getId(),
+              versionKey,
+              "model version " + fullName + "/" + version.getVersion(),
+              versionVanished);
+          RepositoryUtils.deleteByKey(session, version, versionKey, versionVanished);
         }
-        versionList = getModelVersionsDao(session, registeredModelInfoDAO.getId(), "0", 1);
       }
     } else {
       // Check if model versions exist and throw with unable to delete if they exist
@@ -539,8 +565,11 @@ public class ModelRepository {
             registeredModelInfoDAO.getId(),
             registeredModelInfoDAO.getName(),
             registeredModelInfoDAO.getUrl());
-    RepositoryUtils.deleteByKey(
-        session, registeredModelInfoDAO, key, () -> registeredModelNotFound(registeredModelName));
+    RepositoryUtils.deleteByKey(session, registeredModelInfoDAO, key, notFound);
+  }
+
+  private List<ModelVersionInfoDAO> nextVersions(Session session, UUID modelId) {
+    return getModelVersionsDao(session, modelId, "0", PagedListingHelper.DEFAULT_PAGE_SIZE);
   }
 
   /** **************** Model version handlers ***************** */
