@@ -32,6 +32,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -77,6 +78,7 @@ public class HibernateConfigurator implements AutoCloseable {
   public HibernateConfigurator(Properties hibernateProperties) {
     requireSchemaFromConnection(hibernateProperties);
     requireNoSchemaChanges(settingsHibernateReads(hibernateProperties));
+    requireNamedMemoryDatabase(hibernateProperties);
     this.hibernateProperties = hibernateProperties;
     this.dataSource = createDataSource(hibernateProperties);
     try {
@@ -112,6 +114,24 @@ public class HibernateConfigurator implements AutoCloseable {
                 + " is not supported: the schema migration uses the connection's schema. Remove it"
                 + " and set the schema in the JDBC URL instead (PostgreSQL: currentSchema=...).");
       }
+    }
+  }
+
+  /**
+   * An H2 in-memory URL without a name gives every connection its own empty database, so the server
+   * would not see the schema that was set up. Refuses it.
+   */
+  private static void requireNamedMemoryDatabase(Properties hibernateProperties) {
+    String url = hibernateProperties.getProperty("hibernate.connection.url", "");
+    String lower = url.toLowerCase(Locale.ROOT);
+    String memory = "jdbc:h2:mem:";
+    if (lower.startsWith(memory)
+        && (lower.length() == memory.length() || lower.charAt(memory.length()) == ';')) {
+      throw new IllegalArgumentException(
+          "The in-memory H2 URL "
+              + url
+              + " has no database name, so every connection gets its own empty database. Name it:"
+              + " jdbc:h2:mem:<name>;DB_CLOSE_DELAY=-1");
     }
   }
 

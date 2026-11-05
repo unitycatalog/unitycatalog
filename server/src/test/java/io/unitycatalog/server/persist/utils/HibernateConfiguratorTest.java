@@ -105,6 +105,18 @@ class HibernateConfiguratorTest {
         .hasMessageContaining("set the schema in the JDBC URL instead");
   }
 
+  @ParameterizedTest
+  @ValueSource(
+      strings = {"jdbc:h2:mem:", "jdbc:h2:mem:;DB_CLOSE_DELAY=-1", "JDBC:H2:MEM:;MODE=MySQL"})
+  void refusesAnUnnamedInMemoryDatabase(String url) {
+    Properties properties = h2Properties();
+    properties.setProperty("hibernate.connection.url", url);
+
+    assertThatThrownBy(() -> new HibernateConfigurator(properties))
+        .hasMessageContaining("has no database name")
+        .hasMessageContaining("jdbc:h2:mem:<name>;DB_CLOSE_DELAY=-1");
+  }
+
   private static Properties h2Properties() {
     Properties properties = new Properties();
     properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
