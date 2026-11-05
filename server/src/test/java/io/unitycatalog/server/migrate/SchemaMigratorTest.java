@@ -375,6 +375,7 @@ public class SchemaMigratorTest {
     "jdbc:h2:ssl://localhost/{dir}/uc,,",
     "jdbc:p6spy:h2:file:{dir}/uc;AUTO_SERVER=TRUE,,",
     "jdbc:h2:file:{dir}/uc,hibernate.hikari.dataSource.AUTO_SERVER,TRUE",
+    "jdbc:h2:file:{dir}/uc,hibernate.hikari.dataSource.URL,jdbc:h2:tcp://localhost/{dir}/uc",
     ",hibernate.hikari.dataSource.URL,jdbc:h2:file:{dir}/uc;AUTO_SERVER=TRUE",
   })
   void refusesH2InServerMode(String url, String key, String value, @TempDir Path dir) {
@@ -387,6 +388,11 @@ public class SchemaMigratorTest {
     } else {
       properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
       properties.setProperty("hibernate.connection.url", url.replace("{dir}", dir.toString()));
+      if (key != null && key.endsWith(".URL")) {
+        // Hikari then uses the data source class's URL, not the one above.
+        properties.setProperty(
+            "hibernate.hikari.dataSourceClassName", "org.h2.jdbcx.JdbcDataSource");
+      }
     }
     if (key != null) {
       properties.setProperty(key, value.replace("{dir}", dir.toString()));
@@ -395,6 +401,19 @@ public class SchemaMigratorTest {
     assertThatThrownBy(() -> SchemaMigrator.fromHibernateProperties(properties))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("H2 in server mode is not supported");
+  }
+
+  @Test
+  void refusesPostgresqlWithoutACurrentSchema() {
+    assumeFalse(!db.jdbcUrl().startsWith("jdbc:postgresql:"), "only PostgreSQL");
+    HikariConfig config = new HikariConfig();
+    config.setDataSource(db.dataSource());
+    config.setSchema("no_such_schema");
+    try (HikariDataSource noSchema = new HikariDataSource(config)) {
+      assertThatThrownBy(() -> new SchemaMigrator(noSchema))
+          .hasMessageContaining("The connection has no current schema")
+          .hasMessageContaining("currentSchema");
+    }
   }
 
   @Test

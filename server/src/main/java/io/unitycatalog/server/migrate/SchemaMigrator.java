@@ -200,18 +200,18 @@ public final class SchemaMigrator implements AutoCloseable {
    */
   private static void refuseH2ServerMode(HikariConfig config) {
     Properties driver = config.getDataSourceProperties();
-    String url = config.getJdbcUrl() != null ? config.getJdbcUrl() : property(driver, "url");
-    String lower = url == null ? "" : url.toLowerCase(Locale.ROOT);
-    if (!lower.contains(":h2:")) {
-      return;
-    }
-    if (lower.contains(":h2:tcp:")
-        || lower.contains(":h2:ssl:")
-        || isOn(setting(lower, "auto_server"))
-        || isOn(property(driver, "auto_server"))) {
-      throw new IllegalStateException(
-          "H2 in server mode is not supported: the schema migration needs one server per H2"
-              + " file. Use a jdbc:h2:file: URL without AUTO_SERVER.");
+    // Hikari uses the data source class's URL when it has a class; check both URLs.
+    for (String url : new String[] {config.getJdbcUrl(), property(driver, "url")}) {
+      String lower = url == null ? "" : url.toLowerCase(Locale.ROOT);
+      if (lower.contains(":h2:")
+          && (lower.contains(":h2:tcp:")
+              || lower.contains(":h2:ssl:")
+              || isOn(setting(lower, "auto_server"))
+              || isOn(property(driver, "auto_server")))) {
+        throw new IllegalStateException(
+            "H2 in server mode is not supported: the schema migration needs one server per H2"
+                + " file. Use a jdbc:h2:file: URL without AUTO_SERVER.");
+      }
     }
   }
 
@@ -257,6 +257,7 @@ public final class SchemaMigrator implements AutoCloseable {
       DatabaseKind kind,
       List<String> extraLocations,
       HikariDataSource ownedPool) {
+    requireCurrentSchema(dataSource, kind);
     this.dataSource = dataSource;
     this.kind = kind;
     List<String> locations = new ArrayList<>();
@@ -264,6 +265,25 @@ public final class SchemaMigrator implements AutoCloseable {
     locations.addAll(extraLocations);
     this.locations = locations.toArray(String[]::new);
     this.ownedPool = ownedPool;
+  }
+
+  /**
+   * On PostgreSQL, a connection whose search_path names no existing schema has no current schema,
+   * and a table search without a schema reads every schema.
+   */
+  private static void requireCurrentSchema(DataSource dataSource, DatabaseKind kind) {
+    if (kind != DatabaseKind.POSTGRESQL) {
+      return;
+    }
+    try (Connection connection = dataSource.getConnection()) {
+      if (connection.getSchema() == null) {
+        throw new IllegalStateException(
+            "The connection has no current schema: set currentSchema in the JDBC URL to an"
+                + " existing schema.");
+      }
+    } catch (SQLException e) {
+      throw new IllegalStateException("Could not connect to the database: " + e.getMessage(), e);
+    }
   }
 
   private FluentConfiguration flyway() {
