@@ -418,6 +418,20 @@ public class DeltaUpdateTableMapperTest {
         .doesNotThrowAnyException();
   }
 
+  @Test
+  public void resendingTheStoredColumnMappingModeWithoutSetColumnsIsAccepted() {
+    // Only turning the mode on needs set-columns; re-sending the stored mode does not.
+    assertThatCode(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    managedDao(),
+                    propsFrom(Map.of(TableProperties.COLUMN_MAPPING_MODE, "name")),
+                    collectUpdatesRequest(cmMode("name").action("set-properties")),
+                    new ServerProperties()))
+        .doesNotThrowAnyException();
+  }
+
   // --- set-columns column-mapping guards ---
 
   /**

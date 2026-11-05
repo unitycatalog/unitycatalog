@@ -2705,6 +2705,13 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                     fld("a", prim("long"), false, 1, "col-1"), fld("b2", prim("long"), 2, "col-2")))
             .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
             .expectPartitions("b2"),
+        ok(
+                "name mode partition column renamed only in case",
+                NAME_AB,
+                setColumns(
+                    fld("a", prim("long"), false, 1, "col-1"), fld("B", prim("long"), 2, "col-2")))
+            .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("b")))
+            .expectPartitions("B"),
         // REPLACE TABLE that changes a partition column's type: Delta gives the column a new id
         // and physical name under the same name, and sends no set-partition-columns.
         ok(
