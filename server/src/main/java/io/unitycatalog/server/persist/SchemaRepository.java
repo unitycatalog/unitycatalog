@@ -254,6 +254,8 @@ public class SchemaRepository {
         sessionFactory,
         session -> {
           SchemaInfoDAO schemaInfoDAO = getSchemaDaoOrThrow(session, fullName);
+          Map<String, Object> nameKey = Map.of("name", splitSchemaFullName(fullName).schemaName());
+          lockSchema(session, schemaInfoDAO, nameKey, fullName);
           Map<String, String> properties = new HashMap<>();
           PropertyRepository.findProperties(session, schemaInfoDAO.getId(), Constants.SCHEMA)
               .forEach(property -> properties.put(property.getKey(), property.getValue()));
@@ -275,13 +277,16 @@ public class SchemaRepository {
           session.flush();
           PropertyDAO.from(properties, schemaInfoDAO.getId(), Constants.SCHEMA)
               .forEach(session::persist);
-          schemaInfoDAO.setUpdatedAt(new Date());
-          schemaInfoDAO.setUpdatedBy(callerId);
-          session.merge(schemaInfoDAO);
+          Map<String, Object> changes = new HashMap<>();
+          changes.put("updatedAt", new Date());
+          changes.put("updatedBy", callerId);
+          RepositoryUtils.updateByKey(
+              session, schemaInfoDAO, nameKey, changes, () -> schemaNotFound(fullName));
           return new PropertyChanges(new LinkedHashSet<>(updates.keySet()), removed, missing);
         },
         "Failed to update schema properties",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        Optional.of(TRANSACTION_READ_COMMITTED));
   }
 
   public SchemaInfo updateSchema(String fullName, UpdateSchema updateSchema) {
