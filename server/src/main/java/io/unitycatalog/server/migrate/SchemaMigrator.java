@@ -390,12 +390,13 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * For {@code bin/start-uc-server --check-schema}: prints the database's schema version and what
-   * {@link #upgradeSchema()} would do with each pending step, and whether it would go through,
-   * running the same checks on the schema as it would. Changes nothing and takes no run lock, so it
-   * can run while servers of the previous release still serve. A step that failed counts as
-   * pending, since the upgrade deletes its record first.
+   * {@link #upgradeSchema()} would do with each pending step, and whether the schema allows the
+   * upgrade, running the same checks on the schema as it would. It does not test the database
+   * user's privileges or the run lock. Changes nothing and takes no run lock, so it can run while
+   * servers of the previous release still serve. A step that failed counts as pending, since the
+   * upgrade deletes its record first.
    *
-   * @return 0 when the upgrade would go through, 1 when it would refuse
+   * @return 0 when the schema allows the upgrade, 1 when it would refuse
    */
   int checkSchema(PrintStream out) {
     try {
@@ -429,13 +430,13 @@ public final class SchemaMigrator implements AutoCloseable {
             "The database schema differs from the schema of version "
                 + latestVersion()
                 + ":\n"
-                + schema.differencesFrom(expected));
+                + differences(schema, expected));
       }
-      out.println("The upgrade would go through.");
+      out.println("The schema allows the upgrade: --upgrade-schema would run the steps above.");
       return 0;
     } catch (IllegalStateException e) {
       out.println(e.getMessage());
-      out.println("The upgrade would not go through.");
+      out.println("The schema does not allow the upgrade.");
       return 1;
     }
   }

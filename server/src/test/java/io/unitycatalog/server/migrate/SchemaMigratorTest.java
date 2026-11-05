@@ -305,7 +305,7 @@ public class SchemaMigratorTest {
     assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isZero();
     assertThat(out.toString(StandardCharsets.UTF_8))
         .contains("  1 baseline 0 7: runs")
-        .endsWith("The upgrade would go through.\n");
+        .endsWith("The schema allows the upgrade: --upgrade-schema would run the steps above.\n");
     assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
   }
 
@@ -349,7 +349,7 @@ public class SchemaMigratorTest {
         .isOne();
     assertThat(out.toString(StandardCharsets.UTF_8))
         .contains("unexpected column uc_catalogs.extra ")
-        .endsWith("The upgrade would not go through.\n");
+        .endsWith("The schema does not allow the upgrade.\n");
   }
 
   @Test
