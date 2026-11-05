@@ -340,7 +340,7 @@ class AuditorTest {
     }
   }
 
-  /** Loads and starts a Log4j properties file; the caller stops it. */
+  /** Loads and initializes a Log4j properties file; the caller stops it. */
   private static Configuration load(String file) {
     Configuration config =
         new PropertiesConfigurationFactory()
