@@ -128,9 +128,11 @@ not set
 </td>
 			<td>OAuth client secret name
 
-Client secret must contain the following keys:
+Client secret must contain the following key:
 - `clientId`: OAuth client ID
-- `clientSecret`: OAuth client secret
+
+The server doesn't read the OAuth client secret. A `clientSecret` key is passed only to a
+`server.config.override` or `extraProperties` template that uses `${OAUTH_CLIENT_SECRET}`.
 </td>
 		</tr>
 		<tr>
@@ -363,9 +365,9 @@ server.port=8080
 ```
 
 Do not put secrets here: the chart passes them to the server as environment variables, and
-a secret in `server.properties` is deprecated. If the template uses `${OAUTH_CLIENT_SECRET}`,
-`${S3_SECRET_KEY_<n>}` or `${ADLS_CLIENT_SECRET_<n>}`, remove those lines: the server reads the
-secrets from environment variables.
+a secret in `server.properties` is deprecated. A template that uses `${OAUTH_CLIENT_SECRET}`,
+`${S3_SECRET_KEY_<n>}` or `${ADLS_CLIENT_SECRET_<n>}` still gets them, but that is deprecated
+too: the server reads `s3.secretKey.<n>` and `adls.clientSecret.<n>` from its environment.
 </td>
 		</tr>
 		<tr>
