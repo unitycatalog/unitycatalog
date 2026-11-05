@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.SupportsPrefixOperations;
 
@@ -63,10 +64,10 @@ public class LocalMappingFileOperations implements FileOperations {
 
   @Override
   public SupportsPrefixOperations getCleanupFileIO(
-      NormalizedURL rootPath, CooperativeDeadline deadline) {
+      NormalizedURL rootPath, UUID resourceId, CooperativeDeadline deadline) {
     UriScheme scheme = UriScheme.fromURI(rootPath.toUri());
     if (scheme == UriScheme.FILE || scheme == UriScheme.NULL) {
-      return delegate.getCleanupFileIO(rootPath, deadline);
+      return delegate.getCleanupFileIO(rootPath, resourceId, deadline);
     }
     // The mapping FileIO also serves prefix operations, so cleanup runs on the mapped local dir.
     // Cloud cleanup vends read/write credentials in production, so vend and validate the same here.

@@ -269,7 +269,7 @@ class StorageCleanupWorkerE2ETest {
   /** Stubbed FileOperations that points the cleanup S3FileIO at the s3mock client. */
   private StorageCleanupWorker s3BackedWorker() {
     FileOperations fileOperations = mock(FileOperations.class);
-    when(fileOperations.getCleanupFileIO(any(), any()))
+    when(fileOperations.getCleanupFileIO(any(), any(), any()))
         .thenAnswer(
             invocation -> {
               NormalizedURL location = invocation.getArgument(0);
