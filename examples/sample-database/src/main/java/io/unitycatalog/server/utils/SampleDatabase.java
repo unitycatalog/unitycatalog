@@ -75,8 +75,8 @@ public class SampleDatabase {
     // to take for the sample database.
     Path building = null;
     try {
-      building =
-          Files.createTempFile(h2File.toAbsolutePath().getParent(), "building-", H2_FILE_SUFFIX);
+      Path folder = Files.createDirectories(h2File.toAbsolutePath().getParent());
+      building = Files.createTempFile(folder, "building-", H2_FILE_SUFFIX);
       buildInto(building);
       Files.move(building, h2File);
     } catch (IOException e) {

@@ -24,13 +24,14 @@ public class SampleDatabaseTest {
 
   @Test
   void buildsTheSampleDatabase(@TempDir Path dir) throws SQLException {
-    Path file = dir.resolve("h2db.mv.db");
+    // In a folder that doesn't exist yet, as the tarball builds it.
+    Path file = dir.resolve("sample-database").resolve("h2db.mv.db");
 
     // The build's schema upgrade fails unless the schema is what this build's steps build.
     SampleDatabase.build(file);
 
     assertThat(file).exists();
-    String url = "jdbc:h2:file:" + dir.resolve("h2db").toAbsolutePath();
+    String url = "jdbc:h2:file:" + file.resolveSibling("h2db").toAbsolutePath();
     try (Connection connection = DriverManager.getConnection(url, "", "");
         ResultSet catalogs =
             connection.createStatement().executeQuery("SELECT name FROM uc_catalogs")) {
