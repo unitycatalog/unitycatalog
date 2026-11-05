@@ -104,6 +104,10 @@ paths:
             application/scim+json:
               schema:
                 $ref: '#/components/schemas/UserResource'
+        '404':
+          description: Not Found. The user does not exist.
+        '503':
+          description: Service Unavailable. The user is being modified concurrently; retry the request.
     delete:
       tags:
         - Users
@@ -117,6 +121,10 @@ paths:
           content:
             application/scim+json:
               schema: {}
+        '404':
+          description: Not Found. The user does not exist.
+        '503':
+          description: Service Unavailable. The user is being modified concurrently; retry the request.
   /scim2/Me:
     get:
       tags:
