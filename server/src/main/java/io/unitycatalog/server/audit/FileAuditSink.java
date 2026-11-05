@@ -25,9 +25,9 @@ import org.apache.logging.log4j.core.filter.Filterable;
 
 /**
  * Writes each record as one JSON line to the {@code audit} logger. The logger needs {@code
- * additivity = false} and level INFO. It writes to {@code etc/logs/audit.log} as shipped (see
- * etc/conf/server.log4j2.properties), or to any Log4j appender, such as one that ships records to a
- * cloud service. A file or console appender needs {@code ignoreExceptions = false}.
+ * additivity = false} and a level that enables INFO. It writes to {@code etc/logs/audit.log} as
+ * shipped (see etc/conf/server.log4j2.properties), or to any Log4j appender, such as one that ships
+ * records to a cloud service. A file or console appender needs {@code ignoreExceptions = false}.
  */
 public class FileAuditSink implements AuditSink {
   static final String LOGGER_NAME = "audit";

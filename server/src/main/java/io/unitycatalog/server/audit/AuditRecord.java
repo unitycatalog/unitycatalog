@@ -29,7 +29,10 @@ public class AuditRecord {
     CLEANUP
   }
 
-  /** What a credential allows. */
+  /**
+   * The access the request asked for. A static credential is returned as configured and can allow
+   * more.
+   */
   public enum Access {
     READ,
     READ_WRITE

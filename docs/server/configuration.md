@@ -168,13 +168,16 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
   fragment are removed. User info is removed too, except that for ABFS the part before the `@` is
   kept when it looks like a container name (3 to 63 lowercase letters, digits and hyphens) and is
   replaced by `[REDACTED]` otherwise.
-- `access` is `READ` or `READ_WRITE`, and `expires_at` is when the credential expires. Records never
-  contain credential values.
+- `access` is `READ` or `READ_WRITE`: the access the request asked for. A static credential, such as
+  configured S3 keys, is returned as configured and can allow more. `expires_at` is when the
+  credential expires. Records never contain credential values.
 
 A record is written for every credential issued, including ones served from the credential cache.
-For local `file:` storage there is no credential to issue; the record marks the access the server
-granted, and has no `expires_at`. Audit records are best effort: one can be lost when the sink
-fails, or when a request is still running as the server shuts down.
+For local `file:` storage there is no credential to issue. A temporary-credentials or Delta API
+request still writes a record of the access the server granted, without `expires_at`. Iceberg table
+loads and the server's own reads, writes and cleanup of `file:` storage write no record. Audit
+records are best effort: one can be lost when the sink fails, or when a request is still running as
+the server shuts down.
 
 There are two ways to send records:
 
@@ -188,7 +191,7 @@ There are two ways to send records:
   `AuditSink` Javadoc for the full contract.
 
 `FileAuditSink` needs the `audit` logger in `etc/conf/server.log4j2.properties`, set to
-`additivity = false` and level `INFO`. Neither the Log4j configuration nor the `audit` logger may
+`additivity = false` and a level that enables `INFO`. Neither the Log4j configuration nor the `audit` logger may
 have a filter, and the link to the appender (`logger.audit.appenderRef.*`) may have neither a filter
 nor a level above `INFO`, because any of these drops records silently. A file or console appender
 must also set `ignoreExceptions = false` and have no filter; other appenders are not checked. The
