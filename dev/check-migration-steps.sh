@@ -49,7 +49,17 @@ for step in $added_steps; do
   highest=$(git ls-tree --name-only "$merge_base" -- "$folder/" \
     | while read -r f; do version_of "$f"; done | sort -n | tail -n 1)
   version=$(version_of "$step")
-  if [[ -n "$highest" && ( -z "$version" || "$version" -le "$highest" ) ]]; then
+  if [[ ! "$version" =~ ^[0-9]+$ ]]; then
+    echo "The new step $step has a version that is not a whole number." >&2
+    echo "Name it V<number>__<description>.sql." >&2
+    exit 1
+  fi
+  # 10# keeps bash from reading a leading zero (V08) as octal.
+  version=$((10#$version))
+  if [[ -n "$highest" ]]; then
+    highest=$((10#$highest))
+  fi
+  if [[ -n "$highest" && "$version" -le "$highest" ]]; then
     echo "The new step $step is not above step $highest, the highest on $1." >&2
     echo "Renumber it above every merged step." >&2
     exit 1
