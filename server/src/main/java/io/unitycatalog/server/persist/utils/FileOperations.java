@@ -13,6 +13,7 @@ import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.SupportsPrefixOperations;
 
@@ -91,9 +92,11 @@ public interface FileOperations {
    *
    * @param rootPath the root location of the data entity to clean up, as for {@link
    *     #getFileIO(NormalizedURL)}
+   * @param resourceId the ID of the dropped object, which the audit record of the credential names
    * @param deadline the cancellation checks shared with the cleanup attempt
    */
-  SupportsPrefixOperations getCleanupFileIO(NormalizedURL rootPath, CooperativeDeadline deadline);
+  SupportsPrefixOperations getCleanupFileIO(
+      NormalizedURL rootPath, UUID resourceId, CooperativeDeadline deadline);
 
   /**
    * Builds the Iceberg FileIO configuration (credentials, region, token expiry) for the given
@@ -113,14 +116,14 @@ public interface FileOperations {
   }
 
   /**
-   * Builds FileIO configuration that also tells the client where to renew the vended credentials.
+   * Builds FileIO configuration handed to a client, with credentials recorded as vended for the
+   * client. The server's own reads and writes go through {@link #getFileIO} instead.
    *
-   * <p>The endpoint is only meaningful in a configuration handed to a REST client: Iceberg's
-   * clients resolve it against their catalog URI, which the server's own FileIO does not have, so
-   * the server's internal callers must leave it empty.
+   * <p>The endpoint tells a REST client where to renew the vended credentials. Iceberg's clients
+   * resolve it against their catalog URI.
    *
    * @param credentialsEndpoint path of the loadCredentials endpoint for this table, relative to the
-   *     catalog URI, or empty for a configuration the server builds for itself
+   *     catalog URI, or empty when the client is not told where to renew
    */
   Map<String, String> getFileIOConfig(
       NormalizedURL path,

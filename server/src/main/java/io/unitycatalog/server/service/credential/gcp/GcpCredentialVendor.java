@@ -26,6 +26,10 @@ public class GcpCredentialVendor {
 
   public static final List<String> INITIAL_SCOPES =
       List.of("https://www.googleapis.com/auth/cloud-platform");
+
+  // Google's limit on a credential access boundary condition.
+  static final int MAX_CONDITION_LENGTH = 2048;
+
   private final Map<NormalizedURL, GcsStorageConfig> gcsConfigurations;
   private final Map<NormalizedURL, GcpCredentialGenerator> credentialGenerators =
       new ConcurrentHashMap<>();
@@ -138,22 +142,44 @@ public class GcpCredentialVendor {
               String resource =
                   format("//storage.googleapis.com/projects/_/buckets/%s", locationUri.getHost());
 
+              // Match the path itself or anything under path/. Listing with the bare path as the
+              // prefix also returns sibling names such as path_archive, as the S3 policy allows.
+              String dirPrefix = path.isEmpty() ? "" : path + "/";
+              String objectsPrefix =
+                  format("projects/_/buckets/%s/objects/", locationUri.getHost());
+
               // for reading/writing objects
-              String resourceNameStartsWithExpr =
+              String objectStartsWithExpr =
                   format(
-                      "resource.name.startsWith(%s)",
-                      celStringLiteral(
-                          format("projects/_/buckets/%s/objects/%s", locationUri.getHost(), path)));
+                      "resource.name.startsWith(%s)", celStringLiteral(objectsPrefix + dirPrefix));
 
               // for listing objects
-              String objectListPrefixStartsWithExpr =
+              String listStartsWithExpr =
                   format(
                       "api.getAttribute('storage.googleapis.com/objectListPrefix',"
                           + " '').startsWith(%s)",
-                      celStringLiteral(path));
+                      celStringLiteral(dirPrefix));
 
+              // At a bucket root the startsWith clauses already match everything.
               String combinedExpr =
-                  resourceNameStartsWithExpr + " || " + objectListPrefixStartsWithExpr;
+                  path.isEmpty()
+                      ? objectStartsWithExpr + " || " + listStartsWithExpr
+                      : format(
+                          "resource.name == %s || %s || api.getAttribute("
+                              + "'storage.googleapis.com/objectListPrefix', '') == %s || %s",
+                          celStringLiteral(objectsPrefix + path),
+                          objectStartsWithExpr,
+                          celStringLiteral(path),
+                          listStartsWithExpr);
+
+              if (combinedExpr.length() > MAX_CONDITION_LENGTH) {
+                throw new BaseException(
+                    ErrorCode.INVALID_ARGUMENT,
+                    format(
+                        "GCS location %s is too long for a downscoped credential: its access"
+                            + " boundary condition is %d characters, and the limit is %d.",
+                        location, combinedExpr.length(), MAX_CONDITION_LENGTH));
+              }
 
               boundaryBuilder.addRule(
                   CredentialAccessBoundary.AccessBoundaryRule.newBuilder()
@@ -171,6 +197,22 @@ public class GcpCredentialVendor {
         .setSourceCredential(credentials)
         .setCredentialAccessBoundary(boundaryBuilder.build())
         .build();
+  }
+
+  /**
+   * Maps a failure to get a downscoped token. When the token service rejects the request as
+   * invalid, for example because the access boundary is over its size limit, the location is the
+   * cause, so the error is {@code INVALID_ARGUMENT}.
+   */
+  static BaseException credentialError(IOException e) {
+    // The token service's OAuth error, formatted by google-auth as "Error code <code>: <text>".
+    if (e.getMessage() != null && e.getMessage().startsWith("Error code invalid_request")) {
+      return new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "GCS rejected the downscoped credential request: " + e.getMessage(),
+          e);
+    }
+    return new BaseException(ErrorCode.FAILED_PRECONDITION, "GCS credentials not found.", e);
   }
 
   List<String> resolvePrivilegesToRoles(Set<CredentialContext.Privilege> privileges) {
@@ -201,7 +243,7 @@ public class GcpCredentialVendor {
         }
         return downscopeGcpCreds(creds.createScoped(INITIAL_SCOPES), context).refreshAccessToken();
       } catch (IOException e) {
-        throw new BaseException(ErrorCode.FAILED_PRECONDITION, "GCS credentials not found.", e);
+        throw credentialError(e);
       }
     }
   }
