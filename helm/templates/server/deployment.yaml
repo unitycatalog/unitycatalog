@@ -176,7 +176,10 @@ spec:
           {{- end }}
           image: {{ include "unitycatalog.server.image" . | quote }}
           imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
-          command: ["./bin/start-uc-server", "--upgrade-schema"]
+          {{- /* The same command as the server container, so that a wrapper image works for both. */}}
+          command: {{- toYaml (.Values.server.deployment.command | default (list "./bin/start-uc-server")) | nindent 12 }}
+          args:
+            - --upgrade-schema
           volumeMounts: {{- include "unitycatalog.server.volumeMounts" . | nindent 12 }}
       {{- $obsPort := .Values.server.deployment.obsPort }}
       {{- if and $obsPort (eq (toString $obsPort) (toString .Values.server.deployment.port)) }}

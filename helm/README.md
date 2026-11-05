@@ -667,6 +667,8 @@ not set
 			<td>Command that starts the server
 
 The chart passes `--port`, and `--obs-port` when `obsPort` is set, as the container's `args`.
+The `upgrade-schema` init container runs the same command with the single argument
+`--upgrade-schema`.
 Kubernetes runs this command instead of the image's `ENTRYPOINT`, so an image that starts
 through its own wrapper can set it here; the wrapper must pass the arguments on to
 `./bin/start-uc-server`.
