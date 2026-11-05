@@ -294,7 +294,7 @@ bin/start-uc-server
 Behind the scenes, on startup, the UC server will configure itself with the following:
 
 * Creation of an internal signing key in `etc/conf` on first start, unless the
-  [token signing key files](configuration.md#configuration) are set; generating the key is deprecated
+  [token signing key file](configuration.md#configuration) is set; generating the key is deprecated
 * Creation of an admin access token in `etc/conf/token.txt`
 * Creation of an admin account in the user database
 * Granting the admin account as the metastore admin for the server

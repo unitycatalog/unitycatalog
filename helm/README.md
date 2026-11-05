@@ -833,7 +833,7 @@ not set
 
 Use the server image from the same release as the chart. The chart passes secrets to
 the server as environment variables that older server images don't read. The chart also
-sets the token signing key files, which older server images ignore.
+sets the token signing key file, which older server images ignore.
 </td>
 		</tr>
 		<tr>
