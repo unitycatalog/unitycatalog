@@ -259,6 +259,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SchemaInfo'
+        '404':
+          description: Not Found. The schema does not exist.
+        '503':
+          description: Service Unavailable. The schema is being modified concurrently; retry the request.
     delete:
       tags:
         - Schemas
