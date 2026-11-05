@@ -20,6 +20,12 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
   private static final String REGULAR_USER = "scim-regular@localhost";
   private static final String OTHER_USER = "scim-other@localhost";
   private static final String SCIM_USERS_PATH = "/api/1.0/unity-control/scim2/Users";
+  private static final String DEACTIVATE =
+      "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],"
+          + "\"Operations\":[{\"op\":\"replace\",\"value\":{\"active\":false}}]}";
+
+  private static final String OWNER_REFUSED =
+      "The metastore owner can't be deleted or deactivated: admin";
 
   private UsersApi regularUsersApi;
   private ServerConfig regularUserConfig;
@@ -53,21 +59,53 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     // metastore OWNER -- before it was wired up the handler carried no authorization expression at
     // all.
     String patchPath = SCIM_USERS_PATH + "/" + otherUser.getId();
-    String deactivate =
-        "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],"
-            + "\"Operations\":[{\"op\":\"replace\",\"value\":{\"active\":false}}]}";
 
     // A regular user cannot patch another user.
     HttpResponse<String> denied =
-        TestUtils.sendRaw(regularUserConfig, "PATCH", patchPath, Optional.of(deactivate));
+        TestUtils.sendRaw(regularUserConfig, "PATCH", patchPath, Optional.of(DEACTIVATE));
     assertThat(denied.statusCode()).isEqualTo(403);
     assertThat(denied.body()).contains("\"error_code\":\"PERMISSION_DENIED\"");
 
     // The metastore admin can, and the user ends up deactivated.
     HttpResponse<String> allowed =
-        TestUtils.sendRaw(adminConfig, "PATCH", patchPath, Optional.of(deactivate));
+        TestUtils.sendRaw(adminConfig, "PATCH", patchPath, Optional.of(DEACTIVATE));
     assertThat(allowed.statusCode()).isEqualTo(200);
     assertThat(usersApi.getUser(otherUser.getId()).getActive()).isFalse();
+  }
+
+  @Test
+  @SneakyThrows
+  public void testMetastoreOwnerCannotBeDeletedOrDeactivated() {
+    UserResource owner =
+        usersApi.listUsers(null, null, null).getResources().stream()
+            .filter(user -> "admin".equals(user.getEmails().get(0).getValue()))
+            .findFirst()
+            .orElseThrow();
+    String ownerPath = SCIM_USERS_PATH + "/" + owner.getId();
+
+    // Each request would leave no enabled metastore owner, so the server refuses it and the owner
+    // can still call the API afterwards.
+    HttpResponse<String> patch =
+        TestUtils.sendRaw(adminConfig, "PATCH", ownerPath, Optional.of(DEACTIVATE));
+    assertThat(patch.statusCode()).isEqualTo(400);
+    assertThat(patch.body()).contains("\"error_code\":\"INVALID_ARGUMENT\"");
+    assertThat(patch.body()).contains(OWNER_REFUSED);
+    assertThat(usersApi.getUser(owner.getId()).getActive()).isTrue();
+
+    UserResource inactive = owner.active(false);
+    ApiException put =
+        assertThrows(ApiException.class, () -> usersApi.updateUser(owner.getId(), inactive));
+    assertThat(put.getCode()).isEqualTo(400);
+    assertThat(put.getResponseBody()).contains("\"error_code\":\"INVALID_ARGUMENT\"");
+    assertThat(put.getResponseBody()).contains(OWNER_REFUSED);
+    assertThat(usersApi.getUser(owner.getId()).getActive()).isTrue();
+
+    ApiException delete =
+        assertThrows(ApiException.class, () -> usersApi.deleteUser(owner.getId()));
+    assertThat(delete.getCode()).isEqualTo(400);
+    assertThat(delete.getResponseBody()).contains("\"error_code\":\"INVALID_ARGUMENT\"");
+    assertThat(delete.getResponseBody()).contains(OWNER_REFUSED);
+    assertThat(usersApi.getUser(owner.getId()).getActive()).isTrue();
   }
 
   private static void assertScimPermissionDenied(Executable request) {
