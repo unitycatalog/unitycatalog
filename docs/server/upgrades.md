@@ -17,8 +17,8 @@ Two options of `bin/start-uc-server` check and change the schema. Neither starts
 exit with 0 when they succeed, and with 1 and the reasons when they refuse (see
 [Messages](#messages)).
 
-- `--check-schema` tells you whether `--upgrade-schema` would go through, and lists the steps it
-  would apply. It changes nothing and takes no lock, so on PostgreSQL and MySQL you can run it with
+- `--check-schema` tells you whether the schema allows `--upgrade-schema`, and lists the steps it
+  would apply. It does not test the database user's privileges or the lock. It changes nothing and takes no lock, so on PostgreSQL and MySQL you can run it with
   the new release while the old servers still run. H2 lets only one process open the database
   file, so on H2 stop the server first.
 - `--upgrade-schema` brings the database to the schema version of its release. It sets up an empty
@@ -95,11 +95,11 @@ one name. Put it in place of the `<...>` in the statements that follow, run them
 ## Upgrading to a new release
 
 Run the commands with the new release. On PostgreSQL and MySQL, you can also run step 3 before you
-stop the servers, to find out early whether the upgrade would go through.
+stop the servers, to find out early whether the schema allows the upgrade.
 
 1. Stop all servers.
 2. Back up the database (see [Backing up the database](#backing-up-the-database)).
-3. Check that the upgrade would go through:
+3. Check that the schema allows the upgrade:
 
     ```sh
     bin/start-uc-server --check-schema
