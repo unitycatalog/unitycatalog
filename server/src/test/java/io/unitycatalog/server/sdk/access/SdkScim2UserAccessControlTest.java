@@ -102,7 +102,7 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     HttpResponse<String> patch =
         TestUtils.sendRaw(adminConfig, "PATCH", ownerPath, Optional.of(DEACTIVATE));
     assertThat(patch.statusCode()).isEqualTo(400);
-    assertThat(patch.body()).contains("\"error_code\":\"INVALID_ARGUMENT\"");
+    assertThat(patch.body()).contains("\"error_code\":\"FAILED_PRECONDITION\"");
     assertThat(patch.body()).contains(OWNER_REFUSED);
     assertThat(usersApi.getUser(owner.getId()).getActive()).isTrue();
 
@@ -110,14 +110,14 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     ApiException put =
         assertThrows(ApiException.class, () -> usersApi.updateUser(owner.getId(), inactive));
     assertThat(put.getCode()).isEqualTo(400);
-    assertThat(put.getResponseBody()).contains("\"error_code\":\"INVALID_ARGUMENT\"");
+    assertThat(put.getResponseBody()).contains("\"error_code\":\"FAILED_PRECONDITION\"");
     assertThat(put.getResponseBody()).contains(OWNER_REFUSED);
     assertThat(usersApi.getUser(owner.getId()).getActive()).isTrue();
 
     ApiException delete =
         assertThrows(ApiException.class, () -> usersApi.deleteUser(owner.getId()));
     assertThat(delete.getCode()).isEqualTo(400);
-    assertThat(delete.getResponseBody()).contains("\"error_code\":\"INVALID_ARGUMENT\"");
+    assertThat(delete.getResponseBody()).contains("\"error_code\":\"FAILED_PRECONDITION\"");
     assertThat(delete.getResponseBody()).contains(OWNER_REFUSED);
     assertThat(usersApi.getUser(owner.getId()).getActive()).isTrue();
   }

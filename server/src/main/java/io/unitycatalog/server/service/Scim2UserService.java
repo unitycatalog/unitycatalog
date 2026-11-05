@@ -245,7 +245,7 @@ public class Scim2UserService implements ScimService {
     UUID metastoreId = metastoreRepository.getMetastoreId();
     if (authorizer.authorize(UUID.fromString(userId), METASTORE, metastoreId, Privileges.OWNER)) {
       throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
+          ErrorCode.FAILED_PRECONDITION,
           "The metastore owner can't be deleted or deactivated: " + email);
     }
   }
