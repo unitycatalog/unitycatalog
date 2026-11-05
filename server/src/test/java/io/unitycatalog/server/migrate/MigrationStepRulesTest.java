@@ -28,6 +28,8 @@ import net.sf.jsqlparser.statement.create.index.CreateIndex;
 import net.sf.jsqlparser.statement.create.table.CreateTable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 /**
  * The rules every schema step keeps, so that {@code --upgrade-schema} can tell from the schema
@@ -59,7 +61,8 @@ public class MigrationStepRulesTest {
 
   /** What a new column may say besides its type: nullable, or NOT NULL with a default. */
   private static final Pattern NEW_COLUMN =
-      Pattern.compile("(NULL|DEFAULT \\S+|DEFAULT \\S+ NOT NULL|NOT NULL DEFAULT \\S+)?");
+      Pattern.compile(
+          "(NULL|DEFAULT \\S+|DEFAULT (?!NULL )\\S+ NOT NULL|NOT NULL DEFAULT (?!NULL$)\\S+)?");
 
   /**
    * The type changes that widen a column, by database: from the type before to the types after. The
@@ -160,6 +163,23 @@ public class MigrationStepRulesTest {
                 + " or CHECK rule), changes a column's type or drops its NOT NULL. Other changes"
                 + " are not supported yet; see refusal() in this test")
         .isEmpty();
+  }
+
+  /** A new column may be NOT NULL only with a default that is not NULL, in either order. */
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      value = {
+        "ALTER TABLE t ADD c INT DEFAULT NULL NOT NULL|false",
+        "ALTER TABLE t ADD c INT NOT NULL DEFAULT NULL|false",
+        "ALTER TABLE t ADD c INT NOT NULL|false",
+        "ALTER TABLE t ADD c INT NOT NULL DEFAULT 0|true",
+        "ALTER TABLE t ADD c INT DEFAULT 0 NOT NULL|true",
+        "ALTER TABLE t ADD c INT DEFAULT NULL|true",
+        "ALTER TABLE t ADD c INT|true"
+      })
+  void newColumnNotNullNeedsNonNullDefault(String sql, boolean allowed) {
+    assertThat(refusalOfSent(sql, DatabaseKind.POSTGRESQL, false) == null).isEqualTo(allowed);
   }
 
   /** Every step is a versioned SQL file, and exists for all three databases. */
