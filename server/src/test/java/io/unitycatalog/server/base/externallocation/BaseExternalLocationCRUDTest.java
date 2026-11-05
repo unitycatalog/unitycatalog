@@ -33,7 +33,10 @@ import io.unitycatalog.server.base.volume.VolumeOperations;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
+import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.HashSet;
@@ -53,6 +56,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   private static final String NEW_EXTERNAL_LOCATION_NAME = EXTERNAL_LOCATION_NAME + "_new";
   private static final String CREDENTIAL_NAME = "uc_testcredential";
   private static final String ANOTHER_CREDENTIAL_NAME = "uc_testcredential_another";
+  private static final String NEW_CREDENTIAL_NAME = "uc_testcredential_new";
   private static final String DUMMY_ROLE_ARN = "arn:aws:iam::123456789012:role/role-name";
   protected ExternalLocationOperations externalLocationOperations;
   protected SchemaOperations schemaOperations;
@@ -457,5 +461,91 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
                 .getId(),
         "Failed to create test cleanup task",
         /* readOnly= */ false);
+  }
+
+  /** A drop that waits for a concurrent rename must not delete the renamed external location. */
+  @Test
+  public void dropRacingARenameDoesNotDeleteTheRenamedExternalLocation() throws Exception {
+    UUID id = UUID.fromString(create("drop_race", testUrl()).getId());
+    externalLocationsToDelete.remove("drop_race");
+    externalLocationsToDelete.add("drop_race_renamed");
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> setColumn(held, ExternalLocationDAO.class, id, "name", "drop_race_renamed"),
+                () -> {
+                  externalLocationOperations.deleteExternalLocation("drop_race", Optional.empty());
+                  return null;
+                }),
+        ErrorCode.NOT_FOUND,
+        "External location not found");
+
+    assertThat(externalLocationOperations.getExternalLocation("drop_race_renamed").getId())
+        .isEqualTo(id.toString());
+  }
+
+  /** A rename that waits for a concurrent edit of another column keeps that edit. */
+  @Test
+  public void renameKeepsAConcurrentCommentEdit() throws Exception {
+    UUID id = UUID.fromString(create("edit_race", testUrl()).getId());
+    externalLocationsToDelete.remove("edit_race");
+    externalLocationsToDelete.add("edited");
+
+    runBlockedByHeldWrite(
+        held -> setColumn(held, ExternalLocationDAO.class, id, "comment", "held comment"),
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                "edit_race", new UpdateExternalLocation().newName("edited")));
+
+    ExternalLocationInfo renamed = externalLocationOperations.getExternalLocation("edited");
+    assertThat(renamed.getId()).isEqualTo(id.toString());
+    assertThat(renamed.getComment()).isEqualTo("held comment");
+  }
+
+  /** A comment-only update that waits for a concurrent credential change names that credential. */
+  @Test
+  public void commentUpdateReturnsTheConcurrentlyChangedCredentialName() throws Exception {
+    UUID id = UUID.fromString(create("cred_race", testUrl()).getId());
+    UUID anotherCredentialId = UUID.fromString(anotherCredentialInfo.getId());
+
+    ExternalLocationInfo updated =
+        runBlockedByHeldWrite(
+            held ->
+                setColumn(held, ExternalLocationDAO.class, id, "credentialId", anotherCredentialId),
+            () ->
+                externalLocationOperations.updateExternalLocation(
+                    "cred_race", new UpdateExternalLocation().comment("patched")));
+
+    assertThat(updated.getCredentialId()).isEqualTo(anotherCredentialInfo.getId());
+    assertThat(updated.getCredentialName()).isEqualTo(ANOTHER_CREDENTIAL_NAME);
+  }
+
+  /** A comment-only update that waits for a credential created after it started names that one. */
+  @Test
+  public void commentUpdateReturnsTheNameOfAConcurrentlyCreatedCredential() throws Exception {
+    UUID id = UUID.fromString(create("new_cred_race", testUrl()).getId());
+    CredentialDAO newCredential =
+        CredentialDAO.from(
+            new io.unitycatalog.server.model.CreateCredentialRequest()
+                .name(NEW_CREDENTIAL_NAME)
+                .purpose(io.unitycatalog.server.model.CredentialPurpose.STORAGE)
+                .awsIamRole(
+                    new io.unitycatalog.server.model.AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN)),
+            "test-user");
+
+    ExternalLocationInfo updated =
+        runBlockedByHeldWrite(
+            held -> {
+              held.persist(newCredential);
+              setColumn(held, ExternalLocationDAO.class, id, "credentialId", newCredential.getId());
+            },
+            () ->
+                externalLocationOperations.updateExternalLocation(
+                    "new_cred_race", new UpdateExternalLocation().comment("patched")));
+
+    assertThat(updated.getCredentialId()).isEqualTo(newCredential.getId().toString());
+    assertThat(updated.getCredentialName()).isEqualTo(NEW_CREDENTIAL_NAME);
+    credentialOperations.deleteCredential(NEW_CREDENTIAL_NAME, Optional.of(true));
   }
 }
