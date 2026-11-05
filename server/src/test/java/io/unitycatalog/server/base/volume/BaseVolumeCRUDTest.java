@@ -228,4 +228,51 @@ public abstract class BaseVolumeCRUDTest extends BaseVolumeCRUDTestEnv {
     assertThatThrownBy(() -> schemaOperations.getSchema(CATALOG_NAME + "." + SCHEMA_NEW_NAME))
         .isInstanceOf(Exception.class);
   }
+
+  /** A drop that waits for a concurrent rename must not delete the renamed volume. */
+  @Test
+  public void dropRacingARenameDoesNotDeleteTheRenamedVolume() throws Exception {
+    UUID id = UUID.fromString(createExternalVolume("drop_race").getVolumeId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> setColumn(held, VolumeInfoDAO.class, id, "name", "drop_race_renamed"),
+                () -> {
+                  volumeOperations.deleteVolume(SCHEMA_FULL_NAME + ".drop_race");
+                  return null;
+                }),
+        ErrorCode.NOT_FOUND,
+        "Volume not found");
+
+    assertThat(volumeOperations.getVolume(SCHEMA_FULL_NAME + ".drop_race_renamed").getVolumeId())
+        .isEqualTo(id.toString());
+  }
+
+  /** A rename that waits for a concurrent edit of another column keeps that edit. */
+  @Test
+  public void renameKeepsAConcurrentCommentEdit() throws Exception {
+    UUID id = UUID.fromString(createExternalVolume("edit_race").getVolumeId());
+
+    runBlockedByHeldWrite(
+        held -> setColumn(held, VolumeInfoDAO.class, id, "comment", "held comment"),
+        () ->
+            volumeOperations.updateVolume(
+                SCHEMA_FULL_NAME + ".edit_race",
+                new UpdateVolumeRequestContent().newName("edited")));
+
+    VolumeInfo renamed = volumeOperations.getVolume(SCHEMA_FULL_NAME + ".edited");
+    assertThat(renamed.getVolumeId()).isEqualTo(id.toString());
+    assertThat(renamed.getComment()).isEqualTo("held comment");
+  }
+
+  private VolumeInfo createExternalVolume(String name) throws ApiException {
+    return volumeOperations.createVolume(
+        new CreateVolumeRequestContent()
+            .name(name)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .volumeType(VolumeType.EXTERNAL)
+            .storageLocation("/tmp/" + name));
+  }
 }
