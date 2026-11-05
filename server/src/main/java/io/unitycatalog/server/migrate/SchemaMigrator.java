@@ -166,9 +166,12 @@ public final class SchemaMigrator implements AutoCloseable {
         }
       }
       ServerProperties serverProperties = new ServerProperties(serverFile.toString());
-      try (SchemaMigrator migrator =
-          fromHibernateProperties(
-              HibernateConfigurator.setupHibernateProperties(serverProperties, hibernateFile))) {
+      Properties hibernateProperties =
+          HibernateConfigurator.setupHibernateProperties(serverProperties, hibernateFile);
+      if (!upgrade) {
+        openH2OnlyIfItExists(hibernateProperties);
+      }
+      try (SchemaMigrator migrator = fromHibernateProperties(hibernateProperties)) {
         if (migrator.isInMemory()) {
           throw new IllegalStateException(
               "The configured database is in memory, so there is nothing to check or upgrade: the"
@@ -183,9 +186,41 @@ public final class SchemaMigrator implements AutoCloseable {
       }
     } catch (RuntimeException e) {
       LOGGER.error("{} failed", command, e);
-      out.println(e.getMessage());
+      out.println(
+          !upgrade && isH2DatabaseNotFound(e)
+              ? "The H2 database file that hibernate.connection.url names is not found, and a"
+                  + " check does not create it: check the configuration, and run "
+                  + command
+                  + " in the Unity Catalog folder, the one that holds etc/conf."
+              : e.getMessage());
       return 1;
     }
+  }
+
+  /**
+   * Makes a check open an H2 file database only if it exists: H2 creates a missing file when it
+   * connects, and a check must change nothing.
+   */
+  private static void openH2OnlyIfItExists(Properties hibernateProperties) {
+    String url = hibernateProperties.getProperty("hibernate.connection.url");
+    String lower = url == null ? "" : url.toLowerCase(Locale.ROOT);
+    if (lower.startsWith("jdbc:h2:")
+        && !lower.startsWith("jdbc:h2:mem:")
+        && setting(lower, "ifexists") == null) {
+      hibernateProperties.setProperty("hibernate.connection.url", url + ";IFEXISTS=TRUE");
+    }
+  }
+
+  /** Whether H2 failed to open {@code e}'s database because it does not exist. */
+  private static boolean isH2DatabaseNotFound(Throwable e) {
+    for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+      // 90013: database not found; 90146: not found with IFEXISTS=TRUE
+      if (cause instanceof SQLException sql
+          && (sql.getErrorCode() == 90013 || sql.getErrorCode() == 90146)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Whether the database is an in-memory H2 database, which lasts only as long as its process. */

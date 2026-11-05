@@ -98,6 +98,20 @@ public class SchemaGateTest {
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
   }
 
+  @Test
+  void checkSchemaDoesNotCreateAMissingH2File(@TempDir Path conf, @TempDir Path data)
+      throws IOException {
+    writeConfiguration(conf, "", "jdbc:h2:file:" + data.resolve("uc"));
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(SchemaMigrator.runCommand(false, conf, new PrintStream(out, true, UTF_8))).isOne();
+
+    assertThat(out.toString(UTF_8)).contains("is not found").contains("etc/conf");
+    try (var files = Files.list(data)) {
+      assertThat(files).isEmpty();
+    }
+  }
+
   /**
    * {@code server.properties} with {@code serverSetting}, and {@code hibernate.properties} for
    * {@code url}.
