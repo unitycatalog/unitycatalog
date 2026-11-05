@@ -21,20 +21,26 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import org.hibernate.Hibernate;
 import org.hibernate.LockMode;
 import org.hibernate.Session;
+import org.hibernate.query.CommonQueryContract;
+import org.hibernate.query.MutationQuery;
 import org.hibernate.query.Query;
+import org.hibernate.query.SelectionQuery;
 
 public class RepositoryUtils {
 
   private static final Map<String, Class<?>> PROPERTY_TYPE_MAP = new HashMap<>();
 
   /**
-   * Acquires the table row lock shared by the Delta and Iceberg commit paths and by table deletion,
-   * so concurrent commits on the same table serialize, and a deletion waits for them. A lock-wait
-   * timeout or deadlock victim is reported as {@code lockContentionError} (rolling back only this
-   * transaction) rather than leaking the ORM exception; each caller passes the code whose client
-   * reaction is safe for it:
+   * Acquires the table row lock shared by the Delta and Iceberg commit paths, so concurrent commits
+   * on the same table serialize; table deletion waits for them through {@link #lockByKey}. A
+   * lock-wait timeout or deadlock victim is reported as {@code lockContentionError} (rolling back
+   * only this transaction) rather than leaking the ORM exception; each caller passes the code whose
+   * client reaction is safe for it:
    *
    * <ul>
    *   <li><b>Delta</b> passes {@code COMMIT_STATE_UNKNOWN} (500). Failing to acquire the lock does
@@ -49,9 +55,6 @@ public class RepositoryUtils {
    *       therefore safe and lets the Iceberg client retry transparently, whereas a 500 would
    *       surface to the user. Iceberg has no server-side deduplication that a resend could
    *       exploit.
-   *   <li><b>Table deletion</b> passes {@code UNAVAILABLE} (503): the table was not deleted, and
-   *       the request can be retried. The Iceberg REST spec lists 503, not 409, for drop table, and
-   *       the Iceberg client reads a 409 on drop as "already exists".
    * </ul>
    *
    * <p>The row is locked first and read second. Refreshing the entity under the lock would load its
@@ -62,7 +65,7 @@ public class RepositoryUtils {
    * which can be from before the other commit. A table deleted while this waited for the lock is
    * reported as {@link ErrorCode#TABLE_NOT_FOUND}.
    *
-   * @param session the Hibernate session running the commit or deletion transaction
+   * @param session the Hibernate session running the commit transaction
    * @param dao the table row to lock; re-read after the lock is held
    * @param tableId the table id, used as a fallback in the error message
    * @param tableFullNameForLogging the table's full name for the error message, if known
@@ -96,6 +99,87 @@ public class RepositoryUtils {
           lockContentionError,
           "Concurrent modification in progress on table " + tableName + "; retry the request.");
     }
+  }
+
+  /**
+   * Locks the row of {@code type} identified by {@code id} and every {@code key} attribute (for
+   * example {@code name}), and returns it refreshed. A statement that changes a row must name it by
+   * its id plus the key the request used, so a concurrent rename or delete of the row makes the
+   * statement miss it instead of acting on a different object. Attribute names must be code
+   * constants, never request values. {@code description} (for example {@code "table t"}) names the
+   * row in the lock-contention message.
+   *
+   * @throws BaseException {@code notFound} if no row matches; {@link ErrorCode#UNAVAILABLE} if the
+   *     lock cannot be acquired (timeout or deadlock victim)
+   */
+  public static <T> T lockByKey(
+      Session session,
+      Class<T> type,
+      UUID id,
+      Map<String, Object> key,
+      String description,
+      Supplier<BaseException> notFound) {
+    return unavailableOnLockFailure(
+        description,
+        () -> {
+          SelectionQuery<T> query =
+              session.createSelectionQuery(
+                  "from " + type.getSimpleName() + " where " + predicate(key), type);
+          bindKey(query, id, key);
+          T locked = query.setHibernateLockMode(LockMode.PESSIMISTIC_WRITE).getSingleResultOrNull();
+          if (locked == null) {
+            throw notFound.get();
+          }
+          // The locking query returns an entity already in the session as it was first read.
+          session.refresh(locked, LockMode.PESSIMISTIC_WRITE);
+          return locked;
+        });
+  }
+
+  /**
+   * Deletes the {@code locked} row, identified by its id and {@code key}, and detaches it. This is
+   * a bulk delete, so Hibernate's cascades do not run: delete the row's children first.
+   *
+   * @throws BaseException {@code notFound} if no row matches
+   */
+  public static void deleteByKey(
+      Session session, Object locked, Map<String, Object> key, Supplier<BaseException> notFound) {
+    MutationQuery delete =
+        session.createMutationQuery(
+            "delete from "
+                + Hibernate.getClass(locked).getSimpleName()
+                + " where "
+                + predicate(key));
+    bindKey(delete, (UUID) session.getIdentifier(locked), key);
+    if (delete.executeUpdate() == 0) {
+      throw notFound.get();
+    }
+    session.detach(locked);
+  }
+
+  /** Runs a locking read; a lock timeout or deadlock victim becomes {@code UNAVAILABLE}. */
+  private static <R> R unavailableOnLockFailure(String description, Supplier<R> lockingRead) {
+    try {
+      return lockingRead.get();
+    } catch (RuntimeException e) {
+      if (!isLockFailure(e) && !isLockFailure(e.getCause())) {
+        throw e;
+      }
+      throw new BaseException(
+          ErrorCode.UNAVAILABLE,
+          "Concurrent modification in progress on " + description + "; retry the request.");
+    }
+  }
+
+  private static void bindKey(CommonQueryContract query, UUID id, Map<String, Object> key) {
+    query.setParameter("id", id);
+    key.forEach((attribute, value) -> query.setParameter(attribute, value));
+  }
+
+  /** {@code id = :id and a = :a ...}: the row's id plus each key attribute. */
+  private static String predicate(Map<String, Object> key) {
+    return "id = :id"
+        + key.keySet().stream().map(a -> " and " + a + " = :" + a).collect(Collectors.joining());
   }
 
   /**

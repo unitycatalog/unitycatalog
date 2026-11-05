@@ -1252,15 +1252,22 @@ public class TableRepository {
 
   private TableInfoDAO deleteTable(
       Session session, UUID schemaId, String tableName, Consumer<TableInfoDAO> check) {
-    TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
-    if (tableInfoDAO == null) {
-      throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
+    TableInfoDAO found = findBySchemaIdAndName(session, schemaId, tableName);
+    if (found == null) {
+      throw tableNotFound(tableName);
     }
-    check.accept(tableInfoDAO);
+    Map<String, Object> key = Map.of("name", tableName);
     // A commit rewrites the table's columns under this lock; waiting for it keeps the cascade below
     // from deleting column rows the commit is replacing.
-    RepositoryUtils.lockTableForCommit(
-        session, tableInfoDAO, tableInfoDAO.getId(), Optional.of(tableName), ErrorCode.UNAVAILABLE);
+    TableInfoDAO tableInfoDAO =
+        RepositoryUtils.lockByKey(
+            session,
+            TableInfoDAO.class,
+            found.getId(),
+            key,
+            "table " + tableName,
+            () -> tableNotFound(tableName));
+    check.accept(tableInfoDAO);
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       repositories
           .getStorageCleanupTaskRepository()
@@ -1281,8 +1288,17 @@ public class TableRepository {
     }
     PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
         .forEach(session::remove);
-    session.remove(tableInfoDAO);
+    // The bulk delete skips Hibernate's cascade, so delete the columns first.
+    session
+        .createMutationQuery("delete from ColumnInfoDAO where table.id = :id")
+        .setParameter("id", tableInfoDAO.getId())
+        .executeUpdate();
+    RepositoryUtils.deleteByKey(session, tableInfoDAO, key, () -> tableNotFound(tableName));
     return tableInfoDAO;
+  }
+
+  private static BaseException tableNotFound(String tableName) {
+    return new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
   }
 
   /**
