@@ -15,7 +15,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import java.util.Date;
 import java.util.Optional;
@@ -59,8 +58,7 @@ public class CredentialDAO extends IdentifiableDAO {
   @Setter(AccessLevel.NONE)
   private CredentialType credentialType;
 
-  @Lob
-  @Column(name = "credential", nullable = false)
+  @Column(name = "credential", nullable = false, length = 16777215)
   // No direct access from outside
   @Getter(AccessLevel.NONE)
   @Setter(AccessLevel.NONE)
