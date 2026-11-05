@@ -173,10 +173,18 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
+  /**
+   * Whether {@code url} is an in-memory H2 URL: {@code jdbc:h2:mem:}, or the unnamed {@code
+   * jdbc:h2:.}.
+   */
+  private static boolean isH2InMemory(String url) {
+    return url.startsWith("jdbc:h2:mem:") || url.matches("jdbc:h2:\\.(;.*)?");
+  }
+
   /** Whether the database is an in-memory H2 database, which lasts only as long as its process. */
   public boolean isInMemory() {
     try (Connection connection = dataSource.getConnection()) {
-      return connection.getMetaData().getURL().startsWith("jdbc:h2:mem:");
+      return isH2InMemory(connection.getMetaData().getURL());
     } catch (SQLException e) {
       throw new IllegalStateException("Could not connect to the database: " + e.getMessage(), e);
     }
@@ -204,13 +212,32 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
-  /** The value of a {@code ;name=value} setting in a lower-case H2 URL, or {@code null}. */
+  /**
+   * The value of a {@code ;name=value} setting in a lower-case H2 URL, or {@code null}. Reads the
+   * settings as H2 does: a backslash keeps the next character, so {@code auto\_server} is {@code
+   * auto_server}.
+   */
   private static String setting(String lowerUrl, String name) {
-    String[] parts = lowerUrl.split(";");
-    for (int i = 1; i < parts.length; i++) {
-      int equals = parts[i].indexOf('=');
-      if (equals > 0 && parts[i].substring(0, equals).trim().equals(name)) {
-        return parts[i].substring(equals + 1);
+    int start = lowerUrl.indexOf(';');
+    if (start < 0) {
+      return null;
+    }
+    List<String> parts = new ArrayList<>();
+    StringBuilder part = new StringBuilder();
+    for (int i = start + 1; i < lowerUrl.length(); i++) {
+      char c = lowerUrl.charAt(i);
+      if (c == ';') {
+        parts.add(part.toString());
+        part.setLength(0);
+      } else {
+        part.append(c == '\\' && i + 1 < lowerUrl.length() ? lowerUrl.charAt(++i) : c);
+      }
+    }
+    parts.add(part.toString());
+    for (String setting : parts) {
+      int equals = setting.indexOf('=');
+      if (equals > 0 && setting.substring(0, equals).trim().equals(name)) {
+        return setting.substring(equals + 1);
       }
     }
     return null;
@@ -441,9 +468,9 @@ public final class SchemaMigrator implements AutoCloseable {
           "(?i)create\\s+(?:unique\\s+)?index\\s+if\\s+not\\s+exists\\s+(\\w+)\\s+on\\s+(\\w+)");
 
   /**
-   * Throws when an index that a step creates is missing because another table already uses its
-   * name. PostgreSQL and H2 name indexes schema-wide, so {@code create index if not exists} skips
-   * ours without an error. MySQL names indexes per table and is not affected.
+   * Throws when an index that a step creates is missing, for example because another object already
+   * uses its name. PostgreSQL and H2 name indexes schema-wide, so {@code create index if not
+   * exists} skips ours without an error. MySQL names indexes per table and is not affected.
    */
   private void requireStepIndexes() {
     // Flyway's info needs its own connections: list the steps before taking ours.
@@ -457,10 +484,23 @@ public final class SchemaMigrator implements AutoCloseable {
           }
           Matcher m = CREATE_INDEX.matcher(new String(in.readAllBytes(), StandardCharsets.UTF_8));
           while (m.find()) {
-            String hint = indexClashHint(connection, m.group(1), m.group(2));
-            if (hint != null) {
+            String index = m.group(1);
+            String table = m.group(2);
+            DatabaseMetaData metaData = connection.getMetaData();
+            // H2 stores the unquoted names of the steps in upper case.
+            String stored =
+                metaData.storesUpperCaseIdentifiers() ? table.toUpperCase(Locale.ROOT) : table;
+            if (!indexNames(metaData, connection, stored)
+                .contains(index.toLowerCase(Locale.ROOT))) {
+              String hint = indexClashHint(connection, index, table);
               throw new IllegalStateException(
-                  "Step " + step.getVersion() + " left a Unity Catalog index missing: " + hint);
+                  "Step "
+                      + step.getVersion()
+                      + " left Unity Catalog index "
+                      + index
+                      + " missing on "
+                      + table
+                      + (hint == null ? "" : ": " + hint));
             }
           }
         }
