@@ -449,6 +449,11 @@ public class SchemaMigratorTest {
     assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()).upgradeSchema())
         .hasMessageMatching("(?is).*index idx_name is used by table other_app.*")
         .hasMessageContaining("rename that index");
+
+    // Renaming the other index does not create ours: a rerun still refuses.
+    UpgradeTestUtils.execute(db, "ALTER INDEX idx_name RENAME TO other_app_x");
+    assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()).upgradeSchema())
+        .hasMessageContaining("missing index uc_tables.idx_name");
   }
 
   @Test
@@ -480,6 +485,7 @@ public class SchemaMigratorTest {
     "jdbc:h2:file:{dir}/uc;AUTO_SERVER=TRUE,,",
     "jdbc:h2:file:{dir}/uc;AUTO_SERVER=1,,",
     "jdbc:h2:file:{dir}/uc;auto_server=yes,,",
+    "jdbc:h2:file:{dir}/uc;AUTO\\_SERVER=TRUE,,",
     "jdbc:h2:tcp://localhost/{dir}/uc,,",
     "jdbc:h2:ssl://localhost/{dir}/uc,,",
     "jdbc:p6spy:h2:file:{dir}/uc;AUTO_SERVER=TRUE,,",

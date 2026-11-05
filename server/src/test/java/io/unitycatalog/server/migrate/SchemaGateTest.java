@@ -74,6 +74,7 @@ public class SchemaGateTest {
         "server.properties missing | | not found: run bin/start-uc-server",
         "hibernate.properties missing | | not found: run bin/start-uc-server",
         "in-memory database | jdbc:h2:mem:schema-command | is in memory",
+        "unnamed in-memory database | jdbc:h2:. | is in memory",
         "Hibernate default schema | hibernate.default_schema=uc | hibernate.default_schema is not",
       })
   void schemaCommandsRefuse(String setup, String setting, String message, @TempDir Path conf)
