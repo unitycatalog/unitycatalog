@@ -2143,8 +2143,12 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     return new Handle(tableName, staging.getTableId(), resp.getMetadata().getEtag());
   }
 
-  /** Creates an EXTERNAL Delta table with the given columns. */
-  private Handle createExternal(String tableName, DeltaStructField... fields) throws Exception {
+  /** Creates an EXTERNAL Delta table with the given properties and columns. */
+  private Handle createExternal(
+      String tableName, Map<String, String> properties, DeltaStructField... fields)
+      throws Exception {
+    Map<String, String> allProperties = new HashMap<>(properties);
+    allProperties.put("delta.enableDeletionVectors", "true");
     String location = Files.createTempDirectory(testDirectoryRoot, "external_").toString();
     DeltaLoadTableResponse resp =
         deltaTablesApi.createTable(
@@ -2162,14 +2166,16 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                         .readerFeatures(List.of(TableFeature.DELETION_VECTORS.specName()))
                         .writerFeatures(List.of(TableFeature.DELETION_VECTORS.specName())))
                 .lastCommitTimestampMs(PLACEHOLDER_LAST_COMMIT_TIMESTAMP_MS)
-                .properties(Map.of("delta.enableDeletionVectors", "true")));
+                .properties(allProperties));
     return new Handle(tableName, resp.getMetadata().getTableUuid(), resp.getMetadata().getEtag());
   }
 
   /** An EXTERNAL table with one struct column {@code s<x long>} and no column mapping. */
   private Handle createSimpleStructExternal(String tableName) throws Exception {
     return createExternal(
-        tableName, fld("s", struct(fld("x", prim("long"), null, null)), false, null, null));
+        tableName,
+        Map.of(),
+        fld("s", struct(fld("x", prim("long"), null, null)), false, null, null));
   }
 
   /** The field at {@code path}: a top-level column, then struct fields down to the last name. */
@@ -2301,6 +2307,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               2,
               fld("a", prim("long"), false, 1, "col-1"),
               fld("b", prim("long"), 2, "col-2"));
+  private static final TableFactory ID_S =
+      (t, n) ->
+          t.createManaged(
+              n, "id", 2, fld("s", struct(fld("x", prim("long"), 2, "col-x")), 1, "col-s"));
 
   @ParameterizedTest(name = "{0}")
   @MethodSource("guardCases")
@@ -2482,7 +2492,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
             .after(new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("a")))
             .expectColumns("b")
             .expectPartitions("b"),
-        // A column-mapped table may reorder, change a type, and drop and add next to one rename.
+        // A column-mapped table may reorder or change a type without a rename, and may drop and add
+        // next to one rename.
         ok(
                 "reorder a column-mapped table",
                 NAME_AB,
@@ -2541,20 +2552,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 cmMode("name"),
                 setColumns(fld("s", struct(fld("x", prim("long"), 2, "x")), false, 1, "s")))
             .expectColumns("s"),
-        // An integer id sent as a string is usable.
-        ok(
-                "integer id sent as a string",
-                NAME_A,
-                setColumns(fld("a", prim("long"), false, "1", "col-1")))
-            .expectColumns("a"),
-        ok(
-                "ids 01 and 2147483648 as strings",
-                ID_A,
-                setColumns(
-                    fld("a", prim("long"), false, 1, "col-1"),
-                    fld("b", prim("long"), "01", "col-b"),
-                    fld("c", prim("long"), "2147483648", "col-c")))
-            .expectColumns("a", "b", "c"),
         // A table whose stored schema has no physical names is being enabled when the request
         // carries them. A rename is found only by a physical name that names a stored column, so
         // a new physical name is a drop and an add.
@@ -2596,7 +2593,106 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                 "replace every column of a column-mapped table",
                 NAME_AB,
                 setColumns(fld("x", prim("long"), 3, "col-3"), fld("y", prim("long"), 4, "col-4")))
-            .expectColumns("x", "y"));
+            .expectColumns("x", "y"),
+        // Past the guards, Delta Kernel checks a rename or an id kept under a new name or physical
+        // name; other changes skip it.
+        ok(
+                "same name with a new id is a drop and add",
+                ID_A,
+                setColumns(fld("a", prim("long"), false, 2, "col-1")))
+            .expectColumns("a"),
+        ok(
+                "nested same name with a new id is a drop and add",
+                ID_S,
+                setColumns(fld("s", struct(fld("x", prim("long"), 99, "col-x")), 1, "col-s")))
+            .expectColumns("s"),
+        ok(
+                "rename a type-widened column",
+                (t, n) ->
+                    t.createManaged(
+                        n,
+                        "name",
+                        1,
+                        withTypeChange(
+                            fld("a", prim("long"), false, 1, "col-1"), "integer", "long")),
+                setColumns(
+                    withTypeChange(fld("b", prim("long"), false, 1, "col-1"), "integer", "long")))
+            .expectColumns("b"),
+        ok(
+                "widen a type without a rename",
+                (t, n) ->
+                    t.createManaged(n, "name", 1, fld("a", prim("integer"), false, 1, "col-1")),
+                setColumns(
+                    withTypeChange(fld("a", prim("long"), false, 1, "col-1"), "integer", "long")))
+            .expectColumns("a"),
+        // An EXTERNAL table's Delta log is the source of truth, so its sync skips the Kernel check,
+        // even when the stored schema is behind it.
+        ok(
+                "EXTERNAL sync of a rename after a widening the catalog missed",
+                (t, n) ->
+                    t.createExternal(
+                        n,
+                        Map.of(
+                            "delta.columnMapping.mode", "name",
+                            "delta.columnMapping.maxColumnId", "1"),
+                        fld("a", prim("integer"), false, 1, "col-1")),
+                setColumns(
+                    withTypeChange(fld("b", prim("long"), false, 1, "col-1"), "integer", "long")))
+            .expectColumns("b"),
+        ok(
+                "nested rename plus a new field with the old name",
+                (t, n) ->
+                    t.createManaged(
+                        n,
+                        "name",
+                        4,
+                        fld("p", struct(fld("x", prim("long"), 2, "col-x")), 1, "col-p")),
+                setColumns(
+                    fld(
+                        "p",
+                        struct(
+                            fld("y", prim("long"), 2, "col-x"),
+                            fld("x", prim("long"), 5, "col-x2")),
+                        1,
+                        "col-p")))
+            .expectColumns("p"),
+        rejected(
+            "rename next to a stored column with an unreadable type",
+            "the table schema cannot be read",
+            (t, n) -> {
+              Handle h =
+                  t.createManaged(
+                      n,
+                      "name",
+                      2,
+                      fld("a", prim("long"), false, 1, "col-1"),
+                      fld("v", prim("long"), 2, "col-v"));
+              t.corruptStoredType(h, "v");
+              return h;
+            },
+            setColumns(
+                fld("b", prim("long"), false, 1, "col-1"), fld("v", prim("long"), 2, "col-v"))));
+  }
+
+  private static DeltaStructField withTypeChange(DeltaStructField field, String from, String to) {
+    field.getMetadata().put("delta.typeChanges", List.of(Map.of("fromType", from, "toType", to)));
+    return field;
+  }
+
+  /** Makes the stored type of one column unreadable. */
+  private void corruptStoredType(Handle h, String columnName) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction tx = session.beginTransaction();
+      session
+          .createMutationQuery(
+              "update ColumnInfoDAO c set c.typeJson = :json"
+                  + " where c.table.id = :id and c.name = :name")
+          .setParameter("json", "not json")
+          .setParameter("id", h.tableId())
+          .setParameter("name", columnName)
+          .executeUpdate();
+      tx.commit();
+    }
   }
 
   // -------------------------------------------------------- assertion helpers

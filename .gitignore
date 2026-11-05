@@ -55,3 +55,7 @@ __pycache__
 dist/
 *.egg-info/
 Pipfile
+
+# ui
+node_modules/
+.npmrc

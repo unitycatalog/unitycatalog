@@ -87,6 +87,23 @@ helm upgrade --install unitycatalog oci://registry-1.docker.io/unitycatalog/unit
   --version X.Y.Z --namespace unitycatalog --values values.yaml
 ```
 
+## Health checks
+
+The server serves `/livez`, `/readyz` and `/metrics` only when it starts with an observability port. Set
+`server.deployment.obsPort` to start it with one, and turn on the readiness probe so a pod receives traffic only
+while it can reach its database. The observability port needs server image v0.7.0 or later:
+
+```yaml
+server:
+  deployment:
+    obsPort: 8090
+    enableReadinessProbe: true
+```
+
+With `obsPort` set, the liveness probe, when turned on, checks `/livez` on the same port.
+
+The endpoints are unauthenticated. See [Observability](observability.md) for restricting access to the port.
+
 ## Token signing key
 
 The server signs its tokens with the RSA private key in the Secret named by `server.jwtKeypairSecret.name` (by
