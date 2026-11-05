@@ -33,10 +33,15 @@ import io.unitycatalog.client.model.UpdateRegisteredModel;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
+import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
+import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.BeforeEach;
@@ -374,5 +379,119 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
         .isInstanceOf(Exception.class);
     assertThatThrownBy(() -> modelOperations.getRegisteredModel(MODEL_FULL_NAME))
         .isInstanceOf(Exception.class);
+  }
+
+  /** A drop that waits for a concurrent rename must not delete the renamed model. */
+  @Test
+  public void dropRacingARenameDoesNotDeleteTheRenamedModel() throws Exception {
+    UUID id = UUID.fromString(createModel("drop_race").getId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held ->
+                    setColumn(held, RegisteredModelInfoDAO.class, id, "name", "drop_race_renamed"),
+                () -> {
+                  modelOperations.deleteRegisteredModel(
+                      modelFullName("drop_race"), Optional.empty());
+                  return null;
+                }),
+        ErrorCode.NOT_FOUND,
+        "Registered model not found");
+
+    assertThat(modelOperations.getRegisteredModel(modelFullName("drop_race_renamed")).getId())
+        .isEqualTo(id.toString());
+  }
+
+  /** A rename that waits for a concurrent edit of another column keeps that edit. */
+  @Test
+  public void renameKeepsAConcurrentCommentEdit() throws Exception {
+    UUID id = UUID.fromString(createModel("edit_race").getId());
+
+    runBlockedByHeldWrite(
+        held -> setColumn(held, RegisteredModelInfoDAO.class, id, "comment", "held comment"),
+        () ->
+            modelOperations.updateRegisteredModel(
+                modelFullName("edit_race"), new UpdateRegisteredModel().newName("edited")));
+
+    RegisteredModelInfo renamed = modelOperations.getRegisteredModel(modelFullName("edited"));
+    assertThat(renamed.getId()).isEqualTo(id.toString());
+    assertThat(renamed.getComment()).isEqualTo("held comment");
+  }
+
+  /**
+   * A version created while waiting for a concurrent model write keeps it and is numbered after.
+   */
+  @Test
+  public void createVersionKeepsAConcurrentModelWrite() throws Exception {
+    UUID id = UUID.fromString(createModel("create_race").getId());
+
+    ModelVersionInfo version =
+        runBlockedByHeldWrite(
+            held -> {
+              setColumn(held, RegisteredModelInfoDAO.class, id, "comment", "held comment");
+              setColumn(held, RegisteredModelInfoDAO.class, id, "maxVersionNumber", 1L);
+            },
+            () ->
+                modelOperations.createModelVersion(
+                    new CreateModelVersion()
+                        .catalogName(CATALOG_NAME)
+                        .schemaName(SCHEMA_NAME)
+                        .modelName("create_race")
+                        .source(MV_SOURCE)));
+
+    assertThat(version.getVersion()).isEqualTo(2L);
+    assertThat(modelOperations.getRegisteredModel(modelFullName("create_race")).getComment())
+        .isEqualTo("held comment");
+  }
+
+  /** Finalizing a version that a concurrent writer already made READY is rejected. */
+  @Test
+  public void finalizeRacingAnAlreadyFinalizedVersionIsRejected() throws Exception {
+    createModel("finalize_race");
+    ModelVersionInfo version =
+        modelOperations.createModelVersion(
+            new CreateModelVersion()
+                .catalogName(CATALOG_NAME)
+                .schemaName(SCHEMA_NAME)
+                .modelName("finalize_race")
+                .source(MV_SOURCE));
+    UUID id = UUID.fromString(version.getId());
+    String fullName = modelFullName("finalize_race");
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held ->
+                    setColumn(
+                        held,
+                        ModelVersionInfoDAO.class,
+                        id,
+                        "status",
+                        ModelVersionStatus.READY.toString()),
+                () ->
+                    modelOperations.finalizeModelVersion(
+                        fullName,
+                        version.getVersion(),
+                        new FinalizeModelVersion()
+                            .fullName(fullName)
+                            .version(version.getVersion()))),
+        ErrorCode.INVALID_ARGUMENT,
+        "not in a pending registration state");
+  }
+
+  private RegisteredModelInfo createModel(String name) throws ApiException {
+    catalogOperations.createCatalog(new CreateCatalog().name(CATALOG_NAME).comment(COMMENT));
+    schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
+    return modelOperations.createRegisteredModel(
+        new CreateRegisteredModel()
+            .name(name)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .comment(COMMENT));
+  }
+
+  private static String modelFullName(String name) {
+    return CATALOG_NAME + "." + SCHEMA_NAME + "." + name;
   }
 }
