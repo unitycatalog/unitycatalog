@@ -137,8 +137,10 @@ passes `UC_HIBERNATE_CONNECTION_PASSWORD` if `server.db.postgresqlConfig.passwor
 
 !!! warning "Deprecated: secrets in properties files"
     Secrets in `server.properties` and the password in `hibernate.properties` still work, but this is deprecated. The
-    server logs a warning at startup for each one it reads from a file. Move them to environment variables. The server
-    never reads `hibernate.connection.password` from `server.properties`, and logs a warning that it is ignored.
+    server logs a warning at startup for each one set in a file that no environment variable or system property
+    supplies, and always for `server.client-secret`. Move them to environment variables. The server never reads
+    `hibernate.connection.password` from `server.properties`; unless the environment or a system property also sets
+    the password, it logs a warning that the line is ignored.
 
 #### Upgrading
 

@@ -583,7 +583,8 @@ public class ServerProperties {
    *
    * <ol>
    *   <li>System property
-   *   <li>Environment variable with the key as its name, then the one named by {@link #envName}
+   *   <li>Environment variable with the key as its name, then {@code UC_} plus the key in upper case
+   *       with {@code _} for each character that is not a letter or digit
    *   <li>server.properties file
    * </ol>
    *
