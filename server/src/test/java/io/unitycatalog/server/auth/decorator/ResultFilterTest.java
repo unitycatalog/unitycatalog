@@ -6,6 +6,7 @@ import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.persist.model.Privileges.BROWSE;
 import static io.unitycatalog.server.persist.model.Privileges.OWNER;
+import static io.unitycatalog.server.persist.model.Privileges.READ_METADATA;
 import static io.unitycatalog.server.persist.model.Privileges.USE_CATALOG;
 import static io.unitycatalog.server.persist.model.Privileges.USE_SCHEMA;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,8 +38,10 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 class ResultFilterTest {
 
-  @Test
-  void listFilteringKeepsEachItemsOwnDecision() throws Exception {
+  @ParameterizedTest
+  @CsvSource({"false,true", "true,false", "true,true"})
+  void listFilteringKeepsEachItemsOwnDecision(boolean includeBrowse, boolean browseGranted)
+      throws Exception {
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
     UUID principal = UUID.randomUUID();
     UUID metastore = UUID.randomUUID();
@@ -46,11 +49,14 @@ class ResultFilterTest {
     UUID schema = UUID.randomUUID();
     when(authorizer.authorize(principal, CATALOG, catalog, USE_CATALOG)).thenReturn(true);
     when(authorizer.authorize(principal, SCHEMA, schema, USE_SCHEMA)).thenReturn(true);
+    when(authorizer.authorize(principal, CATALOG, catalog, BROWSE)).thenReturn(browseGranted);
     List<TableInfo> items = new ArrayList<>();
+    List<String> allIds = new ArrayList<>();
     List<String> readable = new ArrayList<>();
     for (int i = 0; i < 10; i++) {
       UUID table = UUID.randomUUID();
       items.add(new TableInfo().tableId(table.toString()));
+      allIds.add(table.toString());
       if (i % 2 == 0) {
         readable.add(table.toString());
       }
@@ -63,17 +69,24 @@ class ResultFilterTest {
             new UnityAccessEvaluator(authorizer, true),
             principal,
             AuthorizeExpressions.GET_TABLE,
-            "",
+            includeBrowse ? AuthorizeExpressions.BROWSE_CATALOG : "",
             new HashMap<>(Map.of(METASTORE, metastore, CATALOG, catalog, SCHEMA, schema)),
             Map.of(),
             mock(KeyMapper.class))
-        .filter(TABLE, items);
+        .filter(TABLE, items, BrowseOnlyConverter::toBrowseOnly);
 
     // Decisions are shared across items only for the same resource: alternating table grants must
     // still alternate after filtering.
-    assertThat(items).extracting(TableInfo::getTableId).containsExactlyElementsOf(readable);
+    assertThat(items)
+        .extracting(TableInfo::getTableId)
+        .containsExactlyElementsOf(includeBrowse && browseGranted ? allIds : readable);
+    assertThat(items)
+        .filteredOn(item -> !Boolean.TRUE.equals(item.getBrowseOnly()))
+        .extracting(TableInfo::getTableId)
+        .containsExactlyElementsOf(readable);
     verify(authorizer, times(1)).authorize(principal, CATALOG, catalog, USE_CATALOG);
     verify(authorizer, times(1)).authorize(principal, SCHEMA, schema, USE_SCHEMA);
+    verify(authorizer, times(includeBrowse ? 1 : 0)).authorize(principal, CATALOG, catalog, BROWSE);
   }
 
   @Test
@@ -84,7 +97,8 @@ class ResultFilterTest {
     UUID browseId = UUID.randomUUID();
     CatalogInfo full = new CatalogInfo().name("full").id(fullId.toString());
     CatalogInfo browse = new CatalogInfo().name("browse").id(browseId.toString());
-    when(authorizer.authorizeAny(principal, CATALOG, fullId, OWNER, USE_CATALOG)).thenReturn(true);
+    when(authorizer.authorizeAny(principal, CATALOG, fullId, OWNER, USE_CATALOG, READ_METADATA))
+        .thenReturn(true);
     when(authorizer.authorize(principal, CATALOG, fullId, BROWSE)).thenReturn(true);
     when(authorizer.authorize(principal, CATALOG, browseId, BROWSE)).thenReturn(true);
     List<CatalogInfo> items =
