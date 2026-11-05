@@ -59,6 +59,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -388,6 +389,59 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         .doesNotContainKey("b");
   }
 
+  /**
+   * The Iceberg drop and rename check the table's format on the row they lock: a drop or rename
+   * that waits for a write that leaves the row non-Iceberg is rejected and the table is intact.
+   */
+  @Test
+  public void dropAndRenameCheckTheFormatOfTheLockedRow() throws Exception {
+    catalogOperations.createCatalog(new CreateCatalog().name(TestUtils.CATALOG_NAME));
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+    for (String table : List.of("dropped", "renamed")) {
+      icebergClient.createTable(
+          TestUtils.CATALOG_NAME,
+          TestUtils.SCHEMA_NAME,
+          CreateTableRequest.builder()
+              .withName(table)
+              .withSchema(schema)
+              .withLocation(Files.createTempDirectory(testDirectoryRoot, table).toUri().toString())
+              .build());
+      String fullName = TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + table;
+      UUID tableId = UUID.fromString(tableOperations.getTable(fullName).getTableId());
+      Callable<Void> operation =
+          () -> {
+            if (table.equals("dropped")) {
+              icebergClient.dropTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, table);
+            } else {
+              icebergClient.renameTable(
+                  TestUtils.CATALOG_NAME,
+                  TestUtils.SCHEMA_NAME,
+                  table,
+                  TestUtils.SCHEMA_NAME,
+                  "other");
+            }
+            return null;
+          };
+
+      TestUtils.assertIcebergApiException(
+          () ->
+              runBlockedByHeldWrite(
+                  held ->
+                      setColumn(
+                          held,
+                          TableInfoDAO.class,
+                          tableId,
+                          "dataSourceFormat",
+                          DataSourceFormat.DELTA.getValue()),
+                  operation),
+          400,
+          "was not created through the Iceberg REST catalog");
+      assertThat(tableOperations.getTable(fullName).getTableId()).isEqualTo(tableId.toString());
+    }
+  }
+
   @Test
   public void testTable() throws ApiException, IOException {
     CreateCatalog createCatalog =
@@ -538,13 +592,16 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                   commitRequest),
           400,
           BadRequestException.class);
-      assertErrorType(
+      String fullName =
+          TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + TestUtils.TABLE_NAME;
+      TestUtils.assertIcebergApiException(
           () ->
               icebergClient.dropTable(
                   TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME),
           400,
-          BadRequestException.class);
-      assertErrorType(
+          BadRequestException.class,
+          "Table " + fullName + " was not created through the Iceberg REST catalog; drop it");
+      TestUtils.assertIcebergApiException(
           () ->
               icebergClient.renameTable(
                   TestUtils.CATALOG_NAME,
@@ -553,7 +610,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                   TestUtils.SCHEMA_NAME,
                   "renamed"),
           400,
-          BadRequestException.class);
+          BadRequestException.class,
+          "Table " + fullName + " was not created through the Iceberg REST catalog; rename it");
+      assertThat(tableOperations.getTable(fullName).getTableId()).isEqualTo(tableInfo.getTableId());
     }
 
     // Credentials must never be scoped by a conflicting location in the metadata payload. Repoint
@@ -821,6 +880,27 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                   TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME),
           404,
           NoSuchTableException.class);
+      // The drop and rename of the table that is no longer there name it in full.
+      String droppedName =
+          TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + TestUtils.TABLE_NAME;
+      TestUtils.assertIcebergApiException(
+          () ->
+              icebergClient.dropTable(
+                  TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME),
+          404,
+          NoSuchTableException.class,
+          "Table not found: " + droppedName);
+      TestUtils.assertIcebergApiException(
+          () ->
+              icebergClient.renameTable(
+                  TestUtils.CATALOG_NAME,
+                  TestUtils.SCHEMA_NAME,
+                  TestUtils.TABLE_NAME,
+                  TestUtils.SCHEMA_NAME,
+                  "other"),
+          404,
+          NoSuchTableException.class,
+          "Table not found: " + droppedName);
     }
 
     // A create request without a location gets a server-assigned managed location
