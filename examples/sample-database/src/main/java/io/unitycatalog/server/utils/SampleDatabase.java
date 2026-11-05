@@ -70,18 +70,22 @@ public class SampleDatabase {
    */
   public static void build(Path h2File) {
     System.out.println("Building the sample database " + h2File + "...");
-    // Built beside the target, and moved there only when done: a failed build leaves no file for
-    // bin/start-uc-server to take for the sample database.
-    Path building = h2File.resolveSibling("building-" + h2File.getFileName());
+    // Built beside the target under a name of its own, so builds at the same time don't share a
+    // file, and moved there only when done: a failed build leaves no file for bin/start-uc-server
+    // to take for the sample database.
+    Path building = null;
     try {
-      Files.deleteIfExists(building);
+      building =
+          Files.createTempFile(h2File.toAbsolutePath().getParent(), "building-", H2_FILE_SUFFIX);
       buildInto(building);
       Files.move(building, h2File);
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     } finally {
       try {
-        Files.deleteIfExists(building);
+        if (building != null) {
+          Files.deleteIfExists(building);
+        }
       } catch (IOException e) {
         // The build's own failure matters more.
       }
