@@ -823,6 +823,10 @@ paths:
           content:
             application/json:
               schema: {}
+        '404':
+          description: Not Found. The function does not exist.
+        '503':
+          description: Service Unavailable. The function is being modified concurrently; retry the request.
   /models:
     post:
       operationId: createRegisteredModel
