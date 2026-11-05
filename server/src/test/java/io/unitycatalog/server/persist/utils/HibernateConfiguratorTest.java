@@ -107,7 +107,13 @@ class HibernateConfiguratorTest {
 
   @ParameterizedTest
   @ValueSource(
-      strings = {"jdbc:h2:mem:", "jdbc:h2:mem:;DB_CLOSE_DELAY=-1", "JDBC:H2:MEM:;MODE=MySQL"})
+      strings = {
+        "jdbc:h2:mem:",
+        "jdbc:h2:mem:;DB_CLOSE_DELAY=-1",
+        "JDBC:H2:MEM:;MODE=MySQL",
+        "jdbc:h2:.",
+        "jdbc:h2:.;DB_CLOSE_DELAY=-1"
+      })
   void refusesAnUnnamedInMemoryDatabase(String url) {
     Properties properties = h2Properties();
     properties.setProperty("hibernate.connection.url", url);

@@ -118,15 +118,13 @@ public class HibernateConfigurator implements AutoCloseable {
   }
 
   /**
-   * An H2 in-memory URL without a name gives every connection its own empty database, so the server
-   * would not see the schema that was set up. Refuses it.
+   * An H2 in-memory URL without a name ({@code jdbc:h2:mem:} or {@code jdbc:h2:.}) gives every
+   * connection its own empty database, so the server would not see the schema that was set up.
+   * Refuses it.
    */
   private static void requireNamedMemoryDatabase(Properties hibernateProperties) {
     String url = hibernateProperties.getProperty("hibernate.connection.url", "");
-    String lower = url.toLowerCase(Locale.ROOT);
-    String memory = "jdbc:h2:mem:";
-    if (lower.startsWith(memory)
-        && (lower.length() == memory.length() || lower.charAt(memory.length()) == ';')) {
+    if (url.toLowerCase(Locale.ROOT).matches("jdbc:h2:(mem:|\\.)(;.*)?")) {
       throw new IllegalArgumentException(
           "The in-memory H2 URL "
               + url
