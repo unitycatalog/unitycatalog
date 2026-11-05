@@ -13,6 +13,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.server.model.PathOperation;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.Collections;
@@ -107,6 +108,7 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
     return HttpResponse.ofJson(
         storageCredentialVendor.vendCredential(
             NormalizedURL.from(generateTemporaryPathCredential.getUrl()),
-            pathOperationToPrivileges(generateTemporaryPathCredential.getOperation())));
+            pathOperationToPrivileges(generateTemporaryPathCredential.getOperation()),
+            CredentialUse.CLIENT));
   }
 }
