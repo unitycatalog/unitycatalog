@@ -222,4 +222,9 @@ public abstract class BaseServerTest {
       Session session, Class<?> entity, UUID id, String attribute, Object value) {
     TestDatabase.setColumn(session, entity, id, attribute, value);
   }
+
+  /** How many {@code entity} rows have {@code parentId} as their {@code parentAttribute}. */
+  protected long countChildren(Class<?> entity, String parentAttribute, UUID parentId) {
+    return testDatabase.countChildren(entity, parentAttribute, parentId);
+  }
 }

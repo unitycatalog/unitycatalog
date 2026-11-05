@@ -114,6 +114,25 @@ public final class TestDatabase implements AutoCloseable {
   }
 
   /**
+   * A session factory on this database whose connections give up waiting for a lock quickly (50 ms;
+   * 1 s on MySQL, its minimum). {@link #close()} closes it.
+   */
+  public SessionFactory impatientSessionFactory() {
+    Properties impatient = hibernateProperties();
+    impatient.setProperty("hibernate.hbm2ddl.auto", "none");
+    // Set on the URL, not with SET: a PostgreSQL SET is undone when its transaction rolls back.
+    impatient.setProperty(
+        "hibernate.connection.url",
+        url
+            + switch (SupportedDatabase.selected()) {
+              case H2 -> ";LOCK_TIMEOUT=50";
+              case POSTGRES_18 -> "?options=-c%20lock_timeout%3D50";
+              case MYSQL_8 -> "?sessionVariables=innodb_lock_wait_timeout=1";
+            });
+    return openHibernateConfigurator(impatient).getSessionFactory();
+  }
+
+  /**
    * Whether some connection to this database is blocked waiting for a row lock that another
    * connection holds. Tests poll this to know a racing operation has reached its lock, instead of
    * sleeping. On MySQL, {@code innodb_trx} covers the whole server, not only this database, so this
@@ -193,6 +212,22 @@ public final class TestDatabase implements AutoCloseable {
         .setParameter("value", value)
         .setParameter("id", id)
         .executeUpdate();
+  }
+
+  /** How many {@code entity} rows have {@code parentId} as their {@code parentAttribute}. */
+  public long countChildren(Class<?> entity, String parentAttribute, UUID parentId) {
+    try (Session session = sessionFactory().openSession()) {
+      return session
+          .createSelectionQuery(
+              "select count(*) from "
+                  + entity.getSimpleName()
+                  + " where "
+                  + parentAttribute
+                  + " = :parentId",
+              Long.class)
+          .setParameter("parentId", parentId)
+          .getSingleResult();
+    }
   }
 
   @Override

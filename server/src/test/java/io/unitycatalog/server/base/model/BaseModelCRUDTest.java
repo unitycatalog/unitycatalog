@@ -34,9 +34,13 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.ModelRepository;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Path;
@@ -46,6 +50,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import org.hibernate.Session;
+import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -448,6 +453,43 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     assertThat(version.getVersion()).isEqualTo(2L);
     assertThat(modelOperations.getRegisteredModel(modelFullName("create_race")).getComment())
         .isEqualTo("held comment");
+  }
+
+  /** A force delete that cannot lock a version fails as UNAVAILABLE and deletes nothing. */
+  @Test
+  public void forceDeleteBlockedByAVersionWriteIsUnavailable() throws Exception {
+    UUID id = UUID.fromString(createModel("locked_version").getId());
+    UUID versionId =
+        UUID.fromString(
+            modelOperations
+                .createModelVersion(
+                    new CreateModelVersion()
+                        .catalogName(CATALOG_NAME)
+                        .schemaName(SCHEMA_NAME)
+                        .modelName("locked_version")
+                        .source(MV_SOURCE))
+                .getId());
+    ModelRepository impatientModels =
+        new Repositories(
+                testDatabase.impatientSessionFactory(), new ServerProperties(serverProperties))
+            .getModelRepository();
+
+    try (Session held = testDatabase.sessionFactory().openSession()) {
+      Transaction transaction = held.beginTransaction();
+      setColumn(held, ModelVersionInfoDAO.class, versionId, "comment", "held comment");
+      held.flush();
+      assertThatThrownBy(
+              () -> impatientModels.deleteRegisteredModel(modelFullName("locked_version"), true))
+          .isInstanceOfSatisfying(
+              BaseException.class,
+              e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE))
+          .hasMessageContaining("Concurrent modification in progress on");
+      transaction.rollback();
+    }
+
+    assertThat(modelOperations.getRegisteredModel(modelFullName("locked_version")).getId())
+        .isEqualTo(id.toString());
+    assertThat(countChildren(ModelVersionInfoDAO.class, "registeredModelId", id)).isEqualTo(1);
   }
 
   /** Finalizing a version that a concurrent writer already made READY is rejected. */

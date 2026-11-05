@@ -128,6 +128,25 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     assertCatalogNotExists(catalogList, COMMON_ENTITY_NAME);
   }
 
+  /** A drop that waits for a concurrent rename must not delete the renamed catalog. */
+  @Test
+  public void dropRacingARenameDoesNotDeleteTheRenamedCatalog() throws Exception {
+    UUID id = UUID.fromString(catalogOperations.createCatalog(newCatalog("drop_race")).getId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> setColumn(held, CatalogInfoDAO.class, id, "name", "drop_race_renamed"),
+                () -> {
+                  catalogOperations.deleteCatalog("drop_race", Optional.empty());
+                  return null;
+                }),
+        ErrorCode.CATALOG_NOT_FOUND,
+        "Catalog not found");
+
+    assertThat(catalogOperations.getCatalog("drop_race_renamed").getId()).isEqualTo(id.toString());
+  }
+
   /** A rename that waits for a concurrent edit of another column keeps that edit. */
   @Test
   public void renameKeepsAConcurrentCommentEdit() throws Exception {
