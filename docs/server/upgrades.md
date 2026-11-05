@@ -157,7 +157,8 @@ Messages that `--upgrade-schema` prints when it refuses, and what to do.
   this release's step of the same version (its checksum), or this release lacks a recorded step.
   `<reasons>` may advise Flyway's `repair` command, which Unity Catalog doesn't have. Run the release
   that applied the steps, or restore the backup. Do not edit `uc_schema_history` by hand. A step
-  that failed is reported here too: restore the backup, fix the cause, and run the command again.
+  that failed is reported here too: this release can't retry it, so restore the backup and fix the
+  cause, then run the command on the restored database.
 
 `Could not take the schema migration lock: <reason>`
 : The command could not get the lock that keeps two migration runs apart, so it changed nothing.
