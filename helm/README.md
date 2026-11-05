@@ -670,6 +670,25 @@ not set
 </td>
 		</tr>
 		<tr>
+			<td>server.deployment.command</td>
+			<td>array</td>
+			<td><pre lang="json">
+[
+  "./bin/start-uc-server"
+]
+</pre>
+</td>
+			<td>Command that starts the server
+
+The chart passes `--port`, and `--obs-port` when `obsPort` is set, as the container's `args`.
+Kubernetes runs this command instead of the image's `ENTRYPOINT`, so an image that starts
+through its own wrapper can set it here; the wrapper must pass the arguments on to
+`./bin/start-uc-server`.
+
+[Kubernetes docs](https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/)
+</td>
+		</tr>
+		<tr>
 			<td>server.deployment.enableLivenessProbe</td>
 			<td>bool</td>
 			<td><pre lang="json">
@@ -894,7 +913,7 @@ lifecycle:
 			<td>server.deployment.livenessProbe</td>
 			<td>object</td>
 			<td><pre lang="">
-tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 30 # 5 minutes
+with obsPort: httpGet `/livez` on port obs; otherwise tcpSocket on port api. timeoutSeconds: 10, periodSeconds: 10, failureThreshold: 30 (5 minutes)
 </pre>
 </td>
 			<td>Liveness probe
@@ -912,6 +931,23 @@ not set
 			<td>Node selector for the deployment
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/)
+</td>
+		</tr>
+		<tr>
+			<td>server.deployment.obsPort</td>
+			<td>int</td>
+			<td><pre lang="">
+not set (observability off)
+</pre>
+</td>
+			<td>Observability port for the server deployment
+
+When set, the server starts with `--obs-port` and serves `/livez`, `/readyz` and `/metrics`
+on this port, without authentication. The readiness and liveness probes, when turned on,
+then check `/readyz` and `/livez`; without it they check that the API port accepts a
+connection. The Service doesn't expose the port, but other pods can reach it
+on the pod IP; restrict it with a NetworkPolicy if needed, and allow the kubelet to reach it
+for the probes. Must differ from `port`. Needs server image v0.7.0 or later.
 </td>
 		</tr>
 		<tr>
@@ -938,13 +974,13 @@ to write to the mounted volumes.
 8080
 </pre>
 </td>
-			<td>Port for the server deployment</td>
+			<td>Port the server listens on for API requests</td>
 		</tr>
 		<tr>
 			<td>server.deployment.readinessProbe</td>
 			<td>object</td>
 			<td><pre lang="">
-tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 30 # 5 minutes
+with obsPort: httpGet `/readyz` on port obs, failureThreshold: 3; otherwise tcpSocket on port api, failureThreshold: 30 (5 minutes). timeoutSeconds: 10, periodSeconds: 10
 </pre>
 </td>
 			<td>Readiness probe

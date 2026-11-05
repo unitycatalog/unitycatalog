@@ -1,4 +1,4 @@
-package io.unitycatalog.hadoop.internal.util;
+package io.unitycatalog.client.internal;
 
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
