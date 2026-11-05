@@ -9,15 +9,19 @@ import io.unitycatalog.server.model.UpdateCredentialRequest;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -121,7 +125,7 @@ public class CredentialRepository {
         session -> {
           CredentialDAO existingCredential = getCredentialDAO(session, name);
           if (existingCredential == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Storage credential not found: " + name);
+            throw credentialNotFound(name);
           }
 
           // Update fields if provided
@@ -132,18 +136,29 @@ public class CredentialRepository {
                   ErrorCode.STORAGE_CREDENTIAL_ALREADY_EXISTS,
                   "Storage credential already exists: " + updateCredential.getNewName());
             }
-            existingCredential.setName(updateCredential.getNewName());
+          }
+          Map<String, Object> key = Map.of("name", name);
+          RepositoryUtils.lockByKey(
+              session,
+              CredentialDAO.class,
+              existingCredential.getId(),
+              key,
+              "storage credential " + name,
+              () -> credentialNotFound(name));
+          Map<String, Object> changes = new HashMap<>();
+          if (updateCredential.getNewName() != null) {
+            changes.put("name", updateCredential.getNewName());
           }
           if (updateCredential.getAwsIamRole() != null) {
-            existingCredential.setAwsIamRole(updateCredential.getAwsIamRole());
+            changes.putAll(CredentialDAO.awsIamRoleColumns(updateCredential.getAwsIamRole()));
           }
           if (updateCredential.getComment() != null) {
-            existingCredential.setComment(updateCredential.getComment());
+            changes.put("comment", updateCredential.getComment());
           }
-          existingCredential.setUpdatedAt(new Date());
-          existingCredential.setUpdatedBy(callerId);
-
-          session.merge(existingCredential);
+          changes.put("updatedAt", new Date());
+          changes.put("updatedBy", callerId);
+          RepositoryUtils.updateByKey(
+              session, existingCredential, key, changes, () -> credentialNotFound(name));
           LOGGER.info("Updated storage credential: {}", name);
           return existingCredential.toCredentialInfo(getAwsS3MasterRoleArn());
         },
@@ -156,10 +171,21 @@ public class CredentialRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          CredentialDAO existingCredential = getCredentialDAO(session, name);
-          if (existingCredential == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Credential not found: " + name);
+          Supplier<BaseException> notFound =
+              () -> new BaseException(ErrorCode.NOT_FOUND, "Credential not found: " + name);
+          CredentialDAO found = getCredentialDAO(session, name);
+          if (found == null) {
+            throw notFound.get();
           }
+          Map<String, Object> key = Map.of("name", name);
+          CredentialDAO existingCredential =
+              RepositoryUtils.lockByKey(
+                  session,
+                  CredentialDAO.class,
+                  found.getId(),
+                  key,
+                  "storage credential " + name,
+                  notFound);
           if (!force) {
             // Check if it's still used by any external location.
             ExternalLocationDAO externalLocationDAO =
@@ -172,12 +198,16 @@ public class CredentialRepository {
                       + "'");
             }
           }
-          session.remove(existingCredential);
+          RepositoryUtils.deleteByKey(session, existingCredential, key, notFound);
           LOGGER.info("Deleted credential: {}", name);
           return existingCredential.getId();
         },
         "Failed to delete credential",
         /* readOnly= */ false);
+  }
+
+  private static BaseException credentialNotFound(String name) {
+    return new BaseException(ErrorCode.NOT_FOUND, "Storage credential not found: " + name);
   }
 
   protected ExternalLocationDAO getExternalLocationDAOUsingCredential(
