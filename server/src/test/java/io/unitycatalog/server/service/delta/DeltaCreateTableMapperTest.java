@@ -19,7 +19,11 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Mapper-boundary unit tests for {@link DeltaCreateTableMapper}. The validation rules and the
@@ -71,6 +75,44 @@ public class DeltaCreateTableMapperTest {
         DeltaCreateTableMapper.toCreateTable("cat", "sch", req, new ServerProperties())
             .createTable();
     assertThat(created.getTableType()).isEqualTo(io.unitycatalog.server.model.TableType.EXTERNAL);
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("columnMappingIdentityRejections")
+  public void columnMappedTableRequiresUniqueIdentities(
+      String name, String mode, List<DeltaStructField> fields, String rejection) {
+    DeltaCreateTableRequest req =
+        baseExternalRequest()
+            .columns(new DeltaStructType().type("struct").fields(fields))
+            .properties(Map.of(TableProperties.COLUMN_MAPPING_MODE, mode));
+    assertThatThrownBy(
+            () -> DeltaCreateTableMapper.toCreateTable("cat", "sch", req, new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(rejection);
+  }
+
+  static Stream<Arguments> columnMappingIdentityRejections() {
+    return Stream.of(
+        Arguments.of(
+            "a column without a physical name",
+            "name",
+            List.of(cmField("a", 1, "col-1"), cmField("b", 2, null)),
+            "requires a physical column name"),
+        Arguments.of(
+            "two columns share a physical name",
+            "name",
+            List.of(cmField("a", 1, "col-1"), cmField("b", 2, "col-1")),
+            "Duplicate column mapping physicalName 'col-1'"),
+        Arguments.of(
+            "id mode: two columns share a physical name",
+            "id",
+            List.of(cmField("a", 1, "col-1"), cmField("b", 2, "col-1")),
+            "Duplicate column mapping physicalName 'col-1'"),
+        Arguments.of(
+            "an unknown column mapping mode",
+            "foo",
+            List.of(cmField("a", 1, "col-1")),
+            "Invalid column mapping mode: foo"));
   }
 
   // ---------- allowMissingDvForUniformV2 flag ----------
@@ -149,6 +191,22 @@ public class DeltaCreateTableMapperTest {
                 .writerFeatures(List.of(TableFeature.DELETION_VECTORS.specName())))
         .properties(Map.of())
         .lastCommitTimestampMs(1700000000000L);
+  }
+
+  /** A long column with the given column-mapping id and physical name; a null one is left out. */
+  private static DeltaStructField cmField(String name, Integer id, String physicalName) {
+    DeltaStructFieldMetadata metadata = new DeltaStructFieldMetadata();
+    if (id != null) {
+      metadata.put(TableProperties.COLUMN_MAPPING_ID, id);
+    }
+    if (physicalName != null) {
+      metadata.put(TableProperties.COLUMN_MAPPING_PHYSICAL_NAME, physicalName);
+    }
+    return new DeltaStructField()
+        .name(name)
+        .type(new DeltaPrimitiveType().type("long"))
+        .nullable(true)
+        .metadata(metadata);
   }
 
   private static DeltaStructType simpleColumns() {
