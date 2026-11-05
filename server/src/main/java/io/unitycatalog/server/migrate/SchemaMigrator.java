@@ -25,6 +25,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
@@ -239,18 +241,18 @@ public final class SchemaMigrator implements AutoCloseable {
    */
   private static void refuseH2ServerMode(HikariConfig config) {
     Properties driver = config.getDataSourceProperties();
-    String url = config.getJdbcUrl() != null ? config.getJdbcUrl() : property(driver, "url");
-    String lower = url == null ? "" : url.toLowerCase(Locale.ROOT);
-    if (!lower.contains(":h2:")) {
-      return;
-    }
-    if (lower.contains(":h2:tcp:")
-        || lower.contains(":h2:ssl:")
-        || isOn(setting(lower, "auto_server"))
-        || isOn(property(driver, "auto_server"))) {
-      throw new IllegalStateException(
-          "H2 in server mode is not supported: the schema migration needs one server per H2"
-              + " file. Use a jdbc:h2:file: URL without AUTO_SERVER.");
+    // Hikari uses the data source class's URL when it has a class; check both URLs.
+    for (String url : new String[] {config.getJdbcUrl(), property(driver, "url")}) {
+      String lower = url == null ? "" : url.toLowerCase(Locale.ROOT);
+      if (lower.contains(":h2:")
+          && (lower.contains(":h2:tcp:")
+              || lower.contains(":h2:ssl:")
+              || isOn(setting(lower, "auto_server"))
+              || isOn(property(driver, "auto_server")))) {
+        throw new IllegalStateException(
+            "H2 in server mode is not supported: the schema migration needs one server per H2"
+                + " file. Use a jdbc:h2:file: URL without AUTO_SERVER.");
+      }
     }
   }
 
@@ -296,6 +298,7 @@ public final class SchemaMigrator implements AutoCloseable {
       DatabaseKind kind,
       List<String> extraLocations,
       HikariDataSource ownedPool) {
+    requireCurrentSchema(dataSource, kind);
     this.dataSource = dataSource;
     this.kind = kind;
     List<String> locations = new ArrayList<>();
@@ -303,6 +306,25 @@ public final class SchemaMigrator implements AutoCloseable {
     locations.addAll(extraLocations);
     this.locations = locations.toArray(String[]::new);
     this.ownedPool = ownedPool;
+  }
+
+  /**
+   * On PostgreSQL, a connection whose search_path names no existing schema has no current schema,
+   * and a table search without a schema reads every schema.
+   */
+  private static void requireCurrentSchema(DataSource dataSource, DatabaseKind kind) {
+    if (kind != DatabaseKind.POSTGRESQL) {
+      return;
+    }
+    try (Connection connection = dataSource.getConnection()) {
+      if (connection.getSchema() == null) {
+        throw new IllegalStateException(
+            "The connection has no current schema: set currentSchema in the JDBC URL to an"
+                + " existing schema.");
+      }
+    } catch (SQLException e) {
+      throw new IllegalStateException("Could not connect to the database: " + e.getMessage(), e);
+    }
   }
 
   private FluentConfiguration flyway() {
@@ -368,12 +390,13 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * For {@code bin/start-uc-server --check-schema}: prints the database's schema version and what
-   * {@link #upgradeSchema()} would do with each pending step, and whether it would go through,
-   * running the same checks on the schema as it would. Changes nothing and takes no run lock, so it
-   * can run while servers of the previous release still serve. A step that failed counts as
-   * pending, since the upgrade deletes its record first.
+   * {@link #upgradeSchema()} would do with each pending step, and whether the schema allows the
+   * upgrade, running the same checks on the schema as it would. It does not test the database
+   * user's privileges or the run lock. Changes nothing and takes no run lock, so it can run while
+   * servers of the previous release still serve. A step that failed counts as pending, since the
+   * upgrade deletes its record first.
    *
-   * @return 0 when the upgrade would go through, 1 when it would refuse
+   * @return 0 when the schema allows the upgrade, 1 when it would refuse
    */
   int checkSchema(PrintStream out) {
     try {
@@ -407,13 +430,13 @@ public final class SchemaMigrator implements AutoCloseable {
             "The database schema differs from the schema of version "
                 + latestVersion()
                 + ":\n"
-                + schema.differencesFrom(expected));
+                + differences(schema, expected));
       }
-      out.println("The upgrade would go through.");
+      out.println("The schema allows the upgrade: --upgrade-schema would run the steps above.");
       return 0;
     } catch (IllegalStateException e) {
       out.println(e.getMessage());
-      out.println("The upgrade would not go through.");
+      out.println("The schema does not allow the upgrade.");
       return 1;
     }
   }
@@ -463,7 +486,7 @@ public final class SchemaMigrator implements AutoCloseable {
             + " can't run. It differs from version "
             + nearer
             + " in:\n"
-            + schema.differencesFrom(expected(nearer))
+            + differences(schema, expected(nearer))
             + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup,"
             + " then run bin/start-uc-server --upgrade-schema again."
             + (tableNamesLowerCase().contains(HISTORY_TABLE)
@@ -477,12 +500,17 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Whether the database has no schema history and the schema of this build's last step, exactly:
-   * what Hibernate's update builds from the entities on a new database. Every step is then recorded
-   * without running.
+   * Whether the database has no applied step in its schema history (no history table, an empty one,
+   * or one holding only Flyway's baseline row, as a run leaves that stopped before step 1's record)
+   * and the schema of this build's last step, exactly: what Hibernate's update builds from the
+   * entities on a new database. Every step is then recorded without running.
    */
   private boolean hasLastStepsSchemaWithoutHistory() {
-    return state() == SchemaState.UNVERSIONED_UC
+    String recorded = recordedVersion();
+    boolean noAppliedStep = recorded == null || recorded.equals(EMPTY_BASELINE_VERSION);
+    return noAppliedStep
+        && tableNamesLowerCase().stream()
+            .anyMatch(t -> t.startsWith("uc_") && !t.equals(HISTORY_TABLE))
         && SchemaSnapshot.of(dataSource).equals(expected(latestVersion()));
   }
 
@@ -721,9 +749,88 @@ public final class SchemaMigrator implements AutoCloseable {
           "The database schema differs from the schema of version "
               + latestVersion()
               + ":\n"
-              + schema.differencesFrom(expected)
+              + differences(schema, expected)
               + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup.");
     }
+  }
+
+  /**
+   * {@code schema}'s differences from {@code expected}. Each missing index that another table's
+   * index of the same name took (see {@link #indexClashHint}) gets that clash appended.
+   */
+  private String differences(SchemaSnapshot schema, SchemaSnapshot expected) {
+    String differences = schema.differencesFrom(expected);
+    if (kind == DatabaseKind.MYSQL) {
+      return differences; // its index names are per table: no clash
+    }
+    try (Connection connection = dataSource.getConnection()) {
+      StringBuilder out = new StringBuilder();
+      for (String line : differences.split("\n")) {
+        out.append(line);
+        Matcher m = MISSING_INDEX.matcher(line);
+        String hint = m.find() ? indexClashHint(connection, m.group(2), m.group(1)) : null;
+        out.append(hint == null ? "" : " (" + hint + ")").append('\n');
+      }
+      return out.toString().stripTrailing();
+    } catch (SQLException e) {
+      throw new IllegalStateException("Could not check the schema's indexes: " + e.getMessage(), e);
+    }
+  }
+
+  private static final Pattern MISSING_INDEX = Pattern.compile("^missing index (uc_\\w+)\\.(\\w+)");
+
+  /**
+   * {@code null} when {@code table} has the index {@code index}. Otherwise, when a table that is
+   * not Unity Catalog's ({@code uc_*}) has an index of that name, the clash: "index idx on
+   * other_app, so ... could not create it on uc_x ...". {@code null} too when the index is missing
+   * for another reason.
+   */
+  static String indexClashHint(Connection connection, String index, String table)
+      throws SQLException {
+    DatabaseMetaData metaData = connection.getMetaData();
+    if (indexNames(metaData, connection, table).contains(index.toLowerCase(Locale.ROOT))) {
+      return null;
+    }
+    List<String> others = new ArrayList<>();
+    try (ResultSet rs =
+        metaData.getTables(
+            connection.getCatalog(),
+            exactPattern(metaData, connection.getSchema()),
+            null,
+            new String[] {"TABLE"})) {
+      while (rs.next()) {
+        others.add(rs.getString("TABLE_NAME"));
+      }
+    }
+    for (String other : others) {
+      if (!other.toLowerCase(Locale.ROOT).startsWith("uc_")
+          && indexNames(metaData, connection, other).contains(index.toLowerCase(Locale.ROOT))) {
+        return "index "
+            + index
+            + " is used by table "
+            + other
+            + ", so it could not be created on "
+            + table
+            + ": rename that index or give Unity Catalog its own schema";
+      }
+    }
+    return null;
+  }
+
+  private static Set<String> indexNames(
+      DatabaseMetaData metaData, Connection connection, String table) throws SQLException {
+    Set<String> names = new HashSet<>();
+    try (ResultSet rs =
+        metaData.getIndexInfo(
+            connection.getCatalog(), connection.getSchema(), table, false, false)) {
+      while (rs.next()) {
+        String name = rs.getString("INDEX_NAME");
+        if (name != null) {
+          names.add(name.toLowerCase(Locale.ROOT));
+        }
+      }
+    }
+    return names;
   }
 
   private Set<String> tableNamesLowerCase() {
