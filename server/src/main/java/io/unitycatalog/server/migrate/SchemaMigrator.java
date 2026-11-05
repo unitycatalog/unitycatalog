@@ -4,7 +4,10 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -19,6 +22,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
@@ -279,6 +284,7 @@ public final class SchemaMigrator implements AutoCloseable {
               .migrate()
               .migrationsExecuted;
       requireCurrent();
+      requireStepIndexes();
       return ran;
     }
   }
@@ -408,6 +414,93 @@ public final class SchemaMigrator implements AutoCloseable {
           "The database schema is " + state + "; this release needs version " + latestVersion());
     }
     requireValidHistory(false);
+  }
+
+  private static final Pattern CREATE_INDEX =
+      Pattern.compile(
+          "(?i)create\\s+(?:unique\\s+)?index\\s+if\\s+not\\s+exists\\s+(\\w+)\\s+on\\s+(\\w+)");
+
+  /**
+   * Throws when an index that a step creates is missing because another table already uses its
+   * name. PostgreSQL and H2 name indexes schema-wide, so {@code create index if not exists} skips
+   * ours without an error. MySQL names indexes per table and is not affected.
+   */
+  private void requireStepIndexes() {
+    try (Connection connection = dataSource.getConnection()) {
+      DatabaseMetaData metaData = connection.getMetaData();
+      for (MigrationInfo step : resolvedSteps(flyway().load().info())) {
+        String path = "/db/migration/" + kind.folder() + "/" + step.getScript();
+        try (InputStream in = SchemaMigrator.class.getResourceAsStream(path)) {
+          if (in == null) {
+            continue; // a test's own step
+          }
+          Matcher m = CREATE_INDEX.matcher(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+          while (m.find()) {
+            String hint = indexClashHint(connection, m.group(1), m.group(2));
+            if (hint != null) {
+              throw new IllegalStateException(
+                  "Step " + step.getVersion() + " left a Unity Catalog index missing: " + hint);
+            }
+          }
+        }
+      }
+    } catch (SQLException | IOException e) {
+      throw new IllegalStateException("Could not check the schema's indexes: " + e.getMessage(), e);
+    }
+  }
+
+  /**
+   * {@code null} when {@code table} has the index {@code index}. Otherwise, when a table that is
+   * not Unity Catalog's ({@code uc_*}) has an index of that name, the clash: "index idx on
+   * other_app, so ... could not create it on uc_x ...". {@code null} too when the index is missing
+   * for another reason.
+   */
+  static String indexClashHint(Connection connection, String index, String table)
+      throws SQLException {
+    DatabaseMetaData metaData = connection.getMetaData();
+    if (indexNames(metaData, connection, table).contains(index.toLowerCase(Locale.ROOT))) {
+      return null;
+    }
+    List<String> others = new ArrayList<>();
+    try (ResultSet rs =
+        metaData.getTables(
+            connection.getCatalog(),
+            exactPattern(metaData, connection.getSchema()),
+            null,
+            new String[] {"TABLE"})) {
+      while (rs.next()) {
+        others.add(rs.getString("TABLE_NAME"));
+      }
+    }
+    for (String other : others) {
+      if (!other.toLowerCase(Locale.ROOT).startsWith("uc_")
+          && indexNames(metaData, connection, other).contains(index.toLowerCase(Locale.ROOT))) {
+        return "index "
+            + index
+            + " is used by table "
+            + other
+            + ", so it could not be created on "
+            + table
+            + ": rename that index or give Unity Catalog its own schema";
+      }
+    }
+    return null;
+  }
+
+  private static Set<String> indexNames(
+      DatabaseMetaData metaData, Connection connection, String table) throws SQLException {
+    Set<String> names = new HashSet<>();
+    try (ResultSet rs =
+        metaData.getIndexInfo(
+            connection.getCatalog(), connection.getSchema(), table, false, false)) {
+      while (rs.next()) {
+        String name = rs.getString("INDEX_NAME");
+        if (name != null) {
+          names.add(name.toLowerCase(Locale.ROOT));
+        }
+      }
+    }
+    return names;
   }
 
   private Set<String> tableNamesLowerCase() {

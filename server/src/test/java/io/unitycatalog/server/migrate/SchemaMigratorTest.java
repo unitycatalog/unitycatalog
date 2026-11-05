@@ -130,6 +130,17 @@ public class SchemaMigratorTest {
   }
 
   @Test
+  void refusesWhenAnotherTablesIndexTookAStepsIndexName() {
+    assumeFalse(db.jdbcUrl().startsWith("jdbc:mysql:"), "MySQL names indexes per table");
+    UpgradeTestUtils.execute(db, "CREATE TABLE other_app (x INT)");
+    UpgradeTestUtils.execute(db, "CREATE INDEX idx_name ON other_app (x)");
+
+    assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()).upgradeSchema())
+        .hasMessageMatching("(?is).*index idx_name is used by table other_app.*")
+        .hasMessageContaining("rename that index");
+  }
+
+  @Test
   void readsOnlyTheConfiguredSchema() {
     assumeFalse(db.jdbcUrl().startsWith("jdbc:mysql:"), "MySQL has no schemas within a database");
     // In a metadata search, "_" matches any character: uc_a would also list ucxa's tables.
