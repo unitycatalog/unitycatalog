@@ -184,10 +184,18 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
+  /**
+   * Whether {@code url} is an in-memory H2 URL: {@code jdbc:h2:mem:}, or the unnamed {@code
+   * jdbc:h2:.}.
+   */
+  private static boolean isH2InMemory(String url) {
+    return url.startsWith("jdbc:h2:mem:") || url.matches("jdbc:h2:\\.(;.*)?");
+  }
+
   /** Whether the database is an in-memory H2 database, which lasts only as long as its process. */
   public boolean isInMemory() {
     try (Connection connection = dataSource.getConnection()) {
-      return connection.getMetaData().getURL().startsWith("jdbc:h2:mem:");
+      return isH2InMemory(connection.getMetaData().getURL());
     } catch (SQLException e) {
       throw new IllegalStateException("Could not connect to the database: " + e.getMessage(), e);
     }
@@ -215,13 +223,32 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
-  /** The value of a {@code ;name=value} setting in a lower-case H2 URL, or {@code null}. */
+  /**
+   * The value of a {@code ;name=value} setting in a lower-case H2 URL, or {@code null}. Reads the
+   * settings as H2 does: a backslash keeps the next character, so {@code auto\_server} is {@code
+   * auto_server}.
+   */
   private static String setting(String lowerUrl, String name) {
-    String[] parts = lowerUrl.split(";");
-    for (int i = 1; i < parts.length; i++) {
-      int equals = parts[i].indexOf('=');
-      if (equals > 0 && parts[i].substring(0, equals).trim().equals(name)) {
-        return parts[i].substring(equals + 1);
+    int start = lowerUrl.indexOf(';');
+    if (start < 0) {
+      return null;
+    }
+    List<String> parts = new ArrayList<>();
+    StringBuilder part = new StringBuilder();
+    for (int i = start + 1; i < lowerUrl.length(); i++) {
+      char c = lowerUrl.charAt(i);
+      if (c == ';') {
+        parts.add(part.toString());
+        part.setLength(0);
+      } else {
+        part.append(c == '\\' && i + 1 < lowerUrl.length() ? lowerUrl.charAt(++i) : c);
+      }
+    }
+    parts.add(part.toString());
+    for (String setting : parts) {
+      int equals = setting.indexOf('=');
+      if (equals > 0 && setting.substring(0, equals).trim().equals(name)) {
+        return setting.substring(equals + 1);
       }
     }
     return null;
