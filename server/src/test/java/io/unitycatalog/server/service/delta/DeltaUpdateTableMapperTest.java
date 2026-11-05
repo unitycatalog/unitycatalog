@@ -905,6 +905,27 @@ public class DeltaUpdateTableMapperTest {
             setColumns(
                 fld("a", prim("long"), false, 1, "col-1"), fld("c", prim("long"), 3, "col-3"))),
         rejected(
+            "name mode: the partition identity moves to another name while its name stays",
+            "send set-partition-columns",
+            NAME_AB.partitionedBy("b"),
+            setColumns(
+                fld("a", prim("long"), false, 1, "col-1"),
+                fld("b", prim("long"), 3, "col-3"),
+                fld("c", prim("long"), 2, "col-2"))),
+        rejected(
+            "id mode: the partition identity moves to another name while its name stays",
+            "send set-partition-columns",
+            managed(
+                    "id",
+                    2,
+                    fld("a", prim("long"), false, 1, "col-1"),
+                    fld("b", prim("long"), 2, "col-2"))
+                .partitionedBy("b"),
+            setColumns(
+                fld("a", prim("long"), false, 1, "col-1"),
+                fld("b", prim("long"), 3, "col-3"),
+                fld("c", prim("long"), 2, "col-2"))),
+        rejected(
             "no column mapping: the partition follows the logical name, not a leftover key",
             "partition column 'b' dropped",
             managed(

@@ -1081,7 +1081,8 @@ public final class DeltaUpdateTableMapper {
    *
    * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} if a partition column is dropped,
    *     has no identity while other stored columns do (matching by name could move the partition
-   *     onto another column), or two stored columns share an identity
+   *     onto another column), keeps its name while its identity moves to another column, or two
+   *     stored columns share an identity
    */
   private static List<String> resolvePartitionColumns(
       TableInfoDAO dao, List<ColumnInfo> incomingColumns, ColumnMappingMode columnMappingMode) {
@@ -1116,6 +1117,18 @@ public final class DeltaUpdateTableMapper {
       String key = currentKeyByLowerName.get(lowerName);
       if (key != null) {
         newName = incomingNameByKey.get(key);
+        if (newName != null
+            && !newName.equalsIgnoreCase(cur.getName())
+            && incomingNameByLowerName.containsKey(lowerName)) {
+          // The identity says the partition column was renamed; the kept name says it was not.
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              "partition column '"
+                  + cur.getName()
+                  + "' keeps its name, but its column mapping identity moved to '"
+                  + newName
+                  + "'; send set-partition-columns with this update.");
+        }
         String sameNameKey = incomingKeyByLowerName.get(lowerName);
         if (newName == null
             && sameNameKey != null
