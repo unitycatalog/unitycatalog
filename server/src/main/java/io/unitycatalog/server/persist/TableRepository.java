@@ -1,5 +1,6 @@
 package io.unitycatalog.server.persist;
 
+import static java.sql.Connection.TRANSACTION_READ_COMMITTED;
 import static java.sql.Connection.TRANSACTION_REPEATABLE_READ;
 
 import io.unitycatalog.server.delta.model.DeltaCommit;
@@ -1250,7 +1251,8 @@ public class TableRepository {
           return deleteTable(session, schemaId, table, check);
         },
         "Failed to delete table",
-        /* readOnly= */ false);
+        /* readOnly= */ false,
+        Optional.of(TRANSACTION_READ_COMMITTED));
   }
 
   TableInfoDAO deleteTable(Session session, UUID schemaId, String tableName) {

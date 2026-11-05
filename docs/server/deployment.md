@@ -105,6 +105,10 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
   later. Convert each existing table instead, for example
   `ALTER TABLE <table> CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;`.
 
+- Run MySQL with `binlog_format=ROW`, the MySQL 8 default. Some Unity Catalog updates and deletes
+  run in `READ COMMITTED` transactions, and with `binlog_format=STATEMENT` MySQL rejects their
+  writes (error 1665).
+
 - Modify the `etc/conf/hibernate.properties` file with your MySQL connection details:
 
     ```properties
