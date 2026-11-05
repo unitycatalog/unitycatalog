@@ -88,7 +88,7 @@ hibernate.connection.password=${DB_PASSWORD}
 
 {{- $urlParamsList := list }}
 {{- range $key, $value := .Values.server.db.mysqlConfig.extraParams }}
-{{- $urlParamsList = append $urlParamsList (printf "%s=%v" $key $value) }}
+{{- $urlParamsList = append $urlParamsList (printf "%s=%s" (urlquery $key) (urlquery $value)) }}
 {{- end }}
 
 {{- $urlParams := "" }}

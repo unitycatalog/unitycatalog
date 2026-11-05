@@ -112,6 +112,24 @@ jobs:
           # An explicit grace period of 0 is kept.
           out="$(helm template uc helm --set server.deployment.terminationGracePeriodSeconds=0)"
           grep -qE '^ +terminationGracePeriodSeconds: 0$' <<<"$out"
+          # MySQL: the driver volume and the jar path in it are required.
+          mysql=(--set server.db.type=mysql --set server.db.mysqlConfig.host=mysql)
+          if err="$(helm template uc helm "${mysql[@]}" --set server.db.mysqlConfig.driver.subPath=d.jar 2>&1)"; then
+            exit 1
+          fi
+          grep -qF 'driver.volume is required' <<<"$err"
+          if err="$(helm template uc helm "${mysql[@]}" --set server.db.mysqlConfig.driver.volume.emptyDir.medium= 2>&1)"; then
+            exit 1
+          fi
+          grep -qF 'driver.subPath is required' <<<"$err"
+          # The driver jar goes on the module path, and URL parameters are encoded: + would read as a space.
+          out="$(helm template uc helm -f helm/ci/mysql-values.yaml \
+            --set-string 'server.db.mysqlConfig.extraParams.connectionTimeZone=+05:30')"
+          grep -qF 'jdbc:mysql://mysql:3306/ucdb?connectionTimeZone=%2B05%3A30' <<<"$out"
+          grep -qF -- '--module-path=/home/unitycatalog/jdbc-drivers/mysql-connector-j.jar' <<<"$out"
+          grep -qF 'mountPath: /home/unitycatalog/jdbc-drivers/mysql-connector-j.jar' <<<"$out"
+          # Other databases get neither.
+          ! grep -qE 'JDK_JAVA_OPTIONS|mysql-driver' <<<"$(helm template uc helm)" || exit 1
 
       - name: Build the server and UI images
         run: |
@@ -148,8 +166,9 @@ jobs:
               ready=(pg_isready --host 127.0.0.1 --username postgres) ;;
             mysql)
               # helm/ci/mysql-values.yaml downloads the driver at the version that the server tests use.
-              kubectl create configmap mysql-connector-j --namespace uc \
-                --from-literal=version="$(sed -n 's/.*"mysql-connector-j" % "\([^"]*\)".*/\1/p' build.sbt)"
+              version="$(sed -n 's/.*"mysql-connector-j" % "\([^"]*\)".*/\1/p' build.sbt)"
+              [ -n "$version" ] || { echo "::error::No mysql-connector-j version found in build.sbt"; exit 1; }
+              kubectl create configmap mysql-connector-j --namespace uc --from-literal=version="$version"
               kubectl run mysql --namespace uc --port 3306 --expose \
                 --image mysql@sha256:76f0358884cb92d9a086d24e5671c38048d3fef40f2588703d73eb55392d6b69 \
                 --env MYSQL_ROOT_PASSWORD=ci-password --env MYSQL_DATABASE=ucdb \

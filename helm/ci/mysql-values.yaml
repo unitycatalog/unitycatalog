@@ -9,15 +9,14 @@ server:
       driver:
         volume:
           emptyDir: {}
-        subPath: connector-j
+        subPath: mysql-connector-j.jar
   deployment:
     extraInitContainers:
       - name: mysql-driver
         image: "alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
         command: ["/bin/sh", "-c"]
         args:
-          - mkdir -p /drivers/connector-j &&
-            wget -q -O "/drivers/connector-j/mysql-connector-j-$VERSION.jar"
+          - wget -q -O /drivers/mysql-connector-j.jar
             "https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/$VERSION/mysql-connector-j-$VERSION.jar"
         env:
           - name: VERSION

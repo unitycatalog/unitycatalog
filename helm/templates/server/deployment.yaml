@@ -209,7 +209,7 @@ spec:
             # The image does not include the MySQL JDBC driver. Its launcher lists the classpath jars in a file, so the
             # driver jar mounted from the volume loads from the module path instead.
             - name: JDK_JAVA_OPTIONS
-              value: "--module-path=/home/unitycatalog/jdbc-drivers --add-modules=ALL-MODULE-PATH"
+              value: "--module-path=/home/unitycatalog/jdbc-drivers/mysql-connector-j.jar --add-modules=ALL-MODULE-PATH"
           {{- end }}
 
           {{- if .Values.server.deployment.enableLivenessProbe }}
@@ -275,10 +275,8 @@ spec:
           {{- end }}
           {{- if eq .Values.server.db.type "mysql" }}
             - name: mysql-driver
-              mountPath: /home/unitycatalog/jdbc-drivers
-              {{- with .Values.server.db.mysqlConfig.driver.subPath }}
-              subPath: {{ . | quote }}
-              {{- end }}
+              mountPath: /home/unitycatalog/jdbc-drivers/mysql-connector-j.jar
+              subPath: {{ required "server.db.mysqlConfig.driver.subPath is required: the path of the driver jar in driver.volume" .Values.server.db.mysqlConfig.driver.subPath | quote }}
               readOnly: true
           {{- end }}
           {{- range $index, $config := .Values.storage.credentials.gcs }}
