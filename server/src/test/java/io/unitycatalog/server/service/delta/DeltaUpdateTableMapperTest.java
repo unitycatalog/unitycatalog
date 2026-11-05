@@ -420,12 +420,12 @@ public class DeltaUpdateTableMapperTest {
   // --- set-columns column-mapping guards ---
 
   /**
-   * Rejections from the set-columns column-mapping guards. Each one is raised in the mapper before
-   * anything is stored, so the cases run against an in-memory table. {@code SdkUpdateTableTest}
-   * keeps one rejection that goes through the server, and the accepted cases.
+   * Rejections from the set-columns column-mapping guards and the Delta Kernel check. Each one is
+   * raised in the mapper before anything is stored, so the cases run against an in-memory table.
+   * {@code SdkUpdateTableTest} keeps the rejections that need the server, and the accepted cases.
    */
   @ParameterizedTest(name = "{0}")
-  @MethodSource("guardRejections")
+  @MethodSource({"guardRejections", "kernelRejections"})
   public void testColumnMappingGuardRejections(GuardCase c) {
     assertThatThrownBy(
             () ->
@@ -634,6 +634,21 @@ public class DeltaUpdateTableMapperTest {
             "malformed column mapping identity",
             ID_A,
             setColumns(fld("a", prim("long"), false, true, "col-1"))),
+        rejected(
+            "nested rename with a string id",
+            "malformed column mapping identity",
+            NAME_S,
+            setColumns(fld("s", struct(fld("y", prim("long"), "2", "col-x")), 1, "col-s"))),
+        rejected(
+            "id outside the 32-bit range",
+            "malformed column mapping identity",
+            ID_A,
+            setColumns(fld("a", prim("long"), false, 2147483648L, "col-1"))),
+        rejected(
+            "nested rename keeps the id and drops the physical name",
+            "requires a physical column name and a column mapping id",
+            NAME_S,
+            setColumns(fld("s", struct(fld("y", prim("long"), 2, null)), 1, "col-s"))),
 
         // Two empty physical names are malformed, not duplicates.
         rejected(
@@ -641,15 +656,16 @@ public class DeltaUpdateTableMapperTest {
             "malformed column mapping identity",
             NAME_AB,
             setColumns(fld("a", prim("long"), false, 1, ""), fld("b", prim("long"), 2, ""))),
-
-        // Ids are compared as text: 1 and "1" are one id, while "01" and "2147483648" are other
-        // ids.
         rejected(
-            "ids 1 and \"1\"",
-            "Duplicate column mapping id '1'",
-            ID_A,
+            "name mode with a shared nested id",
+            "Duplicate column mapping id '2'",
+            NAME_S,
             setColumns(
-                fld("a", prim("long"), false, 1, "col-1"), fld("b", prim("long"), "1", "col-b"))),
+                fld(
+                    "s",
+                    struct(fld("y", prim("long"), 2, "col-x"), fld("x", prim("long"), 2, "col-x")),
+                    1,
+                    "col-s"))),
 
         // A schema that has keys keeps them, even with no retained column.
         rejected(
@@ -763,6 +779,79 @@ public class DeltaUpdateTableMapperTest {
                 fld("id", prim("long"), false, 1, "id"),
                 fld("amount", prim("double"), 2, "amount"),
                 fld("m", map(prim("string"), struct(fld("y", prim("long"), 4, "x"))), 3, "m"))));
+  }
+
+  static Stream<GuardCase> kernelRejections() {
+    return Stream.of(
+        rejected(
+            "rename and type change",
+            "Cannot change the type of existing field",
+            NAME_A,
+            setColumns(fld("b", prim("double"), false, 1, "col-1"))),
+        rejected(
+            "same id, new physical name",
+            "which is different from col-99",
+            NAME_A,
+            setColumns(fld("a", prim("long"), false, 1, "col-99"))),
+        rejected(
+            "nested same id, new physical name",
+            "which is different from col-z",
+            NAME_S,
+            setColumns(fld("s", struct(fld("x", prim("long"), 2, "col-z")), 1, "col-s"))),
+        rejected(
+            "nested rename with a sibling's new physical name",
+            "which is different from col-x2",
+            managed(
+                "name",
+                3,
+                fld(
+                    "s",
+                    struct(
+                        fld("inner", prim("long"), 2, "col-in"),
+                        fld("x", prim("long"), 3, "col-x")),
+                    1,
+                    "col-s")),
+            setColumns(
+                fld(
+                    "s",
+                    struct(
+                        fld("renamed_inner", prim("long"), 2, "col-in"),
+                        fld("x", prim("long"), 3, "col-x2")),
+                    1,
+                    "col-s"))),
+        rejected(
+            "id mode keeps the id with a new physical name",
+            "which is different from col-new",
+            ID_A,
+            setColumns(fld("a", prim("long"), false, 1, "col-new"))),
+        rejected(
+            "the stored maxColumnId applies, not the request's own set-properties",
+            "fieldId <= maxFieldId",
+            managed(
+                "name",
+                3,
+                fld("a", prim("long"), false, 1, "col-1"),
+                fld("d", prim("long"), 2, "col-d")),
+            setColumns(
+                fld("b", prim("long"), false, 1, "col-1"),
+                fld("d", prim("long"), 2, "col-d"),
+                fld("c", prim("long"), 3, "col-c")),
+            new DeltaSetPropertiesUpdate().updates(Map.of("delta.columnMapping.maxColumnId", "0"))),
+        rejected(
+            "rename while dropping a stored clustering column",
+            "Cannot drop clustering column c",
+            new StoredTable(
+                "MANAGED",
+                Map.of(
+                    TableProperties.COLUMN_MAPPING_MODE,
+                    "name",
+                    "delta.columnMapping.maxColumnId",
+                    "2",
+                    TableProperties.CLUSTERING_COLUMNS,
+                    "[[\"col-c\"]]"),
+                fld("a", prim("long"), false, 1, "col-1"),
+                fld("c", prim("long"), 2, "col-c")),
+            setColumns(fld("b", prim("long"), false, 1, "col-1"))));
   }
 
   /** A column-mapping key sent with an explicit JSON null value (as opposed to left out). */
