@@ -1029,7 +1029,7 @@ private[spark] class UCProxy(
       Option(col.getPartitionIndex).foreach { index =>
         partitionCols += col.getName -> index
       }
-      toStructField(col)
+      UCColumnConversions.toStructField(col)
     }.toArray
     val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
@@ -1086,10 +1086,6 @@ private[spark] class UCProxy(
     // resolve the data source and create scan node later.
     asV1Table(sparkTable)
   }
-
-  private[spark] def toStructField(col: ColumnInfo): StructField =
-    StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
-      .withComment(col.getComment)
 
   private[spark] def asV1Table(catalogTable: CatalogTable): Table = {
     Class.forName("org.apache.spark.sql.connector.catalog.V1Table")
