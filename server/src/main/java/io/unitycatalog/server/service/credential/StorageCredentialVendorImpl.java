@@ -1,0 +1,68 @@
+package io.unitycatalog.server.service.credential;
+
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.UriScheme;
+import io.unitycatalog.server.utils.ValidationUtils;
+import java.util.Optional;
+import java.util.Set;
+
+/**
+ * Vends temporary cloud storage credentials for accessing data at specific paths.
+ *
+ * <p>This class is responsible for:
+ *
+ * <ul>
+ *   <li>Looking up external location credentials based on the requested path
+ *   <li>Delegating to cloud-specific credential vendors (AWS, Azure, GCP)
+ *   <li>Returning scoped temporary credentials with appropriate privileges
+ * </ul>
+ */
+public class StorageCredentialVendorImpl implements StorageCredentialVendor {
+
+  private final CloudCredentialVendor cloudCredentialVendor;
+  private final ExternalLocationUtils externalLocationUtils;
+
+  public StorageCredentialVendorImpl(
+      CloudCredentialVendor cloudCredentialVendor, ExternalLocationUtils externalLocationUtils) {
+    this.cloudCredentialVendor = cloudCredentialVendor;
+    this.externalLocationUtils = externalLocationUtils;
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * @throws BaseException if the path is null or a cloud storage root, or credentials cannot be
+   *     generated
+   */
+  @Override
+  public TemporaryCredentials vendCredential(
+      NormalizedURL path, Set<CredentialContext.Privilege> privileges, CredentialUse use) {
+    if (path == null) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Storage location is null.");
+    }
+    ValidationUtils.checkArgument(
+        !path.isCloudStorageRoot(),
+        "Storage location must include a non-empty path prefix before credentials can be vended:"
+            + " %s",
+        path);
+    if (privileges == null || privileges.isEmpty()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Privileges cannot be null or empty.");
+    }
+    UriScheme scheme = UriScheme.fromURI(path.toUri());
+    if (scheme == UriScheme.FILE || scheme == UriScheme.NULL) {
+      // A local path has no credential to vend, so skip the external-location lookup.
+      return new TemporaryCredentials().url(path.toString());
+    }
+
+    // Permission authorization is already done before calling this function.
+    Optional<CredentialDAO> credentialDAO =
+        externalLocationUtils.getExternalLocationCredentialDaoForPath(path);
+    CredentialContext credentialContext = CredentialContext.create(path, privileges, credentialDAO);
+    return cloudCredentialVendor.vendCredential(credentialContext).url(path.toString());
+  }
+}

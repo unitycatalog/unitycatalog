@@ -182,7 +182,7 @@ public final class StorageCleanupWorker implements AutoCloseable {
     String prefix = location + "/";
     deadline.checkCancelled();
     try (SupportsPrefixOperations prefixOperations =
-        fileOperations.getCleanupFileIO(location, deadline)) {
+        fileOperations.getCleanupFileIO(location, claim.resourceId(), deadline)) {
       deadline.checkCancelled();
       prefixOperations.deletePrefix(prefix);
       deadline.checkCancelled();
