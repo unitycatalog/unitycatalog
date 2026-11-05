@@ -23,6 +23,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import javax.sql.DataSource;
+import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -212,6 +213,26 @@ public final class TestDatabase implements AutoCloseable {
         .setParameter("value", value)
         .setParameter("id", id)
         .executeUpdate();
+  }
+
+  /** Deletes the {@code entity} row {@code id} in {@code session}, for a held write. */
+  public static void deleteRow(Session session, Class<?> entity, UUID id) {
+    session
+        .createMutationQuery("delete from " + entity.getSimpleName() + " where id = :id")
+        .setParameter("id", id)
+        .executeUpdate();
+  }
+
+  /**
+   * Takes a shared lock on the {@code entity} row {@code id} in {@code session}, as a create does
+   * on its parent.
+   */
+  public static void lockShared(Session session, Class<?> entity, UUID id) {
+    session
+        .createSelectionQuery("from " + entity.getSimpleName() + " where id = :id", entity)
+        .setParameter("id", id)
+        .setHibernateLockMode(LockMode.PESSIMISTIC_READ)
+        .getSingleResult();
   }
 
   /** How many {@code entity} rows have {@code parentId} as their {@code parentAttribute}. */

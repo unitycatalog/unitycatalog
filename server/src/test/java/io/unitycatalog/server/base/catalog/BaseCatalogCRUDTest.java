@@ -233,6 +233,61 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     }
   }
 
+  /** A force delete that waits for a schema create deletes the new schema with the catalog. */
+  @Test
+  public void forceDeleteWaitsForASchemaCreateAndDeletesTheSchema() throws Exception {
+    UUID id = UUID.fromString(catalogOperations.createCatalog(newCatalog("create_race")).getId());
+
+    runBlockedByHeldWrite(
+        held -> {
+          // Like a create in flight: it holds the catalog row shared and has inserted its schema.
+          lockShared(held, CatalogInfoDAO.class, id);
+          held.persist(newSchema(id));
+        },
+        () -> {
+          catalogOperations.deleteCatalog("create_race", Optional.of(true));
+          return null;
+        });
+
+    assertThat(countChildren(SchemaInfoDAO.class, "catalogId", id)).isZero();
+    TestUtils.assertApiException(
+        () -> catalogOperations.getCatalog("create_race"),
+        ErrorCode.CATALOG_NOT_FOUND,
+        "Catalog not found");
+  }
+
+  /** A delete that waits for a schema create sees the new schema and rejects the catalog. */
+  @Test
+  public void deleteWaitsForASchemaCreateAndRejectsTheNonEmptyCatalog() throws Exception {
+    UUID id = UUID.fromString(catalogOperations.createCatalog(newCatalog("create_race")).getId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> {
+                  lockShared(held, CatalogInfoDAO.class, id);
+                  held.persist(newSchema(id));
+                },
+                () -> {
+                  catalogOperations.deleteCatalog("create_race", Optional.of(false));
+                  return null;
+                }),
+        ErrorCode.FAILED_PRECONDITION,
+        "Cannot delete catalog with schemas");
+
+    assertThat(catalogOperations.getCatalog("create_race").getId()).isEqualTo(id.toString());
+    assertThat(countChildren(SchemaInfoDAO.class, "catalogId", id)).isEqualTo(1);
+  }
+
+  private static SchemaInfoDAO newSchema(UUID catalogId) {
+    return SchemaInfoDAO.builder()
+        .id(UUID.randomUUID())
+        .name("created")
+        .catalogId(catalogId)
+        .createdAt(new Date())
+        .build();
+  }
+
   private static CreateCatalog newCatalog(String name) {
     return new CreateCatalog().name(name).comment(COMMENT);
   }

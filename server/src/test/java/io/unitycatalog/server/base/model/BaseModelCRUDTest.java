@@ -40,10 +40,12 @@ import io.unitycatalog.server.persist.ModelRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Path;
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -455,6 +457,46 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
         .isEqualTo("held comment");
   }
 
+  /** A delete that waits for a concurrent version create rejects the model, now with a version. */
+  @Test
+  public void deleteWaitsForAVersionCreateAndRejectsTheModel() throws Exception {
+    UUID id = UUID.fromString(createModel("delete_race").getId());
+    UUID versionId = UUID.randomUUID();
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> holdVersionCreate(held, id, versionId),
+                () -> {
+                  modelOperations.deleteRegisteredModel(
+                      modelFullName("delete_race"), Optional.of(false));
+                  return null;
+                }),
+        ErrorCode.ABORTED,
+        "Unable to delete a registered model with existing model versions");
+
+    assertThat(modelOperations.getRegisteredModel(modelFullName("delete_race")).getId())
+        .isEqualTo(id.toString());
+    assertThat(countChildren(ModelVersionInfoDAO.class, "registeredModelId", id)).isEqualTo(1);
+  }
+
+  /** A force delete that waits for a concurrent version create deletes that version too. */
+  @Test
+  public void forceDeleteWaitsForAVersionCreateAndDeletesTheVersion() throws Exception {
+    UUID id = UUID.fromString(createModel("force_race").getId());
+    UUID versionId = UUID.randomUUID();
+
+    runBlockedByHeldWrite(
+        held -> holdVersionCreate(held, id, versionId),
+        () -> {
+          modelOperations.deleteRegisteredModel(modelFullName("force_race"), Optional.of(true));
+          return null;
+        });
+
+    assertThat(countChildren(RegisteredModelInfoDAO.class, "id", id)).isZero();
+    assertThat(countChildren(ModelVersionInfoDAO.class, "registeredModelId", id)).isZero();
+  }
+
   /** A force delete that cannot lock a version fails as UNAVAILABLE and deletes nothing. */
   @Test
   public void forceDeleteBlockedByAVersionWriteIsUnavailable() throws Exception {
@@ -492,6 +534,20 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     assertThat(countChildren(ModelVersionInfoDAO.class, "registeredModelId", id)).isEqualTo(1);
   }
 
+  /** Locks the model row and inserts its first version, as a concurrent version create does. */
+  private static void holdVersionCreate(Session held, UUID modelId, UUID versionId) {
+    setColumn(held, RegisteredModelInfoDAO.class, modelId, "maxVersionNumber", 1L);
+    held.persist(
+        ModelVersionInfoDAO.builder()
+            .id(versionId)
+            .registeredModelId(modelId)
+            .version(1L)
+            .source(MV_SOURCE)
+            .status(ModelVersionStatus.READY.toString())
+            .createdAt(new Date())
+            .build());
+  }
+
   /** Finalizing a version that a concurrent writer already made READY is rejected. */
   @Test
   public void finalizeRacingAnAlreadyFinalizedVersionIsRejected() throws Exception {
@@ -525,6 +581,33 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
                             .version(version.getVersion()))),
         ErrorCode.INVALID_ARGUMENT,
         "not in a pending registration state");
+  }
+
+  /** A model create that waits for a delete of its schema finds no schema and leaves no orphan. */
+  @Test
+  public void createRacingASchemaDeleteFindsNoSchema() throws Exception {
+    catalogOperations.createCatalog(new CreateCatalog().name(CATALOG_NAME).comment(COMMENT));
+    UUID id =
+        UUID.fromString(
+            schemaOperations
+                .createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME))
+                .getSchemaId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> deleteRow(held, SchemaInfoDAO.class, id),
+                () ->
+                    modelOperations.createRegisteredModel(
+                        new CreateRegisteredModel()
+                            .name("orphan")
+                            .catalogName(CATALOG_NAME)
+                            .schemaName(SCHEMA_NAME)
+                            .comment(COMMENT))),
+        ErrorCode.SCHEMA_NOT_FOUND,
+        "Schema not found");
+
+    assertThat(countChildren(RegisteredModelInfoDAO.class, "schemaId", id)).isZero();
   }
 
   private RegisteredModelInfo createModel(String name) throws ApiException {

@@ -223,6 +223,16 @@ public abstract class BaseServerTest {
     TestDatabase.setColumn(session, entity, id, attribute, value);
   }
 
+  /** Deletes the {@code entity} row {@code id} in {@code session}, for a held write. */
+  protected static void deleteRow(Session session, Class<?> entity, UUID id) {
+    TestDatabase.deleteRow(session, entity, id);
+  }
+
+  /** Takes a shared lock on the {@code entity} row {@code id}, as a create does on its parent. */
+  protected static void lockShared(Session session, Class<?> entity, UUID id) {
+    TestDatabase.lockShared(session, entity, id);
+  }
+
   /** How many {@code entity} rows have {@code parentId} as their {@code parentAttribute}. */
   protected long countChildren(Class<?> entity, String parentAttribute, UUID parentId) {
     return testDatabase.countChildren(entity, parentAttribute, parentId);

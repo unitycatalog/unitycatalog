@@ -841,6 +841,9 @@ public class TableRepository {
               repositories
                   .getSchemaRepository()
                   .getSchemaIdOrThrow(session, catalogName, schemaName);
+          repositories
+              .getSchemaRepository()
+              .lockSchemaForChildCreate(session, schemaId, catalogName, schemaName);
 
           // Check if table already exists
           TableInfoDAO existingTable =

@@ -54,6 +54,13 @@ public class VolumeRepository {
                   createVolumeRequest.getCatalogName(),
                   createVolumeRequest.getSchemaName());
           UUID schemaId = catalogAndSchemaDao.schemaInfoDAO().getId();
+          repositories
+              .getSchemaRepository()
+              .lockSchemaForChildCreate(
+                  session,
+                  schemaId,
+                  createVolumeRequest.getCatalogName(),
+                  createVolumeRequest.getSchemaName());
           if (getVolumeDAO(session, schemaId, createVolumeRequest.getName()) != null) {
             throw new BaseException(
                 ErrorCode.RESOURCE_ALREADY_EXISTS,

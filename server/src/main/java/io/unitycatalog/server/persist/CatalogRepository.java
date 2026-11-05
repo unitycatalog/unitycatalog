@@ -145,6 +145,20 @@ public class CatalogRepository {
     return new BaseException(ErrorCode.CATALOG_NOT_FOUND, "Catalog not found: " + name);
   }
 
+  /**
+   * Locks the catalog row shared until the transaction ends, for a create of a schema in it: a
+   * delete of the catalog waits for the create, and a create after the delete finds no catalog.
+   */
+  void lockCatalogForChildCreate(Session session, CatalogInfoDAO catalog) {
+    RepositoryUtils.lockSharedByKey(
+        session,
+        CatalogInfoDAO.class,
+        catalog.getId(),
+        Map.of("name", catalog.getName()),
+        "catalog " + catalog.getName(),
+        () -> catalogNotFound(catalog.getName()));
+  }
+
   private void lockCatalog(Session session, CatalogInfoDAO catalog, String name) {
     RepositoryUtils.lockByKey(
         session,

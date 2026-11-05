@@ -22,6 +22,7 @@ import io.unitycatalog.client.model.VolumeInfo;
 import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.TestUtils;
@@ -276,6 +277,22 @@ public abstract class BaseVolumeCRUDTest extends BaseVolumeCRUDTestEnv {
     VolumeInfo renamed = volumeOperations.getVolume(SCHEMA_FULL_NAME + ".edited");
     assertThat(renamed.getVolumeId()).isEqualTo(id.toString());
     assertThat(renamed.getComment()).isEqualTo("held comment");
+  }
+
+  /** A volume create that waits for a delete of its schema finds no schema and leaves no orphan. */
+  @Test
+  public void createRacingASchemaDeleteFindsNoSchema() throws Exception {
+    UUID id = UUID.fromString(schemaId);
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> deleteRow(held, SchemaInfoDAO.class, id),
+                () -> createExternalVolume("orphan")),
+        ErrorCode.SCHEMA_NOT_FOUND,
+        "Schema not found");
+
+    assertThat(countChildren(VolumeInfoDAO.class, "schemaId", id)).isZero();
   }
 
   /** Inserts a managed volume row; creating one through the API needs managed storage. */

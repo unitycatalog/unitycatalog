@@ -101,6 +101,13 @@ public class StagingTableRepository {
               ExternalLocationUtils.getManagedLocationForTable(
                   parentStorageLocation, stagingTableId);
           UUID schemaId = catalogAndSchemaDao.schemaInfoDAO().getId();
+          repositories
+              .getSchemaRepository()
+              .lockSchemaForChildCreate(
+                  session,
+                  schemaId,
+                  createStagingTable.getCatalogName(),
+                  createStagingTable.getSchemaName());
           validateIfAlreadyExists(session, schemaId, createStagingTable.getName(), stagingLocation);
 
           StagingTableDAO stagingTableDAO = new StagingTableDAO();
