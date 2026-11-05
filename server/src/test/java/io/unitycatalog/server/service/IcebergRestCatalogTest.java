@@ -32,6 +32,7 @@ import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
@@ -101,6 +102,7 @@ import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequestParser;
+import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.CreateNamespaceResponse;
 import org.apache.iceberg.rest.responses.ErrorResponse;
@@ -345,6 +347,45 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       resp = client.delete(namespacePath).aggregate().join();
       assertThat(resp.status().code()).isEqualTo(404);
     }
+  }
+
+  /**
+   * Two property updates both survive: one that removed a property and is still uncommitted, and
+   * one that sets another property and waits for it.
+   */
+  @Test
+  public void concurrentNamespacePropertyUpdatesBothSurvive() throws Exception {
+    catalogOperations.createCatalog(new CreateCatalog().name(TestUtils.CATALOG_NAME));
+    UUID schemaId =
+        UUID.fromString(
+            schemaOperations
+                .createSchema(
+                    new CreateSchema()
+                        .catalogName(TestUtils.CATALOG_NAME)
+                        .name(TestUtils.SCHEMA_NAME)
+                        .properties(Map.of("a", "1", "b", "2")))
+                .getSchemaId());
+
+    runBlockedByHeldWrite(
+        held -> {
+          // Like an update in flight: it holds the schema row and has removed property "b".
+          setColumn(held, SchemaInfoDAO.class, schemaId, "updatedBy", "held");
+          held.createMutationQuery(
+                  "delete from PropertyDAO p where p.entityId = :id and p.key = 'b'")
+              .setParameter("id", schemaId)
+              .executeUpdate();
+        },
+        () ->
+            icebergClient.updateNamespaceProperties(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                UpdateNamespacePropertiesRequest.builder().update("c", "3").build()));
+
+    assertThat(
+            icebergClient.loadNamespace(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME).properties())
+        .containsEntry("a", "1")
+        .containsEntry("c", "3")
+        .doesNotContainKey("b");
   }
 
   @Test
