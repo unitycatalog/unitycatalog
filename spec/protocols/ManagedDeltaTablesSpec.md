@@ -796,7 +796,7 @@ Action | Description | Key Fields
 `set-protocol` | Update the Delta protocol (e.g., to enable a new table feature). | `protocol` (DeltaProtocol, required): the new protocol. Same shape as `protocol` in [Create a Table](#create-a-table).
 `set-columns` | Replace the table's column definitions. | `columns` (DeltaStructType, required): new column definitions. Same shape as `columns` in [Create a Table](#create-a-table).
 `set-partition-columns` | Replace the partition column list. Only legal in a commit that also replaces the table's data files; see [REPLACE TABLE](#replace-table). | `partition-columns` (array of string, required): partition column names.
-`set-table-comment` | Update the table comment. | `comment` (string, required): new comment text.
+`set-table-comment` | Update or remove the table comment. | `comment` (string, optional): new comment text. Omitted or null removes the comment.
 `set-domain-metadata` | Set domain metadata. Only domains present in `updates` are modified; absent domains are untouched. Used to set or update clustering columns (`delta.clustering`) and row-tracking high-water-mark (`delta.rowTracking`). | `updates` (object: string to object, required): a map of domain name to domain-specific metadata object. Each value's structure follows the corresponding [Delta protocol domain metadata](https://github.com/delta-io/delta/blob/master/PROTOCOL.md#domain-metadata) definition.
 `remove-domain-metadata` | Remove domain metadata for specific domains. | `domains` (array of string, required): domain names to remove.
 
