@@ -9,8 +9,10 @@ import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.UpdateCatalog;
 import io.unitycatalog.client.model.UpdateSchema;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 public abstract class BaseSchemaCRUDTest extends BaseSchemaCRUDTestEnv {
@@ -149,5 +151,21 @@ public abstract class BaseSchemaCRUDTest extends BaseSchemaCRUDTestEnv {
                 schemaOperations.getSchema(
                     TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME))
         .isInstanceOf(Exception.class);
+  }
+
+  /** A rename that waits for a concurrent edit of another column keeps that edit. */
+  @Test
+  public void renameKeepsAConcurrentCommentEdit() throws Exception {
+    UUID id = UUID.fromString(createCatalogAndSchema(Optional.empty()).getSchemaId());
+
+    runBlockedByHeldWrite(
+        held -> setColumn(held, SchemaInfoDAO.class, id, "comment", "held comment"),
+        () ->
+            schemaOperations.updateSchema(
+                TestUtils.SCHEMA_FULL_NAME, new UpdateSchema().newName("renamed_schema")));
+
+    SchemaInfo renamed = schemaOperations.getSchema(TestUtils.CATALOG_NAME + ".renamed_schema");
+    assertThat(renamed.getSchemaId()).isEqualTo(id.toString());
+    assertThat(renamed.getComment()).isEqualTo("held comment");
   }
 }
