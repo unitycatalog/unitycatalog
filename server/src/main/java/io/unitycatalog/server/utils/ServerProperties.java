@@ -117,6 +117,32 @@ public class ServerProperties {
     }
   }
 
+  /** Validator for OPA decision URLs that does not expose their values in errors. */
+  private static class OpaDecisionUrlValidator implements PropertyValidator {
+    @Override
+    public void validate(String key, String value) {
+      String invalidUrlMessage =
+          key + " must be an absolute HTTP or HTTPS URL without credentials or a fragment";
+      try {
+        URL url = new URL(value);
+        url.toURI();
+        if (!("http".equalsIgnoreCase(url.getProtocol())
+                || "https".equalsIgnoreCase(url.getProtocol()))
+            || url.getHost().isEmpty()
+            || url.getUserInfo() != null
+            || url.getRef() != null
+            || url.getPort() == 0
+            || url.getPort() > 65535) {
+          throw new BaseException(ErrorCode.INVALID_ARGUMENT, invalidUrlMessage);
+        }
+        Endpoint.parse(url.getAuthority());
+      } catch (MalformedURLException | URISyntaxException | IllegalArgumentException e) {
+        // Parser errors can contain credentials from the URL.
+        throw new BaseException(ErrorCode.INVALID_ARGUMENT, invalidUrlMessage);
+      }
+    }
+  }
+
   /**
    * Validator for storage path properties that can be either URLs or file paths. This is more
    * lenient than UrlValidator as it accepts both proper URLs (e.g., file:///tmp/path) and plain
@@ -266,7 +292,7 @@ public class ServerProperties {
         "server.authorization", "disable", new EnumValidator(true, "enable", "disable")),
     AUTHORIZATION_PROVIDER(
         "server.authorization.provider", "casbin", new EnumValidator(true, "casbin", "opa")),
-    OPA_DECISION_URL("server.authorization.opa.decision-url", URL_VALIDATOR),
+    OPA_DECISION_URL("server.authorization.opa.decision-url", new OpaDecisionUrlValidator()),
     OPA_RESPONSE_TIMEOUT(
         "server.authorization.opa.response-timeout", "PT5S", POSITIVE_DURATION_VALIDATOR),
     STRICT_PRIVILEGE_CHECKS_ENABLED(
@@ -385,9 +411,11 @@ public class ServerProperties {
    * initialization to fail fast if any property has an invalid value. It also validates any
    * override value from system property and env if set.
    *
+   * <p>Call this after changing properties and before creating server resources.
+   *
    * @throws BaseException if any property value is invalid
    */
-  private void validateProperties() {
+  public void validateProperties() {
     for (Property property : Property.values()) {
       String value = get(property);
       if (value == null) {
@@ -398,6 +426,24 @@ public class ServerProperties {
     }
     validateAuthAllowlistConfiguration();
     validateStorageCleanupConfiguration();
+    validateOpaConfiguration();
+  }
+
+  private void validateOpaConfiguration() {
+    if (!isOpaAuthorizationEnabled()) {
+      return;
+    }
+    if (!isAuthorizationEnabled()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "server.authorization=enable is required when server.authorization.provider=opa");
+    }
+    if (getOpaDecisionUrl() == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "server.authorization.opa.decision-url is required when"
+              + " server.authorization.provider=opa");
+    }
   }
 
   private void validateStorageCleanupConfiguration() {
@@ -676,39 +722,9 @@ public class ServerProperties {
     return "opa".equalsIgnoreCase(get(Property.AUTHORIZATION_PROVIDER));
   }
 
-  /**
-   * Returns the required decision URL when OPA is selected.
-   *
-   * @throws BaseException with {@link ErrorCode#INVALID_ARGUMENT} for a missing URL, an unsupported
-   *     scheme, an invalid host or port, credentials, or a fragment
-   */
+  /** Returns the configured OPA decision URL, or null when unset. */
   public String getOpaDecisionUrl() {
-    String value = get(Property.OPA_DECISION_URL);
-    if (value == null) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "server.authorization.opa.decision-url is required when"
-              + " server.authorization.provider=opa");
-    }
-    String invalidUrlMessage =
-        "server.authorization.opa.decision-url must be an absolute HTTP or HTTPS URL"
-            + " without credentials or a fragment";
-    try {
-      URL url = new URL(value);
-      if (!("http".equalsIgnoreCase(url.getProtocol())
-              || "https".equalsIgnoreCase(url.getProtocol()))
-          || url.getHost().isEmpty()
-          || url.getUserInfo() != null
-          || url.getRef() != null
-          || url.getPort() == 0
-          || url.getPort() > 65535) {
-        throw new BaseException(ErrorCode.INVALID_ARGUMENT, invalidUrlMessage);
-      }
-      Endpoint.parse(url.getAuthority());
-    } catch (MalformedURLException | IllegalArgumentException e) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, invalidUrlMessage, e);
-    }
-    return value;
+    return get(Property.OPA_DECISION_URL);
   }
 
   /** Response timeout for each OPA call, not the complete UC request. */
