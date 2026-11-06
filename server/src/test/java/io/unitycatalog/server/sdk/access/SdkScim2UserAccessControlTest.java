@@ -124,7 +124,7 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
 
   @Test
   @SneakyThrows
-  public void testMetastoreOwnerCanBeDeletedWithAuthorizationDisabled() {
+  public void testMetastoreOwnerCanBeDeactivatedAndDeletedWithAuthorizationDisabled() {
     // With authorization disabled the server uses AllowingAuthorizer, which allows every OWNER
     // check, so the service skips the owner check and the owner can be deactivated and deleted.
     String ownerId =
