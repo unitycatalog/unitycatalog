@@ -139,9 +139,10 @@ container from its Kubernetes Secret, in `UC_S3_ACCESSKEY_<n>` and `UC_S3_SECRET
 !!! warning "Deprecated: secrets in properties files"
     Secrets in `server.properties` and the password in `hibernate.properties` still work, but this is deprecated. The
     server logs a warning at startup for each one set in a file that no environment variable or system property
-    supplies, and always for `server.client-secret`. Move them to environment variables. The server never reads
-    `hibernate.connection.password` from `server.properties`; unless the environment or a system property also sets
-    the password, it logs a warning that the line is ignored.
+    supplies (for the database password, only `UC_HIBERNATE_CONNECTION_PASSWORD` counts), and always for
+    `server.client-secret`. Move them to environment variables. The server never reads `hibernate.connection.password`
+    from `server.properties`; unless `UC_HIBERNATE_CONNECTION_PASSWORD` is set, it logs a warning that the line is
+    ignored.
 
 #### Upgrading
 

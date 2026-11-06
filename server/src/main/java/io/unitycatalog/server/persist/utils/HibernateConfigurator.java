@@ -55,7 +55,7 @@ public class HibernateConfigurator implements AutoCloseable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(HibernateConfigurator.class);
   private static final String HIKARI_PREFIX = "hibernate.hikari.";
-  private static final String PASSWORD_KEY = "hibernate.connection.password";
+  private static final String PASSWORD_KEY = ServerProperties.DB_PASSWORD_KEY;
 
   private final SessionFactory sessionFactory;
   private final Properties hibernateProperties;
@@ -130,7 +130,7 @@ public class HibernateConfigurator implements AutoCloseable {
     HikariConfig hikariConfig = new HikariConfig(hikariProperties);
     hikariConfig.setJdbcUrl(hibernateProperties.getProperty("hibernate.connection.url"));
     hikariConfig.setUsername(resolveConnectionUsername(hibernateProperties));
-    hikariConfig.setPassword(hibernateProperties.getProperty("hibernate.connection.password"));
+    hikariConfig.setPassword(hibernateProperties.getProperty(PASSWORD_KEY));
     hikariConfig.setDriverClassName(
         hibernateProperties.getProperty("hibernate.connection.driver_class"));
     if (!hikariProperties.containsKey("maximumPoolSize")) {
@@ -169,7 +169,7 @@ public class HibernateConfigurator implements AutoCloseable {
       sessionFactoryProperties.remove("hibernate.connection.url");
       sessionFactoryProperties.remove("hibernate.connection.user");
       sessionFactoryProperties.remove("hibernate.connection.username");
-      sessionFactoryProperties.remove("hibernate.connection.password");
+      sessionFactoryProperties.remove(PASSWORD_KEY);
       sessionFactoryProperties.remove("hibernate.connection.pool_size");
       sessionFactoryProperties
           .keySet()
@@ -257,10 +257,11 @@ public class HibernateConfigurator implements AutoCloseable {
       hibernateProperties.setProperty(PASSWORD_KEY, password);
     } else if (!hibernateProperties.getProperty(PASSWORD_KEY, "").isEmpty()) {
       LOGGER.warn(
-          "{} is set in {}. Keeping the database password in this file is deprecated; set the"
-              + " UC_HIBERNATE_CONNECTION_PASSWORD environment variable instead.",
+          "{} is set in {}. Keeping the database password in this file is deprecated; set the {}"
+              + " environment variable instead.",
           PASSWORD_KEY,
-          propertiesPath);
+          propertiesPath,
+          ServerProperties.envName(PASSWORD_KEY));
     }
   }
 }
