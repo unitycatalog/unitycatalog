@@ -44,9 +44,10 @@ public class RepositoryUtilsTest {
   /**
    * A failed pessimistic lock acquisition means a concurrent commit or deletion holds the lock; the
    * caller decides how that surfaces (Delta as the retryable {@code COMMIT_STATE_UNKNOWN}, Iceberg
-   * as an {@code UPDATE_REQUIREMENT_CONFLICT}, table deletion as {@code UNAVAILABLE}), never as a
-   * leaked ORM exception. The lock query passes the dialect's exception through Hibernate's
-   * exception converter, so each failure here is the converter's output for one dialect exception.
+   * as an {@code UPDATE_REQUIREMENT_CONFLICT}; {@code lockByKey}, used by table deletion, as {@code
+   * UNAVAILABLE}), never as a leaked ORM exception. The lock query passes the dialect's exception
+   * through Hibernate's exception converter, so each failure here is the converter's output for one
+   * dialect exception.
    */
   static RuntimeException[] lockAcquisitionFailures() {
     ExceptionConverterImpl converter =
