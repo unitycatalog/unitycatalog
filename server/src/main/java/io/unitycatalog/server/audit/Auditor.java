@@ -2,7 +2,10 @@ package io.unitycatalog.server.audit;
 
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.linecorp.armeria.server.ServiceRequestContext;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.persist.CleanupTaskRepository;
+import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.credential.CredentialContext;
@@ -10,16 +13,20 @@ import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import jakarta.transaction.Status;
+import jakarta.transaction.Synchronization;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
+import org.hibernate.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,6 +37,9 @@ import org.slf4j.LoggerFactory;
  */
 public final class Auditor implements AutoCloseable {
   static final String CLEANUP_USER = "system:storage-cleanup";
+
+  /** Work the server does outside any request, such as the admin grant at first start. */
+  static final String SERVER_USER = "system:server";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(Auditor.class);
   private static final long REPORT_INTERVAL_MS = 60_000;
@@ -90,6 +100,19 @@ public final class Auditor implements AutoCloseable {
     return new AuditingStorageCredentialVendor(delegate, this);
   }
 
+  /**
+   * Wraps an authorizer so each permission change is recorded: a grant when it adds one, and a
+   * revoke or clear once it finishes without throwing, whether or not it removed a grant.
+   */
+  public UnityCatalogAuthorizer wrap(UnityCatalogAuthorizer delegate) {
+    return new AuditingAuthorizer(delegate, this);
+  }
+
+  /** Wraps the cleanup-task repository so every queued cleanup is recorded after commit. */
+  public CleanupTaskRepository wrap(CleanupTaskRepository delegate) {
+    return new AuditingCleanupTaskRepository(delegate, this);
+  }
+
   void recordCredential(
       NormalizedURL path,
       Set<CredentialContext.Privilege> privileges,
@@ -109,6 +132,54 @@ public final class Auditor implements AutoCloseable {
                         ? null
                         : Instant.ofEpochMilli(credential.getExpirationTime()))
                 .build());
+  }
+
+  void recordPermission(
+      AuditRecord.Action action, UUID principalId, UUID resourceId, Privileges privilege) {
+    emit(
+        () ->
+            base(action, null)
+                .principalId(principalId)
+                .resourceId(resourceId)
+                .privilege(privilege == null ? null : privilege.getValue())
+                .build());
+  }
+
+  void recordQueueCleanup(UUID resourceId, String location) {
+    emit(
+        () ->
+            base(AuditRecord.Action.QUEUE_CLEANUP, null)
+                .resourceId(resourceId)
+                .location(sanitizeLocation(location))
+                .build());
+  }
+
+  /**
+   * Runs {@code action} only once the session's transaction commits; not on rollback or failure.
+   */
+  void afterCommit(Session session, Runnable action) {
+    session
+        .getTransaction()
+        .registerSynchronization(
+            new Synchronization() {
+              @Override
+              public void beforeCompletion() {}
+
+              @Override
+              public void afterCompletion(int status) {
+                // Hibernate rethrows from commit() anything thrown here, which would turn a
+                // committed drop into an error, so everything stays inside the guard.
+                try {
+                  // Only on commit: with resource-local transactions Hibernate reports a
+                  // rollback as STATUS_UNKNOWN, not STATUS_ROLLEDBACK.
+                  if (status == Status.STATUS_COMMITTED) {
+                    action.run();
+                  }
+                } catch (Throwable t) {
+                  reportFailure(t);
+                }
+              }
+            });
   }
 
   /**
@@ -174,7 +245,10 @@ public final class Auditor implements AutoCloseable {
     if (purpose == AuditRecord.Purpose.CLEANUP) {
       return CLEANUP_USER;
     }
-    DecodedJWT jwt = ctx == null ? null : ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
+    if (ctx == null) {
+      return SERVER_USER;
+    }
+    DecodedJWT jwt = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
     return jwt == null ? null : jwt.getClaim(JwtClaim.SUBJECT.key()).asString();
   }
 

@@ -50,15 +50,18 @@ class ManagedModelCleanupTaskTest {
     requestContext = ServiceRequestContext.of(HttpRequest.of(HttpMethod.POST, "/")).push();
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
+    StorageCleanupTestSupport.captureAuditRecords(properties);
     ServerProperties serverProperties = new ServerProperties(properties);
     sessionFactory = testDatabase.sessionFactory();
-    repositories = new Repositories(sessionFactory, serverProperties);
+    repositories = StorageCleanupTestSupport.auditedRepositories(sessionFactory, serverProperties);
     repositories.getCatalogRepository().addCatalog(new CreateCatalog().name("catalog"));
   }
 
   @AfterEach
   void tearDown() {
     requestContext.close();
+    // Every test here, including the rolled-back and cascading drops, records exactly its tasks.
+    StorageCleanupTestSupport.assertQueueCleanupRecordsMatchTasks(sessionFactory);
   }
 
   @ParameterizedTest

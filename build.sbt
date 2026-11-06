@@ -32,6 +32,8 @@ lazy val sparkVersion = CrossSparkVersions.getSparkArtifactVersion()
 lazy val hadoopVersion = sys.props.getOrElse("hadoopVersion", "3.4.2")
 
 // Library versions
+// When bumping Iceberg, re-check the Failsafe pin in the server dependencyOverrides: iceberg-aws
+// must not need a Failsafe API that the pinned version lacks.
 lazy val icebergVersion = "1.11.0"
 lazy val jacksonVersion = "2.18.10"
 lazy val openApiToolsJacksonBindNullableVersion = "0.2.11"
@@ -469,6 +471,9 @@ lazy val server = (project in file("server"))
       "org.casbin" % "jdbc-adapter" % "2.13.0"
         exclude("com.microsoft.sqlserver", "mssql-jdbc")
         exclude("com.oracle.database.jdbc", "ojdbc6"),
+      // Also a direct dependency so the published POM carries the Failsafe pin from
+      // dependencyOverrides below; see the TODO there.
+      "dev.failsafe" % "failsafe" % "3.2.3",
       "org.postgresql" % "postgresql" % postgresqlVersion,
       "org.springframework" % "spring-expression" % "6.2.19",
       "com.auth0" % "java-jwt" % "4.6.1",
@@ -498,6 +503,14 @@ lazy val server = (project in file("server"))
     dependencyOverrides ++= Seq(
       // One PostgreSQL driver: jdbc-adapter brings 42.7.2. Keep in step with the direct dependency.
       "org.postgresql" % "postgresql" % postgresqlVersion,
+      // jdbc-adapter 2.13.0 calls ExecutionContext.getLastFailure, which Failsafe 3.3.0 removed, so on
+      // the 3.3.2 that iceberg-aws brings a failed policy write throws NoSuchMethodError. iceberg-aws
+      // only uses Failsafe APIs that 3.2.3 has.
+      // TODO(https://github.com/apache/casbin-jcasbin-jdbc-adapter/pull/94): drop this pin once a
+      // jdbc-adapter release includes that change. The pin applies to this project only: serverShaded
+      // ships 3.2.3 because its assembly classpath is this project's, and any other module that depends
+      // on server resolves 3.3.2 unless it pins Failsafe too.
+      "dev.failsafe" % "failsafe" % "3.2.3",
       "software.amazon.awssdk" % "sso" % awsSdkV2Version,
       "software.amazon.awssdk" % "ssooidc" % awsSdkV2Version,
       "software.amazon.awssdk" % "s3" % awsSdkV2Version,
