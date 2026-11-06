@@ -112,16 +112,14 @@ bin/start-uc-server
 ```
 
 A variable takes precedence over the same key in `server.properties`, and `UC_HIBERNATE_CONNECTION_PASSWORD` over
-`hibernate.properties`. A variable named exactly as the key comes before the `UC_` one and is used as is. An empty
-`UC_` variable is ignored, and line breaks at the end of its value are dropped, as a Kubernetes Secret made from a file
-often ends with one. The prefix keeps variables that runtimes set for their own use, such as `AWS_REGION`, from
-changing settings. The server logs the name of each environment variable it uses for a setting, never its value.
-`server.client-secret` is read by `bin/uc auth login`, not by the server. The Helm chart passes each S3 and ADLS
-credential to the server container from its Kubernetes Secret, in `UC_S3_ACCESSKEY_<n>` and `UC_S3_SECRETKEY_<n>`, or
-`UC_ADLS_TENANTID_<n>`, `UC_ADLS_CLIENTID_<n>` and `UC_ADLS_CLIENTSECRET_<n>`. All parts come from the Secret
-together, so a server container that restarts after a rotation doesn't mix old and new values. With
-`server.db.type: postgresql`, it also passes `UC_HIBERNATE_CONNECTION_PASSWORD` if
-`server.db.postgresqlConfig.passwordSecretName` is set.
+`hibernate.properties`. A variable named exactly as the key comes before the `UC_` one. An empty `UC_` variable is
+ignored, and line breaks at the end of its value are dropped, as a Kubernetes Secret made from a file often ends with
+one. The prefix keeps variables that runtimes set for their own use, such as `AWS_REGION`, from changing settings. The
+server logs the name of each environment variable it uses for a setting, never its value. `server.client-secret` is
+read by `bin/uc auth login`, not by the server. The Helm chart passes each S3 and ADLS credential to the server
+container from its Kubernetes Secret, in `UC_S3_ACCESSKEY_<n>` and `UC_S3_SECRETKEY_<n>`, or `UC_ADLS_TENANTID_<n>`,
+`UC_ADLS_CLIENTID_<n>` and `UC_ADLS_CLIENTSECRET_<n>`. With `server.db.type: postgresql`, it also passes
+`UC_HIBERNATE_CONNECTION_PASSWORD` if `server.db.postgresqlConfig.passwordSecretName` is set.
 
 !!! warning "Deprecated: secrets in properties files"
     Secrets in `server.properties` and the password in `hibernate.properties` still work, but this is deprecated. The
@@ -142,9 +140,9 @@ together, so a server container that restarts after a rotation doesn't mix old a
   (`s3.accessKey.<n>`, `s3.secretKey.<n>`, `adls.tenantId.<n>`, `adls.clientId.<n>`, `adls.clientSecret.<n>`). The
   init container has `S3_ACCESS_KEY_<n>`, `S3_SECRET_KEY_<n>`, `ADLS_TENANT_ID_<n>`, `ADLS_CLIENT_ID_<n>`,
   `ADLS_CLIENT_SECRET_<n>` and, with `auth.enabled`, `OAUTH_CLIENT_SECRET` only when `server.config.override` or
-  `extraProperties` is set, so a template that uses them keeps working; that is deprecated. A container added
-  through `extraInitContainers` or `extraContainers` that needs these secrets must read them from the Kubernetes
-  Secret itself.
+  `extraProperties` is set, so a template that uses them still gets them; that is deprecated. The server container's
+  `UC_` variables still take precedence over the template's values. A container added through `extraInitContainers`
+  or `extraContainers` that needs these secrets must read them from the Kubernetes Secret itself.
 - Helm: the rendered `hibernate.properties` no longer holds the password, and the init container no longer has
   `DB_PASSWORD`. A container added through `extraInitContainers` or `extraContainers` that needs the password must
   read it from the Secret named by `server.db.postgresqlConfig.passwordSecretName`. In a `server.db.overrideConfig`
