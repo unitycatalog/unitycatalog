@@ -135,8 +135,9 @@ rotation doesn't mix old and new values.
   (`s3.accessKey.<n>`, `s3.secretKey.<n>`, `adls.tenantId.<n>`, `adls.clientId.<n>`, `adls.clientSecret.<n>`). The
   init container has `S3_ACCESS_KEY_<n>`, `S3_SECRET_KEY_<n>`, `ADLS_TENANT_ID_<n>`, `ADLS_CLIENT_ID_<n>`,
   `ADLS_CLIENT_SECRET_<n>` and, with `auth.enabled`, `OAUTH_CLIENT_SECRET` only when `server.config.override` or
-  `extraProperties` is set, so a template that uses them keeps working; that is deprecated. A container added through `extraInitContainers` or
-  `extraContainers` that needs these secrets must read them from the Kubernetes Secret itself.
+  `extraProperties` is set, so a template that uses them keeps working; that is deprecated. A container added
+  through `extraInitContainers` or `extraContainers` that needs these secrets must read them from the Kubernetes
+  Secret itself.
 
 ## Local file system storage
 
