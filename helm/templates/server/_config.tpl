@@ -135,8 +135,9 @@ rootLogger.appenderRef.console.ref=Console
 {{- end }}
 
 {{/*
-Storage credentials for the server container (see "Secrets" in docs/server/configuration.md). Every
-part comes from here, not from the generated server.properties, which is written only at pod start.
+Secrets for the server container (see "Secrets" in docs/server/configuration.md): the database
+password and every part of each storage credential come from here, not from the generated properties
+files, which are written only at pod start.
 */}}
 {{- define "unitycatalog.server.secretEnv" -}}
 {{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.passwordSecretName }}
