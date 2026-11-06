@@ -140,7 +140,7 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
 
   @Get("/{full_name}")
   @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
-  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
+  @ResponseAuthorizeFilter(isList = false, browse = AuthorizeExpressions.BROWSE_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getVolume(
       @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName,

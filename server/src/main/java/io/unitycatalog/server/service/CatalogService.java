@@ -99,7 +99,7 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
 
   @Get("/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_CATALOG)
-  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
+  @ResponseAuthorizeFilter(isList = false, browse = AuthorizeExpressions.BROWSE_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getCatalog(
       @Param("name") @AuthorizeResourceKey(CATALOG) String name,

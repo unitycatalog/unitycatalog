@@ -97,7 +97,7 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
   @Get("/{name}")
   @AuthorizeResourceKey(METASTORE)
   @AuthorizeExpression(AuthorizeExpressions.GET_FUNCTION)
-  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
+  @ResponseAuthorizeFilter(isList = false, browse = AuthorizeExpressions.BROWSE_CATALOG)
   public HttpResponse getFunction(
       @Param("name") @AuthorizeResourceKey(FUNCTION) String name,
       @Param("include_browse") Optional<Boolean> includeBrowse) {

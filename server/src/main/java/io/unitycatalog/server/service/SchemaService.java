@@ -103,7 +103,7 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
 
   @Get("/{full_name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_SCHEMA)
-  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
+  @ResponseAuthorizeFilter(isList = false, browse = AuthorizeExpressions.BROWSE_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getSchema(
       @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,

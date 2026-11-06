@@ -121,7 +121,7 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
 
   @Get("/{full_name}")
   @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
-  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
+  @ResponseAuthorizeFilter(isList = false, browse = AuthorizeExpressions.BROWSE_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getRegisteredModel(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullNameArg,

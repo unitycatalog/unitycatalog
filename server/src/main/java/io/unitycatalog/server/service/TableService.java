@@ -99,7 +99,7 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
 
   @Get("/{full_name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
-  @ResponseAuthorizeFilter(browse = AuthorizeExpressions.BROWSE_CATALOG)
+  @ResponseAuthorizeFilter(isList = false, browse = AuthorizeExpressions.BROWSE_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getTable(
       @Param("full_name") @AuthorizeResourceKey(TABLE) String fullName,

@@ -368,14 +368,22 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
         Map<SecurableType, UUID> resourceIds,
         Map<String, Object> nonResourceValues) {
       // Handlers declare @Param("include_browse") so Armeria validates the value.
+      ResponseAuthorizeFilter annotation = method().getAnnotation(ResponseAuthorizeFilter.class);
+      Boolean includeBrowse = ctx.queryParams().getBoolean("include_browse");
+      String browseExpression = Boolean.TRUE.equals(includeBrowse) ? annotation.browse() : "";
+      // Leave invalid Boolean values to Armeria's parameter binding.
+      if (!annotation.isList()
+          && browseExpression.isEmpty()
+          && (includeBrowse != null || ctx.queryParam("include_browse") == null)
+          && !evaluator.evaluate(principal, expression, resourceIds, nonResourceValues)) {
+        throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+      }
       resultFilter =
           new ResultFilter(
               evaluator,
               principal,
               expression,
-              ctx.queryParams().getBoolean("include_browse", false)
-                  ? method().getAnnotation(ResponseAuthorizeFilter.class).browse()
-                  : "",
+              browseExpression,
               resourceIds,
               nonResourceValues,
               keyMapper);

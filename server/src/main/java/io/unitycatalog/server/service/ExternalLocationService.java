@@ -89,7 +89,7 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
 
   @Get("/{name}")
   @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
-  @ResponseAuthorizeFilter(browse = BROWSE_AUTH_EXPRESSION)
+  @ResponseAuthorizeFilter(isList = false, browse = BROWSE_AUTH_EXPRESSION)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getExternalLocation(
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,

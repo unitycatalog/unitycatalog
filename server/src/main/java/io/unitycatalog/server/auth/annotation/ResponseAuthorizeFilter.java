@@ -48,6 +48,12 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 public @interface ResponseAuthorizeFilter {
   /**
+   * Whether the handler returns a list. Single-object requests check ordinary access before the
+   * handler runs when the BROWSE fallback is disabled.
+   */
+  boolean isList() default true;
+
+  /**
    * Optional BROWSE fallback, evaluated only with {@code include_browse=true} after ordinary
    * authorization fails. The handler must supply a typed projection of the allowed response fields.
    */
