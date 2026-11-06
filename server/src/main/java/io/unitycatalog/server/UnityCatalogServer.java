@@ -110,6 +110,7 @@ public class UnityCatalogServer implements AutoCloseable {
 
   private UnityCatalogServer(UnityCatalogServer.Builder unityCatalogServerBuilder) {
     setDefaults(unityCatalogServerBuilder);
+    unityCatalogServerBuilder.serverProperties.validateProperties();
     this.shutdownTimeout = unityCatalogServerBuilder.serverProperties.getShutdownTimeout();
     Path configurationFolder = Path.of("etc", "conf");
     SecurityConfiguration securityConfiguration = new SecurityConfiguration(configurationFolder);
@@ -340,15 +341,6 @@ public class UnityCatalogServer implements AutoCloseable {
       ServerProperties serverProperties,
       HibernateConfigurator hibernateConfigurator,
       Repositories repositories) {
-    String opaDecisionUrl = null;
-    if (serverProperties.isOpaAuthorizationEnabled()) {
-      if (!serverProperties.isAuthorizationEnabled()) {
-        throw new BaseException(
-            ErrorCode.INVALID_ARGUMENT,
-            "server.authorization=enable is required when server.authorization.provider=opa");
-      }
-      opaDecisionUrl = serverProperties.getOpaDecisionUrl();
-    }
     if (serverProperties.isAuthorizationEnabled()) {
       try {
         LOGGER.info("Initializing JCasbinAuthorizer...");
@@ -356,12 +348,12 @@ public class UnityCatalogServer implements AutoCloseable {
             new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
         try {
           new UnityAccessUtil(repositories).initializeAdmin(authorizer);
-          if (opaDecisionUrl != null) {
+          if (serverProperties.isOpaAuthorizationEnabled()) {
             LOGGER.info("Using OPA for authorization decisions.");
             return new OpaAuthorizer(
                 authorizer,
                 hibernateConfigurator.getSessionFactory(),
-                opaDecisionUrl,
+                serverProperties.getOpaDecisionUrl(),
                 serverProperties.getOpaResponseTimeout());
           }
           return authorizer;

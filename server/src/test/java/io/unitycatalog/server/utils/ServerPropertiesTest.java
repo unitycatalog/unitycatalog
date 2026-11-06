@@ -33,7 +33,6 @@ public class ServerPropertiesTest {
     assertThat(properties.isOpaAuthorizationEnabled()).isFalse();
     assertThat(properties.getOpaResponseTimeout()).isEqualTo(Duration.ofSeconds(5));
     testValidProperty(Property.AUTHORIZATION_PROVIDER, "casbin");
-    testValidProperty(Property.AUTHORIZATION_PROVIDER, "OPA");
     testInvalidProperty(Property.AUTHORIZATION_PROVIDER, "other", "server.authorization.provider");
     testValidProperty(Property.OPA_RESPONSE_TIMEOUT, "PT0.001S");
     for (String timeout : List.of("PT0S", "PT-1S", "PT0.0001S", "bad")) {
@@ -41,23 +40,18 @@ public class ServerPropertiesTest {
           Property.OPA_RESPONSE_TIMEOUT, timeout, "server.authorization.opa.response-timeout");
     }
 
-    assertThatThrownBy(properties::getOpaDecisionUrl)
-        .isInstanceOf(BaseException.class)
-        .hasMessageContaining("server.authorization.opa.decision-url is required");
     for (String url :
         List.of(
             "http://localhost:8181/v1/data/uc/authz",
             "https://opa.example.com/v1/data/uc/authz",
             "http://opa_server:8181/v1/data/uc/authz",
             "http://[::1]:8181/v1/data/uc/authz")) {
-      properties.set(Property.OPA_DECISION_URL, url);
-      assertThat(properties.getOpaDecisionUrl()).isEqualTo(url);
-    }
-    for (String url : List.of("not a URL", "http://opa_server:bad/policy")) {
-      testInvalidProperty(Property.OPA_DECISION_URL, url, "server.authorization.opa.decision-url");
+      testValidProperty(Property.OPA_DECISION_URL, url);
     }
     for (String url :
         List.of(
+            "not a URL",
+            "http://opa_server:bad/policy",
             "file:///policy",
             "ftp://localhost/policy",
             "http:/policy",
@@ -72,11 +66,39 @@ public class ServerPropertiesTest {
             "http://opa_server:-1/policy",
             "http://-opa_server:8181/policy",
             "http://:8181/policy")) {
-      properties.set(Property.OPA_DECISION_URL, url);
-      assertThatThrownBy(properties::getOpaDecisionUrl)
-          .isInstanceOf(BaseException.class)
-          .hasMessageContaining("must be an absolute HTTP or HTTPS URL");
+      testInvalidProperty(Property.OPA_DECISION_URL, url, "must be an absolute HTTP or HTTPS URL");
     }
+
+    assertThatThrownBy(
+            () ->
+                properties.set(
+                    Property.OPA_DECISION_URL, "http://user:secret@localhost:bad/policy"))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(
+            "server.authorization.opa.decision-url must be an absolute HTTP or HTTPS URL"
+                + " without credentials or a fragment")
+        .hasNoCause();
+  }
+
+  @Test
+  public void testOpaAuthorizationConfiguration() {
+    Properties props = new Properties();
+    props.setProperty(Property.AUTHORIZATION_PROVIDER.getKey(), "OPA");
+    props.setProperty(Property.OPA_DECISION_URL.getKey(), "http://localhost:8181/v1/data/uc/authz");
+    assertThatThrownBy(() -> new ServerProperties(props))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(
+            "server.authorization=enable is required when server.authorization.provider=opa");
+
+    props.setProperty(Property.AUTHORIZATION_ENABLED.getKey(), "enable");
+    ServerProperties properties = new ServerProperties(props);
+    assertThat(properties.isOpaAuthorizationEnabled()).isTrue();
+    assertThat(properties.getOpaDecisionUrl()).isEqualTo("http://localhost:8181/v1/data/uc/authz");
+
+    props.remove(Property.OPA_DECISION_URL.getKey());
+    assertThatThrownBy(() -> new ServerProperties(props))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("server.authorization.opa.decision-url is required");
   }
 
   private void testValidProperty(Property property, String value) {
