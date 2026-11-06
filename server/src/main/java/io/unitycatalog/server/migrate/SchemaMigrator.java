@@ -52,7 +52,10 @@ public final class SchemaMigrator implements AutoCloseable {
     PENDING,
     /** A step newer than this build is applied: the database belongs to a newer release. */
     AHEAD,
-    /** Unity Catalog's tables without Flyway's history: a database of the baseline release. */
+    /**
+     * Unity Catalog's tables without Flyway's history, such as a database a server set up when it
+     * started.
+     */
     UNVERSIONED_UC
   }
 
