@@ -400,9 +400,8 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
    * A UniForm table under a catalog root whose folder has a space or a literal {@code %}, with the
    * locations as Delta 4.4.1 sends them. Delta passes the staging location to Spark, which reads it
    * as a Hadoop path and sends {@code toUri()} as the table location, and it sends the Iceberg
-   * metadata location as {@code Path.toString()} (a literal path). Delta Spark can't create a
-   * managed UniForm table today (UC requires deletion vectors, IcebergCompatV2 forbids them), so
-   * the connector tests don't cover this.
+   * metadata location as {@code Path.toString()} (a literal path). The connector tests don't create
+   * a managed UniForm table, so the forms are checked here.
    */
   @Test
   public void testUniformLocationsAsDeltaSendsThem() throws ApiException {
