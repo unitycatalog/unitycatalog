@@ -12,7 +12,7 @@ set up, Hibernate changes nothing.
 `bin/start-uc-server --upgrade-schema` brings the database to the schema version of its release,
 then exits without starting the server: with 0 when it succeeds, and with 1 and the reason when it
 refuses. It sets up an empty database (a new install), adopts a database from the baseline
-release, and applies the steps that are not applied yet. Run it only after you stop all servers.
+release, and applies the steps that are not applied yet.
 If it fails, fix the cause it names and run the same command again: it also retries a step that a
 crash left half done.
 
