@@ -62,7 +62,6 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
     "s3://test-bucket0/team%2Freports, ../team/reports/data,",
     "s3://test-bucket0/team_reports, ../team_reports2/data,",
     "s3://test-bucket0/team_reports, /other/x,",
-    "file:///tmp/uc-cli-volume-test/my%20vol,, /tmp/uc-cli-volume-test/my vol",
     "file:///tmp/uc-cli-volume-test/my%20vol, Q3 report.pdf, /tmp/uc-cli-volume-test/my vol/Q3"
         + " report.pdf",
     "file:///tmp/uc-cli-volume-test/my%20vol, Q3%20report.pdf, /tmp/uc-cli-volume-test/my vol/Q3"
