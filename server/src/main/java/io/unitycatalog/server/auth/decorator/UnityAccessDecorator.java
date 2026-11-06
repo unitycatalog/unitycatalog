@@ -29,6 +29,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -524,9 +525,54 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
           }
         });
 
-    Map<SecurableType, UUID> resourceIds =
-        mapResourceKeys(conditionalLocators, resourceKeys, nonResourceValues);
-    evaluateAction.runBeforeRequest(principal, expression, resourceIds, nonResourceValues);
+    List<Map<SecurableType, Object>> eachResourceKeys = eachResourceKeys(resourceKeys);
+    if (eachResourceKeys.size() > 1 && evaluateAction instanceof ResultFilterAction) {
+      // Each evaluation would replace the filter the last one set.
+      throw new IllegalStateException(
+          "Method "
+              + evaluateAction.method().getName()
+              + " filters its response, so its resource keys can't name several resources");
+    }
+    for (Map<SecurableType, Object> keys : eachResourceKeys) {
+      Map<SecurableType, UUID> resourceIds =
+          mapResourceKeys(conditionalLocators, keys, nonResourceValues);
+      evaluateAction.runBeforeRequest(principal, expression, resourceIds, nonResourceValues);
+    }
+  }
+
+  /**
+   * The resource keys to evaluate a request's expression with, once each. That is {@code
+   * resourceKeys} itself, unless an extractor named several resources of one type as a collection:
+   * then one copy per resource, so the expression must hold for each, or one without that type when
+   * the collection is empty.
+   */
+  static List<Map<SecurableType, Object>> eachResourceKeys(
+      Map<SecurableType, Object> resourceKeys) {
+    List<SecurableType> several =
+        resourceKeys.entrySet().stream()
+            .filter(entry -> entry.getValue() instanceof Collection)
+            .map(Map.Entry::getKey)
+            .toList();
+    if (several.isEmpty()) {
+      return List.of(resourceKeys);
+    }
+    if (several.size() > 1) {
+      throw new IllegalStateException(
+          "Only one resource key per request can name several resources: " + several);
+    }
+    SecurableType type = several.get(0);
+    Map<SecurableType, Object> others = new HashMap<>(resourceKeys);
+    Collection<?> values = (Collection<?>) others.remove(type);
+    if (values.isEmpty()) {
+      return List.of(others);
+    }
+    List<Map<SecurableType, Object>> each = new ArrayList<>();
+    for (Object value : values) {
+      Map<SecurableType, Object> keys = new HashMap<>(others);
+      keys.put(type, value);
+      each.add(keys);
+    }
+    return each;
   }
 
   /**

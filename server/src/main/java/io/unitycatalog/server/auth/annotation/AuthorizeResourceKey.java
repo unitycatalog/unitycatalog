@@ -67,8 +67,9 @@ public @interface AuthorizeResourceKey {
    * A custom extractor that computes the resource key from the bound request body, used when a
    * field lookup by {@link #key} cannot express it (e.g. the value depends on the contents of a
    * list). When set (non-default), {@link #key} is unused (the variable name comes from {@link
-   * #value}) and no {@code @Param} may be present. Defaults to the sentinel {@link
-   * AuthorizeValueExtractor} itself, meaning "no extractor: use {@link #key}".
+   * #value}) and no {@code @Param} may be present. An extractor can name several resources, for an
+   * expression that must hold for each; see {@link AuthorizeValueExtractor}. Defaults to the
+   * sentinel {@link AuthorizeValueExtractor} itself, meaning "no extractor: use {@link #key}".
    */
   Class<? extends AuthorizeValueExtractor> extractor() default AuthorizeValueExtractor.class;
 

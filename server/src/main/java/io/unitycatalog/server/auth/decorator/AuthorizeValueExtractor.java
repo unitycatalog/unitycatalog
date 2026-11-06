@@ -15,7 +15,12 @@ package io.unitycatalog.server.auth.decorator;
  * <ul>
  *   <li>On {@code @AuthorizeResourceKey}, the value is mapped to a resource id by {@code
  *       KeyMapper}, so it must be a {@code String} (a name, full name, or storage path), a {@code
- *       UUID}, or {@code null} ({@code null} means "not set" and is skipped).
+ *       UUID}, or {@code null} ({@code null} means "not set" and is skipped). It can also be a
+ *       {@code Collection} of {@code String}s or {@code UUID}s, when a request names several
+ *       resources of one type, such as a batch of grants: the expression is then evaluated once per
+ *       resource and must hold for each, or once without the key when the collection is empty. Only
+ *       one resource key of a request can be a collection, and not on a method with
+ *       {@code @ResponseAuthorizeFilter}.
  *   <li>On {@code @AuthorizeKey}, the value is exposed directly as a SpEL variable, so its type
  *       only has to match how the expression uses it (e.g. a {@code Boolean} for a ternary
  *       condition, a {@code String} for an {@code == '...'} comparison). Enums are surfaced as
