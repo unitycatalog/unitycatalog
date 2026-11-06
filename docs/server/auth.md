@@ -661,6 +661,23 @@ Map<String, String> configs = Map.of(
     "oauth.exchangeForUcToken", "true");
 ```
 
+### Sharing OAuth tokens across clients
+
+The Java client shares one OAuth token provider JVM-wide for each auth configuration, so callers
+that build a new client for every operation, such as Delta's commit coordinator for catalog-managed
+tables, reuse its cached token instead of requesting a new one each time. This keeps the number of
+active tokens low for Identity Providers that limit them per client.
+
+Configurations that differ in any entry, such as the client secret, get separate providers, so
+different clients never share a token and a rotated secret gets a new provider. Up to 100 providers
+are kept, and the least recently used one is dropped beyond that; set the JVM system property
+`unitycatalog.oauth.tokenProviders.cache.maxSize` to change the limit.
+
+Only one caller renews a provider's token at a time. While the current token is still valid, other
+callers keep using it instead of waiting. If renewing fails, the provider keeps using the current
+token, logs a warning, and tries again after 5 seconds. Callers only wait for a renewal, and only
+see its failure, once the token has expired.
+
 ## Using Google Identity with Unity Catalog UI
 
 We previously configured Google as the Identity Provider and configured UC Server settings for CLI access. However, we
