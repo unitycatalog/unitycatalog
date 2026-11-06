@@ -139,6 +139,28 @@ jobs:
             out="$(helm template uc helm -f "$values")"
             ! grep -qE 'JDK_JAVA_OPTIONS|mysql-driver' <<<"$out" || exit 1
           done
+          # Storage secrets reach the server as UC_ variables, not through server.properties.
+          secrets=(-f helm/ci/secrets-values.yaml --set auth.enabled=true --set auth.clientSecretName=ci-oauth)
+          out="$(helm template uc helm "${secrets[@]}" --set server.config.extraProperties=null)"
+          # Every part of a credential, so a restart after a rotation reads one set.
+          for ref in UC_S3_ACCESSKEY_0:ci-s3-credentials:accessKey UC_S3_SECRETKEY_0:ci-s3-credentials:secretKey \
+            UC_ADLS_TENANTID_0:ci-adls-credentials:tenantId UC_ADLS_CLIENTID_0:ci-adls-credentials:clientId \
+            UC_ADLS_CLIENTSECRET_0:ci-adls-credentials:clientSecret; do
+            IFS=: read -r name secret key <<<"$ref"
+            grep -A4 -- "- name: $name\$" <<<"$out" | tr -d '\n' | grep -qE "name: \"$secret\" +key: $key( |\$)"
+          done
+          # None in the file, which the init container writes only at pod start.
+          ! grep -qE 'server\.client-secret|s3\.(accessKey|secretKey)|adls\.(tenantId|clientId|clientSecret)' <<<"$out" || exit 1
+          # The deprecated init container variables are there only for a custom template.
+          legacy='S3_ACCESS_KEY_0 S3_SECRET_KEY_0 ADLS_TENANT_ID_0 ADLS_CLIENT_ID_0 ADLS_CLIENT_SECRET_0 OAUTH_CLIENT_SECRET'
+          ! grep -qE -- "- name: (${legacy// /|})\$" <<<"$out" || exit 1
+          out="$(helm template uc helm "${secrets[@]}")"
+          for name in $legacy; do
+            grep -qE -- "- name: $name\$" <<<"$out"
+          done
+          grep -A6 -- '- name: OAUTH_CLIENT_SECRET$' <<<"$out" | grep -qF 'optional: true'
+          out="$(helm template uc helm -f helm/ci/secrets-values.yaml)"
+          ! grep -qE -- '- name: OAUTH_CLIENT_SECRET$' <<<"$out" || exit 1
 
       - name: Build the server and UI images
         run: |

@@ -129,6 +129,8 @@ spec:
           {{- end }}
           {{- end }}
           {{- range $index, $config := .Values.storage.credentials.s3 }}
+          {{- /* Deprecated: only for a custom server.properties template that still uses these variables. */}}
+          {{- if or $.Values.server.config.override $.Values.server.config.extraProperties }}
             - name: S3_ACCESS_KEY_{{ $index }}
               valueFrom:
                 secretKeyRef:
@@ -140,7 +142,10 @@ spec:
                   name: {{ $config.credentialsSecretName | quote }}
                   key: secretKey
           {{- end }}
+          {{- end }}
           {{- range $index, $config := .Values.storage.credentials.adls }}
+          {{- /* Deprecated: only for a custom server.properties template that still uses these variables. */}}
+          {{- if or $.Values.server.config.override $.Values.server.config.extraProperties }}
             - name: ADLS_TENANT_ID_{{ $index }}
               valueFrom:
                 secretKeyRef:
@@ -157,17 +162,23 @@ spec:
                   name: {{ $config.credentialsSecretName | quote }}
                   key: clientSecret
           {{- end }}
+          {{- end }}
           {{- if .Values.auth.enabled }}
             - name: OAUTH_CLIENT_ID
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.auth.clientSecretName | quote }}
                   key: clientId
+          {{- /* Deprecated: only for a custom server.properties template that still uses these variables. */}}
+          {{- if or $.Values.server.config.override $.Values.server.config.extraProperties }}
             - name: OAUTH_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.auth.clientSecretName | quote }}
                   key: clientSecret
+                  # Nothing else in the chart reads this key, so a Secret without it still works.
+                  optional: true
+          {{- end }}
           {{- end }}
       {{- with .Values.server.deployment.extraInitContainers }}
         {{- toYaml . | nindent 8 }}
@@ -195,6 +206,11 @@ spec:
             - --obs-port
             - {{ . | quote }}
             {{- end }}
+          {{- with include "unitycatalog.server.secretEnv" . | trim }}
+          # Secrets reach the server as environment variables, not through server.properties.
+          env:
+            {{- . | nindent 12 }}
+          {{- end }}
           ports:
             - name: api
               containerPort: {{ .Values.server.deployment.port }}
