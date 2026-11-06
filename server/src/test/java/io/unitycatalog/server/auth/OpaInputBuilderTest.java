@@ -5,6 +5,7 @@ import static io.unitycatalog.server.model.SecurableType.CREDENTIAL;
 import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.FUNCTION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.RECIPIENT;
 import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.SHARE;
@@ -161,9 +162,10 @@ public class OpaInputBuilderTest {
     assertInput(TABLE, staging, parents);
     assertInput(CREDENTIAL, credential, List.of());
     assertInput(EXTERNAL_LOCATION, location, List.of());
-    UUID share = UUID.randomUUID();
-    assertInput(
-        SHARE, share, Map.of("id", share.toString(), "type", "SHARE", "parents", List.of()));
+    for (SecurableType type : List.of(SHARE, RECIPIENT)) {
+      UUID id = UUID.randomUUID();
+      assertInput(type, id, Map.of("id", id.toString(), "type", type.name(), "parents", List.of()));
+    }
   }
 
   @Test
@@ -218,8 +220,8 @@ public class OpaInputBuilderTest {
     UUID missingId = UUID.randomUUID();
     assertNotFound(missingId, CATALOG, catalog.getId(), missingId);
     for (SecurableType type : SecurableType.values()) {
-      // Embedded OpenSharing stores shares, and resolved them before UC asks.
-      if (type != SHARE) {
+      // Embedded OpenSharing stores these, and resolved them before UC asks.
+      if (type != SHARE && type != RECIPIENT) {
         assertNotFound(user.getId(), type, missingId, missingId);
       }
     }

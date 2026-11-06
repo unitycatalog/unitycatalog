@@ -97,10 +97,11 @@ public final class UnityCatalogCatalogConnector implements CatalogConnector {
 
   /**
    * Checks only that the caller is an enabled UC user. {@code OpenSharingProviderService} checks
-   * every sharing privilege OpenSharing asks for here, before calling it: CREATE SHARE on create,
-   * USE SHARE on getting a share, and USE SHARE, per item, on listing shares, which calls {@code
-   * listAll} and asks nothing. Calling OpenSharing where it asks for another needs a check there
-   * first.
+   * every sharing privilege OpenSharing asks for here, before calling it: CREATE SHARE and CREATE
+   * RECIPIENT on create, USE SHARE on getting a share and listing its permissions, USE RECIPIENT on
+   * getting a recipient and granting a share to one, and both, per item, on listings, which call
+   * {@code listAll} and ask nothing. Calling OpenSharing where it asks for another needs a check
+   * there first.
    */
   @Override
   public UserContext authorize(AuthContext auth, Privilege privilege) {

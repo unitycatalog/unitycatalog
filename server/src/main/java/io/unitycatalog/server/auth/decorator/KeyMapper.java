@@ -68,7 +68,7 @@ import org.apache.commons.lang3.tuple.Pair;
  *   <li>EXTERNAL_LOCATION - External storage location
  *   <li>CREDENTIAL - Cloud storage credential
  *   <li>Types UC does not store itself, by the resolver registered for them with {@link
- *       #registerResolver}, such as embedded OpenSharing's SHARE
+ *       #registerResolver}, such as embedded OpenSharing's SHARE and RECIPIENT
  * </ul>
  *
  * <h2>Input Formats</h2>
@@ -146,7 +146,8 @@ public class KeyMapper {
 
   /**
    * Resolves keys of {@code type}, a type UC does not store itself, with {@code resolver}, which
-   * takes the key's name and throws when nothing has it. Register before the server serves.
+   * takes the key's name and throws when nothing has it. A null key, which an extractor returns for
+   * none, resolves to no id. Register before the server serves.
    */
   public void registerResolver(SecurableType type, Function<String, UUID> resolver) {
     resolvers.put(type, resolver);
@@ -363,7 +364,7 @@ public class KeyMapper {
 
     resolvers.forEach(
         (type, resolver) -> {
-          if (resourceKeys.containsKey(type)) {
+          if (resourceKeys.get(type) != null) {
             resourceIds.put(type, resolver.apply((String) resourceKeys.get(type)));
           }
         });

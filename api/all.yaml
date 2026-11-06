@@ -2690,6 +2690,7 @@ components:
         - external_location
         - credential
         - share
+        - recipient
       description: The type of the resource.
     Privilege:
       description: The privilege to grant.
@@ -2721,6 +2722,8 @@ components:
         - READ METADATA
         - CREATE SHARE
         - USE SHARE
+        - CREATE RECIPIENT
+        - USE RECIPIENT
       # NOTE: When adding a new enum, always add a new enum to the end of enum list, and
       #  corresponding description at the end of the description list. Both list must have the same
       #  order.
@@ -2751,6 +2754,8 @@ components:
         - 'READ METADATA: Permits reading full metadata and grants without data access or permission changes.'
         - 'CREATE SHARE: Required privilege on the metastore to create a Delta Sharing share.'
         - 'USE SHARE: Required privilege on the metastore to list and read every share, not only the shares the user owns.'
+        - 'CREATE RECIPIENT: Required privilege on the metastore to create a Delta Sharing recipient.'
+        - 'USE RECIPIENT: Required privilege on the metastore to list and read every recipient, not only the recipients the user owns.'
     UpdatePermissions:
       type: object
       properties:

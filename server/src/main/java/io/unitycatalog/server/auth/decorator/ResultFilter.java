@@ -186,7 +186,7 @@ public class ResultFilter {
           case CREDENTIAL -> ((CredentialInfo) item).getId();
           case EXTERNAL_LOCATION -> ((ExternalLocationInfo) item).getId();
           // Embedded OpenSharing filters its items' ids, since its types are not on this classpath.
-          case SHARE -> (String) item;
+          case SHARE, RECIPIENT -> (String) item;
           default -> throw new RuntimeException("Unsupported securable type: " + securableType);
         };
     return UUID.fromString(id);

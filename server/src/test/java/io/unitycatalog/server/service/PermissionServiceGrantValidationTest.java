@@ -27,7 +27,9 @@ public class PermissionServiceGrantValidationTest {
                   Privilege.CREATE_STORAGE_CREDENTIAL,
                   Privilege.CREATE_EXTERNAL_LOCATION,
                   Privilege.CREATE_SHARE,
-                  Privilege.USE_SHARE);
+                  Privilege.USE_SHARE,
+                  Privilege.CREATE_RECIPIENT,
+                  Privilege.USE_RECIPIENT);
           case CATALOG ->
               Set.of(
                   Privilege.BROWSE,
@@ -80,10 +82,10 @@ public class PermissionServiceGrantValidationTest {
                   Privilege.READ_FILES,
                   Privilege.WRITE_FILES,
                   Privilege.CREATE_EXTERNAL_TABLE);
-          case SHARE -> Set.of();
+          case SHARE, RECIPIENT -> Set.of();
         };
-    // UC grants nothing on embedded OpenSharing's shares, READ METADATA included.
-    boolean takesReadMetadata = type != SecurableType.SHARE;
+    // UC grants nothing on embedded OpenSharing's shares and recipients, READ METADATA included.
+    boolean takesReadMetadata = type != SecurableType.SHARE && type != SecurableType.RECIPIENT;
 
     for (Privilege privilege : Privilege.values()) {
       List<PermissionsChange> changes =

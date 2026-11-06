@@ -1,6 +1,7 @@
 package io.unitycatalog.server.sharing;
 
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.RECIPIENT;
 import static io.unitycatalog.server.model.SecurableType.SHARE;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -19,10 +20,16 @@ import io.opensharing.auth.UserContext;
 import io.opensharing.http.ApiException;
 import io.opensharing.http.ApiJson;
 import io.opensharing.http.ListResponse;
+import io.opensharing.recipient.CreateRecipientRequest;
+import io.opensharing.recipient.RecipientResponse;
+import io.opensharing.recipient.RecipientService;
+import io.opensharing.recipient.RotateTokenRequest;
+import io.opensharing.recipient.UpdateRecipientRequest;
 import io.opensharing.runtime.OpenSharing;
 import io.opensharing.share.CreateShareRequest;
 import io.opensharing.share.ShareResponse;
 import io.opensharing.share.ShareService;
+import io.opensharing.share.UpdateSharePermissionsRequest;
 import io.opensharing.share.UpdateShareRequest;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -43,17 +50,20 @@ import java.util.UUID;
 import java.util.function.Function;
 
 /**
- * OpenSharing's provider API for shares, served as a UC REST service. UC authenticates callers and
- * authorizes each method by its expression, for both sharing privileges and ownership, per item for
- * listings. So the connector grants every privilege OpenSharing asks it for, and OpenSharing's own
- * ownership checks agree with UC's. Share owners are recorded in UC's authorizer, so expressions
- * can name them. Bodies and errors keep OpenSharing's wire format, so they are read and written
- * with OpenSharing's JSON mapper.
+ * OpenSharing's provider API for shares, their recipient grants, and recipients, served as a UC
+ * REST service. UC authenticates callers and authorizes each method by its expression, for both
+ * sharing privileges and ownership: per item for listings, and of the recipient for a grant. So the
+ * connector grants every privilege OpenSharing asks it for, and OpenSharing's own ownership checks
+ * agree with UC's. Share and recipient owners are recorded in UC's authorizer, so expressions can
+ * name them. Bodies and errors keep OpenSharing's wire format, so they are read and written with
+ * OpenSharing's JSON mapper.
  */
 public final class OpenSharingProviderService extends AuthorizedService
     implements UnityCatalogRestService {
 
   private static final String OWN_SHARE = "#authorize(#principal, #share, OWNER)";
+
+  private static final String OWN_RECIPIENT = "#authorize(#principal, #recipient, OWNER)";
 
   private static final String READ_SHARE =
       """
@@ -61,16 +71,39 @@ public final class OpenSharingProviderService extends AuthorizedService
       #authorize(#principal, #share, OWNER)
       """;
 
+  private static final String READ_RECIPIENT =
+      """
+      #authorizeAny(#principal, #metastore, OWNER, USE_RECIPIENT) ||
+      #authorize(#principal, #recipient, OWNER)
+      """;
+
+  /** {@code #recipient} is the one recipient a request grants to, or null for none. */
+  private static final String GRANT_SHARE =
+      """
+      #authorize(#principal, #share, OWNER) && (#recipient == null ||
+      #authorizeAny(#principal, #metastore, OWNER, USE_RECIPIENT) ||
+      #authorize(#principal, #recipient, OWNER))
+      """;
+
   private final ShareService shares;
+  private final RecipientService recipients;
+  private final String activationBaseUrl;
   private final OpenSharingExceptionHandler exceptionHandler = new OpenSharingExceptionHandler();
 
+  /**
+   * @param activationBaseUrl the absolute URL recipient activation links are built under, on the
+   *     address recipients reach this server at
+   */
   OpenSharingProviderService(
       OpenSharing openSharing,
+      String activationBaseUrl,
       UnityCatalogAuthorizer authorizer,
       Repositories repositories,
       ServerProperties serverProperties) {
     super(authorizer, repositories, serverProperties);
     this.shares = openSharing.shares();
+    this.recipients = openSharing.recipients();
+    this.activationBaseUrl = activationBaseUrl;
   }
 
   /** {@code POST /shares}: creates a share owned by the caller. */
@@ -133,6 +166,115 @@ public final class OpenSharingProviderService extends AuthorizedService
     shares.delete(user(), share);
     removeAuthorizations(id.toString());
     return HttpResponse.of(HttpStatus.NO_CONTENT);
+  }
+
+  /**
+   * {@code GET /shares/{share}/permissions}: lists which recipients the share is granted to. Owner
+   * or USE SHARE.
+   */
+  @Get("/shares/{share}/permissions")
+  @AuthorizeExpression(READ_SHARE)
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse listSharePermissions(
+      @Param("share") @AuthorizeResourceKey(SHARE) String share,
+      @Param("maxResults") Optional<Integer> maxResults,
+      @Param("pageToken") Optional<String> pageToken) {
+    return json(
+        HttpStatus.OK,
+        shares.listPermissions(user(), share, maxResults.orElse(null), pageToken.orElse(null)));
+  }
+
+  /**
+   * {@code PATCH /shares/{share}/permissions}: grants and revokes recipients. Owner only, and
+   * granting to a recipient takes what getting it does: owning it, or USE RECIPIENT. A request
+   * grants to one recipient at most. Revoking takes nothing of the recipient, so an owner can
+   * always cut one off.
+   */
+  @Patch("/shares/{share}/permissions")
+  @AuthorizeExpression(GRANT_SHARE)
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse updateSharePermissions(
+      @Param("share") @AuthorizeResourceKey(SHARE) String share,
+      @AuthorizeResourceKey(value = RECIPIENT, extractor = GrantedRecipientExtractor.class)
+          JsonNode body)
+      throws JsonProcessingException {
+    return json(
+        HttpStatus.OK,
+        shares.updatePermissions(user(), share, read(body, UpdateSharePermissionsRequest.class)));
+  }
+
+  /** {@code POST /recipients}: creates a recipient owned by the caller. */
+  @Post("/recipients")
+  @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER, CREATE_RECIPIENT)")
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse createRecipient(JsonNode body) throws JsonProcessingException {
+    RecipientResponse created =
+        recipients.create(user(), read(body, CreateRecipientRequest.class), activationBaseUrl);
+    initializeBasicAuthorization(created.id());
+    return json(HttpStatus.CREATED, created);
+  }
+
+  /**
+   * {@code GET /recipients}: lists every recipient with USE RECIPIENT, otherwise the caller's.
+   * Filtered per recipient after paging, like {@link #listShares}.
+   */
+  @Get("/recipients")
+  @AuthorizeExpression(READ_RECIPIENT)
+  @ResponseAuthorizeFilter
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse listRecipients(
+      @Param("maxResults") Optional<Integer> maxResults,
+      @Param("pageToken") Optional<String> pageToken) {
+    ListResponse<RecipientResponse> page =
+        recipients.listAll(maxResults.orElse(null), pageToken.orElse(null), activationBaseUrl);
+    return json(HttpStatus.OK, filter(RECIPIENT, page, RecipientResponse::id));
+  }
+
+  /** {@code GET /recipients/{recipient}}: gets a recipient by name. Owner or USE RECIPIENT. */
+  @Get("/recipients/{recipient}")
+  @AuthorizeExpression(READ_RECIPIENT)
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse getRecipient(
+      @Param("recipient") @AuthorizeResourceKey(RECIPIENT) String recipient) {
+    return json(HttpStatus.OK, recipients.get(user(), recipient, activationBaseUrl));
+  }
+
+  /** {@code PATCH /recipients/{recipient}}: updates the fields set in the body. Owner only. */
+  @Patch("/recipients/{recipient}")
+  @AuthorizeExpression(OWN_RECIPIENT)
+  public HttpResponse updateRecipient(
+      @Param("recipient") @AuthorizeResourceKey(RECIPIENT) String recipient, JsonNode body)
+      throws JsonProcessingException {
+    return json(
+        HttpStatus.OK,
+        recipients.update(
+            user(), recipient, read(body, UpdateRecipientRequest.class), activationBaseUrl));
+  }
+
+  /** {@code DELETE /recipients/{recipient}}: deletes the recipient and its tokens. Owner only. */
+  @Delete("/recipients/{recipient}")
+  @AuthorizeExpression(OWN_RECIPIENT)
+  public HttpResponse deleteRecipient(
+      @Param("recipient") @AuthorizeResourceKey(RECIPIENT) String recipient) {
+    UUID id = id(RECIPIENT, recipient);
+    recipients.delete(user(), recipient);
+    removeAuthorizations(id.toString());
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
+  }
+
+  /**
+   * {@code POST /recipients/{recipient}/rotate-token}: issues a replacement token with a new
+   * activation link. Owner only.
+   */
+  @Post("/recipients/{recipient}/rotate-token")
+  @AuthorizeExpression(OWN_RECIPIENT)
+  public HttpResponse rotateRecipientToken(
+      @Param("recipient") @AuthorizeResourceKey(RECIPIENT) String recipient, JsonNode body)
+      throws JsonProcessingException {
+    return json(
+        HttpStatus.CREATED,
+        recipients.rotateToken(
+            user(), recipient, read(body, RotateTokenRequest.class), activationBaseUrl));
   }
 
   @Override

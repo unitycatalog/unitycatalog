@@ -2,6 +2,7 @@ package io.unitycatalog.server.sharing;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -14,19 +15,25 @@ import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.RequestHeadersBuilder;
+import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Properties;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /** Embedded OpenSharing on a UC server with authorization on, driven over HTTP. */
 public class OpenSharingEmbeddedTest extends BaseAuthCRUDTest {
 
+  private static final String PUBLIC_URL = "https://sharing.example.com";
   private static final String UC = "/api/2.1/unity-catalog";
   private static final String PROVIDER = UC + "/opensharing/provider";
   private static final String ALICE = "alice@example.com";
@@ -34,6 +41,7 @@ public class OpenSharingEmbeddedTest extends BaseAuthCRUDTest {
       "{\"updates\": [{\"action\": \"ADD\", \"dataObject\": {\"name\": \"main.sales.orders\","
           + " \"type\": \"TABLE\", \"sharedAs\": \"sales.orders\"}}]}";
   private static final String COMMENT = "{\"comment\": \"x\"}";
+  private static final String ROTATE_TOKEN = "{\"tokenExpirationDays\": 1}";
   private static final ObjectMapper JSON = new ObjectMapper();
 
   private WebClient client;
@@ -44,6 +52,7 @@ public class OpenSharingEmbeddedTest extends BaseAuthCRUDTest {
   protected void setUpProperties() {
     super.setUpProperties();
     serverProperties.setProperty(Property.OPENSHARING_ENABLED.getKey(), "true");
+    serverProperties.setProperty(Property.OPENSHARING_PUBLIC_URL.getKey(), PUBLIC_URL + "/");
   }
 
   @BeforeEach
@@ -87,8 +96,11 @@ public class OpenSharingEmbeddedTest extends BaseAuthCRUDTest {
     assertThat(malformed.path("errorCode").asText()).isEqualTo("UNAUTHENTICATED");
 
     expect(403, alice, HttpMethod.POST, PROVIDER + "/shares", share("alice_share"));
+    expect(403, alice, HttpMethod.POST, PROVIDER + "/recipients", recipient("acme"));
     grant("metastore", "metastore", "CREATE SHARE");
+    grant("metastore", "metastore", "CREATE RECIPIENT");
     expect(201, alice, HttpMethod.POST, PROVIDER + "/shares", share("alice_share"));
+    expect(201, alice, HttpMethod.POST, PROVIDER + "/recipients", recipient("acme"));
 
     // Sharing a table takes the access UC asks for before vending its read credentials.
     expect(403, alice, HttpMethod.PATCH, PROVIDER + "/shares/alice_share", ADD_ORDERS);
@@ -98,53 +110,107 @@ public class OpenSharingEmbeddedTest extends BaseAuthCRUDTest {
     grant("table", "main.sales.orders", "SELECT");
     expect(200, alice, HttpMethod.PATCH, PROVIDER + "/shares/alice_share", ADD_ORDERS);
 
-    // Other users' shares take USE SHARE to read.
+    // Other users' shares and recipients take USE SHARE and USE RECIPIENT to read, and granting a
+    // share to another user's recipient takes USE RECIPIENT. A request grants to one recipient, so
+    // one granting to two is refused before either is granted. Revoking takes nothing of the
+    // recipient, so it reaches OpenSharing, which finds no grant.
+    String alicePermissions = PROVIDER + "/shares/alice_share/permissions";
     expect(201, admin, HttpMethod.POST, PROVIDER + "/shares", share("admin_share"));
+    expect(201, admin, HttpMethod.POST, PROVIDER + "/recipients", recipient("globex"));
     assertThat(names(expect(200, alice, HttpMethod.GET, PROVIDER + "/shares", null)))
         .containsExactly("alice_share");
     expectDenied(alice, HttpMethod.GET, PROVIDER + "/shares/admin_share", null);
+    expectDenied(alice, HttpMethod.GET, PROVIDER + "/shares/admin_share/permissions", null);
+    expectDenied(alice, HttpMethod.GET, PROVIDER + "/recipients/globex", null);
+    expectDenied(alice, HttpMethod.PATCH, alicePermissions, shareWith("globex"));
+    assertThat(
+            expect(400, alice, HttpMethod.PATCH, alicePermissions, shareWith("acme", "globex"))
+                .path("message")
+                .asText())
+        .contains("only one recipient");
+    assertThat(expect(200, alice, HttpMethod.GET, alicePermissions, null).path("items")).isEmpty();
+    expect(200, alice, HttpMethod.PATCH, alicePermissions, shareWith("acme"));
+    expect(404, alice, HttpMethod.PATCH, alicePermissions, unshareWith("globex"));
     grant("metastore", "metastore", "USE SHARE");
+    grant("metastore", "metastore", "USE RECIPIENT");
     assertThat(names(expect(200, alice, HttpMethod.GET, PROVIDER + "/shares", null)))
         .containsExactlyInAnyOrder("alice_share", "admin_share");
     expect(200, alice, HttpMethod.GET, PROVIDER + "/shares/admin_share", null);
+    expect(200, alice, HttpMethod.GET, PROVIDER + "/shares/admin_share/permissions", null);
+    expect(200, alice, HttpMethod.GET, PROVIDER + "/recipients/globex", null);
+    expect(200, alice, HttpMethod.PATCH, alicePermissions, shareWith("globex"));
 
-    // It doesn't let alice change one: that takes ownership, which UC checks first.
+    // Neither lets alice change them: that takes ownership, which UC checks first.
     String adminShare = PROVIDER + "/shares/admin_share";
+    String globex = PROVIDER + "/recipients/globex";
     expectDenied(alice, HttpMethod.PATCH, adminShare, COMMENT);
+    expectDenied(alice, HttpMethod.PATCH, adminShare + "/permissions", shareWith("acme"));
+    expectDenied(alice, HttpMethod.PATCH, adminShare + "/permissions", unshareWith("acme"));
     expectDenied(alice, HttpMethod.DELETE, adminShare, null);
+    expectDenied(alice, HttpMethod.PATCH, globex, COMMENT);
+    expectDenied(alice, HttpMethod.POST, globex + "/rotate-token", ROTATE_TOKEN);
+    expectDenied(alice, HttpMethod.DELETE, globex, null);
   }
 
   @Test
-  public void unityCatalogRecordsShareOwners() {
+  public void startupNamesWhatEmbeddedOpenSharingNeeds() {
+    Properties withoutPublicUrl = new Properties();
+    withoutPublicUrl.putAll(serverProperties);
+    withoutPublicUrl.remove(Property.OPENSHARING_PUBLIC_URL.getKey());
+    assertThatThrownBy(
+            () ->
+                UnityCatalogServer.builder()
+                    .serverProperties(new ServerProperties(withoutPublicUrl))
+                    .hibernateConfigurator(hibernateConfigurator)
+                    .build())
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining(Property.OPENSHARING_PUBLIC_URL.getKey());
+  }
+
+  @Test
+  public void unityCatalogRecordsShareAndRecipientOwners() {
     grant("metastore", "metastore", "CREATE SHARE");
+    grant("metastore", "metastore", "CREATE RECIPIENT");
     expect(201, alice, HttpMethod.POST, PROVIDER + "/shares", share("alice_share"));
+    expect(201, alice, HttpMethod.POST, PROVIDER + "/recipients", recipient("acme"));
 
     // Reading one takes ownership, which UC records as OpenSharing creates it, or what the
     // metastore owner holds. Names resolve in any case, as OpenSharing's do.
     for (String token : List.of(alice, admin)) {
       expect(200, token, HttpMethod.GET, PROVIDER + "/shares/Alice_Share", null);
+      expect(200, token, HttpMethod.GET, PROVIDER + "/recipients/acme", null);
     }
     JsonNode missing = expect(404, alice, HttpMethod.GET, PROVIDER + "/shares/nope", null);
     assertThat(missing.path("errorCode").asText()).isEqualTo("RESOURCE_DOES_NOT_EXIST");
+    expect(404, alice, HttpMethod.GET, PROVIDER + "/recipients/nope", null);
 
     // Changing one takes ownership alone.
     expect(200, alice, HttpMethod.PATCH, PROVIDER + "/shares/alice_share", COMMENT);
+    expect(200, alice, HttpMethod.PATCH, PROVIDER + "/recipients/acme", COMMENT);
+    expect(201, alice, HttpMethod.POST, PROVIDER + "/recipients/acme/rotate-token", ROTATE_TOKEN);
     expectDenied(admin, HttpMethod.PATCH, PROVIDER + "/shares/alice_share", COMMENT);
+    expectDenied(admin, HttpMethod.DELETE, PROVIDER + "/recipients/acme", null);
 
-    // Ownership is recorded by id, so a share made again under the same name is its new
-    // creator's alone.
+    // Ownership is recorded by id, so a share or recipient made again under the same name is
+    // its new creator's alone.
     expect(204, alice, HttpMethod.DELETE, PROVIDER + "/shares/alice_share", null);
+    expect(204, alice, HttpMethod.DELETE, PROVIDER + "/recipients/acme", null);
     expect(201, admin, HttpMethod.POST, PROVIDER + "/shares", share("alice_share"));
+    expect(201, admin, HttpMethod.POST, PROVIDER + "/recipients", recipient("acme"));
     expectDenied(alice, HttpMethod.GET, PROVIDER + "/shares/alice_share", null);
+    expectDenied(alice, HttpMethod.GET, PROVIDER + "/recipients/acme", null);
     expectDenied(alice, HttpMethod.DELETE, PROVIDER + "/shares/alice_share", null);
   }
 
   @Test
   public void listingsAreFilteredPerItemAfterPaging() {
     grant("metastore", "metastore", "CREATE SHARE");
+    grant("metastore", "metastore", "CREATE RECIPIENT");
     expect(201, admin, HttpMethod.POST, PROVIDER + "/shares", share("a_share"));
     expect(201, admin, HttpMethod.POST, PROVIDER + "/shares", share("b_share"));
     expect(201, alice, HttpMethod.POST, PROVIDER + "/shares", share("c_share"));
+    expect(201, admin, HttpMethod.POST, PROVIDER + "/recipients", recipient("globex"));
+    expect(201, alice, HttpMethod.POST, PROVIDER + "/recipients", recipient("acme"));
 
     // As in UC's own listings, a page is filtered after it is read, so alice's only share comes
     // on the last of three one-share pages.
@@ -158,10 +224,35 @@ public class OpenSharingEmbeddedTest extends BaseAuthCRUDTest {
       token = page.path("nextPageToken").isTextual() ? page.path("nextPageToken").asText() : null;
     } while (token != null);
     assertThat(pages).containsExactly(List.of(), List.of(), List.of("c_share"));
+
+    // Recipients carry their activation links, so other users' must be dropped too.
+    assertThat(names(expect(200, alice, HttpMethod.GET, PROVIDER + "/recipients", null)))
+        .containsExactly("acme");
+    assertThat(names(expect(200, admin, HttpMethod.GET, PROVIDER + "/recipients", null)))
+        .containsExactly("acme", "globex");
   }
 
   private static String share(String name) {
     return "{\"name\": \"" + name + "\"}";
+  }
+
+  /** A share permissions change that grants SELECT to each of {@code recipients}. */
+  private static String shareWith(String... recipients) {
+    return Arrays.stream(recipients)
+        .map("{\"recipientName\": \"%s\", \"add\": [\"SELECT\"]}"::formatted)
+        .collect(Collectors.joining(", ", "{\"changes\": [", "]}"));
+  }
+
+  /** A share permissions change that revokes SELECT from {@code recipient}. */
+  private static String unshareWith(String recipient) {
+    return "{\"changes\": [{\"recipientName\": \"%s\", \"remove\": [\"SELECT\"]}]}"
+        .formatted(recipient);
+  }
+
+  private static String recipient(String name) {
+    return "{\"name\": \""
+        + name
+        + "\", \"authenticationType\": \"TOKEN\", \"tokenExpirationDays\": 1}";
   }
 
   private void grant(String securableType, String fullName, String privilege) {
