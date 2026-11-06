@@ -639,10 +639,6 @@ paths:
                     created_at: 1666369196203
                     updated_at: 1666369207415
                     comment: This is my new volume
-        '404':
-          description: Not Found. The volume does not exist.
-        '503':
-          description: Service Unavailable. The volume is being modified concurrently; retry the request.
     delete:
       tags:
         - Volumes
@@ -656,10 +652,6 @@ paths:
           content:
             application/json:
               schema: {}
-        '404':
-          description: Not Found. The volume does not exist.
-        '503':
-          description: Service Unavailable. The volume is being modified concurrently; retry the request.
   /temporary-model-version-credentials:
     post:
       operationId: generateTemporaryModelVersionCredentials
