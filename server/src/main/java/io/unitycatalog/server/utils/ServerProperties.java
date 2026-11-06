@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -348,9 +349,13 @@ public class ServerProperties {
   }
 
   public ServerProperties(String propertiesFile) {
-    env = System.getenv();
+    this(propertiesFile, System.getenv());
+  }
+
+  ServerProperties(String propertiesFile, Map<String, String> env) {
+    this.env = env;
     readPropertiesFromFile(propertiesFile);
-    warnAboutSecretsInFile(propertiesFile);
+    secretsInFileWarnings(propertiesFile).forEach(LOGGER::warn);
     validateProperties();
   }
 
@@ -438,7 +443,9 @@ public class ServerProperties {
     }
   }
 
-  private void warnAboutSecretsInFile(String propertiesFile) {
+  /** The deprecation warnings for secrets set in the file. They name keys, never values. */
+  List<String> secretsInFileWarnings(String propertiesFile) {
+    List<String> warnings = new ArrayList<>();
     for (Object key : properties.keySet()) {
       String name = key.toString();
       if (!SECRET_KEY.matcher(name).matches()) {
@@ -446,22 +453,21 @@ public class ServerProperties {
       }
       if (name.equals(Property.CLIENT_SECRET.getKey())) {
         // Only bin/uc auth login reads it, so a variable in the server's environment does not help.
-        LOGGER.warn(
-            "{} is set in {}. Only bin/uc auth login reads it, and keeping it in this file is"
-                + " deprecated; set the {} environment variable in the shell that runs that command"
-                + " instead.",
-            name,
-            propertiesFile,
-            envName(name));
+        warnings.add(
+            String.format(
+                "%s is set in %s. Only bin/uc auth login reads it, and keeping it in this file is"
+                    + " deprecated; set the %s environment variable in the shell that runs that"
+                    + " command instead.",
+                name, propertiesFile, envName(name)));
       } else if (System.getProperty(name) == null && getEnv(name) == null) {
-        LOGGER.warn(
-            "{} is set in {}. Keeping secrets in this file is deprecated; set the {} environment"
-                + " variable instead.",
-            name,
-            propertiesFile,
-            envName(name));
+        warnings.add(
+            String.format(
+                "%s is set in %s. Keeping secrets in this file is deprecated; set the %s"
+                    + " environment variable instead.",
+                name, propertiesFile, envName(name)));
       }
     }
+    return warnings;
   }
 
   public S3StorageConfig getS3MasterRoleConfiguration() {
