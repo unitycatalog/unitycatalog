@@ -72,8 +72,8 @@ public class DeltaExternalTableReadWriteTest extends ExternalTableReadWriteTest 
   }
 
   /**
-   * A {@code ?} or {@code #} in {@code LOCATION} reaches UC as written, and UC rejects it: Iceberg
-   * FileIO and the server's cleanup would cut the object key there.
+   * A {@code ?} or {@code #} in {@code LOCATION} is rejected through Spark: Iceberg FileIO and the
+   * server's cleanup would cut the object key there.
    */
   @ParameterizedTest
   @ValueSource(strings = {"t?x", "t#x"})
