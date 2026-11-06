@@ -498,6 +498,20 @@ public class ServerPropertiesTest {
     } finally {
       System.clearProperty("adls.clientSecret.0");
     }
+
+    // Each kind of secret warns when nothing else supplies it, whatever its index.
+    Files.writeString(
+        Paths.get(file),
+        String.join(
+            "\n",
+            "aws.secretKey=a",
+            "s3.secretKey.10=b",
+            "s3.sessionToken.10=c",
+            "adls.clientSecret.10=d"));
+    assertThat(new ServerProperties(file, Map.of()).secretsInFileWarnings(file))
+        .extracting(w -> w.substring(0, w.indexOf(' ')))
+        .containsExactlyInAnyOrder(
+            "aws.secretKey", "s3.secretKey.10", "s3.sessionToken.10", "adls.clientSecret.10");
   }
 
   @Test

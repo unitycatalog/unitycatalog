@@ -138,8 +138,10 @@ rootLogger.appenderRef.console.ref=Console
 {{- end }}
 
 {{/*
-Secrets passed to the server container as environment variables, under the names the server reads
-(see "Secrets" in docs/server/configuration.md).
+Storage credentials passed to the server container as environment variables, under the names the
+server reads (see "Secrets" in docs/server/configuration.md). Every part of a credential comes from
+here, so a server container that restarts after a rotation doesn't pair an old ID from the file with
+a new secret.
 */}}
 {{- define "unitycatalog.server.secretEnv" -}}
 {{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.passwordSecretName }}
@@ -150,6 +152,11 @@ Secrets passed to the server container as environment variables, under the names
       key: {{ required "Password secret key is required" .Values.server.db.postgresqlConfig.passwordSecretKey | quote }}
 {{- end }}
 {{- range $index, $config := .Values.storage.credentials.s3 }}
+- name: UC_S3_ACCESSKEY_{{ $index }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $config.credentialsSecretName | quote }}
+      key: accessKey
 - name: UC_S3_SECRETKEY_{{ $index }}
   valueFrom:
     secretKeyRef:
@@ -157,6 +164,16 @@ Secrets passed to the server container as environment variables, under the names
       key: secretKey
 {{- end }}
 {{- range $index, $config := .Values.storage.credentials.adls }}
+- name: UC_ADLS_TENANTID_{{ $index }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $config.credentialsSecretName | quote }}
+      key: tenantId
+- name: UC_ADLS_CLIENTID_{{ $index }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $config.credentialsSecretName | quote }}
+      key: clientId
 - name: UC_ADLS_CLIENTSECRET_{{ $index }}
   valueFrom:
     secretKeyRef:
