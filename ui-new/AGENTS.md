@@ -11,22 +11,26 @@ the legacy `ui/` (CRA + Ant Design) at the repo root; do not conflate the two.
   (file-based) + TanStack Query, connect-web + connect-query.
 - `server/` — Rust axum bridge. One Connect RPC (`uc.v1.UnityProxyService/Call`,
   a generic UC REST passthrough), plus `/config`, `/healthz`, and the built SPA.
-- `proto/` — Connect service definition. `buf.gen.yaml` generates the TS client
-  into `web/src/gen` (`bun run generate`, run from this directory).
+- `proto/` — the implemented generic proxy plus typed catalog-domain RPC
+  contracts. `buf.gen.yaml` generates TS clients into `web/src/gen`
+  (`bun run generate`, run from this directory).
 
 ## Principles
 
-1. The bridge is a thin, generic REST passthrough. Keep it that way — do not add
-   per-endpoint logic. The one non-obvious behavior is cookie handling: it
-   forwards the browser's `Cookie` to UC and copies UC's `Set-Cookie` back onto
-   the same-origin response, because the auth realm now sits on the bridge's
-   origin. Preserve that.
+1. The bridge currently remains a thin, generic REST passthrough. The typed
+   domain services are contract-only until the stacked Rust implementation
+   change; do not add per-endpoint handlers to the protobuf-contract change.
+   The one non-obvious behavior is cookie handling: it forwards the browser's
+   `Cookie` to UC and copies UC's `Set-Cookie` back onto the same-origin
+   response, because the auth realm now sits on the bridge's origin. Preserve
+   that when typed handlers are implemented.
 2. Auth mirrors the legacy `ui/`: cookie-based token-exchange (`/auth/tokens`,
    `ext=cookie`) + SCIM `/scim2/Me`, with an auth-disabled mode. Provider
    enablement is runtime via `/config`, not build-time env.
-3. Data access flows through `useUcQuery` / `ucJson` (over the `Call` RPC) so
-   connect-query owns stable query keys. Add a typed hook under `web/src/hooks`
-   per domain; do not scatter raw `proxyClient.call` usage in components.
+3. Until the typed-service implementation lands, data access flows through
+   `useUcQuery` / `ucJson` (over the `Call` RPC) so connect-query owns stable
+   query keys. Add a hook under `web/src/hooks` per domain; do not scatter raw
+   `proxyClient.call` usage in components.
 4. UI is shadcn components (`web/src/components/ui/*`, imported via `@/lib/utils`
    `cn`). Reuse the shared building blocks (`EntityHeader`, `CatalogCrumbs`,
    `MetaGrid`, `PropertiesCard`, `DescriptionCard`, `PermissionsPanel`,
@@ -40,6 +44,10 @@ the legacy `ui/` (CRA + Ant Design) at the repo root; do not conflate the two.
 - Change the bridge contract: edit `proto/uc/v1/proxy.proto`, run
   `bun run generate` in `web/`, and update the Rust `CallRequest`/`CallResponse`
   in `server/src/proxy.rs` to match (fields use proto3 JSON camelCase).
+- Change a typed domain contract: edit the matching file under
+  `proto/uc/v1/`, keep its `buf.validate` rules aligned with the UC API, then
+  run `buf lint` and `bun run generate`. Rust handlers are implemented in the
+  stacked follow-up, using `protovalidate-buffa`.
 - Add a page: add a typed hook in `web/src/hooks`, a page in `web/src/pages`, and
   a file route in `web/src/routes/_authed/**` that reads params and renders it.
 

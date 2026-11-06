@@ -1,0 +1,108 @@
+syntax = "proto3";
+
+package uc.v1;
+
+import "buf/validate/validate.proto";
+import "uc/v1/common.proto";
+
+// MetricViewSummary contains the fields needed to render a metric-view list.
+message MetricViewSummary {
+  string catalog_name = 1;
+  string schema_name = 2;
+  string name = 3;
+  string full_name = 4;
+  string comment = 5;
+  AuditInfo audit = 6;
+}
+
+// MetricViewInfo contains the complete metric-view details exposed by the UI.
+message MetricViewInfo {
+  string catalog_name = 1;
+  string schema_name = 2;
+  string name = 3;
+  string full_name = 4;
+  repeated ColumnInfo columns = 5;
+  string view_definition = 6;
+  repeated Dependency dependencies = 7;
+  string comment = 8;
+  Properties properties = 9;
+  AuditInfo audit = 10;
+  string id = 11;
+}
+
+// ListViewsRequest lists METRIC_VIEW table records in a schema.
+message ListViewsRequest {
+  option (buf.validate.message).cel = {
+    id: "list_views.page_size"
+    message: "max_results must not exceed 50"
+    expression: "!has(this.page) || !has(this.page.max_results) || this.page.max_results <= 50"
+  };
+
+  SchemaRef schema = 1 [(buf.validate.field).required = true];
+  PageRequest page = 2;
+}
+
+// ListViewsResponse contains one filtered page of metric views.
+//
+// A page may contain no views and still include a next-page token because the
+// Java API paginates all table types before Branch 2 filters METRIC_VIEW rows.
+message ListViewsResponse {
+  repeated MetricViewSummary views = 1;
+  PageResponse page = 2;
+}
+
+// GetViewRequest selects a metric view.
+message GetViewRequest {
+  SchemaObjectRef view = 1 [(buf.validate.field).required = true];
+}
+
+// GetViewResponse contains complete metric-view details.
+message GetViewResponse {
+  MetricViewInfo view = 1 [(buf.validate.field).required = true];
+}
+
+// CreateViewRequest creates a METRIC_VIEW table through the UC tables API.
+//
+// Branch 2 derives canonical column type metadata and positions before calling
+// the Java API.
+message CreateViewRequest {
+  SchemaObjectRef view = 1 [(buf.validate.field).required = true];
+  repeated ColumnInput columns = 2 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 10000
+  }];
+  string view_definition = 3 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 16777215
+  }];
+  repeated Dependency dependencies = 4 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 1000
+  }];
+  optional string comment = 5 [(buf.validate.field).string.max_len = 65536];
+  Properties properties = 6;
+}
+
+// CreateViewResponse contains the newly created metric view.
+message CreateViewResponse {
+  MetricViewInfo view = 1 [(buf.validate.field).required = true];
+}
+
+// DeleteViewRequest deletes a metric view through the UC tables API.
+//
+// UC has no native table update operation, so the UI contract intentionally
+// exposes create and delete without destructive delete-and-recreate editing.
+message DeleteViewRequest {
+  SchemaObjectRef view = 1 [(buf.validate.field).required = true];
+}
+
+// DeleteViewResponse acknowledges a successful metric-view deletion.
+message DeleteViewResponse {}
+
+// ViewService provides the UI-facing metric-view operations.
+service ViewService {
+  rpc ListViews(ListViewsRequest) returns (ListViewsResponse);
+  rpc GetView(GetViewRequest) returns (GetViewResponse);
+  rpc CreateView(CreateViewRequest) returns (CreateViewResponse);
+  rpc DeleteView(DeleteViewRequest) returns (DeleteViewResponse);
+}

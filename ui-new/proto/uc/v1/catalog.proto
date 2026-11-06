@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+package uc.v1;
+
+import "buf/validate/validate.proto";
+import "uc/v1/common.proto";
+
+// CatalogSummary contains the fields needed to render a catalog list.
+message CatalogSummary {
+  string name = 1;
+  string comment = 2;
+  AuditInfo audit = 3;
+}
+
+// CatalogInfo contains the complete catalog details exposed by the UI.
+message CatalogInfo {
+  string name = 1;
+  string comment = 2;
+  Properties properties = 3;
+  AuditInfo audit = 4;
+  string id = 5;
+  string storage_root = 6;
+  string storage_location = 7;
+}
+
+// ListCatalogsRequest lists catalogs visible to the caller.
+message ListCatalogsRequest {
+  option (buf.validate.message).cel = {
+    id: "list_catalogs.page_size"
+    message: "max_results must not exceed 1000"
+    expression: "!has(this.page) || !has(this.page.max_results) || this.page.max_results <= 1000"
+  };
+
+  PageRequest page = 1;
+}
+
+// ListCatalogsResponse contains one page of catalogs.
+message ListCatalogsResponse {
+  repeated CatalogSummary catalogs = 1;
+  PageResponse page = 2;
+}
+
+// GetCatalogRequest selects a catalog.
+message GetCatalogRequest {
+  CatalogRef catalog = 1 [(buf.validate.field).required = true];
+}
+
+// GetCatalogResponse contains complete catalog details.
+message GetCatalogResponse {
+  CatalogInfo catalog = 1 [(buf.validate.field).required = true];
+}
+
+// CreateCatalogRequest contains the user-editable fields for a new catalog.
+message CreateCatalogRequest {
+  string name = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 255
+    pattern: "^[A-Za-z0-9_@-]+$"
+  }];
+  optional string comment = 2 [(buf.validate.field).string.max_len = 65536];
+  Properties properties = 3;
+  optional string storage_root = 4 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 8192
+    pattern: "^(?:(?:s3|gs)://[^/]+(?:/.*)?|abfss?://[^/]+(?:/.*)?|file:/+.+|(?:/|[^:/]+/).*)$"
+    uri_ref: true
+  }];
+}
+
+// CreateCatalogResponse contains the newly created catalog.
+message CreateCatalogResponse {
+  CatalogInfo catalog = 1 [(buf.validate.field).required = true];
+}
+
+// UpdateCatalogRequest updates one or more mutable catalog fields.
+message UpdateCatalogRequest {
+  option (buf.validate.message).cel = {
+    id: "update_catalog.changes"
+    message: "at least one catalog field must be updated"
+    expression: "has(this.comment) || has(this.properties) || has(this.new_name)"
+  };
+
+  CatalogRef catalog = 1 [(buf.validate.field).required = true];
+  optional string comment = 2 [(buf.validate.field).string.max_len = 65536];
+  Properties properties = 3;
+  optional string new_name = 4 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 255
+    pattern: "^[A-Za-z0-9_@-]+$"
+  }];
+}
+
+// UpdateCatalogResponse contains the updated catalog.
+message UpdateCatalogResponse {
+  CatalogInfo catalog = 1 [(buf.validate.field).required = true];
+}
+
+// DeleteCatalogRequest deletes a catalog, optionally including its children.
+message DeleteCatalogRequest {
+  CatalogRef catalog = 1 [(buf.validate.field).required = true];
+  bool force = 2;
+}
+
+// DeleteCatalogResponse acknowledges a successful catalog deletion.
+message DeleteCatalogResponse {}
+
+// CatalogService provides the UI-facing catalog operations.
+service CatalogService {
+  rpc ListCatalogs(ListCatalogsRequest) returns (ListCatalogsResponse);
+  rpc GetCatalog(GetCatalogRequest) returns (GetCatalogResponse);
+  rpc CreateCatalog(CreateCatalogRequest) returns (CreateCatalogResponse);
+  rpc UpdateCatalog(UpdateCatalogRequest) returns (UpdateCatalogResponse);
+  rpc DeleteCatalog(DeleteCatalogRequest) returns (DeleteCatalogResponse);
+}
