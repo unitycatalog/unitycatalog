@@ -137,10 +137,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CatalogInfo'
-        '404':
-          description: Not Found. The catalog does not exist.
-        '503':
-          description: Service Unavailable. The catalog is being modified concurrently; retry the request.
     delete:
       tags:
         - Catalogs
