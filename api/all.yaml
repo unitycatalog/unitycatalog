@@ -936,10 +936,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RegisteredModelInfo'
-        '404':
-          description: Not Found. The registered model does not exist.
-        '503':
-          description: Service Unavailable. The registered model is being modified concurrently; retry the request.
     delete:
       tags:
         - RegisteredModels
@@ -960,10 +956,6 @@ paths:
           content:
             application/json:
               schema: {}
-        '404':
-          description: Not Found. The registered model does not exist.
-        '503':
-          description: Service Unavailable. The registered model is being modified concurrently; retry the request.
   /models/versions:
     post:
       operationId: createModelVersion
@@ -985,10 +977,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ModelVersionInfo'
-        '404':
-          description: Not Found. The registered model does not exist.
-        '503':
-          description: Service Unavailable. The registered model is being modified concurrently; retry the request.
   /models/{full_name}/versions:
     parameters:
       - name: full_name
@@ -1078,10 +1066,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ModelVersionInfo'
-        '404':
-          description: Not Found. The model version does not exist.
-        '503':
-          description: Service Unavailable. The model version is being modified concurrently; retry the request.
     delete:
       tags:
         - ModelVersions
@@ -1095,10 +1079,6 @@ paths:
           content:
             application/json:
               schema: {}
-        '404':
-          description: Not Found. The model version does not exist.
-        '503':
-          description: Service Unavailable. The model version is being modified concurrently; retry the request.
   /models/{full_name}/versions/{version}/finalize:
     parameters:
       - name: full_name
@@ -1133,10 +1113,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ModelVersionInfo'
-        '404':
-          description: Not Found. The model version does not exist.
-        '503':
-          description: Service Unavailable. The model version is being modified concurrently; retry the request.
   /temporary-path-credentials:
     post:
       operationId: generateTemporaryPathCredentials
