@@ -66,9 +66,10 @@ public class HibernateConfigurator implements AutoCloseable {
   private final SessionFactory sessionFactory;
   private final Properties hibernateProperties;
   private final HikariDataSource dataSource;
+  private final boolean schemaManagedByHibernate;
 
   public HibernateConfigurator(ServerProperties serverProperties) {
-    this(setupHibernateProperties(serverProperties));
+    this(setupHibernateProperties(serverProperties), serverProperties.isSchemaManagedByHibernate());
   }
 
   /**
@@ -76,9 +77,26 @@ public class HibernateConfigurator implements AutoCloseable {
    * properties (e.g. point at PostgreSQL via Testcontainers) before construction.
    */
   public HibernateConfigurator(Properties hibernateProperties) {
-    requireSchemaFromConnection(hibernateProperties);
-    requireNoSchemaChanges(settingsHibernateReads(hibernateProperties));
+    this(hibernateProperties, false);
+  }
+
+  /**
+   * The same, where {@code schemaManagedByHibernate} lets Hibernate update the schema instead of
+   * the schema steps ({@code server.schema-management=hibernate}), whatever schema action the
+   * properties set.
+   */
+  public HibernateConfigurator(Properties hibernateProperties, boolean schemaManagedByHibernate) {
+    if (schemaManagedByHibernate) {
+      hibernateProperties = withSchemaUpdatesOn(hibernateProperties);
+    }
+    Map<Object, Object> settings = settingsHibernateReads(hibernateProperties);
+    if (!schemaManagedByHibernate) {
+      // Only the schema steps use the connection's schema; in hibernate mode none runs.
+      requireSchemaFromConnection(hibernateProperties);
+      requireNoSchemaChanges(settings);
+    }
     requireNamedMemoryDatabase(hibernateProperties);
+    this.schemaManagedByHibernate = schemaManagedByHibernate;
     this.hibernateProperties = hibernateProperties;
     this.dataSource = createDataSource(hibernateProperties);
     try {
@@ -336,7 +354,43 @@ public class HibernateConfigurator implements AutoCloseable {
           "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
       LOGGER.debug("Hibernate configuration set for testing");
     }
-    return withSchemaUpdatesOff(hibernateProperties);
+    return serverProperties.isSchemaManagedByHibernate()
+        ? hibernateProperties
+        : withSchemaUpdatesOff(hibernateProperties);
+  }
+
+  /**
+   * A copy of {@code properties} in which Hibernate updates the schema: the schema action is the
+   * server's. Every schema action setting that Hibernate reads, from the file as well as from JVM
+   * system properties and a classpath {@code hibernate.properties} (see {@link
+   * #settingsHibernateReads}), is set to {@code update}, so that none, for example a {@code .orm}
+   * form for one contributor, can win. Hibernate reads the JPA action before {@code
+   * hibernate.hbm2ddl.auto}, so that one is set too.
+   */
+  static Properties withSchemaUpdatesOn(Properties properties) {
+    Properties withUpdates = new Properties();
+    properties.forEach(
+        (name, value) -> {
+          if (!isSchemaAction(name)) {
+            withUpdates.put(name, value);
+          }
+        });
+    settingsHibernateReads(properties)
+        .forEach(
+            (name, value) -> {
+              if (isSchemaAction(name)) {
+                if (!isNone(value) && !"update".equalsIgnoreCase(value.toString().trim())) {
+                  LOGGER.warn(
+                      "Ignoring {}={}: with server.schema-management=hibernate, Hibernate updates"
+                          + " the schema.",
+                      name,
+                      value);
+                }
+                withUpdates.put(name, "update");
+              }
+            });
+    withUpdates.setProperty(SchemaToolingSettings.JAKARTA_HBM2DDL_DATABASE_ACTION, "update");
+    return withUpdates;
   }
 
   /**

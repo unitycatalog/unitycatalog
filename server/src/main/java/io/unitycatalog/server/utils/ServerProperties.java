@@ -280,6 +280,9 @@ public class ServerProperties {
     // Bounds Armeria's graceful request drain; the blocking-executor drain gets what is left.
     // Not a total shutdown deadline, so leave headroom under the orchestrator grace period.
     SHUTDOWN_TIMEOUT("server.shutdown-timeout", "PT5S", POSITIVE_DURATION_VALIDATOR),
+    // Who changes the schema: the schema steps, or Hibernate's update as before 0.8 (a fallback).
+    SCHEMA_MANAGEMENT(
+        "server.schema-management", "flyway", new EnumValidator(true, "flyway", "hibernate")),
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
     // Enables native Iceberg tables; when disabled, existing ones stay readable.
     ICEBERG_TABLE_ENABLED("server.iceberg-table.enabled", "true", BOOLEAN_VALIDATOR),
@@ -632,6 +635,10 @@ public class ServerProperties {
    */
   public Duration getShutdownTimeout() {
     return Duration.parse(get(Property.SHUTDOWN_TIMEOUT));
+  }
+
+  public boolean isSchemaManagedByHibernate() {
+    return "hibernate".equalsIgnoreCase(get(Property.SCHEMA_MANAGEMENT));
   }
 
   public boolean isIncludeStackTraceInError() {

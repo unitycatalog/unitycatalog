@@ -28,8 +28,8 @@ public class BaselineMatchesEntitiesTest {
   @Test
   void stepsBuildTheEntitySchema() {
     new SchemaMigrator(fromSteps.dataSource()).upgradeSchema();
-    // Hibernate builds the second from the server's entities. The server's configurator refuses to
-    // let Hibernate change the schema, so this test runs Hibernate on those entities itself.
+    // Hibernate builds the second from the server's entities. The server's configurator lets
+    // Hibernate change the schema only in hibernate mode, so this test runs it on those entities.
     Configuration entities = new Configuration();
     fromEntities.sessionFactory().getMetamodel().getEntities().stream()
         .map(EntityType::getJavaType)

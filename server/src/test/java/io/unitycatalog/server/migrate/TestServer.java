@@ -41,6 +41,11 @@ final class TestServer implements AutoCloseable {
     return start(db.openHibernateConfigurator(hibernateProperties), storageRoot);
   }
 
+  /** Starts the server on {@code db} with {@code server.schema-management=hibernate}. */
+  static TestServer startWithHibernateManagedSchema(TestDatabase db, Path storageRoot) {
+    return start(db.openHibernateConfigurator(db.hibernateProperties(), true), storageRoot);
+  }
+
   private static TestServer start(HibernateConfigurator configurator, Path storageRoot) {
     try {
       int port;

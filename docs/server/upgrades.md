@@ -6,6 +6,8 @@ release ships the schema steps it needs, and each step is applied once and recor
 
 Hibernate no longer changes the schema. If your `etc/conf/hibernate.properties` still sets
 `hibernate.hbm2ddl.auto=update`, the server ignores it and logs a warning. You can delete the line.
+For a temporary fallback to Hibernate, see
+[Letting Hibernate manage the schema](#letting-hibernate-manage-the-schema).
 
 The server doesn't change the schema when it starts. It starts only on a database at the schema
 version of its release whose schema history passes Flyway's checks. Otherwise it refuses to start
@@ -30,9 +32,11 @@ exit with 0 when they succeed, and with 1 and the reasons when they refuse (see
 
 The first baseline release is 0.7.0: schema version 1 is its schema. A database without schema
 history is adopted as version 1 when its schema matches version 1 exactly, and as the latest version
-when it matches that exactly; `--check-schema` lists every difference. A database from an earlier
-release must be upgraded to 0.7.0 first: start a 0.7.0 server on it once, stop it, then upgrade it
-to this release. Such a database still differs from version 1 in two checks, so repair it first (see
+when it matches that exactly (see
+[Letting Hibernate manage the schema](#letting-hibernate-manage-the-schema)); `--check-schema` lists
+every difference. A database from an earlier release must be upgraded to 0.7.0 first: start a
+0.7.0 server on it once, stop it, then upgrade it to this release. Such a database still differs from
+version 1 in two checks, so repair it first (see
 [Repairing a database from before 0.7.0](#repairing-a-database-from-before-070)).
 
 ### Repairing a database from before 0.7.0
@@ -157,6 +161,28 @@ To go back, stop the new release's servers and restore the backup you took befor
 Do not start the baseline release on the upgraded database as it is: its Hibernate setting
 `hibernate.hbm2ddl.auto=update` changes column types back (it narrows the column that step 2
 widened) while the schema history still records the step.
+
+## Letting Hibernate manage the schema
+
+A temporary fallback while the schema steps are new. With `server.schema-management=hibernate` in
+`etc/conf/server.properties` (Helm: `server.db.schemaManagement: hibernate`), the server runs no
+schema steps and none of their checks, and Hibernate updates the schema at start as in 0.7.0
+(`update`, whatever schema action `hibernate.properties` sets). The server logs a warning
+on every start. A `uc_schema_history` table, if the database has one, is left as it is.
+
+To go back to the schema steps, set `server.schema-management=flyway`, the default, and run
+`bin/start-uc-server --upgrade-schema`:
+
+- A database without schema history is adopted when its schema matches either version 1 exactly
+  (a baseline-release database that Hibernate did not change: the steps after version 1 are
+  applied) or this release's latest version exactly (every step is recorded without running).
+  Hibernate widens columns as the steps do, so a database that Hibernate set up in hibernate mode,
+  as a new install or from a 0.7.0 database, usually matches the latest version. Any other schema
+  is refused with the list of differences.
+- A database with schema history still records the version from before the switch. If a step was
+  added since then, Hibernate may already have made part of its change; `--upgrade-schema` then
+  refuses and lists the differences. Switch back on the release you switched on, or restore the
+  backup you took before the switch.
 
 ## Messages
 

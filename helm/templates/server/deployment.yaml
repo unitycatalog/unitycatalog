@@ -170,6 +170,7 @@ spec:
       {{- end }}
       {{- /* The server never changes the schema at start. This container brings it up to date
       first, after extraInitContainers so that a database proxy run as a native sidecar is up. */}}
+      {{- if eq (.Values.server.db.schemaManagement | default "flyway" | lower) "flyway" }}
         - name: upgrade-schema
           {{- with .Values.server.deployment.securityContext }}
           securityContext: {{- toYaml . | nindent 12 }}
@@ -181,6 +182,7 @@ spec:
           args:
             - --upgrade-schema
           volumeMounts: {{- include "unitycatalog.server.volumeMounts" . | nindent 12 }}
+      {{- end }}
       {{- $obsPort := .Values.server.deployment.obsPort }}
       {{- if and $obsPort (eq (toString $obsPort) (toString .Values.server.deployment.port)) }}
       {{- fail "server.deployment.obsPort must differ from server.deployment.port" }}

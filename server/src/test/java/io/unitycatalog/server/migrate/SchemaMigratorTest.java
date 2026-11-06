@@ -131,21 +131,6 @@ public class SchemaMigratorTest {
   }
 
   @Test
-  void adoptsADatabaseWithThisReleasesSchemaWithoutHistory() {
-    // What a server that let Hibernate set up a new database leaves: this release's schema, and no
-    // schema history.
-    new SchemaMigrator(db.dataSource()).upgradeSchema();
-    UpgradeTestUtils.execute(
-        db, "DROP TABLE %1$suc_schema_history%1$s".formatted(identifierQuote(db.dataSource())));
-    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
-    assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
-
-    // Every step is recorded without running.
-    assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
-    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
-  }
-
-  @Test
   void keepsTheRecordOfAFailedStepWhenTheHistoryIsRefused() {
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
     migrator.upgradeSchema();

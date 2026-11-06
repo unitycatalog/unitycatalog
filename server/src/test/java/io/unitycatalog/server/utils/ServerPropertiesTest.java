@@ -202,6 +202,11 @@ public class ServerPropertiesTest {
     testInvalidProperty(Property.SERVER_ENV, "staging", "Invalid value 'staging'", "server.env");
     testInvalidProperty(
         Property.AUTHORIZATION_ENABLED, "yes", "Invalid value 'yes'", "server.authorization");
+    testInvalidProperty(
+        Property.SCHEMA_MANAGEMENT,
+        "hiberate",
+        "Invalid value 'hiberate'",
+        "server.schema-management");
   }
 
   @Test
