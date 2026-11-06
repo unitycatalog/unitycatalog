@@ -85,7 +85,8 @@ public final class DeltaCreateTableMapper {
     DeltaUniformUtils.validateConsistency(req.getProperties(), req.getUniform() != null);
     Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields =
         DeltaUniformUtils.getUniformFields(req.getUniform());
-    DeltaUniformUtils.validateCreate(uniformFields, NormalizedURL.from(req.getLocation()));
+    NormalizedURL location = DeltaLocations.fromDelta(req.getLocation());
+    DeltaUniformUtils.validateCreate(uniformFields, location);
 
     List<ColumnInfo> columns = ColumnUtils.toColumnInfos(req.getColumns().getFields());
     ColumnUtils.applyPartitionColumns(columns, req.getPartitionColumns());
@@ -99,7 +100,7 @@ public final class DeltaCreateTableMapper {
             .dataSourceFormat(DataSourceFormat.DELTA)
             .columns(columns)
             .comment(req.getComment())
-            .storageLocation(req.getLocation())
+            .storageLocation(location.toString())
             .properties(DeltaPropertyMapper.buildStoredProperties(req));
     return new Result(createTable, uniformFields);
   }
