@@ -277,6 +277,8 @@ def format_default_value(default: Any) -> str:
         'NULL'
         >>> format_default_value("default")
         "'default'"
+        >>> format_default_value("don't")
+        "'don\\\\'t'"
         >>> format_default_value(42)
         '42'
     """
@@ -284,7 +286,10 @@ def format_default_value(default: Any) -> str:
     if default is None:
         return "NULL"
     elif isinstance(default, str):
-        return f"'{default}'"
+        # Escape backslashes first, then single quotes, matching how Spark
+        # SQL parses string literals (\' is an escaped quote; '' is not).
+        escaped = default.replace("\\", "\\\\").replace("'", "\\'")
+        return f"'{escaped}'"
     else:
         return str(default)
 
