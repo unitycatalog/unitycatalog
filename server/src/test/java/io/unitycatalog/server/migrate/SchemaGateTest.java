@@ -27,7 +27,7 @@ public class SchemaGateTest {
 
   @Test
   void upgradeSchemaCommandSetsUpTheConfiguredDatabase(@TempDir Path conf) throws IOException {
-    writeConfiguration(conf, "", db.jdbcUrl());
+    writeConfiguration(conf, db.jdbcUrl());
     // The command's own pool is larger than the server's, which the configuration may set small.
     Files.writeString(
         conf.resolve("hibernate.properties"),
@@ -58,10 +58,7 @@ public class SchemaGateTest {
       throws IOException {
     boolean memoryUrl = setting != null && setting.startsWith("jdbc:");
     boolean hibernateSetting = setting != null && setting.startsWith("hibernate.");
-    writeConfiguration(
-        conf,
-        memoryUrl || hibernateSetting || setting == null ? "" : setting,
-        memoryUrl ? setting : db.jdbcUrl());
+    writeConfiguration(conf, memoryUrl ? setting : db.jdbcUrl());
     if (hibernateSetting) {
       Files.writeString(
           conf.resolve("hibernate.properties"), "\n" + setting + "\n", StandardOpenOption.APPEND);
@@ -82,7 +79,7 @@ public class SchemaGateTest {
   @Test
   void checkSchemaDoesNotCreateAMissingH2File(@TempDir Path conf, @TempDir Path data)
       throws IOException {
-    writeConfiguration(conf, "", "jdbc:h2:file:" + data.resolve("uc"));
+    writeConfiguration(conf, "jdbc:h2:file:" + data.resolve("uc"));
     ByteArrayOutputStream out = new ByteArrayOutputStream();
 
     assertThat(SchemaMigrator.runCommand(false, conf, new PrintStream(out, true, UTF_8))).isOne();
@@ -93,12 +90,9 @@ public class SchemaGateTest {
     }
   }
 
-  /**
-   * {@code server.properties} with {@code serverSetting}, and {@code hibernate.properties} for
-   * {@code url}.
-   */
-  private void writeConfiguration(Path conf, String serverSetting, String url) throws IOException {
-    Files.writeString(conf.resolve("server.properties"), serverSetting + "\n");
+  /** An empty {@code server.properties}, and {@code hibernate.properties} for {@code url}. */
+  private void writeConfiguration(Path conf, String url) throws IOException {
+    Files.writeString(conf.resolve("server.properties"), "\n");
     Properties hibernate = db.hibernateProperties();
     hibernate.setProperty("hibernate.connection.url", url);
     if (url.startsWith("jdbc:h2:")) {

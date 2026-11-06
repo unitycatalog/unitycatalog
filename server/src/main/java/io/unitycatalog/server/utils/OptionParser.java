@@ -37,7 +37,7 @@ public class OptionParser {
             .desc("Enable health and metrics on this port (1-65535). Disabled when omitted.")
             .type(Integer.class)
             .build());
-    // One schema command at a time; with either, the server does not start.
+    // One schema command at a time.
     OptionGroup schemaCommands = new OptionGroup();
     schemaCommands.addOption(
         Option.builder()
