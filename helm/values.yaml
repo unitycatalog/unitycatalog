@@ -179,7 +179,7 @@ server:
     # -- (string) Database type
     # @raw
     #
-    # Supported values: `file`, `postgresql`
+    # Supported values: `file`, `postgresql`, `mysql`
     #
     type: file
     fileConfig:
@@ -292,6 +292,77 @@ server:
       # ```
       #
       extraParams:
+
+    mysqlConfig:
+      # -- (string) MySQL database host (Required)
+      # @default -- not set
+      host:
+
+      # -- (int) MySQL database port
+      # @default -- 3306
+      port: 3306
+
+      # -- (string) MySQL database name
+      # @default -- ucdb
+      dbName: ucdb
+
+      # -- (string) MySQL username
+      # @default -- root
+      username: root
+
+      # -- (string) MySQL user password secret name
+      # @default -- not set
+      # @raw
+      #
+      # If not set, connection will be made without a password
+      #
+      passwordSecretName:
+
+      # -- (string) MySQL user password secret key
+      # @default -- password
+      passwordSecretKey: password
+
+      # -- (object) MySQL JDBC URL params
+      # @default -- not set
+      # @raw
+      #
+      # Example:
+      # ```yaml
+      # extraParams:
+      #   sslMode: VERIFY_IDENTITY
+      # ```
+      #
+      extraParams:
+
+      driver:
+        # -- (object) Volume that holds the MySQL JDBC driver jar (Required)
+        # @default -- not set
+        # @raw
+        #
+        # The server image does not include the MySQL JDBC driver
+        # ([MySQL Connector/J](https://dev.mysql.com/downloads/connector/j/)), because it is licensed under the GPL;
+        # the PostgreSQL driver it does include is BSD-licensed. The chart mounts the jar at `subPath` in this volume
+        # into the server and puts it on the Java module path. Any volume source works, for example a
+        # PersistentVolumeClaim. The driver jar is larger than a ConfigMap can hold.
+        #
+        # Example:
+        # ```yaml
+        # volume:
+        #   persistentVolumeClaim:
+        #     claimName: mysql-driver
+        # ```
+        #
+        volume:
+
+        # -- (string) Path of the driver jar in `volume` (Required)
+        # @default -- not set
+        # @raw
+        #
+        # To change the driver version, put the new jar on the volume and point `subPath` at it.
+        #
+        # Example: `mysql-connector-j-8.4.0.jar`
+        #
+        subPath:
 
     # -- (string) Override Hibernate configuration for the server
     # @default -- not set

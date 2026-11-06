@@ -78,8 +78,27 @@ hibernate.connection.user={{ .Values.server.db.postgresqlConfig.username }}
 {{- if .Values.server.db.postgresqlConfig.passwordSecretName }}
 hibernate.connection.password=${DB_PASSWORD}
 {{- end }}
+{{- else if eq .Values.server.db.type "mysql" -}}
+
+{{- $urlParamsList := list }}
+{{- range $key, $value := .Values.server.db.mysqlConfig.extraParams }}
+{{- $urlParamsList = append $urlParamsList (printf "%s=%s" (urlquery $key) (urlquery $value)) }}
+{{- end }}
+
+{{- $urlParams := "" }}
+{{- if $urlParamsList }}
+{{- $urlParams = printf "?%s" ($urlParamsList | join "&") }}
+{{- end -}}
+
+hibernate.connection.driver_class=com.mysql.cj.jdbc.Driver
+{{- /* Connector/J form-decodes the whole URL, the database name too, so urlquery is the right escape for it. */}}
+hibernate.connection.url=jdbc:mysql://{{ required "server.db.mysqlConfig.host is required" .Values.server.db.mysqlConfig.host }}:{{ .Values.server.db.mysqlConfig.port }}/{{ urlquery .Values.server.db.mysqlConfig.dbName }}{{ $urlParams }}
+hibernate.connection.user={{ .Values.server.db.mysqlConfig.username }}
+{{- if .Values.server.db.mysqlConfig.passwordSecretName }}
+hibernate.connection.password=${DB_PASSWORD}
+{{- end }}
 {{- else }}
-{{ fail "Unsupported database type. Supported types are: file, postgresql." }}
+{{ fail "Unsupported database type. Supported types are: file, postgresql, mysql." }}
 {{- end }}
 
 hibernate.hbm2ddl.auto=update
