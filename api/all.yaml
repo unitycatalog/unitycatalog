@@ -441,8 +441,6 @@ paths:
           content:
             application/json:
               schema: {}
-        '503':
-          description: Service Unavailable. The table is being modified concurrently; retry the request.
   /volumes:
     post:
       tags:
