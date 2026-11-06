@@ -198,11 +198,11 @@ class UnityAccessEvaluatorTest {
   @Test
   void listFilteringPropagatesFailureAfterAnAllowedItem() {
     UnityAccessEvaluator evaluator = mock(UnityAccessEvaluator.class);
+    UnityAccessEvaluator.Batch batch = mock(UnityAccessEvaluator.Batch.class);
+    when(evaluator.batch(any(), any(), any(), anyLong())).thenReturn(batch);
     BaseException failure =
         new BaseException(ErrorCode.UNAVAILABLE, "Authorization service is unavailable");
-    when(evaluator.evaluate(any(), any(), any(), any(), anyLong()))
-        .thenReturn(true)
-        .thenThrow(failure);
+    when(batch.evaluate(any())).thenReturn(true).thenThrow(failure);
     List<TableInfo> items =
         new ArrayList<>(
             List.of(
@@ -224,7 +224,9 @@ class UnityAccessEvaluatorTest {
   @MethodSource("unrelatedAuthorizationFailures")
   void listFilteringKeepsOtherFailuresAsDenials(RuntimeException failure) {
     UnityAccessEvaluator evaluator = mock(UnityAccessEvaluator.class);
-    when(evaluator.evaluate(any(), any(), any(), any(), anyLong())).thenThrow(failure);
+    UnityAccessEvaluator.Batch batch = mock(UnityAccessEvaluator.Batch.class);
+    when(evaluator.batch(any(), any(), any(), anyLong())).thenReturn(batch);
+    when(batch.evaluate(any())).thenThrow(failure);
     List<TableInfo> items =
         new ArrayList<>(List.of(new TableInfo().tableId(UUID.randomUUID().toString())));
 
