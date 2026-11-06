@@ -44,7 +44,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.stubbing.Answer;
 import org.springframework.expression.spel.SpelEvaluationException;
 
@@ -86,21 +85,14 @@ class UnityAccessEvaluatorTest {
   }
 
   @ParameterizedTest
-  @ValueSource(
-      strings = {
-        "#authorize(#principal, #table, OWNER)",
-        "#authorizeAny(#principal, #table, OWNER, SELECT)",
-        "#authorizeAll(#principal, #table, SELECT, MODIFY)"
-      })
-  void unavailableDecisionsPropagateWithoutRefresh(String expression) throws Exception {
+  @MethodSource("authorizationServerFailures")
+  void serverFailuresPropagateWithoutRefresh(String expression, ErrorCode errorCode)
+      throws Exception {
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
     UUID principal = UUID.randomUUID();
     UUID table = UUID.randomUUID();
     BaseException failure =
-        new BaseException(
-            ErrorCode.UNAVAILABLE,
-            "Authorization service is unavailable",
-            new IOException("timeout"));
+        new BaseException(errorCode, "Authorization failed", new IOException("timeout"));
     when(authorizer.authorize(principal, TABLE, table, Privileges.OWNER)).thenThrow(failure);
     when(authorizer.authorizeAny(principal, TABLE, table, Privileges.OWNER, Privileges.SELECT))
         .thenThrow(failure);
@@ -118,6 +110,17 @@ class UnityAccessEvaluatorTest {
             evaluator, principal, expression, Map.of(), Map.of(), mock(KeyMapper.class));
     assertThatThrownBy(() -> filter.filter(TABLE, items)).isSameAs(failure);
     verify(authorizer, never()).refreshAuthorizations(anyLong());
+  }
+
+  static Stream<Arguments> authorizationServerFailures() {
+    return Stream.of(
+            "#authorize(#principal, #table, OWNER)",
+            "#authorizeAny(#principal, #table, OWNER, SELECT)",
+            "#authorizeAll(#principal, #table, SELECT, MODIFY)")
+        .flatMap(
+            expression ->
+                Stream.of(ErrorCode.UNAVAILABLE, ErrorCode.INTERNAL)
+                    .map(code -> Arguments.of(expression, code)));
   }
 
   @ParameterizedTest
@@ -143,7 +146,7 @@ class UnityAccessEvaluatorTest {
 
   static Stream<RuntimeException> unrelatedAuthorizationFailures() {
     return Stream.of(
-        new BaseException(ErrorCode.INTERNAL, "Authorization failed"),
+        new BaseException(ErrorCode.NOT_FOUND, "Authorization metadata is missing"),
         new IllegalStateException("Authorization failed"));
   }
 
@@ -195,13 +198,15 @@ class UnityAccessEvaluatorTest {
     verify(authorizer).authorize(principal, TABLE, deniedTable, Privileges.OWNER);
   }
 
-  @Test
-  void listFilteringPropagatesFailureAfterAnAllowedItem() {
+  @ParameterizedTest
+  @EnumSource(
+      value = ErrorCode.class,
+      names = {"UNAVAILABLE", "INTERNAL"})
+  void listFilteringPropagatesFailureAfterAnAllowedItem(ErrorCode errorCode) {
     UnityAccessEvaluator evaluator = mock(UnityAccessEvaluator.class);
     UnityAccessEvaluator.Batch batch = mock(UnityAccessEvaluator.Batch.class);
     when(evaluator.batch(any(), any(), any(), anyLong())).thenReturn(batch);
-    BaseException failure =
-        new BaseException(ErrorCode.UNAVAILABLE, "Authorization service is unavailable");
+    BaseException failure = new BaseException(errorCode, "Authorization failed");
     when(batch.evaluate(any())).thenReturn(true).thenThrow(failure);
     List<TableInfo> items =
         new ArrayList<>(
