@@ -1318,7 +1318,7 @@ public class TableRepository {
         .createMutationQuery("delete from ColumnInfoDAO where table.id = :id")
         .setParameter("id", tableInfoDAO.getId())
         .executeUpdate();
-    RepositoryUtils.deleteByKey(session, tableInfoDAO, key, () -> tableNotFound(tableName));
+    RepositoryUtils.deleteByKey(session, tableInfoDAO, key, notFound);
     return tableInfoDAO;
   }
 
