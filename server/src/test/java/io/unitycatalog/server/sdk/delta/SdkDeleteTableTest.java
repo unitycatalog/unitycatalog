@@ -17,13 +17,16 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.BaseTableCRUDTestEnv;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TestUtils;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -140,6 +143,42 @@ public class SdkDeleteTableTest extends BaseServerTest {
     assertThat(tableOps.getTable(oldName + "_renamed").getTableId()).isEqualTo(table.getTableId());
     // The refused drop leaves the renamed table's columns in place.
     assertThat(columnRows(table.getTableId())).isEqualTo(2);
+  }
+
+  /**
+   * A commit that replaces the table's column rows while the drop waits for the table lock (as an
+   * Iceberg commit does) must not make the drop fail or leave column rows behind.
+   */
+  @Test
+  public void dropWaitingBehindAColumnRewriteDeletesTheNewColumns() throws Exception {
+    TableInfo table =
+        BaseTableCRUDTestEnv.createTestingTable(
+            "tbl_drop_rewrite", TableType.EXTERNAL, Optional.of("file:///tmp/uc_test/c"), tableOps);
+    UUID id = UUID.fromString(table.getTableId());
+
+    runBlockedByHeldWrite(
+        held -> {
+          TableInfoDAO locked = held.get(TableInfoDAO.class, id, LockMode.PESSIMISTIC_WRITE);
+          List<ColumnInfoDAO> rewritten =
+              ColumnInfoDAO.fromList(ColumnInfoDAO.toList(locked.getColumns()));
+          rewritten.forEach(
+              column -> {
+                column.setId(UUID.randomUUID());
+                column.setTable(locked);
+              });
+          locked.getColumns().clear();
+          held.flush();
+          locked.getColumns().addAll(rewritten);
+        },
+        () -> {
+          tableOps.deleteTable(TestUtils.SCHEMA_FULL_NAME + ".tbl_drop_rewrite");
+          return null;
+        });
+
+    assertThat(columnRows(table.getTableId())).isZero();
+    try (Session session = testDatabase.sessionFactory().openSession()) {
+      assertThat(session.get(TableInfoDAO.class, id)).isNull();
+    }
   }
 
   /** A drop deletes the table's row and its column rows, and no other table's columns. */
