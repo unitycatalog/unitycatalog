@@ -99,13 +99,15 @@ public class SdkModelRenameLegacyAccessControlTest extends SdkAccessControlBaseC
           "Registered model already exists");
       callerApi.updateRegisteredModel(fullName, rename);
       RegisteredModelInfo renamed =
-          observerApi.getRegisteredModel(TestUtils.SCHEMA_FULL_NAME + ".renamed");
+          observerApi.getRegisteredModel(
+              TestUtils.SCHEMA_FULL_NAME + ".renamed", /* includeBrowse= */ false);
       assertThat(renamed.getId()).isEqualTo(original.getId());
       assertThat(renamed.getName()).isEqualTo("renamed");
       assertThat(renamed.getComment()).isEqualTo("renamed comment");
     } else {
       assertPermissionDenied(() -> callerApi.updateRegisteredModel(fullName, rename));
-      RegisteredModelInfo unchanged = observerApi.getRegisteredModel(fullName);
+      RegisteredModelInfo unchanged =
+          observerApi.getRegisteredModel(fullName, /* includeBrowse= */ false);
       assertThat(unchanged.getName()).isEqualTo("model");
       assertThat(unchanged.getComment()).isEqualTo(original.getComment());
     }

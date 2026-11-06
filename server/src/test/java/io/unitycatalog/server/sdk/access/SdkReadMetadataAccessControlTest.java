@@ -194,23 +194,25 @@ public class SdkReadMetadataAccessControlTest extends SdkAccessControlBaseCRUDTe
             new MetadataRead(
                 SecurableType.VOLUME,
                 SCHEMA_FULL_NAME + "." + VOLUME,
-                new VolumesApi(adminApiClient).getVolume(SCHEMA_FULL_NAME + "." + VOLUME),
-                () -> new VolumesApi(reader).getVolume(SCHEMA_FULL_NAME + "." + VOLUME),
+                new VolumesApi(adminApiClient).getVolume(SCHEMA_FULL_NAME + "." + VOLUME, false),
+                () -> new VolumesApi(reader).getVolume(SCHEMA_FULL_NAME + "." + VOLUME, false),
                 () -> listAllVolumes(new VolumesApi(reader), CATALOG_NAME, SCHEMA_NAME)),
             new MetadataRead(
                 SecurableType.FUNCTION,
                 SCHEMA_FULL_NAME + "." + FUNCTION,
-                new FunctionsApi(adminApiClient).getFunction(SCHEMA_FULL_NAME + "." + FUNCTION),
-                () -> new FunctionsApi(reader).getFunction(SCHEMA_FULL_NAME + "." + FUNCTION),
+                new FunctionsApi(adminApiClient)
+                    .getFunction(SCHEMA_FULL_NAME + "." + FUNCTION, false),
+                () ->
+                    new FunctionsApi(reader).getFunction(SCHEMA_FULL_NAME + "." + FUNCTION, false),
                 () -> listAllFunctions(new FunctionsApi(reader), CATALOG_NAME, SCHEMA_NAME)),
             new MetadataRead(
                 SecurableType.REGISTERED_MODEL,
                 SCHEMA_FULL_NAME + "." + MODEL,
                 new RegisteredModelsApi(adminApiClient)
-                    .getRegisteredModel(SCHEMA_FULL_NAME + "." + MODEL),
+                    .getRegisteredModel(SCHEMA_FULL_NAME + "." + MODEL, false),
                 () ->
                     new RegisteredModelsApi(reader)
-                        .getRegisteredModel(SCHEMA_FULL_NAME + "." + MODEL),
+                        .getRegisteredModel(SCHEMA_FULL_NAME + "." + MODEL, false),
                 () -> listAllRegisteredModels(new RegisteredModelsApi(reader), null, null)));
     createExternalLocationWithCredential(
         CREDENTIAL, LOCATION, testDirectoryRoot.resolve("external").toUri().toString());
@@ -219,15 +221,18 @@ public class SdkReadMetadataAccessControlTest extends SdkAccessControlBaseCRUDTe
             new MetadataRead(
                 SecurableType.CATALOG,
                 CATALOG_NAME,
-                new CatalogsApi(adminApiClient).getCatalog(CATALOG_NAME),
-                () -> new CatalogsApi(reader).getCatalog(CATALOG_NAME),
-                () -> new CatalogsApi(reader).listCatalogs(null, null).getCatalogs()),
+                new CatalogsApi(adminApiClient).getCatalog(CATALOG_NAME, false),
+                () -> new CatalogsApi(reader).getCatalog(CATALOG_NAME, false),
+                () -> new CatalogsApi(reader).listCatalogs(null, null, false).getCatalogs()),
             new MetadataRead(
                 SecurableType.SCHEMA,
                 SCHEMA_FULL_NAME,
-                new SchemasApi(adminApiClient).getSchema(SCHEMA_FULL_NAME),
-                () -> new SchemasApi(reader).getSchema(SCHEMA_FULL_NAME),
-                () -> new SchemasApi(reader).listSchemas(CATALOG_NAME, null, null).getSchemas()),
+                new SchemasApi(adminApiClient).getSchema(SCHEMA_FULL_NAME, false),
+                () -> new SchemasApi(reader).getSchema(SCHEMA_FULL_NAME, false),
+                () ->
+                    new SchemasApi(reader)
+                        .listSchemas(CATALOG_NAME, null, null, false)
+                        .getSchemas()),
             new MetadataRead(
                 SecurableType.CREDENTIAL,
                 CREDENTIAL,
@@ -238,11 +243,11 @@ public class SdkReadMetadataAccessControlTest extends SdkAccessControlBaseCRUDTe
             new MetadataRead(
                 SecurableType.EXTERNAL_LOCATION,
                 LOCATION,
-                new ExternalLocationsApi(adminApiClient).getExternalLocation(LOCATION),
-                () -> new ExternalLocationsApi(reader).getExternalLocation(LOCATION),
+                new ExternalLocationsApi(adminApiClient).getExternalLocation(LOCATION, false),
+                () -> new ExternalLocationsApi(reader).getExternalLocation(LOCATION, false),
                 () ->
                     new ExternalLocationsApi(reader)
-                        .listExternalLocations(null, null)
+                        .listExternalLocations(null, null, false)
                         .getExternalLocations()));
     for (MetadataRead read : objects) {
       grantPermissions(REGULAR_2, read.type(), read.name(), Privileges.READ_METADATA);
