@@ -474,8 +474,6 @@ paths:
           $ref: '#/components/responses/NotFoundResponse'
         '409':
           $ref: '#/components/responses/AlreadyExistsResponse'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailableResponse'
 
   /delta/v1/temporary-path-credentials:
     get:
