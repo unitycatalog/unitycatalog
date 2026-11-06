@@ -21,6 +21,7 @@ import io.unitycatalog.client.model.UpdateVolumeRequestContent;
 import io.unitycatalog.client.model.VolumeInfo;
 import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.TestUtils;
@@ -227,5 +228,68 @@ public abstract class BaseVolumeCRUDTest extends BaseVolumeCRUDTestEnv {
         .isInstanceOf(Exception.class);
     assertThatThrownBy(() -> schemaOperations.getSchema(CATALOG_NAME + "." + SCHEMA_NEW_NAME))
         .isInstanceOf(Exception.class);
+  }
+
+  /** A drop that waits for a concurrent rename must not delete the renamed volume. */
+  @Test
+  public void dropRacingARenameDoesNotDeleteTheRenamedVolume() throws Exception {
+    UUID id = UUID.fromString(createExternalVolume("drop_race").getVolumeId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> setColumn(held, VolumeInfoDAO.class, id, "name", "drop_race_renamed"),
+                () -> {
+                  volumeOperations.deleteVolume(SCHEMA_FULL_NAME + ".drop_race");
+                  return null;
+                }),
+        ErrorCode.NOT_FOUND,
+        "Volume not found");
+
+    assertThat(volumeOperations.getVolume(SCHEMA_FULL_NAME + ".drop_race_renamed").getVolumeId())
+        .isEqualTo(id.toString());
+  }
+
+  /** A rename that waits for a concurrent edit of another column keeps that edit. */
+  @Test
+  public void renameKeepsAConcurrentCommentEdit() throws Exception {
+    UUID id = UUID.fromString(createExternalVolume("edit_race").getVolumeId());
+
+    runBlockedByHeldWrite(
+        held -> setColumn(held, VolumeInfoDAO.class, id, "comment", "held comment"),
+        () ->
+            volumeOperations.updateVolume(
+                SCHEMA_FULL_NAME + ".edit_race",
+                new UpdateVolumeRequestContent().newName("edited")));
+
+    VolumeInfo renamed = volumeOperations.getVolume(SCHEMA_FULL_NAME + ".edited");
+    assertThat(renamed.getVolumeId()).isEqualTo(id.toString());
+    assertThat(renamed.getComment()).isEqualTo("held comment");
+  }
+
+  /** A volume create that waits for a delete of its schema finds no schema and leaves no orphan. */
+  @Test
+  public void createRacingASchemaDeleteFindsNoSchema() throws Exception {
+    UUID id = UUID.fromString(schemaId);
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> deleteRow(held, SchemaInfoDAO.class, id),
+                () -> createExternalVolume("orphan")),
+        ErrorCode.SCHEMA_NOT_FOUND,
+        "Schema not found");
+
+    assertThat(countChildren(VolumeInfoDAO.class, "schemaId", id)).isZero();
+  }
+
+  private VolumeInfo createExternalVolume(String name) throws ApiException {
+    return volumeOperations.createVolume(
+        new CreateVolumeRequestContent()
+            .name(name)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .volumeType(VolumeType.EXTERNAL)
+            .storageLocation("/tmp/" + name));
   }
 }

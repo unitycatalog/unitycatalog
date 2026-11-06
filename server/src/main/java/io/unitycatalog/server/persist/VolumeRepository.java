@@ -18,9 +18,12 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -51,6 +54,13 @@ public class VolumeRepository {
                   createVolumeRequest.getCatalogName(),
                   createVolumeRequest.getSchemaName());
           UUID schemaId = catalogAndSchemaDao.schemaInfoDAO().getId();
+          repositories
+              .getSchemaRepository()
+              .lockSchemaForChildCreate(
+                  session,
+                  schemaId,
+                  createVolumeRequest.getCatalogName(),
+                  createVolumeRequest.getSchemaName());
           if (getVolumeDAO(session, schemaId, createVolumeRequest.getName()) != null) {
             throw new BaseException(
                 ErrorCode.RESOURCE_ALREADY_EXISTS,
@@ -222,7 +232,7 @@ public class VolumeRepository {
         session -> {
           VolumeInfoDAO volumeInfo = getVolumeDAO(session, catalog, schema, volume);
           if (volumeInfo == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Volume not found: " + name);
+            throw volumeNotFound(name);
           }
           if (updateVolumeRequest.getNewName() != null) {
             VolumeInfoDAO existingVolume =
@@ -237,17 +247,27 @@ public class VolumeRepository {
               && updateVolumeRequest.getComment() == null) {
             return volumeInfo.toVolumeInfo(catalog, schema);
           }
+          Map<String, Object> key = Map.of("name", volume);
+          VolumeInfoDAO locked =
+              RepositoryUtils.lockByKey(
+                  session,
+                  VolumeInfoDAO.class,
+                  volumeInfo.getId(),
+                  key,
+                  "volume " + name,
+                  () -> volumeNotFound(name));
+          Map<String, Object> changes = new HashMap<>();
           if (updateVolumeRequest.getNewName() != null) {
-            volumeInfo.setName(updateVolumeRequest.getNewName());
+            changes.put("name", updateVolumeRequest.getNewName());
           }
           if (updateVolumeRequest.getComment() != null) {
-            volumeInfo.setComment(updateVolumeRequest.getComment());
+            changes.put("comment", updateVolumeRequest.getComment());
           }
-          volumeInfo.setUpdatedAt(new Date());
-          volumeInfo.setUpdatedBy(callerId);
-          session.merge(volumeInfo);
-          LOGGER.info("Updated volume: {}", volumeInfo.getName());
-          return volumeInfo.toVolumeInfo(catalog, schema);
+          changes.put("updatedAt", new Date());
+          changes.put("updatedBy", callerId);
+          RepositoryUtils.updateByKey(session, locked, key, changes, () -> volumeNotFound(name));
+          LOGGER.info("Updated volume: {}", locked.getName());
+          return locked.toVolumeInfo(catalog, schema);
         },
         "Failed to update volume",
         /* readOnly= */ false);
@@ -270,15 +290,32 @@ public class VolumeRepository {
   }
 
   public void deleteVolume(Session session, UUID schemaId, String volumeName) {
-    VolumeInfoDAO volumeInfoDAO = getVolumeDAO(session, schemaId, volumeName);
-    if (volumeInfoDAO == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Volume not found: " + volumeName);
+    VolumeInfoDAO found = getVolumeDAO(session, schemaId, volumeName);
+    if (found == null) {
+      throw volumeNotFound(volumeName);
     }
+    deleteVolume(session, found.getId(), volumeName, () -> volumeNotFound(volumeName));
+  }
+
+  /**
+   * Deletes the volume {@code volumeId} named {@code volumeName}; {@code notFound} is thrown if no
+   * such row exists, for example because it was renamed or dropped since the caller found it.
+   */
+  void deleteVolume(
+      Session session, UUID volumeId, String volumeName, Supplier<BaseException> notFound) {
+    Map<String, Object> key = Map.of("name", volumeName);
+    VolumeInfoDAO volumeInfoDAO =
+        RepositoryUtils.lockByKey(
+            session, VolumeInfoDAO.class, volumeId, key, "volume " + volumeName, notFound);
     if (VolumeType.MANAGED.getValue().equals(volumeInfoDAO.getVolumeType())) {
       queueManagedVolumeCleanup(session, volumeInfoDAO);
     }
-    session.remove(volumeInfoDAO);
+    RepositoryUtils.deleteByKey(session, volumeInfoDAO, key, notFound);
     LOGGER.info("Deleted volume: {}", volumeInfoDAO.getName());
+  }
+
+  private static BaseException volumeNotFound(String name) {
+    return new BaseException(ErrorCode.NOT_FOUND, "Volume not found: " + name);
   }
 
   /**

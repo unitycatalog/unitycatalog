@@ -23,8 +23,13 @@ import io.unitycatalog.client.model.UpdateCatalog;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
+import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.assertj.core.api.Assertions;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.BeforeEach;
@@ -223,5 +228,48 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
     assertThat(functionOperations.listFunctions(CATALOG_NEW_NAME, SCHEMA_NAME, Optional.empty()))
         .as("Function with ID '%s' exists", functionInfo.getFunctionId())
         .noneSatisfy(f -> assertThat(f.getFunctionId()).isEqualTo(functionInfo.getFunctionId()));
+  }
+
+  /** A function create that waits for a delete of its schema finds no schema, leaving no orphan. */
+  @Test
+  public void createRacingASchemaDeleteFindsNoSchema() throws Exception {
+    catalogOperations.createCatalog(new CreateCatalog().name(CATALOG_NAME).comment(COMMENT));
+    UUID id =
+        UUID.fromString(
+            schemaOperations
+                .createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME))
+                .getSchemaId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> deleteRow(held, SchemaInfoDAO.class, id),
+                () ->
+                    functionOperations.createFunction(
+                        new CreateFunctionRequest()
+                            .functionInfo(
+                                new CreateFunction()
+                                    .name(FUNCTION_NAME)
+                                    .catalogName(CATALOG_NAME)
+                                    .schemaName(SCHEMA_NAME)
+                                    .parameterStyle(CreateFunction.ParameterStyleEnum.S)
+                                    .isDeterministic(true)
+                                    .externalLanguage("python")
+                                    .dataType(ColumnTypeName.INT)
+                                    .fullDataType("Integer")
+                                    .isNullCall(false)
+                                    .routineBody(CreateFunction.RoutineBodyEnum.EXTERNAL)
+                                    .routineDefinition("def test():\n  return 1")
+                                    .securityType(CreateFunction.SecurityTypeEnum.DEFINER)
+                                    .specificName("test")
+                                    .sqlDataAccess(CreateFunction.SqlDataAccessEnum.NO_SQL)
+                                    // The CLI requires at least one input parameter.
+                                    .inputParams(
+                                        new FunctionParameterInfos()
+                                            .parameters(List.of(functionParameter("a", 0))))))),
+        ErrorCode.SCHEMA_NOT_FOUND,
+        "Schema not found");
+
+    assertThat(countChildren(FunctionInfoDAO.class, "schemaId", id)).isZero();
   }
 }
