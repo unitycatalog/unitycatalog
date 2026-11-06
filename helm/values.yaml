@@ -312,7 +312,7 @@ server:
     # Do not put secrets here: the chart passes the S3 and ADLS secrets to the server as environment
     # variables, and a secret in `server.properties` is deprecated. A template that uses `${OAUTH_CLIENT_SECRET}`,
     # `${S3_SECRET_KEY_<n>}` or `${ADLS_CLIENT_SECRET_<n>}` still gets them, but that is deprecated
-    # too: the server reads `s3.secretKey.<n>` and `adls.clientSecret.<n>` from its environment.
+    # too: the server reads `UC_S3_SECRETKEY_<n>` and `UC_ADLS_CLIENTSECRET_<n>` from its environment.
     #
     override:
 

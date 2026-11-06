@@ -110,12 +110,14 @@ bin/start-uc-server
 ```
 
 A variable takes precedence over the same key in `server.properties`, and a variable named exactly as the key comes
-before the `UC_` one. An empty `UC_` variable is ignored, and line breaks at the end of its value are dropped, as a
-Kubernetes Secret made from a file often ends with one. The prefix keeps variables that runtimes set for their own use,
-such as `AWS_REGION`, from changing settings. The server logs the name of each environment variable it uses for a
-setting, never its value. `server.client-secret` is read by `bin/uc auth login`, not by the server.
-The Helm chart passes `UC_S3_SECRETKEY_<n>` and `UC_ADLS_CLIENTSECRET_<n>` to the server container from Kubernetes
-Secrets.
+before the `UC_` one and is used as is. An empty `UC_` variable is ignored, and line breaks at the end of its value
+are dropped, as a Kubernetes Secret made from a file often ends with one. The prefix keeps variables that runtimes set
+for their own use, such as `AWS_REGION`, from changing settings. The server logs the name of each environment variable
+it uses for a setting, never its value. `server.client-secret` is read by `bin/uc auth login`, not by the server.
+The Helm chart passes each S3 and ADLS credential to the server container from its Kubernetes Secret, in
+`UC_S3_ACCESSKEY_<n>` and `UC_S3_SECRETKEY_<n>`, or `UC_ADLS_TENANTID_<n>`, `UC_ADLS_CLIENTID_<n>` and
+`UC_ADLS_CLIENTSECRET_<n>`. All parts come from the Secret together, so a server container that restarts after a
+rotation doesn't mix old and new values.
 
 !!! warning "Deprecated: secrets in `server.properties`"
     Secrets in `server.properties` still work, but this is deprecated. The server logs a warning at startup for each

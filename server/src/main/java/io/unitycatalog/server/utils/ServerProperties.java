@@ -41,6 +41,8 @@ public class ServerProperties {
   // UC_SERVER_CLIENT_SECRET or UC_S3_SECRETKEY_0. The prefix keeps variables that runtimes set for
   // their own use, such as AWS_REGION, from changing settings.
   private static final String ENV_PREFIX = "UC_";
+  private static final Pattern NOT_LETTER_OR_DIGIT = Pattern.compile("[^A-Z0-9]");
+  private static final Pattern TRAILING_LINE_BREAKS = Pattern.compile("[\\r\\n]+$");
 
   // Secrets, which log a deprecation warning when they are read from server.properties.
   private static final Pattern SECRET_KEY =
@@ -609,7 +611,7 @@ public class ServerProperties {
       name = envName(key);
       // Trailing line breaks are dropped; a Kubernetes Secret made from a file often ends with one.
       // An empty variable is treated as unset.
-      value = env.getOrDefault(name, "").replaceAll("[\\r\\n]+$", "");
+      value = TRAILING_LINE_BREAKS.matcher(env.getOrDefault(name, "")).replaceAll("");
       if (value.isEmpty()) {
         return null;
       }
@@ -627,7 +629,7 @@ public class ServerProperties {
    * for each character that is not a letter or digit.
    */
   private static String envName(String key) {
-    return ENV_PREFIX + key.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_");
+    return ENV_PREFIX + NOT_LETTER_OR_DIGIT.matcher(key.toUpperCase(Locale.ROOT)).replaceAll("_");
   }
 
   public void set(Property property, String value) {
