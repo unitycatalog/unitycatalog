@@ -124,7 +124,8 @@ An explicit `false` follows UC's normal deny or list-filter behavior. Transport 
 HTTP errors, and missing or invalid decisions fail the UC request with HTTP 503. UC never falls
 back to native grants. UC reuses repeated decisions within one operation, including checks on
 parents shared by list items. Decisions are not reused across operations. The response timeout
-applies to each OPA call; a large list can still require calls for every item.
+applies to each OPA call. UC also cancels pending OPA HTTP calls when the UC request times out
+or is cancelled. A large list can still require calls for every item.
 
 If the user, resource, or a parent is missing from UC, the privilege check is denied.
 
