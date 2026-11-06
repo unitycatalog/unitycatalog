@@ -33,6 +33,7 @@ import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.service.delta.DeltaLocations;
 import io.unitycatalog.server.service.delta.DeltaUniformUtils;
 import io.unitycatalog.server.service.delta.DeltaUpdateTableMapper;
 import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
@@ -481,7 +482,7 @@ public class TableRepository {
     metadata.setEtag(DeltaUpdateTableMapper.computeEtag(dao));
     metadata.setTableType(toDeltaTableType(dao.getType()));
     metadata.setTableUuid(dao.getId());
-    metadata.setLocation(NormalizedURL.normalize(dao.getUrl()));
+    metadata.setLocation(DeltaLocations.toDelta(dao.getUrl()));
     metadata.setCreatedTime(dao.getCreatedAt() != null ? dao.getCreatedAt().getTime() : null);
     metadata.setUpdatedTime(dao.getUpdatedAt() != null ? dao.getUpdatedAt().getTime() : null);
 
