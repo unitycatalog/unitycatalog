@@ -1309,10 +1309,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CredentialInfo"
-        '404':
-          description: Not Found. The credential does not exist.
-        '503':
-          description: Service Unavailable. The credential is being modified concurrently; retry the request.
     delete:
       tags:
         - Credentials
@@ -1335,10 +1331,6 @@ paths:
           content:
             application/json:
               schema: {}
-        '404':
-          description: Not Found. The credential does not exist.
-        '503':
-          description: Service Unavailable. The credential is being modified concurrently; retry the request.
   /external-locations:
     post:
       tags:
