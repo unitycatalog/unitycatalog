@@ -32,6 +32,8 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import org.apache.commons.lang3.tuple.Pair;
 
 /**
@@ -65,6 +67,8 @@ import org.apache.commons.lang3.tuple.Pair;
  *   <li>REGISTERED_MODEL - ML model within a schema
  *   <li>EXTERNAL_LOCATION - External storage location
  *   <li>CREDENTIAL - Cloud storage credential
+ *   <li>Types UC does not store itself, by the resolver registered for them with {@link
+ *       #registerResolver}, such as embedded OpenSharing's SHARE
  * </ul>
  *
  * <h2>Input Formats</h2>
@@ -125,6 +129,7 @@ public class KeyMapper {
   private final MetastoreRepository metastoreRepository;
   private final ExternalLocationRepository externalLocationRepository;
   private final CredentialRepository credentialRepository;
+  private final Map<SecurableType, Function<String, UUID>> resolvers = new ConcurrentHashMap<>();
 
   public KeyMapper(Repositories repositories) {
     this.externalLocationUtils = repositories.getExternalLocationUtils();
@@ -137,6 +142,14 @@ public class KeyMapper {
     this.metastoreRepository = repositories.getMetastoreRepository();
     this.externalLocationRepository = repositories.getExternalLocationRepository();
     this.credentialRepository = repositories.getCredentialRepository();
+  }
+
+  /**
+   * Resolves keys of {@code type}, a type UC does not store itself, with {@code resolver}, which
+   * takes the key's name and throws when nothing has it. Register before the server serves.
+   */
+  public void registerResolver(SecurableType type, Function<String, UUID> resolver) {
+    resolvers.put(type, resolver);
   }
 
   public Map<SecurableType, UUID> mapResourceKeys(Map<SecurableType, Object> resourceKeys) {
@@ -347,6 +360,13 @@ public class KeyMapper {
         resourceIds.put(CREDENTIAL, UUID.fromString(credentialId));
       }
     }
+
+    resolvers.forEach(
+        (type, resolver) -> {
+          if (resourceKeys.containsKey(type)) {
+            resourceIds.put(type, resolver.apply((String) resourceKeys.get(type)));
+          }
+        });
 
     return resourceIds;
   }

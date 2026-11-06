@@ -7,6 +7,7 @@ import static io.unitycatalog.server.model.SecurableType.FUNCTION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+import static io.unitycatalog.server.model.SecurableType.SHARE;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -160,6 +161,9 @@ public class OpaInputBuilderTest {
     assertInput(TABLE, staging, parents);
     assertInput(CREDENTIAL, credential, List.of());
     assertInput(EXTERNAL_LOCATION, location, List.of());
+    UUID share = UUID.randomUUID();
+    assertInput(
+        SHARE, share, Map.of("id", share.toString(), "type", "SHARE", "parents", List.of()));
   }
 
   @Test
@@ -214,7 +218,10 @@ public class OpaInputBuilderTest {
     UUID missingId = UUID.randomUUID();
     assertNotFound(missingId, CATALOG, catalog.getId(), missingId);
     for (SecurableType type : SecurableType.values()) {
-      assertNotFound(user.getId(), type, missingId, missingId);
+      // Embedded OpenSharing stores shares, and resolved them before UC asks.
+      if (type != SHARE) {
+        assertNotFound(user.getId(), type, missingId, missingId);
+      }
     }
 
     SchemaInfoDAO orphanSchema =

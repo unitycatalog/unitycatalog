@@ -21,6 +21,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.base.BaseServerTest;
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.logging.RequestContextDataProvider;
 import io.unitycatalog.server.observability.MetricsRegistries;
@@ -57,6 +58,22 @@ public class UnityCatalogServerTest extends BaseServerTest {
           .hasCauseInstanceOf(ServerPortBindException.class);
       assertThatCode(server::close).doesNotThrowAnyException();
     }
+  }
+
+  @Test
+  public void startFailsWhenOpenSharingIsEnabledButNotOnTheClasspath() {
+    Properties withOpenSharing = new Properties();
+    withOpenSharing.putAll(serverProperties);
+    withOpenSharing.setProperty(ServerProperties.Property.OPENSHARING_ENABLED.getKey(), "true");
+    assertThatThrownBy(
+            () ->
+                UnityCatalogServer.builder()
+                    .serverProperties(new ServerProperties(withOpenSharing))
+                    .hibernateConfigurator(hibernateConfigurator)
+                    .build())
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("server-sharing, which embeds OpenSharing, is not on the classpath")
+        .hasCauseInstanceOf(ClassNotFoundException.class);
   }
 
   @Test

@@ -586,6 +586,16 @@ lazy val openSharingDependencySettings = Seq(
   ),
 )
 
+// Runs the server with embedded OpenSharing on its classpath, without a circular sbt graph.
+lazy val serverEmbedded = (project in file("server-embedded"))
+  .dependsOn(server, serverSharing, serverModels, controlModels)
+  .settings(
+    name := s"$artifactNamePrefix-server-embedded",
+    openSharingDependencySettings,
+    publish / skip := true,
+    Compile / run / mainClass := (server / Compile / run / mainClass).value,
+  )
+
 lazy val serverModels = (project in file("server") / "target" / "models")
   .disablePlugins(JavaFormatterPlugin, CheckstylePlugin)
   .settings(

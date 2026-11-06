@@ -25,7 +25,9 @@ public class PermissionServiceGrantValidationTest {
               Set.of(
                   Privilege.CREATE_CATALOG,
                   Privilege.CREATE_STORAGE_CREDENTIAL,
-                  Privilege.CREATE_EXTERNAL_LOCATION);
+                  Privilege.CREATE_EXTERNAL_LOCATION,
+                  Privilege.CREATE_SHARE,
+                  Privilege.USE_SHARE);
           case CATALOG ->
               Set.of(
                   Privilege.BROWSE,
@@ -78,12 +80,16 @@ public class PermissionServiceGrantValidationTest {
                   Privilege.READ_FILES,
                   Privilege.WRITE_FILES,
                   Privilege.CREATE_EXTERNAL_TABLE);
+          case SHARE -> Set.of();
         };
+    // UC grants nothing on embedded OpenSharing's shares, READ METADATA included.
+    boolean takesReadMetadata = type != SecurableType.SHARE;
 
     for (Privilege privilege : Privilege.values()) {
       List<PermissionsChange> changes =
           List.of(new PermissionsChange().principal("reader").add(List.of(privilege)));
-      if (privilege == Privilege.READ_METADATA || validPrivileges.contains(privilege)) {
+      if ((takesReadMetadata && privilege == Privilege.READ_METADATA)
+          || validPrivileges.contains(privilege)) {
         assertThatCode(() -> PermissionService.validateAddedPrivileges(type, changes))
             .doesNotThrowAnyException();
       } else {
