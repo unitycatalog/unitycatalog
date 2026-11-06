@@ -97,7 +97,8 @@ hibernate.connection.password=${DB_PASSWORD}
 {{- end -}}
 
 hibernate.connection.driver_class=com.mysql.cj.jdbc.Driver
-hibernate.connection.url=jdbc:mysql://{{ .Values.server.db.mysqlConfig.host }}:{{ .Values.server.db.mysqlConfig.port }}/{{ .Values.server.db.mysqlConfig.dbName }}{{ $urlParams }}
+{{- /* Connector/J form-decodes the whole URL, the database name too, so urlquery is the right escape for it. */}}
+hibernate.connection.url=jdbc:mysql://{{ required "server.db.mysqlConfig.host is required" .Values.server.db.mysqlConfig.host }}:{{ .Values.server.db.mysqlConfig.port }}/{{ urlquery .Values.server.db.mysqlConfig.dbName }}{{ $urlParams }}
 hibernate.connection.user={{ .Values.server.db.mysqlConfig.username }}
 {{- if .Values.server.db.mysqlConfig.passwordSecretName }}
 hibernate.connection.password=${DB_PASSWORD}
