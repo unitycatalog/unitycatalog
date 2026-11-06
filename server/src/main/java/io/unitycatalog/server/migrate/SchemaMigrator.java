@@ -302,13 +302,39 @@ public final class SchemaMigrator implements AutoCloseable {
       return;
     }
     try (Connection connection = dataSource.getConnection()) {
-      if (connection.getSchema() == null) {
+      String schema = connection.getSchema();
+      if (schema == null) {
         throw new IllegalStateException(
             "The connection has no current schema: set currentSchema in the JDBC URL to an"
                 + " existing schema.");
       }
+      // Unqualified names resolve through the whole search_path, so tables that a step creates in
+      // the current schema would hide Unity Catalog tables in a later schema.
+      String later = laterSchemaWithUcTables(connection);
+      if (later != null) {
+        throw new IllegalStateException(
+            "Unity Catalog tables are in schema "
+                + later
+                + ", which the search_path reaches after the current schema "
+                + schema
+                + ", so tables that the steps create there would hide them: set currentSchema in"
+                + " the JDBC URL to the schema that holds the Unity Catalog tables to use.");
+      }
     } catch (SQLException e) {
       throw new IllegalStateException("Could not connect to the database: " + e.getMessage(), e);
+    }
+  }
+
+  /** A schema on the search_path, other than the current one, that has {@code uc_*} tables. */
+  private static String laterSchemaWithUcTables(Connection connection) throws SQLException {
+    try (Statement statement = connection.createStatement();
+        ResultSet rs =
+            statement.executeQuery(
+                "SELECT n.nspname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
+                    + " WHERE c.relkind IN ('r', 'p') AND c.relname LIKE 'uc\\_%'"
+                    + " AND n.nspname = ANY (current_schemas(false))"
+                    + " AND n.nspname <> current_schema() ORDER BY n.nspname LIMIT 1")) {
+      return rs.next() ? rs.getString(1) : null;
     }
   }
 
@@ -632,7 +658,9 @@ public final class SchemaMigrator implements AutoCloseable {
             + other
             + ", so it could not be created on "
             + table
-            + ": rename that index or give Unity Catalog its own schema";
+            + ": restore the backup (on a new install, drop the uc_* tables and uc_schema_history),"
+            + " then rename that index or give Unity Catalog its own schema, and run the command"
+            + " again";
       }
     }
     return null;
