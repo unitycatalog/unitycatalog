@@ -2713,6 +2713,11 @@ components:
         - CREATE EXTERNAL VOLUME
         - CREATE MANAGED STORAGE
         - CREATE STORAGE CREDENTIAL
+        - BROWSE
+        - MANAGE
+        - WRITE VOLUME
+        - CREATE MODEL VERSION
+        - READ METADATA
       # NOTE: When adding a new enum, always add a new enum to the end of enum list, and
       #  corresponding description at the end of the description list. Both list must have the same
       #  order.
@@ -2736,6 +2741,11 @@ components:
         - 'CREATE EXTERNAL VOLUME: Enables creating external volumes through external locations.'
         - 'CREATE MANAGED STORAGE: Allows designating managed storage locations at catalog or schema levels.'
         - 'CREATE STORAGE CREDENTIAL: Required privilege on the metastore to create storage credentials.'
+        - 'BROWSE: Allows discovery of metadata for a catalog and its descendants, or an external location, without usage grants. Does not permit data access.'
+        - 'MANAGE: Allows metadata and grant inspection, grant changes, supported metadata changes and deletion, and ownership transfer. Does not grant data access, execution, or object creation.'
+        - 'WRITE VOLUME: Permits creating, changing, and deleting files in volumes; also requires READ VOLUME and parent usage privileges.'
+        - 'CREATE MODEL VERSION: Allows publishing versions of registered models with USE CATALOG and USE SCHEMA.'
+        - 'READ METADATA: Permits reading full metadata and grants without data access or permission changes.'
     UpdatePermissions:
       type: object
       properties:
