@@ -266,10 +266,10 @@ public final class SchemaMigrator implements AutoCloseable {
         .orElse(null);
   }
 
-  /** H2 reads a setting as false only for 0, f, n, no and false (any case). */
+  /** H2 reads a setting as true only for 1, t, y, yes and true (any case); others are off. */
   private static boolean isOn(String value) {
     return value != null
-        && !Set.of("0", "f", "n", "no", "false").contains(value.trim().toLowerCase(Locale.ROOT));
+        && Set.of("1", "t", "y", "yes", "true").contains(value.trim().toLowerCase(Locale.ROOT));
   }
 
   /** Applies this release's steps to {@code dataSource}; closing it stays with the caller. */
