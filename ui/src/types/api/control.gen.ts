@@ -437,20 +437,6 @@ export interface operations {
           'application/scim+json': components['schemas']['UserResource'];
         };
       };
-      /** @description Not Found. The user does not exist. */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Service Unavailable. The user is being modified concurrently; retry the request. */
-      503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
     };
   };
   deleteUser: {
@@ -473,20 +459,6 @@ export interface operations {
         content: {
           'application/scim+json': unknown;
         };
-      };
-      /** @description Not Found. The user does not exist. */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Service Unavailable. The user is being modified concurrently; retry the request. */
-      503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
       };
     };
   };
