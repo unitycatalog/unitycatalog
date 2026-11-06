@@ -157,10 +157,6 @@ paths:
           content:
             application/json:
               schema: {}
-        '404':
-          description: Not Found. The catalog does not exist.
-        '503':
-          description: Service Unavailable. The catalog or an object in it is being modified concurrently; retry the request.
   /schemas:
     post:
       tags:
@@ -283,10 +279,6 @@ paths:
           content:
             application/json:
               schema: {}
-        '404':
-          description: Not Found. The schema does not exist.
-        '503':
-          description: Service Unavailable. The schema or an object in it is being modified concurrently; retry the request.
   /staging-tables:
     post:
       operationId: createStagingTable
