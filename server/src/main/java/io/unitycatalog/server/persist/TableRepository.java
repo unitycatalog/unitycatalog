@@ -1257,8 +1257,8 @@ public class TableRepository {
       throw tableNotFound(tableName);
     }
     Map<String, Object> key = Map.of("name", tableName);
-    // A commit rewrites the table's columns under this lock; waiting for it keeps the cascade below
-    // from deleting column rows the commit is replacing.
+    // A commit rewrites the table's columns under this lock; waiting for it lets the column delete
+    // below see the rows the commit wrote.
     TableInfoDAO tableInfoDAO =
         RepositoryUtils.lockByKey(
             session,
