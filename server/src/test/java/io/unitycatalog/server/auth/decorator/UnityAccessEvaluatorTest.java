@@ -120,6 +120,30 @@ class UnityAccessEvaluatorTest {
   }
 
   @ParameterizedTest
+  @EnumSource(
+      value = SecurableType.class,
+      names = {"SHARE", "RECIPIENT"})
+  void listFilteringTakesSharingItemsById(SecurableType type) throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    UUID principal = UUID.randomUUID();
+    UUID owned = UUID.randomUUID();
+    UUID other = UUID.randomUUID();
+    when(authorizer.authorize(principal, type, owned, Privileges.OWNER)).thenReturn(true);
+    List<String> items = new ArrayList<>(List.of(owned.toString(), other.toString()));
+
+    new ResultFilter(
+            new UnityAccessEvaluator(authorizer, true),
+            principal,
+            "#authorize(#principal, #" + type.name().toLowerCase() + ", OWNER)",
+            Map.of(),
+            Map.of(),
+            mock(KeyMapper.class))
+        .filter(type, items);
+
+    assertThat(items).containsExactly(owned.toString());
+  }
+
+  @ParameterizedTest
   @MethodSource("credentialAccessCombinations")
   void tableCredentialsRequireUsageAndDataAccess(
       boolean catalogUsage, boolean schemaUsage, boolean tableRead, boolean tableWrite)

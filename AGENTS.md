@@ -99,7 +99,7 @@ sbt projects: `server`, `serverShaded`, `client`, `pythonClient`, `controlApi`, 
 
 ### Securable hierarchy
 
-The object hierarchy is: **metastore** (the singleton root) contains **catalogs**; each catalog contains **schemas**; each schema contains **tables**, **volumes**, **functions**, and **registered models** (with **model versions**). **External locations** and **credentials** are metastore-level securables. `SecurableType` enumerates them: `METASTORE, CATALOG, SCHEMA, TABLE, VOLUME, FUNCTION, REGISTERED_MODEL, EXTERNAL_LOCATION, CREDENTIAL`.
+The object hierarchy is: **metastore** (the singleton root) contains **catalogs**; each catalog contains **schemas**; each schema contains **tables**, **volumes**, **functions**, and **registered models** (with **model versions**). **External locations** and **credentials** are metastore-level securables. `SecurableType` enumerates them: `METASTORE, CATALOG, SCHEMA, TABLE, VOLUME, FUNCTION, REGISTERED_MODEL, EXTERNAL_LOCATION, CREDENTIAL`, plus `SHARE` and `RECIPIENT`, which embedded OpenSharing stores and resolves itself; UC records their owners but grants nothing on them.
 
 ### Privileges
 

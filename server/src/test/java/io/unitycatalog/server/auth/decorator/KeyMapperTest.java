@@ -167,4 +167,31 @@ public class KeyMapperTest {
     assertThat(ids).containsEntry(SecurableType.SCHEMA, schemaAId);
     assertThat(ids).containsEntry(SecurableType.EXTERNAL_LOCATION, externalLocationId);
   }
+
+  @Test
+  void registeredResolverResolvesKeysOfItsType() {
+    UUID shareId = UUID.randomUUID();
+    KeyMapper keyMapper = repositories.getKeyMapper();
+    keyMapper.registerResolver(
+        SecurableType.SHARE,
+        name -> {
+          if (!name.equals("sales")) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "Share not found: " + name);
+          }
+          return shareId;
+        });
+
+    Map<SecurableType, Object> keys = new HashMap<>();
+    keys.put(SecurableType.CATALOG, "cat");
+    keys.put(SecurableType.SHARE, "sales");
+    assertThat(keyMapper.mapResourceKeys(keys))
+        .containsEntry(SecurableType.CATALOG, catalogId)
+        .containsEntry(SecurableType.SHARE, shareId);
+
+    keys.put(SecurableType.SHARE, "missing");
+    assertThatThrownBy(() -> keyMapper.mapResourceKeys(keys))
+        .isInstanceOf(BaseException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.NOT_FOUND);
+  }
 }
