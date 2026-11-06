@@ -136,10 +136,10 @@ passes `UC_HIBERNATE_CONNECTION_PASSWORD` if `server.db.postgresqlConfig.passwor
   variables, so S3 and ADLS lose their secrets, and the server can't log in to a PostgreSQL database that needs a
   password (`server.db.postgresqlConfig.passwordSecretName` set).
 - Helm: the rendered `server.properties` no longer holds `server.client-secret`, `s3.secretKey.<n>` or
-  `adls.clientSecret.<n>`. The init container has `OAUTH_CLIENT_SECRET`, `S3_SECRET_KEY_<n>` and
-  `ADLS_CLIENT_SECRET_<n>` only when `server.config.override` or `extraProperties` is set, so a template that uses
-  them keeps working; that is deprecated. A container added through `extraInitContainers` or `extraContainers` that
-  needs these secrets must read them from the Kubernetes Secret itself.
+  `adls.clientSecret.<n>`. The init container has `S3_SECRET_KEY_<n>`, `ADLS_CLIENT_SECRET_<n>` and, with
+  `auth.enabled`, `OAUTH_CLIENT_SECRET` only when `server.config.override` or `extraProperties` is set, so a
+  template that uses them keeps working; that is deprecated. A container added through `extraInitContainers` or
+  `extraContainers` that needs these secrets must read them from the Kubernetes Secret itself.
 - Helm: the rendered `hibernate.properties` no longer holds the password, and the init container no longer has
   `DB_PASSWORD`. A container added through `extraInitContainers` or `extraContainers` that needs the password must
   read it from the Secret named by `server.db.postgresqlConfig.passwordSecretName`. In a `server.db.overrideConfig`
