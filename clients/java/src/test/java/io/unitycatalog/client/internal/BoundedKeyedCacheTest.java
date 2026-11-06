@@ -1,7 +1,7 @@
-package io.unitycatalog.hadoop.internal.util;
+package io.unitycatalog.client.internal;
 
-import static io.unitycatalog.hadoop.internal.util.BoundedKeyedCache.alwaysFresh;
-import static io.unitycatalog.hadoop.internal.util.BoundedKeyedCache.noOpListener;
+import static io.unitycatalog.client.internal.BoundedKeyedCache.alwaysFresh;
+import static io.unitycatalog.client.internal.BoundedKeyedCache.noOpListener;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.fail;

@@ -58,7 +58,7 @@ spec:
               protocol: TCP
 
           {{- if .Values.ui.deployment.enableLivenessProbe }}
-          {{- if .Values.ui.deployment.livenessProbe }}
+          {{- with .Values.ui.deployment.livenessProbe }}
           livenessProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           livenessProbe:
@@ -71,7 +71,7 @@ spec:
           {{- end }}
 
           {{- if .Values.ui.deployment.enableReadinessProbe }}
-          {{- if .Values.ui.deployment.readinessProbe }}
+          {{- with .Values.ui.deployment.readinessProbe }}
           readinessProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           readinessProbe:
@@ -84,7 +84,7 @@ spec:
           {{- end }}
 
           {{- if .Values.ui.deployment.enableStartupProbe }}
-          {{- if .Values.ui.deployment.startupProbe }}
+          {{- with .Values.ui.deployment.startupProbe }}
           startupProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           startupProbe:

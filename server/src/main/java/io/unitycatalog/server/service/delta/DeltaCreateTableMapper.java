@@ -8,6 +8,7 @@ import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -55,6 +56,13 @@ public final class DeltaCreateTableMapper {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Table location is required.");
     }
     ColumnUtils.validateStructType(req.getColumns(), "columns");
+    // A column-mapped table starts with the identities set-columns requires on every update.
+    DeltaUpdateTableMapper.validateColumnMappingIdentities(
+        req.getColumns().getFields(),
+        DeltaUpdateTableMapper.ColumnMappingMode.parse(
+            req.getProperties() == null
+                ? null
+                : req.getProperties().get(TableProperties.COLUMN_MAPPING_MODE)));
 
     TableType tableType = toUCTableType(req.getTableType());
     if (req.getProtocol() == null) {

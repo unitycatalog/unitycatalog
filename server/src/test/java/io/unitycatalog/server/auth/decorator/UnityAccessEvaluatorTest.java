@@ -5,6 +5,7 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.persist.model.Privileges.MODIFY;
+import static io.unitycatalog.server.persist.model.Privileges.READ_METADATA;
 import static io.unitycatalog.server.persist.model.Privileges.SELECT;
 import static io.unitycatalog.server.persist.model.Privileges.USE_CATALOG;
 import static io.unitycatalog.server.persist.model.Privileges.USE_SCHEMA;
@@ -39,6 +40,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.stubbing.Answer;
 
 class UnityAccessEvaluatorTest {
 
@@ -201,7 +203,7 @@ class UnityAccessEvaluatorTest {
   }
 
   @Test
-  void getTableRequiresSelectOrAnOwnerRule() throws Exception {
+  void getTableRequiresReadAccessOrAnOwnerRule() throws Exception {
     assertGetTable(null, Set.of(), false, false);
     assertGetTable(null, Set.of(USE_CATALOG, USE_SCHEMA), false, false);
     // MODIFY without SELECT passes only with strict checks off.
@@ -219,10 +221,31 @@ class UnityAccessEvaluatorTest {
     assertGetTable(TABLE, Set.of(USE_SCHEMA), false, false);
     assertGetTable(TABLE, Set.of(USE_CATALOG), false, false);
     assertGetTable(TABLE, Set.of(USE_CATALOG, USE_SCHEMA), true, true);
+
+    for (SecurableType scope : List.of(METASTORE, CATALOG)) {
+      assertGetTable(null, scope, Set.of(), true, true);
+    }
+    assertGetTable(null, SCHEMA, Set.of(), false, false);
+    assertGetTable(null, SCHEMA, Set.of(USE_SCHEMA), false, false);
+    assertGetTable(null, SCHEMA, Set.of(USE_CATALOG), true, true);
+    assertGetTable(null, TABLE, Set.of(), false, false);
+    assertGetTable(null, TABLE, Set.of(USE_SCHEMA), false, false);
+    assertGetTable(null, TABLE, Set.of(USE_CATALOG), false, false);
+    assertGetTable(null, TABLE, Set.of(USE_CATALOG, USE_SCHEMA), true, true);
   }
 
   private void assertGetTable(
       SecurableType ownedResource,
+      Set<Privileges> grants,
+      boolean expectedStrict,
+      boolean expectedLegacy)
+      throws Exception {
+    assertGetTable(ownedResource, null, grants, expectedStrict, expectedLegacy);
+  }
+
+  private void assertGetTable(
+      SecurableType ownedResource,
+      SecurableType metadataResource,
       Set<Privileges> grants,
       boolean expectedStrict,
       boolean expectedLegacy)
@@ -234,49 +257,58 @@ class UnityAccessEvaluatorTest {
             SecurableType.CATALOG, UUID.randomUUID(),
             SecurableType.SCHEMA, UUID.randomUUID(),
             SecurableType.TABLE, UUID.randomUUID());
+    Map<UUID, Set<Privileges>> assignments = new HashMap<>();
+    for (UUID resource : resources.values()) {
+      assignments.put(resource, EnumSet.noneOf(Privileges.class));
+    }
+    for (Privileges grant : grants) {
+      SecurableType type =
+          switch (grant) {
+            case USE_CATALOG -> CATALOG;
+            case USE_SCHEMA -> SCHEMA;
+            default -> TABLE;
+          };
+      assignments.get(resources.get(type)).add(grant);
+    }
+    if (ownedResource != null) {
+      assignments.get(resources.get(ownedResource)).add(Privileges.OWNER);
+    }
+    if (metadataResource != null) {
+      assignments.get(resources.get(metadataResource)).add(READ_METADATA);
+    }
+
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
     when(authorizer.authorize(
-            eq(principal), any(SecurableType.class), any(UUID.class), eq(Privileges.OWNER)))
+            eq(principal), any(SecurableType.class), any(UUID.class), any(Privileges.class)))
         .thenAnswer(
             invocation ->
-                ownedResource != null
-                    && invocation.getArgument(2).equals(resources.get(ownedResource)));
-    when(authorizer.authorize(
-            principal, CATALOG, resources.get(SecurableType.CATALOG), Privileges.USE_CATALOG))
-        .thenReturn(grants.contains(USE_CATALOG));
-    when(authorizer.authorize(
-            principal, SCHEMA, resources.get(SecurableType.SCHEMA), Privileges.USE_SCHEMA))
-        .thenReturn(grants.contains(USE_SCHEMA));
-    when(authorizer.authorize(
-            principal, TABLE, resources.get(SecurableType.TABLE), Privileges.MODIFY))
-        .thenReturn(grants.contains(MODIFY));
-
-    Set<Privileges> tableGrants = EnumSet.noneOf(Privileges.class);
-    if (ownedResource == SecurableType.TABLE) {
-      tableGrants.add(Privileges.OWNER);
-    }
-    if (grants.contains(SELECT)) {
-      tableGrants.add(Privileges.SELECT);
-    }
-    if (grants.contains(MODIFY)) {
-      tableGrants.add(Privileges.MODIFY);
-    }
+                assignments.get(invocation.getArgument(2)).contains(invocation.getArgument(3)));
     when(authorizer.authorizeAny(
-            eq(principal),
-            eq(TABLE),
-            eq(resources.get(SecurableType.TABLE)),
-            any(Privileges[].class)))
+            eq(principal), any(SecurableType.class), any(UUID.class), any(Privileges[].class)))
         .thenAnswer(
             invocation ->
                 Arrays.stream((Privileges[]) invocation.getRawArguments()[3])
-                    .anyMatch(tableGrants::contains));
+                    .anyMatch(assignments.get(invocation.getArgument(2))::contains));
 
     for (boolean strictPrivilegeChecks : new boolean[] {true, false}) {
-      assertThat(
-              new UnityAccessEvaluator(authorizer, strictPrivilegeChecks)
-                  .evaluate(principal, AuthorizeExpressions.GET_TABLE, resources, Map.of()))
-          .as("owner=%s, grants=%s, strict=%s", ownedResource, grants, strictPrivilegeChecks)
+      UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer, strictPrivilegeChecks);
+      assertThat(evaluator.evaluate(principal, AuthorizeExpressions.GET_TABLE, resources, Map.of()))
+          .as(
+              "owner=%s, metadata=%s, grants=%s, strict=%s",
+              ownedResource, metadataResource, grants, strictPrivilegeChecks)
           .isEqualTo(strictPrivilegeChecks ? expectedStrict : expectedLegacy);
+      if (metadataResource != null) {
+        assertThat(
+                evaluator.evaluate(
+                    principal,
+                    AuthorizeExpressions.VEND_ICEBERG_TABLE_CREDENTIAL,
+                    resources,
+                    Map.of()))
+            .as(
+                "metadata=%s, grants=%s, strict=%s",
+                metadataResource, grants, strictPrivilegeChecks)
+            .isFalse();
+      }
     }
   }
 
@@ -356,5 +388,84 @@ class UnityAccessEvaluatorTest {
                   Map.of("strict_privilege_checks", !strictPrivilegeChecks)))
           .isEqualTo(strictPrivilegeChecks);
     }
+  }
+
+  @Test
+  void batchChecksSharedParentsOncePerList() throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    UUID principal = UUID.randomUUID();
+    UUID metastore = UUID.randomUUID();
+    UUID catalog = UUID.randomUUID();
+    UUID schema = UUID.randomUUID();
+    when(authorizer.authorize(principal, CATALOG, catalog, USE_CATALOG)).thenReturn(true);
+    when(authorizer.authorize(principal, SCHEMA, schema, USE_SCHEMA)).thenReturn(true);
+    when(authorizer.authorizeAny(
+            eq(principal), eq(TABLE), any(UUID.class), any(Privileges[].class)))
+        .thenReturn(true);
+
+    UnityAccessEvaluator.Batch batch =
+        new UnityAccessEvaluator(authorizer, true)
+            .batch(principal, AuthorizeExpressions.GET_TABLE, Map.of(), System.nanoTime());
+    int tables = 100;
+    for (int i = 0; i < tables; i++) {
+      assertThat(
+              batch.evaluate(
+                  Map.of(
+                      METASTORE, metastore,
+                      CATALOG, catalog,
+                      SCHEMA, schema,
+                      TABLE, UUID.randomUUID())))
+          .isTrue();
+    }
+
+    // The shared parent checks run once for the list; only the table's own check runs per item.
+    verify(authorizer, times(1))
+        .authorizeAny(principal, METASTORE, metastore, Privileges.OWNER, Privileges.READ_METADATA);
+    verify(authorizer, times(1))
+        .authorizeAny(principal, CATALOG, catalog, Privileges.OWNER, Privileges.READ_METADATA);
+    verify(authorizer, times(1)).authorize(principal, CATALOG, catalog, USE_CATALOG);
+    verify(authorizer, times(1))
+        .authorizeAny(principal, SCHEMA, schema, Privileges.OWNER, Privileges.READ_METADATA);
+    verify(authorizer, times(1)).authorize(principal, SCHEMA, schema, USE_SCHEMA);
+    verify(authorizer, times(tables))
+        .authorizeAny(eq(principal), eq(TABLE), any(UUID.class), any(Privileges[].class));
+    verify(authorizer, never()).refreshAuthorizations(anyLong());
+  }
+
+  static Stream<Arguments> refreshOutcomes() {
+    Answer<Boolean> fails =
+        invocation -> {
+          throw new RuntimeException("reload failed");
+        };
+    return Stream.of(
+        Arguments.of("returns true", (Answer<Boolean>) invocation -> true, 2),
+        Arguments.of("returns false", (Answer<Boolean>) invocation -> false, 1),
+        Arguments.of("throws", fails, 1));
+  }
+
+  @ParameterizedTest(name = "refresh {0}")
+  @MethodSource("refreshOutcomes")
+  void batchRefreshesAtMostOncePerList(
+      String outcome, Answer<Boolean> refresh, int firstTableChecks) throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    when(authorizer.refreshAuthorizations(anyLong())).thenAnswer(refresh);
+    UUID principal = UUID.randomUUID();
+    UUID catalog = UUID.randomUUID();
+
+    UnityAccessEvaluator.Batch batch =
+        new UnityAccessEvaluator(authorizer, true)
+            .batch(principal, "#authorize(#principal, #table, OWNER)", Map.of(), System.nanoTime());
+    List<UUID> tables = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+    for (UUID table : tables) {
+      assertThat(batch.evaluate(Map.of(CATALOG, catalog, TABLE, table))).isFalse();
+    }
+
+    // The first deny uses up the one refresh, re-checking only if it succeeded. Whatever the
+    // outcome, later denies are final.
+    verify(authorizer, times(1)).refreshAuthorizations(anyLong());
+    verify(authorizer, times(firstTableChecks))
+        .authorize(principal, TABLE, tables.get(0), Privileges.OWNER);
+    verify(authorizer, times(1)).authorize(principal, TABLE, tables.get(1), Privileges.OWNER);
+    verify(authorizer, times(1)).authorize(principal, TABLE, tables.get(2), Privileges.OWNER);
   }
 }
