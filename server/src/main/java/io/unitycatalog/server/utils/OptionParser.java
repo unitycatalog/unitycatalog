@@ -35,7 +35,6 @@ public class OptionParser {
             .desc("Enable health and metrics on this port (1-65535). Disabled when omitted.")
             .type(Integer.class)
             .build());
-    // With it, the server does not start.
     options.addOption(
         Option.builder()
             .longOpt("upgrade-schema")
