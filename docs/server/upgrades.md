@@ -19,7 +19,7 @@ exit with 0 when they succeed, and with 1 and the reasons when they refuse (see
   file, so on H2 stop the server first.
 - `--upgrade-schema` brings the database to the schema version of its release. It sets up an empty
   database (a new install), adopts a database from the baseline release, and applies the steps that
-  are not applied yet. Run it only after you stop all servers. If it fails, fix the cause it names
+  are not applied yet. If it fails, fix the cause it names
   and run the same command again: it also retries a step that a crash left half done.
 
 ## The baseline release

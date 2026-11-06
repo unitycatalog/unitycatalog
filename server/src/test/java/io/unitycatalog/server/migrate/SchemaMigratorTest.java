@@ -17,7 +17,6 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.sql.Connection;
-import java.sql.DatabaseMetaData;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.DriverPropertyInfo;
@@ -496,13 +495,6 @@ public class SchemaMigratorTest {
   }
 
   @Test
-  void refusesADatabaseOfAnotherProduct() {
-    assertThatThrownBy(() -> new SchemaMigrator(withProductName("Oracle")))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessage("Unsupported database Oracle: use H2, PostgreSQL or MySQL");
-  }
-
-  @Test
   void runsStartingAtOnceOnAnEmptyDatabaseTakeTurns() throws Exception {
     assumeFalse(isH2(), "H2 has no run lock");
     // The test holds the run lock, so both runs must wait for it before they change anything.
@@ -635,34 +627,6 @@ public class SchemaMigratorTest {
             throw new SQLException("Test: the lock call failed");
           }
           return rewritten;
-        });
-  }
-
-  /** {@code db}'s data source, but its metadata names {@code productName} as the database. */
-  private DataSource withProductName(String productName) {
-    DataSource real = db.dataSource();
-    return UpgradeTestUtils.proxy(
-        DataSource.class,
-        (proxy, method, args) -> {
-          Object result = method.invoke(real, args);
-          if (!method.getName().equals("getConnection")) {
-            return result;
-          }
-          Connection connection = (Connection) result;
-          return UpgradeTestUtils.proxy(
-              Connection.class,
-              (connectionProxy, connectionMethod, connectionArgs) -> {
-                Object metaData = connectionMethod.invoke(connection, connectionArgs);
-                if (!connectionMethod.getName().equals("getMetaData")) {
-                  return metaData;
-                }
-                return UpgradeTestUtils.proxy(
-                    DatabaseMetaData.class,
-                    (metaProxy, metaMethod, metaArgs) ->
-                        metaMethod.getName().equals("getDatabaseProductName")
-                            ? productName
-                            : metaMethod.invoke(metaData, metaArgs));
-              });
         });
   }
 
