@@ -446,6 +446,28 @@ public class SchemaMigratorTest {
     assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()))
         .hasMessageContaining("Unity Catalog tables are in schema public")
         .hasMessageContaining("set currentSchema in the JDBC URL");
+    // A schema history alone, as a run that failed in its first step leaves, is no install.
+    UpgradeTestUtils.execute(
+        db,
+        "DO $$ BEGIN EXECUTE format('CREATE TABLE %I.uc_schema_history (id INT)', current_user);"
+            + " END $$");
+    assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()))
+        .hasMessageContaining("Unity Catalog tables are in schema public");
+  }
+
+  @Test
+  void upgradesTheCurrentSchemaWhenALaterSchemaHasAnOldCopy() {
+    assumeFalse(!db.jdbcUrl().startsWith("jdbc:postgresql:"), "only PostgreSQL");
+    // Unity Catalog is in the schema named after the user, first on the search_path; public keeps
+    // an old copy of one of its tables.
+    UpgradeTestUtils.execute(
+        db, "DO $$ BEGIN EXECUTE format('CREATE SCHEMA %I', current_user); END $$");
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    UpgradeTestUtils.execute(db, "CREATE TABLE public.uc_tables (id INT)");
+
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    assertThat(migrator.upgradeSchema()).isZero();
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
   }
 
   @Test
