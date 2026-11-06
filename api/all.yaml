@@ -1398,10 +1398,6 @@ paths:
       responses:
         '200':
           description: The external location was successfully deleted.
-        '404':
-          description: Not Found. The external location does not exist.
-        '503':
-          description: Service Unavailable. The external location is being modified concurrently; retry the request.
     patch:
       tags:
         - External Locations
@@ -1422,10 +1418,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExternalLocationInfo"
-        '404':
-          description: Not Found. The external location does not exist.
-        '503':
-          description: Service Unavailable. The external location is being modified concurrently; retry the request.
   /delta/preview/commits:
     get:
       operationId: getCommits
