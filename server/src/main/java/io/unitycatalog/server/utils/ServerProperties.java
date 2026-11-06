@@ -41,6 +41,9 @@ public class ServerProperties {
   // their own use, such as AWS_REGION, from changing settings.
   private static final String ENV_PREFIX = "UC_";
 
+  /** The database password, which the server reads only from the environment. */
+  public static final String DB_PASSWORD_KEY = "hibernate.connection.password";
+
   // Secrets, which log a deprecation warning when they are read from server.properties. The server
   // never reads the database password from this file (it comes from the environment or
   // hibernate.properties), so there it is reported as ignored.
@@ -48,7 +51,8 @@ public class ServerProperties {
       Pattern.compile(
           "server\\.client-secret|aws\\.secretKey"
               + "|(s3\\.secretKey|s3\\.sessionToken|adls\\.clientSecret)\\.\\d+"
-              + "|hibernate\\.connection\\.password");
+              + "|"
+              + Pattern.quote(DB_PASSWORD_KEY));
 
   private final Properties properties = new Properties(generateDefaults());
   private final Map<String, String> env;
@@ -460,14 +464,17 @@ public class ServerProperties {
             name,
             propertiesFile,
             envName(name));
+      } else if (name.equals(DB_PASSWORD_KEY)) {
+        // Only the environment supplies the password; a system property does not.
+        if (getEnv(name) == null) {
+          LOGGER.warn(
+              "{} in {} is ignored; set the {} environment variable instead.",
+              name,
+              propertiesFile,
+              envName(name));
+        }
       } else if (getOverride(name) != null) {
         continue;
-      } else if (name.equals("hibernate.connection.password")) {
-        LOGGER.warn(
-            "{} in {} is ignored; set the {} environment variable instead.",
-            name,
-            propertiesFile,
-            envName(name));
       } else {
         LOGGER.warn(
             "{} is set in {}. Keeping secrets in this file is deprecated; set the {} environment"
@@ -643,7 +650,7 @@ public class ServerProperties {
    * The environment variable name for a key: {@code UC_}, then the key in upper case with {@code _}
    * for each character that is not a letter or digit.
    */
-  private static String envName(String key) {
+  public static String envName(String key) {
     return ENV_PREFIX + key.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_");
   }
 
