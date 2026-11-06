@@ -307,10 +307,8 @@ public final class SchemaMigrator implements AutoCloseable {
                 + later
                 + ", which the search_path reaches after the current schema "
                 + schema
-                + ": set currentSchema in the JDBC URL to the schema that holds them, for example"
-                + " currentSchema="
-                + later
-                + ".");
+                + ", so tables that the steps create there would hide them: set currentSchema in"
+                + " the JDBC URL to the schema that holds the Unity Catalog tables to use.");
       }
     } catch (SQLException e) {
       throw new IllegalStateException("Could not connect to the database: " + e.getMessage(), e);
@@ -570,7 +568,9 @@ public final class SchemaMigrator implements AutoCloseable {
             + other
             + ", so it could not be created on "
             + table
-            + ": rename that index or give Unity Catalog its own schema";
+            + ": restore the backup (on a new install, drop the uc_* tables and uc_schema_history),"
+            + " then rename that index or give Unity Catalog its own schema, and run the command"
+            + " again";
       }
     }
     return null;

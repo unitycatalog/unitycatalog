@@ -231,7 +231,7 @@ public class SchemaMigratorTest {
 
     assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()))
         .hasMessageContaining("Unity Catalog tables are in schema public")
-        .hasMessageContaining("currentSchema=public");
+        .hasMessageContaining("set currentSchema in the JDBC URL");
   }
 
   @Test
