@@ -312,7 +312,7 @@ public final class SchemaMigrator implements AutoCloseable {
                 + " existing schema.");
       }
       // Unqualified names resolve through the whole search_path, so tables that a step creates in
-      // the current schema would hide Unity Catalog tables in a later schema.
+      // a current schema without Unity Catalog tables would hide those in a later schema.
       String later = laterSchemaWithUcTables(connection);
       if (later != null) {
         throw new IllegalStateException(
@@ -328,15 +328,26 @@ public final class SchemaMigrator implements AutoCloseable {
     }
   }
 
-  /** A schema on the search_path, other than the current one, that has {@code uc_*} tables. */
+  /**
+   * When the current schema has no {@code uc_*} tables (its schema history alone does not count), a
+   * later schema on the search_path that has them; otherwise {@code null}.
+   */
   private static String laterSchemaWithUcTables(Connection connection) throws SQLException {
+    String ucTables =
+        "SELECT n.nspname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
+            + " WHERE c.relkind IN ('r', 'p') AND c.relname LIKE 'uc\\_%'";
     try (Statement statement = connection.createStatement();
         ResultSet rs =
             statement.executeQuery(
-                "SELECT n.nspname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
-                    + " WHERE c.relkind IN ('r', 'p') AND c.relname LIKE 'uc\\_%'"
+                ucTables
                     + " AND n.nspname = ANY (current_schemas(false))"
-                    + " AND n.nspname <> current_schema() ORDER BY n.nspname LIMIT 1")) {
+                    + " AND n.nspname <> current_schema()"
+                    + " AND NOT EXISTS ("
+                    + ucTables
+                    + " AND n.nspname = current_schema() AND c.relname <> '"
+                    + HISTORY_TABLE
+                    + "')"
+                    + " ORDER BY n.nspname LIMIT 1")) {
       return rs.next() ? rs.getString(1) : null;
     }
   }
@@ -630,17 +641,13 @@ public final class SchemaMigrator implements AutoCloseable {
   private static final Pattern MISSING_INDEX = Pattern.compile("^missing index (uc_\\w+)\\.(\\w+)");
 
   /**
-   * {@code null} when {@code table} has the index {@code index}. Otherwise, when a table that is
-   * not Unity Catalog's ({@code uc_*}) has an index of that name, the clash: "index idx on
-   * other_app, so ... could not create it on uc_x ...". {@code null} too when the index is missing
-   * for another reason.
+   * For the index {@code index} missing on {@code table}: when a table that is not Unity Catalog's
+   * ({@code uc_*}) has an index of that name, the clash: "index idx on other_app, so ... could not
+   * create it on uc_x ...". {@code null} when the index is missing for another reason.
    */
   private static String indexClashHint(Connection connection, String index, String table)
       throws SQLException {
     DatabaseMetaData metaData = connection.getMetaData();
-    if (indexNames(metaData, connection, table).contains(index.toLowerCase(Locale.ROOT))) {
-      return null;
-    }
     List<String> others = new ArrayList<>();
     try (ResultSet rs =
         metaData.getTables(
