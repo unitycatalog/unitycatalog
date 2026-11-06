@@ -10,7 +10,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import org.apache.hadoop.fs.Path;
 
-/** Converts locations at the Delta API boundary, where Delta clients exchange URIs. */
+/** Converts locations at the Delta API boundary. */
 public final class DeltaLocations {
 
   private DeltaLocations() {}
