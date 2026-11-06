@@ -608,8 +608,9 @@ public class ServerProperties {
         return null;
       }
     }
-    // Names only, so an operator can see which environment variables change settings.
-    if (keysFromEnv.add(key)) {
+    // Names only, so an operator can see which environment variables change settings. The server
+    // doesn't use the client secret, so it gets no line.
+    if (!key.equals(Property.CLIENT_SECRET.getKey()) && keysFromEnv.add(key)) {
       LOGGER.info("Using the {} environment variable for {}", name, key);
     }
     return value;
