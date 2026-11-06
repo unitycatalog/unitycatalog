@@ -47,6 +47,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.ParameterizedType;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * Wraps Armeria's {@link ServerBuilder} with Unity-Catalog-aware registration. Callers register
@@ -193,6 +194,17 @@ public class ArmeriaServerBuilder {
   /** Registers a UC Delta REST service (Delta mapper) under the base path. */
   ArmeriaServerBuilder annotate(String relativePath, DeltaApiService service) {
     register(ServiceProtocol.DELTA, relativePath, service);
+    return this;
+  }
+
+  /**
+   * Registers routes that authenticate their own callers, such as embedded OpenSharing's
+   * recipient-facing API, on the API port. They must lie outside the base and control paths, where
+   * the security decorators would reject their callers' credentials, and bring their own body
+   * converters and error rendering.
+   */
+  public ArmeriaServerBuilder selfAuthenticated(Consumer<VirtualHostBuilder> registration) {
+    registration.accept(apiVirtualHost);
     return this;
   }
 

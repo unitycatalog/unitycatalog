@@ -3,6 +3,7 @@ package io.unitycatalog.server.sharing;
 import static io.unitycatalog.server.model.SecurableType.RECIPIENT;
 import static io.unitycatalog.server.model.SecurableType.SHARE;
 
+import io.opensharing.protocol.OpenSharingRecipientApi;
 import io.opensharing.recipient.RecipientStore;
 import io.opensharing.runtime.OpenSharing;
 import io.opensharing.share.ShareStore;
@@ -19,12 +20,15 @@ import org.hibernate.SessionFactory;
 import org.hibernate.cfg.Configuration;
 
 /**
- * Builds embedded OpenSharing inside Unity Catalog OSS and mounts its provider API on UC's own
- * Armeria server, behind UC's security decorators.
+ * Builds embedded OpenSharing inside Unity Catalog OSS and mounts its routes on UC's own Armeria
+ * server: the provider API behind UC's security decorators, and the recipient-facing API, which
+ * authenticates recipients by their own tokens, outside them.
  */
 public final class OpenSharingLifecycle implements AutoCloseable {
 
-  /** The same path the standalone OpenSharing server activates recipients at. */
+  /** The same paths the standalone OpenSharing server uses, so recipients see one layout. */
+  private static final String PROTOCOL_PATH = "/api/1.0/opensharing";
+
   private static final String ACTIVATION_PATH = "/api/1.0/opensharing/activations";
 
   private final SessionFactory sessionFactory;
@@ -34,8 +38,8 @@ public final class OpenSharingLifecycle implements AutoCloseable {
   }
 
   /**
-   * Mounts OpenSharing's provider API at UC's base path + {@code opensharing/provider}. Recipient
-   * activation links point at {@value #ACTIVATION_PATH} on the public URL.
+   * Mounts OpenSharing's provider API at UC's base path + {@code opensharing/provider}, the sharing
+   * protocol at {@value #PROTOCOL_PATH}, and recipient activation at {@value #ACTIVATION_PATH}.
    *
    * <p>OpenSharing's tables, all prefixed {@code os_}, live in UC's database but are mapped by a
    * session factory of their own on UC's connection pool, because UC's session factory is already
@@ -85,6 +89,10 @@ public final class OpenSharingLifecycle implements AutoCloseable {
               authorizer,
               repositories,
               serverProperties));
+      server.selfAuthenticated(
+          host ->
+              OpenSharingRecipientApi.mount(
+                  host, recipientUrl, PROTOCOL_PATH, ACTIVATION_PATH, openSharing));
       return new OpenSharingLifecycle(sessionFactory);
     } catch (RuntimeException e) {
       sessionFactory.close();

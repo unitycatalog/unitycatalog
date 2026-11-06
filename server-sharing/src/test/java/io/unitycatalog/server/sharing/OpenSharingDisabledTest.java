@@ -15,6 +15,7 @@ public class OpenSharingDisabledTest extends BaseAuthCRUDTest {
 
   @Test
   public void servesNoSharingRoutes() {
+    assertThat(get("/api/1.0/opensharing/shares").status().code()).isEqualTo(404);
     // UC answers any path under its API prefix that no service serves the same way.
     AggregatedHttpResponse unrouted = get("/api/2.1/unity-catalog/no-such-service");
     assertThat(unrouted.status().isSuccess()).isFalse();

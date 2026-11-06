@@ -20,6 +20,7 @@ import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.IOException;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -30,12 +31,18 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** Embedded OpenSharing on a UC server with authorization on, driven over HTTP. */
+/**
+ * Embedded OpenSharing on a UC server with authorization on, driven over HTTP. Reading table data
+ * takes cloud storage, which OpenSharing vends credentials for, so these cover the API down to
+ * resolving the shared table.
+ */
 public class OpenSharingEmbeddedTest extends BaseAuthCRUDTest {
 
   private static final String PUBLIC_URL = "https://sharing.example.com";
   private static final String UC = "/api/2.1/unity-catalog";
   private static final String PROVIDER = UC + "/opensharing/provider";
+  private static final String PROTOCOL = "/api/1.0/opensharing";
+  private static final String CONTROL = "/api/1.0/unity-control";
   private static final String ALICE = "alice@example.com";
   private static final String ADD_ORDERS =
       "{\"updates\": [{\"action\": \"ADD\", \"dataObject\": {\"name\": \"main.sales.orders\","
@@ -232,6 +239,68 @@ public class OpenSharingEmbeddedTest extends BaseAuthCRUDTest {
         .containsExactly("acme", "globex");
   }
 
+  @Test
+  public void recipientSeesSharedTableWhileShareOwnerCanReadIt() {
+    JsonNode acme = aliceSharesOrdersWithAcme();
+
+    // Recipients are pointed at the public url, and activate once.
+    String activationUrl = acme.path("activationUrl").asText();
+    assertThat(activationUrl).startsWith(PUBLIC_URL + PROTOCOL + "/activations/");
+    String activation = URI.create(activationUrl).getPath();
+    JsonNode profile = expect(200, null, HttpMethod.GET, activation, null);
+    assertThat(profile.path("endpoint").asText()).isEqualTo(PUBLIC_URL + PROTOCOL);
+    expect(404, null, HttpMethod.GET, activation, null);
+    String token = profile.path("bearerToken").asText();
+
+    String tables = PROTOCOL + "/shares/sales/schemas/sales/tables";
+    assertThat(names(expect(200, token, HttpMethod.GET, PROTOCOL + "/shares", null)))
+        .containsExactly("sales");
+    assertThat(names(expect(200, token, HttpMethod.GET, tables, null))).containsExactly("orders");
+    assertThat(expect(200, token, HttpMethod.GET, tables + "/orders", null).path("format").asText())
+        .isEqualTo("delta");
+
+    // Recipient tokens are OpenSharing's: UC does not take them, and the protocol needs one.
+    expect(401, token, HttpMethod.GET, UC + "/catalogs", null);
+    JsonNode anonymous = expect(401, null, HttpMethod.GET, PROTOCOL + "/shares", null);
+    assertThat(anonymous.path("errorCode").asText()).isEqualTo("UNAUTHENTICATED");
+    expect(401, alice, HttpMethod.GET, PROTOCOL + "/shares", null);
+
+    // The table is resolved with the share owner's access, so a recipient loses it with them. To
+    // the recipient it is gone, as if dropped.
+    revoke("table", "main.sales.orders", "SELECT");
+    expect(404, token, HttpMethod.GET, tables + "/orders", null);
+  }
+
+  @Test
+  public void recipientLosesSharedTableOnceShareOwnerIsDeleted() {
+    JsonNode acme = aliceSharesOrdersWithAcme();
+    String activation = URI.create(acme.path("activationUrl").asText()).getPath();
+    String token = expect(200, null, HttpMethod.GET, activation, null).path("bearerToken").asText();
+    String orders = PROTOCOL + "/shares/sales/schemas/sales/tables/orders";
+    expect(200, token, HttpMethod.GET, orders, null);
+
+    // UC keeps a deleted user, disabled, and a disabled owner can't read the table either.
+    String aliceId =
+        expect(200, alice, HttpMethod.GET, CONTROL + "/scim2/Me", null).path("id").asText();
+    expect(200, admin, HttpMethod.DELETE, CONTROL + "/scim2/Users/" + aliceId, null);
+    expect(404, token, HttpMethod.GET, orders, null);
+  }
+
+  /** Alice, given the privileges to, shares main.sales.orders as sales.orders with acme. */
+  private JsonNode aliceSharesOrdersWithAcme() {
+    grant("metastore", "metastore", "CREATE SHARE");
+    grant("metastore", "metastore", "CREATE RECIPIENT");
+    grant("catalog", "main", "USE CATALOG");
+    grant("schema", "main.sales", "USE SCHEMA");
+    grant("table", "main.sales.orders", "SELECT");
+    expect(201, alice, HttpMethod.POST, PROVIDER + "/shares", share("sales"));
+    expect(200, alice, HttpMethod.PATCH, PROVIDER + "/shares/sales", ADD_ORDERS);
+    JsonNode acme =
+        expect(201, alice, HttpMethod.POST, PROVIDER + "/recipients", recipient("acme"));
+    expect(200, alice, HttpMethod.PATCH, PROVIDER + "/shares/sales/permissions", shareWith("acme"));
+    return acme;
+  }
+
   private static String share(String name) {
     return "{\"name\": \"" + name + "\"}";
   }
@@ -257,6 +326,10 @@ public class OpenSharingEmbeddedTest extends BaseAuthCRUDTest {
 
   private void grant(String securableType, String fullName, String privilege) {
     permissions(securableType, fullName, "add", privilege);
+  }
+
+  private void revoke(String securableType, String fullName, String privilege) {
+    permissions(securableType, fullName, "remove", privilege);
   }
 
   private void permissions(String securableType, String fullName, String change, String privilege) {
