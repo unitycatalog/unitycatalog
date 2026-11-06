@@ -175,6 +175,13 @@ Messages that `--check-schema` and `--upgrade-schema` print when they refuse, an
   `<reasons>` may advise Flyway's `repair` command, which Unity Catalog doesn't have. Run the release
   that applied the steps, or restore the backup. Do not edit `uc_schema_history` by hand.
 
+`Step <n> left Unity Catalog index <index> missing on <table>: <hint>`
+: On PostgreSQL and H2, index names are unique within a schema, so the step skipped Unity Catalog's
+  index because another table's index already has that name. The step is recorded as applied, so
+  renaming the other index and running the command again does not create Unity Catalog's index.
+  Restore the backup (on a new install, drop the `uc_*` tables and `uc_schema_history`), rename the
+  other index or give Unity Catalog its own schema, then run the command again.
+
 `Could not take the schema migration lock: <reason>`
 : The command could not get the lock that keeps two migration runs apart, so it changed nothing.
   Check that the database is reachable and that its user can run the lock call
