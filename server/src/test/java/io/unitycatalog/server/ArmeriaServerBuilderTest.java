@@ -3,8 +3,10 @@ package io.unitycatalog.server;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.util.BlockingTaskExecutor;
 import com.linecorp.armeria.server.Server;
+import com.linecorp.armeria.server.VirtualHost;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Properties;
 import org.junit.jupiter.api.AfterAll;
@@ -63,6 +65,24 @@ public class ArmeriaServerBuilderTest {
       assertThat(server.config().ports())
           .isNotEmpty()
           .allSatisfy(port -> assertThat(port.localAddress().getPort()).isEqualTo(8080));
+    }
+  }
+
+  @Test
+  public void selfAuthenticatedRoutesServeOnTheApiPortOnly() {
+    try (Server server =
+        newBuilder(8080)
+            .observabilityPort(8090)
+            .selfAuthenticated(
+                host -> host.service("/sharing/ping", (ctx, req) -> HttpResponse.of("pong")))
+            .build()) {
+      assertThat(server.config().virtualHosts())
+          .filteredOn(
+              host ->
+                  host.serviceConfigs().stream()
+                      .anyMatch(config -> config.route().patternString().equals("/sharing/ping")))
+          .extracting(VirtualHost::port)
+          .containsExactly(8080);
     }
   }
 
