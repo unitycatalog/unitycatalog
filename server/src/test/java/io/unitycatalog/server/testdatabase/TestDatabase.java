@@ -45,7 +45,8 @@ public final class TestDatabase implements AutoCloseable {
       config.setJdbcUrl(url);
       config.setUsername(user);
       config.setPassword(password);
-      // Two migration runs at once: one holds the run lock, the other waits for it.
+      // Room for the concurrent-run test: the test's lock, two waiting runs and one more
+      // connection.
       config.setMaximumPoolSize(4);
       dataSource = new HikariDataSource(config);
     }

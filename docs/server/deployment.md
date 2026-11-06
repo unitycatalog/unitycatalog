@@ -106,9 +106,9 @@ To deploy on Kubernetes, see [Deploy with Helm](helm.md).
   The server logs a warning at startup if any text column in the database uses a case-insensitive
   collation.
 
-  For an existing database, change the database's default and convert every table together, for
-  example `ALTER DATABASE <db> CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;` and then
-  `ALTER TABLE <table> CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;` for each table.
+  For an existing database, `ALTER DATABASE ... COLLATE` changes only the default for tables created
+  later. Convert each existing table instead, for example
+  `ALTER TABLE <table> CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;`.
 
 - Modify the `etc/conf/hibernate.properties` file with your MySQL connection details:
 
