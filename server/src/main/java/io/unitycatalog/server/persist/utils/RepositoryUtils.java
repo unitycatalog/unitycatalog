@@ -157,7 +157,11 @@ public class RepositoryUtils {
     session.detach(locked);
   }
 
-  /** Runs a locking read; a lock timeout or deadlock victim becomes {@code UNAVAILABLE}. */
+  /**
+   * Runs a locking read; a lock timeout or deadlock victim becomes {@code UNAVAILABLE} (503): the
+   * row was not changed, and the request can be retried. The Iceberg REST spec lists 503, not 409,
+   * for drop table, and the Iceberg client reads a 409 on drop as "already exists".
+   */
   private static <R> R unavailableOnLockFailure(String description, Supplier<R> lockingRead) {
     try {
       return lockingRead.get();
@@ -173,13 +177,18 @@ public class RepositoryUtils {
 
   private static void bindKey(CommonQueryContract query, UUID id, Map<String, Object> key) {
     query.setParameter("id", id);
-    key.forEach((attribute, value) -> query.setParameter(attribute, value));
+    key.forEach((attribute, value) -> query.setParameter("key_" + attribute, value));
   }
 
-  /** {@code id = :id and a = :a ...}: the row's id plus each key attribute. */
+  /**
+   * {@code id = :id and a = :key_a ...}: the row's id plus each key attribute. Key parameters are
+   * prefixed so a key attribute can never replace the {@code :id} binding.
+   */
   private static String predicate(Map<String, Object> key) {
     return "id = :id"
-        + key.keySet().stream().map(a -> " and " + a + " = :" + a).collect(Collectors.joining());
+        + key.keySet().stream()
+            .map(a -> " and " + a + " = :key_" + a)
+            .collect(Collectors.joining());
   }
 
   /**

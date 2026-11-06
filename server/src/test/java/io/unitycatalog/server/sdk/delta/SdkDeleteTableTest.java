@@ -24,6 +24,7 @@ import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.Optional;
 import java.util.UUID;
+import org.hibernate.Session;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -137,6 +138,38 @@ public class SdkDeleteTableTest extends BaseServerTest {
         "Table not found");
 
     assertThat(tableOps.getTable(oldName + "_renamed").getTableId()).isEqualTo(table.getTableId());
+    // The refused drop leaves the renamed table's columns in place.
+    assertThat(columnRows(table.getTableId())).isEqualTo(2);
+  }
+
+  /** A drop deletes the table's row and its column rows, and no other table's columns. */
+  @Test
+  public void dropDeletesOnlyTheDroppedTablesColumns() throws Exception {
+    TableInfo dropped =
+        BaseTableCRUDTestEnv.createTestingTable(
+            "tbl_drop_columns", TableType.EXTERNAL, Optional.of("file:///tmp/uc_test/a"), tableOps);
+    TableInfo kept =
+        BaseTableCRUDTestEnv.createTestingTable(
+            "tbl_keep_columns", TableType.EXTERNAL, Optional.of("file:///tmp/uc_test/b"), tableOps);
+    assertThat(columnRows(dropped.getTableId())).isEqualTo(2);
+
+    tableOps.deleteTable(TestUtils.SCHEMA_FULL_NAME + ".tbl_drop_columns");
+
+    assertThat(columnRows(dropped.getTableId())).isZero();
+    try (Session session = testDatabase.sessionFactory().openSession()) {
+      assertThat(session.get(TableInfoDAO.class, UUID.fromString(dropped.getTableId()))).isNull();
+    }
+    assertThat(columnRows(kept.getTableId())).isEqualTo(2);
+  }
+
+  private long columnRows(String tableId) {
+    try (Session session = testDatabase.sessionFactory().openSession()) {
+      return session
+          .createSelectionQuery(
+              "select count(*) from ColumnInfoDAO where table.id = :id", Long.class)
+          .setParameter("id", UUID.fromString(tableId))
+          .getSingleResult();
+    }
   }
 
   /**

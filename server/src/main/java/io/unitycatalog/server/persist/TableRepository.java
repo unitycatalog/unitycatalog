@@ -1288,12 +1288,9 @@ public class TableRepository {
     }
     PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
         .forEach(session::remove);
-    // The bulk delete skips Hibernate's cascade, so delete the columns first.
-    session
-        .createMutationQuery("delete from ColumnInfoDAO where table.id = :id")
-        .setParameter("id", tableInfoDAO.getId())
-        .executeUpdate();
-    RepositoryUtils.deleteByKey(session, tableInfoDAO, key, () -> tableNotFound(tableName));
+    // The row is locked by id and name above, so it cannot be renamed or dropped before this
+    // commits; remove it through the session so its columns are deleted with it.
+    session.remove(tableInfoDAO);
     return tableInfoDAO;
   }
 
