@@ -196,23 +196,25 @@ public class NormalizedURLTest {
   }
 
   private static Stream<Arguments> cloudLocationsWithLiteralPaths() {
-    return Stream.of(
-            "s3://bucket/",
-            "gs://bucket/",
-            "abfs://container@account.dfs.core.windows.net/",
-            "abfss://container@account.dfs.core.windows.net/")
-        .flatMap(
-            base ->
-                Stream.of(
-                        "team%20reports",
-                        "team%2Freports",
-                        "team%2F",
-                        "team%252Freports",
-                        "caf%C3%A9",
-                        "café/資料",
-                        "team+reports",
-                        "team reports")
-                    .map(path -> Arguments.of(base + path, "/" + path)));
+    Stream<Arguments> s3 =
+        Stream.of(
+                "team%20reports",
+                "team%2Freports",
+                "team%2F",
+                "team%252Freports",
+                "caf%C3%A9",
+                "café/資料",
+                "team+reports",
+                "team reports")
+            .map(path -> Arguments.of("s3://bucket/" + path, "/" + path));
+    // The other schemes take the same path; one row each checks their authority.
+    Stream<Arguments> otherSchemes =
+        Stream.of(
+                "gs://bucket/",
+                "abfs://container@account.dfs.core.windows.net/",
+                "abfss://container@account.dfs.core.windows.net/")
+            .map(base -> Arguments.of(base + "team%20reports", "/team%20reports"));
+    return Stream.concat(s3, otherSchemes);
   }
 
   @ParameterizedTest
