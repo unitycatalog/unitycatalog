@@ -131,9 +131,9 @@ Secrets.
   variables, so S3 and ADLS lose their secrets.
 - Helm: the rendered `server.properties` no longer holds `server.client-secret`, `s3.secretKey.<n>` or
   `adls.clientSecret.<n>`. The init container has `S3_SECRET_KEY_<n>`, `ADLS_CLIENT_SECRET_<n>` and, with
-  `auth.enabled`, `OAUTH_CLIENT_SECRET` only when `server.config.override` or `extraProperties` is set, so a template that uses
-  them keeps working; that is deprecated. A container added through `extraInitContainers` or `extraContainers` that
-  needs these secrets must read them from the Kubernetes Secret itself.
+  `auth.enabled`, `OAUTH_CLIENT_SECRET` only when `server.config.override` or `extraProperties` is set, so a
+  template that uses them keeps working; that is deprecated. A container added through `extraInitContainers` or
+  `extraContainers` that needs these secrets must read them from the Kubernetes Secret itself.
 
 ## Local file system storage
 
