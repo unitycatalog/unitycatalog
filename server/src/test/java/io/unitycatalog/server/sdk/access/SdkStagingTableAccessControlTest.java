@@ -7,6 +7,7 @@ import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -167,7 +168,9 @@ public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlB
         () -> finalizeManagedTable(userBConfig, staging, TestUtils.TABLE_NAME),
         "User attempts to create table on a staging location without ownership");
     FinalizedTable finalized = finalizeManagedTable(userAConfig, staging, TestUtils.TABLE_NAME);
-    assertThat(finalized.storageLocation()).isEqualTo(staging.location());
+    // The Delta surface returns the staging location as a path and the table location as a URI.
+    assertThat(NormalizedURL.from(finalized.storageLocation()))
+        .isEqualTo(NormalizedURL.from(staging.location()));
     assertThat(finalized.tableId()).isEqualTo(staging.id());
 
     // Step 5: User B calls the temp-creds RPC with User A's regular-table UUID. The
