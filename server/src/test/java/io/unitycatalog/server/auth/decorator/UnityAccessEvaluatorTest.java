@@ -419,10 +419,13 @@ class UnityAccessEvaluatorTest {
     }
 
     // The shared parent checks run once for the list; only the table's own check runs per item.
-    verify(authorizer, times(1)).authorize(principal, METASTORE, metastore, Privileges.OWNER);
-    verify(authorizer, times(1)).authorize(principal, CATALOG, catalog, Privileges.OWNER);
+    verify(authorizer, times(1))
+        .authorizeAny(principal, METASTORE, metastore, Privileges.OWNER, Privileges.READ_METADATA);
+    verify(authorizer, times(1))
+        .authorizeAny(principal, CATALOG, catalog, Privileges.OWNER, Privileges.READ_METADATA);
     verify(authorizer, times(1)).authorize(principal, CATALOG, catalog, USE_CATALOG);
-    verify(authorizer, times(1)).authorize(principal, SCHEMA, schema, Privileges.OWNER);
+    verify(authorizer, times(1))
+        .authorizeAny(principal, SCHEMA, schema, Privileges.OWNER, Privileges.READ_METADATA);
     verify(authorizer, times(1)).authorize(principal, SCHEMA, schema, USE_SCHEMA);
     verify(authorizer, times(tables))
         .authorizeAny(eq(principal), eq(TABLE), any(UUID.class), any(Privileges[].class));
