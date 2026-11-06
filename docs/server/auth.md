@@ -259,9 +259,10 @@ registered models, and volumes without usage grants. External location `BROWSE` 
 that location. Native get and list APIs require `include_browse=true` to use these grants.
 
 Ordinary access returns full metadata. Otherwise, BROWSE returns `browse_only=true` and the
-object's discovery fields. Tables hide storage details, properties, and view definitions.
-Functions hide their body. Models and volumes keep their storage paths. External locations hide
-credential references. BROWSE does not permit data access, credentials, changes, or engine table loads.
+object's discovery fields. Catalogs and schemas keep their properties and storage paths.
+Tables hide storage details, properties, and view definitions. Functions hide `routine_definition`.
+Models and volumes keep their storage paths. External locations hide credential references.
+BROWSE does not permit data access, credentials, changes, or engine table loads.
 
 Lists can mix full and browse-only objects. A filtered page can be empty and still have a
 `next_page_token`; continue until the token is absent.
