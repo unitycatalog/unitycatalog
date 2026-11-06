@@ -17,7 +17,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -41,8 +40,6 @@ public class ServerProperties {
   // UC_SERVER_CLIENT_SECRET or UC_S3_SECRETKEY_0. The prefix keeps variables that runtimes set for
   // their own use, such as AWS_REGION, from changing settings.
   private static final String ENV_PREFIX = "UC_";
-  private static final Pattern NOT_LETTER_OR_DIGIT = Pattern.compile("[^A-Z0-9]");
-  private static final Pattern TRAILING_LINE_BREAKS = Pattern.compile("[\\r\\n]+$");
 
   // Secrets, which log a deprecation warning when they are read from server.properties. The server
   // never reads the database password from this file (it comes from the environment or
@@ -362,7 +359,7 @@ public class ServerProperties {
   ServerProperties(String propertiesFile, Map<String, String> env) {
     this.env = env;
     readPropertiesFromFile(propertiesFile);
-    secretsInFileWarnings(propertiesFile).forEach(LOGGER::warn);
+    warnAboutSecretsInFile(propertiesFile);
     validateProperties();
   }
 
@@ -450,9 +447,7 @@ public class ServerProperties {
     }
   }
 
-  /** The deprecation warnings for secrets set in the file. They name keys, never values. */
-  List<String> secretsInFileWarnings(String propertiesFile) {
-    List<String> warnings = new ArrayList<>();
+  private void warnAboutSecretsInFile(String propertiesFile) {
     for (Object key : properties.keySet()) {
       String name = key.toString();
       if (!SECRET_KEY.matcher(name).matches()) {
@@ -460,28 +455,30 @@ public class ServerProperties {
       }
       if (name.equals(Property.CLIENT_SECRET.getKey())) {
         // Only bin/uc auth login reads it, so a variable in the server's environment does not help.
-        warnings.add(
-            String.format(
-                "%s is set in %s. Only bin/uc auth login reads it, and keeping it in this file is"
-                    + " deprecated; set the %s environment variable in the shell that runs that"
-                    + " command instead.",
-                name, propertiesFile, envName(name)));
+        LOGGER.warn(
+            "{} is set in {}. Only bin/uc auth login reads it, and keeping it in this file is"
+                + " deprecated; set the {} environment variable in the shell that runs that command"
+                + " instead.",
+            name,
+            propertiesFile,
+            envName(name));
       } else if (getOverride(name) != null) {
         continue;
       } else if (name.equals("hibernate.connection.password")) {
-        warnings.add(
-            String.format(
-                "%s in %s is ignored; set the %s environment variable instead.",
-                name, propertiesFile, envName(name)));
+        LOGGER.warn(
+            "{} in {} is ignored; set the {} environment variable instead.",
+            name,
+            propertiesFile,
+            envName(name));
       } else {
-        warnings.add(
-            String.format(
-                "%s is set in %s. Keeping secrets in this file is deprecated; set the %s"
-                    + " environment variable instead.",
-                name, propertiesFile, envName(name)));
+        LOGGER.warn(
+            "{} is set in {}. Keeping secrets in this file is deprecated; set the {} environment"
+                + " variable instead.",
+            name,
+            propertiesFile,
+            envName(name));
       }
     }
-    return warnings;
   }
 
   public S3StorageConfig getS3MasterRoleConfiguration() {
@@ -631,7 +628,7 @@ public class ServerProperties {
       name = envName(key);
       // Trailing line breaks are dropped; a Kubernetes Secret made from a file often ends with one.
       // An empty variable is treated as unset.
-      value = TRAILING_LINE_BREAKS.matcher(env.getOrDefault(name, "")).replaceAll("");
+      value = env.getOrDefault(name, "").replaceAll("[\\r\\n]+$", "");
       if (value.isEmpty()) {
         return null;
       }
@@ -649,7 +646,7 @@ public class ServerProperties {
    * for each character that is not a letter or digit.
    */
   private static String envName(String key) {
-    return ENV_PREFIX + NOT_LETTER_OR_DIGIT.matcher(key.toUpperCase(Locale.ROOT)).replaceAll("_");
+    return ENV_PREFIX + key.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_");
   }
 
   public void set(Property property, String value) {
