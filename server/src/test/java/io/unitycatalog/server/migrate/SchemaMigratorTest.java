@@ -221,6 +221,20 @@ public class SchemaMigratorTest {
   }
 
   @Test
+  void refusesUnityCatalogTablesThatTheSearchPathReachesLater() {
+    assumeFalse(!db.jdbcUrl().startsWith("jdbc:postgresql:"), "only PostgreSQL");
+    // The tables are in public; then a schema named after the user, first on the search_path,
+    // becomes the current schema. Steps run there would hide the tables in public.
+    UpgradeTestUtils.createBaselineSchema(db);
+    UpgradeTestUtils.execute(
+        db, "DO $$ BEGIN EXECUTE format('CREATE SCHEMA %I', current_user); END $$");
+
+    assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()))
+        .hasMessageContaining("Unity Catalog tables are in schema public")
+        .hasMessageContaining("currentSchema=public");
+  }
+
+  @Test
   void refusesADatabaseOfAnotherProduct() {
     assertThatThrownBy(() -> new SchemaMigrator(withProductName("Oracle")))
         .isInstanceOf(IllegalArgumentException.class)
