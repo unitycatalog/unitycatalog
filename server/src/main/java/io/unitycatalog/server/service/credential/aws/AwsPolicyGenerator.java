@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
-import java.net.URI;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -267,11 +266,10 @@ public class AwsPolicyGenerator {
 
   private static Map<String, List<String>> getBucketToPathsMap(List<NormalizedURL> locations) {
     return locations.stream()
-        .map(NormalizedURL::toUri)
         .collect(
             Collectors.toMap(
-                URI::getHost,
-                uri -> new LinkedList<>(List.of(uri.getPath())),
+                location -> location.toUri().getHost(),
+                location -> new LinkedList<>(List.of(location.getStoragePath())),
                 (map, newPaths) -> {
                   map.addAll(newPaths);
                   return map;

@@ -238,7 +238,9 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
   public DeltaLoadTableResponse createTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
-      @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "location")
+      @AuthorizeResourceKey(
+              value = EXTERNAL_LOCATION,
+              extractor = DeltaLocations.CreateTableLocationExtractor.class)
           @AuthorizeKey(key = "table-type")
           DeltaCreateTableRequest request) {
     DeltaCreateTableMapper.Result mapped =

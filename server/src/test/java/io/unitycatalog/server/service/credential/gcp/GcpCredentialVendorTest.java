@@ -89,8 +89,7 @@ public class GcpCredentialVendorTest {
 
   @Test
   public void testQuoteInPathCannotInjectCelOperators() {
-    // gs://test-bucket/team/data') || ('1'=='1
-    String location = "gs://test-bucket/team/data')%20%7C%7C%20('1'%3D%3D'1";
+    String location = "gs://test-bucket/team/data') || ('1'=='1";
 
     assertThat(availabilityConditionFor(location))
         .isEqualTo(expectedCondition("test-bucket", "team/data') || ('1'=='1"));
@@ -98,8 +97,7 @@ public class GcpCredentialVendorTest {
 
   @Test
   public void testDoubleQuoteInPathCannotInjectCelOperators() {
-    // gs://test-bucket/team/data") || ("1"=="1
-    String location = "gs://test-bucket/team/data%22)%20%7C%7C%20(%221%22%3D%3D%221";
+    String location = "gs://test-bucket/team/data\") || (\"1\"==\"1";
 
     assertThat(availabilityConditionFor(location))
         .isEqualTo(expectedCondition("test-bucket", "team/data\\\") || (\\\"1\\\"==\\\"1"));
@@ -109,9 +107,7 @@ public class GcpCredentialVendorTest {
   @ValueSource(ints = {1, 2, 3, 4})
   public void testBackslashesCannotConsumeTheDoubleQuoteEscape(int backslashCount) {
     String location =
-        "gs://test-bucket/team/data"
-            + "%5C".repeat(backslashCount)
-            + "%22)%20%7C%7C%20(%221%22%3D%3D%221";
+        "gs://test-bucket/team/data" + "\\".repeat(backslashCount) + "\") || (\"1\"==\"1";
     String escapedPath =
         "team/data" + "\\".repeat(backslashCount * 2 + 1) + "\") || (\\\"1\\\"==\\\"1";
 
@@ -123,13 +119,13 @@ public class GcpCredentialVendorTest {
   public void testCelEscapeSequencesInPathStayLiteral() {
     String escapedPath = "team/\\\\n\\\\x27\\\\" + "u0027";
 
-    assertThat(availabilityConditionFor("gs://test-bucket/team/%5Cn%5Cx27%5Cu0027"))
+    assertThat(availabilityConditionFor("gs://test-bucket/team/\\n\\x27\\" + "u0027"))
         .isEqualTo(expectedCondition("test-bucket", escapedPath));
   }
 
   @Test
   public void testCelControlCharactersAreEscaped() {
-    String location = "gs://test-bucket/team/%07%08%0C%0A%0D%09%0Bdata";
+    String location = "gs://test-bucket/team/\u0007\b\f\n\r\t\u000Bdata";
 
     assertThat(availabilityConditionFor(location))
         .isEqualTo(expectedCondition("test-bucket", "team/\\a\\b\\f\\n\\r\\t\\vdata"));
@@ -137,8 +133,7 @@ public class GcpCredentialVendorTest {
 
   @Test
   public void testUnicodePathIsPreserved() {
-    assertThat(
-            availabilityConditionFor("gs://test-bucket/caf%C3%A9/%E8%B3%87%E6%96%99/%F0%9F%92%BE"))
+    assertThat(availabilityConditionFor("gs://test-bucket/café/資料/💾"))
         .isEqualTo(expectedCondition("test-bucket", "café/資料/💾"));
   }
 
