@@ -16,6 +16,9 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.linecorp.armeria.client.ClientRequestContext;
+import com.linecorp.armeria.client.ClientRequestContextCaptor;
+import com.linecorp.armeria.client.Clients;
 import com.linecorp.armeria.client.ResponseTimeoutException;
 import com.linecorp.armeria.common.ContentTooLargeException;
 import com.linecorp.armeria.common.HttpMethod;
@@ -26,8 +29,12 @@ import com.linecorp.armeria.server.RequestCancellationException;
 import com.linecorp.armeria.server.RequestTimeoutException;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import com.sun.net.httpserver.HttpServer;
+import io.unitycatalog.server.auth.decorator.KeyMapper;
+import io.unitycatalog.server.auth.decorator.ResultFilter;
+import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
@@ -38,8 +45,10 @@ import java.io.StringWriter;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -251,12 +260,24 @@ class OpaAuthorizerTest {
     ServiceRequestContext context = ServiceRequestContext.of(HttpRequest.of(HttpMethod.GET, "/"));
     Class<? extends Throwable> expectedCause =
         timedOut ? RequestTimeoutException.class : RequestCancellationException.class;
+    List<ClientRequestContext> completed = new ArrayList<>();
     ExecutorService executor = Executors.newSingleThreadExecutor();
     try {
       Future<BaseException> decision =
           executor.submit(
               () -> {
-                try (SafeCloseable ignored = context.push()) {
+                try (SafeCloseable ignored = context.push();
+                    ClientRequestContextCaptor captured = Clients.newContextCaptor()) {
+                  for (int i = 0; i < 10; i++) {
+                    assertThat(authorizer.authorize(principal, TABLE, table, USE_SCHEMA)).isTrue();
+                  }
+                  completed.addAll(captured.getAll());
+                  // Let completion callbacks finish before cancelling the UC request.
+                  for (ClientRequestContext call : completed) {
+                    call.log().whenComplete().get(5, TimeUnit.SECONDS);
+                    call.eventLoop().submit(() -> {}).get(5, TimeUnit.SECONDS);
+                  }
+                  requests.clear();
                   return catchThrowableOfType(
                       () ->
                           authorizer.authorizeAll(
@@ -271,9 +292,13 @@ class OpaAuthorizerTest {
         context.cancel();
       }
       BaseException failure = decision.get(5, TimeUnit.SECONDS);
+      context.whenRequestCancelled().get(5, TimeUnit.SECONDS);
       assertThat(failure).hasRootCauseInstanceOf(expectedCause);
       assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE);
       assertPrivileges("USE_SCHEMA", "SELECT");
+      assertThat(completed)
+          .hasSize(10)
+          .allSatisfy(call -> assertThat(call.cancellationCause()).isNull());
 
       try (SafeCloseable ignored = context.push()) {
         assertThat(unavailableDecision()).hasRootCauseInstanceOf(expectedCause);
@@ -293,14 +318,36 @@ class OpaAuthorizerTest {
     assertThat(unavailableDecision()).hasRootCauseInstanceOf(ContentTooLargeException.class);
   }
 
-  @Test
-  void metadataFailureStopsBeforeHttpAndDoesNotExposeDatabaseDetails() {
-    when(session.get(UserDAO.class, principal))
-        .thenThrow(new IllegalStateException("private-db-detail"));
-    assertThat(unavailableDecision())
-        .hasMessage("Could not get an authorization decision from OPA")
-        .hasRootCauseMessage("private-db-detail");
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void metadataFailureStopsBeforeHttpAndDoesNotExposeDatabaseDetails(boolean openingSession)
+      throws Exception {
+    if (openingSession) {
+      when(sessionFactory.openSession()).thenThrow(new IllegalStateException("private-db-detail"));
+    } else {
+      when(session.get(UserDAO.class, principal))
+          .thenThrow(new IllegalStateException("private-db-detail"));
+    }
+    UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer, true);
+    String expression = "#authorize(#principal, #table, SELECT)";
+    List<TableInfo> items = new ArrayList<>(List.of(new TableInfo().tableId(table.toString())));
+    ResultFilter filter =
+        new ResultFilter(
+            evaluator, principal, expression, Map.of(), Map.of(), mock(KeyMapper.class));
+    for (Runnable check :
+        List.<Runnable>of(
+            () -> authorizer.authorize(principal, TABLE, table, SELECT),
+            () -> evaluator.evaluate(principal, expression, Map.of(TABLE, table), Map.of()),
+            () -> filter.filter(TABLE, items))) {
+      BaseException failure = catchThrowableOfType(check::run, BaseException.class);
+      assertThat(failure)
+          .hasMessage("Could not build OPA authorization input")
+          .hasRootCauseMessage("private-db-detail");
+      assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.INTERNAL);
+    }
     assertThat(requests).isEmpty();
+    assertThat(items).hasSize(1);
+    verifyNoInteractions(nativeAuthorizer);
   }
 
   @ParameterizedTest

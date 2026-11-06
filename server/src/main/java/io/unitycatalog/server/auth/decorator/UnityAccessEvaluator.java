@@ -2,7 +2,6 @@ package io.unitycatalog.server.auth.decorator;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
-import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
 import java.lang.invoke.MethodHandle;
@@ -221,7 +220,7 @@ public class UnityAccessEvaluator {
         return result != null && result;
       } catch (SpelEvaluationException e) {
         if (e.getCause() instanceof BaseException failure
-            && failure.getErrorCode() == ErrorCode.UNAVAILABLE) {
+            && failure.getErrorCode().getHttpStatus().isServerError()) {
           throw failure;
         }
         throw e;

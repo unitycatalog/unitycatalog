@@ -128,6 +128,7 @@ applies to each OPA call. UC also cancels pending OPA HTTP calls when the UC req
 or is cancelled. A large list can still require calls for every item.
 
 If the user, resource, or a parent is missing from UC, the privilege check is denied.
+Failures loading UC metadata are reported separately from OPA communication failures.
 
 **Native permission APIs remain available.** Grant/revoke/list APIs still manage UC's native
 records, but those grants do not affect OPA decisions. Resource creation and deletion also
