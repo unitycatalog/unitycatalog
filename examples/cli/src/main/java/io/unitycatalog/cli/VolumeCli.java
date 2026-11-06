@@ -32,6 +32,7 @@ import org.apache.commons.cli.CommandLine;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IOUtils;
 import org.json.JSONObject;
 
@@ -117,7 +118,7 @@ public class VolumeCli {
     String volumeLocation = volumeInfo.getStorageLocation();
     Configuration conf =
         DeltaKernelUtils.getHDFSConfiguration(
-            new org.apache.hadoop.fs.Path(volumeLocation).toUri(),
+            new Path(volumeLocation).toUri(),
             tempCredApi.generateTemporaryVolumeCredentials(
                 new GenerateTemporaryVolumeCredential()
                     .volumeId(volumeInfo.getVolumeId())
@@ -132,9 +133,8 @@ public class VolumeCli {
       }
 
       // Create a Path object using the S3 directory and the random file name
-      org.apache.hadoop.fs.Path filePath =
-          new org.apache.hadoop.fs.Path(
-              DeltaKernelUtils.substituteSchemeForS3(volumeLocation), randomFileName);
+      Path filePath =
+          new Path(DeltaKernelUtils.substituteSchemeForS3(volumeLocation), randomFileName);
 
       // Write data to the file
       try (BufferedWriter writer =
@@ -168,11 +168,11 @@ public class VolumeCli {
     if (!volumeLocation.endsWith("/")) {
       volumeLocation = volumeLocation + "/";
     }
-    org.apache.hadoop.fs.Path basePath = volumePath(volumeLocation);
-    org.apache.hadoop.fs.Path path = resolvePath(basePath, relativePath);
+    Path basePath = volumePath(volumeLocation);
+    Path path = resolvePath(basePath, relativePath);
     Configuration conf =
         DeltaKernelUtils.getHDFSConfiguration(
-            new org.apache.hadoop.fs.Path(volumeLocation).toUri(),
+            new Path(volumeLocation).toUri(),
             tempCredApi.generateTemporaryVolumeCredentials(
                 new GenerateTemporaryVolumeCredential()
                     .volumeId(volumeInfo.getVolumeId())
@@ -220,20 +220,18 @@ public class VolumeCli {
   private static final Pattern CLOUD_FULL_URI = Pattern.compile("[a-zA-Z][a-zA-Z0-9+.-]*://.*");
   private static final Pattern LOCAL_FULL_URI = Pattern.compile("[a-zA-Z][a-zA-Z0-9+.-]*:/.*");
 
-  private static org.apache.hadoop.fs.Path volumePath(String volumeLocation) {
+  private static Path volumePath(String volumeLocation) {
     String location = DeltaKernelUtils.substituteSchemeForS3(volumeLocation);
-    return Constants.SUPPORTED_CLOUD_SCHEMES.contains(
-            new org.apache.hadoop.fs.Path(volumeLocation).toUri().getScheme())
-        ? new org.apache.hadoop.fs.Path(location)
-        : new org.apache.hadoop.fs.Path(URI.create(location));
+    return Constants.SUPPORTED_CLOUD_SCHEMES.contains(new Path(volumeLocation).toUri().getScheme())
+        ? new Path(location)
+        : new Path(URI.create(location));
   }
 
-  private static org.apache.hadoop.fs.Path resolvePath(
-      org.apache.hadoop.fs.Path basePath, String relativePath) {
+  private static Path resolvePath(Path basePath, String relativePath) {
     if (relativePath.isEmpty()) {
       return basePath;
     }
-    org.apache.hadoop.fs.Path resolvedPath =
+    Path resolvedPath =
         Constants.URI_SCHEME_FILE.equals(basePath.toUri().getScheme())
             ? localPath(basePath, relativePath)
             : literalPath(basePath, relativePath);
@@ -247,16 +245,13 @@ public class VolumeCli {
     return resolvedPath;
   }
 
-  private static org.apache.hadoop.fs.Path literalPath(
-      org.apache.hadoop.fs.Path basePath, String relativePath) {
+  private static Path literalPath(Path basePath, String relativePath) {
     return CLOUD_FULL_URI.matcher(relativePath).matches()
-        ? new org.apache.hadoop.fs.Path(DeltaKernelUtils.substituteSchemeForS3(relativePath))
-        : new org.apache.hadoop.fs.Path(
-            basePath, relativePath.startsWith("/") ? relativePath : "./" + relativePath);
+        ? new Path(DeltaKernelUtils.substituteSchemeForS3(relativePath))
+        : new Path(basePath, relativePath.startsWith("/") ? relativePath : "./" + relativePath);
   }
 
-  private static org.apache.hadoop.fs.Path localPath(
-      org.apache.hadoop.fs.Path basePath, String relativePath) {
+  private static Path localPath(Path basePath, String relativePath) {
     boolean isName =
         !LOCAL_FULL_URI.matcher(relativePath).matches() && !relativePath.startsWith("/");
     URI resolved;
@@ -266,9 +261,8 @@ public class VolumeCli {
     } catch (IllegalArgumentException e) {
       return literalPath(basePath, relativePath);
     }
-    URI decoded = new org.apache.hadoop.fs.Path(resolved).toUri();
-    return new org.apache.hadoop.fs.Path(
-        decoded.getScheme(), decoded.getAuthority(), decoded.getPath());
+    URI decoded = new Path(resolved).toUri();
+    return new Path(decoded.getScheme(), decoded.getAuthority(), decoded.getPath());
   }
 
   private static String updateVolume(VolumesApi apiClient, JSONObject json)
