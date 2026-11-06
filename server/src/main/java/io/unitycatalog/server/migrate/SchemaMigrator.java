@@ -542,7 +542,7 @@ public final class SchemaMigrator implements AutoCloseable {
    * other_app, so ... could not create it on uc_x ...". {@code null} too when the index is missing
    * for another reason.
    */
-  static String indexClashHint(Connection connection, String index, String table)
+  private static String indexClashHint(Connection connection, String index, String table)
       throws SQLException {
     DatabaseMetaData metaData = connection.getMetaData();
     if (indexNames(metaData, connection, table).contains(index.toLowerCase(Locale.ROOT))) {
