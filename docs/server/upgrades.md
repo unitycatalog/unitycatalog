@@ -12,7 +12,7 @@ set up, Hibernate changes nothing.
 `bin/start-uc-server --upgrade-schema` brings the database to the schema version of its release,
 then exits without starting the server: with 0 when it succeeds, and with 1 and the reason when it
 refuses. It sets up an empty database (a new install), adopts a database from the baseline
-release, and applies the steps that are not applied yet. Run it only after you stop all servers.
+release, and applies the steps that are not applied yet.
 
 ## The baseline release
 
@@ -161,9 +161,10 @@ Messages that `--upgrade-schema` prints when it refuses, and what to do.
 : Flyway's check of `uc_schema_history` failed, for example because a recorded step differs from
   this release's step of the same version (its checksum), or this release lacks a recorded step.
   `<reasons>` may advise Flyway's `repair` command, which Unity Catalog doesn't have. Run the release
-  that applied the steps, or restore the backup. Do not edit `uc_schema_history` by hand. A step
-  that failed is reported here too: this release can't retry it, so restore the backup and fix the
-  cause, then run the command on the restored database.
+  that applied the steps, or restore the backup. Do not edit `uc_schema_history` by hand. On H2 and
+  MySQL, a step that failed is reported here too: this release can't retry it, so restore the backup
+  and fix the cause, then run the command on the restored database. On PostgreSQL, a failed step
+  leaves no history row, so the command runs it again.
 
 `Could not take the schema migration lock: <reason>`
 : The command could not get the lock that keeps two migration runs apart, so it changed nothing.
