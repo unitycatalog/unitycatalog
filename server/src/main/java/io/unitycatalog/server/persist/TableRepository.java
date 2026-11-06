@@ -1288,9 +1288,15 @@ public class TableRepository {
     }
     PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
         .forEach(session::remove);
-    // The row is locked by id and name above, so it cannot be renamed or dropped before this
-    // commits; remove it through the session so its columns are deleted with it.
-    session.remove(tableInfoDAO);
+    // Delete the columns with one statement, not through the session's cascade. A commit can
+    // replace the column rows while this drop waits for the lock; a DELETE reads the latest rows,
+    // while the cascade first loads the columns with a plain read, which on MySQL REPEATABLE READ
+    // returns the snapshot from before the wait and fails the drop on rows already gone.
+    session
+        .createMutationQuery("delete from ColumnInfoDAO where table.id = :id")
+        .setParameter("id", tableInfoDAO.getId())
+        .executeUpdate();
+    RepositoryUtils.deleteByKey(session, tableInfoDAO, key, () -> tableNotFound(tableName));
     return tableInfoDAO;
   }
 
