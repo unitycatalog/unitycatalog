@@ -94,7 +94,7 @@ public class CliVolumeCRUDTest extends BaseVolumeCRUDTest {
     if (expectedPath == null) {
       assertThatThrownBy(() -> runCli(arguments, fileSystem))
           .isInstanceOf(CliException.class)
-          .hasMessageContaining("Path is outside the volume location");
+          .hasMessageContaining("Resolved URI is outside the base URI path");
       return;
     }
     runCli(arguments, fileSystem);
