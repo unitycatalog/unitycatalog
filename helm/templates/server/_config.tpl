@@ -9,7 +9,6 @@ server.authorization=enable
 server.authorization-url={{ .Values.auth.authorizationUrl }}
 server.token-url={{ .Values.auth.tokenUrl }}
 server.client-id=${OAUTH_CLIENT_ID}
-server.client-secret=${OAUTH_CLIENT_SECRET}
 server.redirect-port={{ .Values.auth.redirectPort }}
 server.cookie-timeout={{ .Values.auth.cookieTimeout }}
 server.access-token-timeout={{ .Values.auth.accessTokenTimeout }}
@@ -24,15 +23,10 @@ storage-root.models={{ .Values.storage.modelStorageRoot }}
 s3.bucketPath.{{ $index }}={{ $config.bucketPath }}
 s3.region.{{ $index }}={{ $config.region }}
 s3.awsRoleArn.{{ $index }}={{ $config.awsRoleArn }}
-s3.accessKey.{{ $index }}=${S3_ACCESS_KEY_{{ $index }}}
-s3.secretKey.{{ $index }}=${S3_SECRET_KEY_{{ $index }}}
 {{- end }}
 
 {{- range $index, $config := .Values.storage.credentials.adls }}
 adls.storageAccountName.{{ $index }}={{ $config.storageAccountName }}
-adls.tenantId.{{ $index }}=${ADLS_TENANT_ID_{{ $index }}}
-adls.clientId.{{ $index }}=${ADLS_CLIENT_ID_{{ $index }}}
-adls.clientSecret.{{ $index }}=${ADLS_CLIENT_SECRET_{{ $index }}}
 {{- end }}
 
 {{- range $index, $config := .Values.storage.credentials.gcs }}
@@ -141,4 +135,40 @@ logger.audit.appenderRef.auditFile.ref=AuditFile
 rootLogger.level={{ .Values.server.logLevel }}
 rootLogger.appenderRefs=console
 rootLogger.appenderRef.console.ref=Console
+{{- end }}
+
+{{/*
+Storage credentials for the server container (see "Secrets" in docs/server/configuration.md). Every
+part comes from here, not from the generated server.properties, which is written only at pod start.
+*/}}
+{{- define "unitycatalog.server.secretEnv" -}}
+{{- range $index, $config := .Values.storage.credentials.s3 }}
+- name: UC_S3_ACCESSKEY_{{ $index }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $config.credentialsSecretName | quote }}
+      key: accessKey
+- name: UC_S3_SECRETKEY_{{ $index }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $config.credentialsSecretName | quote }}
+      key: secretKey
+{{- end }}
+{{- range $index, $config := .Values.storage.credentials.adls }}
+- name: UC_ADLS_TENANTID_{{ $index }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $config.credentialsSecretName | quote }}
+      key: tenantId
+- name: UC_ADLS_CLIENTID_{{ $index }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $config.credentialsSecretName | quote }}
+      key: clientId
+- name: UC_ADLS_CLIENTSECRET_{{ $index }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $config.credentialsSecretName | quote }}
+      key: clientSecret
+{{- end }}
 {{- end }}

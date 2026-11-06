@@ -142,9 +142,11 @@ not set
 </td>
 			<td>OAuth client secret name
 
-Client secret must contain the following keys:
+Client secret must contain the following key:
 - `clientId`: OAuth client ID
-- `clientSecret`: OAuth client secret
+
+The server doesn't read the OAuth client secret. A `clientSecret` key is passed only to a
+`server.config.override` or `extraProperties` template that uses `${OAUTH_CLIENT_SECRET}`.
 </td>
 		</tr>
 		<tr>
@@ -356,6 +358,8 @@ extraProperties:
   my-config.property1: my-value1
   my-config.property2: my-value2
 ```
+
+Do not put secrets here: a secret in `server.properties` is deprecated.
 </td>
 		</tr>
 		<tr>
@@ -373,6 +377,11 @@ server.env=prod
 server.port=8080
 ...other config properties...
 ```
+
+Do not put secrets here: the chart passes the S3 and ADLS secrets to the server as environment
+variables, and a secret in `server.properties` is deprecated. A template that uses `${OAUTH_CLIENT_SECRET}`,
+`${S3_SECRET_KEY_<n>}` or `${ADLS_CLIENT_SECRET_<n>}` still gets them, but that is deprecated
+too: the server reads `UC_S3_SECRETKEY_<n>` and `UC_ADLS_CLIENTSECRET_<n>` from its environment.
 </td>
 		</tr>
 		<tr>
@@ -827,7 +836,11 @@ not set
 {{ .Chart.AppVersion }}
 </pre>
 </td>
-			<td>Tag for the server image</td>
+			<td>Tag for the server image
+
+Use the server image from the same release as the chart. The chart passes secrets to
+the server as environment variables that older server images don't read.
+</td>
 		</tr>
 		<tr>
 			<td>server.deployment.imagePullSecrets</td>
