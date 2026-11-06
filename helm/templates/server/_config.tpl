@@ -23,13 +23,10 @@ storage-root.models={{ .Values.storage.modelStorageRoot }}
 s3.bucketPath.{{ $index }}={{ $config.bucketPath }}
 s3.region.{{ $index }}={{ $config.region }}
 s3.awsRoleArn.{{ $index }}={{ $config.awsRoleArn }}
-s3.accessKey.{{ $index }}=${S3_ACCESS_KEY_{{ $index }}}
 {{- end }}
 
 {{- range $index, $config := .Values.storage.credentials.adls }}
 adls.storageAccountName.{{ $index }}={{ $config.storageAccountName }}
-adls.tenantId.{{ $index }}=${ADLS_TENANT_ID_{{ $index }}}
-adls.clientId.{{ $index }}=${ADLS_CLIENT_ID_{{ $index }}}
 {{- end }}
 
 {{- range $index, $config := .Values.storage.credentials.gcs }}
@@ -140,8 +137,8 @@ rootLogger.appenderRef.console.ref=Console
 {{/*
 Storage credentials passed to the server container as environment variables, under the names the
 server reads (see "Secrets" in docs/server/configuration.md). Every part of a credential comes from
-here, so a server container that restarts after a rotation doesn't pair an old ID from the file with
-a new secret.
+here and none from the generated server.properties, which the init container writes only at pod
+start. A server container that restarts after the Secret changes reads one consistent set.
 */}}
 {{- define "unitycatalog.server.secretEnv" -}}
 {{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.passwordSecretName }}
