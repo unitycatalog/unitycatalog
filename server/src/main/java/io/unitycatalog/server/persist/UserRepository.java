@@ -7,13 +7,17 @@ import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.UpdateUser;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -177,11 +181,13 @@ public class UserRepository {
           if (userDAO == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + id);
           }
+          Map<String, Object> changes = new HashMap<>();
           if (updateUser.getName() != null) {
-            userDAO.setName(updateUser.getName());
+            changes.put("name", updateUser.getName());
           }
           if (updateUser.getActive() != null) {
-            userDAO.setState(
+            changes.put(
+                "state",
                 updateUser.getActive()
                     ? User.StateEnum.ENABLED.toString()
                     : User.StateEnum.DISABLED.toString());
@@ -195,9 +201,11 @@ public class UserRepository {
                   ErrorCode.ALREADY_EXISTS,
                   "User already exists with external id: " + updateUser.getExternalId());
             }
-            userDAO.setExternalId(updateUser.getExternalId());
+            changes.put("externalId", updateUser.getExternalId());
           }
-          session.merge(userDAO);
+          if (!changes.isEmpty()) {
+            lockAndUpdate(session, userDAO, id, changes);
+          }
           return userDAO.toUser();
         },
         "Failed to update user",
@@ -210,8 +218,8 @@ public class UserRepository {
         session -> {
           UserDAO userDAO = getUserById(session, id);
           if (userDAO != null) {
-            userDAO.setState(User.StateEnum.DISABLED.toString());
-            session.merge(userDAO);
+            lockAndUpdate(
+                session, userDAO, id, Map.of("state", User.StateEnum.DISABLED.toString()));
             LOGGER.info("Deleted user: {}", id);
             return null;
           } else {
@@ -220,6 +228,16 @@ public class UserRepository {
         },
         "Failed to delete user",
         /* readOnly= */ false);
+  }
+
+  /** Users are addressed by id alone, so the id is the whole key. */
+  private void lockAndUpdate(
+      Session session, UserDAO userDAO, String id, Map<String, Object> changes) {
+    Supplier<BaseException> notFound =
+        () -> new BaseException(ErrorCode.NOT_FOUND, "User not found: " + id);
+    RepositoryUtils.lockByKey(
+        session, UserDAO.class, userDAO.getId(), Map.of(), "user " + id, notFound);
+    RepositoryUtils.updateByKey(session, userDAO, Map.of(), changes, notFound);
   }
 
   public UUID findPrincipalId() {

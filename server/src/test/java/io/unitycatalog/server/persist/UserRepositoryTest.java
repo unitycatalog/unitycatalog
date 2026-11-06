@@ -10,10 +10,12 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.model.UpdateUser;
@@ -92,6 +94,24 @@ class UserRepositoryTest {
         .satisfies(
             e ->
                 assertThat(((BaseException) e).getErrorCode()).isEqualTo(ErrorCode.ALREADY_EXISTS));
+  }
+
+  /** A disable that waits for a concurrent rename of the user keeps that rename. */
+  @Test
+  void updateUserKeepsAConcurrentNameEdit() throws Exception {
+    var user =
+        userRepository.createUser(
+            CreateUser.builder().name("Before").email("edit-race@example.com").build());
+
+    testDatabase.runBlockedByHeldWrite(
+        held ->
+            TestDatabase.setColumn(
+                held, UserDAO.class, UUID.fromString(user.getId()), "name", "Held"),
+        () -> userRepository.updateUser(user.getId(), UpdateUser.builder().active(false).build()));
+
+    var updated = userRepository.getUser(user.getId());
+    assertThat(updated.getName()).isEqualTo("Held");
+    assertThat(updated.getState()).isEqualTo(User.StateEnum.DISABLED);
   }
 
   @Test
