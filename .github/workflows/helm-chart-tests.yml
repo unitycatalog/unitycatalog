@@ -110,8 +110,13 @@ jobs:
           # Storage secrets reach the server as UC_ variables, not through server.properties.
           secrets=(-f helm/ci/secrets-values.yaml --set auth.enabled=true --set auth.clientSecretName=ci-oauth)
           out="$(helm template uc helm "${secrets[@]}" --set server.config.extraProperties=null)"
-          grep -A4 -- '- name: UC_S3_SECRETKEY_0$' <<<"$out" | tr -d '\n' | grep -qE 'name: "ci-s3-credentials" +key: secretKey( |$)'
-          grep -A4 -- '- name: UC_ADLS_CLIENTSECRET_0$' <<<"$out" | tr -d '\n' | grep -qE 'name: "ci-adls-credentials" +key: clientSecret( |$)'
+          # Every part of a credential, so a restart after a rotation reads one set.
+          for ref in UC_S3_ACCESSKEY_0:ci-s3-credentials:accessKey UC_S3_SECRETKEY_0:ci-s3-credentials:secretKey \
+            UC_ADLS_TENANTID_0:ci-adls-credentials:tenantId UC_ADLS_CLIENTID_0:ci-adls-credentials:clientId \
+            UC_ADLS_CLIENTSECRET_0:ci-adls-credentials:clientSecret; do
+            IFS=: read -r name secret key <<<"$ref"
+            grep -A4 -- "- name: $name\$" <<<"$out" | tr -d '\n' | grep -qE "name: \"$secret\" +key: $key( |\$)"
+          done
           ! grep -qE 'server\.client-secret|s3\.secretKey|adls\.clientSecret' <<<"$out" || exit 1
           # The deprecated init container variables are there only for a custom template.
           ! grep -qE -- '- name: (S3_SECRET_KEY_0|ADLS_CLIENT_SECRET_0|OAUTH_CLIENT_SECRET)$' <<<"$out" || exit 1
