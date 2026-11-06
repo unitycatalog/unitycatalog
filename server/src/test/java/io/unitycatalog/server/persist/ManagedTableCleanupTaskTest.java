@@ -15,7 +15,6 @@ import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
-import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -145,9 +144,8 @@ class ManagedTableCleanupTaskTest {
             id -> tempDir.resolve("external").resolve(id.toString()).toString());
     Date beforeDrop = new Date();
 
-    // A force schema drop cascades each child through TableRepository.deleteTable(session, ...),
-    // the same entry point a direct drop uses, so managed children still queue a cleanup task and
-    // external children still queue none.
+    // A force schema drop cascades each child through the same table-deletion path as a direct
+    // drop, so managed children still queue a cleanup task and external children still queue none.
     repositories.getSchemaRepository().deleteSchema(CATALOG + "." + SCHEMA, /* force= */ true);
 
     assertDroppedWithTask(managed, beforeDrop);
@@ -259,24 +257,9 @@ class ManagedTableCleanupTaskTest {
     }
   }
 
-  /**
-   * Repositories on this database whose connections give up waiting for a lock quickly (50 ms; 1 s
-   * on MySQL, its minimum).
-   */
+  /** Repositories on this database whose connections give up waiting for a lock quickly. */
   private Repositories impatientRepositories() {
-    Properties impatient = testDatabase.hibernateProperties();
-    impatient.setProperty("hibernate.hbm2ddl.auto", "none");
-    // Set on the URL, not with SET: a PostgreSQL SET is undone when its transaction rolls back.
-    impatient.setProperty(
-        "hibernate.connection.url",
-        testDatabase.jdbcUrl()
-            + switch (SupportedDatabase.selected()) {
-              case H2 -> ";LOCK_TIMEOUT=50";
-              case POSTGRES_18 -> "?options=-c%20lock_timeout%3D50";
-              case MYSQL_8 -> "?sessionVariables=innodb_lock_wait_timeout=1";
-            });
-    return new Repositories(
-        testDatabase.openHibernateConfigurator(impatient).getSessionFactory(), serverProperties);
+    return new Repositories(testDatabase.impatientSessionFactory(), serverProperties);
   }
 
   /** Takes the table lock in {@code commit} and, like a commit, replaces the table's columns. */

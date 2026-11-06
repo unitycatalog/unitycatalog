@@ -16,12 +16,14 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.delta.DeltaBaseTableCRUDTestEnv;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.Map;
 import java.util.Optional;
+import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -160,6 +162,61 @@ public class SdkRenameTableTest extends DeltaBaseTableCRUDTestEnv {
         () -> deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, source),
         DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
         "Table not found");
+  }
+
+  /** A rename that waits for a concurrent drop gets 404, not a 500. */
+  @Test
+  public void renameLosingToADropIsNotFound() throws Exception {
+    Handle table = createDeltaManaged("renameLoserSource", Map.of());
+
+    TestUtils.assertDeltaApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> {
+                  held.createMutationQuery("delete from ColumnInfoDAO where table.id = :id")
+                      .setParameter("id", table.tableId())
+                      .executeUpdate();
+                  held.createMutationQuery("delete from TableInfoDAO where id = :id")
+                      .setParameter("id", table.tableId())
+                      .executeUpdate();
+                },
+                () -> {
+                  deltaTablesApi.renameTable(
+                      TestUtils.CATALOG_NAME,
+                      TestUtils.SCHEMA_NAME,
+                      "renameLoserSource",
+                      new DeltaRenameTableRequest().newName("renameLoserTarget"));
+                  return null;
+                }),
+        DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
+        "Table not found");
+  }
+
+  /** A commit that lands while a rename waits keeps its columns. */
+  @Test
+  public void renameAfterACommitKeepsTheCommittedMetadataLocation() throws Exception {
+    Handle table = createDeltaManaged("renameCommitSource", Map.of());
+    String committedLocation = "file:///committed/metadata.json";
+
+    runBlockedByHeldWrite(
+        held ->
+            held.createMutationQuery(
+                    "update TableInfoDAO set icebergMetadataLocation = :location where id = :id")
+                .setParameter("location", committedLocation)
+                .setParameter("id", table.tableId())
+                .executeUpdate(),
+        () ->
+            deltaTablesApi.renameTableWithHttpInfo(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                "renameCommitSource",
+                new DeltaRenameTableRequest().newName("renameCommitTarget")));
+
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      TableInfoDAO renamed = session.get(TableInfoDAO.class, table.tableId());
+      assertThat(renamed.getName()).isEqualTo("renameCommitTarget");
+      assertThat(renamed.getIcebergMetadataLocation()).isEqualTo(committedLocation);
+    }
   }
 
   private static void assertTableStateUnchanged(
