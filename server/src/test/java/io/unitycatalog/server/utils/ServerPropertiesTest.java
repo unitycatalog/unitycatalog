@@ -7,11 +7,16 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 public class ServerPropertiesTest {
 
@@ -453,6 +458,46 @@ public class ServerPropertiesTest {
     assertThat(s3.getAccessKey()).isEqualTo("exact-access-key");
     assertThat(serverProperties.getAdlsConfigurations().get("account0").getClientSecret())
         .isEqualTo("env-adls-secret");
+  }
+
+  @Test
+  public void testWarningsForSecretsInTheFile(@TempDir Path dir) throws IOException {
+    String file = dir.resolve("server.properties").toString();
+    Files.writeString(
+        Paths.get(file),
+        String.join(
+            "\n",
+            "server.client-secret=client-value",
+            "s3.secretKey.0=s3-value",
+            "s3.sessionToken.0=token-value",
+            "adls.clientSecret.0=adls-value",
+            // An empty line in the sample file is not a secret.
+            "aws.secretKey=",
+            "s3.region.0=us-west-2"));
+    System.setProperty("adls.clientSecret.0", "property-value");
+    try {
+      ServerProperties serverProperties =
+          new ServerProperties(
+              file,
+              // The server doesn't read the client secret, so this still warns about the file.
+              Map.of("UC_SERVER_CLIENT_SECRET", "env-value", "UC_S3_SESSIONTOKEN_0", "env-value"));
+
+      List<String> warnings = serverProperties.secretsInFileWarnings(file);
+      assertThat(warnings)
+          .satisfiesExactlyInAnyOrder(
+              w ->
+                  assertThat(w)
+                      .startsWith("server.client-secret is set in " + file)
+                      .contains("bin/uc auth login", "UC_SERVER_CLIENT_SECRET"),
+              w ->
+                  assertThat(w)
+                      .startsWith("s3.secretKey.0 is set in " + file)
+                      .contains("UC_S3_SECRETKEY_0"));
+      assertThat(String.join("\n", warnings))
+          .doesNotContain("client-value", "s3-value", "token-value", "adls-value", "env-value");
+    } finally {
+      System.clearProperty("adls.clientSecret.0");
+    }
   }
 
   @Test
