@@ -38,7 +38,7 @@ public final class DeltaLocations {
    * Formats a non-null stored staging location for a Delta client. Delta passes it to Spark as the
    * table location, and Spark reads that as a Hadoop path, so it is a path, not a URI.
    */
-  public static String toDeltaPath(String location) {
+  static String toDeltaPath(String location) {
     return new Path(NormalizedURL.from(location).toUri()).toString();
   }
 
