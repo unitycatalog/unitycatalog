@@ -465,7 +465,7 @@ public class ServerPropertiesTest {
   }
 
   @Test
-  public void testWarningsForSecretsInTheFile(@TempDir Path dir) throws IOException {
+  public void testLogsNamesOfSecretsInTheFile(@TempDir Path dir) throws IOException {
     String file = dir.resolve("server.properties").toString();
     Files.writeString(
         Paths.get(file),
@@ -478,50 +478,6 @@ public class ServerPropertiesTest {
             // An empty line in the sample file is not a secret.
             "aws.secretKey=",
             "s3.region.0=us-west-2"));
-    System.setProperty("adls.clientSecret.0", "property-value");
-    try {
-      ServerProperties serverProperties =
-          new ServerProperties(
-              file,
-              // The server doesn't read the client secret, so this still warns about the file.
-              Map.of("UC_SERVER_CLIENT_SECRET", "env-value", "UC_S3_SESSIONTOKEN_0", "env-value"));
-
-      List<String> warnings = serverProperties.secretsInFileWarnings(file);
-      assertThat(warnings)
-          .satisfiesExactlyInAnyOrder(
-              w ->
-                  assertThat(w)
-                      .startsWith("server.client-secret is set in " + file)
-                      .contains("bin/uc auth login", "UC_SERVER_CLIENT_SECRET"),
-              w ->
-                  assertThat(w)
-                      .startsWith("s3.secretKey.0 is set in " + file)
-                      .contains("UC_S3_SECRETKEY_0"));
-      assertThat(String.join("\n", warnings))
-          .doesNotContain("client-value", "s3-value", "token-value", "adls-value", "env-value");
-    } finally {
-      System.clearProperty("adls.clientSecret.0");
-    }
-
-    // Each kind of secret warns when nothing else supplies it, whatever its index.
-    Files.writeString(
-        Paths.get(file),
-        String.join(
-            "\n",
-            "aws.secretKey=a",
-            "s3.secretKey.10=b",
-            "s3.sessionToken.10=c",
-            "adls.clientSecret.10=d"));
-    assertThat(new ServerProperties(file, Map.of()).secretsInFileWarnings(file))
-        .extracting(w -> w.substring(0, w.indexOf(' ')))
-        .containsExactlyInAnyOrder(
-            "aws.secretKey", "s3.secretKey.10", "s3.sessionToken.10", "adls.clientSecret.10");
-  }
-
-  @Test
-  public void testLoggingNamesNotValues(@TempDir Path dir) throws IOException {
-    String file = dir.resolve("server.properties").toString();
-    Files.writeString(Paths.get(file), "aws.secretKey=file-secret\n");
     Logger logger = (Logger) LogManager.getLogger(ServerProperties.class);
     Level previousLevel = logger.getLevel();
     CapturingAppender appender = new CapturingAppender();
@@ -529,24 +485,55 @@ public class ServerPropertiesTest {
     logger.addAppender(appender);
     // The test JVM may not find the Log4j config and fall back to ERROR.
     Configurator.setLevel(logger.getName(), Level.INFO);
+    System.setProperty("adls.clientSecret.0", "property-value");
     try {
       ServerProperties serverProperties =
           new ServerProperties(
-              file, Map.of("UC_AWS_REGION", "env-region", "UC_SERVER_CLIENT_SECRET", "env-secret"));
+              file,
+              Map.of(
+                  // The server doesn't read the client secret, so this still warns about the file.
+                  "UC_SERVER_CLIENT_SECRET", "env-value",
+                  "UC_S3_SESSIONTOKEN_0", "env-value",
+                  "UC_AWS_REGION", "env-value"));
       serverProperties.get(Property.AWS_REGION);
       serverProperties.get(Property.CLIENT_SECRET);
-
       assertThat(appender.messages)
           .satisfiesExactlyInAnyOrder(
-              m -> assertThat(m).startsWith("WARN aws.secretKey is set in " + file),
+              m ->
+                  assertThat(m)
+                      .startsWith("WARN server.client-secret is set in " + file)
+                      .contains("bin/uc auth login", "UC_SERVER_CLIENT_SECRET"),
+              m -> assertThat(m).startsWith("WARN s3.secretKey.0 is set in " + file),
               // Once per key, and none for the client secret, which the server doesn't use.
               m ->
                   assertThat(m)
                       .isEqualTo(
+                          "INFO Using the UC_S3_SESSIONTOKEN_0 environment variable for"
+                              + " s3.sessionToken.0"),
+              m ->
+                  assertThat(m)
+                      .isEqualTo(
                           "INFO Using the UC_AWS_REGION environment variable for aws.region"));
+      System.clearProperty("adls.clientSecret.0");
+
+      // Each kind of secret warns when nothing else supplies it, whatever its index.
+      Files.writeString(
+          Paths.get(file),
+          String.join(
+              "\n",
+              "aws.secretKey=a",
+              "s3.secretKey.10=b",
+              "s3.sessionToken.10=c",
+              "adls.clientSecret.10=d"));
+      new ServerProperties(file, Map.of());
+      assertThat(appender.messages.subList(4, appender.messages.size()))
+          .extracting(m -> m.split(" ")[1])
+          .containsExactlyInAnyOrder(
+              "aws.secretKey", "s3.secretKey.10", "s3.sessionToken.10", "adls.clientSecret.10");
       assertThat(String.join("\n", appender.messages))
-          .doesNotContain("file-secret", "env-region", "env-secret");
+          .doesNotContain("client-value", "s3-value", "token-value", "adls-value", "env-value");
     } finally {
+      System.clearProperty("adls.clientSecret.0");
       logger.removeAppender(appender);
       Configurator.setLevel(logger.getName(), previousLevel);
       appender.stop();
