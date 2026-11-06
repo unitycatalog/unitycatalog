@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.auth0.jwt.JWT;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
@@ -73,6 +74,7 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     CapturingAuditSink.reset();
   }
 
+  /** A managed table, so its drop also queues the storage cleanup of its location. */
   private TableInfo createAuditedTable() throws Exception {
     TablesApi tables = new TablesApi(adminApiClient);
     StagingTableInfo staging =
@@ -98,6 +100,8 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     String admin = JWT.decode(adminConfig.getAuthToken()).getSubject();
     UserResource user = createTestUser(REGULAR_1);
     UUID userId = UUID.fromString(user.getId());
+    UUID catalogId =
+        UUID.fromString(new CatalogsApi(adminApiClient).getCatalog(TestUtils.CATALOG_NAME).getId());
     grantPermissions(
         REGULAR_1, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
     // The second grant changes nothing, so it records nothing.
@@ -147,7 +151,7 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
         .allSatisfy(
             r -> {
               assertThat(r.getPrivilege()).isEqualTo("USE CATALOG");
-              assertThat(r.getResourceId()).isNotNull();
+              assertThat(r.getResourceId()).isEqualTo(catalogId);
               assertThat(r.getPrincipalId()).isEqualTo(userId);
               assertThat(r.getUser()).isEqualTo(admin);
             });

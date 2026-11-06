@@ -507,7 +507,9 @@ lazy val server = (project in file("server"))
       // the 3.3.2 that iceberg-aws brings a failed policy write throws NoSuchMethodError. iceberg-aws
       // only uses Failsafe APIs that 3.2.3 has.
       // TODO(https://github.com/apache/casbin-jcasbin-jdbc-adapter/pull/94): drop this pin once a
-      // jdbc-adapter release includes that change.
+      // jdbc-adapter release includes that change. The pin applies to this project only: serverShaded
+      // ships 3.2.3 because its assembly classpath is this project's, and any other module that depends
+      // on server resolves 3.3.2 unless it pins Failsafe too.
       "dev.failsafe" % "failsafe" % "3.2.3",
       "software.amazon.awssdk" % "sso" % awsSdkV2Version,
       "software.amazon.awssdk" % "ssooidc" % awsSdkV2Version,
