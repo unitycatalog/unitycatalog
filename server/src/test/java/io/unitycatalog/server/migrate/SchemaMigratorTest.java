@@ -208,6 +208,18 @@ public class SchemaMigratorTest {
   }
 
   @Test
+  void acceptsH2WithAutoServerOff(@TempDir Path dir) {
+    Properties properties = db.hibernateProperties();
+    properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    properties.setProperty(
+        "hibernate.connection.url", "jdbc:h2:file:" + dir + "/uc;AUTO_SERVER=OFF");
+
+    try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(properties)) {
+      assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
+    }
+  }
+
+  @Test
   void refusesPostgresqlWithoutACurrentSchema() {
     assumeFalse(!db.jdbcUrl().startsWith("jdbc:postgresql:"), "only PostgreSQL");
     HikariConfig config = new HikariConfig();
