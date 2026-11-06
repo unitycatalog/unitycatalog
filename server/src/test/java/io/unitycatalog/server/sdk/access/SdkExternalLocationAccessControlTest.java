@@ -522,6 +522,43 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
         TestUtils::assertDeltaPermissionDenied);
   }
 
+  @Test
+  public void testDeltaCreateTableAuthorizesTheDecodedLocation() throws Exception {
+    String grantedLocation = "spaced_loc";
+    userCApi.createExternalLocation(
+        new CreateExternalLocation()
+            .name(grantedLocation)
+            .url("s3://ext-bucket/team reports")
+            .credentialName(CREDENTIAL_NAME));
+    userCApi.createExternalLocation(
+        new CreateExternalLocation()
+            .name("literal_percent_loc")
+            .url("s3://ext-bucket/team%20reports")
+            .credentialName(CREDENTIAL_NAME));
+    String email = "delta_decoded_location@example.com";
+    createTestUser(email);
+    grantPermissions(email, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
+    grantPermissions(
+        email, SecurableType.SCHEMA, TestUtils.SCHEMA_FULL_NAME, Privileges.USE_SCHEMA);
+    grantPermissions(
+        email, SecurableType.SCHEMA, TestUtils.SCHEMA_FULL_NAME, Privileges.CREATE_TABLE);
+    grantPermissions(
+        email, SecurableType.EXTERNAL_LOCATION, grantedLocation, Privileges.CREATE_EXTERNAL_TABLE);
+    DeltaTablesApi deltaTablesApi =
+        new DeltaTablesApi(TestUtils.createApiClient(createTestUserServerConfig(email)));
+
+    deltaTablesApi.createTable(
+        TestUtils.CATALOG_NAME,
+        TestUtils.SCHEMA_NAME,
+        deltaExternalTableRequest("t1", "s3://ext-bucket/team%20reports/t1"));
+    TestUtils.assertDeltaPermissionDenied(
+        () ->
+            deltaTablesApi.createTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                deltaExternalTableRequest("t2", "s3://ext-bucket/team%2520reports/t2")));
+  }
+
   @FunctionalInterface
   private interface ExternalTableCreator {
     /** Creates the table and returns the resulting storage location; throws on denial. */
