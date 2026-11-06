@@ -137,6 +137,7 @@ public class SchemaMigratorTest {
 
     assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()).upgradeSchema())
         .hasMessageMatching("(?is).*index idx_name is used by table other_app.*")
+        .hasMessageContaining("restore the backup")
         .hasMessageContaining("rename that index");
 
     // Renaming the other index does not create ours: a rerun still refuses.
