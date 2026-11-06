@@ -21,6 +21,7 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.service.delta.DeltaLocations;
 import io.unitycatalog.server.service.delta.DeltaUniformUtils;
 import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
 import io.unitycatalog.server.utils.Constants;
@@ -1494,13 +1495,14 @@ public class DeltaCommitRepository {
       TableInfoDAO tableInfoDAO,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields) {
     validateTable(tableInfoDAO);
-    NormalizedURL commitTableUri = NormalizedURL.from(commit.getTableUri());
+    NormalizedURL commitTableUri = DeltaLocations.fromDelta(commit.getTableUri());
     NormalizedURL tableUri = NormalizedURL.from(tableInfoDAO.getUrl());
     ValidationUtils.checkArgument(
         commitTableUri.equals(tableUri),
-        "Table URI in commit %s does not match the table path %s",
+        "Table URI in commit %s does not match the table path %s (the commit URI is read as %s)",
         commit.getTableUri(),
-        tableInfoDAO.getUrl());
+        tableInfoDAO.getUrl(),
+        commitTableUri);
     uniformFields.ifPresent(
         uf -> DeltaUniformUtils.requireMetadataLocationSubpath(uf.metadataLocation(), tableUri));
     validateUniformMetadataPresence(session, commit, tableInfoDAO);

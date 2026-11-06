@@ -8,6 +8,13 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.azure.core.util.Context;
+import com.azure.storage.file.datalake.DataLakeServiceAsyncClient;
+import com.azure.storage.file.datalake.DataLakeServiceClientBuilder;
+import com.azure.storage.file.datalake.implementation.util.DataLakeSasImplUtil;
+import com.azure.storage.file.datalake.models.UserDelegationKey;
+import com.azure.storage.file.datalake.sas.DataLakeServiceSasSignatureValues;
+import com.azure.storage.file.datalake.sas.PathSasPermission;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -28,6 +35,8 @@ import io.unitycatalog.server.service.credential.gcp.StaticTestingCredentialGene
 import io.unitycatalog.server.service.credential.gcp.TestingCredentialGenerator;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.time.OffsetDateTime;
+import java.util.Base64;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -37,9 +46,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import reactor.core.publisher.Mono;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.StsClientBuilder;
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
@@ -179,6 +190,60 @@ public class CloudCredentialVendorTest {
                 vendCredential(
                     "abfss://test@uctest/abc", Set.of(CredentialContext.Privilege.UPDATE)))
         .isInstanceOf(CompletionException.class);
+  }
+
+  @Test
+  public void testAzureSasIsScopedToTheLiteralPath() {
+    UserDelegationKey key =
+        new UserDelegationKey()
+            .setSignedObjectId("object")
+            .setSignedTenantId("tenantId")
+            .setSignedStart(OffsetDateTime.parse("2026-01-01T00:00:00Z"))
+            .setSignedExpiry(OffsetDateTime.parse("2030-01-01T00:00:00Z"))
+            .setSignedService("b")
+            .setSignedVersion("2025-05-05")
+            .setValue(Base64.getEncoder().encodeToString(new byte[32]));
+    DataLakeServiceAsyncClient dataLakeClient = Mockito.mock(DataLakeServiceAsyncClient.class);
+    when(dataLakeClient.getUserDelegationKey(any(), any())).thenReturn(Mono.just(key));
+    when(serverProperties.getAdlsConfigurations())
+        .thenReturn(
+            Map.of(
+                "uctest",
+                ADLSStorageConfig.builder()
+                    .tenantId("tenantId")
+                    .clientId("clientId")
+                    .clientSecret("clientSecret")
+                    .build()));
+    credentialsOperations =
+        new CloudCredentialVendor(null, new AzureCredentialVendor(serverProperties), null);
+
+    try (MockedConstruction<DataLakeServiceClientBuilder> ignored =
+        Mockito.mockConstruction(
+            DataLakeServiceClientBuilder.class,
+            Mockito.withSettings().defaultAnswer(Mockito.RETURNS_SELF),
+            (builder, context) -> when(builder.buildAsyncClient()).thenReturn(dataLakeClient))) {
+      String sas =
+          vendCredential(
+                  "abfss://test@uctest.dfs.core.windows.net/team%20reports",
+                  Set.of(CredentialContext.Privilege.SELECT))
+              .getAzureUserDelegationSas()
+              .getSasToken();
+
+      ArgumentCaptor<OffsetDateTime> start = ArgumentCaptor.forClass(OffsetDateTime.class);
+      ArgumentCaptor<OffsetDateTime> expiry = ArgumentCaptor.forClass(OffsetDateTime.class);
+      verify(dataLakeClient).getUserDelegationKey(start.capture(), expiry.capture());
+      PathSasPermission permissions =
+          new PathSasPermission().setReadPermission(true).setListPermission(true);
+      assertThat(sas)
+          .isEqualTo(
+              new DataLakeSasImplUtil(
+                      new DataLakeServiceSasSignatureValues(expiry.getValue(), permissions)
+                          .setStartTime(start.getValue()),
+                      "test",
+                      "team%20reports",
+                      true)
+                  .generateUserDelegationSas(key, "uctest", Context.NONE));
+    }
   }
 
   @Test
