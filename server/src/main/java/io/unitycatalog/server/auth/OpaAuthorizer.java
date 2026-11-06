@@ -7,6 +7,7 @@ import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.client.redirect.RedirectConfig;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.server.ServiceRequestContext;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
@@ -53,6 +54,13 @@ public class OpaAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
             .followRedirects(RedirectConfig.disabled())
             .responseTimeoutMode(ResponseTimeoutMode.FROM_START)
             .responseTimeout(responseTimeout)
+            .contextCustomizer(
+                ctx -> {
+                  ServiceRequestContext root = ctx.root();
+                  if (root != null) {
+                    root.whenRequestCancelling().thenAccept(ctx::cancel);
+                  }
+                })
             .maxResponseLength(MAX_RESPONSE_LENGTH)
             .build();
   }

@@ -18,6 +18,13 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.linecorp.armeria.client.ResponseTimeoutException;
 import com.linecorp.armeria.common.ContentTooLargeException;
+import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpRequest;
+import com.linecorp.armeria.common.util.SafeCloseable;
+import com.linecorp.armeria.common.util.TimeoutMode;
+import com.linecorp.armeria.server.RequestCancellationException;
+import com.linecorp.armeria.server.RequestTimeoutException;
+import com.linecorp.armeria.server.ServiceRequestContext;
 import com.sun.net.httpserver.HttpServer;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -36,7 +43,13 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
@@ -65,7 +78,7 @@ class OpaAuthorizerTest {
   private HttpServer opa;
   private OpaAuthorizer authorizer;
   private int status = 200;
-  private boolean stalled;
+  private Predicate<JsonNode> shouldStall = request -> false;
   private Function<JsonNode, String> reply = request -> "{\"result\":{\"allow\":true}}";
 
   private record Request(String method, String path, String contentType, JsonNode body) {}
@@ -98,7 +111,7 @@ class OpaAuthorizerTest {
                   exchange.getRequestURI().getPath(),
                   exchange.getRequestHeaders().getFirst("Content-Type"),
                   request));
-          if (stalled) {
+          if (shouldStall.test(request)) {
             return;
           }
           byte[] body = reply.apply(request).getBytes(StandardCharsets.UTF_8);
@@ -216,9 +229,61 @@ class OpaAuthorizerTest {
 
   @Test
   void reportsResponseTimeouts() {
-    stalled = true;
+    shouldStall = request -> true;
     authorizer = newAuthorizer(Duration.ofMillis(100));
     assertThat(unavailableDecision()).hasRootCauseInstanceOf(ResponseTimeoutException.class);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void stopsOpaChecksWhenTheUcRequestIsCancelled(boolean timedOut) throws Exception {
+    authorizer = newAuthorizer(Duration.ofSeconds(30));
+    allowOnly(USE_SCHEMA);
+    CountDownLatch pending = new CountDownLatch(1);
+    shouldStall =
+        request -> {
+          if (request.path("input").path("privilege").asText().equals("SELECT")) {
+            pending.countDown();
+            return true;
+          }
+          return false;
+        };
+    ServiceRequestContext context = ServiceRequestContext.of(HttpRequest.of(HttpMethod.GET, "/"));
+    Class<? extends Throwable> expectedCause =
+        timedOut ? RequestTimeoutException.class : RequestCancellationException.class;
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      Future<BaseException> decision =
+          executor.submit(
+              () -> {
+                try (SafeCloseable ignored = context.push()) {
+                  return catchThrowableOfType(
+                      () ->
+                          authorizer.authorizeAll(
+                              principal, TABLE, table, USE_SCHEMA, SELECT, CREATE_TABLE),
+                      BaseException.class);
+                }
+              });
+      assertThat(pending.await(5, TimeUnit.SECONDS)).isTrue();
+      if (timedOut) {
+        context.setRequestTimeoutMillis(TimeoutMode.SET_FROM_START, 100);
+      } else {
+        context.cancel();
+      }
+      BaseException failure = decision.get(5, TimeUnit.SECONDS);
+      assertThat(failure).hasRootCauseInstanceOf(expectedCause);
+      assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE);
+      assertPrivileges("USE_SCHEMA", "SELECT");
+
+      try (SafeCloseable ignored = context.push()) {
+        assertThat(unavailableDecision()).hasRootCauseInstanceOf(expectedCause);
+      }
+      assertThat(requests).isEmpty();
+    } finally {
+      context.cancel();
+      opa.stop(0);
+      executor.shutdownNow();
+    }
   }
 
   @Test
