@@ -129,12 +129,16 @@ jobs:
           # The driver jar goes on the module path, and the database name and URL parameters are encoded: + would
           # read as a space.
           out="$(helm template uc helm -f helm/ci/mysql-values.yaml --set-string 'server.db.mysqlConfig.dbName=uc+db' \
-            --set-string 'server.db.mysqlConfig.extraParams.connectionTimeZone=+05:30')"
-          grep -qF 'jdbc:mysql://mysql:3306/uc%2Bdb?connectionTimeZone=%2B05%3A30' <<<"$out"
+            --set-string 'server.db.mysqlConfig.extraParams.connectionTimeZone=+05:30' \
+            --set-string 'server.db.mysqlConfig.extraParams.sslMode=REQUIRED')"
+          grep -qF 'jdbc:mysql://mysql:3306/uc%2Bdb?connectionTimeZone=%2B05%3A30&sslMode=REQUIRED' <<<"$out"
           grep -qF -- '--module-path=/home/unitycatalog/jdbc-drivers/mysql-connector-j.jar' <<<"$out"
           grep -qF 'mountPath: /home/unitycatalog/jdbc-drivers/mysql-connector-j.jar' <<<"$out"
           # Other databases get neither.
-          ! grep -qE 'JDK_JAVA_OPTIONS|mysql-driver' <<<"$(helm template uc helm)" || exit 1
+          for values in helm/ci/default-values.yaml helm/ci/postgresql-values.yaml; do
+            out="$(helm template uc helm -f "$values")"
+            ! grep -qE 'JDK_JAVA_OPTIONS|mysql-driver' <<<"$out" || exit 1
+          done
 
       - name: Build the server and UI images
         run: |

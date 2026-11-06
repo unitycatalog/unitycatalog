@@ -95,7 +95,8 @@ The server image does not include the MySQL JDBC driver, because it is licensed 
 `server.db.mysqlConfig.driver.volume` at the volume and `server.db.mysqlConfig.driver.subPath` at the jar on it. To
 change the driver version, put the new jar on the volume and point `subPath` at it. Every server replica mounts the
 volume, and so does the new server during an upgrade, so use a volume that several pods can mount, for example a
-PersistentVolumeClaim with access mode `ReadOnlyMany`. The jar is too large for a ConfigMap.
+PersistentVolumeClaim with access mode `ReadOnlyMany`. The jar is too large for a ConfigMap. If the server cannot load
+the driver class `com.mysql.cj.jdbc.Driver`, check that `subPath` names the jar file on the volume.
 
 Create the database with a binary collation, as described in
 [Example MySQL Connection](deployment.md#example-mysql-connection), and store the password in a Secret as for
