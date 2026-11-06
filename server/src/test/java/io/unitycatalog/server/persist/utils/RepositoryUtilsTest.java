@@ -174,6 +174,7 @@ public class RepositoryUtilsTest {
   @Test
   public void lockByKeyFindsTheRowOnlyWhenIdAndKeyBothMatch() {
     UUID id = persistCatalog("lock_by_key", "c");
+    UUID otherId = persistCatalog("lock_by_key_other", "other");
     Map<String, Object> key = Map.of("name", "lock_by_key", "owner", "owner");
 
     inTransaction(
@@ -186,7 +187,9 @@ public class RepositoryUtilsTest {
           for (Map<String, Object> wrongKey :
               List.of(
                   Map.<String, Object>of("name", "renamed", "owner", "owner"),
-                  Map.<String, Object>of("name", "lock_by_key", "owner", "other"))) {
+                  Map.<String, Object>of("name", "lock_by_key", "owner", "other"),
+                  // A key attribute named like the id must not replace the id being locked.
+                  Map.<String, Object>of("id", otherId))) {
             assertThatThrownBy(
                     () ->
                         RepositoryUtils.lockByKey(

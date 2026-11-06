@@ -96,7 +96,8 @@ public final class TestDatabase implements AutoCloseable {
   /**
    * Whether some connection to this database is blocked waiting for a row lock that another
    * connection holds. Tests poll this to know a racing operation has reached its lock, instead of
-   * sleeping.
+   * sleeping. On MySQL, {@code innodb_trx} covers the whole server, not only this database, so this
+   * holds only while server tests run one at a time.
    */
   public boolean hasLockWaiter() {
     String query =
@@ -138,6 +139,14 @@ public final class TestDatabase implements AutoCloseable {
       while (!hasLockWaiter()) {
         if (result.isDone() || System.nanoTime() > deadline) {
           transaction.rollback();
+          if (result.isDone()) {
+            // Surface an unrelated early failure instead of reporting a missed lock wait.
+            try {
+              result.get();
+            } catch (ExecutionException e) {
+              throw e.getCause() instanceof Exception cause ? cause : e;
+            }
+          }
           fail("The operation did not wait for the held write's lock");
         }
         // Poll gently: on MySQL, reading innodb_trx every few milliseconds stalls the very
