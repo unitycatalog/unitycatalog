@@ -187,6 +187,7 @@ For local `file:` storage there is no credential to issue. A request for credent
 temporary-credentials endpoints, the Delta API or the Iceberg REST catalog, still writes a record of
 the access the server granted, without `expires_at`. The server's own reads, writes and cleanup of
 `file:` storage write no record.
+
 Permission changes are recorded only when authorization is on. A `GRANT` is recorded when it adds a grant.
 `REVOKE` and the two `CLEAR_*` actions are recorded once the server has run them without an error, whether or
 not they removed a grant. If the database delete fails, the request fails and nothing is recorded.
