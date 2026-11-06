@@ -76,6 +76,8 @@ public class SchemaGateTest {
         "in-memory database | jdbc:h2:mem:schema-command | is in memory",
         "unnamed in-memory database | jdbc:h2:. | is in memory",
         "Hibernate default schema | hibernate.default_schema=uc | hibernate.default_schema is not",
+        "Hibernate default catalog | hibernate.default_catalog=uc | hibernate.default_catalog is"
+            + " not",
       })
   void schemaCommandsRefuse(String setup, String setting, String message, @TempDir Path conf)
       throws IOException {

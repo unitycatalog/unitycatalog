@@ -448,6 +448,7 @@ public class SchemaMigratorTest {
 
     assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()).upgradeSchema())
         .hasMessageMatching("(?is).*index idx_name is used by table other_app.*")
+        .hasMessageContaining("restore the backup")
         .hasMessageContaining("rename that index");
 
     // Renaming the other index does not create ours: a rerun still refuses.
@@ -529,6 +530,20 @@ public class SchemaMigratorTest {
           .hasMessageContaining("The connection has no current schema")
           .hasMessageContaining("currentSchema");
     }
+  }
+
+  @Test
+  void refusesUnityCatalogTablesThatTheSearchPathReachesLater() {
+    assumeFalse(!db.jdbcUrl().startsWith("jdbc:postgresql:"), "only PostgreSQL");
+    // The tables are in public; then a schema named after the user, first on the search_path,
+    // becomes the current schema. Steps run there would hide the tables in public.
+    UpgradeTestUtils.createBaselineSchema(db);
+    UpgradeTestUtils.execute(
+        db, "DO $$ BEGIN EXECUTE format('CREATE SCHEMA %I', current_user); END $$");
+
+    assertThatThrownBy(() -> new SchemaMigrator(db.dataSource()))
+        .hasMessageContaining("Unity Catalog tables are in schema public")
+        .hasMessageContaining("set currentSchema in the JDBC URL");
   }
 
   @Test
