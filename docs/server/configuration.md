@@ -184,6 +184,68 @@ The cache is controlled by these keys:
 
 Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is five minutes).
 
+### Audit records
+
+The server can write an audit record for each storage credential it issues. Audit records are off by default. Set `server.audit.sink` to turn them on:
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `server.audit.sink` | (unset) | The class that receives audit records. `io.unitycatalog.server.audit.FileAuditSink` writes them to `etc/logs/audit.log`. When unset, no records are written. |
+
+Each record is one JSON line. Fields that don't apply to a record are left out:
+
+```json
+{"time":"2026-10-20T10:02:00.000Z","action":"ISSUE_CREDENTIAL","user":"bob@example.com","request_id":"a1b2c3d4","purpose":"CLIENT","location":"s3://bucket/root/tables/7f3a1c2e-5b6d-4e8f-9a0b-1c2d3e4f5a6b","access":"READ","expires_at":"2026-10-20T11:02:00.000Z"}
+```
+
+- `time`: when the record was made, in ISO 8601 UTC.
+- `action`: `ISSUE_CREDENTIAL`.
+- `user`: `system:storage-cleanup` on `CLEANUP` records, whether or not authorization is on. On other
+  records, the caller's identity from the token (`sub`): the user's email, or `admin` for the
+  bootstrap admin token. It is absent when authorization is off.
+- `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
+  itself while handling the request, and `CLEANUP` for the background storage cleanup.
+- `resource_id`: on a `CLEANUP` credential, the ID of the dropped object.
+- `request_id`: the ID of the request being served, the same as `request_id` in the `server.log` lines of
+  that request. It is absent on `CLEANUP` records, which are not made while serving a request.
+- `location`: the storage location, with scheme, authority and path only. The query string and
+  fragment are removed. User info is removed too, except that for ABFS the part before the `@` is
+  kept when it looks like a container name (3 to 63 lowercase letters, digits and hyphens) and is
+  replaced by `[REDACTED]` otherwise.
+- `access` is `READ` or `READ_WRITE`: the access the request asked for. A static credential, such as
+  configured S3 keys, is returned as configured and can allow more. `expires_at` is when the
+  credential expires. Records never contain credential values.
+
+A record is written for every credential issued, including ones served from the credential cache.
+For local `file:` storage there is no credential to issue. A request for credentials, through the
+temporary-credentials endpoints, the Delta API or the Iceberg REST catalog, still writes a record of
+the access the server granted, without `expires_at`. The server's own reads, writes and cleanup of
+`file:` storage write no record. Audit records are best effort: one can be lost when the sink fails,
+or when a request is still running as the server shuts down.
+
+There are two ways to send records:
+
+- `FileAuditSink`, shipped with the server, writes each record to the Log4j `audit` logger. As
+  shipped, that logger writes to `etc/logs/audit.log`, but you can point it at any Log4j appender,
+  for example one that ships records to a cloud service.
+- Your own class that implements `io.unitycatalog.server.audit.AuditSink`, for example one that
+  sends records to Kinesis or SQS. It needs a public no-arg constructor and must be on the server
+  classpath; the server does not start if it can't be loaded. `record` is called concurrently, so
+  it must be thread-safe, and should queue records instead of sending them inline. See the
+  `AuditSink` Javadoc for the full contract.
+
+`FileAuditSink` needs the `audit` logger in `etc/conf/server.log4j2.properties`, set to
+`additivity = false` and a level that enables `INFO`. Neither the Log4j configuration nor the `audit` logger may
+have a filter, and the link to the appender (`logger.audit.appenderRef.*`) may have neither a filter
+nor a level above `INFO`, because any of these drops records silently. A file or console appender
+must also set `ignoreExceptions = false` and have no filter; other appenders are not checked. The
+shipped configuration meets all of this. If a requirement is not met, for example in a custom or
+copied log configuration without the `audit` logger, the server does not start.
+
+`audit.log` rolls over with the same settings as `server.log` in the default distribution. The Helm
+chart has no `server.log` file and rolls `audit.log` the same way. Ship it continuously to your log or
+security service to keep the records longer.
+
 ## Logging
 
 The server logs are located at `etc/logs/server.log`. The log level and log rolling policy can be set in log4j2 config
