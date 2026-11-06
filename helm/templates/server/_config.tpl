@@ -138,10 +138,8 @@ rootLogger.appenderRef.console.ref=Console
 {{- end }}
 
 {{/*
-Storage credentials passed to the server container as environment variables, under the names the
-server reads (see "Secrets" in docs/server/configuration.md). Every part of a credential comes from
-here and none from the generated server.properties, which the init container writes only at pod
-start. A server container that restarts after the Secret changes reads one consistent set.
+Storage credentials for the server container (see "Secrets" in docs/server/configuration.md). Every
+part comes from here, not from the generated server.properties, which is written only at pod start.
 */}}
 {{- define "unitycatalog.server.secretEnv" -}}
 {{- range $index, $config := .Values.storage.credentials.s3 }}
