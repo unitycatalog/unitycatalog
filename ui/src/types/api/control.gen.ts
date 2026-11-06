@@ -437,13 +437,6 @@ export interface operations {
           'application/scim+json': components['schemas']['UserResource'];
         };
       };
-      /** @description The request deactivates the metastore owner (FAILED_PRECONDITION). */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
     };
   };
   deleteUser: {
@@ -466,13 +459,6 @@ export interface operations {
         content: {
           'application/scim+json': unknown;
         };
-      };
-      /** @description The user is the metastore owner (FAILED_PRECONDITION). */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
       };
     };
   };
