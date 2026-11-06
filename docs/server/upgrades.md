@@ -167,20 +167,18 @@ Messages that `--check-schema` and `--upgrade-schema` print when they refuse, an
 `The database schema differs from the schema of version <m>:`
 : Followed by the differences, as above. The schema history records this release's last version,
   but the schema is not the one this release's steps build: something changed it outside the steps.
-  Undo those changes or restore the backup, then run the command again.
+  Undo those changes or restore the backup, then run the command again. A `missing index` line can
+  end with a note that another table's index already has that name: on PostgreSQL and H2, index
+  names are unique within a schema, so the step skipped Unity Catalog's index but is recorded as
+  applied. Renaming the other index and running the command again does not create it; follow the
+  note: restore the backup (on a new install, drop the `uc_*` tables and `uc_schema_history`),
+  rename the other index or give Unity Catalog its own schema, then run the command again.
 
 `The database's schema history does not match this release's schema steps: <reasons>`
 : Flyway's check of `uc_schema_history` failed, for example because a recorded step differs from
   this release's step of the same version (its checksum), or this release lacks a recorded step.
   `<reasons>` may advise Flyway's `repair` command, which Unity Catalog doesn't have. Run the release
   that applied the steps, or restore the backup. Do not edit `uc_schema_history` by hand.
-
-`Step <n> left Unity Catalog index <index> missing on <table>: <hint>`
-: On PostgreSQL and H2, index names are unique within a schema, so the step skipped Unity Catalog's
-  index because another table's index already has that name. The step is recorded as applied, so
-  renaming the other index and running the command again does not create Unity Catalog's index.
-  Restore the backup (on a new install, drop the `uc_*` tables and `uc_schema_history`), rename the
-  other index or give Unity Catalog its own schema, then run the command again.
 
 `Could not take the schema migration lock: <reason>`
 : The command could not get the lock that keeps two migration runs apart, so it changed nothing.
