@@ -241,7 +241,8 @@ public class VolumeCli {
     String base = basePath.toUri().getPath().replaceAll("/$", "") + "/";
     String resolved = resolvedPath.toUri().getPath();
     if (!(resolved + "/").startsWith(base)) {
-      throw new CliException("Path is outside the volume location. Read failed: " + resolvedPath);
+      throw new CliException(
+          "Resolved URI is outside the base URI path. Read Failed. " + resolvedPath);
     }
     return resolvedPath;
   }
