@@ -18,14 +18,18 @@ import io.unitycatalog.server.base.table.BaseTableCRUDTestEnv;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.PropertyRepository;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
+import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.LockMode;
@@ -163,11 +167,11 @@ public class SdkDeleteTableTest extends BaseServerTest {
   }
 
   /**
-   * A commit that replaces the table's column rows while the drop waits for the table lock (as an
-   * Iceberg commit does) must not make the drop fail or leave column rows behind.
+   * A commit that replaces the table's column and property rows while the drop waits for the table
+   * lock (as Iceberg and Delta commits do) must not make the drop fail or leave rows behind.
    */
   @Test
-  public void dropWaitingBehindAColumnRewriteDeletesTheNewColumns() throws Exception {
+  public void dropWaitingBehindARewriteDeletesTheNewColumnsAndProperties() throws Exception {
     TableInfo table =
         BaseTableCRUDTestEnv.createTestingTable(
             "tbl_drop_rewrite", TableType.EXTERNAL, Optional.of("file:///tmp/uc_test/c"), tableOps);
@@ -186,6 +190,10 @@ public class SdkDeleteTableTest extends BaseServerTest {
           locked.getColumns().clear();
           held.flush();
           locked.getColumns().addAll(rewritten);
+          PropertyRepository.findProperties(held, id, Constants.TABLE).forEach(held::remove);
+          held.flush();
+          PropertyDAO.from(Map.of("rewritten", "value"), id, Constants.TABLE)
+              .forEach(held::persist);
         },
         () -> {
           tableOps.deleteTable(TestUtils.SCHEMA_FULL_NAME + ".tbl_drop_rewrite");
@@ -193,6 +201,7 @@ public class SdkDeleteTableTest extends BaseServerTest {
         });
 
     assertThat(columnRows(table.getTableId())).isZero();
+    assertThat(propertyRows(table.getTableId())).isZero();
     try (Session session = testDatabase.sessionFactory().openSession()) {
       assertThat(session.get(TableInfoDAO.class, id)).isNull();
     }
@@ -216,6 +225,18 @@ public class SdkDeleteTableTest extends BaseServerTest {
       assertThat(session.get(TableInfoDAO.class, UUID.fromString(dropped.getTableId()))).isNull();
     }
     assertThat(columnRows(kept.getTableId())).isEqualTo(2);
+  }
+
+  private long propertyRows(String tableId) {
+    try (Session session = testDatabase.sessionFactory().openSession()) {
+      return session
+          .createSelectionQuery(
+              "select count(*) from PropertyDAO where entityId = :id and entityType = :type",
+              Long.class)
+          .setParameter("id", UUID.fromString(tableId))
+          .setParameter("type", Constants.TABLE)
+          .getSingleResult();
+    }
   }
 
   private long columnRows(String tableId) {
