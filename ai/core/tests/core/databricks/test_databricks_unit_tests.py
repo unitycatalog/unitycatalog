@@ -26,6 +26,8 @@ from unitycatalog.ai.core.databricks import (
     extract_function_name,
 )
 from unitycatalog.ai.core.envs.databricks_env_vars import UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS
+from unitycatalog.ai.core.service_policies import allow, deny
+from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.callable_utils import ServiceCredential
 from unitycatalog.ai.core.utils.function_processing_utils import (
     FunctionEnvironment,
@@ -1947,3 +1949,77 @@ def test_get_function_secrets_ignores_non_dict_entries():
     )
 
     assert get_function_secrets(info) == ["c.s.k"]
+
+
+def _sample_policy(event: Variant, config: Variant) -> Variant:
+    """
+    Deny a request whose prompt is blocked.
+
+    Args:
+        event (Variant): The request event.
+        config (Variant): The policy configuration.
+
+    Returns:
+        Variant: The policy decision.
+    """
+    if event.get("prompt") in config.get("blocked", []):
+        return deny("blocked prompt")
+    return allow()
+
+
+def test_create_service_policy_generates_a_self_contained_policy(client: DatabricksFunctionClient):
+    with patch.object(
+        DatabricksFunctionClient, "create_function", return_value="policy_info"
+    ) as mock_create:
+        result = client.create_service_policy(
+            func=_sample_policy, catalog="cat", schema="sch", replace=True
+        )
+
+    assert result == "policy_info"
+    sql_body = mock_create.call_args.kwargs["sql_function_body"]
+    assert "`cat`.`sch`.`_sample_policy`(event VARIANT" in sql_body
+    assert "RETURNS VARIANT" in sql_body
+    assert "def decision_payload(" in sql_body
+    assert "def allow(" in sql_body and "def deny(" in sql_body
+    assert 'event = event.toPython() if hasattr(event, "toPython") else event' in sql_body
+
+
+def test_create_service_policy_forwards_credentials_and_secrets(
+    client: DatabricksFunctionClient,
+):
+    with patch.object(DatabricksFunctionClient, "create_function") as mock_create:
+        client.create_service_policy(
+            func=_sample_policy,
+            catalog="cat",
+            schema="sch",
+            environment_version="6",
+            credentials=["my-cred"],
+            secrets=["cat.sch.key"],
+        )
+
+    sql_body = mock_create.call_args.kwargs["sql_function_body"]
+    assert "CREDENTIALS (`my-cred`)" in sql_body
+    assert "SECRETS (`cat`.`sch`.`key`)" in sql_body
+
+
+def test_create_service_policy_rejects_a_non_callable(client: DatabricksFunctionClient):
+    with pytest.raises(ValueError, match="The provided function is not callable."):
+        client.create_service_policy(func="not_callable", catalog="cat", schema="sch")
+
+
+def test_create_service_policy_rejects_a_bad_signature(client: DatabricksFunctionClient):
+    def wrong(a: int, b: int) -> Variant:
+        """
+        Not a policy.
+
+        Args:
+            a (int): A number.
+            b (int): A number.
+
+        Returns:
+            Variant: The policy decision.
+        """
+        return allow()
+
+    with pytest.raises(ValueError, match="must be annotated as Variant"):
+        client.create_service_policy(func=wrong, catalog="cat", schema="sch")

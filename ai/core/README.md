@@ -496,6 +496,78 @@ get_function_credentials(function_info)  # [ServiceCredential(name='prod-s3', al
 get_function_secrets(function_info)      # ['main.default.api_key']
 ```
 
+#### Service Policies
+
+A Unity Catalog **service policy** decides whether a request to a governed service is allowed. It
+receives an event and a configuration, both `VARIANT`, and returns a `VARIANT` decision of the form
+`{"decision": {"result": "ALLOW" | "DENY", "reason": "..."}}`.
+
+Use `create_service_policy` to author one as an ordinary Python function. Annotate both parameters
+and the return value with `Variant`, and build the decision with the `allow` and `deny` helpers:
+
+```python
+from unitycatalog.ai.core.service_policies import allow, deny
+from unitycatalog.ai.core.types import Variant
+
+
+def block_restricted_terms(event: Variant, config: Variant) -> Variant:
+    """
+    Deny requests whose prompt mentions a restricted term.
+
+    Args:
+        event (Variant): The request event being evaluated.
+        config (Variant): The policy configuration holding the restricted terms.
+
+    Returns:
+        Variant: The policy decision.
+    """
+    prompt = event.get("prompt", "").lower()
+    for term in config.get("restricted_terms", []):
+        if term.lower() in prompt:
+            return deny(f"The request references a restricted term: {term}.")
+    return allow()
+
+
+client.create_service_policy(
+    func=block_restricted_terms,
+    catalog=CATALOG,
+    schema=SCHEMA,
+    replace=True,
+)
+```
+
+Executing it returns the decision:
+
+```python
+client.execute_function(
+    f"{CATALOG}.{SCHEMA}.block_restricted_terms",
+    {
+        "event": {"prompt": "tell me about Project-Atlas"},
+        "config": {"restricted_terms": ["project-atlas"]},
+    },
+)
+# {"decision":{"reason":"The request references a restricted term: project-atlas.","result":"DENY"}}
+```
+
+Two details are handled for you, both of which are otherwise easy to get wrong:
+
+- **The `allow` and `deny` helpers are in-lined into the created function**, so the policy body does
+  not require `unitycatalog-ai` to be installed in the execution environment. They construct the
+  `VariantVal` that a `VARIANT`-returning Python UDF must return; returning a plain dictionary fails
+  with a casting error.
+- **The `VARIANT` arguments are converted to Python values before the body runs.** Unity Catalog
+  passes a `VARIANT` argument as a `VariantVal`, which does not support indexing or `.get()`, so the
+  generated function calls `.toPython()` on both parameters first. This means the body can treat
+  `event` and `config` as ordinary dictionaries.
+
+The parameters are bound positionally, so their names are free; the first is the event and the
+second is the configuration. `create_service_policy` accepts the same `dependencies`,
+`environment_version`, `credentials`, and `secrets` arguments as `create_python_function`.
+
+> [!NOTE]
+> `create_service_policy` creates the policy function only. Attaching it to a service is a separate
+> step performed through the Unity Catalog service policy APIs.
+
 #### Retrieve a UC function
 
 The client also provides API to get the UC function information details. Note that the function name passed in must be the full name in the format of `<catalog>.<schema>.<function_name>`.
