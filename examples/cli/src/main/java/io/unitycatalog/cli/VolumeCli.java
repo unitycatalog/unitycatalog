@@ -38,6 +38,8 @@ import org.json.JSONObject;
 
 public class VolumeCli {
   private static final ObjectMapper objectMapper = CliUtils.getObjectMapper();
+  private static final Pattern CLOUD_FULL_URI = Pattern.compile("[a-zA-Z][a-zA-Z0-9+.-]*://.*");
+  private static final Pattern LOCAL_FULL_URI = Pattern.compile("[a-zA-Z][a-zA-Z0-9+.-]*:/.*");
   private static ObjectWriter objectWriter;
 
   public static void handle(CommandLine cmd, ApiClient apiClient)
@@ -216,9 +218,6 @@ public class VolumeCli {
       }
     }
   }
-
-  private static final Pattern CLOUD_FULL_URI = Pattern.compile("[a-zA-Z][a-zA-Z0-9+.-]*://.*");
-  private static final Pattern LOCAL_FULL_URI = Pattern.compile("[a-zA-Z][a-zA-Z0-9+.-]*:/.*");
 
   private static Path volumePath(String volumeLocation) {
     String location = DeltaKernelUtils.substituteSchemeForS3(volumeLocation);
