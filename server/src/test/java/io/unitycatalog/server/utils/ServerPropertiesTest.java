@@ -15,6 +15,13 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CopyOnWriteArrayList;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Configurator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -509,6 +516,60 @@ public class ServerPropertiesTest {
         .extracting(w -> w.substring(0, w.indexOf(' ')))
         .containsExactlyInAnyOrder(
             "aws.secretKey", "s3.secretKey.10", "s3.sessionToken.10", "adls.clientSecret.10");
+  }
+
+  @Test
+  public void testLoggingNamesNotValues(@TempDir Path dir) throws IOException {
+    String file = dir.resolve("server.properties").toString();
+    Files.writeString(Paths.get(file), "aws.secretKey=file-secret\n");
+    Logger logger = (Logger) LogManager.getLogger(ServerProperties.class);
+    Level previousLevel = logger.getLevel();
+    CapturingAppender appender = new CapturingAppender();
+    appender.start();
+    logger.addAppender(appender);
+    // The test JVM may not find the Log4j config and fall back to ERROR.
+    Configurator.setLevel(logger.getName(), Level.INFO);
+    try {
+      ServerProperties serverProperties =
+          new ServerProperties(
+              file, Map.of("UC_AWS_REGION", "env-region", "UC_SERVER_CLIENT_SECRET", "env-secret"));
+      serverProperties.get(Property.AWS_REGION);
+      serverProperties.get(Property.CLIENT_SECRET);
+
+      assertThat(appender.messages)
+          .satisfiesExactlyInAnyOrder(
+              m -> assertThat(m).startsWith("WARN aws.secretKey is set in " + file),
+              // Once per key, and none for the client secret, which the server doesn't use.
+              m ->
+                  assertThat(m)
+                      .isEqualTo(
+                          "INFO Using the UC_AWS_REGION environment variable for aws.region"));
+      assertThat(String.join("\n", appender.messages))
+          .doesNotContain("file-secret", "env-region", "env-secret");
+    } finally {
+      logger.removeAppender(appender);
+      Configurator.setLevel(logger.getName(), previousLevel);
+      appender.stop();
+    }
+  }
+
+  private static final class CapturingAppender extends AbstractAppender {
+
+    private final List<String> messages = new CopyOnWriteArrayList<>();
+
+    private CapturingAppender() {
+      super(
+          "ServerPropertiesTest",
+          null,
+          null,
+          true,
+          org.apache.logging.log4j.core.config.Property.EMPTY_ARRAY);
+    }
+
+    @Override
+    public void append(LogEvent event) {
+      messages.add(event.getLevel() + " " + event.getMessage().getFormattedMessage());
+    }
   }
 
   @Test

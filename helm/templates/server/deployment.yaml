@@ -122,13 +122,13 @@ spec:
           {{- end }}
           {{- end }}
           {{- range $index, $config := .Values.storage.credentials.s3 }}
+          {{- /* Deprecated: only for a custom server.properties template that still uses these variables. */}}
+          {{- if or $.Values.server.config.override $.Values.server.config.extraProperties }}
             - name: S3_ACCESS_KEY_{{ $index }}
               valueFrom:
                 secretKeyRef:
                   name: {{ $config.credentialsSecretName | quote }}
                   key: accessKey
-          {{- /* Deprecated: only for a custom server.properties template that still uses these variables. */}}
-          {{- if or $.Values.server.config.override $.Values.server.config.extraProperties }}
             - name: S3_SECRET_KEY_{{ $index }}
               valueFrom:
                 secretKeyRef:
@@ -137,6 +137,8 @@ spec:
           {{- end }}
           {{- end }}
           {{- range $index, $config := .Values.storage.credentials.adls }}
+          {{- /* Deprecated: only for a custom server.properties template that still uses these variables. */}}
+          {{- if or $.Values.server.config.override $.Values.server.config.extraProperties }}
             - name: ADLS_TENANT_ID_{{ $index }}
               valueFrom:
                 secretKeyRef:
@@ -147,8 +149,6 @@ spec:
                 secretKeyRef:
                   name: {{ $config.credentialsSecretName | quote }}
                   key: clientId
-          {{- /* Deprecated: only for a custom server.properties template that still uses these variables. */}}
-          {{- if or $.Values.server.config.override $.Values.server.config.extraProperties }}
             - name: ADLS_CLIENT_SECRET_{{ $index }}
               valueFrom:
                 secretKeyRef:
