@@ -28,6 +28,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *FunctionsApi* | [**deleteFunction**](Apis/FunctionsApi.md#deletefunction) | **DELETE** /functions/{name} | Delete a function |
 *FunctionsApi* | [**getFunction**](Apis/FunctionsApi.md#getfunction) | **GET** /functions/{name} | Get a function |
 *FunctionsApi* | [**listFunctions**](Apis/FunctionsApi.md#listfunctions) | **GET** /functions | List functions |
+*FunctionsApi* | [**updateFunction**](Apis/FunctionsApi.md#updatefunction) | **PATCH** /functions/{name} | Update a function owner |
 | *GrantsApi* | [**get**](Apis/GrantsApi.md#get) | **GET** /permissions/{securable_type}/{full_name} | Get permissions |
 *GrantsApi* | [**update**](Apis/GrantsApi.md#update) | **PATCH** /permissions/{securable_type}/{full_name} | Update a permission |
 | *MetastoresApi* | [**summary**](Apis/MetastoresApi.md#summary) | **GET** /metastore_summary | Get metastore summary |
@@ -52,6 +53,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *TablesApi* | [**deleteTable**](Apis/TablesApi.md#deletetable) | **DELETE** /tables/{full_name} | Delete a table |
 *TablesApi* | [**getTable**](Apis/TablesApi.md#gettable) | **GET** /tables/{full_name} | Get a table |
 *TablesApi* | [**listTables**](Apis/TablesApi.md#listtables) | **GET** /tables | List tables |
+*TablesApi* | [**updateTable**](Apis/TablesApi.md#updatetable) | **PATCH** /tables/{full_name} | Update a table owner |
 | *TemporaryCredentialsApi* | [**generateTemporaryModelVersionCredentials**](Apis/TemporaryCredentialsApi.md#generatetemporarymodelversioncredentials) | **POST** /temporary-model-version-credentials | Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location. |
 *TemporaryCredentialsApi* | [**generateTemporaryPathCredentials**](Apis/TemporaryCredentialsApi.md#generatetemporarypathcredentials) | **POST** /temporary-path-credentials | Generate temporary path credentials. |
 *TemporaryCredentialsApi* | [**generateTemporaryTableCredentials**](Apis/TemporaryCredentialsApi.md#generatetemporarytablecredentials) | **POST** /temporary-table-credentials | Generate temporary table credentials. |
@@ -142,10 +144,12 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [UpdateCatalog](./Models/UpdateCatalog.md)
  - [UpdateCredentialRequest](./Models/UpdateCredentialRequest.md)
  - [UpdateExternalLocation](./Models/UpdateExternalLocation.md)
+ - [UpdateFunction](./Models/UpdateFunction.md)
  - [UpdateModelVersion](./Models/UpdateModelVersion.md)
  - [UpdatePermissions](./Models/UpdatePermissions.md)
  - [UpdateRegisteredModel](./Models/UpdateRegisteredModel.md)
  - [UpdateSchema](./Models/UpdateSchema.md)
+ - [UpdateTable](./Models/UpdateTable.md)
  - [UpdateVolumeRequestContent](./Models/UpdateVolumeRequestContent.md)
  - [VolumeInfo](./Models/VolumeInfo.md)
  - [VolumeOperation](./Models/VolumeOperation.md)

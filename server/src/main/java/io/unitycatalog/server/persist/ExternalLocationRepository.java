@@ -163,6 +163,13 @@ public class ExternalLocationRepository {
             throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
           }
 
+          if (updateExternalLocation.getOwner() != null) {
+            existingLocation.setOwner(
+                repositories
+                    .getOwnershipRepository()
+                    .updateOwner(session, existingLocation, updateExternalLocation.getOwner()));
+          }
+
           // Update fields if provided
           if (updateExternalLocation.getNewName() != null) {
             ValidationUtils.validateSqlObjectName(updateExternalLocation.getNewName());

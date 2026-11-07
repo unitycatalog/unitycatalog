@@ -281,11 +281,18 @@ public class SchemaRepository {
         sessionFactory,
         session -> {
           SchemaInfoDAO schemaInfoDAO = getSchemaDaoOrThrow(session, fullName);
+          if (updateSchema.getOwner() != null) {
+            schemaInfoDAO.setOwner(
+                repositories
+                    .getOwnershipRepository()
+                    .updateOwner(session, schemaInfoDAO, updateSchema.getOwner()));
+          }
           if (updateSchema.getNewName() != null) {
             String catalogName = splitSchemaFullName(fullName).catalogName();
             validateSchemaNotExistInCatalog(session, catalogName, updateSchema.getNewName());
           }
           if (updateSchema.getComment() == null
+              && updateSchema.getOwner() == null
               && updateSchema.getNewName() == null
               && (updateSchema.getProperties() == null || updateSchema.getProperties().isEmpty())) {
             return convertFromDAO(session, schemaInfoDAO, fullName);

@@ -66,7 +66,7 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
   private static final String LIST_AND_GET_AUTH_EXPRESSION =
       """
       #authorizeAny(#principal, #metastore, OWNER, READ_METADATA) ||
-      #authorizeAny(#principal, #credential, OWNER, READ_METADATA, CREATE_EXTERNAL_LOCATION)
+      #authorizeAny(#principal, #credential, OWNER, MANAGE, READ_METADATA, CREATE_EXTERNAL_LOCATION)
       """;
 
   @Get("")
@@ -93,20 +93,22 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
   @AuthorizeExpression(
       """
       #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #credential, OWNER)
+      #authorizeAny(#principal, #credential, OWNER, MANAGE)
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCredential(
       @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name,
       UpdateCredentialRequest updateRequest) {
-    return HttpResponse.ofJson(credentialRepository.updateCredential(name, updateRequest));
+    CredentialInfo result = credentialRepository.updateCredential(name, updateRequest);
+    reloadAfterOwnerChange(updateRequest.getOwner());
+    return HttpResponse.ofJson(result);
   }
 
   @Delete("/{name}")
   @AuthorizeExpression(
       """
       #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #credential, OWNER)
+      #authorizeAny(#principal, #credential, OWNER, MANAGE)
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteCredential(
