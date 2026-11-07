@@ -145,12 +145,15 @@ jobs:
           # Every part of a credential, so a restart after a rotation reads one set.
           for ref in UC_S3_ACCESSKEY_0:ci-s3-credentials:accessKey UC_S3_SECRETKEY_0:ci-s3-credentials:secretKey \
             UC_ADLS_TENANTID_0:ci-adls-credentials:tenantId UC_ADLS_CLIENTID_0:ci-adls-credentials:clientId \
-            UC_ADLS_CLIENTSECRET_0:ci-adls-credentials:clientSecret; do
+            UC_ADLS_CLIENTSECRET_0:ci-adls-credentials:clientSecret \
+            UC_HIBERNATE_CONNECTION_PASSWORD:ci-db-password:password; do
             IFS=: read -r name secret key <<<"$ref"
-            grep -A4 -- "- name: $name\$" <<<"$out" | tr -d '\n' | grep -qE "name: \"$secret\" +key: $key( |\$)"
+            grep -A4 -- "- name: $name\$" <<<"$out" | tr -d '\n' | grep -qE "name: \"$secret\" +key: \"?$key\"?( |\$)"
           done
           # None in the file, which the init container writes only at pod start.
-          ! grep -qE 'server\.client-secret|s3\.(accessKey|secretKey)|adls\.(tenantId|clientId|clientSecret)' <<<"$out" || exit 1
+          ! grep -qE 'server\.client-secret|s3\.(accessKey|secretKey)|adls\.(tenantId|clientId|clientSecret)|hibernate\.connection\.password' <<<"$out" || exit 1
+          # The init container no longer gets the database password.
+          ! grep -qF 'DB_PASSWORD' <<<"$out" || exit 1
           # The deprecated init container variables are there only for a custom template.
           legacy='S3_ACCESS_KEY_0 S3_SECRET_KEY_0 ADLS_TENANT_ID_0 ADLS_CLIENT_ID_0 ADLS_CLIENT_SECRET_0 OAUTH_CLIENT_SECRET'
           ! grep -qE -- "- name: (${legacy// /|})\$" <<<"$out" || exit 1
