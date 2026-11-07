@@ -6,6 +6,7 @@ import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.ExternalLocationInfo;
@@ -24,6 +25,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.expression.spel.SpelEvaluationException;
 
 /**
  * Filters list responses based on user authorization permissions.
@@ -100,9 +102,8 @@ public class ResultFilter {
    *   <li>Removes the item if the expression evaluates to false
    * </ol>
    *
-   * <p>If an error occurs during authorization evaluation for an item, that item is filtered out
-   * (removed from the list) as a security precaution. Errors with an HTTP 5xx status are propagated
-   * instead so a failed authorization check cannot look like a successful list.
+   * <p>Explicit denials and 4xx {@link BaseException}s filter out the item. Unexpected errors fail
+   * the request so a failed authorization check cannot look like a successful list.
    *
    * @param securableType The type of resources being filtered (TABLE, VOLUME, FUNCTION, etc.)
    * @param items The list of items to filter in-place. This list is modified by removing
@@ -142,9 +143,13 @@ public class ResultFilter {
             }
             return !authorized;
           } catch (Exception e) {
-            if (e instanceof BaseException failure
-                && failure.getErrorCode().getHttpStatus().isServerError()) {
-              throw failure;
+            // SpEL wraps client errors from privilege checks.
+            Throwable failure = e instanceof SpelEvaluationException ? e.getCause() : e;
+            if (!(failure instanceof BaseException baseException)) {
+              throw new BaseException(ErrorCode.INTERNAL, "Failed to authorize list items", e);
+            }
+            if (!baseException.getErrorCode().getHttpStatus().isClientError()) {
+              throw baseException;
             }
             LOGGER.warn(
                 "Error evaluating authorization for item, filtering out: {}", e.getMessage());

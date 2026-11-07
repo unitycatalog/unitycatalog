@@ -81,9 +81,11 @@ class ResultFilterTest {
             .catalogName("catalog")
             .schemaName("schema");
     BaseException failure = new BaseException(ErrorCode.INTERNAL, "Failed to load model parents");
+    RuntimeException unexpectedFailure =
+        new IllegalStateException("Failed to open database session");
     when(keyMapper.mapResourceKeys(
             Map.of(CATALOG, model.getCatalogName(), SCHEMA, model.getSchemaName())))
-        .thenThrow(failure);
+        .thenThrow(failure, unexpectedFailure);
     ResultFilter filter =
         new ResultFilter(
             new UnityAccessEvaluator(authorizer, true),
@@ -95,6 +97,13 @@ class ResultFilterTest {
 
     assertThatThrownBy(() -> filter.filter(REGISTERED_MODEL, new ArrayList<>(List.of(model))))
         .isSameAs(failure);
+
+    assertThatThrownBy(() -> filter.filter(REGISTERED_MODEL, new ArrayList<>(List.of(model))))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("Failed to authorize list items")
+        .hasCause(unexpectedFailure)
+        .extracting(error -> ((BaseException) error).getErrorCode())
+        .isEqualTo(ErrorCode.INTERNAL);
     verifyNoInteractions(authorizer);
   }
 }
