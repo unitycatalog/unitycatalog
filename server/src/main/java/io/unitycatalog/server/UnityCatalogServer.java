@@ -56,6 +56,7 @@ import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -102,6 +103,8 @@ public class UnityCatalogServer implements AutoCloseable {
    */
   private MetricsRegistries.PrometheusMetrics metrics;
 
+  private AutoCloseable openSharingLifecycle;
+
   static {
     System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
     Configurator.initialize(null, "etc/conf/server.log4j2.properties");
@@ -138,6 +141,7 @@ public class UnityCatalogServer implements AutoCloseable {
       closeQuietly(cleanupWorker, t, "the storage cleanup worker");
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, t, "the authorizer");
       closeBlockingTaskExecutor(createdBlockingTaskExecutor, shutdownTimeout, t);
+      closeQuietly(openSharingLifecycle, t, "embedded OpenSharing");
       closeQuietly(auditor, t, "the audit sink");
       closeOwnedSessionFactory(t);
       throw t;
@@ -273,6 +277,12 @@ public class UnityCatalogServer implements AutoCloseable {
         unityCatalogServerBuilder.serverProperties.isIncludeStackTraceInError());
     // Init services
     addApiServices(armeriaServerBuilder, unityCatalogServerBuilder, authorizer, repositories);
+    openSharingLifecycle =
+        startEmbeddedOpenSharing(
+            unityCatalogServerBuilder.serverProperties,
+            armeriaServerBuilder,
+            repositories,
+            authorizer);
     // Init security decorators
     addSecurityDecorators(
         armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
@@ -284,6 +294,55 @@ public class UnityCatalogServer implements AutoCloseable {
     initializeCleanup(unityCatalogServerBuilder.serverProperties, repositories, domainMetrics);
 
     return armeriaServerBuilder.build();
+  }
+
+  private AutoCloseable startEmbeddedOpenSharing(
+      ServerProperties serverProperties,
+      ArmeriaServerBuilder armeriaServerBuilder,
+      Repositories repositories,
+      UnityCatalogAuthorizer authorizer) {
+    if (!serverProperties.isOpenSharingEnabled()) {
+      return null;
+    }
+    try {
+      Class<?> lifecycleClass =
+          Class.forName("io.unitycatalog.server.sharing.OpenSharingLifecycle");
+      Object started =
+          lifecycleClass
+              .getMethod(
+                  "start",
+                  ServerProperties.class,
+                  ArmeriaServerBuilder.class,
+                  HibernateConfigurator.class,
+                  Repositories.class,
+                  UnityCatalogAuthorizer.class)
+              .invoke(
+                  null,
+                  serverProperties,
+                  armeriaServerBuilder,
+                  hibernateConfigurator,
+                  repositories,
+                  authorizer);
+      return (AutoCloseable) started;
+    } catch (ClassNotFoundException e) {
+      throw new BaseException(
+          ErrorCode.INTERNAL,
+          ServerProperties.Property.OPENSHARING_ENABLED.getKey()
+              + " is set, but server-sharing, which embeds OpenSharing, is not on the classpath."
+              + " `build/sbt serverEmbedded/run` runs the server with it.",
+          e);
+    } catch (InvocationTargetException e) {
+      if (e.getCause() instanceof RuntimeException failure) {
+        throw failure;
+      }
+      if (e.getCause() instanceof Error error) {
+        throw error;
+      }
+      throw new BaseException(
+          ErrorCode.INTERNAL, "Failed to start embedded OpenSharing.", e.getCause());
+    } catch (ReflectiveOperationException e) {
+      throw new BaseException(ErrorCode.INTERNAL, "Failed to start embedded OpenSharing.", e);
+    }
   }
 
   private UnityCatalogMetrics initializeObservability(
@@ -541,6 +600,7 @@ public class UnityCatalogServer implements AutoCloseable {
       // Drain first: a handler that outlived stop() may still use the resources closed below.
       Duration remaining = Duration.ofNanos(Math.max(0, deadlineNanos - System.nanoTime()));
       closeBlockingTaskExecutor(blockingTaskExecutor, remaining, null);
+      closeQuietly(openSharingLifecycle, null, "embedded OpenSharing");
       closeQuietly(metrics, null, "the metrics registry");
       closeQuietly(cleanupWorker, null, "the storage cleanup worker");
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, null, "the authorizer");

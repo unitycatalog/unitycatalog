@@ -179,7 +179,7 @@ public class ArmeriaServerBuilder {
   }
 
   /** Registers a standard Unity Catalog REST service at {@code basePath + relativePath}. */
-  ArmeriaServerBuilder annotate(String relativePath, UnityCatalogRestService service) {
+  public ArmeriaServerBuilder annotate(String relativePath, UnityCatalogRestService service) {
     register(ServiceProtocol.UC, relativePath, service);
     return this;
   }
