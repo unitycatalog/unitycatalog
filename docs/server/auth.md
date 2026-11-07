@@ -256,15 +256,11 @@ to use the correct object types before adding or reapplying grants.
 ### MANAGE
 
 `MANAGE` permits full metadata and grant inspection, grant changes, supported metadata updates,
-and deletion. Catalog `MANAGE` needs no usage grants. Schema `MANAGE` needs
-`USE CATALOG`. Object `MANAGE` needs both `USE CATALOG` and `USE SCHEMA`. Catalog and schema grants
-also manage their children. External locations and storage credentials need no hierarchy usage.
-`MANAGE` includes the metadata and grant visibility provided by `READ METADATA`.
-Managers can grant themselves other privileges.
+and deletion. Managers can grant themselves other privileges, including data access.
 
-`MANAGE` does not grant data credentials, `EXECUTE`, model version publication, or `CREATE`
-privileges. Rename still requires permission to create the new name. Replacing an external
-location's credential still requires permission to use the replacement credential.
+Catalog and schema grants also cover their children. Schema grants require `USE CATALOG`.
+Grants on objects within a schema require both `USE CATALOG` and `USE SCHEMA`.
+Catalogs, external locations, and storage credentials require no usage grants.
 
 ### Discover objects with BROWSE
 
