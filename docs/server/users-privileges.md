@@ -60,3 +60,10 @@ Or to grant the `CREATE CATALOG` privilege:
 ```sh
 bin/uc --auth_token $(cat etc/conf/token.txt) permission create --securable_type metastore --name metastore --privilege "CREATE CATALOG" --principal bobbie@rocinante
 ```
+
+`READ METADATA` permits full metadata reads and viewing all direct grants. It can be granted on a
+metastore, catalog, schema, table (including views), function, volume, registered model, external
+location, or storage credential. Metastore, catalog, and schema grants cover descendants. Metastore
+and catalog grants need no usage grants. A schema grant needs `USE CATALOG`. A table, function,
+volume, or model grant needs both `USE CATALOG` and `USE SCHEMA`. It does not permit data access,
+inference, temporary credentials, writes, or permission changes.

@@ -46,8 +46,9 @@ example.
 
 ## Use PostgreSQL
 
-The H2 database supports a single server. To run more than one server replica, use PostgreSQL. The server then starts
-with an empty database; the chart leaves H2 data on its volume. Store the password in a Secret:
+The H2 database supports a single server. To run more than one server replica, use PostgreSQL or
+[MySQL](#use-mysql). The server then starts with an empty database; the chart leaves H2 data on its volume. Store the
+password in a Secret:
 
 ```sh
 kubectl create secret generic db-password --namespace unitycatalog --from-literal=password='<password>'
@@ -87,6 +88,58 @@ helm upgrade --install unitycatalog oci://registry-1.docker.io/unitycatalog/unit
   --version X.Y.Z --namespace unitycatalog --values values.yaml
 ```
 
+## Use MySQL
+
+The server image does not include the MySQL JDBC driver, because it is licensed under the GPL. Put the driver jar
+([MySQL Connector/J](https://dev.mysql.com/downloads/connector/j/)) on a volume, point
+`server.db.mysqlConfig.driver.volume` at the volume and `server.db.mysqlConfig.driver.subPath` at the jar on it. To
+change the driver version, put the new jar on the volume and point `subPath` at it. Every server replica mounts the
+volume, and so does the new server during an upgrade, so use a volume that several pods can mount, for example a
+PersistentVolumeClaim with access mode `ReadOnlyMany`. The jar is too large for a ConfigMap. If the server cannot load
+the driver class `com.mysql.cj.jdbc.Driver`, check that `subPath` names the jar file on the volume.
+
+Create the database with a binary collation, as described in
+[Example MySQL Connection](deployment.md#example-mysql-connection), and store the password in a Secret as for
+PostgreSQL. Then set:
+
+```yaml
+server:
+  db:
+    type: mysql
+    mysqlConfig:
+      host: my-mysql.example.com
+      port: 3306
+      dbName: ucdb
+      username: uc
+      passwordSecretName: db-password
+      passwordSecretKey: password
+      driver:
+        volume:
+          persistentVolumeClaim:
+            claimName: mysql-driver
+        subPath: mysql-connector-j-8.4.0.jar
+```
+
+`server.db.mysqlConfig.extraParams` adds parameters to the JDBC URL, for example `sslMode`. With authentication on,
+set `server.authorization.policy-refresh: "true"` as for PostgreSQL.
+
+## Health checks
+
+The server serves `/livez`, `/readyz` and `/metrics` only when it starts with an observability port. Set
+`server.deployment.obsPort` to start it with one, and turn on the readiness probe so a pod receives traffic only
+while it can reach its database. The observability port needs server image v0.7.0 or later:
+
+```yaml
+server:
+  deployment:
+    obsPort: 8090
+    enableReadinessProbe: true
+```
+
+With `obsPort` set, the liveness probe, when turned on, checks `/livez` on the same port.
+
+The endpoints are unauthenticated. See [Observability](observability.md) for restricting access to the port.
+
 ## Upgrade and uninstall
 
 To upgrade, read the release notes, then run `helm upgrade` with the new `--version` and the same `--values` file.
@@ -119,7 +172,7 @@ server:
     terminationGracePeriodSeconds: 30
 ```
 
-This avoids downtime only with a rolling update, which the chart uses with PostgreSQL or more than one replica
+This avoids downtime only with a rolling update, which the chart uses with PostgreSQL, MySQL or more than one replica
 unless you set `server.deployment.updateStrategy`. The default single replica on the file database is recreated, so
 it is briefly unavailable during an upgrade.
 

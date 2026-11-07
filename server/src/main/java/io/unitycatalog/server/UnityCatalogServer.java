@@ -8,6 +8,7 @@ import com.linecorp.armeria.server.ServerListener;
 import com.linecorp.armeria.server.healthcheck.HealthCheckService;
 import com.linecorp.armeria.server.prometheus.PrometheusExpositionService;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
+import io.unitycatalog.server.audit.Auditor;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -17,6 +18,7 @@ import io.unitycatalog.server.cleanup.StorageCleanupWorker;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.migrate.SchemaMigrator;
 import io.unitycatalog.server.observability.DbReadinessChecker;
 import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
@@ -57,6 +59,7 @@ import io.unitycatalog.server.utils.VersionUtils;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 import org.apache.logging.log4j.LogManager;
@@ -85,6 +88,9 @@ public class UnityCatalogServer implements AutoCloseable {
 
   /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private UnityCatalogAuthorizer authorizer;
+
+  /** Set during {@link #initializeServer}; null when auditing is off or not yet set up. */
+  private Auditor auditor;
 
   /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private StorageCleanupWorker cleanupWorker;
@@ -132,6 +138,7 @@ public class UnityCatalogServer implements AutoCloseable {
       closeQuietly(cleanupWorker, t, "the storage cleanup worker");
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, t, "the authorizer");
       closeBlockingTaskExecutor(createdBlockingTaskExecutor, shutdownTimeout, t);
+      closeQuietly(auditor, t, "the audit sink");
       closeOwnedSessionFactory(t);
       throw t;
     }
@@ -244,13 +251,17 @@ public class UnityCatalogServer implements AutoCloseable {
               unityCatalogServerBuilder.observabilityPort,
               unityCatalogServerBuilder.serverProperties);
     }
+    // Created here, before the repositories, so a failed start closes the sink.
+    Optional<Auditor> audit = Auditor.fromProperties(unityCatalogServerBuilder.serverProperties);
+    auditor = audit.orElse(null);
     Repositories repositories =
         new Repositories(
             hibernateConfigurator.getSessionFactory(),
             unityCatalogServerBuilder.serverProperties,
             unityCatalogServerBuilder.cloudCredentialVendor,
             unityCatalogServerBuilder.fileOperationsDecorator,
-            domainMetrics);
+            domainMetrics,
+            audit);
     // Init metastore
     repositories.getMetastoreRepository().initMetastoreIfNeeded();
     // Init authorizer
@@ -368,7 +379,7 @@ public class UnityCatalogServer implements AutoCloseable {
     // base path root).
     armeriaServerBuilder
         .annotate("auth", new AuthService(securityContext, serverProperties, repositories))
-        .annotate("scim2/Users", new Scim2UserService(authorizer, repositories))
+        .annotate("scim2/Users", new Scim2UserService(authorizer, repositories, serverProperties))
         .annotate("scim2/Me", new Scim2SelfService(authorizer, repositories))
         .annotate("permissions", new PermissionService(authorizer, repositories, serverProperties))
         .annotate("catalogs", new CatalogService(authorizer, repositories, serverProperties))
@@ -453,6 +464,11 @@ public class UnityCatalogServer implements AutoCloseable {
   public static void main(String[] args) {
     OptionParser options = new OptionParser();
     options.parse(args);
+    if (options.isUpgradeSchema()) {
+      int exitCode = SchemaMigrator.runCommand(Path.of("etc", "conf"), System.out);
+      LogManager.shutdown();
+      System.exit(exitCode);
+    }
     int port = options.getPort();
     ServerProperties serverProperties = new ServerProperties(SERVER_PROPERTIES_FILE);
     UnityCatalogServer.Builder serverBuilder =
@@ -528,6 +544,7 @@ public class UnityCatalogServer implements AutoCloseable {
       closeQuietly(metrics, null, "the metrics registry");
       closeQuietly(cleanupWorker, null, "the storage cleanup worker");
       closeQuietly(authorizer instanceof AutoCloseable c ? c : null, null, "the authorizer");
+      closeQuietly(auditor, null, "the audit sink");
       closeQuietly(
           ownsHibernateConfigurator ? hibernateConfigurator : null, null, "the database pool");
     }

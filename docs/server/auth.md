@@ -38,18 +38,23 @@ Once you have configured your identity provider, the next step is to configure y
 
 ## Configure UC Server Settings
 
-Start by editing `etc/conf/server.properties` with the **Client ID** and **Client secret** provided to you by the
-Identity Provider.
+Start by editing `etc/conf/server.properties` with the **Client ID** provided to you by the Identity Provider.
+`bin/uc auth login` reads the **Client secret** from the `UC_SERVER_CLIENT_SECRET` environment variable, so set it in
+the shell where you run that command; the server does not need it. Setting `server.client-secret` in
+`server.properties` still works but is deprecated (see [Secrets](configuration.md#secrets)).
 
 ```sh
 server.authorization=enable
 server.authorization-url=https://accounts.google.com/o/oauth2/auth
 server.token-url=https://oauth2.googleapis.com/token
 server.client-id=<Client ID provided earlier>
-server.client-secret=<Client secret provided earlier>
 server.allowed-issuers=https://accounts.google.com
 server.allowed-jwks-uris=https://www.googleapis.com/oauth2/v3/certs
 server.audiences=<Client ID provided earlier>
+```
+
+```sh
+export UC_SERVER_CLIENT_SECRET='<Client secret provided earlier>'
 ```
 
 ### Issuer and Audience Validation
@@ -151,6 +156,10 @@ For Google deployments that do not use Helm, set
 `server.allowed-jwks-uris=https://www.googleapis.com/oauth2/v3/certs` in `server.properties`
 before starting the new server. Helm includes this URL by default.
 
+Move `server.client-secret` from `server.properties` to the `UC_SERVER_CLIENT_SECRET` environment variable of the shell
+where you run `bin/uc auth login`; the server does not read it. The file still works, but is deprecated (see
+[Secrets](configuration.md#secrets)).
+
 ### Permission-check migration
 
 `server.authorization.strict-privilege-checks` is a temporary migration setting. It defaults to
@@ -223,10 +232,12 @@ Grant validation also runs when `server.authorization=disable`.
 | `USE SCHEMA`, `CREATE TABLE`, `CREATE FUNCTION`, `CREATE VOLUME`, `CREATE MODEL` | Catalog, schema |
 | `SELECT`, `MODIFY` | Catalog, schema, table |
 | `EXECUTE` | Catalog, schema, function, registered model |
+| `CREATE MODEL VERSION` | Catalog, schema, registered model |
 | `READ VOLUME`, `WRITE VOLUME` | Catalog, schema, volume |
 | `CREATE EXTERNAL LOCATION` | Metastore, storage credential |
 | `READ FILES`, `WRITE FILES`, `CREATE EXTERNAL TABLE` | External location, storage credential |
 | `CREATE EXTERNAL VOLUME`, `CREATE MANAGED STORAGE` | External location |
+| `READ METADATA` | Metastore, catalog, schema, table, function, volume, registered model, external location, storage credential |
 
 Volume write credentials require `USE CATALOG` and `USE SCHEMA`, plus both `READ VOLUME`
 and `WRITE VOLUME`. Volume ownership satisfies the volume check. Catalog or schema ownership
@@ -461,6 +472,8 @@ tables remain read-only.
 Iceberg `loadTable` returns metadata to callers with metadata access. Credentials and their
 refresh endpoint are included only when the caller has read access. `loadCredentials` rejects
 requests without read access.
+
+`READ METADATA` alone does not permit table credentials.
 
 ## Spark and Java client authentication types
 

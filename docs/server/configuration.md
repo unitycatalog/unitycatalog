@@ -91,6 +91,53 @@ The server config file is at the location `etc/conf/server.properties` (relative
     lowercase hex, raw non-ASCII) is rejected with `400`, and an external location whose URL has such an escape
     cannot hold one.
 
+### Secrets
+
+Any setting can also come from an environment variable named `UC_`, then the key in upper case, with `_` for each
+character that is not a letter or digit. For example, `s3.region.0` is `UC_S3_REGION_0`. Set secrets this way, not in
+`server.properties`:
+
+| Key in `server.properties` | Environment variable |
+| --- | --- |
+| `server.client-secret` | `UC_SERVER_CLIENT_SECRET` |
+| `aws.secretKey` | `UC_AWS_SECRETKEY` |
+| `s3.secretKey.<n>`, `s3.sessionToken.<n>` | `UC_S3_SECRETKEY_<n>`, `UC_S3_SESSIONTOKEN_<n>` |
+| `adls.clientSecret.<n>` | `UC_ADLS_CLIENTSECRET_<n>` |
+
+```sh
+export UC_S3_SECRETKEY_0='<secret key>'
+bin/start-uc-server
+```
+
+A variable takes precedence over the same key in `server.properties`, and a variable named exactly as the key comes
+before the `UC_` one. An empty `UC_` variable is ignored, and line breaks at the end of its value are dropped, as a
+Kubernetes Secret made from a file often ends with one. The prefix keeps variables that runtimes set for their own use,
+such as `AWS_REGION`, from changing settings. The server logs the name of each environment variable it uses for a
+setting, never its value. `server.client-secret` is read by `bin/uc auth login`, not by the server.
+The Helm chart passes each S3 and ADLS credential to the server container from its Kubernetes Secret, in
+`UC_S3_ACCESSKEY_<n>` and `UC_S3_SECRETKEY_<n>`, or `UC_ADLS_TENANTID_<n>`, `UC_ADLS_CLIENTID_<n>` and
+`UC_ADLS_CLIENTSECRET_<n>`.
+
+!!! warning "Deprecated: secrets in `server.properties`"
+    Secrets in `server.properties` still work, but this is deprecated. The server logs a warning at startup for each
+    secret set in the file that no environment variable or system property supplies, and always for
+    `server.client-secret`. Move them to environment variables.
+
+#### Upgrading
+
+- A `UC_` variable that is already set in the server's environment now takes precedence over the same key in
+  `server.properties`.
+- `bin/uc auth login` reads `UC_SERVER_CLIENT_SECRET` before `server.client-secret` in `etc/conf/server.properties`.
+- Helm: use the server image from the chart's release, which is the default. An older server image doesn't read these
+  variables, so S3 and ADLS lose their secrets.
+- Helm: the rendered `server.properties` no longer holds `server.client-secret` or the S3 and ADLS credentials
+  (`s3.accessKey.<n>`, `s3.secretKey.<n>`, `adls.tenantId.<n>`, `adls.clientId.<n>`, `adls.clientSecret.<n>`). The
+  init container has `S3_ACCESS_KEY_<n>`, `S3_SECRET_KEY_<n>`, `ADLS_TENANT_ID_<n>`, `ADLS_CLIENT_ID_<n>`,
+  `ADLS_CLIENT_SECRET_<n>` and, with `auth.enabled`, `OAUTH_CLIENT_SECRET` only when `server.config.override` or
+  `extraProperties` is set, so a template that uses them still gets them; that is deprecated. The server container's
+  `UC_` variables still take precedence over the template's values. A container added through `extraInitContainers`
+  or `extraContainers` that needs these secrets must read them from the Kubernetes Secret itself.
+
 ## Local file system storage
 
 Unity Catalog can store data on the server's local file system, which is convenient for development and single-machine
@@ -139,6 +186,68 @@ The cache is controlled by these keys:
 | `server.storage-credential-cache.max-age` | `PT5M` | The longest a vended credential is reused. It is counted from when the credential was vended, and serving the credential from the cache does not extend it. A cached credential is handed out with its remaining lifetime, so clients receive at least the credential's lifetime minus the max age (55 minutes for a 1-hour credential with the default); lower it if clients need more. A credential is never reused within one minute of its expiry, and one that lives one minute or less is not cached. Keep it short so that a cloud-side change, such as a trust-policy update, takes effect for new requests within this time. |
 
 Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is five minutes).
+
+### Audit records
+
+The server can write an audit record for each storage credential it issues. Audit records are off by default. Set `server.audit.sink` to turn them on:
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `server.audit.sink` | (unset) | The class that receives audit records. `io.unitycatalog.server.audit.FileAuditSink` writes them to `etc/logs/audit.log`. When unset, no records are written. |
+
+Each record is one JSON line. Fields that don't apply to a record are left out:
+
+```json
+{"time":"2026-10-20T10:02:00.000Z","action":"ISSUE_CREDENTIAL","user":"bob@example.com","request_id":"a1b2c3d4","purpose":"CLIENT","location":"s3://bucket/root/tables/7f3a1c2e-5b6d-4e8f-9a0b-1c2d3e4f5a6b","access":"READ","expires_at":"2026-10-20T11:02:00.000Z"}
+```
+
+- `time`: when the record was made, in ISO 8601 UTC.
+- `action`: `ISSUE_CREDENTIAL`.
+- `user`: `system:storage-cleanup` on `CLEANUP` records, whether or not authorization is on. On other
+  records, the caller's identity from the token (`sub`): the user's email, or `admin` for the
+  bootstrap admin token. It is absent when authorization is off.
+- `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
+  itself while handling the request, and `CLEANUP` for the background storage cleanup.
+- `resource_id`: on a `CLEANUP` credential, the ID of the dropped object.
+- `request_id`: the ID of the request being served, the same as `request_id` in the `server.log` lines of
+  that request. It is absent on `CLEANUP` records, which are not made while serving a request.
+- `location`: the storage location, with scheme, authority and path only. The query string and
+  fragment are removed. User info is removed too, except that for ABFS the part before the `@` is
+  kept when it looks like a container name (3 to 63 lowercase letters, digits and hyphens) and is
+  replaced by `[REDACTED]` otherwise.
+- `access` is `READ` or `READ_WRITE`: the access the request asked for. A static credential, such as
+  configured S3 keys, is returned as configured and can allow more. `expires_at` is when the
+  credential expires. Records never contain credential values.
+
+A record is written for every credential issued, including ones served from the credential cache.
+For local `file:` storage there is no credential to issue. A request for credentials, through the
+temporary-credentials endpoints, the Delta API or the Iceberg REST catalog, still writes a record of
+the access the server granted, without `expires_at`. The server's own reads, writes and cleanup of
+`file:` storage write no record. Audit records are best effort: one can be lost when the sink fails,
+or when a request is still running as the server shuts down.
+
+There are two ways to send records:
+
+- `FileAuditSink`, shipped with the server, writes each record to the Log4j `audit` logger. As
+  shipped, that logger writes to `etc/logs/audit.log`, but you can point it at any Log4j appender,
+  for example one that ships records to a cloud service.
+- Your own class that implements `io.unitycatalog.server.audit.AuditSink`, for example one that
+  sends records to Kinesis or SQS. It needs a public no-arg constructor and must be on the server
+  classpath; the server does not start if it can't be loaded. `record` is called concurrently, so
+  it must be thread-safe, and should queue records instead of sending them inline. See the
+  `AuditSink` Javadoc for the full contract.
+
+`FileAuditSink` needs the `audit` logger in `etc/conf/server.log4j2.properties`, set to
+`additivity = false` and a level that enables `INFO`. Neither the Log4j configuration nor the `audit` logger may
+have a filter, and the link to the appender (`logger.audit.appenderRef.*`) may have neither a filter
+nor a level above `INFO`, because any of these drops records silently. A file or console appender
+must also set `ignoreExceptions = false` and have no filter; other appenders are not checked. The
+shipped configuration meets all of this. If a requirement is not met, for example in a custom or
+copied log configuration without the `audit` logger, the server does not start.
+
+`audit.log` rolls over with the same settings as `server.log` in the default distribution. The Helm
+chart has no `server.log` file and rolls `audit.log` the same way. Ship it continuously to your log or
+security service to keep the records longer.
 
 ## Logging
 

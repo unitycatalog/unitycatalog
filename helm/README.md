@@ -10,7 +10,7 @@ using the [Helm](https://github.com/helm/helm) package manager.
 ## Features
 - Deploys Unity Catalog server and UI
 - Supports OAuth authentication
-- Supports file H2DB and PostgreSQL as a database
+- Supports file H2DB, PostgreSQL and MySQL as a database
 - Customizable configuration for server and UI using Helm values
 
 ## Installing the Chart
@@ -32,6 +32,20 @@ helm uninstall unitycatalog
 
 The command deletes the release. It keeps the H2 database PersistentVolumeClaim and the token signing key Secret;
 delete both to remove the data.
+
+## Audit records
+Turn on [audit records](https://github.com/unitycatalog/unitycatalog/blob/main/docs/server/configuration.md#audit-records)
+to write one JSON line per issued storage credential to `/home/unitycatalog/etc/logs/audit.log`; the
+chart already configures the `audit` logger. The file is lost when the pod restarts, so ship it
+continuously (for example from a sidecar in `server.deployment.extraContainers`) or keep the
+directory on a volume:
+
+```yaml
+server:
+  config:
+    extraProperties:
+      server.audit.sink: io.unitycatalog.server.audit.FileAuditSink
+```
 
 ## Configuration
 The following table lists the configurable parameters of the Unity Catalog chart and their default values.
@@ -128,9 +142,11 @@ not set
 </td>
 			<td>OAuth client secret name
 
-Client secret must contain the following keys:
+Client secret must contain the following key:
 - `clientId`: OAuth client ID
-- `clientSecret`: OAuth client secret
+
+The server doesn't read the OAuth client secret. A `clientSecret` key is passed only to a
+`server.config.override` or `extraProperties` template that uses `${OAUTH_CLIENT_SECRET}`.
 </td>
 		</tr>
 		<tr>
@@ -342,6 +358,8 @@ extraProperties:
   my-config.property1: my-value1
   my-config.property2: my-value2
 ```
+
+Do not put secrets here: a secret in `server.properties` is deprecated.
 </td>
 		</tr>
 		<tr>
@@ -359,6 +377,11 @@ server.env=prod
 server.port=8080
 ...other config properties...
 ```
+
+Do not put secrets here: the chart passes the S3 and ADLS secrets to the server as environment
+variables, and a secret in `server.properties` is deprecated. A template that uses `${OAUTH_CLIENT_SECRET}`,
+`${S3_SECRET_KEY_<n>}` or `${ADLS_CLIENT_SECRET_<n>}` still gets them, but that is deprecated
+too: the server reads `UC_S3_SECRETKEY_<n>` and `UC_ADLS_CLIENTSECRET_<n>` from its environment.
 </td>
 		</tr>
 		<tr>
@@ -488,6 +511,116 @@ not set
 
 If not set, the default storage class will be used
 </td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.dbName</td>
+			<td>string</td>
+			<td><pre lang="">
+ucdb
+</pre>
+</td>
+			<td>MySQL database name</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.driver.subPath</td>
+			<td>string</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>Path of the driver jar in `volume` (Required)
+
+To change the driver version, put the new jar on the volume and point `subPath` at it.
+
+Example: `mysql-connector-j-8.4.0.jar`
+</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.driver.volume</td>
+			<td>object</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>Volume that holds the MySQL JDBC driver jar (Required)
+
+The server image does not include the MySQL JDBC driver
+([MySQL Connector/J](https://dev.mysql.com/downloads/connector/j/)), because it is licensed under the GPL;
+the PostgreSQL driver it does include is BSD-licensed. The chart mounts the jar at `subPath` in this volume
+into the server and puts it on the Java module path. Any volume source works, for example a
+PersistentVolumeClaim. The driver jar is larger than a ConfigMap can hold.
+
+Example:
+```yaml
+volume:
+  persistentVolumeClaim:
+    claimName: mysql-driver
+```
+</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.extraParams</td>
+			<td>object</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>MySQL JDBC URL params
+
+Example:
+```yaml
+extraParams:
+  sslMode: VERIFY_IDENTITY
+```
+</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.host</td>
+			<td>string</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>MySQL database host (Required)</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.passwordSecretKey</td>
+			<td>string</td>
+			<td><pre lang="">
+password
+</pre>
+</td>
+			<td>MySQL user password secret key</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.passwordSecretName</td>
+			<td>string</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>MySQL user password secret name
+
+If not set, connection will be made without a password
+</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.port</td>
+			<td>int</td>
+			<td><pre lang="">
+3306
+</pre>
+</td>
+			<td>MySQL database port</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.username</td>
+			<td>string</td>
+			<td><pre lang="">
+root
+</pre>
+</td>
+			<td>MySQL username</td>
 		</tr>
 		<tr>
 			<td>server.db.overrideConfig</td>
@@ -640,7 +773,7 @@ postgres
 </td>
 			<td>Database type
 
-Supported values: `file`, `postgresql`
+Supported values: `file`, `postgresql`, `mysql`
 </td>
 		</tr>
 		<tr>
@@ -653,6 +786,25 @@ not set
 			<td>Node affinity for the deployment
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/)
+</td>
+		</tr>
+		<tr>
+			<td>server.deployment.command</td>
+			<td>array</td>
+			<td><pre lang="json">
+[
+  "./bin/start-uc-server"
+]
+</pre>
+</td>
+			<td>Command that starts the server
+
+The chart passes `--port`, and `--obs-port` when `obsPort` is set, as the container's `args`.
+Kubernetes runs this command instead of the image's `ENTRYPOINT`, so an image that starts
+through its own wrapper can set it here; the wrapper must pass the arguments on to
+`./bin/start-uc-server`.
+
+[Kubernetes docs](https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/)
 </td>
 		</tr>
 		<tr>
@@ -794,7 +946,11 @@ not set
 {{ .Chart.AppVersion }}
 </pre>
 </td>
-			<td>Tag for the server image</td>
+			<td>Tag for the server image
+
+Use the server image from the same release as the chart. The chart passes secrets to
+the server as environment variables that older server images don't read.
+</td>
 		</tr>
 		<tr>
 			<td>server.deployment.imagePullSecrets</td>
@@ -875,7 +1031,7 @@ lifecycle:
 			<td>server.deployment.livenessProbe</td>
 			<td>object</td>
 			<td><pre lang="">
-tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 30 # 5 minutes
+with obsPort: httpGet `/livez` on port obs; otherwise tcpSocket on port api. timeoutSeconds: 10, periodSeconds: 10, failureThreshold: 30 (5 minutes)
 </pre>
 </td>
 			<td>Liveness probe
@@ -893,6 +1049,23 @@ not set
 			<td>Node selector for the deployment
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/)
+</td>
+		</tr>
+		<tr>
+			<td>server.deployment.obsPort</td>
+			<td>int</td>
+			<td><pre lang="">
+not set (observability off)
+</pre>
+</td>
+			<td>Observability port for the server deployment
+
+When set, the server starts with `--obs-port` and serves `/livez`, `/readyz` and `/metrics`
+on this port, without authentication. The readiness and liveness probes, when turned on,
+then check `/readyz` and `/livez`; without it they check that the API port accepts a
+connection. The Service doesn't expose the port, but other pods can reach it
+on the pod IP; restrict it with a NetworkPolicy if needed, and allow the kubelet to reach it
+for the probes. Must differ from `port`. Needs server image v0.7.0 or later.
 </td>
 		</tr>
 		<tr>
@@ -919,13 +1092,13 @@ to write to the mounted volumes.
 8080
 </pre>
 </td>
-			<td>Port for the server deployment</td>
+			<td>Port the server listens on for API requests</td>
 		</tr>
 		<tr>
 			<td>server.deployment.readinessProbe</td>
 			<td>object</td>
 			<td><pre lang="">
-tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 30 # 5 minutes
+with obsPort: httpGet `/readyz` on port obs, failureThreshold: 3; otherwise tcpSocket on port api, failureThreshold: 30 (5 minutes). timeoutSeconds: 10, periodSeconds: 10
 </pre>
 </td>
 			<td>Readiness probe

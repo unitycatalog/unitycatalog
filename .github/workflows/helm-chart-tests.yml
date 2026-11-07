@@ -18,9 +18,14 @@ concurrency:
 
 jobs:
   helm-chart:
-    name: Lint and install the Helm chart
+    name: Lint and install the Helm chart (${{ matrix.db }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # The databases the server tests run on.
+        db: [file, postgresql, mysql]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -51,6 +56,112 @@ jobs:
       - name: Lint the chart
         run: ct lint --charts helm --validate-maintainers=false --check-version-increment=false
 
+      - name: Check how non-default values render
+        run: |
+          set -euo pipefail
+          # Without obsPort the server gets --port but no --obs-port, and the probes check the API port.
+          out="$(helm template uc helm --set server.deployment.port=9000 \
+            --set server.deployment.enableReadinessProbe=true)"
+          grep -A1 -- '- --port' <<<"$out" | grep -qF -- '- "9000"'
+          ! grep -qF -- '--obs-port' <<<"$out" || exit 1
+          grep -A1 'readinessProbe:' <<<"$out" | grep -qF 'tcpSocket:'
+          grep -A1 'command:' <<<"$out" | grep -qF -- '- ./bin/start-uc-server'
+          # A custom command replaces the default one.
+          out="$(helm template uc helm --set 'server.deployment.command={/entrypoint.sh,./bin/start-uc-server}')"
+          grep -A2 'command:' <<<"$out" | grep -qF -- '- /entrypoint.sh'
+          ! grep -A1 'command:' <<<"$out" | grep -qF -- '- ./bin/start-uc-server' || exit 1
+          # An upgrade with --reuse-values from an older release has no command value; keep the default.
+          out="$(helm template uc helm --set server.deployment.command=null)"
+          grep -A1 'command:' <<<"$out" | grep -qF -- '- ./bin/start-uc-server'
+          # The create-users job calls the server through its Service, so it uses the Service port.
+          out="$(helm template uc helm --set server.deployment.port=9000 --set server.service.port=8181 \
+            --set auth.enabled=true --set 'auth.users[0].name=admin' --set 'auth.users[0].email=admin@example.com')"
+          grep -qF 'uc-unitycatalog-server:8181/api/' <<<"$out"
+          ! grep -qF 'uc-unitycatalog-server:9000' <<<"$out" || exit 1
+          # With obsPort, the flag, the container port and the probes all use it.
+          out="$(helm template uc helm --set server.deployment.obsPort=9099 \
+            --set server.deployment.enableReadinessProbe=true \
+            --set server.deployment.enableLivenessProbe=true)"
+          grep -A1 -- '- --obs-port' <<<"$out" | grep -qF -- '- "9099"'
+          grep -qF 'containerPort: 9099' <<<"$out"
+          ready="$(grep -A3 'readinessProbe:' <<<"$out")"
+          grep -qF 'path: /readyz' <<<"$ready"
+          grep -qF 'port: obs' <<<"$ready"
+          live="$(grep -A3 'livenessProbe:' <<<"$out")"
+          grep -qF 'path: /livez' <<<"$live"
+          grep -qF 'port: obs' <<<"$live"
+          # obsPort must differ from port.
+          if err="$(helm template uc helm --set server.deployment.obsPort=8080 2>&1)"; then exit 1; fi
+          grep -qF 'obsPort must differ' <<<"$err"
+          # Custom probes render as given, not as the whole chart context.
+          args=(--set ui.enabled=true)
+          for c in server ui; do
+            for probe in readiness liveness startup; do
+              args+=(--set "$c.deployment.enable${probe^}Probe=true"
+                --set "$c.deployment.${probe}Probe.httpGet.path=/custom-$c-$probe"
+                --set "$c.deployment.${probe}Probe.httpGet.port=8080")
+            done
+          done
+          out="$(helm template uc helm "${args[@]}")"
+          for c in server ui; do
+            for probe in readiness liveness startup; do
+              grep -qF "path: /custom-$c-$probe" <<<"$out"
+            done
+          done
+          ! grep -qE '^ +(Capabilities|Release|Values):' <<<"$out" || exit 1
+          # An explicit grace period of 0 is kept.
+          out="$(helm template uc helm --set server.deployment.terminationGracePeriodSeconds=0)"
+          grep -qE '^ +terminationGracePeriodSeconds: 0$' <<<"$out"
+          # MySQL: the host, the driver volume and the jar path in it are required.
+          if err="$(helm template uc helm -f helm/ci/mysql-values.yaml --set server.db.mysqlConfig.host= 2>&1)"; then
+            exit 1
+          fi
+          grep -qF 'mysqlConfig.host is required' <<<"$err"
+          mysql=(--set server.db.type=mysql --set server.db.mysqlConfig.host=mysql)
+          if err="$(helm template uc helm "${mysql[@]}" --set server.db.mysqlConfig.driver.subPath=d.jar 2>&1)"; then
+            exit 1
+          fi
+          grep -qF 'driver.volume is required' <<<"$err"
+          if err="$(helm template uc helm "${mysql[@]}" --set server.db.mysqlConfig.driver.volume.emptyDir.medium= 2>&1)"; then
+            exit 1
+          fi
+          grep -qF 'driver.subPath is required' <<<"$err"
+          # The driver jar goes on the module path, and the database name and URL parameters are encoded: + would
+          # read as a space.
+          out="$(helm template uc helm -f helm/ci/mysql-values.yaml --set-string 'server.db.mysqlConfig.dbName=uc+db' \
+            --set-string 'server.db.mysqlConfig.extraParams.connectionTimeZone=+05:30' \
+            --set-string 'server.db.mysqlConfig.extraParams.sslMode=REQUIRED')"
+          grep -qF 'jdbc:mysql://mysql:3306/uc%2Bdb?connectionTimeZone=%2B05%3A30&sslMode=REQUIRED' <<<"$out"
+          grep -qF -- '--module-path=/home/unitycatalog/jdbc-drivers/mysql-connector-j.jar' <<<"$out"
+          grep -qF 'mountPath: /home/unitycatalog/jdbc-drivers/mysql-connector-j.jar' <<<"$out"
+          # Other databases get neither.
+          for values in helm/ci/default-values.yaml helm/ci/postgresql-values.yaml; do
+            out="$(helm template uc helm -f "$values")"
+            ! grep -qE 'JDK_JAVA_OPTIONS|mysql-driver' <<<"$out" || exit 1
+          done
+          # Storage secrets reach the server as UC_ variables, not through server.properties.
+          secrets=(-f helm/ci/secrets-values.yaml --set auth.enabled=true --set auth.clientSecretName=ci-oauth)
+          out="$(helm template uc helm "${secrets[@]}" --set server.config.extraProperties=null)"
+          # Every part of a credential, so a restart after a rotation reads one set.
+          for ref in UC_S3_ACCESSKEY_0:ci-s3-credentials:accessKey UC_S3_SECRETKEY_0:ci-s3-credentials:secretKey \
+            UC_ADLS_TENANTID_0:ci-adls-credentials:tenantId UC_ADLS_CLIENTID_0:ci-adls-credentials:clientId \
+            UC_ADLS_CLIENTSECRET_0:ci-adls-credentials:clientSecret; do
+            IFS=: read -r name secret key <<<"$ref"
+            grep -A4 -- "- name: $name\$" <<<"$out" | tr -d '\n' | grep -qE "name: \"$secret\" +key: $key( |\$)"
+          done
+          # None in the file, which the init container writes only at pod start.
+          ! grep -qE 'server\.client-secret|s3\.(accessKey|secretKey)|adls\.(tenantId|clientId|clientSecret)' <<<"$out" || exit 1
+          # The deprecated init container variables are there only for a custom template.
+          legacy='S3_ACCESS_KEY_0 S3_SECRET_KEY_0 ADLS_TENANT_ID_0 ADLS_CLIENT_ID_0 ADLS_CLIENT_SECRET_0 OAUTH_CLIENT_SECRET'
+          ! grep -qE -- "- name: (${legacy// /|})\$" <<<"$out" || exit 1
+          out="$(helm template uc helm "${secrets[@]}")"
+          for name in $legacy; do
+            grep -qE -- "- name: $name\$" <<<"$out"
+          done
+          grep -A6 -- '- name: OAUTH_CLIENT_SECRET$' <<<"$out" | grep -qF 'optional: true'
+          out="$(helm template uc helm -f helm/ci/secrets-values.yaml)"
+          ! grep -qE -- '- name: OAUTH_CLIENT_SECRET$' <<<"$out" || exit 1
+
       - name: Build the server and UI images
         run: |
           docker build -t unitycatalog:ci .
@@ -70,7 +181,42 @@ jobs:
           docker tag unitycatalog-ui:ci unitycatalog-ui:v0.0.0-ci
           kind load docker-image unitycatalog:v0.0.0-ci unitycatalog-ui:v0.0.0-ci --name chart-testing
 
+      - name: Start the database
+        if: matrix.db != 'file'
+        env:
+          DB: ${{ matrix.db }}
+        # The images and MySQL settings of the server tests: SupportedDatabase.java and MySqlDatabases.java.
+        run: |
+          kubectl create namespace uc
+          kubectl create secret generic db-password --namespace uc --from-literal=password=ci-password
+          case "$DB" in
+            postgresql)
+              kubectl run postgresql --namespace uc --port 5432 --expose \
+                --image postgres@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5 \
+                --env POSTGRES_PASSWORD=ci-password --env POSTGRES_DB=ucdb
+              ready=(pg_isready --host 127.0.0.1 --username postgres) ;;
+            mysql)
+              # helm/ci/mysql-values.yaml downloads the driver at the version that the server tests use.
+              version="$(sed -n 's/.*"mysql-connector-j" % "\([^"]*\)".*/\1/p' build.sbt)"
+              [ -n "$version" ] || { echo "::error::No mysql-connector-j version found in build.sbt"; exit 1; }
+              kubectl create configmap mysql-connector-j --namespace uc --from-literal=version="$version"
+              kubectl run mysql --namespace uc --port 3306 --expose \
+                --image mysql@sha256:76f0358884cb92d9a086d24e5671c38048d3fef40f2588703d73eb55392d6b69 \
+                --env MYSQL_ROOT_PASSWORD=ci-password --env MYSQL_DATABASE=ucdb \
+                -- --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_bin
+              ready=(mysqladmin ping --host 127.0.0.1 --user root --password=ci-password) ;;
+          esac
+          for i in $(seq 60); do
+            kubectl exec --namespace uc "$DB" -- "${ready[@]}" > /dev/null 2>&1 && exit 0
+            sleep 5
+          done
+          kubectl logs --namespace uc "$DB" --tail 50
+          echo "::error::$DB did not start"
+          exit 1
+
       - name: Package the chart as a release, install it and run helm test
+        env:
+          DB: ${{ matrix.db }}
         run: |
           helm/package-chart.sh 0.0.0-ci "$RUNNER_TEMP"
           # Upgrades rely on unchanged resource names: the PVC and signing key Secret are pre-install
@@ -79,9 +225,14 @@ jobs:
           for name in unitycatalog-server unitycatalog-server-db unitycatalog-server-jwt-key unitycatalog-ui; do
             grep -qE "^  name: \"?$name\"?\$" "$RUNNER_TEMP/names.yaml" || { echo "::error::No resource named $name"; exit 1; }
           done
+          values=()
+          [ "$DB" = file ] || values=(--values "helm/ci/$DB-values.yaml")
           helm install uc "$RUNNER_TEMP/unitycatalog-chart-0.0.0-ci.tgz" --namespace uc --create-namespace --wait --timeout 600s \
+            "${values[@]}" \
             --set server.deployment.image.repository=unitycatalog \
             --set server.deployment.image.pullPolicy=Never \
+            --set server.deployment.obsPort=8090 \
+            --set server.deployment.enableReadinessProbe=true \
             --set ui.deployment.image.repository=unitycatalog-ui \
             --set ui.deployment.image.pullPolicy=Never
           helm test uc --namespace uc --logs

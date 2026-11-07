@@ -22,6 +22,7 @@ import io.unitycatalog.server.persist.ModelRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.Set;
@@ -43,7 +44,7 @@ public class TemporaryModelVersionCredentialsService implements UnityCatalogRest
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
       (#operation == 'READ_MODEL_VERSION'
         ? #authorizeAny(#principal, #registered_model, OWNER, EXECUTE)
-        : #authorize(#principal, #registered_model, OWNER))
+        : #authorizeAny(#principal, #registered_model, OWNER, CREATE_MODEL_VERSION))
       """)
   public HttpResponse generateTemporaryModelVersionCredentials(
       @AuthorizeResourceKeys({
@@ -90,10 +91,20 @@ public class TemporaryModelVersionCredentialsService implements UnityCatalogRest
               fullName, modelVersion);
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, errorMsg);
     }
+    if (modelVersionInfo.getStatus() != ModelVersionStatus.READY
+        && requestedOperation == ModelVersionOperation.READ_MODEL_VERSION) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Cannot request read credentials on a model version that is not ready: "
+              + fullName
+              + "/"
+              + modelVersion);
+    }
     return HttpResponse.ofJson(
         storageCredentialVendor.vendCredential(
             NormalizedURL.from(modelVersionInfo.getStorageLocation()),
-            modelVersionOperationToPrivileges(requestedOperation)));
+            modelVersionOperationToPrivileges(requestedOperation),
+            CredentialUse.CLIENT));
   }
 
   private Set<CredentialContext.Privilege> modelVersionOperationToPrivileges(
