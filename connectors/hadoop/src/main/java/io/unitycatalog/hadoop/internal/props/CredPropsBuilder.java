@@ -151,6 +151,11 @@ public abstract class CredPropsBuilder {
     return this;
   }
 
+  /** Reads {@code key} from the caller's Hadoop conf, or {@code null} when unset. */
+  protected String confGet(String key) {
+    return hadoopConf.get(key);
+  }
+
   /**
    * Saves the current value of {@code key} from the Hadoop conf (falling back to {@code
    * defaultOriginal}) under {@code key + ".original"}, then overrides {@code key} with {@code
