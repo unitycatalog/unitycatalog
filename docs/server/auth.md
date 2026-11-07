@@ -255,11 +255,18 @@ to use the correct object types before adding or reapplying grants.
 ### MANAGE
 
 `MANAGE` permits full metadata and grant inspection, grant changes, supported metadata updates,
-and deletion. Managers can grant themselves other privileges, including data access.
+deletion, and ownership transfer. Managers can grant themselves other privileges, including data
+access.
 
 Catalog and schema grants also cover their children. Schema grants require `USE CATALOG`.
 Grants on objects within a schema require both `USE CATALOG` and `USE SCHEMA`.
 Catalogs, external locations, and storage credentials require no usage grants.
+
+### Ownership transfer
+
+Set `owner` in an object's PATCH request to transfer ownership to an existing user. Table and
+function PATCH requests support only ownership changes. For views, functions, and models, a user
+can transfer ownership to themselves; a metastore admin can transfer to another user.
 
 ### Restart the UC Server
 

@@ -130,7 +130,8 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
       "("
           + AuthorizeExpressions.UPDATE_REGISTERED_MODEL
           + """
-          ) &&
+          || (#owner != null && #new_name == null && #comment == null &&
+              #authorize(#principal, #metastore, OWNER))) &&
           (#new_name == null ||
             (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
               #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
@@ -146,10 +147,13 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateRegisteredModel(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullName,
-      @AuthorizeKey(key = "new_name") UpdateRegisteredModel updateRegisteredModel) {
+      @AuthorizeKey(key = "owner") @AuthorizeKey(key = "new_name") @AuthorizeKey(key = "comment")
+          UpdateRegisteredModel updateRegisteredModel) {
     assert updateRegisteredModel != null;
+    validateOwnerTransfer(updateRegisteredModel.getOwner());
     RegisteredModelInfo updateRegisteredModelResponse =
         modelRepository.updateRegisteredModel(fullName, updateRegisteredModel);
+    reloadAfterOwnerChange(updateRegisteredModel.getOwner());
     return HttpResponse.ofJson(updateRegisteredModelResponse);
   }
 

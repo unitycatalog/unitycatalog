@@ -4,7 +4,7 @@
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
 | **comment** | **String** | Comment associated with the credential. | [optional] [default to null] |
-| **owner** | **String** | Username of current owner of credential. | [optional] [default to null] |
+| **owner** | **String** | Username of the new owner. The user must already exist. | [optional] [default to null] |
 | **aws\_iam\_role** | [**AwsIamRoleRequest**](AwsIamRoleRequest.md) |  | [optional] [default to null] |
 | **new\_name** | **String** | New name for the credential. | [optional] [default to null] |
 

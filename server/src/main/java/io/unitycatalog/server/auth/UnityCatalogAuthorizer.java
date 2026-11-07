@@ -45,6 +45,9 @@ public interface UnityCatalogAuthorizer {
 
   Map<UUID, List<Privileges>> listAuthorizations(UUID resource);
 
+  /** Reloads policy after a committed ownership transfer. Uncached authorizers need no action. */
+  default void reloadAuthorizations() {}
+
   /**
    * Reload cached authorization state after a deny, if supported. Default is a no-op.
    *
