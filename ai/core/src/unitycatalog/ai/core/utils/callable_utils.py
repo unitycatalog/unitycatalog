@@ -1,4 +1,5 @@
 import ast
+import datetime
 import inspect
 import json
 import re
@@ -281,6 +282,10 @@ def format_default_value(default: Any) -> str:
         "'don\\\\'t'"
         >>> format_default_value(42)
         '42'
+        >>> format_default_value(datetime.date(2024, 1, 15))
+        "'2024-01-15'"
+        >>> format_default_value(datetime.datetime(2024, 1, 15, 10, 30))
+        "'2024-01-15T10:30:00'"
     """
 
     if default is None:
@@ -290,6 +295,12 @@ def format_default_value(default: Any) -> str:
         # SQL parses string literals (\' is an escaped quote; '' is not).
         escaped = default.replace("\\", "\\\\").replace("'", "\\'")
         return f"'{escaped}'"
+    elif isinstance(default, (datetime.date, datetime.time)):
+        # Date/time defaults are string literals in SQL (datetime is a date
+        # subclass, so one check covers both). Unquoted, a date renders as
+        # arithmetic (2024-01-15 is 2024 - 1 - 15) and a datetime does not
+        # parse as a timestamp at all, so quote the ISO representation.
+        return f"'{default.isoformat()}'"
     else:
         return str(default)
 
