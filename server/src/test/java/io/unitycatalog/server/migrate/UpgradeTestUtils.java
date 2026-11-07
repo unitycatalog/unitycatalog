@@ -2,6 +2,7 @@ package io.unitycatalog.server.migrate;
 
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabases;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.InvocationHandler;
@@ -13,6 +14,7 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import javax.sql.DataSource;
+import org.flywaydb.core.Flyway;
 
 /** Databases and statements the schema migration tests share. */
 final class UpgradeTestUtils {
@@ -42,6 +44,27 @@ final class UpgradeTestUtils {
         execute(db, statement);
       }
     }
+  }
+
+  /** The schema the steps build on a new empty database. */
+  static SchemaSnapshot freshInstallSnapshot() {
+    try (TestDatabase fresh = TestDatabases.newEmptyDatabase()) {
+      new SchemaMigrator(fresh.dataSource()).upgradeSchema();
+      return SchemaSnapshot.of(fresh.dataSource());
+    }
+  }
+
+  /** Runs this build's steps up to {@code version} on {@code db}, as a new install does. */
+  static void migrateTo(TestDatabase db, String version) {
+    Flyway.configure()
+        .dataSource(db.dataSource())
+        .locations("classpath:db/migration/" + DatabaseKind.of(db.dataSource()).folder())
+        .table("uc_schema_history")
+        .baselineOnMigrate(true)
+        .baselineVersion("0")
+        .target(version)
+        .load()
+        .migrate();
   }
 
   /** What {@link #watched} calls with each SQL statement before it is sent. */
