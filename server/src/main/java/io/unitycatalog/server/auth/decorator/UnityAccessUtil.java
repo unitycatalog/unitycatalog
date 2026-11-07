@@ -43,9 +43,10 @@ public class UnityAccessUtil {
     // for the server and provide an admin account with which regular users
     // can be subsequently added.
     //
-    // Note that if the user exists, we don't want to do anything else because
-    // also as bootstrapping, one may want to deactivate or decrease the privileges
-    // the admin user has.
+    // Note that if the user exists, we don't change it: bootstrap never re-enables the admin
+    // or grants it OWNER again, so its current state and privileges stay as they are. While the
+    // admin holds metastore OWNER and authorization is enabled, the SCIM users API refuses to
+    // delete or deactivate it.
 
     try {
       userRepository.getUserByEmail("admin");

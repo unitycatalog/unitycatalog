@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.fasterxml.jackson.databind.JsonNode;
+import io.unitycatalog.cli.utils.Oauth2CliExchange;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
@@ -20,6 +21,8 @@ import java.security.interfaces.RSAPublicKey;
 import java.security.spec.InvalidKeySpecException;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
+import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -86,6 +89,27 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     List<String> argsList = List.of("auth", "login", "--identity_token", token);
     assertThatThrownBy(() -> executeCliCommand(serverConfig, argsList))
         .isInstanceOf(RuntimeException.class);
+  }
+
+  // bin/uc auth login without --identity_token reads the client secret for its OAuth flow.
+  @Test
+  public void testAuthLoginReadsTheClientSecretFromTheEnvironmentBeforeTheFile() {
+    Properties file = new Properties();
+    file.setProperty("server.client-secret", "file-secret");
+
+    // A line break at the end, as in a Secret made from a file, is dropped.
+    assertThat(
+            Oauth2CliExchange.clientSecret(
+                Map.of("UC_SERVER_CLIENT_SECRET", "env-secret\r\n"), file))
+        .isEqualTo("env-secret");
+    // An absent, empty or line-break-only variable falls back to the file.
+    for (Map<String, String> env :
+        List.of(
+            Map.<String, String>of(),
+            Map.of("UC_SERVER_CLIENT_SECRET", ""),
+            Map.of("UC_SERVER_CLIENT_SECRET", "\n"))) {
+      assertThat(Oauth2CliExchange.clientSecret(env, file)).isEqualTo("file-secret");
+    }
   }
 
   @Test
