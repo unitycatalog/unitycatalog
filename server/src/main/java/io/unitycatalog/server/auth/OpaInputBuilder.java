@@ -32,8 +32,7 @@ class OpaInputBuilder {
     this.sessionFactory = sessionFactory;
   }
 
-  ObjectNode build(
-      UUID principalId, SecurableType resourceType, UUID resourceId, Privileges privilege) {
+  ObjectNode build(UUID principalId, SecurableType resourceType, UUID resourceId) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -48,7 +47,6 @@ class OpaInputBuilder {
           if (user.getExternalId() != null) {
             principal.put("external_id", user.getExternalId());
           }
-          setPrivilege(request, privilege);
           input.set("resource", resource(session, resourceType, resourceId));
           return request;
         },
@@ -56,6 +54,7 @@ class OpaInputBuilder {
         /* readOnly= */ true);
   }
 
+  /** Binds a privilege in place on the request envelope returned by build. */
   void setPrivilege(ObjectNode request, Privileges privilege) {
     ((ObjectNode) request.get("input")).put("privilege", privilege.name());
   }

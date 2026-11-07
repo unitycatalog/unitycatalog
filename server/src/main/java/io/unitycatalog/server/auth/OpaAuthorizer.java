@@ -15,6 +15,7 @@ import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.JsonUtils;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -91,15 +92,15 @@ public class OpaAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
     try {
       ObjectNode input;
       try {
-        input = inputBuilder.build(principal, resourceType, resource, actions[0]);
+        input = inputBuilder.build(principal, resourceType, resource);
       } catch (BaseException e) {
         if (e.getErrorCode() != ErrorCode.NOT_FOUND) {
           throw e;
         }
         LOGGER.warn(
-            "Authorization check denied: principal={}, privilege={}, resource={} {}: {}",
+            "Authorization check denied: principal={}, privileges={}, resource={} {}: {}",
             principal,
-            actions[0],
+            Arrays.toString(actions),
             resourceType,
             resource,
             e.getMessage());
