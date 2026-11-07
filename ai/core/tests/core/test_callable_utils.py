@@ -1312,6 +1312,12 @@ $$;
         (datetime.datetime(2024, 1, 15, 10, 30), "'2024-01-15T10:30:00'"),
         (datetime.datetime(2024, 1, 15, 10, 30, 5, 123456), "'2024-01-15T10:30:05.123456'"),
         (datetime.time(10, 30), "'10:30:00'"),
+        (datetime.timedelta(hours=1), "INTERVAL '0 1:0:0.000000' DAY TO SECOND"),
+        (datetime.timedelta(hours=-1), "INTERVAL '-0 1:0:0.000000' DAY TO SECOND"),
+        (
+            datetime.timedelta(seconds=1, microseconds=123456),
+            "INTERVAL '0 0:0:1.123456' DAY TO SECOND",
+        ),
     ],
 )
 def test_format_default_value(default, expected):

@@ -23,6 +23,7 @@ from typing import (
 from unitycatalog.ai.core.utils.docstring_utils import DocstringInfo, parse_docstring
 from unitycatalog.ai.core.utils.type_utils import (
     SQL_TYPE_TO_PYTHON_TYPE_MAPPING,
+    convert_timedelta_to_interval_str,
     python_type_to_sql_type,
 )
 
@@ -301,6 +302,8 @@ def format_default_value(default: Any) -> str:
         # arithmetic (2024-01-15 is 2024 - 1 - 15) and a datetime does not
         # parse as a timestamp at all, so quote the ISO representation.
         return f"'{default.isoformat()}'"
+    elif isinstance(default, datetime.timedelta):
+        return convert_timedelta_to_interval_str(default)
     else:
         return str(default)
 
