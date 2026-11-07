@@ -1,10 +1,13 @@
 package io.unitycatalog.server.testdatabase;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import javax.sql.DataSource;
 import org.hibernate.SessionFactory;
 
 /**
@@ -21,6 +24,7 @@ public final class TestDatabase implements AutoCloseable {
   private final Runnable release;
   private final List<HibernateConfigurator> openedConfigurators = new ArrayList<>();
   private HibernateConfigurator defaultConfigurator;
+  private HikariDataSource dataSource;
 
   TestDatabase(
       String driver,
@@ -39,6 +43,22 @@ public final class TestDatabase implements AutoCloseable {
 
   public String jdbcUrl() {
     return url;
+  }
+
+  /** A small connection pool on this database, closed by {@link #close()}. */
+  public synchronized DataSource dataSource() {
+    if (dataSource == null) {
+      HikariConfig config = new HikariConfig();
+      config.setDriverClassName(driver);
+      config.setJdbcUrl(url);
+      config.setUsername(user);
+      config.setPassword(password);
+      // Room for the concurrent-run test: the test's lock, two waiting runs and one more
+      // connection.
+      config.setMaximumPoolSize(4);
+      dataSource = new HikariDataSource(config);
+    }
+    return dataSource;
   }
 
   /**
@@ -97,7 +117,14 @@ public final class TestDatabase implements AutoCloseable {
     } finally {
       openedConfigurators.clear();
       defaultConfigurator = null;
-      release.run();
+      try {
+        if (dataSource != null) {
+          dataSource.close();
+        }
+      } finally {
+        dataSource = null;
+        release.run();
+      }
     }
   }
 }

@@ -31,6 +31,8 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
@@ -38,6 +40,7 @@ import lombok.Getter;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.Configuration;
+import org.hibernate.cfg.Environment;
 import org.hibernate.cfg.JdbcSettings;
 import org.hibernate.service.ServiceRegistry;
 import org.slf4j.Logger;
@@ -81,6 +84,33 @@ public class HibernateConfigurator implements AutoCloseable {
   }
 
   /**
+   * {@code properties} over the settings Hibernate adds itself: JVM system properties and a {@code
+   * hibernate.properties} on the classpath.
+   */
+  private static Map<Object, Object> settingsHibernateReads(Properties properties) {
+    Map<Object, Object> settings = new HashMap<>(Environment.getProperties());
+    settings.putAll(properties);
+    return settings;
+  }
+
+  /**
+   * The schema migration and Hibernate must use the same schema, and the migration uses the
+   * connection's. Refuses Hibernate's own default schema or catalog, which only Hibernate would
+   * use.
+   */
+  public static void requireSchemaFromConnection(Properties hibernateProperties) {
+    Map<Object, Object> settings = settingsHibernateReads(hibernateProperties);
+    for (String name : new String[] {"hibernate.default_schema", "hibernate.default_catalog"}) {
+      if (settings.get(name) != null) {
+        throw new IllegalArgumentException(
+            name
+                + " is not supported: the schema migration uses the connection's schema. Remove it"
+                + " and set the schema in the JDBC URL instead (PostgreSQL: currentSchema=...).");
+      }
+    }
+  }
+
+  /**
    * Storage paths compare exactly, but MySQL's default collation ignores case. Warns when any text
    * column in the connected MySQL schema has a case-insensitive ({@code _ci}) collation. A failed
    * check never fails startup.
@@ -118,6 +148,11 @@ public class HibernateConfigurator implements AutoCloseable {
   }
 
   private static HikariDataSource createDataSource(Properties hibernateProperties) {
+    return new HikariDataSource(hikariConfig(hibernateProperties));
+  }
+
+  /** The connection pool settings of {@code hibernateProperties}. */
+  public static HikariConfig hikariConfig(Properties hibernateProperties) {
     Properties hikariProperties = new Properties();
     hibernateProperties.stringPropertyNames().stream()
         .filter(name -> name.startsWith(HIKARI_PREFIX))
@@ -147,7 +182,7 @@ public class HibernateConfigurator implements AutoCloseable {
     if (hikariConfig.getPoolName() == null) {
       hikariConfig.setPoolName("unity-catalog");
     }
-    return new HikariDataSource(hikariConfig);
+    return hikariConfig;
   }
 
   /**
@@ -216,7 +251,12 @@ public class HibernateConfigurator implements AutoCloseable {
   }
 
   public static Properties setupHibernateProperties(ServerProperties serverProperties) {
-    Path hibernatePropertiesPath = Paths.get("etc/conf/hibernate.properties");
+    return setupHibernateProperties(serverProperties, Paths.get("etc/conf/hibernate.properties"));
+  }
+
+  /** The same, from the Hibernate properties file at {@code hibernatePropertiesPath}. */
+  public static Properties setupHibernateProperties(
+      ServerProperties serverProperties, Path hibernatePropertiesPath) {
     Properties hibernateProperties = new Properties();
     if (!hibernatePropertiesPath.toFile().exists()) {
       LOGGER.warn("Hibernate properties file not found: {}", hibernatePropertiesPath);
