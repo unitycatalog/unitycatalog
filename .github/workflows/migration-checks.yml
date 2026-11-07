@@ -1,0 +1,35 @@
+name: Migration Checks
+
+# Checks the schema steps on each database: every step sends one allowed SQL statement, its effect
+# file matches what it does, and a step that fails part way can be rerun. These tests run only with
+# UC_TEST_MIGRATION_CHECKS=true. Runs on every pull request, with no path filter, so that it can be
+# a required check: a required check skipped by a path filter stays pending and blocks the merge.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  migration-checks:
+    runs-on: ubuntu-latest
+    name: Migration checks (${{ matrix.test-database }})
+    strategy:
+      fail-fast: false
+      matrix:
+        test-database: [ "H2", "POSTGRES_18", "MYSQL_8" ]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Prepare the environment
+        uses: ./.github/actions/prepare-spark-env
+        with:
+          spark-version: "4.0.0"
+      - name: Run migration checks
+        env:
+          UC_TEST_DATABASE: ${{ matrix.test-database }}
+          UC_TEST_MIGRATION_CHECKS: "true"
+        run: build/sbt -J-Xmx2G "server/testOnly io.unitycatalog.server.migrate.MigrationStepRulesTest io.unitycatalog.server.migrate.BaselineMatchesEntitiesTest io.unitycatalog.server.migrate.SchemaMigratorTest"

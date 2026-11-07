@@ -4,6 +4,7 @@
 {{ .Values.server.config.override }}
 {{- else -}}
 server.env=prod
+server.schema-management={{ .Values.server.db.schemaManagement | default "flyway" | lower }}
 {{- if .Values.auth.enabled }}
 server.authorization=enable
 server.authorization-url={{ .Values.auth.authorizationUrl }}
@@ -101,7 +102,6 @@ hibernate.connection.password=${DB_PASSWORD}
 {{ fail "Unsupported database type. Supported types are: file, postgresql, mysql." }}
 {{- end }}
 
-hibernate.hbm2ddl.auto=update
 hibernate.show_sql=false
 hibernate.archive.autodetection=class
 hibernate.use_sql_comments=true

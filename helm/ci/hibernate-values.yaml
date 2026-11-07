@@ -1,0 +1,4 @@
+# Renders the chart with Hibernate managing the schema, so that chart lint covers it.
+server:
+  db:
+    schemaManagement: hibernate

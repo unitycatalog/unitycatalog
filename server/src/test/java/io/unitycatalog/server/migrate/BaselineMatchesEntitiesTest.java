@@ -10,11 +10,13 @@ import org.hibernate.cfg.Configuration;
 import org.hibernate.cfg.JdbcSettings;
 import org.hibernate.cfg.SchemaToolingSettings;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 /**
- * The steps build the schema Hibernate builds from the entities, so Hibernate's update at server
- * start changes nothing on a database that the steps built.
+ * The steps build the schema Hibernate builds from the entities. Runs with {@code
+ * UC_TEST_MIGRATION_CHECKS=true}.
  */
+@EnabledIfEnvironmentVariable(named = "UC_TEST_MIGRATION_CHECKS", matches = "true")
 public class BaselineMatchesEntitiesTest {
 
   @TempDatabase(empty = true)
@@ -26,7 +28,8 @@ public class BaselineMatchesEntitiesTest {
   @Test
   void stepsBuildTheEntitySchema() {
     new SchemaMigrator(fromSteps.dataSource()).upgradeSchema();
-    // Hibernate builds the second from the server's entities, with the settings below.
+    // Hibernate builds the second from the server's entities. The server's configurator lets
+    // Hibernate change the schema only in hibernate mode, so this test runs it on those entities.
     Configuration entities = new Configuration();
     fromEntities.sessionFactory().getMetamodel().getEntities().stream()
         .map(EntityType::getJavaType)
