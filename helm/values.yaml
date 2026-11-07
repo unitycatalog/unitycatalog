@@ -182,6 +182,7 @@ server:
     # Supported values: `file`, `postgresql`, `mysql`
     #
     type: file
+
     fileConfig:
       persistence:
         # -- (bool) Enable persistence for the file database volume
@@ -480,6 +481,8 @@ server:
     # @raw
     #
     # The chart passes `--port`, and `--obs-port` when `obsPort` is set, as the container's `args`.
+    # The `upgrade-schema` init container runs the same command with the single argument
+    # `--upgrade-schema`.
     # Kubernetes runs this command instead of the image's `ENTRYPOINT`, so an image that starts
     # through its own wrapper can set it here; the wrapper must pass the arguments on to
     # `./bin/start-uc-server`.
@@ -500,6 +503,10 @@ server:
     # -- (array) List of additional init containers to be added to the server pod
     # @default -- not set
     # @raw
+    #
+    # They run before the init container that upgrades the schema. Run a database proxy that the
+    # server needs here as a native sidecar (`restartPolicy: Always`), so that the upgrade can reach
+    # the database.
     #
     # [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/#pod)
     #
@@ -629,8 +636,11 @@ server:
     affinity:
 
     # -- (object) Update strategy for the deployment
-    # @default -- # If replicaCount: 1 and db type "file"<br>type: Recreate<br># Else<br>type: RollingUpdate
+    # @default -- type: Recreate
     # @raw
+    #
+    # Only `type: Recreate` is allowed: an upgrade changes the database schema, so all old servers
+    # stop before the new ones start.
     #
     # [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#updating-a-deployment)
     #

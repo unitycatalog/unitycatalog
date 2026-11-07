@@ -2,7 +2,10 @@ package io.unitycatalog.server.migrate;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
@@ -13,6 +16,7 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.List;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -24,6 +28,28 @@ public class SchemaGateTest {
   @TempDatabase(empty = true)
   TestDatabase db;
 
+  @TempDir Path storageRoot;
+
+  @Test
+  void refusesToStartOnADatabaseThatIsNotSetUp() {
+    assertThatThrownBy(() -> TestServer.start(db, storageRoot))
+        .hasMessageContaining("bin/start-uc-server --upgrade-schema");
+    assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
+  }
+
+  @Test
+  void setsUpAnInMemoryDatabaseAtStart() throws ApiException {
+    // It lasts only as long as the server, so no command can set it up before the server starts.
+    Properties inMemory = db.hibernateProperties();
+    inMemory.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    inMemory.setProperty("hibernate.connection.url", "jdbc:h2:mem:gate;DB_CLOSE_DELAY=-1");
+
+    try (TestServer server = TestServer.start(db, inMemory, storageRoot)) {
+      assertThat(new CatalogsApi(server.apiClient()).listCatalogs(null, null).getCatalogs())
+          .isEmpty();
+    }
+  }
+
   @Test
   void upgradeSchemaCommandSetsUpTheConfiguredDatabase(@TempDir Path conf) throws IOException {
     writeConfiguration(conf, db.jdbcUrl());
@@ -33,9 +59,12 @@ public class SchemaGateTest {
         "\nhibernate.hikari.maximumPoolSize=1\nhibernate.hikari.connectionTimeout=1000\n",
         StandardOpenOption.APPEND);
 
-    assertThat(SchemaMigrator.runCommand(conf, new PrintStream(new ByteArrayOutputStream())))
+    assertThat(SchemaMigrator.runCommand(true, conf, new PrintStream(new ByteArrayOutputStream())))
         .isZero();
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.CURRENT);
+    // On H2 the check opens the file that now exists, with IFEXISTS=TRUE added to its URL.
+    assertThat(SchemaMigrator.runCommand(false, conf, new PrintStream(new ByteArrayOutputStream())))
+        .isZero();
   }
 
   @ParameterizedTest
@@ -63,10 +92,27 @@ public class SchemaGateTest {
       Files.delete(conf.resolve(setup.split(" ")[0]));
     }
 
-    ByteArrayOutputStream out = new ByteArrayOutputStream();
-    assertThat(SchemaMigrator.runCommand(conf, new PrintStream(out, true, UTF_8))).isOne();
-    assertThat(out.toString(UTF_8)).contains(message);
+    for (boolean upgrade : List.of(false, true)) {
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      assertThat(SchemaMigrator.runCommand(upgrade, conf, new PrintStream(out, true, UTF_8)))
+          .isOne();
+      assertThat(out.toString(UTF_8)).contains(message);
+    }
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
+  }
+
+  @Test
+  void checkSchemaDoesNotCreateAMissingH2File(@TempDir Path conf, @TempDir Path data)
+      throws IOException {
+    writeConfiguration(conf, "jdbc:h2:file:" + data.resolve("uc"));
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(SchemaMigrator.runCommand(false, conf, new PrintStream(out, true, UTF_8))).isOne();
+
+    assertThat(out.toString(UTF_8)).contains("is not found").contains("etc/conf");
+    try (var files = Files.list(data)) {
+      assertThat(files).isEmpty();
+    }
   }
 
   /** An empty {@code server.properties}, and {@code hibernate.properties} for {@code url}. */
