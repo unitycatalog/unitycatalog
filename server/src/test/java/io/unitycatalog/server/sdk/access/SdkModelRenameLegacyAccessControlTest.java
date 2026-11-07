@@ -109,5 +109,16 @@ public class SdkModelRenameLegacyAccessControlTest extends SdkAccessControlBaseC
       assertThat(unchanged.getName()).isEqualTo("model");
       assertThat(unchanged.getComment()).isEqualTo(original.getComment());
     }
+    if (!owner && useCatalog && useSchema) {
+      grantPermissions(principal, SecurableType.REGISTERED_MODEL, fullName, Privileges.MANAGE);
+      assertPermissionDenied(() -> callerApi.updateRegisteredModel(fullName, rename));
+      grantPermissions(
+          principal, SecurableType.SCHEMA, TestUtils.SCHEMA_FULL_NAME, Privileges.CREATE_MODEL);
+      callerApi.updateRegisteredModel(fullName, rename);
+      RegisteredModelInfo renamed =
+          observerApi.getRegisteredModel(TestUtils.SCHEMA_FULL_NAME + ".renamed");
+      assertThat(renamed.getId()).isEqualTo(original.getId());
+      assertThat(renamed.getOwner()).isEqualTo(original.getOwner());
+    }
   }
 }

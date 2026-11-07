@@ -238,6 +238,7 @@ Grant validation also runs when `server.authorization=disable`.
 | `READ FILES`, `WRITE FILES`, `CREATE EXTERNAL TABLE` | External location, storage credential |
 | `CREATE EXTERNAL VOLUME`, `CREATE MANAGED STORAGE` | External location |
 | `READ METADATA` | Metastore, catalog, schema, table, function, volume, registered model, external location, storage credential |
+| `MANAGE` | Catalog, schema, table/view, volume, function, registered model, external location, storage credential |
 
 Volume write credentials require `USE CATALOG` and `USE SCHEMA`, plus both `READ VOLUME`
 and `WRITE VOLUME`. Volume ownership satisfies the volume check. Catalog or schema ownership
@@ -250,6 +251,19 @@ saving its grants or revokes.
 After an upgrade, existing grants stay in place. The server does not remove invalid grants
 automatically. You can still remove them through the permissions API. Update grant scripts
 to use the correct object types before adding or reapplying grants.
+
+### MANAGE
+
+`MANAGE` permits full metadata and grant inspection, grant changes, supported metadata updates,
+and deletion. Catalog `MANAGE` needs no usage grants. Schema `MANAGE` needs
+`USE CATALOG`. Object `MANAGE` needs both `USE CATALOG` and `USE SCHEMA`. Catalog and schema grants
+also manage their children. External locations and storage credentials need no hierarchy usage.
+`MANAGE` includes the metadata and grant visibility provided by `READ METADATA`.
+Managers can grant themselves other privileges.
+
+`MANAGE` does not grant data credentials, `EXECUTE`, model version publication, or `CREATE`
+privileges. Rename still requires permission to create the new name. Replacing an external
+location's credential still requires permission to use the replacement credential.
 
 ### Restart the UC Server
 

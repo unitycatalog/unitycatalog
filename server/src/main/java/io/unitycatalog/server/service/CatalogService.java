@@ -102,11 +102,14 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
   @Patch("/{name}")
   @AuthorizeExpression(
       """
-      #authorize(#principal, #catalog, OWNER)
+      #authorizeAny(#principal, #catalog, OWNER, MANAGE) &&
+      (#new_name == null || #authorize(#principal, #catalog, OWNER) ||
+        #authorizeAny(#principal, #metastore, OWNER, CREATE_CATALOG))
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCatalog(
-      @Param("name") @AuthorizeResourceKey(CATALOG) String name, UpdateCatalog updateCatalog) {
+      @Param("name") @AuthorizeResourceKey(CATALOG) String name,
+      @AuthorizeKey(key = "new_name") UpdateCatalog updateCatalog) {
     return HttpResponse.ofJson(catalogRepository.updateCatalog(name, updateCatalog));
   }
 
@@ -114,7 +117,7 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
   @AuthorizeExpression(
       """
       #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER)
+      #authorizeAny(#principal, #catalog, OWNER, MANAGE)
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteCatalog(

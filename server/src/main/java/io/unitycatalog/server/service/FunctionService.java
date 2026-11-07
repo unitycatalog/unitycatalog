@@ -98,14 +98,7 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
 
   @Delete("/{name}")
   @AuthorizeResourceKey(METASTORE)
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #function, OWNER))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.UPDATE_FUNCTION)
   public HttpResponse deleteFunction(
       @Param("name") @AuthorizeResourceKey(FUNCTION) String name,
       @Param("force") Optional<Boolean> force) {
