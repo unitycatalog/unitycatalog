@@ -171,4 +171,4 @@ agent.chat("Please call a python execution tool to evaluate the result of 42 + 9
 
 ### Configurations for Databricks managed UC functions execution
 
-We provide configurations for databricks client to control the function execution behaviors, check [function execution arguments section](../../README.md#function-execution-arguments-configuration).
+We provide configurations for databricks client to control the function execution behaviors, check [function execution arguments section](../../core/README.md#function-execution-arguments-configuration).
