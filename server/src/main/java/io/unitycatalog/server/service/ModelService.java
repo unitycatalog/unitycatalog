@@ -92,12 +92,12 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   private static final String LIST_AND_GET_AUTH_EXPRESSION =
       """
       #authorizeAny(#principal, #metastore, OWNER, READ_METADATA) ||
-      #authorizeAny(#principal, #catalog, OWNER, READ_METADATA) ||
+      #authorizeAny(#principal, #catalog, OWNER, MANAGE, READ_METADATA) ||
       (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorizeAny(#principal, #schema, OWNER, READ_METADATA)) ||
+          #authorizeAny(#principal, #schema, OWNER, MANAGE, READ_METADATA)) ||
       (#authorize(#principal, #schema, USE_SCHEMA) &&
           #authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorizeAny(#principal, #registered_model, OWNER, EXECUTE, READ_METADATA))
+          #authorizeAny(#principal, #registered_model, OWNER, MANAGE, EXECUTE, READ_METADATA))
       """;
 
   @Get("")
@@ -137,18 +137,23 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
 
   @Patch("/{full_name}")
   @AuthorizeExpression(
-      """
-      (#authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) &&
-              #authorize(#principal, #schema, OWNER)) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) &&
-              #authorize(#principal, #schema, USE_SCHEMA) &&
-              #authorize(#principal, #registered_model, OWNER))) &&
-      (!#strict_privilege_checks || #new_name == null ||
-          #authorize(#principal, #schema, OWNER) ||
-          (#authorize(#principal, #schema, USE_SCHEMA) &&
-              #authorizeAny(#principal, #schema, CREATE_MODEL, CREATE_FUNCTION)))
-      """)
+      "("
+          + AuthorizeExpressions.UPDATE_REGISTERED_MODEL
+          + """
+          ) &&
+          (#new_name == null ||
+            (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+              (#authorize(#principal, #schema, OWNER) ||
+                (#authorize(#principal, #schema, USE_SCHEMA) &&
+                  #authorizeAny(#principal, #schema, CREATE_MODEL, CREATE_FUNCTION)))) ||
+            (!#strict_privilege_checks &&
+              (#authorize(#principal, #catalog, OWNER) ||
+                (#authorize(#principal, #catalog, USE_CATALOG) &&
+                    #authorize(#principal, #schema, OWNER)) ||
+                (#authorize(#principal, #catalog, USE_CATALOG) &&
+                  #authorize(#principal, #schema, USE_SCHEMA) &&
+                      #authorize(#principal, #registered_model, OWNER)))))
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateRegisteredModel(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullName,
@@ -160,14 +165,7 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Delete("/{full_name}")
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #registered_model, OWNER))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.UPDATE_REGISTERED_MODEL)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteRegisteredModel(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullName,
@@ -224,14 +222,7 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Patch("/{full_name}/versions/{version}")
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #registered_model, OWNER))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.UPDATE_REGISTERED_MODEL)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateModelVersion(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullName,
@@ -244,14 +235,7 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Delete("/{full_name}/versions/{version}")
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #registered_model, OWNER))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.UPDATE_REGISTERED_MODEL)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteModelVersion(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullName,

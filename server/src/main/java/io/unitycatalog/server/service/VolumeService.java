@@ -113,12 +113,12 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
   private static final String LIST_AND_GET_AUTH_EXPRESSION =
       """
       #authorizeAny(#principal, #metastore, OWNER, READ_METADATA) ||
-      #authorizeAny(#principal, #catalog, OWNER, READ_METADATA) ||
+      #authorizeAny(#principal, #catalog, OWNER, MANAGE, READ_METADATA) ||
       (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorizeAny(#principal, #schema, OWNER, READ_METADATA)) ||
+          #authorizeAny(#principal, #schema, OWNER, MANAGE, READ_METADATA)) ||
       (#authorize(#principal, #schema, USE_SCHEMA) &&
           #authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorizeAny(#principal, #volume, OWNER, READ_VOLUME, READ_METADATA))
+          #authorizeAny(#principal, #volume, OWNER, MANAGE, READ_VOLUME, READ_METADATA))
       """;
 
   @Get("")
@@ -154,17 +154,22 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
 
   @Patch("/{full_name}")
   @AuthorizeExpression(
-      """
-      (#authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) &&
-              #authorize(#principal, #schema, OWNER)) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) &&
-              #authorize(#principal, #schema, USE_SCHEMA) &&
-              #authorize(#principal, #volume, OWNER))) &&
-      (!#strict_privilege_checks || #new_name == null ||
-          #authorize(#principal, #schema, OWNER) ||
-          #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_VOLUME))
-      """)
+      "("
+          + AuthorizeExpressions.UPDATE_VOLUME
+          + """
+          ) &&
+          (#new_name == null ||
+            (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+              (#authorize(#principal, #schema, OWNER) ||
+                #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_VOLUME))) ||
+            (!#strict_privilege_checks &&
+              (#authorize(#principal, #catalog, OWNER) ||
+                (#authorize(#principal, #catalog, USE_CATALOG) &&
+                    #authorize(#principal, #schema, OWNER)) ||
+                (#authorize(#principal, #catalog, USE_CATALOG) &&
+                  #authorize(#principal, #schema, USE_SCHEMA) &&
+                      #authorize(#principal, #volume, OWNER)))))
+          """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateVolume(
       @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName,
@@ -173,14 +178,7 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
   }
 
   @Delete("/{full_name}")
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #volume, OWNER))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.UPDATE_VOLUME)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteVolume(
       @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName) {
