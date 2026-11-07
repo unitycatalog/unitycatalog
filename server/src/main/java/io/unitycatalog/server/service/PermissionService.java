@@ -199,6 +199,8 @@ public class PermissionService implements UnityCatalogRestService {
                                           securableType,
                                           resourceId,
                                           Privileges.READ_METADATA)))));
+              // Unreachable: getResourceId rejects them, since UC has no grants on them.
+              case SHARE, RECIPIENT -> false;
             };
 
     Map<UUID, List<Privileges>> authorizations =
@@ -416,7 +418,13 @@ public class PermissionService implements UnityCatalogRestService {
                       REGISTERED_MODEL,
                       EXTERNAL_LOCATION,
                       CREDENTIAL);
-              case CREATE_CATALOG, CREATE_STORAGE_CREDENTIAL -> Set.of(METASTORE);
+              case CREATE_CATALOG,
+                  CREATE_STORAGE_CREDENTIAL,
+                  CREATE_SHARE,
+                  USE_SHARE,
+                  CREATE_RECIPIENT,
+                  USE_RECIPIENT ->
+                  Set.of(METASTORE);
               case USE_CATALOG, CREATE_SCHEMA -> Set.of(CATALOG);
               case USE_SCHEMA, CREATE_TABLE, CREATE_FUNCTION, CREATE_VOLUME, CREATE_MODEL ->
                   Set.of(CATALOG, SCHEMA);

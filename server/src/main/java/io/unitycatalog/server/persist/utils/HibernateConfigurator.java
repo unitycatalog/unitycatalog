@@ -194,23 +194,37 @@ public class HibernateConfigurator implements AutoCloseable {
     return username != null ? username : properties.getProperty("hibernate.connection.user");
   }
 
+  /**
+   * Properties for another session factory on this configurator's pool, for a module that maps
+   * classes of its own. Closing that session factory leaves the pool open.
+   */
+  public Properties getSessionFactoryProperties() {
+    return sessionFactoryProperties(hibernateProperties, dataSource);
+  }
+
+  private static Properties sessionFactoryProperties(
+      Properties hibernateProperties, HikariDataSource dataSource) {
+    Properties sessionFactoryProperties = new Properties();
+    sessionFactoryProperties.putAll(hibernateProperties);
+    sessionFactoryProperties.remove("hibernate.connection.driver_class");
+    sessionFactoryProperties.remove("hibernate.connection.url");
+    sessionFactoryProperties.remove("hibernate.connection.user");
+    sessionFactoryProperties.remove("hibernate.connection.username");
+    sessionFactoryProperties.remove("hibernate.connection.password");
+    sessionFactoryProperties.remove("hibernate.connection.pool_size");
+    sessionFactoryProperties
+        .keySet()
+        .removeIf(key -> key instanceof String name && name.startsWith(HIKARI_PREFIX));
+    sessionFactoryProperties.put(JdbcSettings.JAKARTA_NON_JTA_DATASOURCE, dataSource);
+    return sessionFactoryProperties;
+  }
+
   private static SessionFactory createSessionFactory(
       Properties hibernateProperties, HikariDataSource dataSource) {
     try {
-      Properties sessionFactoryProperties = new Properties();
-      sessionFactoryProperties.putAll(hibernateProperties);
-      sessionFactoryProperties.remove("hibernate.connection.driver_class");
-      sessionFactoryProperties.remove("hibernate.connection.url");
-      sessionFactoryProperties.remove("hibernate.connection.user");
-      sessionFactoryProperties.remove("hibernate.connection.username");
-      sessionFactoryProperties.remove("hibernate.connection.password");
-      sessionFactoryProperties.remove("hibernate.connection.pool_size");
-      sessionFactoryProperties
-          .keySet()
-          .removeIf(key -> key instanceof String name && name.startsWith(HIKARI_PREFIX));
-      sessionFactoryProperties.put(JdbcSettings.JAKARTA_NON_JTA_DATASOURCE, dataSource);
-
-      Configuration configuration = new Configuration().setProperties(sessionFactoryProperties);
+      Configuration configuration =
+          new Configuration()
+              .setProperties(sessionFactoryProperties(hibernateProperties, dataSource));
 
       // Add annotated classes
       configuration.addAnnotatedClass(CatalogInfoDAO.class);

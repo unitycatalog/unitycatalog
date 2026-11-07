@@ -227,7 +227,7 @@ Grant validation also runs when `server.authorization=disable`.
 
 | Privilege | Object types |
 | --- | --- |
-| `CREATE CATALOG`, `CREATE STORAGE CREDENTIAL` | Metastore |
+| `CREATE CATALOG`, `CREATE STORAGE CREDENTIAL`, `CREATE SHARE`, `USE SHARE`, `CREATE RECIPIENT`, `USE RECIPIENT` | Metastore |
 | `USE CATALOG`, `CREATE SCHEMA` | Catalog |
 | `USE SCHEMA`, `CREATE TABLE`, `CREATE FUNCTION`, `CREATE VOLUME`, `CREATE MODEL` | Catalog, schema |
 | `SELECT`, `MODIFY` | Catalog, schema, table |

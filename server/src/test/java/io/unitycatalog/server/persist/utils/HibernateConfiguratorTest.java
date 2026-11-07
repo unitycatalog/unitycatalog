@@ -4,6 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Properties;
 import java.util.UUID;
+import javax.sql.DataSource;
+import org.hibernate.SessionFactory;
+import org.hibernate.cfg.Configuration;
+import org.hibernate.engine.jdbc.connections.spi.ConnectionProvider;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.junit.jupiter.api.Test;
 
 class HibernateConfiguratorTest {
@@ -22,6 +27,27 @@ class HibernateConfiguratorTest {
       assertThat(configurator.getDataSource().isAutoCommit()).isFalse();
       assertThat(configurator.getDataSource().getUsername()).isEqualTo("sa");
       assertThat(configurator.getSessionFactory().isOpen()).isTrue();
+    }
+  }
+
+  @Test
+  void anotherSessionFactoryRunsOnTheSamePool() {
+    try (HibernateConfigurator configurator = new HibernateConfigurator(h2Properties())) {
+      SessionFactory other =
+          new Configuration()
+              .setProperties(configurator.getSessionFactoryProperties())
+              .buildSessionFactory();
+      try {
+        ConnectionProvider connections =
+            other
+                .unwrap(SessionFactoryImplementor.class)
+                .getServiceRegistry()
+                .getService(ConnectionProvider.class);
+        assertThat(connections.unwrap(DataSource.class)).isSameAs(configurator.getDataSource());
+      } finally {
+        other.close();
+      }
+      assertThat(configurator.getDataSource().isClosed()).isFalse();
     }
   }
 
