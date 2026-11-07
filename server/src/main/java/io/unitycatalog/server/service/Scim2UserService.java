@@ -36,11 +36,14 @@ import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.Scim2RuntimeException;
+import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.CreateUser;
+import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.model.UpdateUser;
 import io.unitycatalog.server.utils.Scim2Utils;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Objects;
@@ -64,9 +67,16 @@ import java.util.UUID;
 public class Scim2UserService implements ScimService {
   private final UserRepository userRepository;
   private final UnityCatalogAuthorizer authorizer;
+  private final MetastoreRepository metastoreRepository;
+  private final ServerProperties serverProperties;
 
-  public Scim2UserService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
+  public Scim2UserService(
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties) {
     this.authorizer = authorizer;
+    this.serverProperties = serverProperties;
+    this.metastoreRepository = repositories.getMetastoreRepository();
     this.userRepository = repositories.getUserRepository();
   }
 
@@ -167,9 +177,12 @@ public class Scim2UserService implements ScimService {
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public UserResource updateUser(@Param("id") String id, UserResource userResource) {
-    UserResource user = asUserResource(userRepository.getUser(id));
+    User existing = userRepository.getUser(id);
     if (!id.equals(userResource.getId())) {
       throw new Scim2RuntimeException(new ResourceConflictException("User id mismatch."));
+    }
+    if (Boolean.FALSE.equals(userResource.getActive())) {
+      checkNotMetastoreOwner(existing);
     }
 
     UpdateUser updateUser =
@@ -187,6 +200,7 @@ public class Scim2UserService implements ScimService {
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteUser(@Param("id") String id) {
     User user = userRepository.getUser(id);
+    checkNotMetastoreOwner(user);
     authorizer.clearAuthorizationsForPrincipal(
         UUID.fromString(Objects.requireNonNull(user.getId())));
     userRepository.deleteUser(user.getId());
@@ -210,11 +224,31 @@ public class Scim2UserService implements ScimService {
   private HttpResponse handleUserUpdate(String id, PatchOperation operation) {
     try {
       Boolean value = operation.getValues(Boolean.class).get(0);
+      if (Boolean.FALSE.equals(value)) {
+        checkNotMetastoreOwner(userRepository.getUser(id));
+      }
       UpdateUser updateUser = UpdateUser.builder().active(value).build();
       userRepository.updateUser(id, updateUser);
       return HttpResponse.of(HttpStatus.OK);
     } catch (ScimException | JsonProcessingException e) {
       return handleExceptionDuringPatch(e);
+    }
+  }
+
+  // With authorization disabled, every authorize() call returns true, so the owner check only
+  // means something when authorization is enabled. The refusal is a BaseException on purpose:
+  // the exception handler sends every Scim2RuntimeException with HTTP 500, and this refusal must
+  // reach the client as a real 400.
+  private void checkNotMetastoreOwner(User user) {
+    if (!serverProperties.isAuthorizationEnabled()) {
+      return;
+    }
+    UUID metastoreId = metastoreRepository.getMetastoreId();
+    UUID userId = UUID.fromString(user.getId());
+    if (authorizer.authorize(userId, METASTORE, metastoreId, Privileges.OWNER)) {
+      throw new BaseException(
+          ErrorCode.FAILED_PRECONDITION,
+          "The metastore owner can't be deleted or deactivated: " + user.getEmail());
     }
   }
 
