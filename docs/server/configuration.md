@@ -133,8 +133,8 @@ one. The prefix keeps variables that runtimes set for their own use, such as `AW
 server logs the name of each environment variable it uses for a setting, never its value. `server.client-secret` is
 read by `bin/uc auth login`, not by the server. The Helm chart passes each S3 and ADLS credential to the server
 container from its Kubernetes Secret, in `UC_S3_ACCESSKEY_<n>` and `UC_S3_SECRETKEY_<n>`, or `UC_ADLS_TENANTID_<n>`,
-`UC_ADLS_CLIENTID_<n>` and `UC_ADLS_CLIENTSECRET_<n>`. With `server.db.type: postgresql`, it also passes
-`UC_HIBERNATE_CONNECTION_PASSWORD` if `server.db.postgresqlConfig.passwordSecretName` is set.
+`UC_ADLS_CLIENTID_<n>` and `UC_ADLS_CLIENTSECRET_<n>`. With `server.db.type: postgresql` or `mysql`, it also passes
+`UC_HIBERNATE_CONNECTION_PASSWORD` if that database's `passwordSecretName` is set.
 
 !!! warning "Deprecated: secrets in properties files"
     Secrets in `server.properties` and the password in `hibernate.properties` still work, but this is deprecated. The
@@ -150,8 +150,8 @@ container from its Kubernetes Secret, in `UC_S3_ACCESSKEY_<n>` and `UC_S3_SECRET
   `server.properties`, and `UC_HIBERNATE_CONNECTION_PASSWORD` over `hibernate.properties`.
 - `bin/uc auth login` reads `UC_SERVER_CLIENT_SECRET` before `server.client-secret` in `etc/conf/server.properties`.
 - Helm: use the server image from the chart's release, which is the default. An older server image doesn't read these
-  variables, so S3 and ADLS lose their secrets, and the server can't log in to a PostgreSQL database that needs a
-  password (`server.db.postgresqlConfig.passwordSecretName` set).
+  variables, so S3 and ADLS lose their secrets, and the server can't log in to a PostgreSQL or MySQL database that
+  needs a password (`passwordSecretName` set).
 - Helm: the rendered `server.properties` no longer holds `server.client-secret` or the S3 and ADLS credentials
   (`s3.accessKey.<n>`, `s3.secretKey.<n>`, `adls.tenantId.<n>`, `adls.clientId.<n>`, `adls.clientSecret.<n>`). The
   init container has `S3_ACCESS_KEY_<n>`, `S3_SECRET_KEY_<n>`, `ADLS_TENANT_ID_<n>`, `ADLS_CLIENT_ID_<n>`,
@@ -161,7 +161,7 @@ container from its Kubernetes Secret, in `UC_S3_ACCESSKEY_<n>` and `UC_S3_SECRET
   or `extraContainers` that needs these secrets must read them from the Kubernetes Secret itself.
 - Helm: the rendered `hibernate.properties` no longer holds the password, and the init container no longer has
   `DB_PASSWORD`. A container added through `extraInitContainers` or `extraContainers` that needs the password must
-  read it from the Secret named by `server.db.postgresqlConfig.passwordSecretName`. In a `server.db.overrideConfig`
+  read it from the Secret named by the database's `passwordSecretName`. In a `server.db.overrideConfig`
   template, remove the line `hibernate.connection.password=${DB_PASSWORD}`.
 
 ## Local file system storage
