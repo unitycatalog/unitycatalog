@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service.sharing;
 
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.RECIPIENT;
 import static io.unitycatalog.server.model.SecurableType.SHARE;
 
 import com.linecorp.armeria.common.HttpResponse;
@@ -17,10 +18,18 @@ import com.linecorp.armeria.server.annotation.StatusCode;
 import io.opensharing.auth.UserContext;
 import io.opensharing.http.ApiException;
 import io.opensharing.http.ListResponse;
+import io.opensharing.recipient.CreateRecipientRequest;
+import io.opensharing.recipient.IssuedTokenResponse;
+import io.opensharing.recipient.RecipientResponse;
+import io.opensharing.recipient.RecipientService;
+import io.opensharing.recipient.RotateTokenRequest;
+import io.opensharing.recipient.UpdateRecipientRequest;
 import io.opensharing.runtime.OpenSharing;
 import io.opensharing.share.CreateShareRequest;
+import io.opensharing.share.SharePermissionResponse;
 import io.opensharing.share.ShareResponse;
 import io.opensharing.share.ShareService;
+import io.opensharing.share.UpdateSharePermissionsRequest;
 import io.opensharing.share.UpdateShareRequest;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -42,12 +51,13 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * OpenSharing's provider API for shares, served by Unity Catalog. UC authenticates callers and
- * authorizes each method by its expression, for both sharing privileges and ownership, per item for
- * listings. So the connector grants every privilege OpenSharing asks it for, and OpenSharing's own
- * ownership checks agree with UC's. Share owners are recorded in UC's authorizer, so expressions
- * can name them. Bodies and errors keep OpenSharing's wire format: the server registers this
- * service with OpenSharing's JSON mapper and {@link OpenSharingExceptionHandler}.
+ * OpenSharing's provider API for shares, their recipient grants, and recipients, served by Unity
+ * Catalog. UC authenticates callers and authorizes each method by its expression, for both sharing
+ * privileges and ownership: per item for listings, and of the recipient for a grant. So the
+ * connector grants every privilege OpenSharing asks it for, and OpenSharing's own ownership checks
+ * agree with UC's. Share and recipient owners are recorded in UC's authorizer, so expressions can
+ * name them. Bodies and errors keep OpenSharing's wire format: the server registers this service
+ * with OpenSharing's JSON mapper and {@link OpenSharingExceptionHandler}.
  */
 @ProducesJson
 public final class OpenSharingProviderService extends AuthorizedService
@@ -55,11 +65,13 @@ public final class OpenSharingProviderService extends AuthorizedService
 
   private static final String OWN_SHARE = "#authorize(#principal, #share, OWNER)";
 
-  /** Transferring a share's ownership: the ownerId the body sets, checked by catalog admins. */
-  private static final String TRANSFER_SHARE =
+  /** Transferring a share's or recipient's ownership: the ownerId the body sets, admin only. */
+  private static final String TRANSFER =
       """
       #ownerId != null && #authorize(#principal, #metastore, OWNER)
       """;
+
+  private static final String OWN_RECIPIENT = "#authorize(#principal, #recipient, OWNER)";
 
   private static final String READ_SHARE =
       """
@@ -67,7 +79,22 @@ public final class OpenSharingProviderService extends AuthorizedService
       #authorize(#principal, #share, OWNER)
       """;
 
+  private static final String READ_RECIPIENT =
+      """
+      #authorizeAny(#principal, #metastore, OWNER, USE_RECIPIENT) ||
+      #authorize(#principal, #recipient, OWNER)
+      """;
+
+  /** {@code #recipient} is the one recipient a request grants to, or null for none. */
+  private static final String GRANT_SHARE =
+      """
+      #authorize(#principal, #share, OWNER) && (#recipient == null ||
+      #authorizeAny(#principal, #metastore, OWNER, USE_RECIPIENT) ||
+      #authorize(#principal, #recipient, OWNER))
+      """;
+
   private final ShareService shares;
+  private final RecipientService recipients;
   private final MetastoreRepository metastore;
   private final HibernateTransactions transactions;
   private final OpenSharingExceptionHandler exceptionHandler = new OpenSharingExceptionHandler();
@@ -80,6 +107,7 @@ public final class OpenSharingProviderService extends AuthorizedService
       ServerProperties serverProperties) {
     super(authorizer, repositories, serverProperties);
     this.shares = openSharing.shares();
+    this.recipients = openSharing.recipients();
     this.metastore = repositories.getMetastoreRepository();
     this.transactions = transactions;
   }
@@ -137,7 +165,7 @@ public final class OpenSharingProviderService extends AuthorizedService
    * moves with it.
    */
   @Patch("/shares/{share}")
-  @AuthorizeExpression(OWN_SHARE + " || " + TRANSFER_SHARE)
+  @AuthorizeExpression(OWN_SHARE + " || " + TRANSFER)
   @AuthorizeResourceKey(METASTORE)
   public ShareResponse updateShare(
       @Param("share") @AuthorizeResourceKey(SHARE) String share,
@@ -170,6 +198,132 @@ public final class OpenSharingProviderService extends AuthorizedService
           return null;
         });
     return HttpResponse.of(HttpStatus.NO_CONTENT);
+  }
+
+  /**
+   * {@code GET /shares/{share}/permissions}: lists which recipients the share is granted to. Owner
+   * or USE SHARE.
+   */
+  @Get("/shares/{share}/permissions")
+  @AuthorizeExpression(READ_SHARE)
+  @AuthorizeResourceKey(METASTORE)
+  public ListResponse<SharePermissionResponse> listSharePermissions(
+      @Param("share") @AuthorizeResourceKey(SHARE) String share,
+      @Param("maxResults") Optional<Integer> maxResults,
+      @Param("pageToken") Optional<String> pageToken) {
+    return shares.listPermissions(user(), share, maxResults.orElse(null), pageToken.orElse(null));
+  }
+
+  /**
+   * {@code PATCH /shares/{share}/permissions}: grants and revokes recipients. Owner only, and
+   * granting to a recipient takes what getting it does: owning it, or USE RECIPIENT. A request
+   * grants to one recipient at most. Revoking takes nothing of the recipient, so an owner can
+   * always cut one off.
+   */
+  @Patch("/shares/{share}/permissions")
+  @AuthorizeExpression(GRANT_SHARE)
+  @AuthorizeResourceKey(METASTORE)
+  public ListResponse<SharePermissionResponse> updateSharePermissions(
+      @Param("share") @AuthorizeResourceKey(SHARE) String share,
+      @AuthorizeResourceKey(value = RECIPIENT, extractor = GrantedRecipientExtractor.class)
+          UpdateSharePermissionsRequest request) {
+    return shares.updatePermissions(user(), share, request);
+  }
+
+  /**
+   * {@code POST /recipients}: creates a recipient owned by the caller. The recipient and its owner
+   * record in UC's authorizer are one unit of work, like a share's.
+   */
+  @Post("/recipients")
+  @StatusCode(201)
+  @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER, CREATE_RECIPIENT)")
+  @AuthorizeResourceKey(METASTORE)
+  public RecipientResponse createRecipient(CreateRecipientRequest request) {
+    return transactions.inTransaction(
+        false,
+        session -> {
+          RecipientResponse created = recipients.create(user(), request);
+          initializeBasicAuthorization(created.id());
+          return created;
+        });
+  }
+
+  /**
+   * {@code GET /recipients}: lists every recipient with USE RECIPIENT, otherwise the caller's.
+   * Filtered per recipient after paging, like {@link #listShares}.
+   */
+  @Get("/recipients")
+  @AuthorizeExpression(READ_RECIPIENT)
+  @ResponseAuthorizeFilter
+  @AuthorizeResourceKey(METASTORE)
+  public ListResponse<RecipientResponse> listRecipients(
+      @Param("maxResults") Optional<Integer> maxResults,
+      @Param("pageToken") Optional<String> pageToken) {
+    return visible(RECIPIENT, recipients.listAll(maxResults.orElse(null), pageToken.orElse(null)));
+  }
+
+  /** {@code GET /recipients/{recipient}}: gets a recipient by name. Owner or USE RECIPIENT. */
+  @Get("/recipients/{recipient}")
+  @AuthorizeExpression(READ_RECIPIENT)
+  @AuthorizeResourceKey(METASTORE)
+  public RecipientResponse getRecipient(
+      @Param("recipient") @AuthorizeResourceKey(RECIPIENT) String recipient) {
+    return recipients.get(user(), recipient);
+  }
+
+  /**
+   * {@code PATCH /recipients/{recipient}}: updates the fields set in the body. Owner only; a
+   * catalog admin may instead transfer the ownership to the body's {@code ownerId}, in a request
+   * that carries no other change, and UC's owner record moves with it.
+   */
+  @Patch("/recipients/{recipient}")
+  @AuthorizeExpression(OWN_RECIPIENT + " || " + TRANSFER)
+  @AuthorizeResourceKey(METASTORE)
+  public RecipientResponse updateRecipient(
+      @Param("recipient") @AuthorizeResourceKey(RECIPIENT) String recipient,
+      @AuthorizeKey(key = "ownerId") UpdateRecipientRequest request) {
+    return transactions.inTransaction(
+        false,
+        session -> {
+          String ownerBefore = recipients.get(user(), recipient).ownerId();
+          RecipientResponse updated = recipients.update(user(), recipient, request);
+          if (request.ownerId() != null) {
+            transferOwnership(updated.id(), ownerBefore, request.ownerId());
+          }
+          return updated;
+        });
+  }
+
+  /**
+   * {@code DELETE /recipients/{recipient}}: deletes the recipient, its tokens and its owner record
+   * in UC's authorizer as one unit of work. Owner only.
+   */
+  @Delete("/recipients/{recipient}")
+  @AuthorizeExpression(OWN_RECIPIENT)
+  public HttpResponse deleteRecipient(
+      @Param("recipient") @AuthorizeResourceKey(RECIPIENT) String recipient) {
+    UUID id = id(RECIPIENT, recipient);
+    transactions.inTransaction(
+        false,
+        session -> {
+          recipients.delete(user(), recipient);
+          removeAuthorizations(id.toString());
+          return null;
+        });
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
+  }
+
+  /**
+   * {@code POST /recipients/{recipient}/rotate-token}: issues a replacement token with a new
+   * activation link. Owner only.
+   */
+  @Post("/recipients/{recipient}/rotate-token")
+  @StatusCode(201)
+  @AuthorizeExpression(OWN_RECIPIENT)
+  public IssuedTokenResponse rotateRecipientToken(
+      @Param("recipient") @AuthorizeResourceKey(RECIPIENT) String recipient,
+      RotateTokenRequest request) {
+    return recipients.rotateToken(user(), recipient, request);
   }
 
   @Override
