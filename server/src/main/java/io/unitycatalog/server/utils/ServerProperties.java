@@ -316,6 +316,7 @@ public class ServerProperties {
     AWS_REGION("aws.region"),
     INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR),
     OPENSHARING_ENABLED("server.opensharing.enabled", "false", BOOLEAN_VALIDATOR),
+    // The address recipients reach this server at; their activation links and profiles name it.
     OPENSHARING_PUBLIC_URL("server.opensharing.public-url", URL_VALIDATOR);
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like

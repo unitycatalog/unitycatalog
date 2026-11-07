@@ -462,6 +462,7 @@ public class UnityCatalogServer implements AutoCloseable {
     OpenSharingLifecycle openSharing =
         OpenSharingLifecycle.start(serverProperties, repositories, authorizer);
     armeriaServerBuilder.annotate("opensharing/provider", openSharing.providerService());
+    armeriaServerBuilder.selfAuthenticated(openSharing::mountRecipientApi);
   }
 
   private void addSecurityDecorators(

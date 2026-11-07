@@ -76,6 +76,24 @@ An owner can't give a share or recipient away, but the metastore owner can trans
 user with `ownerId`, on its own in the change. When the owner of a share or recipient is deleted,
 nobody can change or delete it.
 
+## Recipients
+
+Recipients don't use Unity Catalog tokens. Creating a recipient, or rotating its token, returns an
+`activationUrl` on `server.opensharing.public-url`. The recipient opens it once, at
+`/api/1.0/opensharing/activations/{code}`, and gets a profile file with the endpoint and a bearer
+token. Then it reads the shares granted to it over the Delta Sharing protocol, served under:
+
+```text
+/api/1.0/opensharing
+```
+
+These routes sit outside Unity Catalog's authentication and authorization, on the same port:
+OpenSharing authenticates recipients by their own tokens, and Unity Catalog's tokens are not
+accepted there.
+
+A shared table is read with the access of the user who owns its share. When that user loses
+`SELECT` on the table, or is deleted or disabled, recipients no longer see the table.
+
 ## Storage credentials
 
 OpenSharing reads shared tables through Unity Catalog's credential vendor, so the cloud storage a
