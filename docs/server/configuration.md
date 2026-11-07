@@ -189,7 +189,8 @@ Durations use the ISO-8601 format (for example `PT1M` is one minute, `PT5M` is f
 
 ### Audit records
 
-The server can write an audit record for each storage credential it issues. Audit records are off by default. Set `server.audit.sink` to turn them on:
+The server can write an audit record for each storage credential it issues and each permission
+change. Audit records are off by default. Set `server.audit.sink` to turn them on:
 
 | Property | Default | Description |
 | --- | --- | --- |
@@ -202,15 +203,24 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 ```
 
 - `time`: when the record was made, in ISO 8601 UTC.
-- `action`: `ISSUE_CREDENTIAL`.
+- `action`: `ISSUE_CREDENTIAL`, `GRANT`, `REVOKE`, `CLEAR_RESOURCE_GRANTS` (a dropped object's
+  grants), or `CLEAR_PRINCIPAL_GRANTS` (a deleted user's grants).
 - `user`: `system:storage-cleanup` on `CLEANUP` records, whether or not authorization is on. On other
   records, the caller's identity from the token (`sub`): the user's email, or `admin` for the
-  bootstrap admin token. It is absent when authorization is off.
+  bootstrap admin token. It is `system:server` for work the server does outside a request,
+  such as the admin grant made at first start, and absent when authorization is off.
 - `purpose`: `CLIENT` for a credential returned to the caller, `SERVER` for one the server uses
   itself while handling the request, and `CLEANUP` for the background storage cleanup.
-- `resource_id`: on a `CLEANUP` credential, the ID of the dropped object.
+- `resource_id`: on a permission change, the object whose grants changed (absent for
+  `CLEAR_PRINCIPAL_GRANTS`). On a `CLEANUP` credential, the ID of the dropped object. Other
+  credential records do not carry it.
+- `principal_id`: on `GRANT`, `REVOKE` and `CLEAR_PRINCIPAL_GRANTS`, the ID of the user whose grants
+  changed.
+- `privilege`: on `GRANT` and `REVOKE`, the privilege name, for example `USE CATALOG`, or `OWNER` for the
+  ownership grant made when an object is created.
 - `request_id`: the ID of the request being served, the same as `request_id` in the `server.log` lines of
-  that request. It is absent on `CLEANUP` records, which are not made while serving a request.
+  that request. It is absent on records not made while serving a request: `CLEANUP` records and
+  `system:server` records.
 - `location`: the storage location, with scheme, authority and path only. The query string and
   fragment are removed. User info is removed too, except that for ABFS the part before the `@` is
   kept when it looks like a container name (3 to 63 lowercase letters, digits and hyphens) and is
@@ -223,8 +233,13 @@ A record is written for every credential issued, including ones served from the 
 For local `file:` storage there is no credential to issue. A request for credentials, through the
 temporary-credentials endpoints, the Delta API or the Iceberg REST catalog, still writes a record of
 the access the server granted, without `expires_at`. The server's own reads, writes and cleanup of
-`file:` storage write no record. Audit records are best effort: one can be lost when the sink fails,
-or when a request is still running as the server shuts down.
+`file:` storage write no record.
+
+Permission changes are recorded only when authorization is on. A `GRANT` is recorded when it adds a grant.
+`REVOKE` and the two `CLEAR_*` actions are recorded once the server has run them without an error, whether or
+not they removed a grant. If the database delete fails, the request fails and nothing is recorded.
+Audit records are best effort: one can be lost when the sink fails, or when a request is still running as
+the server shuts down.
 
 There are two ways to send records:
 
