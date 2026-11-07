@@ -13,6 +13,7 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.List;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,9 +34,12 @@ public class SchemaGateTest {
         "\nhibernate.hikari.maximumPoolSize=1\nhibernate.hikari.connectionTimeout=1000\n",
         StandardOpenOption.APPEND);
 
-    assertThat(SchemaMigrator.runCommand(conf, new PrintStream(new ByteArrayOutputStream())))
+    assertThat(SchemaMigrator.runCommand(true, conf, new PrintStream(new ByteArrayOutputStream())))
         .isZero();
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.CURRENT);
+    // On H2 the check opens the file that now exists, with IFEXISTS=TRUE added to its URL.
+    assertThat(SchemaMigrator.runCommand(false, conf, new PrintStream(new ByteArrayOutputStream())))
+        .isZero();
   }
 
   @ParameterizedTest
@@ -63,10 +67,27 @@ public class SchemaGateTest {
       Files.delete(conf.resolve(setup.split(" ")[0]));
     }
 
-    ByteArrayOutputStream out = new ByteArrayOutputStream();
-    assertThat(SchemaMigrator.runCommand(conf, new PrintStream(out, true, UTF_8))).isOne();
-    assertThat(out.toString(UTF_8)).contains(message);
+    for (boolean upgrade : List.of(false, true)) {
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      assertThat(SchemaMigrator.runCommand(upgrade, conf, new PrintStream(out, true, UTF_8)))
+          .isOne();
+      assertThat(out.toString(UTF_8)).contains(message);
+    }
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
+  }
+
+  @Test
+  void checkSchemaDoesNotCreateAMissingH2File(@TempDir Path conf, @TempDir Path data)
+      throws IOException {
+    writeConfiguration(conf, "jdbc:h2:file:" + data.resolve("uc"));
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(SchemaMigrator.runCommand(false, conf, new PrintStream(out, true, UTF_8))).isOne();
+
+    assertThat(out.toString(UTF_8)).contains("is not found").contains("etc/conf");
+    try (var files = Files.list(data)) {
+      assertThat(files).isEmpty();
+    }
   }
 
   /** An empty {@code server.properties}, and {@code hibernate.properties} for {@code url}. */

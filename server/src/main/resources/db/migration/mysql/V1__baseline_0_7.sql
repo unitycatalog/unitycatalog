@@ -1,4 +1,5 @@
-    -- The schema of release 0.7.0. Every statement skips what is already there.
+    -- The schema of release 0.7.0. Every statement skips what is already there, so that
+    -- bin/start-uc-server --upgrade-schema can run this step again after a run that stopped in it.
 
     create table if not exists uc_catalogs (
         created_at datetime(6),
