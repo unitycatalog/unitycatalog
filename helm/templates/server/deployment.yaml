@@ -175,10 +175,20 @@ spec:
             - --obs-port
             - {{ . | quote }}
             {{- end }}
-          {{- with include "unitycatalog.server.secretEnv" . | trim }}
-          # Secrets reach the server as environment variables, not through the properties files.
+          {{- $secretEnv := include "unitycatalog.server.secretEnv" . | trim }}
+          {{- /* One env list: a second env key would replace this one, and the secrets with it. */}}
+          {{- if or $secretEnv (eq .Values.server.db.type "mysql") }}
           env:
+          {{- with $secretEnv }}
+            # Secrets reach the server as environment variables, not through the properties files.
             {{- . | nindent 12 }}
+          {{- end }}
+          {{- if eq .Values.server.db.type "mysql" }}
+            # The image does not include the MySQL JDBC driver. Its launcher lists the classpath jars in a file, so the
+            # driver jar mounted from the volume loads from the module path instead.
+            - name: JDK_JAVA_OPTIONS
+              value: "--module-path=/home/unitycatalog/jdbc-drivers/mysql-connector-j.jar --add-modules=ALL-MODULE-PATH"
+          {{- end }}
           {{- end }}
           ports:
             - name: api
@@ -189,13 +199,6 @@ spec:
               containerPort: {{ . }}
               protocol: TCP
             {{- end }}
-          {{- if eq .Values.server.db.type "mysql" }}
-          env:
-            # The image does not include the MySQL JDBC driver. Its launcher lists the classpath jars in a file, so the
-            # driver jar mounted from the volume loads from the module path instead.
-            - name: JDK_JAVA_OPTIONS
-              value: "--module-path=/home/unitycatalog/jdbc-drivers/mysql-connector-j.jar --add-modules=ALL-MODULE-PATH"
-          {{- end }}
 
           {{- if .Values.server.deployment.enableLivenessProbe }}
           {{- with .Values.server.deployment.livenessProbe }}
