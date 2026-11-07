@@ -128,6 +128,12 @@ Volume mounts of the server container, which the upgrade-schema init container s
 - name: db-volume
   mountPath: /home/unitycatalog/etc/db
 {{- end }}
+{{- if eq .Values.server.db.type "mysql" }}
+- name: mysql-driver
+  mountPath: /home/unitycatalog/jdbc-drivers/mysql-connector-j.jar
+  subPath: {{ required "server.db.mysqlConfig.driver.subPath is required: the path of the driver jar in driver.volume" .Values.server.db.mysqlConfig.driver.subPath | quote }}
+  readOnly: true
+{{- end }}
 {{- range $index, $config := .Values.storage.credentials.gcs }}
 - name: gcs-credentials-{{ $index }}
   mountPath: /home/unitycatalog/etc/conf/gcs-credentials-{{ $index }}.json
@@ -136,6 +142,18 @@ Volume mounts of the server container, which the upgrade-schema init container s
 {{- end }}
 {{- with .Values.server.deployment.extraVolumeMounts }}
 {{ toYaml . }}
+{{- end }}
+{{- end }}
+
+{{/*
+With MySQL, an env entry of the server and upgrade-schema containers: the image does not include the MySQL JDBC
+driver, and its launcher lists the classpath jars in a file, so the driver jar mounted from the volume loads from the
+module path instead.
+*/}}
+{{- define "unitycatalog.server.mysqlDriverEnv" -}}
+{{- if eq .Values.server.db.type "mysql" }}
+- name: JDK_JAVA_OPTIONS
+  value: "--module-path=/home/unitycatalog/jdbc-drivers/mysql-connector-j.jar --add-modules=ALL-MODULE-PATH"
 {{- end }}
 {{- end }}
 
