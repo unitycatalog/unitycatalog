@@ -160,8 +160,8 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
           ) &&
           (#new_name == null ||
             (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-              (#authorize(#principal, #schema, OWNER) ||
-                #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_VOLUME))) ||
+              #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+              #authorizeAny(#principal, #schema, OWNER, CREATE_VOLUME)) ||
             (!#strict_privilege_checks &&
               (#authorize(#principal, #catalog, OWNER) ||
                 (#authorize(#principal, #catalog, USE_CATALOG) &&
