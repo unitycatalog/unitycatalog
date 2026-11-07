@@ -4,6 +4,7 @@ import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
+import static io.unitycatalog.server.persist.model.Privileges.MANAGE;
 import static io.unitycatalog.server.persist.model.Privileges.MODIFY;
 import static io.unitycatalog.server.persist.model.Privileges.READ_METADATA;
 import static io.unitycatalog.server.persist.model.Privileges.SELECT;
@@ -222,16 +223,17 @@ class UnityAccessEvaluatorTest {
     assertGetTable(TABLE, Set.of(USE_CATALOG), false, false);
     assertGetTable(TABLE, Set.of(USE_CATALOG, USE_SCHEMA), true, true);
 
-    for (SecurableType scope : List.of(METASTORE, CATALOG)) {
-      assertGetTable(null, scope, Set.of(), true, true);
+    assertGetTable(null, METASTORE, READ_METADATA, Set.of(), true, true);
+    for (Privileges privilege : List.of(READ_METADATA, MANAGE)) {
+      assertGetTable(null, CATALOG, privilege, Set.of(), true, true);
+      assertGetTable(null, SCHEMA, privilege, Set.of(), false, false);
+      assertGetTable(null, SCHEMA, privilege, Set.of(USE_SCHEMA), false, false);
+      assertGetTable(null, SCHEMA, privilege, Set.of(USE_CATALOG), true, true);
+      assertGetTable(null, TABLE, privilege, Set.of(), false, false);
+      assertGetTable(null, TABLE, privilege, Set.of(USE_SCHEMA), false, false);
+      assertGetTable(null, TABLE, privilege, Set.of(USE_CATALOG), false, false);
+      assertGetTable(null, TABLE, privilege, Set.of(USE_CATALOG, USE_SCHEMA), true, true);
     }
-    assertGetTable(null, SCHEMA, Set.of(), false, false);
-    assertGetTable(null, SCHEMA, Set.of(USE_SCHEMA), false, false);
-    assertGetTable(null, SCHEMA, Set.of(USE_CATALOG), true, true);
-    assertGetTable(null, TABLE, Set.of(), false, false);
-    assertGetTable(null, TABLE, Set.of(USE_SCHEMA), false, false);
-    assertGetTable(null, TABLE, Set.of(USE_CATALOG), false, false);
-    assertGetTable(null, TABLE, Set.of(USE_CATALOG, USE_SCHEMA), true, true);
   }
 
   private void assertGetTable(
@@ -240,12 +242,13 @@ class UnityAccessEvaluatorTest {
       boolean expectedStrict,
       boolean expectedLegacy)
       throws Exception {
-    assertGetTable(ownedResource, null, grants, expectedStrict, expectedLegacy);
+    assertGetTable(ownedResource, null, null, grants, expectedStrict, expectedLegacy);
   }
 
   private void assertGetTable(
       SecurableType ownedResource,
       SecurableType metadataResource,
+      Privileges metadataPrivilege,
       Set<Privileges> grants,
       boolean expectedStrict,
       boolean expectedLegacy)
@@ -274,7 +277,7 @@ class UnityAccessEvaluatorTest {
       assignments.get(resources.get(ownedResource)).add(Privileges.OWNER);
     }
     if (metadataResource != null) {
-      assignments.get(resources.get(metadataResource)).add(READ_METADATA);
+      assignments.get(resources.get(metadataResource)).add(metadataPrivilege);
     }
 
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
@@ -294,8 +297,8 @@ class UnityAccessEvaluatorTest {
       UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer, strictPrivilegeChecks);
       assertThat(evaluator.evaluate(principal, AuthorizeExpressions.GET_TABLE, resources, Map.of()))
           .as(
-              "owner=%s, metadata=%s, grants=%s, strict=%s",
-              ownedResource, metadataResource, grants, strictPrivilegeChecks)
+              "owner=%s, metadata=%s on %s, grants=%s, strict=%s",
+              ownedResource, metadataPrivilege, metadataResource, grants, strictPrivilegeChecks)
           .isEqualTo(strictPrivilegeChecks ? expectedStrict : expectedLegacy);
       if (metadataResource != null) {
         assertThat(
@@ -305,8 +308,8 @@ class UnityAccessEvaluatorTest {
                     resources,
                     Map.of()))
             .as(
-                "metadata=%s, grants=%s, strict=%s",
-                metadataResource, grants, strictPrivilegeChecks)
+                "metadata=%s on %s, grants=%s, strict=%s",
+                metadataPrivilege, metadataResource, grants, strictPrivilegeChecks)
             .isFalse();
       }
     }
@@ -422,10 +425,12 @@ class UnityAccessEvaluatorTest {
     verify(authorizer, times(1))
         .authorizeAny(principal, METASTORE, metastore, Privileges.OWNER, Privileges.READ_METADATA);
     verify(authorizer, times(1))
-        .authorizeAny(principal, CATALOG, catalog, Privileges.OWNER, Privileges.READ_METADATA);
+        .authorizeAny(
+            principal, CATALOG, catalog, Privileges.OWNER, MANAGE, Privileges.READ_METADATA);
     verify(authorizer, times(1)).authorize(principal, CATALOG, catalog, USE_CATALOG);
     verify(authorizer, times(1))
-        .authorizeAny(principal, SCHEMA, schema, Privileges.OWNER, Privileges.READ_METADATA);
+        .authorizeAny(
+            principal, SCHEMA, schema, Privileges.OWNER, MANAGE, Privileges.READ_METADATA);
     verify(authorizer, times(1)).authorize(principal, SCHEMA, schema, USE_SCHEMA);
     verify(authorizer, times(tables))
         .authorizeAny(eq(principal), eq(TABLE), any(UUID.class), any(Privileges[].class));

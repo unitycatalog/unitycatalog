@@ -62,8 +62,8 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
   private static final String LIST_AND_GET_AUTH_EXPRESSION =
       """
       #authorizeAny(#principal, #metastore, OWNER, READ_METADATA) ||
-      #authorizeAny(#principal, #external_location, OWNER, READ_METADATA, READ_FILES, WRITE_FILES,
-        CREATE_EXTERNAL_TABLE, CREATE_EXTERNAL_VOLUME, CREATE_MANAGED_STORAGE)
+      #authorizeAny(#principal, #external_location, OWNER, MANAGE, READ_METADATA, READ_FILES,
+        WRITE_FILES, CREATE_EXTERNAL_TABLE, CREATE_EXTERNAL_VOLUME, CREATE_MANAGED_STORAGE)
       """;
 
   @Get("")
@@ -91,7 +91,7 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
   @AuthorizeExpression(
       """
       #authorize(#principal, #metastore, OWNER) ||
-      (#authorize(#principal, #external_location, OWNER) &&
+      (#authorizeAny(#principal, #external_location, OWNER, MANAGE) &&
        (#credential == null ||
         #authorizeAny(#principal, #credential, OWNER, CREATE_EXTERNAL_LOCATION)))
       """)
@@ -108,7 +108,7 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
   @AuthorizeExpression(
       """
       #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #external_location, OWNER)
+      #authorizeAny(#principal, #external_location, OWNER, MANAGE)
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteExternalLocation(
