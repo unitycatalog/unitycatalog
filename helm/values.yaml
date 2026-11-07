@@ -112,9 +112,11 @@ auth:
   # @default -- not set
   # @raw
   #
-  # Client secret must contain the following keys:
+  # Client secret must contain the following key:
   # - `clientId`: OAuth client ID
-  # - `clientSecret`: OAuth client secret
+  #
+  # The server doesn't read the OAuth client secret. A `clientSecret` key is passed only to a
+  # `server.config.override` or `extraProperties` template that uses `${OAUTH_CLIENT_SECRET}`.
   #
   clientSecretName:
 
@@ -177,7 +179,7 @@ server:
     # -- (string) Database type
     # @raw
     #
-    # Supported values: `file`, `postgresql`
+    # Supported values: `file`, `postgresql`, `mysql`
     #
     type: file
 
@@ -292,6 +294,77 @@ server:
       #
       extraParams:
 
+    mysqlConfig:
+      # -- (string) MySQL database host (Required)
+      # @default -- not set
+      host:
+
+      # -- (int) MySQL database port
+      # @default -- 3306
+      port: 3306
+
+      # -- (string) MySQL database name
+      # @default -- ucdb
+      dbName: ucdb
+
+      # -- (string) MySQL username
+      # @default -- root
+      username: root
+
+      # -- (string) MySQL user password secret name
+      # @default -- not set
+      # @raw
+      #
+      # If not set, connection will be made without a password
+      #
+      passwordSecretName:
+
+      # -- (string) MySQL user password secret key
+      # @default -- password
+      passwordSecretKey: password
+
+      # -- (object) MySQL JDBC URL params
+      # @default -- not set
+      # @raw
+      #
+      # Example:
+      # ```yaml
+      # extraParams:
+      #   sslMode: VERIFY_IDENTITY
+      # ```
+      #
+      extraParams:
+
+      driver:
+        # -- (object) Volume that holds the MySQL JDBC driver jar (Required)
+        # @default -- not set
+        # @raw
+        #
+        # The server image does not include the MySQL JDBC driver
+        # ([MySQL Connector/J](https://dev.mysql.com/downloads/connector/j/)), because it is licensed under the GPL;
+        # the PostgreSQL driver it does include is BSD-licensed. The chart mounts the jar at `subPath` in this volume
+        # into the server and puts it on the Java module path. Any volume source works, for example a
+        # PersistentVolumeClaim. The driver jar is larger than a ConfigMap can hold.
+        #
+        # Example:
+        # ```yaml
+        # volume:
+        #   persistentVolumeClaim:
+        #     claimName: mysql-driver
+        # ```
+        #
+        volume:
+
+        # -- (string) Path of the driver jar in `volume` (Required)
+        # @default -- not set
+        # @raw
+        #
+        # To change the driver version, put the new jar on the volume and point `subPath` at it.
+        #
+        # Example: `mysql-connector-j-8.4.0.jar`
+        #
+        subPath:
+
     # -- (string) Override Hibernate configuration for the server
     # @default -- not set
     overrideConfig:
@@ -308,6 +381,11 @@ server:
     # ...other config properties...
     # ```
     #
+    # Do not put secrets here: the chart passes the S3 and ADLS secrets to the server as environment
+    # variables, and a secret in `server.properties` is deprecated. A template that uses `${OAUTH_CLIENT_SECRET}`,
+    # `${S3_SECRET_KEY_<n>}` or `${ADLS_CLIENT_SECRET_<n>}` still gets them, but that is deprecated
+    # too: the server reads `UC_S3_SECRETKEY_<n>` and `UC_ADLS_CLIENTSECRET_<n>` from its environment.
+    #
     override:
 
     # -- (object) Extra config properties that will be added to server.properties
@@ -320,6 +398,8 @@ server:
     #   my-config.property1: my-value1
     #   my-config.property2: my-value2
     # ```
+    #
+    # Do not put secrets here: a secret in `server.properties` is deprecated.
     #
     extraProperties:
 
@@ -390,6 +470,11 @@ server:
       pullPolicy: IfNotPresent
       # -- (string) Tag for the server image
       # @default -- {{ .Chart.AppVersion }}
+      # @raw
+      #
+      # Use the server image from the same release as the chart. The chart passes secrets to
+      # the server as environment variables that older server images don't read.
+      #
       tag:
 
     # -- (array) Command that starts the server

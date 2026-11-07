@@ -44,6 +44,20 @@ The configuration will create a bind mount to the local files in `./etc/conf`.
 The UC server can be configured by editing the configuration files on the host,
 and the mount will reflect the changes in the container.
 
+Set secrets as environment variables of the `server` service, not in the mounted
+`server.properties`, where they are deprecated (see
+[Secrets](./server/configuration.md#secrets)). For example, in `compose.yaml`:
+
+```yaml
+services:
+  server:
+    environment:
+      UC_S3_SECRETKEY_0: ${UC_S3_SECRETKEY_0}
+```
+
+Compose fills in `${UC_S3_SECRETKEY_0}` from your shell or a `.env` file, so the
+secret stays out of `compose.yaml`.
+
 The configuration will also create a persistent, named volume to store the
 server's data. This will persist between restarts of the container. See the
 [deployment](./server/deployment.md) page for more details on how to configure other
