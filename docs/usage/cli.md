@@ -804,6 +804,8 @@ _Optional Params:_
 bin/uc user delete [options]
 ```
 
+When authorization is enabled, the server refuses to delete the metastore owner.
+
 _Required Params:_
 
     --id The unique id of the user
