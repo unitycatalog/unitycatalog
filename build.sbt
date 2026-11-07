@@ -547,6 +547,55 @@ lazy val server = (project in file("server"))
       (controlModels / Compile / packageBin / mappings).value
   )
 
+lazy val serverSharing = (project in file("server-sharing"))
+  .dependsOn(server % "compile->compile;test->test")
+  .dependsOn(serverModels % "provided", controlModels % "provided")
+  .enablePlugins(CheckstylePlugin)
+  .settings(
+    name := s"$artifactNamePrefix-server-sharing",
+    commonSettings,
+    javaOnlyReleaseSettings,
+    javafmtCheckSettings(),
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
+    Compile / compile / javacOptions ++= javacRelease17,
+    libraryDependencies ++= Seq(
+      // Plain Java with JPA annotations: no Spring and no servlet container. UC supplies the
+      // Hibernate it runs on and the Armeria server it is served from.
+      "io.opensharing" % "opensharing-server-core" % "0.1.0",
+      "org.junit.jupiter" % "junit-jupiter" % junitJupiterVersion % Test,
+      "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
+      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "org.assertj" % "assertj-core" % "3.26.3" % Test,
+    ),
+    libraryDependencies ++= testDatabaseDependencies,
+    openSharingDependencySettings,
+    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
+  )
+
+// opensharing-server-core manages its own Jackson and Delta Kernel versions; projects that pull it
+// in keep the versions the rest of UC runs on. Kernel's defaults must match the delta-kernel-api
+// the server depends on.
+lazy val openSharingDependencySettings = Seq(
+  dependencyOverrides ++= Seq(
+    "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+    "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
+    "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+    "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % jacksonVersion,
+    "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
+    "io.delta" % "delta-kernel-defaults" % deltaVersion,
+  ),
+)
+
+// Runs the server with embedded OpenSharing on its classpath, without a circular sbt graph.
+lazy val serverEmbedded = (project in file("server-embedded"))
+  .dependsOn(server, serverSharing, serverModels, controlModels)
+  .settings(
+    name := s"$artifactNamePrefix-server-embedded",
+    openSharingDependencySettings,
+    publish / skip := true,
+    Compile / run / mainClass := (server / Compile / run / mainClass).value,
+  )
+
 lazy val serverModels = (project in file("server") / "target" / "models")
   .disablePlugins(JavaFormatterPlugin, CheckstylePlugin)
   .settings(
@@ -891,7 +940,7 @@ lazy val integrationTests = (project in file("integration-tests"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(serverModels, client, pythonClient, server, cli, spark, hadoop, controlApi, controlModels, apiDocs)
+  .aggregate(serverModels, client, pythonClient, server, serverSharing, cli, spark, hadoop, controlApi, controlModels, apiDocs)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),

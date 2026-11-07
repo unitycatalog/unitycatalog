@@ -100,6 +100,16 @@ class OpaInputBuilder {
       }
       case EXTERNAL_LOCATION -> withParents(type, required(session, ExternalLocationDAO.class, id));
       case CREDENTIAL -> withParents(type, required(session, CredentialDAO.class, id));
+      case SHARE, RECIPIENT -> {
+        // Embedded OpenSharing stores these in tables UC's session factory does not map.
+        ObjectNode sharing =
+            JsonUtils.getInstance()
+                .createObjectNode()
+                .put("id", id.toString())
+                .put("type", type.name());
+        sharing.putArray("parents");
+        yield sharing;
+      }
     };
   }
 
