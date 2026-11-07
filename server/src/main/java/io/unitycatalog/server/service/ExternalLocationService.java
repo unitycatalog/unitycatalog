@@ -63,9 +63,8 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
   private static final String LIST_AND_GET_AUTH_EXPRESSION =
       """
       #authorizeAny(#principal, #metastore, OWNER, READ_METADATA) ||
-      #authorizeAny(#principal, #external_location, OWNER, MANAGE, READ_METADATA,
-        READ_FILES, WRITE_FILES, CREATE_EXTERNAL_TABLE, CREATE_EXTERNAL_VOLUME,
-        CREATE_MANAGED_STORAGE)
+      #authorizeAny(#principal, #external_location, OWNER, MANAGE, READ_METADATA, READ_FILES,
+        WRITE_FILES, CREATE_EXTERNAL_TABLE, CREATE_EXTERNAL_VOLUME, CREATE_MANAGED_STORAGE)
       """;
 
   private static final String BROWSE_AUTH_EXPRESSION =
