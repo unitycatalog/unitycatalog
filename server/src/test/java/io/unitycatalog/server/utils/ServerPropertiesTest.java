@@ -478,6 +478,7 @@ public class ServerPropertiesTest {
             "s3.secretKey.0=s3-value",
             "s3.sessionToken.0=token-value",
             "adls.clientSecret.0=adls-value",
+            "hibernate.connection.password=db-value",
             // An empty line in the sample file is not a secret.
             "aws.secretKey=",
             "s3.region.0=us-west-2"));
@@ -489,6 +490,8 @@ public class ServerPropertiesTest {
     // The test JVM may not find the Log4j config and fall back to ERROR.
     Configurator.setLevel(logger.getName(), Level.INFO);
     System.setProperty("adls.clientSecret.0", "property-value");
+    // The server takes the database password only from the environment.
+    System.setProperty("hibernate.connection.password", "property-value");
     try {
       ServerProperties serverProperties =
           new ServerProperties(
@@ -507,6 +510,9 @@ public class ServerPropertiesTest {
                       .startsWith("WARN server.client-secret is set in " + file)
                       .contains("bin/uc auth login", "UC_SERVER_CLIENT_SECRET"),
               m -> assertThat(m).startsWith("WARN s3.secretKey.0 is set in " + file),
+              m ->
+                  assertThat(m)
+                      .startsWith("WARN hibernate.connection.password in " + file + " is ignored"),
               // Once per key, and none for the client secret, which the server doesn't use.
               m ->
                   assertThat(m)
@@ -518,8 +524,10 @@ public class ServerPropertiesTest {
                       .isEqualTo(
                           "INFO Using the UC_AWS_REGION environment variable for aws.region"));
       System.clearProperty("adls.clientSecret.0");
+      System.clearProperty("hibernate.connection.password");
 
-      // Each kind of secret warns when nothing else supplies it, whatever its index.
+      // Each kind of secret warns when nothing else supplies it, whatever its index, and the
+      // environment silences the database password.
       Files.writeString(
           Paths.get(file),
           String.join(
@@ -527,16 +535,20 @@ public class ServerPropertiesTest {
               "aws.secretKey=a",
               "s3.secretKey.10=b",
               "s3.sessionToken.10=c",
-              "adls.clientSecret.10=d"));
-      new ServerProperties(file, Map.of());
-      assertThat(appender.messages.subList(4, appender.messages.size()))
+              "adls.clientSecret.10=d",
+              "hibernate.connection.password=e"));
+      new ServerProperties(file, Map.of("UC_HIBERNATE_CONNECTION_PASSWORD", "env-value"));
+      assertThat(appender.messages.subList(5, appender.messages.size()))
+          .filteredOn(m -> m.startsWith("WARN"))
           .extracting(m -> m.split(" ")[1])
           .containsExactlyInAnyOrder(
               "aws.secretKey", "s3.secretKey.10", "s3.sessionToken.10", "adls.clientSecret.10");
       assertThat(String.join("\n", appender.messages))
-          .doesNotContain("client-value", "s3-value", "token-value", "adls-value", "env-value");
+          .doesNotContain(
+              "client-value", "s3-value", "token-value", "adls-value", "db-value", "env-value");
     } finally {
       System.clearProperty("adls.clientSecret.0");
+      System.clearProperty("hibernate.connection.password");
       logger.removeAppender(appender);
       Configurator.setLevel(logger.getName(), previousLevel);
       appender.stop();
