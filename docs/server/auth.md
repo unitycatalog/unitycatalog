@@ -160,6 +160,38 @@ Move `server.client-secret` from `server.properties` to the `UC_SERVER_CLIENT_SE
 where you run `bin/uc auth login`; the server does not read it. The file still works, but is deprecated (see
 [Secrets](configuration.md#secrets)).
 
+Set `server.token-signing-private-key-file` to your own private key. To keep the tokens issued before the upgrade
+working, point it at the key the server already has, `etc/conf/private_key.der`, or a copy of it; a new key makes
+those tokens fail with 401. A server without the setting keeps signing with the key it generated in `etc/conf`, which
+is deprecated (see [Configuration](configuration.md#configuration)).
+
+Other changes to the server's own tokens:
+
+- A token signed with a different key always gets 401. Before, one with a key ID the server did not know got 500,
+  which clients such as the Spark connector retried.
+- The server's own tokens must be signed with RS512. Before, RS256 and RS384 tokens signed with the server's key were
+  also accepted; the server and the Helm chart have always signed with RS512.
+- The server no longer writes `etc/conf/key_id.txt` or `etc/conf/certs.json`, and leaves existing ones in place. An
+  earlier version generates a new key when `key_id.txt` is missing, so before rolling back a server that was first
+  started on this version, create `etc/conf/key_id.txt` with any value, for example `uc`. An earlier version also
+  ignores the key file setting, so before rolling back a server that uses it, write its key to `etc/conf` in the
+  formats an earlier version reads:
+  `openssl pkcs8 -topk8 -nocrypt -in private_key.pem -outform DER -out etc/conf/private_key.der` and
+  `openssl rsa -in private_key.pem -pubout -outform DER -out etc/conf/public_key.der`.
+- A newly generated `etc/conf/private_key.der` is readable by its owner only, on file systems with POSIX permissions.
+- With authorization enabled and no key file setting, the server logs a warning at each start.
+- Helm: use the server image from the chart's release, which is the default. An older server image ignores the key
+  file setting and generates its own key in each pod, so tokens from other pods and from the create-users job are
+  rejected.
+- Helm: an earlier chart requires `key_id.txt` in the key Secret: with `jwtKeypairSecret.create: true` its render fails,
+  and with `create: false` its init container exits. A Secret this chart creates has none, and neither does one made
+  with the [Helm guide](helm.md#token-signing-key). Before rolling back to an earlier chart, add a `key_id.txt` key with
+  any value to the Secret.
+- Helm: if the key Secret holds both `private_key.pem` and `private_key.der`, the chart uses `private_key.pem`.
+- Helm: a key file setting set through `server.config.override` or `extraProperties` must point at the key in the key
+  Secret. The create-users job signs with that key and retries without a limit, so with another key the install or
+  upgrade waits until Helm's timeout.
+
 ### Permission-check migration
 
 `server.authorization.strict-privilege-checks` is a temporary migration setting. It defaults to
@@ -261,7 +293,8 @@ bin/start-uc-server
 
 Behind the scenes, on startup, the UC server will configure itself with the following:
 
-* Creation of internal signing keys and authentication files in `etc/conf`
+* Creation of an internal signing key in `etc/conf` on first start, unless the
+  [token signing key file](configuration.md#configuration) is set; generating the key is deprecated
 * Creation of an admin access token in `etc/conf/token.txt`
 * Creation of an admin account in the user database
 * Granting the admin account as the metastore admin for the server

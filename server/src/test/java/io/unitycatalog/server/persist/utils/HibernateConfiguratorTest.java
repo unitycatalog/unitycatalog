@@ -2,6 +2,8 @@ package io.unitycatalog.server.persist.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.server.utils.ServerProperties;
+import java.nio.file.Path;
 import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -62,6 +64,33 @@ class HibernateConfiguratorTest {
     properties.setProperty("hibernate.connection.username", "alice");
     properties.setProperty("hibernate.connection.user", "bob");
     assertThat(HibernateConfigurator.resolveConnectionUsername(properties)).isEqualTo("alice");
+  }
+
+  @Test
+  void prefersThePasswordFromTheEnvironmentToTheFile() {
+    Properties fileProperties = new Properties();
+    fileProperties.setProperty("hibernate.connection.password", "file-password");
+    HibernateConfigurator.applyPasswordOverride(
+        fileProperties, null, Path.of("hibernate.properties"));
+    assertThat(fileProperties.getProperty("hibernate.connection.password"))
+        .isEqualTo("file-password");
+    HibernateConfigurator.applyPasswordOverride(
+        fileProperties, "env-password", Path.of("hibernate.properties"));
+    assertThat(fileProperties.getProperty("hibernate.connection.password"))
+        .isEqualTo("env-password");
+
+    // setupHibernateProperties takes the password from the environment.
+    ServerProperties withPassword =
+        new ServerProperties(new Properties()) {
+          @Override
+          public String getEnv(String key) {
+            return key.equals("hibernate.connection.password") ? "env-password" : null;
+          }
+        };
+    assertThat(
+            HibernateConfigurator.setupHibernateProperties(withPassword)
+                .getProperty("hibernate.connection.password"))
+        .isEqualTo("env-password");
   }
 
   private static Properties h2Properties() {

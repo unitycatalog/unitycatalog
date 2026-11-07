@@ -74,6 +74,21 @@ The server config file is at the location `etc/conf/server.properties` (relative
     any principal who can create a table can use it. Each entry must be a local path; an entry such as an `s3://` URL
     fails server startup. As with `storage-root.*`, a relative path containing `/` (for example `./uc-external`) is
     resolved against the server's working directory, and a directory that does not exist yet is accepted.
+- `server.token-signing-private-key-file`: The RSA private key the server signs and checks its own tokens with: an
+    unencrypted PKCS #8 key in PEM or DER, or a PKCS #1 one in PEM. The server derives the public key from it once,
+    at startup. A file that is set must exist. Use the same key on every server instance. The server only reads the
+    file, so it can be a read-only mount of a Kubernetes Secret. Create a key with:
+
+    ```sh
+    openssl genrsa -out private_key.pem 2048
+    ```
+
+    !!! warning "Deprecated: the generated signing key"
+        When the key file is not set, the server signs with a key it keeps in `etc/conf`
+        (`private_key.der`, `public_key.der`), generating it on first start; with authorization enabled it logs a
+        warning at each start. This still works, but is deprecated; set the key file setting instead. A newly
+        generated private key is readable by its owner only. Before rolling back to an earlier version, see
+        [Upgrading](auth.md#upgrading) in the authentication docs.
 - `server.shutdown-timeout`: How long the server waits for in-flight requests when it stops, for example on SIGTERM.
     Defaults to `PT5S`. Stopping takes longer than this: up to 5 seconds more if a storage cleanup attempt is
     running, plus about 2 seconds to stop the HTTP server. With the default, give `docker stop` 15 seconds or more
@@ -95,41 +110,48 @@ The server config file is at the location `etc/conf/server.properties` (relative
 
 Any setting can also come from an environment variable named `UC_`, then the key in upper case, with `_` for each
 character that is not a letter or digit. For example, `s3.region.0` is `UC_S3_REGION_0`. Set secrets this way, not in
-`server.properties`:
+`server.properties` or `hibernate.properties` (from `hibernate.properties`, only the password can come from the
+environment):
 
-| Key in `server.properties` | Environment variable |
+| Key | Environment variable |
 | --- | --- |
 | `server.client-secret` | `UC_SERVER_CLIENT_SECRET` |
 | `aws.secretKey` | `UC_AWS_SECRETKEY` |
 | `s3.secretKey.<n>`, `s3.sessionToken.<n>` | `UC_S3_SECRETKEY_<n>`, `UC_S3_SESSIONTOKEN_<n>` |
 | `adls.clientSecret.<n>` | `UC_ADLS_CLIENTSECRET_<n>` |
+| `hibernate.connection.password` (in `hibernate.properties`) | `UC_HIBERNATE_CONNECTION_PASSWORD` |
 
 ```sh
 export UC_S3_SECRETKEY_0='<secret key>'
 bin/start-uc-server
 ```
 
-A variable takes precedence over the same key in `server.properties`, and a variable named exactly as the key comes
-before the `UC_` one. An empty `UC_` variable is ignored, and line breaks at the end of its value are dropped, as a
-Kubernetes Secret made from a file often ends with one. The prefix keeps variables that runtimes set for their own use,
-such as `AWS_REGION`, from changing settings. The server logs the name of each environment variable it uses for a
-setting, never its value. `server.client-secret` is read by `bin/uc auth login`, not by the server.
-The Helm chart passes each S3 and ADLS credential to the server container from its Kubernetes Secret, in
-`UC_S3_ACCESSKEY_<n>` and `UC_S3_SECRETKEY_<n>`, or `UC_ADLS_TENANTID_<n>`, `UC_ADLS_CLIENTID_<n>` and
-`UC_ADLS_CLIENTSECRET_<n>`.
+A variable takes precedence over the same key in `server.properties`, and `UC_HIBERNATE_CONNECTION_PASSWORD` over
+`hibernate.properties`. A variable named exactly as the key comes before the `UC_` one. An empty `UC_` variable is
+ignored, and line breaks at the end of its value are dropped, as a Kubernetes Secret made from a file often ends with
+one. The prefix keeps variables that runtimes set for their own use, such as `AWS_REGION`, from changing settings. The
+server logs the name of each environment variable it uses for a setting, never its value. `server.client-secret` is
+read by `bin/uc auth login`, not by the server. The Helm chart passes each S3 and ADLS credential to the server
+container from its Kubernetes Secret, in `UC_S3_ACCESSKEY_<n>` and `UC_S3_SECRETKEY_<n>`, or `UC_ADLS_TENANTID_<n>`,
+`UC_ADLS_CLIENTID_<n>` and `UC_ADLS_CLIENTSECRET_<n>`. With `server.db.type: postgresql` or `mysql`, it also passes
+`UC_HIBERNATE_CONNECTION_PASSWORD` if that database's `passwordSecretName` is set.
 
-!!! warning "Deprecated: secrets in `server.properties`"
-    Secrets in `server.properties` still work, but this is deprecated. The server logs a warning at startup for each
-    secret set in the file that no environment variable or system property supplies, and always for
-    `server.client-secret`. Move them to environment variables.
+!!! warning "Deprecated: secrets in properties files"
+    Secrets in `server.properties` and the password in `hibernate.properties` still work, but this is deprecated. The
+    server logs a warning at startup for each one set in a file that no environment variable or system property
+    supplies (for the database password, only `UC_HIBERNATE_CONNECTION_PASSWORD` counts), and always for
+    `server.client-secret`. Move them to environment variables. The server never reads `hibernate.connection.password`
+    from `server.properties`; unless `UC_HIBERNATE_CONNECTION_PASSWORD` is set, it logs a warning that the line is
+    ignored.
 
 #### Upgrading
 
 - A `UC_` variable that is already set in the server's environment now takes precedence over the same key in
-  `server.properties`.
+  `server.properties`, and `UC_HIBERNATE_CONNECTION_PASSWORD` over `hibernate.properties`.
 - `bin/uc auth login` reads `UC_SERVER_CLIENT_SECRET` before `server.client-secret` in `etc/conf/server.properties`.
 - Helm: use the server image from the chart's release, which is the default. An older server image doesn't read these
-  variables, so S3 and ADLS lose their secrets.
+  variables, so S3 and ADLS lose their secrets, and the server can't log in to a PostgreSQL or MySQL database that
+  needs a password (`passwordSecretName` set).
 - Helm: the rendered `server.properties` no longer holds `server.client-secret` or the S3 and ADLS credentials
   (`s3.accessKey.<n>`, `s3.secretKey.<n>`, `adls.tenantId.<n>`, `adls.clientId.<n>`, `adls.clientSecret.<n>`). The
   init container has `S3_ACCESS_KEY_<n>`, `S3_SECRET_KEY_<n>`, `ADLS_TENANT_ID_<n>`, `ADLS_CLIENT_ID_<n>`,
@@ -137,6 +159,10 @@ The Helm chart passes each S3 and ADLS credential to the server container from i
   `extraProperties` is set, so a template that uses them still gets them; that is deprecated. The server container's
   `UC_` variables still take precedence over the template's values. A container added through `extraInitContainers`
   or `extraContainers` that needs these secrets must read them from the Kubernetes Secret itself.
+- Helm: the rendered `hibernate.properties` no longer holds the password, and the init container no longer has
+  `DB_PASSWORD`. A container added through `extraInitContainers` or `extraContainers` that needs the password must
+  read it from the Secret named by the database's `passwordSecretName`. In a `server.db.overrideConfig`
+  template, remove the line `hibernate.connection.password=${DB_PASSWORD}`.
 
 ## Local file system storage
 
