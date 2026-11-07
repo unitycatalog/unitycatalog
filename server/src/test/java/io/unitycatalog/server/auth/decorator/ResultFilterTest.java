@@ -2,6 +2,7 @@ package io.unitycatalog.server.auth.decorator;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.persist.model.Privileges.BROWSE;
@@ -17,6 +18,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.auth.AuthorizeExpressions;
@@ -24,6 +26,7 @@ import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.RegisteredModelInfo;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.model.Privileges;
 import java.util.ArrayList;
@@ -205,5 +208,33 @@ class ResultFilterTest {
               exception ->
                   assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PERMISSION_DENIED));
     }
+  }
+
+  @Test
+  void listFilteringPropagatesParentResolutionFailures() throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    KeyMapper keyMapper = mock(KeyMapper.class);
+    RegisteredModelInfo model =
+        new RegisteredModelInfo()
+            .id(UUID.randomUUID().toString())
+            .catalogName("catalog")
+            .schemaName("schema");
+    BaseException failure = new BaseException(ErrorCode.INTERNAL, "Failed to load model parents");
+    when(keyMapper.mapResourceKeys(
+            Map.of(CATALOG, model.getCatalogName(), SCHEMA, model.getSchemaName())))
+        .thenThrow(failure);
+    ResultFilter filter =
+        new ResultFilter(
+            new UnityAccessEvaluator(authorizer, true),
+            UUID.randomUUID(),
+            "#authorize(#principal, #registered_model, OWNER)",
+            "",
+            Map.of(),
+            Map.of(),
+            keyMapper);
+
+    assertThatThrownBy(() -> filter.filter(REGISTERED_MODEL, new ArrayList<>(List.of(model))))
+        .isSameAs(failure);
+    verifyNoInteractions(authorizer);
   }
 }

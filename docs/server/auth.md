@@ -57,6 +57,10 @@ server.audiences=<Client ID provided earlier>
 export UC_SERVER_CLIENT_SECRET='<Client secret provided earlier>'
 ```
 
+For both Casbin and OPA, server errors (HTTP 5xx) during list authorization or resource
+resolution fail the whole request. Previously, affected items could be silently omitted
+from a successful response. Permission denials still filter out individual items.
+
 ### OPA authorization
 
 Casbin is the default authorization backend. To use Open Policy Agent (OPA) for privilege
