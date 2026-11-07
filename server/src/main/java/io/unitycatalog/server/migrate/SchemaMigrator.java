@@ -7,6 +7,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,18 +28,21 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.CoreErrorCode;
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationInfoService;
 import org.flywaydb.core.api.MigrationVersion;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
+import org.flywaydb.core.api.output.MigrateResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Upgrades Unity Catalog's database schema with the steps of {@code db/migration/<database>}: sets
- * up an empty database and applies the pending steps to one with schema history. On PostgreSQL and
- * MySQL, each {@link #upgradeSchema()} holds a {@link RunLock} from classifying the database to the
- * last step.
+ * up an empty database, adopts a database of the baseline release (recording step 1 without running
+ * it) and applies the pending steps, checking the schema against the steps' effect files ({@code
+ * schema-effects/<database>}) before each step and at the end. On PostgreSQL and MySQL, each {@link
+ * #upgradeSchema()} holds a {@link RunLock} from classifying the database to the last step.
  */
 public final class SchemaMigrator implements AutoCloseable {
 
@@ -99,14 +103,21 @@ public final class SchemaMigrator implements AutoCloseable {
   private static final String HISTORY_TABLE = "uc_schema_history";
 
   /**
+   * The release whose databases are adopted as version 1: one without schema history whose schema
+   * is step 1's exactly is recorded at version 1 without running step 1. A database from an earlier
+   * release has to be started on a {@value} server once first.
+   */
+  static final String ADOPTED_RELEASE = "0.7.0";
+
+  /**
    * The baseline Flyway records on a database that holds only other tables (Casbin's, another
-   * application's), below step 1 so that step 1 runs.
+   * application's), below step 1 so that step 1 runs; also the version before the first step.
    */
   private static final String EMPTY_BASELINE_VERSION = "0";
 
   /**
-   * The run lock's connection, Flyway's two (PostgreSQL), and one to spare for reading the
-   * database's state.
+   * The run lock's connection, Flyway's two (PostgreSQL), and one to spare for reading the schema
+   * between steps.
    */
   private static final int POOL_SIZE = 4;
 
@@ -352,34 +363,183 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * For {@code bin/start-uc-server --upgrade-schema}: under the run lock, applies this build's
-   * pending steps and checks that the database ends at this build's last step. This also sets up an
-   * empty database. A database with Unity Catalog's tables but no schema history is refused. On
-   * PostgreSQL and MySQL, a second run at the same time waits for the first. Returns the number of
-   * steps it ran.
+   * For {@code bin/start-uc-server --upgrade-schema}: under the run lock, brings the database to
+   * this build's schema one step at a time, and checks that it ends with the schema of the last
+   * step. If the schema history is valid, the record of a step that failed is deleted first, so
+   * that the step is tried again. Before each pending step the whole schema is compared with the
+   * steps' effect files ({@code schema-effects/<database>}): it must be the schema before the step,
+   * so the step runs, or after it (a run stopped before Flyway recorded the step), so the step is
+   * recorded without running; otherwise the run stops, changing nothing more. This also sets up an
+   * empty database, and adopts a database without schema history when its schema is exactly that of
+   * {@link #ADOPTED_RELEASE} (the steps after the first run) or of this build's last step (every
+   * step is recorded without running). On PostgreSQL and MySQL, a second run at the same time waits
+   * for the first. Returns the number of steps it ran or recorded.
    */
   public int upgradeSchema() {
     try (RunLock lock = RunLock.acquire(dataSource, kind)) {
       refuseIfUnsupported(state());
+      // Before the records of failed steps go, so that a run that refuses leaves the history as is.
       requireValidHistory(true);
-      int ran =
-          flyway()
-              .baselineOnMigrate(true)
-              .baselineVersion(EMPTY_BASELINE_VERSION)
-              .baselineDescription("empty")
-              .load()
-              .migrate()
-              .migrationsExecuted;
+      deleteFailedSteps();
+      boolean adopted = hasLastStepsSchemaWithoutHistory();
+      int changed = 0;
+      for (String step : pendingSteps()) {
+        SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
+        boolean record = adopted || !runs(step, schema);
+        MigrateResult result =
+            flyway()
+                .baselineOnMigrate(true)
+                .baselineVersion(EMPTY_BASELINE_VERSION)
+                .baselineDescription("empty")
+                .target(step)
+                .skipExecutingMigrations(record)
+                .load()
+                .migrate();
+        if (result.migrationsExecuted != 1 || !step.equals(recordedVersion())) {
+          throw new IllegalStateException(
+              "Schema step " + step + " was not recorded as the only change of its run.");
+        }
+        LOGGER.info(
+            record
+                ? "Recorded schema step {} without running it: the database already has its change"
+                : "Ran schema step {}",
+            step);
+        changed++;
+      }
       requireCurrent();
-      requireStepIndexes();
-      return ran;
+      return changed;
+    }
+  }
+
+  /**
+   * Whether pending {@code step} runs on a database with {@code schema}: true when the schema is
+   * the one before the step, false when it already has the step's change, and for a first step
+   * whose earlier run stopped part way (the schema history exists and holds part of its schema)
+   * true, since the first step skips what is already there.
+   *
+   * @throws IllegalStateException when the schema is neither, naming the differences
+   */
+  private boolean runs(String step, SchemaSnapshot schema) {
+    String previous = previousStep(step);
+    SchemaSnapshot before = expected(previous);
+    SchemaSnapshot after = expected(step);
+    if (schema.equals(before)) {
+      return true;
+    }
+    if (schema.equals(after)) {
+      return false;
+    }
+    if (previous.equals(EMPTY_BASELINE_VERSION)
+        && tableNamesLowerCase().contains(HISTORY_TABLE)
+        && after.entries().containsAll(schema.entries())) {
+      return true;
+    }
+    String nearer =
+        schema.differencesFrom(before).length() <= schema.differencesFrom(after).length()
+            ? previous
+            : step;
+    throw new IllegalStateException(
+        "The database schema is neither the schema of version "
+            + previous
+            + " nor that of version "
+            + step
+            + ", so schema step "
+            + step
+            + " can't run. It differs from version "
+            + nearer
+            + " in:\n"
+            + differences(schema, expected(nearer))
+            + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup,"
+            + " then run bin/start-uc-server --upgrade-schema again."
+            + (tableNamesLowerCase().contains(HISTORY_TABLE)
+                ? ""
+                : " A database from a release before "
+                    + ADOPTED_RELEASE
+                    + " must be started once on a "
+                    + ADOPTED_RELEASE
+                    + " server first (see docs/server/upgrades.md, \"Repairing a database from"
+                    + " before 0.7.0\")."));
+  }
+
+  /**
+   * Whether the database has no applied step in its schema history (no history table, an empty one,
+   * or one holding only Flyway's baseline row, as a run leaves that stopped before step 1's record)
+   * and the schema of this build's last step, exactly: what Hibernate's update builds from the
+   * entities on a new database. Every step is then recorded without running.
+   */
+  private boolean hasLastStepsSchemaWithoutHistory() {
+    String recorded = recordedVersion();
+    boolean noAppliedStep = recorded == null || recorded.equals(EMPTY_BASELINE_VERSION);
+    return noAppliedStep
+        && tableNamesLowerCase().stream()
+            .anyMatch(t -> t.startsWith("uc_") && !t.equals(HISTORY_TABLE))
+        && SchemaSnapshot.of(dataSource).equals(expected(latestVersion()));
+  }
+
+  /** The step before {@code step} in this build, {@value #EMPTY_BASELINE_VERSION} for the first. */
+  private String previousStep(String step) {
+    String previous = EMPTY_BASELINE_VERSION;
+    for (String s : steps()) {
+      if (s.equals(step)) {
+        return previous;
+      }
+      previous = s;
+    }
+    throw new IllegalArgumentException("Not a step of this build: " + step);
+  }
+
+  /** This build's steps after the recorded version. */
+  private List<String> pendingSteps() {
+    MigrationInfoService info = flyway().load().info();
+    String recorded = tableNamesLowerCase().contains(HISTORY_TABLE) ? recordedVersion(info) : null;
+    return stepVersions(info).stream()
+        .filter(
+            step ->
+                recorded == null
+                    || MigrationVersion.fromVersion(step)
+                            .compareTo(MigrationVersion.fromVersion(recorded))
+                        > 0)
+        .toList();
+  }
+
+  /**
+   * Deletes the schema history's records of steps that failed (MySQL and H2 keep one), so that the
+   * step is checked and tried again. Plain SQL: Flyway's repair would also rewrite the other
+   * records' checksums.
+   */
+  private void deleteFailedSteps() {
+    if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
+      return;
+    }
+    try (Connection connection = dataSource.getConnection();
+        Statement statement = connection.createStatement()) {
+      // The caller's pool may not commit by itself, and a rollback would keep the record.
+      connection.setAutoCommit(true);
+      String q = connection.getMetaData().getIdentifierQuoteString();
+      List<String> failed = new ArrayList<>();
+      try (ResultSet rs =
+          statement.executeQuery(
+              "SELECT %1$sversion%1$s FROM %1$s%2$s%1$s WHERE %1$ssuccess%1$s = false"
+                  .formatted(q, HISTORY_TABLE))) {
+        while (rs.next()) {
+          failed.add(rs.getString(1));
+        }
+      }
+      if (!failed.isEmpty()) {
+        statement.executeUpdate(
+            "DELETE FROM %1$s%2$s%1$s WHERE %1$ssuccess%1$s = false".formatted(q, HISTORY_TABLE));
+        LOGGER.info("Deleted the record of failed schema steps {}; they are checked again", failed);
+      }
+    } catch (SQLException e) {
+      throw new IllegalStateException(
+          "Could not delete the record of a failed schema step: " + e.getMessage(), e);
     }
   }
 
   /**
    * Throws unless Flyway's validation of the schema history passes: no failed step, no edited step
    * (checksum), no step missing below the recorded version. With {@code upgrading}, steps after the
-   * recorded version may be pending: the upgrade runs them.
+   * recorded version may be pending and a step may have failed: the upgrade runs them.
    */
   private void requireValidHistory(boolean upgrading) {
     if (!tableNamesLowerCase().contains(HISTORY_TABLE)) {
@@ -391,7 +551,9 @@ public final class SchemaMigrator implements AutoCloseable {
     }
     String errors =
         configuration.load().validateWithResult().invalidMigrations.stream()
-            .map(m -> m.errorDetails.errorMessage)
+            .map(m -> m.errorDetails)
+            .filter(e -> !(upgrading && e.errorCode == CoreErrorCode.FAILED_VERSIONED_MIGRATION))
+            .map(e -> e.errorMessage)
             .collect(Collectors.joining("\n"));
     if (!errors.isEmpty()) {
       throw new IllegalStateException(
@@ -470,8 +632,52 @@ public final class SchemaMigrator implements AutoCloseable {
         .toList();
   }
 
+  /**
+   * The schema that this build's steps up to {@code version} leave, added up from their effect
+   * files {@code schema-effects/<database>/V<step>.txt}; {@link SchemaSnapshot#NONE} for version 0.
+   *
+   * @throws IllegalStateException when an effect file is missing or does not fit
+   */
+  SchemaSnapshot expected(String version) {
+    MigrationVersion upTo = MigrationVersion.fromVersion(version);
+    SchemaSnapshot schema = SchemaSnapshot.NONE;
+    for (String step : steps()) {
+      if (MigrationVersion.fromVersion(step).compareTo(upTo) > 0) {
+        break;
+      }
+      String path = "schema-effects/" + kind.folder() + "/V" + step + ".txt";
+      try (InputStream in = SchemaMigrator.class.getClassLoader().getResourceAsStream(path)) {
+        if (in == null) {
+          throw new IllegalStateException(
+              "This build has no effect file "
+                  + path
+                  + " for schema step "
+                  + step
+                  + ": it is incomplete. Use a release build of Unity Catalog.");
+        }
+        schema =
+            schema.with(new String(in.readAllBytes(), StandardCharsets.UTF_8).lines().toList());
+      } catch (IOException e) {
+        throw new UncheckedIOException(e);
+      } catch (IllegalArgumentException e) {
+        throw new IllegalStateException("The effect file " + path + " " + e.getMessage(), e);
+      }
+    }
+    return schema;
+  }
+
   /** Throws for a database that {@link #upgradeSchema()} must not change. */
   private void refuseIfUnsupported(SchemaState state) {
+    String repeatable =
+        Arrays.stream(flyway().load().info().all())
+            .filter(m -> m.getVersion() == null && !m.getType().isSynthetic())
+            .map(MigrationInfo::getScript)
+            .findFirst()
+            .orElse(null);
+    if (repeatable != null) {
+      throw new IllegalStateException(
+          "This build has a repeatable schema step, which is not supported: " + repeatable);
+    }
     String refusal =
         switch (state) {
           case AHEAD ->
@@ -480,9 +686,6 @@ public final class SchemaMigrator implements AutoCloseable {
                   + ", this release ends at "
                   + latestVersion()
                   + "). Run the newer release.";
-          case UNVERSIONED_UC ->
-              "The database has Unity Catalog's tables but no schema history: adopting a database"
-                  + " without schema history is not supported yet. Keep running the server on it.";
           default -> null;
         };
     if (refusal != null) {
@@ -491,8 +694,8 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Throws unless the database is at this build's last step: recorded as applied, and Flyway's
-   * validation passes.
+   * Throws unless the database is at this build's last step: recorded as applied, Flyway's
+   * validation passes, and the schema is the one the steps' effect files add up to.
    */
   private void requireCurrent() {
     SchemaState state = state();
@@ -501,54 +704,42 @@ public final class SchemaMigrator implements AutoCloseable {
           "The database schema is " + state + "; this release needs version " + latestVersion());
     }
     requireValidHistory(false);
+    SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
+    SchemaSnapshot expected = expected(latestVersion());
+    if (!schema.equals(expected)) {
+      throw new IllegalStateException(
+          "The database schema differs from the schema of version "
+              + latestVersion()
+              + ":\n"
+              + differences(schema, expected)
+              + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup.");
+    }
   }
 
-  private static final Pattern CREATE_INDEX =
-      Pattern.compile(
-          "(?i)create\\s+(?:unique\\s+)?index\\s+if\\s+not\\s+exists\\s+(\\w+)\\s+on\\s+(\\w+)");
-
   /**
-   * Throws when an index that a step creates is missing, for example because another object already
-   * uses its name. PostgreSQL and H2 name indexes schema-wide, so {@code create index if not
-   * exists} skips ours without an error. MySQL names indexes per table and is not affected.
+   * {@code schema}'s differences from {@code expected}. Each missing index that another table's
+   * index of the same name took (see {@link #indexClashHint}) gets that clash appended.
    */
-  private void requireStepIndexes() {
-    // Flyway's info needs its own connections: list the steps before taking ours.
-    List<MigrationInfo> steps = resolvedSteps(flyway().load().info());
+  private String differences(SchemaSnapshot schema, SchemaSnapshot expected) {
+    String differences = schema.differencesFrom(expected);
+    if (kind == DatabaseKind.MYSQL) {
+      return differences; // its index names are per table: no clash
+    }
     try (Connection connection = dataSource.getConnection()) {
-      for (MigrationInfo step : steps) {
-        String path = "/db/migration/" + kind.folder() + "/" + step.getScript();
-        try (InputStream in = SchemaMigrator.class.getResourceAsStream(path)) {
-          if (in == null) {
-            continue; // a test's own step
-          }
-          Matcher m = CREATE_INDEX.matcher(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-          while (m.find()) {
-            String index = m.group(1);
-            String table = m.group(2);
-            DatabaseMetaData metaData = connection.getMetaData();
-            // H2 stores the unquoted names of the steps in upper case.
-            String stored =
-                metaData.storesUpperCaseIdentifiers() ? table.toUpperCase(Locale.ROOT) : table;
-            if (!indexNames(metaData, connection, stored)
-                .contains(index.toLowerCase(Locale.ROOT))) {
-              String hint = indexClashHint(connection, index, table);
-              throw new IllegalStateException(
-                  "Step "
-                      + step.getVersion()
-                      + " left Unity Catalog index "
-                      + index
-                      + " missing on "
-                      + table
-                      + (hint == null ? "" : ": " + hint));
-            }
-          }
-        }
+      StringBuilder out = new StringBuilder();
+      for (String line : differences.split("\n")) {
+        out.append(line);
+        Matcher m = MISSING_INDEX.matcher(line);
+        String hint = m.find() ? indexClashHint(connection, m.group(2), m.group(1)) : null;
+        out.append(hint == null ? "" : " (" + hint + ")").append('\n');
       }
-    } catch (SQLException | IOException e) {
+      return out.toString().stripTrailing();
+    } catch (SQLException e) {
       throw new IllegalStateException("Could not check the schema's indexes: " + e.getMessage(), e);
     }
   }
+
+  private static final Pattern MISSING_INDEX = Pattern.compile("^missing index (uc_\\w+)\\.(\\w+)");
 
   /**
    * For the index {@code index} missing on {@code table}: when a table that is not Unity Catalog's
