@@ -1,0 +1,7 @@
+# Renders the PostgreSQL database values so that chart lint covers them. The chart install test uses them too.
+server:
+  db:
+    type: postgresql
+    postgresqlConfig:
+      host: postgresql
+      passwordSecretName: db-password

@@ -1,0 +1,29 @@
+# Renders the MySQL database values so that chart lint covers them. The chart install test uses them too: the init
+# container downloads the driver at the version in the mysql-connector-j ConfigMap, which the test creates.
+server:
+  db:
+    type: mysql
+    mysqlConfig:
+      host: mysql
+      passwordSecretName: db-password
+      driver:
+        volume:
+          emptyDir: {}
+        subPath: mysql-connector-j.jar
+  deployment:
+    extraInitContainers:
+      - name: mysql-driver
+        image: "alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
+        command: ["/bin/sh", "-c"]
+        args:
+          - wget -q -O /drivers/mysql-connector-j.jar
+            "https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/$VERSION/mysql-connector-j-$VERSION.jar"
+        env:
+          - name: VERSION
+            valueFrom:
+              configMapKeyRef:
+                name: mysql-connector-j
+                key: version
+        volumeMounts:
+          - name: mysql-driver
+            mountPath: /drivers

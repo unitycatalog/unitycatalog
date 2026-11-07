@@ -1308,6 +1308,10 @@ $$;
         ("C:\\path", "'C:\\\\path'"),
         (None, "NULL"),
         (42, "42"),
+        (datetime.date(2024, 1, 15), "'2024-01-15'"),
+        (datetime.datetime(2024, 1, 15, 10, 30), "'2024-01-15T10:30:00'"),
+        (datetime.datetime(2024, 1, 15, 10, 30, 5, 123456), "'2024-01-15T10:30:05.123456'"),
+        (datetime.time(10, 30), "'10:30:00'"),
     ],
 )
 def test_format_default_value(default, expected):
@@ -1336,6 +1340,37 @@ LANGUAGE PYTHON
 COMMENT 'A function with an optional string parameter.'
 AS $$
     return a
+$$;
+    """
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_function_with_default_date_and_datetime_values():
+    def func_with_default_dates(
+        d: datetime.date = datetime.date(2024, 1, 15),
+        ts: datetime.datetime = datetime.datetime(2024, 1, 15, 10, 30),
+    ) -> str:
+        """
+        A function with optional date and datetime parameters.
+
+        Args:
+            d: Optional date parameter.
+            ts: Optional datetime parameter.
+
+        Returns:
+            str: A greeting.
+        """
+        return "hello"
+
+    sql_body = generate_sql_function_body(func_with_default_dates, "test_catalog", "test_schema")
+
+    expected_sql = """
+CREATE FUNCTION `test_catalog`.`test_schema`.`func_with_default_dates`(d DATE DEFAULT '2024-01-15' COMMENT 'Optional date parameter.', ts TIMESTAMP DEFAULT '2024-01-15T10:30:00' COMMENT 'Optional datetime parameter.')
+RETURNS STRING
+LANGUAGE PYTHON
+COMMENT 'A function with optional date and datetime parameters.'
+AS $$
+    return "hello"
 $$;
     """
     assert sql_body.strip() == expected_sql.strip()
@@ -1371,6 +1406,53 @@ def test_string_default_round_trip(default):
     result = process_function_parameter_defaults(function_info, {})
 
     assert result["a"] == default
+
+
+@pytest.mark.parametrize(
+    ("annotation", "default", "stored", "parsed"),
+    [
+        (datetime.date, datetime.date(2024, 1, 15), "'2024-01-15'", "2024-01-15"),
+        (
+            datetime.datetime,
+            datetime.datetime(2024, 1, 15, 10, 30),
+            "'2024-01-15T10:30:00'",
+            "2024-01-15T10:30:00",
+        ),
+    ],
+)
+def test_date_time_default_round_trip(annotation, default, stored, parsed):
+    # The formatted default is stored as parameter metadata and parsed back
+    # with ast.literal_eval when the function is executed with defaults, so
+    # it must be a quoted literal that parses back to the ISO representation.
+    def make_func(value, annotation):
+        def func_with_default(a=value) -> str:
+            """
+            A function with an optional parameter.
+
+            Args:
+                a: Optional parameter.
+
+            Returns:
+                str: The input value.
+            """
+            return str(a)
+
+        func_with_default.__annotations__["a"] = annotation
+        return func_with_default
+
+    definition = generate_function_info(make_func(default, annotation))
+    assert definition.parameters[0].parameter_default == stored
+
+    function_info = FunctionInfo(
+        catalog_name="test_catalog",
+        schema_name="test_schema",
+        name="func_with_default",
+        input_params=FunctionParameterInfos(parameters=definition.parameters),
+    )
+
+    result = process_function_parameter_defaults(function_info, {})
+
+    assert result["a"] == parsed
 
 
 def test_function_with_default_string_value_using_single_quote():
