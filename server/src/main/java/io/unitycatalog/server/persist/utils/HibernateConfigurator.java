@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist.utils;
 
+import static io.unitycatalog.server.utils.ServerProperties.DB_PASSWORD_KEY;
+
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
@@ -55,7 +57,6 @@ public class HibernateConfigurator implements AutoCloseable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(HibernateConfigurator.class);
   private static final String HIKARI_PREFIX = "hibernate.hikari.";
-  private static final String PASSWORD_KEY = ServerProperties.DB_PASSWORD_KEY;
 
   private final SessionFactory sessionFactory;
   private final Properties hibernateProperties;
@@ -130,7 +131,7 @@ public class HibernateConfigurator implements AutoCloseable {
     HikariConfig hikariConfig = new HikariConfig(hikariProperties);
     hikariConfig.setJdbcUrl(hibernateProperties.getProperty("hibernate.connection.url"));
     hikariConfig.setUsername(resolveConnectionUsername(hibernateProperties));
-    hikariConfig.setPassword(hibernateProperties.getProperty(PASSWORD_KEY));
+    hikariConfig.setPassword(hibernateProperties.getProperty(DB_PASSWORD_KEY));
     hikariConfig.setDriverClassName(
         hibernateProperties.getProperty("hibernate.connection.driver_class"));
     if (!hikariProperties.containsKey("maximumPoolSize")) {
@@ -169,7 +170,7 @@ public class HibernateConfigurator implements AutoCloseable {
       sessionFactoryProperties.remove("hibernate.connection.url");
       sessionFactoryProperties.remove("hibernate.connection.user");
       sessionFactoryProperties.remove("hibernate.connection.username");
-      sessionFactoryProperties.remove(PASSWORD_KEY);
+      sessionFactoryProperties.remove(DB_PASSWORD_KEY);
       sessionFactoryProperties.remove("hibernate.connection.pool_size");
       sessionFactoryProperties
           .keySet()
@@ -233,7 +234,7 @@ public class HibernateConfigurator implements AutoCloseable {
       }
     }
     applyPasswordOverride(
-        hibernateProperties, serverProperties.getEnv(PASSWORD_KEY), hibernatePropertiesPath);
+        hibernateProperties, serverProperties.getEnv(DB_PASSWORD_KEY), hibernatePropertiesPath);
 
     if ("test".equals(serverProperties.get(Property.SERVER_ENV))) {
       hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
@@ -254,14 +255,14 @@ public class HibernateConfigurator implements AutoCloseable {
   static void applyPasswordOverride(
       Properties hibernateProperties, String password, Path propertiesPath) {
     if (password != null) {
-      hibernateProperties.setProperty(PASSWORD_KEY, password);
-    } else if (!hibernateProperties.getProperty(PASSWORD_KEY, "").isEmpty()) {
+      hibernateProperties.setProperty(DB_PASSWORD_KEY, password);
+    } else if (!hibernateProperties.getProperty(DB_PASSWORD_KEY, "").isEmpty()) {
       LOGGER.warn(
           "{} is set in {}. Keeping the database password in this file is deprecated; set the {}"
               + " environment variable instead.",
-          PASSWORD_KEY,
+          DB_PASSWORD_KEY,
           propertiesPath,
-          ServerProperties.envName(PASSWORD_KEY));
+          ServerProperties.envName(DB_PASSWORD_KEY));
     }
   }
 }

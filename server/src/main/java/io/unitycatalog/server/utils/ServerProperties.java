@@ -41,7 +41,10 @@ public class ServerProperties {
   // their own use, such as AWS_REGION, from changing settings.
   private static final String ENV_PREFIX = "UC_";
 
-  /** The database password, which the server reads only from the environment. */
+  /**
+   * Key of the database password in hibernate.properties; the environment variable named by {@link
+   * #envName} overrides it.
+   */
   public static final String DB_PASSWORD_KEY = "hibernate.connection.password";
 
   // Secrets, which log a deprecation warning when they are read from server.properties. The server
