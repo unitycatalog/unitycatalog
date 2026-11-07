@@ -382,8 +382,9 @@ lazy val apiDocs = (project in file("api"))
     }
   )
 
-// Define the custom task key
-lazy val populateTestDB = taskKey[Unit]("Run PopulateTestDatabase main class from the test folder")
+// Builds the quickstart's sample database etc/db/h2db.mv.db (SampleDatabase, in the sampleDatabase
+// project), refusing a file that exists.
+lazy val buildSampleDatabase = taskKey[Unit]("Build the sample database etc/db/h2db.mv.db")
 
 lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
@@ -494,6 +495,10 @@ lazy val server = (project in file("server"))
         exclude("ch.qos.logback", "logback-classic")
         exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
+      // The upgrade tests run older releases, whose servers read Vert.x's version file at start.
+      "io.vertx" % "vertx-core" % "4.5.34" % Test,
+      // Reads the schema steps' SQL in MigrationStepRulesTest (Apache-2.0 or LGPL-2.1; tests only).
+      "com.github.jsqlparser" % "jsqlparser" % "5.4" % Test,
 
       // Integration testing
       "org.testcontainers" % "junit-jupiter" % testcontainersVersion % Test,
@@ -534,10 +539,6 @@ lazy val server = (project in file("server"))
            |}
            |""".stripMargin)
       Seq(file)
-    },
-    populateTestDB := {
-      val log = streams.value.log
-      (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
     },
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
     // Include server and control models in the bin package for server
@@ -667,6 +668,33 @@ lazy val cli = (project in file("examples") / "cli")
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     ),
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
+  )
+
+// Builds the quickstart's sample database with the server's schema steps and repositories. A
+// project of its own, so that neither the server jar nor the server's test classes hold it.
+lazy val sampleDatabase = (project in file("examples") / "sample-database")
+  .dependsOn(server)
+  .dependsOn(serverModels)
+  .dependsOn(controlModels)
+  .enablePlugins(CheckstylePlugin)
+  .settings(
+    name := s"$artifactNamePrefix-sample-database",
+    commonSettings,
+    log4jProcessSettings,
+    skipReleaseSettings,
+    javafmtCheckSettings(),
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
+    Compile / compile / javacOptions ++= javacRelease17,
+    libraryDependencies ++= Seq(
+      "org.junit.jupiter" % "junit-jupiter" % junitJupiterVersion % Test,
+      "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
+      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "org.assertj" % "assertj-core" % "3.26.3" % Test,
+    ),
+    buildSampleDatabase := Def.taskDyn {
+      val file = (ThisBuild / baseDirectory).value / "etc" / "db" / "h2db.mv.db"
+      (Compile / runMain).toTask(" io.unitycatalog.server.utils.SampleDatabase \"" + file + "\"")
+    }.value,
   )
 
 // What the test-database harness needs to run on PostgreSQL: server, and spark and hadoop, which take
@@ -891,7 +919,7 @@ lazy val integrationTests = (project in file("integration-tests"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(serverModels, client, pythonClient, server, cli, spark, hadoop, controlApi, controlModels, apiDocs)
+  .aggregate(serverModels, client, pythonClient, server, cli, sampleDatabase, spark, hadoop, controlApi, controlModels, apiDocs)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),
@@ -915,3 +943,12 @@ def testOnDatabase(database: String): String =
   s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database") ; test"""
 addCommandAlias("testPostgres18", testOnDatabase("POSTGRES_18"))
 addCommandAlias("testMySQL8", testOnDatabase("MYSQL_8"))
+
+// Rewrites the schema effect files (server/src/main/resources/schema-effects) from the steps, on
+// every database. PostgreSQL and MySQL need Docker.
+addCommandAlias(
+  "updateSchemaDumps",
+  Seq("H2", "POSTGRES_18", "MYSQL_8").map { database =>
+    s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database", "UC_TEST_MIGRATION_CHECKS" -> "true", "UC_UPDATE_SCHEMA_EFFECTS" -> "true")""" +
+      " ; server/testOnly io.unitycatalog.server.migrate.MigrationStepRulesTest"
+  }.mkString)
