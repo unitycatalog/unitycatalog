@@ -2,6 +2,7 @@ package io.unitycatalog.server.migrate;
 
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabases;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.InvocationHandler;
@@ -12,7 +13,16 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
+import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.callback.Callback;
+import org.flywaydb.core.api.callback.Context;
+import org.flywaydb.core.api.callback.Event;
 
 /** Databases and statements the schema migration tests share. */
 final class UpgradeTestUtils {
@@ -42,6 +52,83 @@ final class UpgradeTestUtils {
         execute(db, statement);
       }
     }
+  }
+
+  /** The schema the steps build on a new empty database. */
+  static SchemaSnapshot freshInstallSnapshot() {
+    try (TestDatabase fresh = TestDatabases.newEmptyDatabase()) {
+      new SchemaMigrator(fresh.dataSource()).upgradeSchema();
+      return SchemaSnapshot.of(fresh.dataSource());
+    }
+  }
+
+  /** Runs this build's steps up to {@code version} on {@code db}, as a new install does. */
+  static void migrateTo(TestDatabase db, String version) {
+    Flyway.configure()
+        .dataSource(db.dataSource())
+        .locations("classpath:db/migration/" + DatabaseKind.of(db.dataSource()).folder())
+        .table("uc_schema_history")
+        .baselineOnMigrate(true)
+        .baselineVersion("0")
+        .target(version)
+        .load()
+        .migrate();
+  }
+
+  /**
+   * Runs this build's steps on {@code db}, a new database, and returns the SQL statements Flyway
+   * sent to the database while it ran each step's own SQL, by version: what the database ran, as
+   * Flyway's parser split the step.
+   */
+  static Map<String, List<String>> sentStatements(TestDatabase db) {
+    Map<String, List<String>> sent = new LinkedHashMap<>();
+    AtomicReference<List<String>> step = new AtomicReference<>();
+    Callback recorder =
+        new Callback() {
+          @Override
+          public boolean supports(Event event, Context context) {
+            return event == Event.BEFORE_EACH_MIGRATE
+                || event == Event.AFTER_EACH_MIGRATE
+                || event == Event.AFTER_EACH_MIGRATE_ERROR;
+          }
+
+          @Override
+          public boolean canHandleInTransaction(Event event, Context context) {
+            return true;
+          }
+
+          @Override
+          public void handle(Event event, Context context) {
+            if (event == Event.BEFORE_EACH_MIGRATE) {
+              step.set(new ArrayList<>());
+              sent.put(context.getMigrationInfo().getVersion().getVersion(), step.get());
+            } else {
+              step.set(null);
+            }
+          }
+
+          @Override
+          public String getCallbackName() {
+            return "sent statements";
+          }
+        };
+    DataSource watched =
+        watched(
+            db.dataSource(),
+            (sql, prepared) -> {
+              if (step.get() != null && !prepared) {
+                step.get().add(sql);
+              }
+              return sql;
+            });
+    Flyway.configure()
+        .dataSource(watched)
+        .locations("classpath:db/migration/" + DatabaseKind.of(db.dataSource()).folder())
+        .table("uc_schema_history")
+        .callbacks(recorder)
+        .load()
+        .migrate();
+    return sent;
   }
 
   /** What {@link #watched} calls with each SQL statement before it is sent. */
