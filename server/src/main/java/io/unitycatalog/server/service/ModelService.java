@@ -133,9 +133,8 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
           ) &&
           (#new_name == null ||
             (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-              (#authorize(#principal, #schema, OWNER) ||
-                (#authorize(#principal, #schema, USE_SCHEMA) &&
-                  #authorizeAny(#principal, #schema, CREATE_MODEL, CREATE_FUNCTION)))) ||
+              #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+              #authorizeAny(#principal, #schema, OWNER, CREATE_MODEL, CREATE_FUNCTION)) ||
             (!#strict_privilege_checks &&
               (#authorize(#principal, #catalog, OWNER) ||
                 (#authorize(#principal, #catalog, USE_CATALOG) &&

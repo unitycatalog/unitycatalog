@@ -247,8 +247,8 @@ public final class AuthorizeExpressions {
           + """
           ) &&
           (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-            (#authorize(#principal, #schema, OWNER) ||
-              #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE)))
+            #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+            #authorizeAny(#principal, #schema, OWNER, CREATE_TABLE))
           """;
 
   /**
