@@ -75,8 +75,24 @@ hibernate.connection.url=jdbc:h2:file:./etc/db/h2db;DB_CLOSE_ON_EXIT=FALSE;DB_CL
 hibernate.connection.driver_class=org.postgresql.Driver
 hibernate.connection.url=jdbc:postgresql://{{ .Values.server.db.postgresqlConfig.host }}:{{ .Values.server.db.postgresqlConfig.port }}/{{ .Values.server.db.postgresqlConfig.dbName }}{{ $urlParams }}
 hibernate.connection.user={{ .Values.server.db.postgresqlConfig.username }}
+{{- else if eq .Values.server.db.type "mysql" -}}
+
+{{- $urlParamsList := list }}
+{{- range $key, $value := .Values.server.db.mysqlConfig.extraParams }}
+{{- $urlParamsList = append $urlParamsList (printf "%s=%s" (urlquery $key) (urlquery $value)) }}
+{{- end }}
+
+{{- $urlParams := "" }}
+{{- if $urlParamsList }}
+{{- $urlParams = printf "?%s" ($urlParamsList | join "&") }}
+{{- end -}}
+
+hibernate.connection.driver_class=com.mysql.cj.jdbc.Driver
+{{- /* Connector/J form-decodes the whole URL, the database name too, so urlquery is the right escape for it. */}}
+hibernate.connection.url=jdbc:mysql://{{ required "server.db.mysqlConfig.host is required" .Values.server.db.mysqlConfig.host }}:{{ .Values.server.db.mysqlConfig.port }}/{{ urlquery .Values.server.db.mysqlConfig.dbName }}{{ $urlParams }}
+hibernate.connection.user={{ .Values.server.db.mysqlConfig.username }}
 {{- else }}
-{{ fail "Unsupported database type. Supported types are: file, postgresql." }}
+{{ fail "Unsupported database type. Supported types are: file, postgresql, mysql." }}
 {{- end }}
 
 hibernate.hbm2ddl.auto=update
@@ -140,12 +156,15 @@ password and every part of each storage credential come from here, not from the 
 files, which are written only at pod start.
 */}}
 {{- define "unitycatalog.server.secretEnv" -}}
-{{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.passwordSecretName }}
+{{- $db := dict "postgresql" .Values.server.db.postgresqlConfig "mysql" .Values.server.db.mysqlConfig }}
+{{- with get $db .Values.server.db.type }}
+{{- if .passwordSecretName }}
 - name: UC_HIBERNATE_CONNECTION_PASSWORD
   valueFrom:
     secretKeyRef:
-      name: {{ .Values.server.db.postgresqlConfig.passwordSecretName | quote }}
-      key: {{ required "Password secret key is required" .Values.server.db.postgresqlConfig.passwordSecretKey | quote }}
+      name: {{ .passwordSecretName | quote }}
+      key: {{ required "Password secret key is required" .passwordSecretKey | quote }}
+{{- end }}
 {{- end }}
 {{- range $index, $config := .Values.storage.credentials.s3 }}
 - name: UC_S3_ACCESSKEY_{{ $index }}
