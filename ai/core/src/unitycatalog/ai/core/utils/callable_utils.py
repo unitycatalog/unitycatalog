@@ -286,6 +286,8 @@ def format_default_value(default: Any) -> str:
         "'2024-01-15'"
         >>> format_default_value(datetime.datetime(2024, 1, 15, 10, 30))
         "'2024-01-15T10:30:00'"
+        >>> format_default_value(b"\x01\x02")
+        "X'0102'"
     """
 
     if default is None:
@@ -301,6 +303,11 @@ def format_default_value(default: Any) -> str:
         # arithmetic (2024-01-15 is 2024 - 1 - 15) and a datetime does not
         # parse as a timestamp at all, so quote the ISO representation.
         return f"'{default.isoformat()}'"
+    elif isinstance(default, bytes):
+        # Bytes defaults are binary literals in SQL, written in hex form.
+        # The Python repr (b'...') is not valid SQL; Spark SQL binary
+        # literals use the X'<hex>' form.
+        return f"X'{default.hex()}'"
     else:
         return str(default)
 

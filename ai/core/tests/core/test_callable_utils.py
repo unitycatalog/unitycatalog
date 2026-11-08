@@ -1312,6 +1312,10 @@ $$;
         (datetime.datetime(2024, 1, 15, 10, 30), "'2024-01-15T10:30:00'"),
         (datetime.datetime(2024, 1, 15, 10, 30, 5, 123456), "'2024-01-15T10:30:05.123456'"),
         (datetime.time(10, 30), "'10:30:00'"),
+        (b"", "X''"),
+        (b"\x01", "X'01'"),
+        (b"\x01\x02", "X'0102'"),
+        (b"\xff\xfe", "X'fffe'"),
     ],
 )
 def test_format_default_value(default, expected):
@@ -1374,6 +1378,76 @@ AS $$
 $$;
     """
     assert sql_body.strip() == expected_sql.strip()
+
+
+def test_function_with_default_bytes_value():
+    def func_with_default_bytes(a: bytes = b"\x01\x02") -> bytes:
+        """
+        A function with an optional bytes parameter.
+
+        Args:
+            a: Optional bytes parameter with a default value.
+
+        Returns:
+            bytes: The input value.
+        """
+        return a
+
+    sql_body = generate_sql_function_body(func_with_default_bytes, "test_catalog", "test_schema")
+
+    expected_sql = """
+CREATE FUNCTION `test_catalog`.`test_schema`.`func_with_default_bytes`(a BINARY DEFAULT X'0102' COMMENT 'Optional bytes parameter with a default value.')
+RETURNS BINARY
+LANGUAGE PYTHON
+COMMENT 'A function with an optional bytes parameter.'
+AS $$
+    return a
+$$;
+    """
+    assert sql_body.strip() == expected_sql.strip()
+
+
+@pytest.mark.parametrize(
+    ("default", "stored"),
+    [
+        (b"\x01\x02", "X'0102'"),
+        (b"", "X''"),
+        (b"\xff\x00", "X'ff00'"),
+    ],
+)
+def test_bytes_default_round_trip(default, stored):
+    # The formatted default is stored as parameter metadata and parsed back
+    # when the function is executed with defaults; the X'<hex>' form must
+    # parse back to the original bytes, not to a string.
+    def make_func(value: bytes):
+        def func_with_default(a: bytes = value) -> bytes:
+            """
+            A function with an optional bytes parameter.
+
+            Args:
+                a: Optional bytes parameter.
+
+            Returns:
+                bytes: The input value.
+            """
+            return a
+
+        return func_with_default
+
+    definition = generate_function_info(make_func(default))
+    assert definition.parameters[0].parameter_default == stored
+
+    function_info = FunctionInfo(
+        catalog_name="test_catalog",
+        schema_name="test_schema",
+        name="func_with_default",
+        input_params=FunctionParameterInfos(parameters=definition.parameters),
+    )
+
+    result = process_function_parameter_defaults(function_info, {})
+
+    assert result["a"] == default
+    assert isinstance(result["a"], bytes)
 
 
 @pytest.mark.parametrize("default", ["don't", "'", "C:\\path"])

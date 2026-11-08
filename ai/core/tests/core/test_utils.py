@@ -551,3 +551,36 @@ def test_process_function_parameter_defaults_with_null():
 
     assert result["null_param"] == "override"
     assert result["str_param"] == "default"
+
+
+def test_process_function_parameter_defaults_with_binary_literal():
+    func_info = FunctionInfo(
+        catalog_name="catalog",
+        schema_name="schema",
+        name="test_func",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="bytes_param",
+                    type_name="BINARY",
+                    type_text="binary",
+                    position=0,
+                    parameter_default="X'0102'",
+                ),
+                FunctionParameterInfo(
+                    name="empty_bytes_param",
+                    type_name="BINARY",
+                    type_text="binary",
+                    position=1,
+                    parameter_default="X''",
+                ),
+            ]
+        ),
+    )
+
+    result = process_function_parameter_defaults(func_info, {})
+
+    # The X'<hex>' binary literal must parse back to bytes, not stay a string
+    assert result["bytes_param"] == b"\x01\x02"
+    assert isinstance(result["bytes_param"], bytes)
+    assert result["empty_bytes_param"] == b""
