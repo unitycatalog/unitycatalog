@@ -17,6 +17,7 @@ public class UCHadoopConfConstants {
   public static final String S3A_INIT_SESSION_TOKEN = "fs.s3a.init.session.token";
   // Expired time in milliseconds.
   public static final String S3A_INIT_CRED_EXPIRED_TIME = "fs.s3a.init.credential.expired.time";
+  public static final String S3A_INIT_ENDPOINT_URL = "fs.s3a.init.endpoint";
 
   // Keys for the initialized Azure Blob Storage token.
   public static final String AZURE_INIT_SAS_TOKEN = "fs.azure.init.sas.token";

@@ -136,6 +136,9 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
         TestUtils.TEST_AWS_MASTER_ROLE_SECRET_KEY);
     serverProperties.put(ServerProperties.Property.AWS_REGION.getKey(), TestUtils.TEST_AWS_REGION);
 
+    // Static access-key vending: the secret is keyed by the credential's access key id.
+    serverProperties.put("s3.static.secretKey.staticAccessKey", "staticSecretKey");
+
     serverProperties.put("gcs.bucketPath.0", "gs://" + CONFIGURED_BUCKET);
     serverProperties.put("gcs.jsonKeyFilePath.0", "testing://0");
     serverProperties.put("gcs.credentialGenerator.0", TestingCredentialGenerator.class.getName());

@@ -39,6 +39,9 @@ bin/uc credential create \
 1. `name`: The name of the Credential.
 2. `aws_iam_role_arn`: The storage accessing IAM role ARN.
 
+For S3-compatible stores without STS, create a credential with `--aws_s3_access_key_id` instead
+(secret configured on the server; see [Static access keys](../server/aws.md#static-access-keys-for-s3-compatible-storage-no-sts)).
+
 This will output:
 ```console
 ┌────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────┐

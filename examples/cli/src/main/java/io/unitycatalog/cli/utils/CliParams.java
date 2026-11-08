@@ -74,6 +74,10 @@ public enum CliParams {
   CREDENTIAL_NAME("credential_name", "The name of the storage credential", "credential_name"),
   AWS_IAM_ROLE_ARN(
       "aws_iam_role_arn", "The ARN of the AWS IAM role for credential", "aws_iam_role_arn"),
+  AWS_S3_ACCESS_KEY_ID(
+      "aws_s3_access_key_id",
+      "Access key ID for static S3 credential vending (secret configured on the server)",
+      "aws_s3_access_key_id"),
   STORAGE_ROOT(
       "storage_root",
       "The storage root URL for managed tables/volumes within the catalog or schema.",
