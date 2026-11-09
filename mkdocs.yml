@@ -38,6 +38,7 @@ nav:
       - Deployment: server/deployment.md
       - Deploy with Helm: server/helm.md
       - Deploy for AWS: server/aws.md
+      - Upgrades: server/upgrades.md
       - Observability: server/observability.md
   - Integrations:
       - Overview: integrations/index.md

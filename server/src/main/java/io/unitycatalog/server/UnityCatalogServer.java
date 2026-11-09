@@ -18,6 +18,7 @@ import io.unitycatalog.server.cleanup.StorageCleanupWorker;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.migrate.SchemaMigrator;
 import io.unitycatalog.server.observability.DbReadinessChecker;
 import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
@@ -378,7 +379,7 @@ public class UnityCatalogServer implements AutoCloseable {
     // base path root).
     armeriaServerBuilder
         .annotate("auth", new AuthService(securityContext, serverProperties, repositories))
-        .annotate("scim2/Users", new Scim2UserService(authorizer, repositories))
+        .annotate("scim2/Users", new Scim2UserService(authorizer, repositories, serverProperties))
         .annotate("scim2/Me", new Scim2SelfService(authorizer, repositories))
         .annotate("permissions", new PermissionService(authorizer, repositories, serverProperties))
         .annotate("catalogs", new CatalogService(authorizer, repositories, serverProperties))
@@ -463,6 +464,11 @@ public class UnityCatalogServer implements AutoCloseable {
   public static void main(String[] args) {
     OptionParser options = new OptionParser();
     options.parse(args);
+    if (options.isUpgradeSchema()) {
+      int exitCode = SchemaMigrator.runCommand(Path.of("etc", "conf"), System.out);
+      LogManager.shutdown();
+      System.exit(exitCode);
+    }
     int port = options.getPort();
     ServerProperties serverProperties = new ServerProperties(SERVER_PROPERTIES_FILE);
     UnityCatalogServer.Builder serverBuilder =
