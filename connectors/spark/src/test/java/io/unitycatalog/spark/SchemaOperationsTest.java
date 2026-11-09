@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.analysis.NamespaceAlreadyExistsException;
@@ -65,6 +66,25 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
 
     // See method comment: when Delta is disabled the delegate must be UCProxy (flag stays false).
     assertThat(UCSingleCatalog.DELTA_CATALOG_LOADED().get()).isEqualTo(loadDeltaCatalog);
+  }
+
+  @ParameterizedTest(name = "loadDeltaCatalog={0}")
+  @ValueSource(booleans = {true, false})
+  public void testCreateSchemaKeepsCommentAndLocation(boolean loadDeltaCatalog) {
+    UCSingleCatalog.LOAD_DELTA_CATALOG().set(loadDeltaCatalog);
+    session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    session.catalog().setCurrentCatalog(CATALOG_NAME);
+    String location = "s3://test-bucket0/schema_with_location";
+
+    sql("CREATE SCHEMA commented_schema COMMENT 'my comment' LOCATION '%s'", location);
+
+    Map<String, String> desc =
+        sql("DESC SCHEMA EXTENDED commented_schema").stream()
+            .collect(Collectors.toMap(row -> row.getString(0), row -> row.getString(1)));
+    assertThat(desc).containsEntry("Comment", "my comment").containsEntry("Location", location);
+    assertThat(desc.getOrDefault("Properties", ""))
+        .doesNotContain("properties:comment", "properties:location");
+    sql("DROP SCHEMA %s.commented_schema", CATALOG_NAME);
   }
 
   // On Spark 4.2+ (SPARK-55250), this exercises the UCProxy.createNamespace catch
