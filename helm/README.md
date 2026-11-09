@@ -35,10 +35,10 @@ delete both to remove the data.
 
 ## Audit records
 Turn on [audit records](https://github.com/unitycatalog/unitycatalog/blob/main/docs/server/configuration.md#audit-records)
-to write one JSON line per issued storage credential to `/home/unitycatalog/etc/logs/audit.log`; the
-chart already configures the `audit` logger. The file is lost when the pod restarts, so ship it
-continuously (for example from a sidecar in `server.deployment.extraContainers`) or keep the
-directory on a volume:
+to write one JSON line per issued storage credential and permission change to
+`/home/unitycatalog/etc/logs/audit.log`; the chart already configures the `audit` logger. The file
+is lost when the pod restarts, so ship it continuously (for example from a sidecar in
+`server.deployment.extraContainers`) or keep the directory on a volume:
 
 ```yaml
 server:
