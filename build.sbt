@@ -155,7 +155,7 @@ lazy val commonSettings = Seq(
   },
   
   assembly / test := {}
-)
+) ++ TestParallelization.settings
 
 lazy val log4jProcessSettings = Seq(
   libraryDependencies ++= Seq(
