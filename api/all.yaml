@@ -1311,7 +1311,10 @@ paths:
         - Credentials
       operationId: deleteCredential
       summary: Delete a credential
-      description: Deletes a credential from the metastore. The caller must be a metastore admin or the owner of the credential.
+      description: |-
+        Deletes a credential from the metastore.
+        The caller must be a metastore admin, the credential owner,
+        or have MANAGE on the credential.
       parameters:
         - name: force
           in: query
@@ -1409,7 +1412,10 @@ paths:
       tags:
         - External Locations
       summary: Delete an external location
-      description: Deletes the specified external location from the metastore. The caller must be a metastore admin or the owner of the external location.
+      description: |-
+        Deletes the specified external location from the metastore.
+        The caller must be a metastore admin, the external location owner,
+        or have MANAGE on the external location.
       operationId: deleteExternalLocation
       parameters:
         - name: force
@@ -1425,8 +1431,10 @@ paths:
       tags:
         - External Locations
       summary: Update an external location
-      description: |
-        Updates an external location in the metastore. The caller must be the owner of the external location or a metastore admin.
+      description: |-
+        Updates an external location in the metastore.
+        The caller must be a metastore admin, the external location owner,
+        or have MANAGE on the external location.
       operationId: updateExternalLocation
       requestBody:
         required: true

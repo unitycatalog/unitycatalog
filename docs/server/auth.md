@@ -262,6 +262,9 @@ Catalog and schema grants also cover their children. Schema grants require `USE 
 Grants on objects within a schema require both `USE CATALOG` and `USE SCHEMA`.
 Catalogs, external locations, and storage credentials require no usage grants.
 
+Existing `MANAGE` grants become active after this upgrade. Review them and remove
+any unwanted grants before upgrading.
+
 ### Discover objects with BROWSE
 
 Catalog `BROWSE` lets a user discover the catalog and its schemas, tables, views, functions,
