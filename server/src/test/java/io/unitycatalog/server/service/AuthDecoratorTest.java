@@ -50,7 +50,8 @@ class AuthDecoratorTest {
   private final HttpService delegate = mock();
   private AuthDecorator decorator;
   private String token;
-  @TempDir Path configurationFolder;
+  // Shared by all tests, so the signing keys are generated once.
+  @TempDir static Path configurationFolder;
 
   @BeforeEach
   void setUp() {

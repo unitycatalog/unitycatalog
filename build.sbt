@@ -732,13 +732,15 @@ lazy val spark = (project in file("connectors/spark"))
     ),
     // Arrow-backed vectorized reads need java.nio opened for off-heap memory access.
     Test / javaOptions += "--add-opens=java.base/java.nio=ALL-UNNAMED",
-    // Test-only Spark/Delta settings: no Spark UI, and fewer partitions for small test tables,
-    // whose defaults are sized for real data and dominate the Delta read/write suites' run time.
+    // Test-only Spark/Delta settings.
     Test / javaOptions ++= Seq(
+      // No web UI, which would bind a port for every Spark session.
       "-Dspark.ui.enabled=false",
+      // No progress bars in the test output.
       "-Dspark.ui.showConsoleProgress=false",
+      // Delta rebuilds table snapshots with 50 partitions by default, sized for real tables; for
+      // tiny test tables that overhead dominates the Delta read/write suites.
       "-Dspark.databricks.delta.snapshotPartitions=2",
-      "-Dspark.sql.sources.parallelPartitionDiscovery.parallelism=5",
     ),
     javafmtCheckSettings(),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),

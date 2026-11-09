@@ -59,6 +59,7 @@ import io.unitycatalog.server.utils.VersionUtils;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
@@ -632,11 +633,18 @@ public class UnityCatalogServer implements AutoCloseable {
 
     /**
      * Sets the folder holding the signing keys, which the server creates if missing, and the {@code
-     * certs.json} and {@code token.txt} it writes on every start. Defaults to {@code etc/conf};
+     * certs.json} and {@code token.txt} it writes when constructed. Defaults to {@code etc/conf};
      * tests pass their own folder so concurrent servers do not share these files.
+     *
+     * <p>Only these files move: {@code server.properties}, {@code hibernate.properties} and the
+     * log4j configuration are still read from {@code etc/conf}.
+     *
+     * @param configurationFolder the folder for the signing keys, {@code certs.json} and {@code
+     *     token.txt}
+     * @return this builder
      */
     public UnityCatalogServer.Builder configurationFolder(Path configurationFolder) {
-      this.configurationFolder = configurationFolder;
+      this.configurationFolder = Objects.requireNonNull(configurationFolder, "configurationFolder");
       return this;
     }
 

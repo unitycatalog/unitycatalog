@@ -136,7 +136,8 @@ public abstract class BaseServerTest {
       }
       signingKeysFolder = folder;
     }
-    // Replace, since setUp() can run twice in one test when a subclass @BeforeEach calls it.
+    // Replace: setUp() runs twice in one test when a subclass declares another @BeforeEach method
+    // that calls super.setUp(), instead of overriding setUp().
     try (Stream<Path> keys = Files.list(signingKeysFolder)) {
       for (Path key : keys.toList()) {
         Files.copy(key, target.resolve(key.getFileName()), REPLACE_EXISTING);
