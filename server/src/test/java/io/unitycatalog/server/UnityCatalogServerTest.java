@@ -49,6 +49,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
               .port(occupied.getLocalPort())
               .serverProperties(new ServerProperties(serverProperties))
               .hibernateConfigurator(hibernateConfigurator)
+              .configurationFolder(configurationFolder)
               .build();
       // BaseServerTest retries only a ServerPortBindException, so the cause is part of the
       // contract, as is a close() that releases what the failed start left behind.
@@ -72,6 +73,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
                     .port(0)
                     .serverProperties(new ServerProperties(audited))
                     .hibernateConfigurator(hibernateConfigurator)
+                    .configurationFolder(configurationFolder)
                     .fileOperationsDecorator(
                         fileOperations -> {
                           throw new IllegalStateException("decorator failed");
@@ -92,6 +94,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
             .port(0)
             .serverProperties(new ServerProperties(audited))
             .hibernateConfigurator(hibernateConfigurator)
+            .configurationFolder(configurationFolder)
             .build();
     server.start();
     server.close();
