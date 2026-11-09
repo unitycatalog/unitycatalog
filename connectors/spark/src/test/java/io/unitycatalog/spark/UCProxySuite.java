@@ -33,8 +33,8 @@ import org.junit.jupiter.api.Test;
  * supported Spark version). Lives under {@code src/test/java/}, so it compiles and runs against
  * Spark 4.0, 4.1, and 4.2. It composes {@link UCProxyTestFixture} (rather than inheriting it) and
  * references no Spark-4.2-only type. The view-side tests live in {@code UCViewProxySuite} under
- * {@code src/test/scala-shims/spark-4.2/}; the pre-view-API (4.0/4.1) unsupported-path tests live
- * in {@code UCViewUnsupportedSuite} under {@code src/test/scala-shims/spark-4.0-4.1/}.
+ * {@code src/test/scala-shims/spark-4.2-4.3/}; the pre-view-API (4.0/4.1) unsupported-path tests
+ * live in {@code UCViewUnsupportedSuite} under {@code src/test/scala-shims/spark-4.0-4.1/}.
  *
  * <p>End-to-end integration tests that exercise pagination through UCSingleCatalog and a real UC
  * server are in {@link BaseTableReadWriteTest#testListTablesPagination} and {@link

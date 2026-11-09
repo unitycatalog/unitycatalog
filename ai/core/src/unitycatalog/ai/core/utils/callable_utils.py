@@ -1,9 +1,12 @@
 import ast
+import datetime
 import inspect
 import json
+import re
 import warnings
 from dataclasses import dataclass
 from textwrap import dedent, fill, indent
+from types import UnionType
 from typing import (
     Any,
     Callable,
@@ -211,8 +214,8 @@ def validate_type_hint(hint: Any) -> str:
     Returns:
         The corresponding SQL type.
     """
-    if hasattr(hint, "__origin__") and hint.__origin__ is Union:
-        non_none_types = [t for t in hint.__args__ if t is not type(None)]
+    if get_origin(hint) in (Union, UnionType):
+        non_none_types = [t for t in get_args(hint) if t is not type(None)]
         if len(non_none_types) == 1:
             return python_type_to_sql_type(non_none_types[0])
         else:
@@ -275,14 +278,29 @@ def format_default_value(default: Any) -> str:
         'NULL'
         >>> format_default_value("default")
         "'default'"
+        >>> format_default_value("don't")
+        "'don\\\\'t'"
         >>> format_default_value(42)
         '42'
+        >>> format_default_value(datetime.date(2024, 1, 15))
+        "'2024-01-15'"
+        >>> format_default_value(datetime.datetime(2024, 1, 15, 10, 30))
+        "'2024-01-15T10:30:00'"
     """
 
     if default is None:
         return "NULL"
     elif isinstance(default, str):
-        return f"'{default}'"
+        # Escape backslashes first, then single quotes, matching how Spark
+        # SQL parses string literals (\' is an escaped quote; '' is not).
+        escaped = default.replace("\\", "\\\\").replace("'", "\\'")
+        return f"'{escaped}'"
+    elif isinstance(default, (datetime.date, datetime.time)):
+        # Date/time defaults are string literals in SQL (datetime is a date
+        # subclass, so one check covers both). Unquoted, a date renders as
+        # arithmetic (2024-01-15 is 2024 - 1 - 15) and a datetime does not
+        # parse as a timestamp at all, so quote the ISO representation.
+        return f"'{default.isoformat()}'"
     else:
         return str(default)
 
@@ -333,14 +351,14 @@ def is_valid_default_value(default: Any, type_hint: Any) -> bool:
     args = get_args(type_hint)
 
     if default is None:
-        if origin is Union and type(None) in args:
+        if origin in (Union, UnionType) and type(None) in args:
             return True
         elif type_hint is type(None):
             return True
         else:
             return False
     else:
-        if origin is Union:
+        if origin in (Union, UnionType):
             return any(
                 is_valid_default_value(default, arg) for arg in args if arg is not type(None)
             )
@@ -693,6 +711,11 @@ $$;
     return sql_body
 
 
+def _base_type_name(sql_type: str) -> str:
+    """Returns the base type name, e.g. DECIMAL for DECIMAL(38, 18) and ARRAY for ARRAY<LONG>."""
+    return re.split(r"[<( ]", sql_type, maxsplit=1)[0]
+
+
 def extract_function_metadata(func: Callable[..., Any]) -> FunctionMetadata:
     """
     Extracts metadata from a Python function necessary for SQL function generation.
@@ -714,7 +737,7 @@ def extract_function_metadata(func: Callable[..., Any]) -> FunctionMetadata:
 
     sql_return_type = validate_return_type(func_name, type_hints)
 
-    base_return_type_name = sql_return_type.split("<", 1)[0]
+    base_return_type_name = _base_type_name(sql_return_type)
 
     docstring = inspect.getdoc(func)
     if not docstring:
@@ -751,7 +774,7 @@ def extract_function_metadata(func: Callable[..., Any]) -> FunctionMetadata:
             error_message = generate_type_hint_error_message(param_name, param_hint, e)
             raise ValueError(error_message) from e
 
-        base_type_name = sql_type.split("<", 1)[0]
+        base_type_name = _base_type_name(sql_type)
 
         param_comment = docstring_info.params.get(param_name)
         if param_comment:
@@ -965,7 +988,7 @@ def validate_return_type(func_name: str, type_hints: dict[str, Any]) -> str:
             base_msg += (
                 " Please define the inner types, e.g., List[int], Tuple[str, int], Dict[str, int]."
             )
-        elif origin is Union or return_type_hint is Union:
+        elif origin in (Union, UnionType) or return_type_hint is Union:
             base_msg += " Union types are not supported in return types."
         elif return_type_hint is Any:
             base_msg += " 'Any' type is not supported. Please specify a concrete return type."
@@ -1024,17 +1047,17 @@ def check_docstring_signature_consistency(
 
 def _split_generic_types(s: str) -> list[str]:
     """
-    Split a generic type string into its components, ignoring commas inside nested generics.
-    For example, "STRING, ARRAY<STRING>, MAP<STRING, INT>" becomes
-    ["STRING", "ARRAY<STRING>", "MAP<STRING, INT>"].
+    Split a generic type string into its components, ignoring commas inside nested generics
+    and type parameters. For example, "STRING, MAP<STRING, INT>, DECIMAL(38, 18)" becomes
+    ["STRING", "MAP<STRING, INT>", "DECIMAL(38, 18)"].
     """
     parts = []
     current_chars = []
     depth = 0
     for ch in s:
-        if ch == "<":
+        if ch in "<(":
             depth += 1
-        elif ch == ">":
+        elif ch in ">)":
             depth -= 1
 
         if ch == "," and depth == 0:

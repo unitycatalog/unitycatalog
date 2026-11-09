@@ -88,6 +88,17 @@ public class SimpleLocalFileIOTest {
   }
 
   @Test
+  public void readsFileUrisWithEncodedCharacters() throws IOException {
+    Path file = tempDir.resolve("uc warehouse/data.txt");
+    Files.createDirectories(file.getParent());
+    Files.writeString(file, "hello");
+    String location = uri(file);
+    assertThat(location).contains("uc%20warehouse");
+    assertThat(fileIO.newInputFile(location).exists()).isTrue();
+    assertThat(read(location)).isEqualTo("hello");
+  }
+
+  @Test
   public void newOutputFileCreatesMissingParentDirectories() {
     String location = uri(tempDir.resolve("nested/deeper/data.txt"));
     write(location, "content");

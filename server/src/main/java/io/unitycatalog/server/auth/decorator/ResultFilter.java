@@ -122,7 +122,10 @@ public class ResultFilter {
       throw new RuntimeException("Securable type " + securableType + " is already resolved");
     }
 
-    long operationStartNanos = System.nanoTime();
+    // One batch for the whole list: the checks on shared parents (metastore, catalog, schema) are
+    // the same for every item, so they reach the authorizer once instead of once per item.
+    UnityAccessEvaluator.Batch batch =
+        evaluator.batch(principalId, expression, nonResourceValues, System.nanoTime());
 
     items.removeIf(
         item -> {
@@ -131,13 +134,7 @@ public class ResultFilter {
             // collection of all needed resource IDs for this item.
             Map<SecurableType, UUID> resourceIdsForItem =
                 resolveResourceIdsForItem(securableType, item, resourceIds);
-            boolean authorized =
-                evaluator.evaluate(
-                    principalId,
-                    expression,
-                    resourceIdsForItem,
-                    nonResourceValues,
-                    operationStartNanos);
+            boolean authorized = batch.evaluate(resourceIdsForItem);
             if (!authorized) {
               LOGGER.debug("Item filtered out: {}", item.getClass().getSimpleName());
             }

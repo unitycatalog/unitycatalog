@@ -46,6 +46,7 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.service.AuthorizedService;
 import io.unitycatalog.server.service.RegisteredService;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -158,7 +159,8 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
   /**
    * Delete a table by three-part name. Mirrors {@link
    * io.unitycatalog.server.service.TableService#deleteTable}, but returns 204 No Content per {@code
-   * delta.yaml} (the UC counterpart returns 200). {@code deleteTable} returns the deleted table's
+   * delta.yaml} (the UC counterpart returns 200) and rejects a non-Delta table with {@code
+   * UnsupportedTableFormatException} (400). {@code deleteTableForDelta} returns the deleted table's
    * DAO, so the table and schema UUIDs for the authorization cleanup come from the same lookup that
    * removed the table.
    */
@@ -168,7 +170,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table) {
-    TableInfoDAO deleted = tableRepository.deleteTable(catalog, schema, table);
+    TableInfoDAO deleted = tableRepository.deleteTableForDelta(catalog, schema, table);
     removeHierarchicalAuthorizations(deleted.getId().toString(), deleted.getSchemaId().toString());
     return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
@@ -207,7 +209,8 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
     TemporaryCredentials credentials =
         storageCredentialVendor.vendCredential(
             stagingLocation,
-            Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
+            Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE),
+            CredentialUse.CLIENT);
     return DeltaStagingTableMapper.toStagingTableResponse(staging, credentials);
   }
 
@@ -280,7 +283,8 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
 
   /**
    * Rename a table by three-part name, within the same catalog and schema. Cross-catalog and
-   * cross-schema moves are not supported per {@code delta.yaml}.
+   * cross-schema moves are not supported per {@code delta.yaml}. A non-Delta table is rejected with
+   * {@code UnsupportedTableFormatException} (400).
    */
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename")
   @AuthorizeExpression(AuthorizeExpressions.RENAME_TABLE)
@@ -292,7 +296,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
     if (request == null || request.getNewName() == null || request.getNewName().isBlank()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "New table name is required.");
     }
-    tableRepository.renameTable(catalog, schema, table, request.getNewName());
+    tableRepository.renameTableForDelta(catalog, schema, table, request.getNewName());
     return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
@@ -344,7 +348,8 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
       @Param("operation") @AuthorizeKey DeltaCredentialOperation operation) {
     NormalizedURL storageLocation = tableRepository.getTableStorageLocation(catalog, schema, table);
     TemporaryCredentials credentials =
-        storageCredentialVendor.vendCredential(storageLocation, toPrivileges(operation));
+        storageCredentialVendor.vendCredential(
+            storageLocation, toPrivileges(operation), CredentialUse.CLIENT);
     return DeltaCredentialsMapper.toCredentialsResponse(credentials, operation);
   }
 
@@ -363,7 +368,8 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
     TemporaryCredentials credentials =
         storageCredentialVendor.vendCredential(
             storageLocation,
-            Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
+            Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE),
+            CredentialUse.CLIENT);
     return DeltaCredentialsMapper.toCredentialsResponse(
         credentials, DeltaCredentialOperation.READ_WRITE);
   }

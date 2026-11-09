@@ -1,9 +1,13 @@
 package io.unitycatalog.server.auth;
 
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.testdatabase.TempDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.sql.Connection;
@@ -19,6 +23,7 @@ import org.junit.jupiter.api.Test;
 public class JCasbinAuthorizerTest {
   private UnityCatalogAuthorizer authenticator;
   private HibernateConfigurator hibernateConfigurator;
+  @TempDatabase private TestDatabase testDatabase;
 
   @BeforeEach
   void setUp() throws Exception {
@@ -27,7 +32,7 @@ public class JCasbinAuthorizerTest {
     // Single-instance tests do not need background polling.
     properties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "false");
     ServerProperties serverProperties = new ServerProperties(properties);
-    hibernateConfigurator = new HibernateConfigurator(serverProperties);
+    hibernateConfigurator = testDatabase.hibernateConfigurator();
     authenticator = new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
   }
 
@@ -40,7 +45,6 @@ public class JCasbinAuthorizerTest {
         throw new RuntimeException(e);
       }
     }
-    hibernateConfigurator.close();
   }
 
   @Test
@@ -62,7 +66,7 @@ public class JCasbinAuthorizerTest {
     Privileges action = Privileges.CREATE_CATALOG;
 
     authenticator.grantAuthorization(principal, resource, action);
-    assertThat(authenticator.authorize(principal, resource, action)).isTrue();
+    assertThat(authenticator.authorize(principal, METASTORE, resource, action)).isTrue();
   }
 
   @Test
@@ -72,9 +76,9 @@ public class JCasbinAuthorizerTest {
     Privileges action = Privileges.CREATE_CATALOG;
 
     authenticator.grantAuthorization(principal, resource, action);
-    assertThat(authenticator.authorize(principal, resource, action)).isTrue();
+    assertThat(authenticator.authorize(principal, METASTORE, resource, action)).isTrue();
     authenticator.revokeAuthorization(principal, resource, action);
-    assertThat(authenticator.authorize(principal, resource, action)).isFalse();
+    assertThat(authenticator.authorize(principal, METASTORE, resource, action)).isFalse();
   }
 
   @Test
@@ -86,15 +90,15 @@ public class JCasbinAuthorizerTest {
 
     authenticator.grantAuthorization(principal, resource, action);
     authenticator.grantAuthorization(principal2, resource, action);
-    assertThat(authenticator.authorize(principal, resource, action)).isTrue();
-    assertThat(authenticator.authorize(principal2, resource, action)).isTrue();
+    assertThat(authenticator.authorize(principal, METASTORE, resource, action)).isTrue();
+    assertThat(authenticator.authorize(principal2, METASTORE, resource, action)).isTrue();
 
     authenticator.clearAuthorizationsForPrincipal(principal);
-    assertThat(authenticator.authorize(principal, resource, action)).isFalse();
-    assertThat(authenticator.authorize(principal2, resource, action)).isTrue();
+    assertThat(authenticator.authorize(principal, METASTORE, resource, action)).isFalse();
+    assertThat(authenticator.authorize(principal2, METASTORE, resource, action)).isTrue();
 
     authenticator.clearAuthorizationsForPrincipal(principal2);
-    assertThat(authenticator.authorize(principal2, resource, action)).isFalse();
+    assertThat(authenticator.authorize(principal2, METASTORE, resource, action)).isFalse();
   }
 
   @Test
@@ -106,7 +110,7 @@ public class JCasbinAuthorizerTest {
 
     authenticator.addHierarchyChild(catalog, schema);
     authenticator.grantAuthorization(principal, catalog, action);
-    assertThat(authenticator.authorize(principal, schema, action)).isTrue();
+    assertThat(authenticator.authorize(principal, SCHEMA, schema, action)).isTrue();
   }
 
   @Test
@@ -118,9 +122,9 @@ public class JCasbinAuthorizerTest {
 
     authenticator.addHierarchyChild(catalog, schema);
     authenticator.grantAuthorization(principal, catalog, action);
-    assertThat(authenticator.authorize(principal, schema, action)).isTrue();
+    assertThat(authenticator.authorize(principal, SCHEMA, schema, action)).isTrue();
     authenticator.removeHierarchyChild(catalog, schema);
-    assertThat(authenticator.authorize(principal, schema, action)).isFalse();
+    assertThat(authenticator.authorize(principal, SCHEMA, schema, action)).isFalse();
   }
 
   @Test
@@ -132,9 +136,9 @@ public class JCasbinAuthorizerTest {
 
     authenticator.addHierarchyChild(catalog, schema);
     authenticator.grantAuthorization(principal, catalog, action);
-    assertThat(authenticator.authorize(principal, schema, action)).isTrue();
+    assertThat(authenticator.authorize(principal, SCHEMA, schema, action)).isTrue();
     authenticator.removeHierarchyChildren(catalog);
-    assertThat(authenticator.authorize(principal, schema, action)).isFalse();
+    assertThat(authenticator.authorize(principal, SCHEMA, schema, action)).isFalse();
   }
 
   @Test
@@ -144,12 +148,12 @@ public class JCasbinAuthorizerTest {
 
     assertThat(
             authenticator.authorizeAny(
-                principal, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG))
+                principal, METASTORE, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG))
         .isFalse();
     authenticator.grantAuthorization(principal, resource, Privileges.USE_CATALOG);
     assertThat(
             authenticator.authorizeAny(
-                principal, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG))
+                principal, METASTORE, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG))
         .isTrue();
   }
 
@@ -160,17 +164,17 @@ public class JCasbinAuthorizerTest {
 
     assertThat(
             authenticator.authorizeAll(
-                principal, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG))
+                principal, METASTORE, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG))
         .isFalse();
     authenticator.grantAuthorization(principal, resource, Privileges.USE_CATALOG);
     assertThat(
             authenticator.authorizeAll(
-                principal, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG))
+                principal, METASTORE, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG))
         .isFalse();
     authenticator.grantAuthorization(principal, resource, Privileges.CREATE_CATALOG);
     assertThat(
             authenticator.authorizeAll(
-                principal, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG))
+                principal, METASTORE, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG))
         .isTrue();
   }
 

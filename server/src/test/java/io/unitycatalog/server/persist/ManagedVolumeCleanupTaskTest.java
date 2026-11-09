@@ -10,8 +10,9 @@ import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StorageCleanupTaskDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
-import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.testdatabase.TempDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Path;
@@ -21,7 +22,6 @@ import java.util.Properties;
 import java.util.UUID;
 import java.util.function.Function;
 import org.hibernate.SessionFactory;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,6 +33,7 @@ class ManagedVolumeCleanupTaskTest {
   @TempDir Path tempDir;
 
   private SessionFactory sessionFactory;
+  @TempDatabase private TestDatabase testDatabase;
   private Repositories repositories;
   private UUID schemaId;
 
@@ -41,11 +42,7 @@ class ManagedVolumeCleanupTaskTest {
     Properties properties = new Properties();
     properties.setProperty("server.env", "test");
     ServerProperties serverProperties = new ServerProperties(properties);
-    Properties hibernateProperties =
-        HibernateConfigurator.setupHibernateProperties(serverProperties);
-    hibernateProperties.setProperty(
-        "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
-    sessionFactory = new HibernateConfigurator(hibernateProperties).getSessionFactory();
+    sessionFactory = testDatabase.sessionFactory();
     repositories = new Repositories(sessionFactory, serverProperties);
 
     UUID catalogId = UUID.randomUUID();
@@ -66,11 +63,6 @@ class ManagedVolumeCleanupTaskTest {
         },
         "Failed to create test namespace",
         /* readOnly= */ false);
-  }
-
-  @AfterEach
-  void tearDown() {
-    sessionFactory.close();
   }
 
   @Test

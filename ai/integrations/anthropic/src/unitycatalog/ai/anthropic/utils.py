@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, ValidationError
 
-from anthropic.types import ContentBlock, Message, MessageParam, ToolUseBlock
+from anthropic.types import ContentBlock, Message, ToolUseBlock
 from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import construct_original_function_name
@@ -16,7 +16,8 @@ class ConversationMessage(BaseModel):
     role: str = Field(
         ..., description="The role of the message sender, e.g., 'user' or 'assistant'."
     )
-    content: Union[str, List[MessageParam], List[ContentBlock]] = Field(
+    # Dict blocks (e.g. `tool_result` blocks from a previous tool call round) pass through unchanged
+    content: Union[str, List[Union[Dict[str, Any], ContentBlock]]] = Field(
         ...,
         description="The content of the message, whether from an original user question or an assistant response.",
     )

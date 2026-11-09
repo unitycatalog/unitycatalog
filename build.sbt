@@ -21,7 +21,7 @@ lazy val javacRelease17 = Seq("--release", "17")
 
 lazy val scala213 = "2.13.17"
 
-lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.3.1")
+lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.4.1")
 // Intentionally shadows CrossSparkVersions.autoImport.sparkVersion (SettingKey).
 // This String val is used for libraryDependencies coordinates; the SettingKey is
 // queryable in SBT via `show spark/sparkVersion`.
@@ -43,7 +43,14 @@ lazy val armeriaVersion = "1.41.1"
 lazy val micrometerVersion = "1.17.0"
 lazy val nettyVersion = "4.2.18.Final"
 lazy val nettyTcnativeVersion = "2.0.84.Final"
-lazy val vertxVersion = "4.5.34"
+lazy val postgresqlVersion = "42.7.14"
+lazy val flywayVersion = "13.10.3"
+// Keep in step with the Caffeine version iceberg-core depends on (2.9.3 in Iceberg 1.11.0).
+lazy val caffeineVersion = "2.9.3"
+lazy val junitJupiterVersion = "5.13.4"
+// Declared in each test module: the jupiter-interface bridge pulls launcher 1.9, which must match.
+lazy val junitPlatformVersion = "1.13.4"
+lazy val testcontainersVersion = "1.21.4"
 val orgApacheHttpVersion = "4.5.14"
 
 // Latest patch on the Jackson line each Spark version ships, used to compile and test the
@@ -88,10 +95,14 @@ lazy val commonSettings = Seq(
   excludeDependencies ++= Seq(
     ExclusionRule("org.slf4j", "slf4j-reload4j")
   ),
-  resolvers += Resolver.mavenLocal,
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
+    // Merged, not dropped: Flyway finds its database support through its ServiceLoader file.
+    case PathList("META-INF", "services", f) if f.startsWith("org.flywaydb") => MergeStrategy.filterDistinctLines
+    // Keep the Log4j provider registration that adds request_id to log lines.
+    case PathList("META-INF", "services", "org.apache.logging.log4j.core.util.ContextDataProvider") =>
+      MergeStrategy.concat
     case PathList("META-INF", xs @ _*) => MergeStrategy.discard
     case _ => MergeStrategy.first
   },
@@ -109,7 +120,10 @@ lazy val commonSettings = Seq(
       targetDir = packageFile.getParentFile,
       // Also include the jar being built (packageFile) in the classpath
       // This is specifically required by the server project since the server and control models are provided dependencies
-      classpath = (Runtime / dependencyClasspath).value :+ Attributed.blank(packageFile)
+      // The jar replaces the project's own class directory: with both, Flyway finds every
+      // migration step twice.
+      classpath = (Runtime / dependencyClasspath).value
+        .filterNot(_.data == (Compile / classDirectory).value) :+ Attributed.blank(packageFile)
     )
     packageFile
   },
@@ -228,7 +242,8 @@ lazy val client = (project in file("clients/java"))
       "org.mockito" % "mockito-core" % "5.11.0" % Test,
       "org.mockito" % "mockito-inline" % "5.2.0" % Test,
       "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
-      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % junitJupiterVersion % Test,
+      "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
     ),
@@ -314,7 +329,10 @@ lazy val pythonClient = (project in file("clients/python"))
             OpenApiSpec(
               inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "all.yaml").getAbsolutePath,
               packageName = s"$artifactNamePrefix.client",
-              additionalProperties = commonProps
+              additionalProperties = commonProps,
+              // Overrides python/asyncio/rest.mustache with the v7.11.0 version. See the header of
+              // build/templates/asyncio/rest.mustache for when to remove it.
+              templateDir = (baseDirectory.value / "build" / "templates").getAbsolutePath
             ),
             OpenApiSpec(
               inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "delta.yaml").getAbsolutePath,
@@ -405,12 +423,18 @@ lazy val server = (project in file("server"))
       "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % jacksonVersion,
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
+      // Delta Kernel validates set-columns schema evolution.
+      "io.delta" % "delta-kernel-api" % deltaVersion,
 
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
+      "com.github.ben-manes.caffeine" % "caffeine" % caffeineVersion,
       "com.h2database" %  "h2" % "2.2.224",
 
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
       "com.zaxxer" % "HikariCP" % "7.1.0",
+      "org.flywaydb" % "flyway-core" % flywayVersion,
+      "org.flywaydb" % "flyway-database-postgresql" % flywayVersion,
+      "org.flywaydb" % "flyway-mysql" % flywayVersion,
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
@@ -444,9 +468,6 @@ lazy val server = (project in file("server"))
       // Iceberg's S3FileIO loads the "apache" HTTP client by default, but AWS SDK v2 now pulls in
       // apache5-client instead, so declare apache-client explicitly
       "software.amazon.awssdk" % "apache-client" % awsSdkV2Version,
-      "io.vertx" % "vertx-core" % vertxVersion,
-      "io.vertx" % "vertx-web" % vertxVersion,
-      "io.vertx" % "vertx-web-client" % vertxVersion,
 
       // Hadoop dependencies for ExternalLocationUtils
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
@@ -457,12 +478,14 @@ lazy val server = (project in file("server"))
       "org.casbin" % "jdbc-adapter" % "2.13.0"
         exclude("com.microsoft.sqlserver", "mssql-jdbc")
         exclude("com.oracle.database.jdbc", "ojdbc6"),
+      "org.postgresql" % "postgresql" % postgresqlVersion,
       "org.springframework" % "spring-expression" % "6.2.19",
       "com.auth0" % "java-jwt" % "4.6.1",
       "com.auth0" % "jwks-rsa" % "0.24.1",
 
       // Test dependencies
-      "org.junit.jupiter" %  "junit-jupiter" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % junitJupiterVersion % Test,
+      "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
       "org.mockito" % "mockito-core" % "5.11.0" % Test,
       "org.mockito" % "mockito-inline" % "5.2.0" % Test,
       "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
@@ -473,19 +496,17 @@ lazy val server = (project in file("server"))
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
 
       // Integration testing
-      "org.testcontainers" % "testcontainers" % "1.19.8" % Test,
-      "org.testcontainers" % "postgresql" % "1.19.8" % Test,
-      "org.testcontainers" % "mysql" % "1.19.8" % Test,
-      "org.testcontainers" % "junit-jupiter" % "1.19.8" % Test,
-      "org.postgresql" % "postgresql" % "42.7.13" % Test,
-      "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
+      "org.testcontainers" % "junit-jupiter" % testcontainersVersion % Test,
 
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
     ),
+    libraryDependencies ++= testDatabaseDependencies,
     // Iceberg 1.11.0 brings its own Jackson version that conflicts with the project's pinned jackson version.
     // Force AWS SDK v2 onto a single release as well (Iceberg and Hadoop otherwise mix 2.24 / 2.27).
     dependencyOverrides ++= Seq(
+      // One PostgreSQL driver: jdbc-adapter brings 42.7.2. Keep in step with the direct dependency.
+      "org.postgresql" % "postgresql" % postgresqlVersion,
       "software.amazon.awssdk" % "sso" % awsSdkV2Version,
       "software.amazon.awssdk" % "ssooidc" % awsSdkV2Version,
       "software.amazon.awssdk" % "s3" % awsSdkV2Version,
@@ -641,11 +662,22 @@ lazy val cli = (project in file("examples") / "cli")
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion,
       "com.google.guava" % "guava" % "31.0.1-jre",
       // Test dependencies
-      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % junitJupiterVersion % Test,
+      "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     ),
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
   )
+
+// What the test-database harness needs to run on PostgreSQL: server, and spark and hadoop, which take
+// the harness from server-shaded.
+lazy val testDatabaseDependencies = Seq(
+  "org.testcontainers" % "testcontainers" % testcontainersVersion % Test,
+  "org.testcontainers" % "postgresql" % testcontainersVersion % Test,
+  "org.postgresql" % "postgresql" % postgresqlVersion % Test,
+  "org.testcontainers" % "mysql" % testcontainersVersion % Test,
+  "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
+)
 
 /*
   * This project is a combination of the server and client projects, shaded into a single JAR.
@@ -668,6 +700,10 @@ lazy val serverShaded = (project in file("server-shaded"))
       ShadeRule.rename("com.fasterxml.**" -> "shaded.@0").inAll,
       ShadeRule.rename("org.antlr.**" -> "shaded.@0").inAll,
       ShadeRule.rename("io.netty.**" -> "shaded.@0").inAll,
+      // Relocate the bundled Kernel and RoaringBitmap so they cannot clash with the copies that
+      // Spark and Delta put on the connector test classpaths.
+      ShadeRule.rename("io.delta.kernel.**" -> "shaded.@0").inAll,
+      ShadeRule.rename("org.roaringbitmap.**" -> "shaded.@0").inAll,
     ),
     assemblyPackageScala / assembleArtifact := false,
     assembly / fullClasspath := {
@@ -734,7 +770,8 @@ lazy val spark = (project in file("connectors/spark"))
     ),
     libraryDependencies ++= Seq(
       // Test dependencies
-      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % junitJupiterVersion % Test,
+      "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
       "org.mockito" % "mockito-core" % "5.11.0" % Test,
       "org.mockito" % "mockito-inline" % "5.2.0" % Test,
@@ -756,6 +793,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.antlr" % "antlr4" % "4.13.1",
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
+    libraryDependencies ++= testDatabaseDependencies,
     // netty-codec-native-quic uses ${packaging.type} in its POM which Ivy (used by sbt-license-report) cannot resolve.
     // Exclude it so Ivy never attempts to fetch it; Coursier (used for normal builds) handles it fine.
     excludeDependencies += ExclusionRule("io.netty", "netty-codec-native-quic"),
@@ -800,7 +838,8 @@ lazy val hadoop = (project in file("connectors/hadoop"))
     ),
     libraryDependencies ++= Seq(
       // Test dependencies
-      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % junitJupiterVersion % Test,
+      "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
       "org.mockito" % "mockito-core" % "5.11.0" % Test,
       "org.mockito" % "mockito-inline" % "5.2.0" % Test,
@@ -811,6 +850,7 @@ lazy val hadoop = (project in file("connectors/hadoop"))
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
+    libraryDependencies ++= testDatabaseDependencies,
   )
 
 lazy val integrationTests = (project in file("integration-tests"))
@@ -827,7 +867,8 @@ lazy val integrationTests = (project in file("integration-tests"))
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
     skipReleaseSettings,
     libraryDependencies ++= Seq(
-      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % junitJupiterVersion % Test,
+      "org.junit.platform" % "junit-platform-launcher" % junitPlatformVersion % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
@@ -867,3 +908,10 @@ def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
 }
 
 val generate = taskKey[Unit]("generate code from APIs")
+
+// Runs every project's tests on one test database. One alias per SupportedDatabase constant except
+// H2 (the default).
+def testOnDatabase(database: String): String =
+  s"""; set every Test / envVars := Map("UC_TEST_DATABASE" -> "$database") ; test"""
+addCommandAlias("testPostgres18", testOnDatabase("POSTGRES_18"))
+addCommandAlias("testMySQL8", testOnDatabase("MYSQL_8"))

@@ -1,10 +1,14 @@
 import asyncio
 import builtins
 import logging
-import resource
+import multiprocessing
 import traceback
-from multiprocessing import get_context
 from typing import Any, Callable
+
+try:
+    import resource
+except ImportError:  # Not available on Windows
+    resource = None
 
 from unitycatalog.ai.core.envs.executor_env_vars import (
     EXECUTOR_DISALLOWED_MODULES,
@@ -18,6 +22,7 @@ from unitycatalog.ai.core.executor.common import (
     MB_CONVERSION,
     NO_OUTPUT_MESSAGE,
     OPEN_DISALLOWED_MESSAGE,
+    SANDBOX_UNSUPPORTED_MESSAGE,
     TERMINATED_MESSAGE_TEMPLATE,
     TIMEOUT_ERROR_MESSAGE,
 )
@@ -44,6 +49,9 @@ def _limit_resources(cpu_time_limit: int, memory_limit: int):
         cpu_time_limit: Maximum CPU time in seconds.
         memory_limit: Maximum memory in MB.
     """
+    if resource is None:
+        return
+
     try:
         resource.setrlimit(resource.RLIMIT_CPU, (cpu_time_limit, cpu_time_limit))
     except Exception as e:
@@ -103,6 +111,11 @@ def _sandboxed_wrapper(
         q.put((False, tb))
 
 
+def is_sandbox_supported() -> bool:
+    """Returns whether the 'fork' start method that the sandbox executor needs is available."""
+    return "fork" in multiprocessing.get_all_start_methods()
+
+
 async def run_in_sandbox_async(
     func: Callable[..., Any], params: dict[str, Any]
 ) -> tuple[bool, Any]:
@@ -120,11 +133,14 @@ async def run_in_sandbox_async(
         A tuple (success, result). If success is False, result contains a descriptive
         error message or the error stack trace.
     """
+    if not is_sandbox_supported():
+        return False, SANDBOX_UNSUPPORTED_MESSAGE
+
     cpu_time_limit = EXECUTOR_MAX_CPU_TIME_LIMIT.get()
     memory_limit = EXECUTOR_MAX_MEMORY_LIMIT.get()
     timeout = EXECUTOR_TIMEOUT.get()
 
-    ctx = get_context("fork")
+    ctx = multiprocessing.get_context("fork")
     q = ctx.Queue()
     p = ctx.Process(target=_sandboxed_wrapper, args=(q, func, params, cpu_time_limit, memory_limit))
     p.start()

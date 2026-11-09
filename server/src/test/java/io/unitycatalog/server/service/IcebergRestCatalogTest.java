@@ -65,11 +65,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Snapshot;
+import org.apache.iceberg.SnapshotsTable;
 import org.apache.iceberg.SortOrder;
+import org.apache.iceberg.Table;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.catalog.Namespace;
@@ -92,6 +95,8 @@ import org.apache.iceberg.metrics.ImmutableCommitReport;
 import org.apache.iceberg.metrics.ImmutableScanReport;
 import org.apache.iceberg.metrics.ScanMetrics;
 import org.apache.iceberg.metrics.ScanMetricsResult;
+import org.apache.iceberg.rest.RESTCatalog;
+import org.apache.iceberg.rest.auth.OAuth2Properties;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
@@ -269,12 +274,19 @@ public class IcebergRestCatalogTest extends BaseServerTest {
           404,
           NoSuchNamespaceException.class);
 
-      // A name Unity Catalog rejects outright, such as the multi-level name a nested namespace
-      // arrives as, is a bad request rather than a missing namespace.
+      // A name Unity Catalog rejects as invalid, such as one containing a period, is a bad request
+      // rather than a missing namespace.
       assertErrorType(
           client.get(TEST_BASE_PREFIX + "/namespaces/nested.namespace").aggregate().join(),
           400,
           BadRequestException.class);
+
+      // Iceberg clients join nested namespace levels with %1F. It is not rewritten to a period, so
+      // the name matches no schema and the namespace is reported missing.
+      assertErrorType(
+          client.get(TEST_BASE_PREFIX + "/namespaces/nested%1Fnamespace").aggregate().join(),
+          404,
+          NoSuchNamespaceException.class);
 
       // non-prefixed URL should result in 404
       resp =
@@ -1382,6 +1394,83 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   }
 
   @Test
+  public void testTableRoutesReportAMissingNamespaceAsAMissingTable() throws Exception {
+    createUniformIcebergTable();
+    // One level below the table is the shape an Iceberg metadata table takes on the wire:
+    // schema.table.snapshots arrives as namespace "schema<0x1F>table", table "snapshots". That
+    // namespace does not exist, and the routes addressed to one table answer as the spec says
+    // they do, with NoSuchTableException rather than NoSuchNamespaceException.
+    String nestedNamespace = TestUtils.SCHEMA_NAME + "%1F" + TestUtils.TABLE_NAME;
+    TestUtils.assertIcebergApiException(
+        () -> icebergClient.loadTable(TestUtils.CATALOG_NAME, nestedNamespace, "snapshots"),
+        404,
+        NoSuchTableException.class,
+        "Table does not exist: "
+            + TestUtils.SCHEMA_NAME
+            + "."
+            + TestUtils.TABLE_NAME
+            + ".snapshots");
+    assertErrorType(
+        () -> icebergClient.loadCredentials(TestUtils.CATALOG_NAME, nestedNamespace, "snapshots"),
+        404,
+        NoSuchTableException.class);
+    assertErrorType(
+        () -> icebergClient.dropTable(TestUtils.CATALOG_NAME, nestedNamespace, "snapshots"),
+        404,
+        NoSuchTableException.class);
+    assertErrorType(
+        () ->
+            icebergClient.updateTable(
+                TestUtils.CATALOG_NAME,
+                nestedNamespace,
+                "snapshots",
+                new UpdateTableRequest(
+                    List.of(), List.of(new MetadataUpdate.SetProperties(Map.of("foo", "bar"))))),
+        404,
+        NoSuchTableException.class);
+    assertErrorType(
+        () ->
+            icebergClient.reportMetrics(
+                TestUtils.CATALOG_NAME, nestedNamespace, "snapshots", scanReport()),
+        404,
+        NoSuchTableException.class);
+    // The routes addressed to the namespace still report a missing namespace as one.
+    assertErrorType(
+        () -> icebergClient.listTables(TestUtils.CATALOG_NAME, nestedNamespace),
+        404,
+        NoSuchNamespaceException.class);
+    assertErrorType(
+        () ->
+            icebergClient.createTable(
+                TestUtils.CATALOG_NAME,
+                nestedNamespace,
+                CreateTableRequest.builder()
+                    .withName("snapshots")
+                    .withSchema(
+                        new Schema(Types.NestedField.required(1, "id", Types.LongType.get())))
+                    .build()),
+        404,
+        NoSuchNamespaceException.class);
+
+    // Which is what lets Iceberg's own client resolve the identifier as a metadata table.
+    try (RESTCatalog restCatalog = new RESTCatalog()) {
+      restCatalog.initialize(
+          "uc",
+          Map.of(
+              CatalogProperties.URI,
+              serverConfig.getServerUrl() + ICEBERG_BASE_PATH,
+              CatalogProperties.WAREHOUSE_LOCATION,
+              TestUtils.CATALOG_NAME,
+              OAuth2Properties.TOKEN,
+              serverConfig.getAuthToken()));
+      Table snapshots =
+          restCatalog.loadTable(
+              TableIdentifier.of(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, "snapshots"));
+      assertThat(snapshots).isInstanceOf(SnapshotsTable.class);
+    }
+  }
+
+  @Test
   public void testReportMetrics() throws Exception {
     createUniformIcebergTable();
 
@@ -1835,6 +1924,12 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     assertThat(resp.status().code()).isEqualTo(404);
     assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
         .isEqualTo(NoSuchNamespaceException.class.getSimpleName());
+
+    // A nested parent, joined with %1F, matches no schema either, so it is missing as well.
+    assertErrorType(
+        client.get(TEST_BASE_PREFIX + "/namespaces?parent=nested%1Fnamespace").aggregate().join(),
+        404,
+        NoSuchNamespaceException.class);
 
     // An empty parent is not a parent at all, so the listing is the whole one.
     resp = client.get(TEST_BASE_PREFIX + "/namespaces?parent=").aggregate().join();

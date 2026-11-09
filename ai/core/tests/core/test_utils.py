@@ -1,5 +1,6 @@
 import datetime
 import decimal
+import json
 from typing import Dict, List, Optional, Tuple, Union
 
 import pytest
@@ -51,8 +52,25 @@ def test_is_base64_encoded():
             datetime.timedelta(days=1, seconds=1, microseconds=123456),
             "INTERVAL '1 0:0:1.123456' DAY TO SECOND",
         ),
-        (datetime.timedelta(hours=100), "INTERVAL '4 4:0:0.0' DAY TO SECOND"),
-        (datetime.timedelta(days=1, hours=10, minutes=3), "INTERVAL '1 10:3:0.0' DAY TO SECOND"),
+        (datetime.timedelta(hours=100), "INTERVAL '4 4:0:0.000000' DAY TO SECOND"),
+        (
+            datetime.timedelta(days=1, hours=10, minutes=3),
+            "INTERVAL '1 10:3:0.000000' DAY TO SECOND",
+        ),
+        (datetime.timedelta(0), "INTERVAL '0 0:0:0.000000' DAY TO SECOND"),
+        (datetime.timedelta(milliseconds=5), "INTERVAL '0 0:0:0.005000' DAY TO SECOND"),
+        (datetime.timedelta(days=-2), "INTERVAL '-2 0:0:0.000000' DAY TO SECOND"),
+        (datetime.timedelta(hours=-1), "INTERVAL '-0 1:0:0.000000' DAY TO SECOND"),
+        (datetime.timedelta(minutes=-90), "INTERVAL '-0 1:30:0.000000' DAY TO SECOND"),
+        (
+            datetime.timedelta(days=-1, hours=-2, minutes=-30),
+            "INTERVAL '-1 2:30:0.000000' DAY TO SECOND",
+        ),
+        (
+            datetime.timedelta(seconds=-1, microseconds=-500000),
+            "INTERVAL '-0 0:0:1.500000' DAY TO SECOND",
+        ),
+        (datetime.timedelta(microseconds=-1), "INTERVAL '-0 0:0:0.000001' DAY TO SECOND"),
     ],
 )
 def test_convert_timedelta_to_interval_str(time_val, expected):
@@ -433,6 +451,37 @@ def test_generate_function_input_params_schema_with_non_ascii_chars():
     )
     pydantic_model = generate_function_input_params_schema(function_info).pydantic_model
     pydantic_model(**{"x": 123})
+
+
+def scalar_param(name: str, type_name: str) -> Dict:
+    return {
+        "name": name,
+        "type_text": type_name.lower(),
+        "type_json": json.dumps(
+            {"name": name, "type": type_name.lower(), "nullable": False, "metadata": {}}
+        ),
+        "type_name": type_name,
+        "position": 0,
+        "parameter_type": "PARAM",
+    }
+
+
+@pytest.mark.parametrize(
+    ("type_names", "strict", "expected_strict"),
+    [
+        (["DATE", "STRING"], True, False),
+        (["STRING", "DATE"], True, False),
+        (["STRING", "LONG"], True, True),
+        ([], True, True),
+        (["STRING"], False, False),
+    ],
+)
+def test_generate_function_input_params_schema_strict(type_names, strict, expected_strict):
+    function_info = generate_function_info(
+        [scalar_param(f"p{i}", type_name) for i, type_name in enumerate(type_names)]
+    )
+    params_schema = generate_function_input_params_schema(function_info, strict=strict)
+    assert params_schema.strict is expected_strict
 
 
 def test_param_info_to_pydantic_type_with_sql_null():

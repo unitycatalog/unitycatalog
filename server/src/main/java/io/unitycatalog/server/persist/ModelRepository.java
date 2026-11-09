@@ -179,7 +179,7 @@ public class ModelRepository {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
-        String[] parts = RepositoryUtils.parseFullName(fullName);
+        String[] parts = RepositoryUtils.parseRegisteredModelFullName(fullName);
         String catalogName = parts[0];
         String schemaName = parts[1];
         String registeredModelName = parts[2];
@@ -391,7 +391,7 @@ public class ModelRepository {
 
     Transaction tx;
     try (Session session = sessionFactory.openSession()) {
-      String[] parts = RepositoryUtils.parseFullName(fullName);
+      String[] parts = RepositoryUtils.parseRegisteredModelFullName(fullName);
       String catalogName = parts[0];
       String schemaName = parts[1];
       String registeredModelName = parts[2];
@@ -451,11 +451,7 @@ public class ModelRepository {
     LOGGER.info("Deleting Registered Model: {}", fullName);
     try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
-      String[] parts = fullName.split("\\.");
-      if (parts.length != 3) {
-        throw new BaseException(
-            ErrorCode.INVALID_ARGUMENT, "Invalid registered model name: " + fullName);
-      }
+      String[] parts = RepositoryUtils.parseRegisteredModelFullName(fullName);
       String catalogName = parts[0];
       String schemaName = parts[1];
       String registeredModelName = parts[2];
@@ -518,7 +514,7 @@ public class ModelRepository {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
-        String[] parts = RepositoryUtils.parseFullName(fullName);
+        String[] parts = RepositoryUtils.parseRegisteredModelFullName(fullName);
         String catalogName = parts[0];
         String schemaName = parts[1];
         String registeredModelName = parts[2];
@@ -651,12 +647,7 @@ public class ModelRepository {
       Transaction tx = session.beginTransaction();
       try {
         // Check if registered model already exists
-        String[] parts = registeredModelFullName.split("\\.");
-        if (parts.length != 3) {
-          throw new BaseException(
-              ErrorCode.INVALID_ARGUMENT,
-              "Invalid registered model name: " + registeredModelFullName);
-        }
+        String[] parts = RepositoryUtils.parseRegisteredModelFullName(registeredModelFullName);
         String catalogName = parts[0];
         String schemaName = parts[1];
         String registeredModelName = parts[2];
@@ -716,7 +707,7 @@ public class ModelRepository {
 
     Transaction tx;
     try (Session session = sessionFactory.openSession()) {
-      String[] parts = RepositoryUtils.parseFullName(fullName);
+      String[] parts = RepositoryUtils.parseRegisteredModelFullName(fullName);
       String catalogName = parts[0];
       String schemaName = parts[1];
       String registeredModelName = parts[2];
@@ -756,11 +747,7 @@ public class ModelRepository {
 
   public void deleteModelVersion(String fullName, Long version) {
     LOGGER.info("Deleting model version: {}/{}", fullName, version);
-    String[] parts = fullName.split("\\.");
-    if (parts.length != 3) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Invalid registered model name: " + fullName);
-    }
+    String[] parts = RepositoryUtils.parseRegisteredModelFullName(fullName);
     String catalogName = parts[0];
     String schemaName = parts[1];
     String registeredModelName = parts[2];
@@ -817,7 +804,7 @@ public class ModelRepository {
 
     Transaction tx;
     try (Session session = sessionFactory.openSession()) {
-      String[] parts = RepositoryUtils.parseFullName(fullName);
+      String[] parts = RepositoryUtils.parseRegisteredModelFullName(fullName);
       String catalogName = parts[0];
       String schemaName = parts[1];
       String registeredModelName = parts[2];
@@ -829,6 +816,12 @@ public class ModelRepository {
         ModelVersionInfoDAO origModelVersionInfoDAO =
             getModelVersionDaoOrThrow(session, schemaId, fullName, registeredModelName, version);
 
+        // Check the creator here so the check and status update use the same stored version.
+        if (serverProperties.isAuthorizationEnabled()
+            && (callerId == null || !callerId.equals(origModelVersionInfoDAO.getCreatedBy()))) {
+          throw new BaseException(
+              ErrorCode.PERMISSION_DENIED, "Only model version creator can finalize model version");
+        }
         if (ModelVersionStatus.valueOf(origModelVersionInfoDAO.getStatus())
             != ModelVersionStatus.PENDING_REGISTRATION) {
           throw new BaseException(

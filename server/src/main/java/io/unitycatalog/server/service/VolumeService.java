@@ -110,12 +110,13 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
 
   private static final String LIST_AND_GET_AUTH_EXPRESSION =
       """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
+      #authorizeAny(#principal, #metastore, OWNER, READ_METADATA) ||
+      #authorizeAny(#principal, #catalog, OWNER, READ_METADATA) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorizeAny(#principal, #schema, OWNER, READ_METADATA)) ||
       (#authorize(#principal, #schema, USE_SCHEMA) &&
           #authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorizeAny(#principal, #volume, OWNER, READ_VOLUME))
+          #authorizeAny(#principal, #volume, OWNER, READ_VOLUME, READ_METADATA))
       """;
 
   @Get("")
@@ -146,16 +147,20 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
   @Patch("/{full_name}")
   @AuthorizeExpression(
       """
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #volume, OWNER))
+      (#authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+              #authorize(#principal, #schema, OWNER)) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) &&
+              #authorize(#principal, #schema, USE_SCHEMA) &&
+              #authorize(#principal, #volume, OWNER))) &&
+      (!#strict_privilege_checks || #new_name == null ||
+          #authorize(#principal, #schema, OWNER) ||
+          #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_VOLUME))
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateVolume(
       @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName,
-      UpdateVolumeRequestContent updateVolumeRequest) {
+      @AuthorizeKey(key = "new_name") UpdateVolumeRequestContent updateVolumeRequest) {
     return HttpResponse.ofJson(volumeRepository.updateVolume(fullName, updateVolumeRequest));
   }
 

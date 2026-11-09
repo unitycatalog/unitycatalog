@@ -106,16 +106,7 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Get("")
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) &&
-          #authorize(#principal, #catalog, USE_CATALOG)) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
   @ResponseAuthorizeFilter
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listTables(

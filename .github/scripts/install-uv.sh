@@ -6,10 +6,10 @@
 #   bash "$GITHUB_WORKSPACE/.github/scripts/install-uv.sh"
 set -eu
 
-UV_VERSION="0.10.12"
+UV_VERSION="0.13.5"
 # SHA256 from official release asset:
-# https://github.com/astral-sh/uv/releases/download/0.10.12/uv-x86_64-unknown-linux-musl.tar.gz
-UV_SHA256="adccf40b5d1939a5e0093081ec2307ea24235adf7c2d96b122c561fa37711c46"
+# https://github.com/astral-sh/uv/releases/download/0.13.5/uv-x86_64-unknown-linux-musl.tar.gz
+UV_SHA256="57ef9d9ccb01fb1bd998df995b0dd221b52f7d7841fbea93f2d4463bf61fb7a9"
 
 TARBALL="uv-x86_64-unknown-linux-musl.tar.gz"
 EXTRACT_DIR="uv-x86_64-unknown-linux-musl"

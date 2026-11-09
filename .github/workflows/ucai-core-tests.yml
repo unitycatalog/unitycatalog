@@ -66,7 +66,7 @@ jobs:
         run: bash "$GITHUB_WORKSPACE/.github/scripts/install-uv.sh"
       - name: Install dependencies
         run: |
-          uv pip install --system --require-hashes -r core/requirements-dev.lock
+          uv pip install --system --require-hashes -r core/requirements-dev.lock --exclude-newer-package certifi=2026-10-23T00:00:00Z --exclude-newer-package uv=2026-10-23T00:00:00Z
           if [ ${{ matrix.pydantic-version }} == 1 ]; then
             uv pip install --system 'pydantic<2'
           fi
@@ -81,7 +81,7 @@ jobs:
           uv run pytest core/tests --ignore=core/tests/core/databricks/test_databricks_unit_tests.py
       - name: Run Databricks Unit Tests
         run: |
-          uv pip install --system --require-hashes -r core/requirements-databricks-dev.lock
+          uv pip install --system --require-hashes -r core/requirements-databricks-dev.lock --exclude-newer-package certifi=2026-10-23T00:00:00Z --exclude-newer-package uv=2026-10-23T00:00:00Z
           uv run pytest core/tests/core/databricks/test_databricks_unit_tests.py
       - name: Stop Unity Catalog Server
         if: always()

@@ -9,27 +9,13 @@ This document walks through how to use [PuppyGraph](https://www.puppygraph.com) 
 - This repository `unitycatalog` cloned
 - Spark downloaded
 
-## Build the Unity Server and Spark support
+## Build the Unity Catalog Server
 
-Run one of the following from the cloned repository root directory, depending on your Spark version:
+Run the following from the cloned repository root directory:
 
-=== "Spark 4.0.x"
-
-    ```sh
-    build/sbt -DsparkVersion=4.0 clean package publishLocal spark/publishLocal
-    ```
-
-=== "Spark 4.1.x"
-
-    ```sh
-    build/sbt -DsparkVersion=4.1 clean package publishLocal spark/publishLocal
-    ```
-
-=== "Spark 4.2.x"
-
-    ```sh
-    build/sbt -DsparkVersion=4.2 clean package publishLocal spark/publishLocal
-    ```
+```sh
+build/sbt package
+```
 
 ## Run the Unity Catalog Server
 
@@ -64,11 +50,12 @@ Spark version:
     ```sh
     ./bin/spark-sql \
       --packages \
-        io.delta:delta-spark_4.0_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.6.0 \
+        io.delta:delta-spark_4.0_2.13:4.4.1,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.7.0 \
       --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
       --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
       --conf spark.sql.catalog.puppygraph=io.unitycatalog.spark.UCSingleCatalog \
-      --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080
+      --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080 \
+      --conf spark.sql.catalog.puppygraph.token=
     ```
 
 === "Spark 4.1.x"
@@ -76,11 +63,12 @@ Spark version:
     ```sh
     ./bin/spark-sql \
       --packages \
-        io.delta:delta-spark_4.1_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.1_2.13:0.6.0 \
+        io.delta:delta-spark_4.1_2.13:4.4.1,io.unitycatalog:unitycatalog-spark_4.1_2.13:0.7.0 \
       --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
       --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
       --conf spark.sql.catalog.puppygraph=io.unitycatalog.spark.UCSingleCatalog \
-      --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080
+      --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080 \
+      --conf spark.sql.catalog.puppygraph.token=
     ```
 
 === "Spark 4.2.x"
@@ -88,11 +76,12 @@ Spark version:
     ```sh
     ./bin/spark-sql \
       --packages \
-        io.delta:delta-spark_4.2_2.13:4.4.0,io.unitycatalog:unitycatalog-spark_4.2_2.13:0.6.0 \
+        io.delta:delta-spark_4.2_2.13:4.4.1,io.unitycatalog:unitycatalog-spark_4.2_2.13:0.7.0 \
       --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
       --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
       --conf spark.sql.catalog.puppygraph=io.unitycatalog.spark.UCSingleCatalog \
-      --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080
+      --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080 \
+      --conf spark.sql.catalog.puppygraph.token=
     ```
 
 Run the following SQL to insert data into the Delta tables.
@@ -120,88 +109,232 @@ Exit the Spark SQL shell after data insertion is done.
 
 ## Querying the Tables as a Graph
 
+Tested with PuppyGraph 1.17.0.
+
 Start PuppyGraph using Docker. Here we map the PuppyGraph port `8081` to `9081` on the host.
 
 ```sh
 docker run -p 9081:8081 -p 8182:8182 -p 7687:7687 \
 -v /tmp/puppygraph:/tmp/puppygraph \
---name puppy --rm -itd puppygraph/puppygraph:stable
+--name puppy --rm -itd puppygraph/puppygraph:latest
 ```
 
-Create the schema.json and replace `<host-name>` with your host ip address.
+Create `schema.json` using the PuppyGraph 1.x format below and replace `<host-name>` with your host IP address.
 
-```schema.json
+```json
 {
-    "catalogs": [
-        {
-            "name": "puppygraph", 
-            "type": "deltalake", 
-            "metastore": {
-                "type": "unity", 
-                "host": "http://<host-name>:8081", 
-                "token": "no-use", 
-                "databricksCatalogName": "puppygraph"
+  "catalog": [
+    {
+      "name": "puppygraph",
+      "type": "deltalake",
+      "metastore": {
+        "type": "unity",
+        "host": "http://<host-name>:8080",
+        "token": "no-use",
+        "databricksCatalogName": "puppygraph"
+      }
+    }
+  ],
+  "node": [
+    {
+      "label": "person",
+      "dataSourceGroup": {
+        "externalDataSource": {
+          "enabled": true,
+          "catalog": "puppygraph",
+          "schema": "modern",
+          "table": "person",
+          "mappedField": [
+            {
+              "sourceFieldName": "id",
+              "targetFieldName": "id"
+            },
+            {
+              "sourceFieldName": "name",
+              "targetFieldName": "name"
+            },
+            {
+              "sourceFieldName": "age",
+              "targetFieldName": "age"
             }
+          ]
         }
-    ], 
-    "vertices": [
+      },
+      "id": [
         {
-            "label": "person", 
-            "attributes": [
-                { "type": "String", "name": "name" }, 
-                { "type": "Int"   , "name": "age"  }
-            ], 
-            "mappedTableSource": {
-                "catalog": "puppygraph", 
-                "schema": "modern", 
-                "table": "person", 
-                "metaFields": {"id": "id"}
-            }
-        }, 
-        {
-            "label": "software", 
-            "attributes": [
-                { "type": "String", "name": "name" }, 
-                { "type": "String", "name": "lang" }
-            ], 
-            "mappedTableSource": {
-                "catalog": "puppygraph", 
-                "schema": "modern", 
-                "table": "software", 
-                "metaFields": {"id": "id"}
-            }
+          "name": "id",
+          "type": "String"
         }
-    ], 
-    "edges": [
+      ],
+      "attribute": [
         {
-            "label": "knows",
-            "from": "person", 
-            "to": "person", 
-            "attributes": [ {"type": "Double", "name": "weight"} ], 
-            "mappedTableSource": {
-                "catalog": "puppygraph", 
-                "schema": "modern", 
-                "table": "knows",
-                "metaFields": {"from": "from_id", "id": "id", "to": "to_id"}
-            }
-        }, 
+          "name": "name",
+          "type": "String"
+        },
         {
-            "label": "created", 
-            "from": "person", 
-            "to": "software", 
-            "attributes": [ {"type": "Double", "name": "weight"} ], 
-            "mappedTableSource": {
-                "catalog": "puppygraph", 
-                "schema": "modern", 
-                "table": "created", 
-                "metaFields": {"from": "from_id", "id": "id", "to": "to_id"}
-            }
+          "name": "age",
+          "type": "Int"
         }
-    ]
+      ]
+    },
+    {
+      "label": "software",
+      "dataSourceGroup": {
+        "externalDataSource": {
+          "enabled": true,
+          "catalog": "puppygraph",
+          "schema": "modern",
+          "table": "software",
+          "mappedField": [
+            {
+              "sourceFieldName": "id",
+              "targetFieldName": "id"
+            },
+            {
+              "sourceFieldName": "name",
+              "targetFieldName": "name"
+            },
+            {
+              "sourceFieldName": "lang",
+              "targetFieldName": "lang"
+            }
+          ]
+        }
+      },
+      "id": [
+        {
+          "name": "id",
+          "type": "String"
+        }
+      ],
+      "attribute": [
+        {
+          "name": "name",
+          "type": "String"
+        },
+        {
+          "name": "lang",
+          "type": "String"
+        }
+      ]
+    }
+  ],
+  "edge": [
+    {
+      "label": "knows",
+      "fromNodeLabel": "person",
+      "toNodeLabel": "person",
+      "dataSourceGroup": {
+        "externalDataSource": {
+          "enabled": true,
+          "catalog": "puppygraph",
+          "schema": "modern",
+          "table": "knows",
+          "mappedField": [
+            {
+              "sourceFieldName": "id",
+              "targetFieldName": "id"
+            },
+            {
+              "sourceFieldName": "from_id",
+              "targetFieldName": "from_id"
+            },
+            {
+              "sourceFieldName": "to_id",
+              "targetFieldName": "to_id"
+            },
+            {
+              "sourceFieldName": "weight",
+              "targetFieldName": "weight"
+            }
+          ]
+        }
+      },
+      "id": [
+        {
+          "name": "id",
+          "type": "String"
+        }
+      ],
+      "fromKey": [
+        {
+          "name": "from_id",
+          "type": "String"
+        }
+      ],
+      "toKey": [
+        {
+          "name": "to_id",
+          "type": "String"
+        }
+      ],
+      "attribute": [
+        {
+          "name": "weight",
+          "type": "Double"
+        }
+      ]
+    },
+    {
+      "label": "created",
+      "fromNodeLabel": "person",
+      "toNodeLabel": "software",
+      "dataSourceGroup": {
+        "externalDataSource": {
+          "enabled": true,
+          "catalog": "puppygraph",
+          "schema": "modern",
+          "table": "created",
+          "mappedField": [
+            {
+              "sourceFieldName": "id",
+              "targetFieldName": "id"
+            },
+            {
+              "sourceFieldName": "from_id",
+              "targetFieldName": "from_id"
+            },
+            {
+              "sourceFieldName": "to_id",
+              "targetFieldName": "to_id"
+            },
+            {
+              "sourceFieldName": "weight",
+              "targetFieldName": "weight"
+            }
+          ]
+        }
+      },
+      "id": [
+        {
+          "name": "id",
+          "type": "String"
+        }
+      ],
+      "fromKey": [
+        {
+          "name": "from_id",
+          "type": "String"
+        }
+      ],
+      "toKey": [
+        {
+          "name": "to_id",
+          "type": "String"
+        }
+      ],
+      "attribute": [
+        {
+          "name": "weight",
+          "type": "Double"
+        }
+      ]
+    }
+  ]
 }
 ```
 
-Upload the schema to PuppyGraph. Note here port is 9081 as 8081 is used by Unity Catalog.
+Upload the schema to PuppyGraph. Note that the PuppyGraph port is mapped to 9081 on the host.
 
 ```sh
 curl -XPOST -H "content-type: application/json" --data-binary @./schema.json --user "puppygraph:puppygraph123" localhost:9081/schema
@@ -210,7 +343,7 @@ curl -XPOST -H "content-type: application/json" --data-binary @./schema.json --u
 Start a PuppyGraph Gremlin Console to query the graph.
 
 ```sh
-docker exec -it puppygraph ./bin/console
+docker exec -it puppy ./bin/console
 ```
 
 Input the following query string to get all the software created by people that marko knows.

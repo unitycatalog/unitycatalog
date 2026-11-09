@@ -1,10 +1,16 @@
 package io.unitycatalog.server.auth;
 
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.testdatabase.TempDatabase;
+import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.time.Duration;
@@ -30,20 +36,18 @@ public class JCasbinAuthorizerMultiInstanceTest {
   private static final String TEST_REFRESH_INTERVAL = "PT0.05S";
 
   private HibernateConfigurator hibernateConfigurator;
+  @TempDatabase private TestDatabase testDatabase;
   private final List<JCasbinAuthorizer> replicas = new ArrayList<>();
 
   @BeforeEach
   void setUp() {
-    Properties properties = new Properties();
-    properties.setProperty(Property.SERVER_ENV.getKey(), "test");
-    hibernateConfigurator = new HibernateConfigurator(new ServerProperties(properties));
+    hibernateConfigurator = testDatabase.hibernateConfigurator();
   }
 
   @AfterEach
   void tearDown() {
     replicas.forEach(JCasbinAuthorizer::close);
     replicas.clear();
-    hibernateConfigurator.close();
   }
 
   private ServerProperties properties(boolean refreshEnabled, String interval) {
@@ -114,10 +118,11 @@ public class JCasbinAuthorizerMultiInstanceTest {
 
     replicaA.grantAuthorization(principal, resource, Privileges.CREATE_CATALOG);
 
-    assertThat(replicaA.authorize(principal, resource, Privileges.CREATE_CATALOG)).isTrue();
+    assertThat(replicaA.authorize(principal, METASTORE, resource, Privileges.CREATE_CATALOG))
+        .isTrue();
     await(
         "the grant to reach replica B",
-        () -> replicaB.authorize(principal, resource, Privileges.CREATE_CATALOG));
+        () -> replicaB.authorize(principal, METASTORE, resource, Privileges.CREATE_CATALOG));
   }
 
   @Test
@@ -129,14 +134,14 @@ public class JCasbinAuthorizerMultiInstanceTest {
     replicaA.grantAuthorization(principal, resource, Privileges.SELECT);
 
     UnityCatalogAuthorizer replicaB = startReplica();
-    assertThat(replicaB.authorize(principal, resource, Privileges.SELECT)).isTrue();
+    assertThat(replicaB.authorize(principal, TABLE, resource, Privileges.SELECT)).isTrue();
 
     replicaA.revokeAuthorization(principal, resource, Privileges.SELECT);
 
-    assertThat(replicaA.authorize(principal, resource, Privileges.SELECT)).isFalse();
+    assertThat(replicaA.authorize(principal, TABLE, resource, Privileges.SELECT)).isFalse();
     await(
         "the revocation to reach replica B",
-        () -> !replicaB.authorize(principal, resource, Privileges.SELECT));
+        () -> !replicaB.authorize(principal, TABLE, resource, Privileges.SELECT));
   }
 
   @Test
@@ -156,7 +161,7 @@ public class JCasbinAuthorizerMultiInstanceTest {
         () -> catalog.equals(replicaB.getHierarchyParent(schema)));
     await(
         "the inherited privilege to reach replica B",
-        () -> replicaB.authorize(principal, schema, Privileges.SELECT));
+        () -> replicaB.authorize(principal, SCHEMA, schema, Privileges.SELECT));
   }
 
   @Test
@@ -169,7 +174,9 @@ public class JCasbinAuthorizerMultiInstanceTest {
 
     UnityCatalogAuthorizer replicaStartedLater = startReplica();
 
-    assertThat(replicaStartedLater.authorize(principal, resource, Privileges.CREATE_CATALOG))
+    assertThat(
+            replicaStartedLater.authorize(
+                principal, METASTORE, resource, Privileges.CREATE_CATALOG))
         .isTrue();
   }
 
@@ -215,8 +222,8 @@ public class JCasbinAuthorizerMultiInstanceTest {
     writer.grantAuthorization(principal, granted, Privileges.SELECT);
 
     assertThat(reader.getRefresher().checkAndReload()).isTrue();
-    assertThat(reader.authorize(principal, granted, Privileges.SELECT)).isTrue();
-    assertThat(reader.authorize(principal, revoked, Privileges.SELECT)).isFalse();
+    assertThat(reader.authorize(principal, TABLE, granted, Privileges.SELECT)).isTrue();
+    assertThat(reader.authorize(principal, TABLE, revoked, Privileges.SELECT)).isFalse();
   }
 
   @Test
@@ -227,16 +234,16 @@ public class JCasbinAuthorizerMultiInstanceTest {
     UUID principal = UUID.randomUUID();
     UUID resource = UUID.randomUUID();
 
-    assertThat(replica.authorize(principal, resource, Privileges.SELECT)).isFalse();
+    assertThat(replica.authorize(principal, TABLE, resource, Privileges.SELECT)).isFalse();
     assertThat(replica.refreshAuthorizations(System.nanoTime())).isTrue();
-    assertThat(replica.authorize(principal, resource, Privileges.SELECT)).isFalse();
+    assertThat(replica.authorize(principal, TABLE, resource, Privileges.SELECT)).isFalse();
 
     writer.grantAuthorization(principal, resource, Privileges.SELECT);
 
     assertThat(replica.refreshAuthorizations(System.nanoTime()))
         .as("a request starting after the grant requires a probe newer than the previous one")
         .isTrue();
-    assertThat(replica.authorize(principal, resource, Privileges.SELECT)).isTrue();
+    assertThat(replica.authorize(principal, TABLE, resource, Privileges.SELECT)).isTrue();
   }
 
   @Test
@@ -256,14 +263,14 @@ public class JCasbinAuthorizerMultiInstanceTest {
     assertThat(replica.refreshAuthorizations(System.nanoTime()))
         .as("a deny-path max(id) probe cannot observe a delete that leaves max(id) unchanged")
         .isTrue();
-    assertThat(replica.authorize(principal, revoked, Privileges.SELECT))
+    assertThat(replica.authorize(principal, TABLE, revoked, Privileges.SELECT))
         .as("revocations of non-max rows still wait for a full count(*) poll")
         .isTrue();
-    assertThat(replica.authorize(principal, kept, Privileges.SELECT)).isTrue();
+    assertThat(replica.authorize(principal, TABLE, kept, Privileges.SELECT)).isTrue();
 
     assertThat(replica.getRefresher().checkAndReload()).isTrue();
-    assertThat(replica.authorize(principal, revoked, Privileges.SELECT)).isFalse();
-    assertThat(replica.authorize(principal, kept, Privileges.SELECT)).isTrue();
+    assertThat(replica.authorize(principal, TABLE, revoked, Privileges.SELECT)).isFalse();
+    assertThat(replica.authorize(principal, TABLE, kept, Privileges.SELECT)).isTrue();
   }
 
   @Test
@@ -279,7 +286,7 @@ public class JCasbinAuthorizerMultiInstanceTest {
 
     writer.grantAuthorization(principal, granted, Privileges.SELECT);
     assertThat(replica.refreshAuthorizations(System.nanoTime())).isTrue();
-    assertThat(replica.authorize(principal, granted, Privileges.SELECT)).isTrue();
+    assertThat(replica.authorize(principal, TABLE, granted, Privileges.SELECT)).isTrue();
 
     // Revoke a non-max row: count drops, max(id) stays. A half-stale (count, maxId) pair would
     // falsely match DB and hide this revoke from the poller.
@@ -288,8 +295,8 @@ public class JCasbinAuthorizerMultiInstanceTest {
     assertThat(replica.getRefresher().checkAndReload())
         .as("poller must still see a revoke after a deny-path grant reload")
         .isTrue();
-    assertThat(replica.authorize(principal, existing, Privileges.SELECT)).isFalse();
-    assertThat(replica.authorize(principal, granted, Privileges.SELECT)).isTrue();
+    assertThat(replica.authorize(principal, TABLE, existing, Privileges.SELECT)).isFalse();
+    assertThat(replica.authorize(principal, TABLE, granted, Privileges.SELECT)).isTrue();
   }
 
   @Test
@@ -308,7 +315,7 @@ public class JCasbinAuthorizerMultiInstanceTest {
     assertThat(Duration.ofNanos(System.nanoTime() - started))
         .as("a positive min interval must wait rather than skip")
         .isGreaterThanOrEqualTo(Duration.ofMillis(150));
-    assertThat(replica.authorize(principal, resource, Privileges.SELECT)).isTrue();
+    assertThat(replica.authorize(principal, TABLE, resource, Privileges.SELECT)).isTrue();
   }
 
   @Test
@@ -325,10 +332,10 @@ public class JCasbinAuthorizerMultiInstanceTest {
 
     assertThat(replica.refreshAuthorizations(requestStarted)).isTrue();
     assertThat(replica.refreshAuthorizations(requestStarted)).isTrue();
-    assertThat(replica.authorize(principal, resource, Privileges.SELECT)).isFalse();
+    assertThat(replica.authorize(principal, TABLE, resource, Privileges.SELECT)).isFalse();
 
     assertThat(replica.refreshAuthorizations(System.nanoTime())).isTrue();
-    assertThat(replica.authorize(principal, resource, Privileges.SELECT)).isTrue();
+    assertThat(replica.authorize(principal, TABLE, resource, Privileges.SELECT)).isTrue();
   }
 
   @Test
@@ -390,8 +397,10 @@ public class JCasbinAuthorizerMultiInstanceTest {
 
     replicaA.grantAuthorization(principal, resource, Privileges.CREATE_CATALOG);
 
-    assertThat(replicaA.authorize(principal, resource, Privileges.CREATE_CATALOG)).isTrue();
-    assertThat(replicaB.authorize(principal, resource, Privileges.CREATE_CATALOG)).isFalse();
+    assertThat(replicaA.authorize(principal, METASTORE, resource, Privileges.CREATE_CATALOG))
+        .isTrue();
+    assertThat(replicaB.authorize(principal, METASTORE, resource, Privileges.CREATE_CATALOG))
+        .isFalse();
   }
 
   @Test
@@ -442,7 +451,7 @@ public class JCasbinAuthorizerMultiInstanceTest {
         });
     assertThat(grantFinished.get()).as("a write should wait for the write lock").isFalse();
 
-    assertThat(replica.authorize(principal, resource, Privileges.SELECT)).isTrue();
+    assertThat(replica.authorize(principal, TABLE, resource, Privileges.SELECT)).isTrue();
 
     releaseWriteLock.countDown();
     writer.join(2000);
@@ -459,6 +468,35 @@ public class JCasbinAuthorizerMultiInstanceTest {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       fail("Interrupted while waiting for " + description);
+    }
+  }
+
+  @Test
+  void closeDoesNotWaitForARefreshStuckInsideTheLock() throws Exception {
+    startReplica(); // creates casbin_rule, which the refresh reads
+    CountDownLatch reloading = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    CasbinPolicyRefresher refresher =
+        new CasbinPolicyRefresher(
+            () -> {
+              reloading.countDown();
+              try {
+                release.await();
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              }
+            },
+            hibernateConfigurator.getSessionFactory(),
+            Duration.ZERO);
+    try {
+      // The first check always reloads, so the poller ends up waiting inside the refresh lock.
+      refresher.start(Duration.ofMillis(10));
+      awaitLatch(reloading, "the refresh to start reloading");
+      // close() interrupts the stuck refresh instead of waiting for its lock.
+      assertTimeoutPreemptively(Duration.ofSeconds(3), refresher::close);
+      assertThat(refresher.isRunning()).isFalse();
+    } finally {
+      release.countDown();
     }
   }
 

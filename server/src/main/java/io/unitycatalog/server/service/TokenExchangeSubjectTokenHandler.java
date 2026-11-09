@@ -104,10 +104,11 @@ public class TokenExchangeSubjectTokenHandler {
       if (e.getErrorCode() == ErrorCode.NOT_FOUND) {
         return Optional.empty();
       }
-      LOGGER.error("Failed to look up user by {} {}", lookupType, key, e);
+      // No stack trace: the error handler logs the cause of a 5xx.
+      LOGGER.warn("Failed to look up user by {} {}: {}", lookupType, key, e.getMessage());
       throw e;
     } catch (RuntimeException e) {
-      LOGGER.error("Failed to look up user by {} {}", lookupType, key, e);
+      LOGGER.warn("Failed to look up user by {} {}: {}", lookupType, key, e.getMessage());
       throw e;
     }
     if (user != null && user.getState() == User.StateEnum.ENABLED && isAssumablePrincipal(user)) {

@@ -1,6 +1,5 @@
 [repositories]
   local
-  maven-local: file://${user.home}/.m2/repository
   local-preloaded-ivy: file:///${sbt.preloaded-${sbt.global.base-${user.home}/.sbt}/preloaded/}, [organization]/[module]/[revision]/[type]s/[artifact](-[classifier]).[ext]
   local-preloaded: file:///${sbt.preloaded-${sbt.global.base-${user.home}/.sbt}/preloaded/}
   gcs-maven-central-mirror: https://maven-central.storage-download.googleapis.com/maven2/

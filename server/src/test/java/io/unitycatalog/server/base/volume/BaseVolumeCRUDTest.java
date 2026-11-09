@@ -115,6 +115,17 @@ public abstract class BaseVolumeCRUDTest extends BaseVolumeCRUDTestEnv {
     VolumeInfo retrievedVolumeInfo2 = volumeOperations.getVolume(VOLUME_FULL_NAME);
     assertThat(retrievedVolumeInfo2).isEqualTo(volumeInfo);
 
+    // A name with too few or too many parts is rejected and doesn't touch the volume
+    for (String badName : new String[] {SCHEMA_FULL_NAME, VOLUME_FULL_NAME + ".extra"}) {
+      TestUtils.assertApiException(
+          () ->
+              volumeOperations.updateVolume(
+                  badName, new UpdateVolumeRequestContent().comment("changed")),
+          ErrorCode.INVALID_ARGUMENT,
+          "Invalid volume name");
+    }
+    assertThat(volumeOperations.getVolume(VOLUME_FULL_NAME)).isEqualTo(volumeInfo);
+
     // Update volume name without updating comment
     System.out.println("Testing update volume: changing name..");
     UpdateVolumeRequestContent updateVolumeRequest =

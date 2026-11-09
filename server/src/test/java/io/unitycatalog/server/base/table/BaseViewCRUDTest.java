@@ -74,7 +74,11 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
     createSourceTable();
 
     CreateTable createRequest =
-        validViewRequest().comment("A simple SQL view").properties(PROPERTIES);
+        validViewRequest()
+            .comment("A simple SQL view")
+            .properties(PROPERTIES)
+            // Out of position order: reads must still return columns in position order.
+            .columns(List.of(COLUMNS.get(1), COLUMNS.get(0)));
 
     TableInfo created = tableOperations.createTable(createRequest);
     assertThat(created.getName()).isEqualTo(VIEW_NAME);
@@ -96,7 +100,14 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
     TableInfo fetched = tableOperations.getTable(VIEW_FULL_NAME);
     assertThat(fetched)
         .as("getTable should return the same view that createTable returned")
+        .usingRecursiveComparison()
+        .ignoringFields("columns")
         .isEqualTo(created);
+    // The server lowercases typeText on create.
+    assertThat(fetched.getColumns())
+        .usingRecursiveComparison()
+        .withComparatorForFields(String.CASE_INSENSITIVE_ORDER, "typeText")
+        .isEqualTo(COLUMNS);
 
     List<TableInfo> tables =
         tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, Optional.empty());

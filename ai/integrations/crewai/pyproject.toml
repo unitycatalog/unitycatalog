@@ -1,6 +1,6 @@
 [project]
 name = "unitycatalog-crewai"
-version = "0.2.0"
+version = "0.4.0"
 description = "Support for Unity Catalog functions as CrewAI tools"
 authors = [
     { name="Michael Berk", email="michaelberk99@gmail.com" }
@@ -9,22 +9,22 @@ readme = "README.md"
 license = { text="Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
-    "unitycatalog-ai>=0.3.0,<=0.4.0",
+    "unitycatalog-ai>=0.4.1,<0.5.0",
     "crewai>=0.67.1,<=1.10.1a1",
     "crewai_tools<=1.10.1a1",
 ]
 
 [project.optional-dependencies]
 databricks = [
-  "unitycatalog-ai[databricks]>=0.3.0,<=0.4.0",
+  "unitycatalog-ai[databricks]>=0.4.1,<0.5.0",
 ]
 
 databricks-dev = [
-  "unitycatalog-ai[databricks-dev]>=0.3.0,<=0.4.0",
+  "unitycatalog-ai[databricks-dev]>=0.4.1,<0.5.0",
 ]
 
 dev = [
-  "unitycatalog-ai[dev]>=0.3.0,<=0.4.0",
+  "unitycatalog-ai[dev]>=0.4.1,<0.5.0",
   "mlflow>=3.3.0,<=3.10.0",
 ]
 
@@ -75,6 +75,7 @@ convention = "google"
 
 [tool.uv]
 exclude-newer = "2026-03-10T00:00:00Z"
+exclude-newer-package = { certifi = "2026-10-23T00:00:00Z", uv = "2026-10-23T00:00:00Z" }
 
 [tool.uv.sources]
 unitycatalog-ai = { path = "../../core", editable = true }

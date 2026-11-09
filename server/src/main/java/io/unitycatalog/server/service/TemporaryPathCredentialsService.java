@@ -13,6 +13,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.server.model.PathOperation;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.Collections;
@@ -50,8 +51,8 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
   // a. For external location, it requires READ_FILES for reads, and +WRITE_FILES for writes
   //  and reads.
   // b. For table, it requires SELECT for reads, and +MODIFY for writes and reads.
-  // c. For volume, it requires READ_VOLUME for reads, and OWNER for writes and reads.
-  //  (WRITE_VOLUME is not implemented yet)
+  // c. For volume, it requires READ_VOLUME for reads, and +WRITE_VOLUME for writes and reads.
+  //  Volume ownership satisfies both volume privileges.
   // d. For model,  it requires EXECUTE for reads, and OWNER for writes and reads.
   // e. Additionally for all data securables, it requires USE_CATALOG and USE_SCHEMA (or OWNER)
   //  of the parent catalog and schema.
@@ -83,7 +84,8 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
         (#volume != null &&
          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-         #authorize(#principal, #volume, OWNER)) ||
+         (#authorize(#principal, #volume, OWNER) ||
+          #authorizeAll(#principal, #volume, READ_VOLUME, WRITE_VOLUME))) ||
         (#registered_model != null &&
          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
@@ -106,6 +108,7 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
     return HttpResponse.ofJson(
         storageCredentialVendor.vendCredential(
             NormalizedURL.from(generateTemporaryPathCredential.getUrl()),
-            pathOperationToPrivileges(generateTemporaryPathCredential.getOperation())));
+            pathOperationToPrivileges(generateTemporaryPathCredential.getOperation()),
+            CredentialUse.CLIENT));
   }
 }

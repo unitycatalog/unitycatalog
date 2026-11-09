@@ -29,7 +29,10 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.TestUtils;
+import java.net.URI;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -263,7 +266,11 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
     DeltaCommit backfillCommit = createBackfillOnlyCommitObject(1L);
     assertPermissionDenied(() -> readUserCommitsApi.commit(backfillCommit));
 
-    // Write user can backfill
+    // Write user can backfill (published commit file must exist before purge)
+    String loc = tableInfo.getStorageLocation();
+    Path published = Path.of(URI.create(loc + "/_delta_log/00000000000000000001.json"));
+    Files.createDirectories(published.getParent());
+    Files.writeString(published, "delta-commit-v1\n");
     writeUserCommitsApi.commit(backfillCommit);
 
     // Unauthorized client should fail with 401 Unauthorized

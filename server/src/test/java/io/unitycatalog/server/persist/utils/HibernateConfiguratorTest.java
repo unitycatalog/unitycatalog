@@ -10,12 +10,7 @@ class HibernateConfiguratorTest {
 
   @Test
   void configuresHikariAndExposesTheSharedDataSource() {
-    Properties properties = new Properties();
-    properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
-    properties.setProperty(
-        "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
-    properties.setProperty("hibernate.connection.user", "sa");
-    properties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
+    Properties properties = h2Properties();
     properties.setProperty("hibernate.hikari.maximumPoolSize", "3");
     properties.setProperty("hibernate.hikari.minimumIdle", "1");
     properties.setProperty("hibernate.hikari.poolName", "unity-catalog-test");
@@ -27,6 +22,23 @@ class HibernateConfiguratorTest {
       assertThat(configurator.getDataSource().isAutoCommit()).isFalse();
       assertThat(configurator.getDataSource().getUsername()).isEqualTo("sa");
       assertThat(configurator.getSessionFactory().isOpen()).isTrue();
+    }
+  }
+
+  @Test
+  void connectionPoolSizeFallsBackToHibernatePoolSize() {
+    Properties properties = h2Properties();
+    properties.setProperty("hibernate.connection.pool_size", "4");
+
+    try (HibernateConfigurator configurator = new HibernateConfigurator(properties)) {
+      assertThat(configurator.getDataSource().getMaximumPoolSize()).isEqualTo(4);
+    }
+  }
+
+  @Test
+  void connectionPoolSizeDefaultsToTwenty() {
+    try (HibernateConfigurator configurator = new HibernateConfigurator(h2Properties())) {
+      assertThat(configurator.getDataSource().getMaximumPoolSize()).isEqualTo(20);
     }
   }
 
@@ -50,5 +62,15 @@ class HibernateConfiguratorTest {
     properties.setProperty("hibernate.connection.username", "alice");
     properties.setProperty("hibernate.connection.user", "bob");
     assertThat(HibernateConfigurator.resolveConnectionUsername(properties)).isEqualTo("alice");
+  }
+
+  private static Properties h2Properties() {
+    Properties properties = new Properties();
+    properties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    properties.setProperty(
+        "hibernate.connection.url", "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
+    properties.setProperty("hibernate.connection.user", "sa");
+    properties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
+    return properties;
   }
 }

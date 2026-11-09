@@ -170,6 +170,89 @@ def test_generate_tool_call_messages_multiple_tools(
     assert tool_message_content[1]["content"] == "65 degrees"
 
 
+def _tool_use_response(*blocks):
+    response = Mock(spec=Message)
+    response.stop_reason = "tool_use"
+    response.content = list(blocks)
+    response.role = "assistant"
+    return response
+
+
+def test_generate_tool_call_messages_accepts_previous_round_as_history(mock_client, dummy_history):
+    first_response = _tool_use_response(
+        TextBlock(text="Let me check the weather in San Francisco.", type="text"),
+        ToolUseBlock(
+            id="toolu_first",
+            name="catalog__schema__get_weather",
+            input={"location": "San Francisco, CA"},
+            type="tool_use",
+        ),
+    )
+    second_response = _tool_use_response(
+        ToolUseBlock(
+            id="toolu_second",
+            name="catalog__schema__get_weather",
+            input={"location": "New York, NY"},
+            type="tool_use",
+        )
+    )
+
+    first_round = generate_tool_call_messages(
+        response=first_response, conversation_history=dummy_history, client=mock_client
+    )
+    second_round = generate_tool_call_messages(
+        response=second_response, conversation_history=first_round, client=mock_client
+    )
+
+    assert second_round[: len(first_round)] == first_round
+    assert second_round[-1] == {
+        "role": "user",
+        "content": [
+            {"type": "tool_result", "tool_use_id": "toolu_second", "content": "65 degrees"}
+        ],
+    }
+
+
+def test_generate_tool_call_messages_converts_content_block_history_to_dict(
+    mock_message_single_tool, mock_client, dummy_history
+):
+    assistant_history = {
+        "role": "assistant",
+        "content": [TextBlock(text="Let me check the weather.", type="text")],
+    }
+
+    result = generate_tool_call_messages(
+        response=mock_message_single_tool,
+        conversation_history=[dummy_history, assistant_history],
+        client=mock_client,
+    )
+
+    history_block = result[1]["content"][0]
+    assert isinstance(history_block, dict)
+    assert history_block["type"] == "text"
+    assert history_block["text"] == "Let me check the weather."
+
+
+@pytest.mark.parametrize(
+    "conversation_history",
+    [
+        [{"content": "no role"}],
+        {"role": "user", "content": 123},
+    ],
+)
+def test_generate_tool_call_messages_invalid_history(
+    mock_message_single_tool, mock_client, conversation_history
+):
+    with pytest.raises(ValueError, match="Invalid conversation history format"):
+        generate_tool_call_messages(
+            response=mock_message_single_tool,
+            conversation_history=conversation_history,
+            client=mock_client,
+        )
+
+    mock_client.execute_function.assert_not_called()
+
+
 def test_generate_tool_call_messages_no_tool_use(mock_client, dummy_history):
     response = Mock(spec=Message)
     response.stop_reason = "stop"

@@ -5,13 +5,20 @@ import static io.unitycatalog.server.service.credential.CredentialContext.READ_W
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.auth.decorator.KeyMapper;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.DataSourceFormat;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
@@ -38,6 +45,7 @@ public class IcebergRestCatalogServiceTest {
 
   private final UnityCatalogAuthorizer authorizer = mock();
   private final Repositories repositories = mock();
+  private final KeyMapper keyMapper = mock();
   private final UserRepository userRepository = mock();
   private final ServerProperties serverProperties = mock();
   private final TableRepository tableRepository = mock();
@@ -47,6 +55,7 @@ public class IcebergRestCatalogServiceTest {
   @BeforeEach
   public void setUp() {
     when(repositories.getUserRepository()).thenReturn(userRepository);
+    when(repositories.getKeyMapper()).thenReturn(keyMapper);
     when(repositories.getCatalogRepository()).thenReturn(mock(CatalogRepository.class));
     when(repositories.getSchemaRepository()).thenReturn(mock(SchemaRepository.class));
     when(repositories.getStagingTableRepository()).thenReturn(mock(StagingTableRepository.class));
@@ -66,8 +75,10 @@ public class IcebergRestCatalogServiceTest {
     UUID principalId = UUID.randomUUID();
     UUID tableId = UUID.randomUUID();
     when(userRepository.findPrincipalId()).thenReturn(principalId);
-    when(authorizer.authorize(principalId, tableId, Privileges.OWNER)).thenReturn(false);
-    when(authorizer.authorizeAll(principalId, tableId, Privileges.SELECT, Privileges.MODIFY))
+    when(authorizer.authorize(principalId, SecurableType.TABLE, tableId, Privileges.OWNER))
+        .thenReturn(false);
+    when(authorizer.authorizeAll(
+            principalId, SecurableType.TABLE, tableId, Privileges.SELECT, Privileges.MODIFY))
         .thenReturn(false);
 
     assertThat(
@@ -85,7 +96,8 @@ public class IcebergRestCatalogServiceTest {
     UUID principalId = UUID.randomUUID();
     UUID tableId = UUID.randomUUID();
     when(userRepository.findPrincipalId()).thenReturn(principalId);
-    when(authorizer.authorize(principalId, tableId, Privileges.OWNER)).thenReturn(true);
+    when(authorizer.authorize(principalId, SecurableType.TABLE, tableId, Privileges.OWNER))
+        .thenReturn(true);
 
     assertThat(
             service.getLoadCredentialPrivileges(
@@ -134,7 +146,8 @@ public class IcebergRestCatalogServiceTest {
     UUID principalId = UUID.randomUUID();
     UUID tableId = UUID.randomUUID();
     when(userRepository.findPrincipalId()).thenReturn(principalId);
-    when(authorizer.authorize(principalId, tableId, Privileges.OWNER)).thenReturn(true);
+    when(authorizer.authorize(principalId, SecurableType.TABLE, tableId, Privileges.OWNER))
+        .thenReturn(true);
     when(tableRepository.getIcebergTableState("cat", "ns", "tbl"))
         .thenReturn(
             new TableRepository.IcebergTableState(
@@ -167,8 +180,10 @@ public class IcebergRestCatalogServiceTest {
     UUID principalId = UUID.randomUUID();
     UUID tableId = UUID.randomUUID();
     when(userRepository.findPrincipalId()).thenReturn(principalId);
-    when(authorizer.authorize(principalId, tableId, Privileges.OWNER)).thenReturn(false);
-    when(authorizer.authorizeAll(principalId, tableId, Privileges.SELECT, Privileges.MODIFY))
+    when(authorizer.authorize(principalId, SecurableType.TABLE, tableId, Privileges.OWNER))
+        .thenReturn(false);
+    when(authorizer.authorizeAll(
+            principalId, SecurableType.TABLE, tableId, Privileges.SELECT, Privileges.MODIFY))
         .thenReturn(false);
     when(tableRepository.getIcebergTableState("cat", "ns", "tbl"))
         .thenReturn(
@@ -183,6 +198,49 @@ public class IcebergRestCatalogServiceTest {
     service.loadCredentials("cat", "ns", "tbl");
 
     verify(tableConfigService).getTableConfig(any(), eq(READ_ONLY), any());
+  }
+
+  @Test
+  public void loadCredentialsRejectsMissingReadAccess() {
+    UUID tableId = UUID.randomUUID();
+    UUID principalId = UUID.randomUUID();
+    UUID catalogId = UUID.randomUUID();
+    UUID schemaId = UUID.randomUUID();
+    when(userRepository.findPrincipalId()).thenReturn(principalId);
+    when(serverProperties.isAuthorizationEnabled()).thenReturn(true);
+    when(serverProperties.isStrictPrivilegeChecksEnabled()).thenReturn(true);
+    when(tableRepository.getIcebergTableState("cat", "ns", "tbl"))
+        .thenReturn(
+            new TableRepository.IcebergTableState(
+                tableId, DataSourceFormat.ICEBERG, "s3://bucket/metadata.json", "s3://bucket"));
+    when(keyMapper.mapResourceKeys(
+            Map.of(SecurableType.TABLE, tableId.toString(), SecurableType.METASTORE, "")))
+        .thenReturn(
+            Map.of(
+                SecurableType.CATALOG, catalogId,
+                SecurableType.SCHEMA, schemaId,
+                SecurableType.METASTORE, UUID.randomUUID(),
+                SecurableType.TABLE, tableId));
+    when(authorizer.authorizeAny(
+            principalId,
+            SecurableType.CATALOG,
+            catalogId,
+            Privileges.OWNER,
+            Privileges.USE_CATALOG))
+        .thenReturn(true);
+    when(authorizer.authorizeAny(
+            principalId, SecurableType.SCHEMA, schemaId, Privileges.OWNER, Privileges.USE_SCHEMA))
+        .thenReturn(true);
+
+    assertThatThrownBy(() -> service.loadCredentials("cat", "ns", "tbl"))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            error -> assertThat(error.getErrorCode()).isEqualTo(ErrorCode.PERMISSION_DENIED));
+    verify(authorizer)
+        .authorizeAny(
+            principalId, SecurableType.TABLE, tableId, Privileges.OWNER, Privileges.SELECT);
+    verifyNoInteractions(tableConfigService);
+    verify(authorizer, never()).refreshAuthorizations(anyLong());
   }
 
   @Test

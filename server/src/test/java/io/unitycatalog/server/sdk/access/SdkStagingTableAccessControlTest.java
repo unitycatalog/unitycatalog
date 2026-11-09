@@ -84,12 +84,7 @@ public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlB
 
     // Grant permissions to both users on metastore, catalog, and schema
     for (String email : List.of(userAEmail, userBEmail)) {
-      grantPermissions(
-          email,
-          SecurableType.METASTORE,
-          METASTORE_NAME,
-          Privileges.USE_CATALOG,
-          Privileges.CREATE_CATALOG);
+      grantPermissions(email, SecurableType.METASTORE, METASTORE_NAME, Privileges.CREATE_CATALOG);
       grantPermissions(
           email, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
       grantPermissions(

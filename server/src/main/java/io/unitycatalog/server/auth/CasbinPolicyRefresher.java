@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.NativeQuery;
 import org.slf4j.Logger;
@@ -59,7 +60,9 @@ public class CasbinPolicyRefresher implements AutoCloseable {
   // System.nanoTime() of the last successful probe start; Long.MIN_VALUE if none.
   private volatile long lastCompletedProbeAtNanos = Long.MIN_VALUE;
 
-  private ScheduledExecutorService executor;
+  // Not guarded by this object's monitor: a refresh holds it while it reads the database, and
+  // close() must not wait for a refresh that is stuck there.
+  private final AtomicReference<ScheduledExecutorService> executor = new AtomicReference<>();
 
   public CasbinPolicyRefresher(
       Runnable reloader, SessionFactory sessionFactory, Duration minProbeInterval) {
@@ -69,18 +72,19 @@ public class CasbinPolicyRefresher implements AutoCloseable {
   }
 
   public synchronized void start(Duration interval) {
-    if (executor != null) {
+    if (executor.get() != null) {
       return;
     }
-    executor =
+    ScheduledExecutorService started =
         Executors.newSingleThreadScheduledExecutor(
             runnable -> {
               Thread thread = new Thread(runnable, "casbin-policy-refresher");
               thread.setDaemon(true);
               return thread;
             });
+    executor.set(started);
     long millis = Math.max(1, interval.toMillis());
-    executor.scheduleWithFixedDelay(this::pollQuietly, millis, millis, TimeUnit.MILLISECONDS);
+    started.scheduleWithFixedDelay(this::pollQuietly, millis, millis, TimeUnit.MILLISECONDS);
     LOGGER.info(
         "Casbin policy refresh enabled, checking every {}ms; deny-path min probe interval {}ms",
         millis,
@@ -219,7 +223,10 @@ public class CasbinPolicyRefresher implements AutoCloseable {
                 new long[] {((Number) row[0]).longValue(), ((Number) row[1]).longValue()});
           });
     } catch (Exception e) {
-      LOGGER.debug("Could not read the Casbin policy version", e);
+      LOGGER.warn(
+          "Could not read the Casbin policy version; changes from other instances are not applied"
+              + " until a read succeeds",
+          e);
       return Optional.empty();
     }
   }
@@ -233,18 +240,18 @@ public class CasbinPolicyRefresher implements AutoCloseable {
             return Optional.of(((Number) result).longValue());
           });
     } catch (Exception e) {
-      LOGGER.debug("Could not read the Casbin policy max id", e);
+      LOGGER.warn(
+          "Could not read the Casbin policy max id; changes from other instances are not applied"
+              + " until a read succeeds",
+          e);
       return Optional.empty();
     }
   }
 
   @Override
   public void close() {
-    ScheduledExecutorService toShutDown;
-    synchronized (this) {
-      toShutDown = executor;
-      executor = null;
-    }
+    // shutdownNow() interrupts a refresh in progress, which may hold this object's monitor.
+    ScheduledExecutorService toShutDown = executor.getAndSet(null);
     if (toShutDown == null) {
       return;
     }
@@ -258,7 +265,8 @@ public class CasbinPolicyRefresher implements AutoCloseable {
     }
   }
 
-  synchronized boolean isRunning() {
-    return executor != null && !executor.isShutdown();
+  boolean isRunning() {
+    ScheduledExecutorService running = executor.get();
+    return running != null && !running.isShutdown();
   }
 }

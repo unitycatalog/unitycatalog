@@ -26,3 +26,4 @@ docs = ["pdoc==15.0.0"]
 # This is a virtual project used only for dependency management, not an installable package.
 package = false
 exclude-newer = "2026-03-20T00:00:00Z"
+exclude-newer-package = { certifi = "2026-10-23T00:00:00Z", uv = "2026-10-23T00:00:00Z" }

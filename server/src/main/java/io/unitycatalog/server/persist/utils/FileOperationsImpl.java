@@ -7,6 +7,7 @@ import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
 import io.unitycatalog.server.utils.CooperativeDeadline;
@@ -19,6 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import org.apache.iceberg.aws.AwsClientProperties;
@@ -99,7 +101,7 @@ public class FileOperationsImpl implements FileOperations {
       case FILE, NULL -> new SimpleLocalFileIO(Paths.get(rootPath.toUri()));
       case S3, GS, ABFS, ABFSS -> {
         ResolvingFileIO fileio = new ResolvingFileIO();
-        fileio.initialize(getFileIOConfig(rootPath, privileges));
+        fileio.initialize(serverFileIOConfig(rootPath, privileges, CredentialUse.SERVER));
         yield fileio;
       }
     };
@@ -113,17 +115,21 @@ public class FileOperationsImpl implements FileOperations {
    */
   @Override
   public SupportsPrefixOperations getCleanupFileIO(
-      NormalizedURL rootPath, CooperativeDeadline deadline) {
+      NormalizedURL rootPath, UUID resourceId, CooperativeDeadline deadline) {
     return switch (UriScheme.fromURI(rootPath.toUri())) {
       case FILE, NULL -> new SimpleLocalFileIO(Paths.get(rootPath.toUri()), deadline);
       case S3, GS -> {
         ResolvingFileIO fileIO = new ResolvingFileIO();
-        fileIO.initialize(getFileIOConfig(rootPath, CredentialContext.READ_WRITE));
+        fileIO.initialize(
+            serverFileIOConfig(
+                rootPath, CredentialContext.READ_WRITE, CredentialUse.cleanup(resourceId)));
         yield new InterruptiblePrefixOperations(fileIO, rootPath + "/", deadline);
       }
       case ABFS, ABFSS -> {
         ADLSFileIO fileIO = new ADLSFileIO();
-        fileIO.initialize(getFileIOConfig(rootPath, CredentialContext.READ_WRITE));
+        fileIO.initialize(
+            serverFileIOConfig(
+                rootPath, CredentialContext.READ_WRITE, CredentialUse.cleanup(resourceId)));
         yield new ADLSPrefixOperations(fileIO, rootPath + "/", deadline);
       }
     };
@@ -136,13 +142,26 @@ public class FileOperationsImpl implements FileOperations {
       Optional<String> credentialsEndpoint) {
     UriScheme scheme = UriScheme.fromURI(path.toUri());
     if (scheme == UriScheme.FILE || scheme == UriScheme.NULL) {
-      // Local (file://) paths need no cloud credentials, so short-circuit before vending: the
-      // scheme is known here and vending would do a needless external-location lookup for local
-      // tables.
+      // Local (file://) paths need no FileIO config. The vend returns no credential, but an
+      // audited vendor records the access.
+      storageCredentialVendor.vendCredential(path, privileges, CredentialUse.CLIENT);
       return Map.of();
     }
+    return toFileIOConfig(
+        path,
+        storageCredentialVendor.vendCredential(path, privileges, CredentialUse.CLIENT),
+        credentialsEndpoint);
+  }
 
-    TemporaryCredentials cred = storageCredentialVendor.vendCredential(path, privileges);
+  /** The FileIO config for credentials the server uses itself, labeled with their purpose. */
+  private Map<String, String> serverFileIOConfig(
+      NormalizedURL path, Set<CredentialContext.Privilege> privileges, CredentialUse use) {
+    return toFileIOConfig(
+        path, storageCredentialVendor.vendCredential(path, privileges, use), Optional.empty());
+  }
+
+  private Map<String, String> toFileIOConfig(
+      NormalizedURL path, TemporaryCredentials cred, Optional<String> credentialsEndpoint) {
     if (cred.getAzureUserDelegationSas() != null) {
       return getADLSConfig(
           path, cred.getAzureUserDelegationSas(), cred.getExpirationTime(), credentialsEndpoint);

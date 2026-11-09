@@ -30,6 +30,10 @@ spec:
       {{- with .Values.server.deployment.podSecurityContext }}
       securityContext: {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- /* kindIs keeps an explicit 0, which "with" would drop. */}}
+      {{- if not (kindIs "invalid" .Values.server.deployment.terminationGracePeriodSeconds) }}
+      terminationGracePeriodSeconds: {{ .Values.server.deployment.terminationGracePeriodSeconds }}
+      {{- end }}
       initContainers:
         - name: init
           {{- with .Values.server.deployment.initContainer.securityContext }}
@@ -43,7 +47,8 @@ spec:
             - |-
               apk add --no-cache envsubst openssl curl
               envsubst < /home/unitycatalog/etc/confTemplates/server.properties.template > /home/unitycatalog/etc/conf/server.properties
-              envsubst < /home/unitycatalog/etc/confTemplates/server.log4j2.properties.template > /home/unitycatalog/etc/conf/server.log4j2.properties
+              # Copied, not envsubst-ed: envsubst would blank the Log4j ${hostName} lookup.
+              cp /home/unitycatalog/etc/confTemplates/server.log4j2.properties.template /home/unitycatalog/etc/conf/server.log4j2.properties
               envsubst < /home/unitycatalog/etc/confTemplates/hibernate.properties.template > /home/unitycatalog/etc/conf/hibernate.properties
 
               echo "Generating DER format keys (private_key.der and public_key.der) if they do not exist..."
@@ -101,6 +106,13 @@ spec:
                   name: {{ .Values.server.db.postgresqlConfig.passwordSecretName | quote }}
                   key: {{ required "Password secret key is required" .Values.server.db.postgresqlConfig.passwordSecretKey | quote }}
           {{- end }}
+          {{- if and (eq .Values.server.db.type "mysql") .Values.server.db.mysqlConfig.passwordSecretName }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.server.db.mysqlConfig.passwordSecretName | quote }}
+                  key: {{ required "Password secret key is required" .Values.server.db.mysqlConfig.passwordSecretKey | quote }}
+          {{- end }}
           {{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.ssl.enabled }}
           {{- if .Values.server.db.postgresqlConfig.ssl.rootCert }}
             - name: DB_ROOT_CERT
@@ -117,6 +129,8 @@ spec:
           {{- end }}
           {{- end }}
           {{- range $index, $config := .Values.storage.credentials.s3 }}
+          {{- /* Deprecated: only for a custom server.properties template that still uses these variables. */}}
+          {{- if or $.Values.server.config.override $.Values.server.config.extraProperties }}
             - name: S3_ACCESS_KEY_{{ $index }}
               valueFrom:
                 secretKeyRef:
@@ -128,7 +142,10 @@ spec:
                   name: {{ $config.credentialsSecretName | quote }}
                   key: secretKey
           {{- end }}
+          {{- end }}
           {{- range $index, $config := .Values.storage.credentials.adls }}
+          {{- /* Deprecated: only for a custom server.properties template that still uses these variables. */}}
+          {{- if or $.Values.server.config.override $.Values.server.config.extraProperties }}
             - name: ADLS_TENANT_ID_{{ $index }}
               valueFrom:
                 secretKeyRef:
@@ -145,40 +162,85 @@ spec:
                   name: {{ $config.credentialsSecretName | quote }}
                   key: clientSecret
           {{- end }}
+          {{- end }}
           {{- if .Values.auth.enabled }}
             - name: OAUTH_CLIENT_ID
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.auth.clientSecretName | quote }}
                   key: clientId
+          {{- /* Deprecated: only for a custom server.properties template that still uses these variables. */}}
+          {{- if or $.Values.server.config.override $.Values.server.config.extraProperties }}
             - name: OAUTH_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.auth.clientSecretName | quote }}
                   key: clientSecret
+                  # Nothing else in the chart reads this key, so a Secret without it still works.
+                  optional: true
+          {{- end }}
           {{- end }}
       {{- with .Values.server.deployment.extraInitContainers }}
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- $obsPort := .Values.server.deployment.obsPort }}
+      {{- if and $obsPort (eq (toString $obsPort) (toString .Values.server.deployment.port)) }}
+      {{- fail "server.deployment.obsPort must differ from server.deployment.port" }}
       {{- end }}
       containers:
         - name: server
           {{- with .Values.server.deployment.securityContext }}
           securityContext: {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- with .Values.server.deployment.lifecycle }}
+          lifecycle: {{- toYaml . | nindent 12 }}
+          {{- end }}
           image: "{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
+          {{- /* An upgrade with --reuse-values from an older release has no command value. */}}
+          command: {{- toYaml (.Values.server.deployment.command | default (list "./bin/start-uc-server")) | nindent 12 }}
+          args:
+            - --port
+            - {{ .Values.server.deployment.port | quote }}
+            {{- with $obsPort }}
+            - --obs-port
+            - {{ . | quote }}
+            {{- end }}
+          {{- with include "unitycatalog.server.secretEnv" . | trim }}
+          # Secrets reach the server as environment variables, not through server.properties.
+          env:
+            {{- . | nindent 12 }}
+          {{- end }}
           ports:
             - name: api
               containerPort: {{ .Values.server.deployment.port }}
               protocol: TCP
+            {{- with $obsPort }}
+            - name: obs
+              containerPort: {{ . }}
+              protocol: TCP
+            {{- end }}
+          {{- if eq .Values.server.db.type "mysql" }}
+          env:
+            # The image does not include the MySQL JDBC driver. Its launcher lists the classpath jars in a file, so the
+            # driver jar mounted from the volume loads from the module path instead.
+            - name: JDK_JAVA_OPTIONS
+              value: "--module-path=/home/unitycatalog/jdbc-drivers/mysql-connector-j.jar --add-modules=ALL-MODULE-PATH"
+          {{- end }}
 
           {{- if .Values.server.deployment.enableLivenessProbe }}
-          {{- if .Values.server.deployment.livenessProbe }}
+          {{- with .Values.server.deployment.livenessProbe }}
           livenessProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           livenessProbe:
+            {{- if $obsPort }}
+            httpGet:
+              path: /livez
+              port: obs
+            {{- else }}
             tcpSocket:
               port: api
+            {{- end }}
             timeoutSeconds: 10
             periodSeconds: 10
             failureThreshold: 30 # 5 minutes
@@ -186,20 +248,29 @@ spec:
           {{- end }}
 
           {{- if .Values.server.deployment.enableReadinessProbe }}
-          {{- if .Values.server.deployment.readinessProbe }}
+          {{- with .Values.server.deployment.readinessProbe }}
           readinessProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           readinessProbe:
+            {{- if $obsPort }}
+            httpGet:
+              path: /readyz
+              port: obs
+            timeoutSeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+            {{- else }}
             tcpSocket:
               port: api
             timeoutSeconds: 10
             periodSeconds: 10
             failureThreshold: 30 # 5 minutes
+            {{- end }}
           {{- end }}
           {{- end }}
 
           {{- if .Values.server.deployment.enableStartupProbe }}
-          {{- if .Values.server.deployment.startupProbe }}
+          {{- with .Values.server.deployment.startupProbe }}
           startupProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           startupProbe:
@@ -217,6 +288,12 @@ spec:
           {{- if eq .Values.server.db.type "file" }}
             - name: db-volume
               mountPath: /home/unitycatalog/etc/db
+          {{- end }}
+          {{- if eq .Values.server.db.type "mysql" }}
+            - name: mysql-driver
+              mountPath: /home/unitycatalog/jdbc-drivers/mysql-connector-j.jar
+              subPath: {{ required "server.db.mysqlConfig.driver.subPath is required: the path of the driver jar in driver.volume" .Values.server.db.mysqlConfig.driver.subPath | quote }}
+              readOnly: true
           {{- end }}
           {{- range $index, $config := .Values.storage.credentials.gcs }}
             - name: gcs-credentials-{{ $index }}
@@ -246,6 +323,10 @@ spec:
         - name: db-volume
           persistentVolumeClaim:
             claimName: {{ include "unitycatalog.server.db.filePvcName" . | quote }}
+      {{- end }}
+      {{- if eq .Values.server.db.type "mysql" }}
+        - name: mysql-driver
+          {{- toYaml (required "server.db.mysqlConfig.driver.volume is required: the server image does not include the MySQL JDBC driver" .Values.server.db.mysqlConfig.driver.volume) | nindent 10 }}
       {{- end }}
       {{- range $index, $config := .Values.storage.credentials.gcs }}
         - name: gcs-credentials-{{ $index }}

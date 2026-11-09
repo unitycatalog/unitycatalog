@@ -69,7 +69,8 @@ public class AuthService implements RegisteredService {
       ServerProperties serverProperties,
       Repositories repositories) {
     this.securityContext = securityContext;
-    this.jwksOperations = new JwksOperations(securityContext);
+    this.jwksOperations =
+        new JwksOperations(securityContext, serverProperties.getAllowedJwksUris());
     this.serverProperties = serverProperties;
     this.tokenExchangeSubjectTokenHandler =
         new TokenExchangeSubjectTokenHandler(repositories.getUserRepository());
@@ -112,14 +113,21 @@ public class AuthService implements RegisteredService {
    *
    * @param ext Specifies whether the issued token should be set as a cookie.
    * @param form The OAuth 2.0 token exchange request form.
+   * @param request The HTTP request, checked for CSRF protection when issuing a cookie.
    * @return The token exchange response
    */
   @Post("/tokens")
   @com.linecorp.armeria.server.annotation.Blocking
   public HttpResponse grantToken(
       @Param("ext") Optional<TokenEndpointExtensionType> ext,
-      @RequestConverter(ToOAuthTokenExchangeFormConverter.class) OAuthTokenExchangeForm form) {
+      @RequestConverter(ToOAuthTokenExchangeFormConverter.class) OAuthTokenExchangeForm form,
+      HttpRequest request) {
     LOGGER.debug("Got token: {}", form);
+
+    boolean isCookie = ext.orElse(null) == TokenEndpointExtensionType.COOKIE;
+    if (isCookie) {
+      AuthDecorator.validateCsrfHeader(request.headers());
+    }
 
     if (GrantType.TOKEN_EXCHANGE != form.getGrantType()) {
       throw new OAuthInvalidRequestException(
@@ -199,15 +207,11 @@ public class AuthService implements RegisteredService {
 
     // Set token as cookie if ext param is set to cookie
     ResponseHeadersBuilder responseHeaders = ResponseHeaders.builder(HttpStatus.OK);
-    ext.ifPresent(
-        e -> {
-          if (e.equals(TokenEndpointExtensionType.COOKIE)) {
-            Duration cookieTimeout = serverProperties.getEffectiveCookieTimeout();
-            Cookie cookie =
-                createCookie(AuthDecorator.UC_TOKEN_KEY, accessToken, "/", cookieTimeout);
-            responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
-          }
-        });
+    if (isCookie) {
+      Duration cookieTimeout = serverProperties.getEffectiveCookieTimeout();
+      Cookie cookie = createCookie(AuthDecorator.UC_TOKEN_KEY, accessToken, "/", cookieTimeout);
+      responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
+    }
 
     return HttpResponse.ofJson(responseHeaders.build(), tokenExchangeInfo);
   }

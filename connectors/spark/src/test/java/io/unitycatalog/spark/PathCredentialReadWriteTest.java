@@ -122,6 +122,13 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
             .master("local[*]")
             .config("spark.sql.shuffle.partitions", "4")
             .config("spark.sql.extensions", DELTA_AND_UC_EXTENSIONS);
+    // Spark 4.3 enables dual-run of the fixed-point and single-pass analyzers under
+    // spark.testing. The single-pass analyzer skips hint resolution rules, so
+    // ResolvePathCredentials never runs there and the plan comparison fails. Pin the
+    // fixed-point analyzer that production uses until SPARK-59574 lands.
+    if (isSparkAtLeast(4, 3)) {
+      builder.config("spark.sql.analyzer.singlePassResolver.dualRunWithLegacy", "false");
+    }
     if (sparkCatalogImpl != null) {
       builder.config("spark.sql.catalog.spark_catalog", sparkCatalogImpl);
     }

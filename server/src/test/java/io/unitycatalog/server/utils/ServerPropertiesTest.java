@@ -5,11 +5,25 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CopyOnWriteArrayList;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Configurator;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 public class ServerPropertiesTest {
 
@@ -118,6 +132,21 @@ public class ServerPropertiesTest {
         "Invalid value 'yes'",
         "server.iceberg-table.enabled",
         "Allowed values: [true, false]");
+  }
+
+  @Test
+  public void testStrictPrivilegeChecksSetting() {
+    ServerProperties properties = new ServerProperties();
+    assertThat(properties.isStrictPrivilegeChecksEnabled()).isTrue();
+    properties.set(Property.STRICT_PRIVILEGE_CHECKS_ENABLED, "false");
+    assertThat(properties.isStrictPrivilegeChecksEnabled()).isFalse();
+    properties.set(Property.STRICT_PRIVILEGE_CHECKS_ENABLED, "true");
+    assertThat(properties.isStrictPrivilegeChecksEnabled()).isTrue();
+    testInvalidProperty(
+        Property.STRICT_PRIVILEGE_CHECKS_ENABLED,
+        "yes",
+        "Invalid value 'yes'",
+        "server.authorization.strict-privilege-checks");
   }
 
   @Test
@@ -313,6 +342,33 @@ public class ServerPropertiesTest {
   }
 
   @Test
+  public void testStorageCredentialCacheConfiguration() {
+    ServerProperties defaults = new ServerProperties();
+    assertThat(defaults.isStorageCredentialCacheEnabled()).isFalse();
+    assertThat(defaults.getStorageCredentialCacheMaxSize()).isEqualTo(1000);
+    assertThat(defaults.getStorageCredentialCacheMaxAge()).isEqualTo(Duration.ofMinutes(5));
+
+    Properties custom = new Properties();
+    custom.setProperty(Property.STORAGE_CREDENTIAL_CACHE_ENABLED.getKey(), "true");
+    custom.setProperty(Property.STORAGE_CREDENTIAL_CACHE_MAX_SIZE.getKey(), "10");
+    custom.setProperty(Property.STORAGE_CREDENTIAL_CACHE_MAX_AGE.getKey(), "PT2M");
+    ServerProperties overridden = new ServerProperties(custom);
+    assertThat(overridden.isStorageCredentialCacheEnabled()).isTrue();
+    assertThat(overridden.getStorageCredentialCacheMaxSize()).isEqualTo(10);
+    assertThat(overridden.getStorageCredentialCacheMaxAge()).isEqualTo(Duration.ofMinutes(2));
+
+    testInvalidProperty(
+        Property.STORAGE_CREDENTIAL_CACHE_MAX_SIZE,
+        "0",
+        "server.storage-credential-cache.max-size");
+    testInvalidProperty(
+        Property.STORAGE_CREDENTIAL_CACHE_MAX_AGE,
+        "PT0S",
+        "server.storage-credential-cache.max-age",
+        "Expected at least one millisecond");
+  }
+
+  @Test
   public void testReadinessConfiguration() {
     // Defaults
     ServerProperties defaults = new ServerProperties();
@@ -341,6 +397,16 @@ public class ServerPropertiesTest {
   }
 
   @Test
+  public void testShutdownTimeout() {
+    assertThat(new ServerProperties().getShutdownTimeout()).isEqualTo(Duration.ofSeconds(5));
+    testInvalidProperty(
+        Property.SHUTDOWN_TIMEOUT,
+        "PT0S",
+        "server.shutdown-timeout",
+        "Expected at least one millisecond");
+  }
+
+  @Test
   public void testEffectiveCookieTimeout() {
     ServerProperties serverProperties = new ServerProperties();
     assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT24H"));
@@ -350,6 +416,147 @@ public class ServerPropertiesTest {
 
     serverProperties.set(Property.ACCESS_TOKEN_TIMEOUT, "PT48H");
     assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT1H"));
+  }
+
+  @Test
+  public void testSettingsFromEnvironment() {
+    Properties props = new Properties();
+    props.setProperty("server.client-secret", "file-client-secret");
+    props.setProperty("aws.secretKey", "file-aws-secret");
+    props.setProperty("aws.region", "us-west-2");
+    props.setProperty("s3.bucketPath.0", "s3://bucket0");
+    props.setProperty("s3.region.0", "us-west-2");
+    props.setProperty("s3.accessKey.0", "file-access-key");
+    props.setProperty("s3.secretKey.0", "file-s3-secret");
+    props.setProperty("s3.sessionToken.0", "file-session-token");
+    props.setProperty("adls.storageAccountName.0", "account0");
+    props.setProperty("adls.tenantId.0", "tenant");
+    props.setProperty("adls.clientId.0", "client");
+    ServerProperties serverProperties =
+        new ServerProperties(
+            props,
+            Map.of(
+                "UC_SERVER_CLIENT_SECRET", "env-client-secret",
+                // A line break at the end, as in a Secret made from a file, is dropped.
+                "UC_S3_SECRETKEY_0", "env-s3-secret\r\n",
+                "UC_S3_SESSIONTOKEN_0", "env-session-token",
+                "UC_ADLS_CLIENTSECRET_0", "env-adls-secret",
+                // Any key, not only a secret.
+                "UC_S3_REGION_0", "eu-west-1",
+                // An empty variable does not replace the file value.
+                "UC_AWS_SECRETKEY", "",
+                // Without the prefix, a variable that runtimes set themselves is not read.
+                "AWS_REGION", "us-east-1",
+                // A variable named exactly as the key comes first.
+                "s3.accessKey.0", "exact-access-key",
+                "UC_S3_ACCESSKEY_0", "env-access-key"));
+
+    assertThat(serverProperties.get(Property.CLIENT_SECRET)).isEqualTo("env-client-secret");
+    assertThat(serverProperties.get(Property.AWS_SECRET_KEY)).isEqualTo("file-aws-secret");
+    assertThat(serverProperties.get(Property.AWS_REGION)).isEqualTo("us-west-2");
+    S3StorageConfig s3 =
+        serverProperties.getS3Configurations().get(NormalizedURL.from("s3://bucket0"));
+    assertThat(s3.getSecretKey()).isEqualTo("env-s3-secret");
+    assertThat(s3.getSessionToken()).isEqualTo("env-session-token");
+    assertThat(s3.getRegion()).isEqualTo("eu-west-1");
+    assertThat(s3.getAccessKey()).isEqualTo("exact-access-key");
+    assertThat(serverProperties.getAdlsConfigurations().get("account0").getClientSecret())
+        .isEqualTo("env-adls-secret");
+  }
+
+  @Test
+  public void testLogsNamesOfSecretsInTheFile(@TempDir Path dir) throws IOException {
+    String file = dir.resolve("server.properties").toString();
+    Files.writeString(
+        Paths.get(file),
+        String.join(
+            "\n",
+            "server.client-secret=client-value",
+            "s3.secretKey.0=s3-value",
+            "s3.sessionToken.0=token-value",
+            "adls.clientSecret.0=adls-value",
+            // An empty line in the sample file is not a secret.
+            "aws.secretKey=",
+            "s3.region.0=us-west-2"));
+    Logger logger = (Logger) LogManager.getLogger(ServerProperties.class);
+    Level previousLevel = logger.getLevel();
+    CapturingAppender appender = new CapturingAppender();
+    appender.start();
+    logger.addAppender(appender);
+    // The test JVM may not find the Log4j config and fall back to ERROR.
+    Configurator.setLevel(logger.getName(), Level.INFO);
+    System.setProperty("adls.clientSecret.0", "property-value");
+    try {
+      ServerProperties serverProperties =
+          new ServerProperties(
+              file,
+              Map.of(
+                  // The server doesn't read the client secret, so this still warns about the file.
+                  "UC_SERVER_CLIENT_SECRET", "env-value",
+                  "UC_S3_SESSIONTOKEN_0", "env-value",
+                  "UC_AWS_REGION", "env-value"));
+      serverProperties.get(Property.AWS_REGION);
+      serverProperties.get(Property.CLIENT_SECRET);
+      assertThat(appender.messages)
+          .satisfiesExactlyInAnyOrder(
+              m ->
+                  assertThat(m)
+                      .startsWith("WARN server.client-secret is set in " + file)
+                      .contains("bin/uc auth login", "UC_SERVER_CLIENT_SECRET"),
+              m -> assertThat(m).startsWith("WARN s3.secretKey.0 is set in " + file),
+              // Once per key, and none for the client secret, which the server doesn't use.
+              m ->
+                  assertThat(m)
+                      .isEqualTo(
+                          "INFO Using the UC_S3_SESSIONTOKEN_0 environment variable for"
+                              + " s3.sessionToken.0"),
+              m ->
+                  assertThat(m)
+                      .isEqualTo(
+                          "INFO Using the UC_AWS_REGION environment variable for aws.region"));
+      System.clearProperty("adls.clientSecret.0");
+
+      // Each kind of secret warns when nothing else supplies it, whatever its index.
+      Files.writeString(
+          Paths.get(file),
+          String.join(
+              "\n",
+              "aws.secretKey=a",
+              "s3.secretKey.10=b",
+              "s3.sessionToken.10=c",
+              "adls.clientSecret.10=d"));
+      new ServerProperties(file, Map.of());
+      assertThat(appender.messages.subList(4, appender.messages.size()))
+          .extracting(m -> m.split(" ")[1])
+          .containsExactlyInAnyOrder(
+              "aws.secretKey", "s3.secretKey.10", "s3.sessionToken.10", "adls.clientSecret.10");
+      assertThat(String.join("\n", appender.messages))
+          .doesNotContain("client-value", "s3-value", "token-value", "adls-value", "env-value");
+    } finally {
+      System.clearProperty("adls.clientSecret.0");
+      logger.removeAppender(appender);
+      Configurator.setLevel(logger.getName(), previousLevel);
+      appender.stop();
+    }
+  }
+
+  private static final class CapturingAppender extends AbstractAppender {
+
+    private final List<String> messages = new CopyOnWriteArrayList<>();
+
+    private CapturingAppender() {
+      super(
+          "ServerPropertiesTest",
+          null,
+          null,
+          true,
+          org.apache.logging.log4j.core.config.Property.EMPTY_ARRAY);
+    }
+
+    @Override
+    public void append(LogEvent event) {
+      messages.add(event.getLevel() + " " + event.getMessage().getFormattedMessage());
+    }
   }
 
   @Test

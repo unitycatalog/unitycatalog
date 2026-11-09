@@ -10,8 +10,8 @@ logic lives in one governed place in Unity Catalog instead of being copy-pasted 
 
 !!! warning "Prerequisites"
     Metric views require **Apache Spark 4.2 or later** (the `CREATE VIEW ... WITH METRICS` SQL DDL
-    was introduced in Spark 4.2) and the **Unity Catalog 0.6.0** Spark 4.2 connector. Use the
-    Spark 4.2 connector artifact:
+    was introduced in Spark 4.2) and the **Unity Catalog 0.6.0 or later** Spark 4.2 connector. Use
+    the Spark 4.2 connector artifact:
 
     | Spark version | UC Spark connector artifact |
     | --- | --- |
@@ -32,7 +32,7 @@ export UC_TOKEN=
 
 bin/spark-sql --name "metric-view-test" \
     --master "local[*]" \
-    --packages "io.unitycatalog:unitycatalog-spark_4.2_2.13:0.6.0" \
+    --packages "io.unitycatalog:unitycatalog-spark_4.2_2.13:0.7.0" \
     --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
     --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
     --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
@@ -45,7 +45,7 @@ bin/spark-sql --name "metric-view-test" \
     `spark.sql.catalog.spark_catalog=...DeltaCatalog` conf, because the walkthrough below uses a
     parquet source table. The connector logs a benign `WARN ... DeltaCatalog is not available in
     the classpath`, which is expected. To use a Delta source table instead, add the
-    `io.delta:delta-spark_4.2_2.13:4.4.0` package, the
+    `io.delta:delta-spark_4.2_2.13:4.4.1` package, the
     `spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension` conf, and the
     `spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog` conf, as shown
     on the [Apache Spark integration](../integrations/unity-catalog-spark.md) page.

@@ -2,12 +2,14 @@ import datetime
 import decimal
 import json
 import logging
+import multiprocessing
 import re
 import textwrap
 from contextlib import contextmanager
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Union
+from unittest import mock
 
 import pytest
 import pytest_asyncio
@@ -19,6 +21,7 @@ from unitycatalog.ai.core.client import (
     validate_input_parameter,
     validate_param,
 )
+from unitycatalog.ai.core.executor.common import SANDBOX_UNSUPPORTED_MESSAGE
 from unitycatalog.ai.core.executor.local import run_in_sandbox, run_in_sandbox_async
 from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
@@ -36,6 +39,7 @@ from unitycatalog.client import (
     ApiClient,
     CatalogsApi,
     Configuration,
+    FunctionInfo,
     FunctionParameterInfo,
     FunctionParameterInfos,
     FunctionsApi,
@@ -154,6 +158,35 @@ async def core_client():
 async def test_handle_invalid_client():
     with pytest.raises(ValueError, match="The 'api_client' must be an instance of"):
         UnitycatalogFunctionClient(api_client="client")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("execution_mode", "start_methods", "should_warn"),
+    [
+        (None, ["spawn"], True),
+        ("sandbox", ["spawn"], True),
+        ("sandbox", ["fork", "spawn"], False),
+        ("local", ["spawn"], False),
+    ],
+)
+async def test_init_warns_when_sandbox_is_unsupported(
+    monkeypatch, caplog, execution_mode, start_methods, should_warn
+):
+    monkeypatch.setattr(multiprocessing, "get_all_start_methods", lambda: start_methods)
+    kwargs = {} if execution_mode is None else {"execution_mode": execution_mode}
+    with caplog.at_level(logging.WARNING):
+        client = UnitycatalogFunctionClient(
+            api_client=ApiClient(configuration=Configuration()), **kwargs
+        )
+    await client.close_async()
+
+    warnings = [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == "unitycatalog.ai.core.client" and r.levelno == logging.WARNING
+    ]
+    assert warnings == ([SANDBOX_UNSUPPORTED_MESSAGE] if should_warn else [])
 
 
 @pytest.mark.asyncio
@@ -327,9 +360,9 @@ async def test_create_function(uc_client):
         uc_client.execute_function(function_name=function_name, parameters={"x": "test"}).value
         == "test"
     )
-    assert uc_client.func_cache.get("test_function") is not None
+    assert uc_client.func_cache.get(function_name) is not None
     uc_client.clear_function_cache()
-    assert uc_client.func_cache.get("test_function") is None
+    assert uc_client.func_cache.get(function_name) is None
 
 
 @pytest.mark.asyncio
@@ -847,6 +880,11 @@ async def test_validate_param_invalid_interval():
         validate_param(param, column_type, param_type_text)
 
 
+@pytest.mark.parametrize("param_type_text", ["interval day to second", "INTERVAL DAY TO SECOND"])
+def test_validate_param_interval_type_text_is_case_insensitive(param_type_text):
+    validate_param(datetime.timedelta(days=1), "INTERVAL", param_type_text)
+
+
 def floating_point_param_infos(type_name: str, type_text: str) -> FunctionParameterInfos:
     return FunctionParameterInfos(
         parameters=[
@@ -893,6 +931,162 @@ async def test_validate_input_params_rejects_bool_for_floating_point_types(
         validation_client.validate_input_params(
             floating_point_param_infos(type_name, type_text), {"radius": param_value}
         )
+
+
+@pytest_asyncio.fixture
+async def local_execution_client():
+    uc_api_client = ApiClient(configuration=Configuration())
+    client = UnitycatalogFunctionClient(api_client=uc_api_client, execution_mode="local")
+    yield client
+    await client.close_async()
+
+
+def repr_arg_function_info(type_name: str, type_text: str) -> FunctionInfo:
+    return FunctionInfo(
+        name="repr_arg",
+        catalog_name=CATALOG,
+        schema_name=SCHEMA,
+        full_name=f"{CATALOG}.{SCHEMA}.repr_arg",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="x",
+                    type_name=type_name,
+                    type_text=type_text,
+                    type_json=f'{{"name":"x","type":"{type_text}","nullable":false,"metadata":{{}}}}',
+                    position=0,
+                )
+            ]
+        ),
+        data_type="STRING",
+        full_data_type="STRING",
+        routine_body="EXTERNAL",
+        routine_definition="return repr(x)",
+        external_language="PYTHON",
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("type_name", "type_text", "param_value", "expected"),
+    [
+        ("DATE", "date", "2026-01-11", datetime.date(2026, 1, 11)),
+        ("TIMESTAMP", "timestamp", "2026-01-11T05:00:00", datetime.datetime(2026, 1, 11, 5)),
+        (
+            "TIMESTAMP",
+            "timestamp",
+            "2026-01-11T05:00:00Z",
+            datetime.datetime(2026, 1, 11, 5, tzinfo=datetime.timezone.utc),
+        ),
+        (
+            "TIMESTAMP_NTZ",
+            "timestamp_ntz",
+            "2026-01-11T05:00:00",
+            datetime.datetime(2026, 1, 11, 5),
+        ),
+        ("BINARY", "binary", "aGVsbG8=", b"hello"),
+        ("DECIMAL", "decimal(10,2)", 19.99, decimal.Decimal("19.99")),
+        ("DECIMAL", "decimal(10,2)", "19.99", decimal.Decimal("19.99")),
+        ("DECIMAL", "decimal(10,2)", 2, decimal.Decimal("2")),
+        ("DATE", "date", datetime.date(2026, 1, 11), datetime.date(2026, 1, 11)),
+        (
+            "TIMESTAMP",
+            "timestamp",
+            datetime.datetime(2026, 1, 11, 5),
+            datetime.datetime(2026, 1, 11, 5),
+        ),
+        ("BINARY", "binary", b"hello", b"hello"),
+        ("DECIMAL", "decimal(10,2)", decimal.Decimal("19.99"), decimal.Decimal("19.99")),
+    ],
+)
+async def test_execute_function_converts_json_arguments(
+    local_execution_client, type_name, type_text, param_value, expected
+):
+    function_info = repr_arg_function_info(type_name, type_text)
+    with mock.patch.object(local_execution_client, "get_function", return_value=function_info):
+        result = local_execution_client.execute_function(
+            function_info.full_name, {"x": param_value}
+        )
+        async_result = await local_execution_client.execute_function_async(
+            function_info.full_name, {"x": param_value}
+        )
+
+    assert result.error is None
+    assert result.value == repr(expected)
+    assert async_result.value == repr(expected)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("type_name", "type_text", "param_value"),
+    [
+        ("DATE", "date", "2026-13-01"),
+        ("TIMESTAMP", "timestamp", "not a timestamp"),
+        ("TIMESTAMP_NTZ", "timestamp_ntz", "2026-01-11 25:00"),
+        ("BINARY", "binary", "not base64!"),
+        ("TIMESTAMP_NTZ", "timestamp_ntz", "2026-01-11T05:00:00Z"),
+        ("TIMESTAMP_NTZ", "timestamp_ntz", "2026-01-11T05:00:00+05:00"),
+        ("DECIMAL", "decimal(10,2)", "abc"),
+        ("DECIMAL", "decimal(10,2)", "NaN"),
+        ("DECIMAL", "decimal(10,2)", "sNaN"),
+        ("DECIMAL", "decimal(10,2)", "Infinity"),
+        ("DECIMAL", "decimal(10,2)", float("inf")),
+        ("DECIMAL", "decimal(10,2)", float("nan")),
+    ],
+)
+async def test_execute_function_rejects_invalid_json_arguments(
+    local_execution_client, type_name, type_text, param_value
+):
+    function_info = repr_arg_function_info(type_name, type_text)
+    with mock.patch.object(local_execution_client, "get_function", return_value=function_info):
+        with pytest.raises(ValueError, match=rf"Parameter x .*{type_name}, but got invalid value"):
+            local_execution_client.execute_function(function_info.full_name, {"x": param_value})
+        with pytest.raises(ValueError, match=rf"Parameter x .*{type_name}, but got invalid value"):
+            await local_execution_client.execute_function_async(
+                function_info.full_name, {"x": param_value}
+            )
+
+
+@pytest.mark.asyncio
+async def test_execute_function_converts_default_arguments(local_execution_client):
+    def param(name: str, type_name: str, type_text: str, position: int, default=None):
+        return FunctionParameterInfo(
+            name=name,
+            type_name=type_name,
+            type_text=type_text,
+            type_json=f'{{"name":"{name}","type":"{type_text}","nullable":false,"metadata":{{}}}}',
+            position=position,
+            parameter_default=default,
+        )
+
+    function_info = FunctionInfo(
+        name="add_with_defaults",
+        catalog_name=CATALOG,
+        schema_name=SCHEMA,
+        full_name=f"{CATALOG}.{SCHEMA}.add_with_defaults",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                param("a", "DECIMAL", "decimal(10,2)", 0),
+                param("b", "DECIMAL", "decimal(10,2)", 1, "0.5"),
+                param("d", "DATE", "date", 2, "2026-01-11"),
+            ]
+        ),
+        data_type="STRING",
+        full_data_type="STRING",
+        routine_body="EXTERNAL",
+        routine_definition="return repr((a + b, d))",
+        external_language="PYTHON",
+    )
+    expected = repr((decimal.Decimal("2.5"), datetime.date(2026, 1, 11)))
+    with mock.patch.object(local_execution_client, "get_function", return_value=function_info):
+        result = local_execution_client.execute_function(function_info.full_name, {"a": 2})
+        async_result = await local_execution_client.execute_function_async(
+            function_info.full_name, {"a": 2}
+        )
+
+    assert result.error is None
+    assert result.value == expected
+    assert async_result.value == expected
 
 
 @pytest.mark.asyncio
@@ -955,7 +1149,7 @@ async def test_function_caching(uc_client):
     assert result1.value == 4
     assert result2.value == 6
 
-    assert function_name.split(".")[-1] in uc_client.func_cache
+    assert function_name in uc_client.func_cache
 
 
 @pytest.mark.asyncio
@@ -1004,6 +1198,129 @@ async def test_function_overwrite_cache_invalidate(uc_client):
     # Execute the function again to check if the cache is invalidated
     result2 = uc_client.execute_function(function_name=function_name, parameters={"x": 2})
     assert result2.value == 6
+
+
+@pytest_asyncio.fixture
+async def mocked_store_client():
+    uc_api_client = ApiClient(configuration=Configuration())
+    client = UnitycatalogFunctionClient(api_client=uc_api_client, execution_mode="local")
+    client.uc.functions_client = mock.AsyncMock(spec=FunctionsApi)
+    yield client
+    await client.close_async()
+
+
+def stored_python_function(
+    full_name: str,
+    routine_definition: str,
+    data_type: str,
+    parameters: Optional[List[FunctionParameterInfo]] = None,
+) -> FunctionInfo:
+    catalog_name, schema_name, name = full_name.split(".")
+    return FunctionInfo(
+        name=name,
+        catalog_name=catalog_name,
+        schema_name=schema_name,
+        full_name=full_name,
+        data_type=data_type,
+        full_data_type=data_type,
+        input_params={"parameters": parameters or []},
+        routine_body="EXTERNAL",
+        routine_definition=routine_definition,
+        external_language="PYTHON",
+    )
+
+
+def int_param(name: str) -> FunctionParameterInfo:
+    return FunctionParameterInfo(
+        name=name,
+        type_name="INT",
+        type_text="int",
+        type_json=f'{{"name":"{name}","type":"integer","nullable":false,"metadata":{{}}}}',
+        position=0,
+    )
+
+
+def serve_functions(client: UnitycatalogFunctionClient, *function_infos: FunctionInfo) -> None:
+    by_name = {info.full_name: info for info in function_infos}
+    client.uc.functions_client.get_function.side_effect = lambda name, **_: by_name[name]
+
+
+async def execute(client: UnitycatalogFunctionClient, use_async: bool, name: str, params: dict):
+    if use_async:
+        return await client.execute_function_async(name, params)
+    return client.execute_function(name, params)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_same_function_name_in_different_schemas_executes_own_definition(
+    mocked_store_client, use_async
+):
+    serve_functions(
+        mocked_store_client,
+        stored_python_function(
+            f"{CATALOG}.s1.fold", "return n * fold(n - 1) if n > 1 else 1", "INT", [int_param("n")]
+        ),
+        stored_python_function(
+            f"{CATALOG}.s2.fold", "return n + fold(n - 1) if n > 0 else 0", "INT", [int_param("n")]
+        ),
+    )
+
+    results = [
+        (await execute(mocked_store_client, use_async, f"{CATALOG}.{schema}.fold", {"n": 5})).value
+        for schema in ("s1", "s2", "s1", "s2")
+    ]
+
+    assert results == [120, 15, 120, 15]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_function_with_list_argument_runs_on_repeated_calls(mocked_store_client, use_async):
+    xs_param = FunctionParameterInfo(
+        name="xs",
+        type_name="ARRAY",
+        type_text="array<int>",
+        type_json='{"name":"xs","type":{"type":"array","elementType":"integer","containsNull":true},'
+        '"nullable":false,"metadata":{}}',
+        position=0,
+    )
+    serve_functions(
+        mocked_store_client,
+        stored_python_function(f"{CATALOG}.{SCHEMA}.total", "return sum(xs)", "INT", [xs_param]),
+    )
+
+    results = [
+        await execute(mocked_store_client, use_async, f"{CATALOG}.{SCHEMA}.total", {"xs": xs})
+        for xs in ([1, 2], [3, 4], [1, 2])
+    ]
+
+    assert [(result.error, result.value) for result in results] == [(None, 3), (None, 7), (None, 3)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_function_is_reexecuted_instead_of_memoized(
+    mocked_store_client, use_async, monkeypatch
+):
+    serve_functions(
+        mocked_store_client,
+        stored_python_function(
+            f"{CATALOG}.{SCHEMA}.read_setting",
+            'import os\nreturn os.environ["UC_AI_TEST_SETTING"]',
+            "STRING",
+        ),
+    )
+
+    results = []
+    for value in ("first", "second", "third"):
+        monkeypatch.setenv("UC_AI_TEST_SETTING", value)
+        result = await execute(
+            mocked_store_client, use_async, f"{CATALOG}.{SCHEMA}.read_setting", {}
+        )
+        results.append(result.value)
+
+    assert results == ["first", "second", "third"]
 
 
 @pytest.mark.asyncio
@@ -1059,6 +1376,77 @@ async def test_create_and_execute_python_function(uc_client):
     assert result.value == "UNITY CATALOG"
 
     uc_client.delete_function(function_name=function_name)
+
+
+def double_amount(amount: decimal.Decimal) -> str:
+    """
+    Doubles an amount.
+
+    Args:
+        amount: the amount
+    """
+    return str(amount * 2)
+
+
+def parse_amount(text: str) -> decimal.Decimal:
+    """
+    Parses an amount.
+
+    Args:
+        text: the amount as text
+    """
+    import decimal
+
+    return decimal.Decimal(text)
+
+
+def shift_time(delta: datetime.timedelta) -> str:
+    """
+    Shifts a fixed time by a duration.
+
+    Args:
+        delta: the duration
+    """
+    import datetime
+
+    return (datetime.datetime(2024, 1, 1) + delta).isoformat()
+
+
+def to_duration(minutes: int) -> datetime.timedelta:
+    """
+    Converts minutes to a duration.
+
+    Args:
+        minutes: the number of minutes
+    """
+    import datetime
+
+    return datetime.timedelta(minutes=minutes)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "func,parameters,expected",
+    [
+        (double_amount, {"amount": decimal.Decimal("1.25")}, "2.50"),
+        (parse_amount, {"text": "3.75"}, decimal.Decimal("3.75")),
+        (shift_time, {"delta": datetime.timedelta(minutes=90)}, "2024-01-01T01:30:00"),
+        (to_duration, {"minutes": 45}, datetime.timedelta(minutes=45)),
+    ],
+    ids=["decimal_param", "decimal_return", "interval_param", "interval_return"],
+)
+async def test_create_and_execute_python_function_with_decimal_and_interval(
+    uc_client, func, parameters, expected
+):
+    function_name = f"{CATALOG}.{SCHEMA}.{func.__name__}"
+    try:
+        uc_client.create_python_function(func=func, catalog=CATALOG, schema=SCHEMA, replace=True)
+        result = uc_client.execute_function(function_name=function_name, parameters=parameters)
+    finally:
+        try_delete_function(uc_client, function_name)
+
+    assert result.error is None
+    assert result.value == expected
 
 
 @pytest.mark.asyncio
@@ -1908,6 +2296,78 @@ async def test_no_output_function_sandbox(uc_client):
     result = await uc_client.execute_function_async(
         function_name=function_name, parameters={"a": 5, "b": 10}
     )
+    assert "The function execution has completed, but no output was produced." in result.value
+
+
+@pytest_asyncio.fixture
+async def offline_uc_client():
+    uc_api_client = ApiClient(configuration=Configuration())
+    client = UnitycatalogFunctionClient(api_client=uc_api_client, execution_mode="local")
+    client.uc.functions_client = mock.AsyncMock(spec=FunctionsApi)
+    yield client
+    await client.close_async()
+    await uc_api_client.close()
+
+
+def constant_function_info(return_literal: str, data_type: str) -> FunctionInfo:
+    return FunctionInfo(
+        name="constant_func",
+        catalog_name=CATALOG,
+        schema_name=SCHEMA,
+        full_name=f"{CATALOG}.{SCHEMA}.constant_func",
+        data_type=data_type,
+        full_data_type=data_type,
+        routine_body="EXTERNAL",
+        routine_definition=f"return {return_literal}",
+        external_language="PYTHON",
+    )
+
+
+FALSY_RESULT_CASES = [
+    ("False", "BOOLEAN", False),
+    ("0", "INT", 0),
+    ("0.0", "DOUBLE", 0.0),
+    ("''", "STRING", ""),
+    ("[]", "ARRAY", []),
+    ("{}", "MAP", {}),
+]
+
+
+@pytest.mark.parametrize("return_literal,data_type,expected", FALSY_RESULT_CASES)
+def test_execute_function_preserves_falsy_result(
+    offline_uc_client, return_literal, data_type, expected
+):
+    offline_uc_client.uc.functions_client.get_function.return_value = constant_function_info(
+        return_literal, data_type
+    )
+    result = offline_uc_client.execute_function(f"{CATALOG}.{SCHEMA}.constant_func")
+    assert result.error is None
+    assert result.value == expected
+    assert type(result.value) is type(expected)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("return_literal,data_type,expected", FALSY_RESULT_CASES)
+async def test_execute_function_async_preserves_falsy_result(
+    offline_uc_client, return_literal, data_type, expected
+):
+    offline_uc_client.uc.functions_client.get_function.return_value = constant_function_info(
+        return_literal, data_type
+    )
+    result = await offline_uc_client.execute_function_async(f"{CATALOG}.{SCHEMA}.constant_func")
+    assert result.error is None
+    assert result.value == expected
+    assert type(result.value) is type(expected)
+
+
+@pytest.mark.asyncio
+async def test_execute_function_async_local_none_result_returns_no_output_message(
+    offline_uc_client,
+):
+    offline_uc_client.uc.functions_client.get_function.return_value = constant_function_info(
+        "None", "STRING"
+    )
+    result = await offline_uc_client.execute_function_async(f"{CATALOG}.{SCHEMA}.constant_func")
     assert "The function execution has completed, but no output was produced." in result.value
 
 

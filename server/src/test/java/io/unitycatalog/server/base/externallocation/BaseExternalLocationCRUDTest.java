@@ -205,6 +205,35 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   }
 
   @Test
+  public void testExternalLocationRejectsManagedStoragePrefix() throws ApiException {
+    ExternalLocationInfo externalLocationInfo = create(EXTERNAL_LOCATION_NAME, testUrl());
+
+    for (String url :
+        List.of(testUrl() + "/__unitystorage", testUrl() + "/__unitystorage/tables")) {
+      String errorMessage =
+          "Input path '" + url + "' contains managed storage prefix __unitystorage.";
+      assertApiException(
+          () -> create(EXTERNAL_LOCATION_NAME + "_reserved", url),
+          ErrorCode.INVALID_ARGUMENT,
+          errorMessage);
+      assertApiException(
+          () ->
+              externalLocationOperations.updateExternalLocation(
+                  EXTERNAL_LOCATION_NAME,
+                  new UpdateExternalLocation().newName(NEW_EXTERNAL_LOCATION_NAME).url(url)),
+          ErrorCode.INVALID_ARGUMENT,
+          errorMessage);
+      assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME))
+          .isEqualTo(externalLocationInfo);
+    }
+
+    externalLocationOperations.updateExternalLocation(
+        EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(anotherTestUrl()));
+    assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME).getUrl())
+        .isEqualTo(anotherTestUrl());
+  }
+
+  @Test
   public void testExternalLocationUrlOverlapPrevention() throws ApiException {
     final String errorMessageCreateWithOverlap =
         "Cannot accept an external location that duplicates"

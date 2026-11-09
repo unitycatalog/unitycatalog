@@ -1,26 +1,27 @@
-# unitycatalog
-
-![Version: 0.0.1-pre.1](https://img.shields.io/badge/Version-0.0.1--pre.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: main](https://img.shields.io/badge/AppVersion-main-informational?style=flat-square)
+# unitycatalog-chart
 
 This chart deploys [Unity Catalog](https://github.com/unitycatalog/unitycatalog) on a Kubernetes cluster
 using the [Helm](https://github.com/helm/helm) package manager.
 
 ## Prerequisites
 - Kubernetes 1.20+ cluster
-- Helm 3.1+
+- Helm 3.8+
 
 ## Features
 - Deploys Unity Catalog server and UI
 - Supports OAuth authentication
-- Supports file H2DB and PostgreSQL as a database
+- Supports file H2DB, PostgreSQL and MySQL as a database
 - Customizable configuration for server and UI using Helm values
 
 ## Installing the Chart
-To install the chart with the release name `unitycatalog`:
+Starting with 0.8.0, each Unity Catalog release publishes this chart to Docker Hub, with the same version as the release.
+To install release X.Y.Z with the release name `unitycatalog`:
 
 ```sh
-helm install unitycatalog .
+helm install unitycatalog oci://registry-1.docker.io/unitycatalog/unitycatalog-chart --version X.Y.Z
 ```
+
+Chart version X.Y.Z runs the server image `unitycatalog/unitycatalog:vX.Y.Z` and the UI image `unitycatalog/unitycatalog-ui:vX.Y.Z`.
 
 ## Uninstalling the Chart
 To uninstall the `unitycatalog` chart:
@@ -29,8 +30,22 @@ To uninstall the `unitycatalog` chart:
 helm uninstall unitycatalog
 ```
 
-The command removes all the Kubernetes components associated with the chart and deletes the release.
-If persistent volumes are used, they are not deleted by default. To delete them, you need to manually delete the PVCs.
+The command deletes the release. It keeps the H2 database PersistentVolumeClaim and the token signing key Secret;
+delete both to remove the data.
+
+## Audit records
+Turn on [audit records](https://github.com/unitycatalog/unitycatalog/blob/main/docs/server/configuration.md#audit-records)
+to write one JSON line per issued storage credential to `/home/unitycatalog/etc/logs/audit.log`; the
+chart already configures the `audit` logger. The file is lost when the pod restarts, so ship it
+continuously (for example from a sidecar in `server.deployment.extraContainers`) or keep the
+directory on a volume:
+
+```yaml
+server:
+  config:
+    extraProperties:
+      server.audit.sink: io.unitycatalog.server.audit.FileAuditSink
+```
 
 ## Configuration
 The following table lists the configurable parameters of the Unity Catalog chart and their default values.
@@ -51,6 +66,18 @@ The following table lists the configurable parameters of the Unity Catalog chart
 	</thead>
 	<tbody>
 		<tr>
+			<td>auth.accessTokenTimeout</td>
+			<td>string</td>
+			<td><pre lang="">
+PT24H
+</pre>
+</td>
+			<td>UC access token lifetime for token exchange
+
+Example: `PT24H` (24 hours), `P7D` (7 days)
+</td>
+		</tr>
+		<tr>
 			<td>auth.allowedIssuers</td>
 			<td>string</td>
 			<td><pre lang="">
@@ -60,9 +87,24 @@ https://accounts.google.com
 			<td>Comma-separated list of allowed token issuers
 
 When authorization is enabled, tokens will only be accepted from issuers in this list.
+Supports exact match or wildcard patterns with * (single DNS label per wildcard).
+Cannot be "*" alone. Wildcard issuers are evaluated before signature verification;
+see docs/server/auth.md.
 
 Example for Google: `https://accounts.google.com`
 Example for Microsoft Entra ID: `https://login.microsoftonline.com/{tenant-id}/v2.0`
+</td>
+		</tr>
+		<tr>
+			<td>auth.allowedJwksUris</td>
+			<td>string</td>
+			<td><pre lang="">
+https://www.googleapis.com/oauth2/v3/certs
+</pre>
+</td>
+			<td>Comma-separated list of exact JWKS URLs allowed on other origins
+
+Match each provider's discovery URL, including any explicit port. Wildcards are not supported.
 </td>
 		</tr>
 		<tr>
@@ -74,9 +116,9 @@ not set
 </td>
 			<td>Comma-separated list of expected JWT audience values
 
-When authorization is enabled, tokens must contain one of these audience values.
-This ensures tokens are intended for this Unity Catalog instance.
-Typically your application's client ID or API identifier.
+When authorization is enabled, tokens must contain an aud value matching one of these entries.
+Supports exact match or wildcard patterns with * (same rules as allowedIssuers).
+Use "*" alone to disable audience validation (issuer and user checks still apply).
 </td>
 		</tr>
 		<tr>
@@ -100,9 +142,11 @@ not set
 </td>
 			<td>OAuth client secret name
 
-Client secret must contain the following keys:
+Client secret must contain the following key:
 - `clientId`: OAuth client ID
-- `clientSecret`: OAuth client secret
+
+The server doesn't read the OAuth client secret. A `clientSecret` key is passed only to a
+`server.config.override` or `extraProperties` template that uses `${OAUTH_CLIENT_SECRET}`.
 </td>
 		</tr>
 		<tr>
@@ -115,18 +159,6 @@ Client secret must contain the following keys:
 			<td>OAuth cookie timeout
 
 Example: `P5D` (5 days)
-</td>
-		</tr>
-		<tr>
-			<td>auth.accessTokenTimeout</td>
-			<td>string</td>
-			<td><pre lang="json">
-"PT24H"
-</pre>
-</td>
-			<td>UC access token lifetime for token exchange
-
-Example: `PT24H` (24 hours), `P7D` (7 days)
 </td>
 		</tr>
 		<tr>
@@ -197,7 +229,7 @@ users:
 			<td>fullnameOverride</td>
 			<td>string</td>
 			<td><pre lang="">
-derived from the chart parameters and metadata
+derived from the release name and nameOverride
 </pre>
 </td>
 			<td>Override the full name of the chart</td>
@@ -306,10 +338,10 @@ If set, TLS will be enabled for the ingress
 			<td>nameOverride</td>
 			<td>string</td>
 			<td><pre lang="">
-derived from the chart parameters and metadata
+unitycatalog
 </pre>
 </td>
-			<td>Override the name of the chart</td>
+			<td>Override the name used in resource names</td>
 		</tr>
 		<tr>
 			<td>server.config.extraProperties</td>
@@ -326,6 +358,8 @@ extraProperties:
   my-config.property1: my-value1
   my-config.property2: my-value2
 ```
+
+Do not put secrets here: a secret in `server.properties` is deprecated.
 </td>
 		</tr>
 		<tr>
@@ -343,6 +377,11 @@ server.env=prod
 server.port=8080
 ...other config properties...
 ```
+
+Do not put secrets here: the chart passes the S3 and ADLS secrets to the server as environment
+variables, and a secret in `server.properties` is deprecated. A template that uses `${OAUTH_CLIENT_SECRET}`,
+`${S3_SECRET_KEY_<n>}` or `${ADLS_CLIENT_SECRET_<n>}` still gets them, but that is deprecated
+too: the server reads `UC_S3_SECRETKEY_<n>` and `UC_ADLS_CLIENTSECRET_<n>` from its environment.
 </td>
 		</tr>
 		<tr>
@@ -391,10 +430,10 @@ not set
 			<td>server.createUsersJob.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"latest"
+"3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
 </pre>
 </td>
-			<td>Tag for the create users job image</td>
+			<td>Tag for the create users job image, pinned by digest</td>
 		</tr>
 		<tr>
 			<td>server.createUsersJob.ttlSecondsAfterFinished</td>
@@ -472,6 +511,116 @@ not set
 
 If not set, the default storage class will be used
 </td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.dbName</td>
+			<td>string</td>
+			<td><pre lang="">
+ucdb
+</pre>
+</td>
+			<td>MySQL database name</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.driver.subPath</td>
+			<td>string</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>Path of the driver jar in `volume` (Required)
+
+To change the driver version, put the new jar on the volume and point `subPath` at it.
+
+Example: `mysql-connector-j-8.4.0.jar`
+</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.driver.volume</td>
+			<td>object</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>Volume that holds the MySQL JDBC driver jar (Required)
+
+The server image does not include the MySQL JDBC driver
+([MySQL Connector/J](https://dev.mysql.com/downloads/connector/j/)), because it is licensed under the GPL;
+the PostgreSQL driver it does include is BSD-licensed. The chart mounts the jar at `subPath` in this volume
+into the server and puts it on the Java module path. Any volume source works, for example a
+PersistentVolumeClaim. The driver jar is larger than a ConfigMap can hold.
+
+Example:
+```yaml
+volume:
+  persistentVolumeClaim:
+    claimName: mysql-driver
+```
+</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.extraParams</td>
+			<td>object</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>MySQL JDBC URL params
+
+Example:
+```yaml
+extraParams:
+  sslMode: VERIFY_IDENTITY
+```
+</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.host</td>
+			<td>string</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>MySQL database host (Required)</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.passwordSecretKey</td>
+			<td>string</td>
+			<td><pre lang="">
+password
+</pre>
+</td>
+			<td>MySQL user password secret key</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.passwordSecretName</td>
+			<td>string</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>MySQL user password secret name
+
+If not set, connection will be made without a password
+</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.port</td>
+			<td>int</td>
+			<td><pre lang="">
+3306
+</pre>
+</td>
+			<td>MySQL database port</td>
+		</tr>
+		<tr>
+			<td>server.db.mysqlConfig.username</td>
+			<td>string</td>
+			<td><pre lang="">
+root
+</pre>
+</td>
+			<td>MySQL username</td>
 		</tr>
 		<tr>
 			<td>server.db.overrideConfig</td>
@@ -624,7 +773,7 @@ postgres
 </td>
 			<td>Database type
 
-Supported values: `file`, `postgresql`
+Supported values: `file`, `postgresql`, `mysql`
 </td>
 		</tr>
 		<tr>
@@ -637,6 +786,25 @@ not set
 			<td>Node affinity for the deployment
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/)
+</td>
+		</tr>
+		<tr>
+			<td>server.deployment.command</td>
+			<td>array</td>
+			<td><pre lang="json">
+[
+  "./bin/start-uc-server"
+]
+</pre>
+</td>
+			<td>Command that starts the server
+
+The chart passes `--port`, and `--obs-port` when `obsPort` is set, as the container's `args`.
+Kubernetes runs this command instead of the image's `ENTRYPOINT`, so an image that starts
+through its own wrapper can set it here; the wrapper must pass the arguments on to
+`./bin/start-uc-server`.
+
+[Kubernetes docs](https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/)
 </td>
 		</tr>
 		<tr>
@@ -778,7 +946,11 @@ not set
 {{ .Chart.AppVersion }}
 </pre>
 </td>
-			<td>Tag for the server image</td>
+			<td>Tag for the server image
+
+Use the server image from the same release as the chart. The chart passes secrets to
+the server as environment variables that older server images don't read.
+</td>
 		</tr>
 		<tr>
 			<td>server.deployment.imagePullSecrets</td>
@@ -814,10 +986,10 @@ not set
 			<td>server.deployment.initContainer.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"latest"
+"3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
 </pre>
 </td>
-			<td>Tag for the render config container</td>
+			<td>Tag for the render config container, pinned by digest</td>
 		</tr>
 		<tr>
 			<td>server.deployment.initContainer.securityContext</td>
@@ -832,10 +1004,34 @@ not set
 </td>
 		</tr>
 		<tr>
+			<td>server.deployment.lifecycle</td>
+			<td>object</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>Lifecycle hooks for the server container
+
+On SIGTERM the server stops taking new requests and finishes the ones in flight, for up to
+the `server.shutdown-timeout` server property (set under `server.config.extraProperties`).
+Kubernetes can still route requests to the pod for a few seconds after it starts terminating,
+so a `preStop` sleep keeps the server serving until they stop arriving:
+
+```yaml
+lifecycle:
+  preStop:
+    exec:
+      command: ["sleep", "10"]
+```
+
+[Kubernetes docs](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/)
+</td>
+		</tr>
+		<tr>
 			<td>server.deployment.livenessProbe</td>
 			<td>object</td>
 			<td><pre lang="">
-tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 30 # 5 minutes
+with obsPort: httpGet `/livez` on port obs; otherwise tcpSocket on port api. timeoutSeconds: 10, periodSeconds: 10, failureThreshold: 30 (5 minutes)
 </pre>
 </td>
 			<td>Liveness probe
@@ -853,6 +1049,23 @@ not set
 			<td>Node selector for the deployment
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/)
+</td>
+		</tr>
+		<tr>
+			<td>server.deployment.obsPort</td>
+			<td>int</td>
+			<td><pre lang="">
+not set (observability off)
+</pre>
+</td>
+			<td>Observability port for the server deployment
+
+When set, the server starts with `--obs-port` and serves `/livez`, `/readyz` and `/metrics`
+on this port, without authentication. The readiness and liveness probes, when turned on,
+then check `/readyz` and `/livez`; without it they check that the API port accepts a
+connection. The Service doesn't expose the port, but other pods can reach it
+on the pod IP; restrict it with a NetworkPolicy if needed, and allow the kubelet to reach it
+for the probes. Must differ from `port`. Needs server image v0.7.0 or later.
 </td>
 		</tr>
 		<tr>
@@ -879,13 +1092,13 @@ to write to the mounted volumes.
 8080
 </pre>
 </td>
-			<td>Port for the server deployment</td>
+			<td>Port the server listens on for API requests</td>
 		</tr>
 		<tr>
 			<td>server.deployment.readinessProbe</td>
 			<td>object</td>
 			<td><pre lang="">
-tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureThreshold: 30 # 5 minutes
+with obsPort: httpGet `/readyz` on port obs, failureThreshold: 3; otherwise tcpSocket on port api, failureThreshold: 30 (5 minutes). timeoutSeconds: 10, periodSeconds: 10
 </pre>
 </td>
 			<td>Readiness probe
@@ -939,6 +1152,22 @@ tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureT
 			<td>Startup probe
 
 [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
+</td>
+		</tr>
+		<tr>
+			<td>server.deployment.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td><pre lang="">
+not set (Kubernetes uses 30)
+</pre>
+</td>
+			<td>Seconds Kubernetes waits for the pod to stop before killing it
+
+Set it to more than the `preStop` sleep plus the whole shutdown time. The `server.shutdown-timeout`
+entry in the server configuration reference describes it: the timeout plus time for storage
+cleanup and for stopping the HTTP server.
+
+[Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-termination)
 </td>
 		</tr>
 		<tr>
@@ -1160,6 +1389,45 @@ Example: `s3://bucket/path`
 </td>
 		</tr>
 		<tr>
+			<td>test.image.pullPolicy</td>
+			<td>string</td>
+			<td><pre lang="json">
+"IfNotPresent"
+</pre>
+</td>
+			<td>Pull policy for the `helm test` pod image</td>
+		</tr>
+		<tr>
+			<td>test.image.repository</td>
+			<td>string</td>
+			<td><pre lang="json">
+"busybox"
+</pre>
+</td>
+			<td>Repository for the `helm test` pod image</td>
+		</tr>
+		<tr>
+			<td>test.image.tag</td>
+			<td>string</td>
+			<td><pre lang="json">
+"1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e"
+</pre>
+</td>
+			<td>Tag for the `helm test` pod image, pinned by digest</td>
+		</tr>
+		<tr>
+			<td>test.imagePullSecrets</td>
+			<td>array</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>Image pull secrets for the `helm test` pod
+
+[Kubernetes docs](https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod)
+</td>
+		</tr>
+		<tr>
 			<td>ui.deployment.affinity</td>
 			<td>object</td>
 			<td><pre lang="">
@@ -1346,10 +1614,10 @@ not set
 			<td>ui.deployment.initContainer.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"latest"
+"1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e"
 </pre>
 </td>
-			<td>Tag for the UI init container</td>
+			<td>Tag for the UI init container, pinned by digest</td>
 		</tr>
 		<tr>
 			<td>ui.deployment.initContainer.securityContext</td>

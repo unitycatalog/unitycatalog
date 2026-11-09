@@ -1,6 +1,6 @@
 [project]
 name = "unitycatalog-ai"
-version = "0.4.0"
+version = "0.4.1"
 description = "Official Python library for Unity Catalog AI support"
 authors = [
     { name="Serena Ruan", email="serena.ruan@databricks.com" },
@@ -125,6 +125,7 @@ convention = "google"
 
 [tool.uv]
 exclude-newer = "2026-03-10T00:00:00Z"
+exclude-newer-package = { certifi = "2026-10-23T00:00:00Z", uv = "2026-10-23T00:00:00Z" }
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

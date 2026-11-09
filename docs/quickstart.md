@@ -43,13 +43,13 @@ should see:
 # | |__| | | | | | |_| |_| | | |___| (_| | || (_| | | (_) | (_| | #
 #  \____/|_| |_|_|\__|\__, |  \_____\__,_|\__\__,_|_|\___/ \__, | #
 #                      __/ |                                __/ | #
-#                     |___/      v0.7.0-SNAPSHOT           |___/  #
+#                     |___/      v0.8.0-SNAPSHOT           |___/  #
 ###################################################################
 ```
 
 !!! note "Server version string"
-    Released builds display `v0.6.0`. When you build from the `main` branch, the banner shows
-    `v0.7.0-SNAPSHOT`.
+    Released builds display `v0.7.0`. When you build from the `main` branch, the banner shows
+    `v0.8.0-SNAPSHOT`.
 
 Well, that was pretty easy!
 
@@ -287,6 +287,8 @@ check the /tmp/uc/my_table/folder).
 ![UC UI](./assets/images/uc-ui.png)
 
 To use the Unity Catalog UI, start a new terminal and ensure you have already started the Unity Catalog server (e.g., `./bin/start-uc-server`)
+
+For the complete guide to working with the UI, see [Unity Catalog UI](usage/ui.md).
 
 !!! warning "Prerequisites"
     The Unity Catalog UI requires both [Node](https://nodejs.org/en/download/package-manager) and [Bun](https://bun.com/docs/installation).

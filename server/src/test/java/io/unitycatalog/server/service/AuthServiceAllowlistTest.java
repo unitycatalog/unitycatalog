@@ -110,6 +110,50 @@ public class AuthServiceAllowlistTest {
   }
 
   @Nested
+  class AllowedCrossOriginJwks extends TokenExchangeTestBase {
+
+    @Override
+    protected void setUpProperties() {
+      super.setUpProperties();
+      testJwksUri = testJwksUri.replace("localhost", "127.0.0.1");
+      serverProperties.setProperty(
+          ServerProperties.Property.ALLOWED_JWKS_URIS.getKey(), testJwksUri);
+    }
+
+    @Test
+    public void testTokenExchange() throws IOException {
+      AggregatedHttpResponse response =
+          exchangeToken(
+              createIdentityToken(testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId));
+
+      assertThat(response.status()).isEqualTo(HttpStatus.OK);
+      assertThat(MAPPER.readTree(response.contentUtf8()).get("access_token").asText()).isNotEmpty();
+    }
+  }
+
+  @Nested
+  class RejectedCrossOriginJwks extends TokenExchangeTestBase {
+
+    @Override
+    protected void setUpProperties() {
+      super.setUpProperties();
+      testJwksUri = testJwksUri.replace("localhost", "127.0.0.1");
+    }
+
+    @Test
+    public void testTokenExchange() throws IOException {
+      AggregatedHttpResponse response =
+          exchangeToken(
+              createIdentityToken(testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId));
+
+      assertThat(response.status()).isEqualTo(HttpStatus.CONFLICT);
+      JsonNode body = MAPPER.readTree(response.contentUtf8());
+      assertThat(body.get("error_code").asText()).isEqualTo("ABORTED");
+      assertThat(body.get("message").asText()).isEqualTo("JWKS URI is not allowed");
+    }
+  }
+
+  @Nested
   class WildcardAudiencePattern extends TokenExchangeTestBase {
 
     @Override

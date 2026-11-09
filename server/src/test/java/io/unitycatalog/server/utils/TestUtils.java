@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiClientBuilder;
 import io.unitycatalog.client.ApiException;
@@ -15,18 +17,25 @@ import io.unitycatalog.client.delta.model.DeltaErrorType;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.observability.UcMetric;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.InstantSource;
+import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Flow;
+import java.util.function.Supplier;
 import org.apache.iceberg.rest.responses.ErrorResponse;
 import org.apache.iceberg.rest.responses.ErrorResponseParser;
 import org.junit.jupiter.api.function.Executable;
@@ -77,6 +86,12 @@ public class TestUtils {
   public static final Map<String, String> NEW_PROPERTIES =
       new HashMap<>(Map.of("prop2", "value22", "prop3", "value33"));
   public static final String COMMON_ENTITY_NAME = "zz_uc_common_entity_name";
+
+  /** A UTC {@link Clock} whose current instant comes from {@code now}, e.g. a manual test clock. */
+  public static Clock clockOf(Supplier<Instant> now) {
+    InstantSource source = now::get;
+    return source.withZone(ZoneOffset.UTC);
+  }
 
   public static ApiClient createApiClient(ServerConfig serverConfig) {
     URI uri = URI.create(serverConfig.getServerUrl());
@@ -165,7 +180,7 @@ public class TestUtils {
   }
 
   public static void assertIcebergApiException(Executable executable, int expectedStatus) {
-    assertIcebergApiExceptionImpl(executable, expectedStatus, Optional.empty());
+    assertIcebergApiExceptionImpl(executable, expectedStatus, Optional.empty(), Optional.empty());
   }
 
   /**
@@ -174,7 +189,22 @@ public class TestUtils {
    */
   public static void assertIcebergApiException(
       Executable executable, int expectedStatus, String containsMessage) {
-    assertIcebergApiExceptionImpl(executable, expectedStatus, Optional.of(containsMessage));
+    assertIcebergApiExceptionImpl(
+        executable, expectedStatus, Optional.empty(), Optional.of(containsMessage));
+  }
+
+  /**
+   * As {@link #assertIcebergApiException(Executable, int, String)}, additionally asserting the
+   * Iceberg error type names {@code expectedType}, which is what Iceberg's client reads to tell one
+   * 404 from another.
+   */
+  public static void assertIcebergApiException(
+      Executable executable,
+      int expectedStatus,
+      Class<? extends Exception> expectedType,
+      String containsMessage) {
+    assertIcebergApiExceptionImpl(
+        executable, expectedStatus, Optional.of(expectedType), Optional.of(containsMessage));
   }
 
   /**
@@ -187,13 +217,21 @@ public class TestUtils {
    * {@code containsMessage}).
    */
   private static void assertIcebergApiExceptionImpl(
-      Executable executable, int expectedStatus, Optional<String> containsMessage) {
+      Executable executable,
+      int expectedStatus,
+      Optional<Class<? extends Exception>> expectedType,
+      Optional<String> containsMessage) {
     ApiException ex = assertThrows(ApiException.class, executable);
     assertThat(ex.getCode()).isEqualTo(expectedStatus);
     ErrorResponse error = parseIcebergErrorBody(ex.getResponseBody());
     assertThat(error.code())
         .as("Iceberg ErrorResponse code in: %s", ex.getResponseBody())
         .isEqualTo(expectedStatus);
+    expectedType.ifPresent(
+        t ->
+            assertThat(error.type())
+                .as("Iceberg error type in: %s", ex.getResponseBody())
+                .isEqualTo(t.getSimpleName()));
     containsMessage.ifPresent(
         m ->
             assertThat(error.message())
@@ -500,6 +538,17 @@ public class TestUtils {
     List<String> httpRequestMetrics =
         scrape.lines().filter(line -> line.startsWith("http_server_requests_total")).toList();
     assertThat(httpRequestMetrics).contains(expected);
+  }
+
+  /**
+   * The count of the one {@code metric} counter with the given tag key/value pairs. Fails unless
+   * exactly one counter matches, so a renamed meter or tag, or tags too loose to pick one series,
+   * fails the test instead of reading another value.
+   */
+  public static double counterCount(MeterRegistry registry, UcMetric metric, String... tags) {
+    Collection<Counter> matches = registry.get(metric.getMetricName()).tags(tags).counters();
+    assertThat(matches).as("counters %s %s", metric, Arrays.toString(tags)).hasSize(1);
+    return matches.iterator().next().count();
   }
 
   /** Convenience wrapper over {@link #sendRaw} for GET probes with an optional body. */

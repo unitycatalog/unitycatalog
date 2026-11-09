@@ -92,6 +92,38 @@ public class TokenProviderTest {
   }
 
   @Test
+  public void testOAuthExchangeForUcTokenRoundTripsThroughConfigs() {
+    Map<String, String> configs = new HashMap<>();
+    configs.put(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE);
+    configs.put(AuthConfigs.OAUTH_URI, OAUTH_URI);
+    configs.put(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID);
+    configs.put(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+    configs.put(AuthConfigs.CATALOG_URI, "https://uc.example.com");
+
+    // Without the flag the catalog URI is ignored and configs() is unchanged.
+    assertThat(TokenProvider.create(configs).configs())
+        .hasSize(5)
+        .doesNotContainKeys(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN, AuthConfigs.CATALOG_URI);
+
+    // With the flag, configs() carries it and the catalog URI, so executors rebuild the same
+    // provider.
+    configs.put(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN, "true");
+    Map<String, String> exchangeConfigs = TokenProvider.create(configs).configs();
+    assertThat(exchangeConfigs)
+        .hasSize(7)
+        .containsEntry(AuthConfigs.OAUTH_EXCHANGE_FOR_UC_TOKEN, "true")
+        .containsEntry(AuthConfigs.CATALOG_URI, "https://uc.example.com");
+    assertThat(TokenProvider.create(exchangeConfigs).configs()).isEqualTo(exchangeConfigs);
+
+    // The flag requires the catalog URI.
+    configs.remove(AuthConfigs.CATALOG_URI);
+    assertThatThrownBy(() -> TokenProvider.create(configs))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Configuration key 'catalogUri' is missing or empty")
+        .hasMessageContaining("'oauth.exchangeForUcToken' is true");
+  }
+
+  @Test
   public void testOAuthScopeIsConfigurableAndRoundTrips() {
     Map<String, String> configs = new HashMap<>();
     configs.put(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE);
@@ -109,17 +141,16 @@ public class TokenProviderTest {
     assertThat(TokenProvider.create(configs).configs())
         .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
 
-    // An explicitly empty scope is rejected rather than silently changing its meaning.
-    configs.put(AuthConfigs.OAUTH_SCOPE, "");
-    assertThatThrownBy(() -> TokenProvider.create(configs))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Configuration key 'oauth.scope' must not be empty");
-
-    // A scope that is empty after trimming is rejected as well.
-    configs.put(AuthConfigs.OAUTH_SCOPE, "   ");
-    assertThatThrownBy(() -> TokenProvider.create(configs))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Configuration key 'oauth.scope' must not be empty");
+    // An empty scope, or one that is empty after trimming, means "send no scope". It round-trips
+    // as empty, so executors rebuild a provider that sends none either, and not the default.
+    for (String emptyScope : new String[] {"", "   "}) {
+      configs.put(AuthConfigs.OAUTH_SCOPE, emptyScope);
+      Map<String, String> roundTripped = TokenProvider.create(configs).configs();
+      assertThat(roundTripped)
+          .as("scope '%s'", emptyScope)
+          .containsEntry(AuthConfigs.OAUTH_SCOPE, "");
+      assertThat(TokenProvider.create(roundTripped).configs()).isEqualTo(roundTripped);
+    }
 
     // Leading, trailing, and repeated interior whitespace is normalized.
     configs.put(AuthConfigs.OAUTH_SCOPE, "  scope-a  \t scope-b  ");

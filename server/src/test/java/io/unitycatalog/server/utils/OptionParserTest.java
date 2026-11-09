@@ -74,6 +74,14 @@ class OptionParserTest {
   }
 
   @Test
+  void testParseUpgradeSchema() {
+    NoExitOptionsParser optionParser = new NoExitOptionsParser();
+    optionParser.parse(new String[] {"--upgrade-schema"});
+    assertThat(optionParser.getExitCode()).isEqualTo(-128);
+    assertThat(optionParser.isUpgradeSchema()).isTrue();
+  }
+
+  @Test
   void testParseCLIOptionsWithVersion() {
     NoExitOptionsParser optionParser = new NoExitOptionsParser();
     optionParser.parse(new String[] {"-v"});

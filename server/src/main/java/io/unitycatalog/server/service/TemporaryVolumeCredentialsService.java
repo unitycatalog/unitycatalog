@@ -6,6 +6,7 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
@@ -17,6 +18,7 @@ import io.unitycatalog.server.model.VolumeOperation;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.CredentialUse;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.Collections;
@@ -33,14 +35,7 @@ public class TemporaryVolumeCredentialsService implements UnityCatalogRestServic
   }
 
   @Post("")
-  @AuthorizeExpression(
-      """
-      #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-      (#operation == 'READ_VOLUME'
-        ? #authorizeAny(#principal, #volume, OWNER, READ_VOLUME)
-        : #authorize(#principal, #volume, OWNER))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.VEND_VOLUME_CREDENTIAL)
   public HttpResponse generateTemporaryVolumeCredential(
       @AuthorizeResourceKey(value = VOLUME, key = "volume_id") @AuthorizeKey(key = "operation")
           GenerateTemporaryVolumeCredential generateTemporaryVolumeCredential) {
@@ -52,7 +47,8 @@ public class TemporaryVolumeCredentialsService implements UnityCatalogRestServic
     return HttpResponse.ofJson(
         storageCredentialVendor.vendCredential(
             NormalizedURL.from(volumeInfo.getStorageLocation()),
-            volumeOperationToPrivileges(generateTemporaryVolumeCredential.getOperation())));
+            volumeOperationToPrivileges(generateTemporaryVolumeCredential.getOperation()),
+            CredentialUse.CLIENT));
   }
 
   private Set<CredentialContext.Privilege> volumeOperationToPrivileges(

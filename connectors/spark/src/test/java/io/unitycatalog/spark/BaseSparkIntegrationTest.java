@@ -46,8 +46,8 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   // Each test would create this session. It will be closed automatically.
   protected SparkSession session;
 
-  // Maps the emulated cloud storage root to the test directory when Iceberg runs on it; registered
-  // in setUp() once the server (and its storage root property) is up.
+  // Maps the emulated cloud storage root to the test directory when managed storage is on it;
+  // registered in setUp() once the server (and its storage root property) is up.
   private LocalMappingFileOperations mappingFileOperations;
 
   /**
@@ -192,22 +192,19 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   }
 
   /**
-   * True when Iceberg tables sit on emulated S3 storage, the only cloud scheme wired end to end
-   * (client {@code S3FileIO} + mock factory, server-side cloud-to-local mapping). The Iceberg
-   * suites always drive {@code CATALOG_NAME} as their Iceberg catalog, so asking about it answers
-   * for the suite's Iceberg IO.
+   * True when managed tables sit on emulated S3 storage, the only cloud scheme the server can read
+   * here (server-side cloud-to-local mapping; for Iceberg also client {@code S3FileIO} + mock
+   * factory). The server reads that storage for Iceberg metadata and for Delta backfill
+   * verification.
    */
-  private boolean icebergOnEmulatedS3() {
-    if (!isIcebergCatalog(CATALOG_NAME)) {
-      return false;
-    }
+  private boolean managedStorageOnEmulatedS3() {
     String scheme = managedStorageCloudScheme();
     if ("s3".equals(scheme)) {
       return true;
     }
-    // s3 is the only emulated cloud wired for Iceberg; the only other scheme the suites use is
+    // s3 is the only emulated cloud wired for the server; the only other scheme the suites use is
     // local file. Fail loudly if an unwired scheme (e.g. gs/abfs) ever reaches here.
-    assertThat(scheme).as("Iceberg storage scheme").isEqualTo("file");
+    assertThat(scheme).as("Managed storage scheme").isEqualTo("file");
     return false;
   }
 
@@ -215,7 +212,7 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   @Override
   public void setUp() {
     super.setUp();
-    if (icebergOnEmulatedS3()) {
+    if (managedStorageOnEmulatedS3()) {
       // Map the emulated storage root (s3://bucket/<test dir>) onto that test directory; the
       // client-side mock maps the same object keys to the same absolute local paths.
       mappingFileOperations.mapLocation(
@@ -241,7 +238,7 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
    */
   @Override
   protected FileOperations decorateFileOperations(FileOperations fileOperations) {
-    if (icebergOnEmulatedS3()) {
+    if (managedStorageOnEmulatedS3()) {
       mappingFileOperations =
           new LocalMappingFileOperations(fileOperations, FakeS3.EXPECTED_VENDED_CREDENTIALS);
       return mappingFileOperations;
@@ -287,7 +284,7 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     serverProperties.put("adls.clientSecret.1", "clientSecret1");
     serverProperties.put("adls.testMode.1", "true");
 
-    if (icebergOnEmulatedS3()) {
+    if (managedStorageOnEmulatedS3()) {
       // The S3 FileIO config the server vends requires a configured region for the bucket.
       serverProperties.put("s3.region.0", TestUtils.TEST_AWS_REGION);
     }

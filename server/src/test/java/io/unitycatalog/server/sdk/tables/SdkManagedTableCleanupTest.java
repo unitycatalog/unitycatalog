@@ -1,5 +1,8 @@
 package io.unitycatalog.server.sdk.tables;
 
+import static io.unitycatalog.server.utils.TestUtils.sendRawGet;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.ServerConfig;
@@ -26,6 +29,7 @@ public class SdkManagedTableCleanupTest extends BaseTableCRUDTestEnv {
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
+    observabilityEnabled = true;
     StorageCleanupTestSupport.configureFastCleanup(serverProperties);
   }
 
@@ -66,5 +70,23 @@ public class SdkManagedTableCleanupTest extends BaseTableCRUDTestEnv {
         CLEANUP_DEADLINE,
         marker,
         tableDirectory);
+    // The worker counts the attempt just after it removes the task, so wait for the count too.
+    long deadline = System.nanoTime() + CLEANUP_DEADLINE.toNanos();
+    while (tableCleanupSuccesses() < 1.0 && System.nanoTime() < deadline) {
+      Thread.sleep(10);
+    }
+    assertThat(tableCleanupSuccesses()).isEqualTo(1.0);
+  }
+
+  private double tableCleanupSuccesses() throws Exception {
+    String series =
+        "uc_storage_cleanup_attempts_total{resource_type=\"table\",result=\"success\"} ";
+    return sendRawGet(observabilityServerConfig, "/metrics")
+        .body()
+        .lines()
+        .filter(line -> line.startsWith(series))
+        .mapToDouble(line -> Double.parseDouble(line.substring(series.length())))
+        .findFirst()
+        .orElseThrow();
   }
 }

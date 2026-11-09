@@ -1,15 +1,18 @@
 package io.unitycatalog.server.persist;
 
-import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
+import io.unitycatalog.server.audit.Auditor;
 import io.unitycatalog.server.auth.decorator.KeyMapper;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.FileOperationsImpl;
+import io.unitycatalog.server.service.credential.CachingCloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.service.credential.StorageCredentialVendorImpl;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.UnaryOperator;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
@@ -53,7 +56,7 @@ public class Repositories {
     this(sessionFactory, serverProperties, cloudCredentialVendor, UnaryOperator.identity());
   }
 
-  /** Creates repositories with no-op metrics backed by an empty composite registry. */
+  /** Creates repositories with {@link UnityCatalogMetrics#noop() no-op metrics}. */
   public Repositories(
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
@@ -63,13 +66,8 @@ public class Repositories {
   }
 
   /**
-   * @param cloudCredentialVendor an injected cloud credential vendor (e.g. a test mock), or {@code
-   *     null} to build the default from {@code serverProperties}. Owning the credential/file-IO
-   *     chain here lets repositories read table storage (e.g. Delta commit files) without
-   *     late-binding.
-   * @param fileOperationsDecorator wraps the default {@link FileOperations} before use ({@link
-   *     UnaryOperator#identity()} leaves it unchanged); lets tests map cloud IO to local storage.
-   * @param metrics the domain metrics, or {@code null} for no-op metrics
+   * Creates repositories that record no audit events: {@code server.audit.sink} is not read here.
+   * To audit, pass an {@link Auditor} to the full constructor, and close it when done.
    */
   public Repositories(
       SessionFactory sessionFactory,
@@ -77,17 +75,47 @@ public class Repositories {
       CloudCredentialVendor cloudCredentialVendor,
       UnaryOperator<FileOperations> fileOperationsDecorator,
       UnityCatalogMetrics metrics) {
+    this(
+        sessionFactory,
+        serverProperties,
+        cloudCredentialVendor,
+        fileOperationsDecorator,
+        metrics,
+        Optional.empty());
+  }
+
+  /**
+   * @param cloudCredentialVendor an injected cloud credential vendor (e.g. a test mock), used as
+   *     is, or {@code null} to build the default from {@code serverProperties}, which caches vended
+   *     credentials when the storage credential cache is enabled. Owning the credential/file-IO
+   *     chain here lets repositories read table storage (e.g. Delta commit files) without
+   *     late-binding.
+   * @param fileOperationsDecorator wraps the default {@link FileOperations} before use ({@link
+   *     UnaryOperator#identity()} leaves it unchanged); lets tests map cloud IO to local storage.
+   * @param metrics the domain metrics, or {@code null} for no-op metrics
+   * @param auditor records audit events, or empty for none. The caller owns it and closes it, also
+   *     when this constructor fails.
+   */
+  public Repositories(
+      SessionFactory sessionFactory,
+      ServerProperties serverProperties,
+      CloudCredentialVendor cloudCredentialVendor,
+      UnaryOperator<FileOperations> fileOperationsDecorator,
+      UnityCatalogMetrics metrics,
+      Optional<Auditor> auditor) {
     UnityCatalogMetrics resolvedMetrics =
-        Objects.requireNonNullElseGet(
-            metrics, () -> new UnityCatalogMetrics(new CompositeMeterRegistry()));
+        Objects.requireNonNullElseGet(metrics, UnityCatalogMetrics::noop);
     this.sessionFactory = sessionFactory;
     this.externalLocationUtils = new ExternalLocationUtils(sessionFactory);
     CloudCredentialVendor resolvedCloudCredentialVendor =
         cloudCredentialVendor != null
             ? cloudCredentialVendor
-            : new CloudCredentialVendor(serverProperties);
-    this.storageCredentialVendor =
-        new StorageCredentialVendor(resolvedCloudCredentialVendor, externalLocationUtils);
+            : defaultCloudCredentialVendor(serverProperties, resolvedMetrics);
+    // Wrap the vendor before FileOperationsImpl captures it, so the server's own and cleanup vends
+    // are audited too.
+    StorageCredentialVendor vendor =
+        new StorageCredentialVendorImpl(resolvedCloudCredentialVendor, externalLocationUtils);
+    this.storageCredentialVendor = auditor.map(a -> a.wrap(vendor)).orElse(vendor);
     this.fileOperations =
         fileOperationsDecorator.apply(
             new FileOperationsImpl(storageCredentialVendor, serverProperties));
@@ -95,7 +123,7 @@ public class Repositories {
     this.catalogRepository = new CatalogRepository(this, sessionFactory);
     this.schemaRepository = new SchemaRepository(this, sessionFactory);
     this.tableRepository =
-        new TableRepository(this, sessionFactory, serverProperties, resolvedMetrics.getTables());
+        new TableRepository(this, sessionFactory, serverProperties, resolvedMetrics);
     this.stagingTableRepository =
         new StagingTableRepository(this, sessionFactory, serverProperties);
     this.volumeRepository = new VolumeRepository(this, sessionFactory);
@@ -112,5 +140,12 @@ public class Repositories {
 
     // KeyMapper uses all the repositories above.
     this.keyMapper = new KeyMapper(this);
+  }
+
+  static CloudCredentialVendor defaultCloudCredentialVendor(
+      ServerProperties serverProperties, UnityCatalogMetrics metrics) {
+    return serverProperties.isStorageCredentialCacheEnabled()
+        ? new CachingCloudCredentialVendor(serverProperties, metrics)
+        : new CloudCredentialVendor(serverProperties);
   }
 }

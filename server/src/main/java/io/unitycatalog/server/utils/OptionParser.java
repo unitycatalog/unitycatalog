@@ -16,6 +16,7 @@ import org.apache.commons.cli.ParseException;
 public class OptionParser {
   private int port = 8080;
   private Integer observabilityPort;
+  private boolean upgradeSchema;
 
   private final Options options = new Options();
 
@@ -33,6 +34,14 @@ public class OptionParser {
             .hasArg()
             .desc("Enable health and metrics on this port (1-65535). Disabled when omitted.")
             .type(Integer.class)
+            .build());
+    options.addOption(
+        Option.builder()
+            .longOpt("upgrade-schema")
+            .desc(
+                "Upgrade the database's schema to this release, or set up an empty database, then"
+                    + " exit: 0 on success, 1 if not. Stop every server of the previous release"
+                    + " first; after a failure, restore the backup (see docs/server/upgrades.md).")
             .build());
     options.addOption(
         Option.builder("v")
@@ -75,6 +84,7 @@ public class OptionParser {
       if (cmd.hasOption("obs-port")) {
         setObservabilityPort(cmd.getParsedOptionValue("obs-port"));
       }
+      setUpgradeSchema(cmd.hasOption("upgrade-schema"));
     } catch (ParseException e) {
       System.out.println();
       System.out.println("Parsing Failed. Reason: " + e.getMessage());

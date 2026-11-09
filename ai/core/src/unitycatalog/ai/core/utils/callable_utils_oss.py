@@ -1,9 +1,10 @@
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, List
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Union
 
 from unitycatalog.ai.core.utils.callable_utils import (
     FunctionMetadata,
+    _split_generic_types,
     extract_function_metadata,
     extract_wrapped_functions,
 )
@@ -99,6 +100,34 @@ def generate_wrapped_function_info(
     )
 
 
+def _sql_type_to_type_json(sql_type: str) -> Union[str, Dict[str, Any]]:
+    """
+    Converts a SQL type such as ARRAY<MAP<STRING, LONG>> into the Spark-style type JSON
+    used in a parameter's type_json, keeping the element, key and value types.
+
+    Args:
+        sql_type: The SQL type text of the parameter.
+
+    Returns:
+        The type name for a scalar type, or a nested dict for an ARRAY or MAP type.
+    """
+    if sql_type.startswith("ARRAY<"):
+        return {
+            "type": "array",
+            "elementType": _sql_type_to_type_json(sql_type[len("ARRAY<") : -1]),
+            "containsNull": True,
+        }
+    if sql_type.startswith("MAP<"):
+        key_type, value_type = _split_generic_types(sql_type[len("MAP<") : -1])
+        return {
+            "type": "map",
+            "keyType": _sql_type_to_type_json(key_type),
+            "valueType": _sql_type_to_type_json(value_type),
+            "valueContainsNull": True,
+        }
+    return sql_type.lower()
+
+
 def create_parameter_info(metadata: FunctionMetadata) -> list["FunctionParameterInfo"]:
     """
     Creates a list of FunctionParameterInfo objects from the metadata.
@@ -123,7 +152,7 @@ def create_parameter_info(metadata: FunctionMetadata) -> list["FunctionParameter
             )
         type_json_dict = {
             "name": param_info["name"],
-            "type": param_info["base_type_name"].lower(),
+            "type": _sql_type_to_type_json(param_info["sql_type"]),
             "nullable": param_info["parameter_default"] is not None,
             "metadata": {"comment": param_info["comment"] or ""},
         }

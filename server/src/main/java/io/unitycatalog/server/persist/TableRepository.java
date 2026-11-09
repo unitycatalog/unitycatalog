@@ -21,6 +21,7 @@ import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.observability.TableMetrics;
+import io.unitycatalog.server.observability.UnityCatalogMetrics;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
@@ -50,6 +51,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.hibernate.Session;
@@ -71,11 +73,11 @@ public class TableRepository {
       Repositories repositories,
       SessionFactory sessionFactory,
       ServerProperties serverProperties,
-      TableMetrics tableMetrics) {
+      UnityCatalogMetrics metrics) {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
     this.serverProperties = serverProperties;
-    this.tableMetrics = Objects.requireNonNull(tableMetrics, "tableMetrics");
+    this.tableMetrics = Objects.requireNonNull(metrics, "metrics").getTables();
   }
 
   /**
@@ -243,10 +245,8 @@ public class TableRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          String[] parts = fullName.split("\\.");
-          if (parts.length != 3) {
-            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
-          }
+          String[] parts =
+              ValidationUtils.splitFullName(fullName, 3, "Invalid table name: " + fullName);
           String catalogName = parts[0];
           String schemaName = parts[1];
           String tableName = parts[2];
@@ -317,13 +317,19 @@ public class TableRepository {
   public DeltaLoadTableResponse updateTableForDelta(
       String catalog, String schema, String table, DeltaUpdateTableRequest request) {
     try {
-      return updateTableForDeltaInTransaction(catalog, schema, table, request);
+      // The backfill HEAD runs between transactions: the first attempt rolls back once it knows
+      // the version range, and the retry flags the range after the files have been checked.
+      return repositories
+          .getDeltaCommitRepository()
+          .withPublishedCommitVerification(
+              filesChecked ->
+                  updateTableForDeltaInTransaction(catalog, schema, table, request, filesChecked));
     } catch (DeltaCommitRepository.CommitAlreadyAcceptedException e) {
       // Idempotent replay: the transaction rolled back to a no-op. Return the current table state
       // (a fresh read, since the rolled-back transaction produced no response).
       return loadTableForDelta(catalog, schema, table);
     } catch (DeltaCommitRepository.CommitContentCheckRequiredException e) {
-      // Version was purged, so the DB couldn't decide: settle it out of the (rolled-back)
+      // Version no longer retained, so the DB couldn't decide: settle it out of the (rolled-back)
       // transaction by comparing file content. A match is a no-op success (return current state);
       // a difference throws a conflict.
       DeltaCommitRepository.verifyContentReplayOrThrowConflict(repositories.getFileOperations(), e);
@@ -332,7 +338,11 @@ public class TableRepository {
   }
 
   private DeltaLoadTableResponse updateTableForDeltaInTransaction(
-      String catalog, String schema, String table, DeltaUpdateTableRequest request) {
+      String catalog,
+      String schema,
+      String table,
+      DeltaUpdateTableRequest request,
+      boolean filesChecked) {
     DeltaUpdateTableMapper.CollectedRequest collected =
         DeltaUpdateTableMapper.collectRequest(request);
     String callerId = IdentityUtils.findPrincipalEmailAddress();
@@ -355,6 +365,19 @@ public class TableRepository {
           DeltaUpdateTableMapper.checkTableUuidRequirement(dao, collected);
           String preApplyEtag = DeltaUpdateTableMapper.computeEtag(dao);
           MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
+          // A set-columns request is checked against the table's current state, which would
+          // wrongly reject a replay. Settle a taken add-commit version first, so the replay or
+          // conflict is reported as the commit path would. Other requests need no extra read.
+          if (collected.updates().hasSetSchema()) {
+            collected
+                .updates()
+                .addCommitInfo()
+                .ifPresent(
+                    ci ->
+                        repositories
+                            .getDeltaCommitRepository()
+                            .throwIfCommitVersionTaken(session, dao, ci));
+          }
           // The commit path throws CommitAlreadyAcceptedException on an idempotent replay (caught
           // in updateTableForDelta); everything applied above is rolled back with it.
           DeltaUpdateTableMapper.applyUpdates(session, dao, properties, collected, serverProperties)
@@ -367,7 +390,8 @@ public class TableRepository {
                               dao,
                               d.commit(),
                               d.uniformFields(),
-                              d.latestBackfilledVersion()));
+                              d.latestBackfilledVersion(),
+                              filesChecked));
           // Non-replay only (a replay already threw out): enforce assert-etag against pre-apply
           // state, rolling back the applied changes on mismatch.
           DeltaUpdateTableMapper.checkEtagRequirement(preApplyEtag, collected);
@@ -1195,10 +1219,7 @@ public class TableRepository {
    * single dotted string.
    */
   public TableInfoDAO deleteTable(String fullName) {
-    String[] parts = fullName.split("\\.");
-    if (parts.length != 3) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
-    }
+    String[] parts = ValidationUtils.splitFullName(fullName, 3, "Invalid table name: " + fullName);
     return deleteTable(parts[0], parts[1], parts[2]);
   }
 
@@ -1207,22 +1228,46 @@ public class TableRepository {
    * lazy fields.
    */
   public TableInfoDAO deleteTable(String catalog, String schema, String table) {
+    return deleteTable(catalog, schema, table, dao -> {});
+  }
+
+  /**
+   * Variant of {@link #deleteTable(String, String, String)} for the UC Delta API: rejects a
+   * non-Delta table in the same transaction that deletes it.
+   */
+  public TableInfoDAO deleteTableForDelta(String catalog, String schema, String table) {
+    return deleteTable(
+        catalog, schema, table, dao -> requireDeltaTable(dao, catalog, schema, table));
+  }
+
+  private TableInfoDAO deleteTable(
+      String catalog, String schema, String table, Consumer<TableInfoDAO> check) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           UUID schemaId =
               repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
-          return deleteTable(session, schemaId, table);
+          return deleteTable(session, schemaId, table, check);
         },
         "Failed to delete table",
         /* readOnly= */ false);
   }
 
   TableInfoDAO deleteTable(Session session, UUID schemaId, String tableName) {
+    return deleteTable(session, schemaId, tableName, dao -> {});
+  }
+
+  private TableInfoDAO deleteTable(
+      Session session, UUID schemaId, String tableName, Consumer<TableInfoDAO> check) {
     TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
     if (tableInfoDAO == null) {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
     }
+    check.accept(tableInfoDAO);
+    // A commit rewrites the table's columns under this lock; waiting for it keeps the cascade below
+    // from deleting column rows the commit is replacing.
+    RepositoryUtils.lockTableForCommit(
+        session, tableInfoDAO, tableInfoDAO.getId(), Optional.of(tableName), ErrorCode.UNAVAILABLE);
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       repositories
           .getStorageCleanupTaskRepository()
@@ -1255,6 +1300,20 @@ public class TableRepository {
    * schema, and storage location are all unchanged.
    */
   public void renameTable(String catalog, String schema, String table, String newName) {
+    renameTable(catalog, schema, table, newName, dao -> {});
+  }
+
+  /**
+   * Variant of {@link #renameTable(String, String, String, String)} for the UC Delta API: rejects a
+   * non-Delta table in the same transaction that renames it, before the no-op and conflict checks.
+   */
+  public void renameTableForDelta(String catalog, String schema, String table, String newName) {
+    renameTable(
+        catalog, schema, table, newName, dao -> requireDeltaTable(dao, catalog, schema, table));
+  }
+
+  private void renameTable(
+      String catalog, String schema, String table, String newName, Consumer<TableInfoDAO> check) {
     ValidationUtils.validateSqlObjectName(newName);
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     TransactionManager.executeWithTransaction(
@@ -1266,6 +1325,7 @@ public class TableRepository {
           if (tableInfoDAO == null) {
             throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + table);
           }
+          check.accept(tableInfoDAO);
           // Do the no-op check after the table lookup. A missing table must still return
           // TABLE_NOT_FOUND rather than succeed as a no-op.
           if (table.equals(newName)) {

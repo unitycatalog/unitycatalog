@@ -51,8 +51,9 @@ public class DeltaCommitDAO {
   @Column(name = "commit_timestamp", nullable = false)
   private Date commitTimestamp;
 
+  // The column name predates retaining backfilled rows, when only the latest one was ever flagged.
   @Column(name = "is_backfilled_latest_commit", nullable = false)
-  private boolean isBackfilledLatestCommit;
+  private boolean isBackfilled;
 
   public DeltaCommitInfo toCommitInfo() {
     return new DeltaCommitInfo()
@@ -71,7 +72,7 @@ public class DeltaCommitDAO {
         .commitFilesize(commitInfo.getFileSize())
         .commitFileModificationTimestamp(new Date(commitInfo.getFileModificationTimestamp()))
         .commitTimestamp(new Date(commitInfo.getTimestamp()))
-        .isBackfilledLatestCommit(false)
+        .isBackfilled(false)
         .build();
   }
 }

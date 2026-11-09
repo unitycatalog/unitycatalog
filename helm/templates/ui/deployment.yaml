@@ -58,7 +58,7 @@ spec:
               protocol: TCP
 
           {{- if .Values.ui.deployment.enableLivenessProbe }}
-          {{- if .Values.ui.deployment.livenessProbe }}
+          {{- with .Values.ui.deployment.livenessProbe }}
           livenessProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           livenessProbe:
@@ -71,7 +71,7 @@ spec:
           {{- end }}
 
           {{- if .Values.ui.deployment.enableReadinessProbe }}
-          {{- if .Values.ui.deployment.readinessProbe }}
+          {{- with .Values.ui.deployment.readinessProbe }}
           readinessProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           readinessProbe:
@@ -84,7 +84,7 @@ spec:
           {{- end }}
 
           {{- if .Values.ui.deployment.enableStartupProbe }}
-          {{- if .Values.ui.deployment.startupProbe }}
+          {{- with .Values.ui.deployment.startupProbe }}
           startupProbe: {{- toYaml . | nindent 12 }}
           {{- else }}
           startupProbe:
@@ -108,7 +108,8 @@ spec:
               jq '.proxy = null' package.json > temp.json
               {{- end }}
               mv temp.json package.json
-              yarn start
+              # The UI runs on bun; the published unitycatalog-ui:main image predates bun and has yarn.
+              if command -v bun >/dev/null; then exec bun run start; else exec yarn start; fi
           env:
           {{- if .Values.auth.enabled }}
             - name: REACT_APP_GOOGLE_AUTH_ENABLED

@@ -32,47 +32,60 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import org.apache.iceberg.io.FileIO;
+import org.apache.iceberg.io.FileInfo;
 import org.apache.iceberg.io.InputFile;
+import org.apache.iceberg.io.SupportsPrefixOperations;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.NativeQuery;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 /**
  * Repository for managing Delta commits for managed Delta tables in Unity Catalog.
  *
- * <p>The database table 'uc_delta_commits' has commits of all managed tables until the commits are
- * backfilled. However, there's a special case that in order to record the last commit even after
- * it's backfilled, UC does not delete the last commit but instead only mark it as
- * is_backfilled_latest_commit=true. So it's guaranteed that there would be at least one record (the
- * last commit) once the table is onboarded.
+ * <p>Backfill flags commit rows ({@link DeltaCommitDAO#isBackfilled}) rather than deleting them.
+ * The <b>live commit window</b> -- what get-commits returns, and what the per-table commit limit
+ * applies to -- is the unflagged rows. New rows are inserted unflagged at the top and only backfill
+ * sets the flag, so the flagged rows are always one contiguous block at the bottom. The table's
+ * backfilled version is therefore the highest flagged row, or the oldest row minus one if none is
+ * flagged (see {@link #backfilledVersionOf}).
  *
- * <p>For example, consider the following sequence of commit operations:
+ * <p>Flagged rows are kept for {@link #NUM_BACKFILLED_COMMITS_RETAINED} more versions, purely so
+ * that a client retrying {@code add-commit} at an already-published version can be answered from
+ * its file name: same name is a replay, a different name is a conflict. That answers it from the
+ * database alone: no storage read, and no {@code COMMIT_STATE_UNKNOWN} when storage can't be read.
+ * A retry older than the retention window still falls back to comparing the staged commit file
+ * against the published one.
+ *
+ * <p>For example, with a retention window of 2 versions (flagged rows marked *):
  *
  * <ol>
- *   <li>commit(v1). Then database has [v1]
- *   <li>commit(v2). Then database has [v1, v2]
- *   <li>commit(v3). Then database has [v1, v2, v3]
- *   <li>backfill(v1). Then database has [v2, v3]. Any version &lt;= v1 is removed.
- *   <li>commit(v4) and backfill(v3). Then database has [v4]. Any version &lt;= v3 is removed.
- *   <li>commit (v5). Then database has [v4, v5]
- *   <li>backfill(v5). Then database has [v5(is_backfilled_latest_commit=true)]. v4 is removed. But
- *       v5 has to be kept as the last record in database.
- *   <li>commit(v6). Then database has [v5(is_backfilled_latest_commit=true), v6]
+ *   <li>commit(v1), commit(v2), commit(v3). Rows [v1, v2, v3], live [v1, v2, v3]
+ *   <li>backfill(v1). Rows [v1*, v2, v3], live [v2, v3]
+ *   <li>commit(v4) and backfill(v3). Rows [v1*, v2*, v3*, v4], live [v4]
+ *   <li>commit(v5) and backfill(v4). Row v1 is now more than 2 versions below v4, so it is deleted.
+ *       Rows [v2*, v3*, v4*, v5], live [v5]
  * </ol>
+ *
+ * <p>Servers before retention deleted backfilled rows and flagged only the newest one, when it was
+ * itself backfilled. Both layouts that leaves behind (nothing flagged, or one flagged row below the
+ * live window) already read correctly under the rule above, so no migration is needed.
  */
 public class DeltaCommitRepository {
 
@@ -92,10 +105,11 @@ public class DeltaCommitRepository {
 
   /**
    * Thrown when the DB alone cannot decide whether a commit at an already-taken version is a replay
-   * or a conflict, because the version was backfilled and purged so its staged file name is no
-   * longer tracked. Rolls the transaction back (releasing the table lock) so the entry point can
-   * settle it out of the transaction by comparing the incoming staged commit file against the
-   * published {@code _delta_log/<version>.json} (see {@link #verifyContentReplayOrThrowConflict}).
+   * or a conflict, because the version fell out of the retained window (or predates it) so its
+   * staged file name is no longer tracked. Rolls the transaction back (releasing the table lock) so
+   * the entry point can settle it out of the transaction by comparing the incoming staged commit
+   * file against the published {@code _delta_log/<version>.json} (see {@link
+   * #verifyContentReplayOrThrowConflict}).
    *
    * <p>Like {@link CommitAlreadyAcceptedException} this is a {@link TransactionRollbackException},
    * not a client-facing error, and is always caught within {@link #postCommit} / {@link
@@ -106,6 +120,18 @@ public class DeltaCommitRepository {
     private final NormalizedURL tableLocation;
     private final long version;
     private final String stagedFileName;
+  }
+
+  /**
+   * Thrown when a backfill needs its published commit files checked before any row is flagged.
+   * Rolls the current transaction back, releasing the table lock, so the entry point can HEAD the
+   * range outside a transaction and then retry the write. Not a client-facing error.
+   */
+  @AllArgsConstructor
+  static class BackfillVerificationRequiredException extends TransactionRollbackException {
+    private final NormalizedURL tableLocation;
+    private final long fromVersion;
+    private final long toVersion;
   }
 
   private static final Logger LOGGER = LoggerFactory.getLogger(DeltaCommitRepository.class);
@@ -121,16 +147,52 @@ public class DeltaCommitRepository {
   private static final int MAX_NUM_COMMITS_PER_TABLE = 10;
 
   /**
-   * The batch size limit for commit delete and select operations. This limit is set to be larger
-   * than MAX_NUM_COMMITS_PER_TABLE so that it should never hit this limit at all. But it serves the
+   * The batch size limit for commit delete operations. This limit is set to be larger than
+   * MAX_NUM_COMMITS_PER_TABLE so that it should never hit this limit at all. But it serves the
    * purpose of another safety measure to avoid a huge query execution IF both the server and client
    * are not implemented correct and commits per table grow unbounded. TODO: turn this into a
    * configurable server property.
    */
   private static final int NUM_COMMITS_PER_BATCH = 20;
 
+  /**
+   * How many of the newest commit rows {@link #getNewestCommits} reads: the whole live window plus
+   * the row below it, which is the highest flagged one whenever the table is within its limit.
+   */
+  private static final int NUM_NEWEST_COMMITS = MAX_NUM_COMMITS_PER_TABLE + 1;
+
+  /**
+   * How many versions below the latest backfilled one keep their commit row. A retry targets the
+   * version its writer just committed, and Delta gives up retrying within minutes, so by then the
+   * backfilled version has usually moved only a few versions on. A retry older than this still gets
+   * the right answer from the content check, at the cost of one storage read. Rows stay until the
+   * table's next backfill, so every table keeps up to this many, idle or not. TODO: turn this into
+   * a configurable server property.
+   */
+  private static final long NUM_BACKFILLED_COMMITS_RETAINED = 100L;
+
+  /**
+   * Upper bound on delete batches, sized from the retention window (plus the live window) with a
+   * 10x margin so a table at the retention cap is emptied in one call. Reused for the retention
+   * prune, where overshoot is harmless because the next backfill prunes again.
+   */
+  private static final int MAX_DELETE_BATCHES =
+      (int)
+          ((NUM_BACKFILLED_COMMITS_RETAINED + MAX_NUM_COMMITS_PER_TABLE)
+              * 10
+              / NUM_COMMITS_PER_BATCH);
+
   /** Chunk size for the streamed commit-file content comparison in {@link #hasSameFileContent}. */
   private static final int CONTENT_COMPARE_BUFFER_BYTES = 8192;
+
+  /**
+   * {@link BaseException} codes from FileIO that retrying cannot fix (for example, an S3 bucket
+   * whose region cannot be resolved, or a local path through a symbolic link); see {@link
+   * #findMissingPublishedCommitFile}.
+   */
+  private static final Set<ErrorCode> PERMANENT_FILE_IO_ERRORS =
+      EnumSet.of(
+          ErrorCode.FAILED_PRECONDITION, ErrorCode.PERMISSION_DENIED, ErrorCode.INVALID_ARGUMENT);
 
   private final SessionFactory sessionFactory;
   private final ServerProperties serverProperties;
@@ -150,7 +212,8 @@ public class DeltaCommitRepository {
    *
    * @param commits unbackfilled commits (descending version order, newest first)
    * @param latestTableVersion the latest commit version (0 if no commits)
-   * @param oldestVersion the oldest commit version in the DB (used for pagination base)
+   * @param oldestVersion the oldest unbackfilled version (used for pagination base); the latest
+   *     version when nothing is unbackfilled
    */
   record CommitQueryResult(
       List<DeltaCommitDAO> commits, long latestTableVersion, long oldestVersion) {}
@@ -163,40 +226,83 @@ public class DeltaCommitRepository {
    * with correct version).
    */
   CommitQueryResult getUnbackfilledCommits(Session session, UUID tableId) {
-    Query<DeltaCommitDAO> query =
-        session.createQuery(
-            "FROM DeltaCommitDAO WHERE tableId = :tableId ORDER BY commitVersion DESC",
-            DeltaCommitDAO.class);
-    query.setParameter("tableId", tableId);
-    query.setMaxResults(NUM_COMMITS_PER_BATCH);
-    List<DeltaCommitDAO> allDesc = query.list();
-
+    List<DeltaCommitDAO> allDesc = getNewestCommits(session, tableId);
     if (allDesc.isEmpty()) {
       return new CommitQueryResult(List.of(), 0L, 0L);
     }
 
-    int commitCount = allDesc.size();
-    if (commitCount > MAX_NUM_COMMITS_PER_TABLE) {
+    long latestVersion = allDesc.get(0).getCommitVersion();
+    List<DeltaCommitDAO> unbackfilled = allDesc.stream().filter(c -> !c.isBackfilled()).toList();
+    if (unbackfilled.size() == NUM_NEWEST_COMMITS) {
+      // A full page with nothing flagged: the table already outgrew the commit limit, so older
+      // unbackfilled rows may lie below the page. Read every row above the backfilled version.
+      unbackfilled =
+          session
+              .createQuery(
+                  "FROM DeltaCommitDAO WHERE tableId = :tableId"
+                      + " AND commitVersion > :backfilledVersion ORDER BY commitVersion DESC",
+                  DeltaCommitDAO.class)
+              .setParameter("tableId", tableId)
+              .setParameter("backfilledVersion", backfilledVersionOf(session, tableId, allDesc))
+              .list();
+    }
+
+    if (unbackfilled.size() > MAX_NUM_COMMITS_PER_TABLE) {
       LOGGER.error(
-          "Table {} has {} commits, exceeds limit {}.",
+          "Table {} has {} unbackfilled commits, exceeds limit {}.",
           tableId,
-          commitCount,
+          unbackfilled.size(),
           MAX_NUM_COMMITS_PER_TABLE);
     }
 
-    DeltaCommitDAO newestCommit = allDesc.get(0);
-    long latestVersion = newestCommit.getCommitVersion();
-    long oldestVersion = allDesc.get(allDesc.size() - 1).getCommitVersion();
-    if (newestCommit.isBackfilledLatestCommit()) {
-      return new CommitQueryResult(List.of(), latestVersion, oldestVersion);
-    }
-
-    // Only the latest backfilled version is kept in the DB as a
-    // marker (isBackfilledLatestCommit=true). All other backfilled
-    // commits are deleted. Filter out this single marker.
-    List<DeltaCommitDAO> unbackfilled =
-        allDesc.stream().filter(c -> !c.isBackfilledLatestCommit()).toList();
+    long oldestVersion =
+        unbackfilled.isEmpty()
+            ? latestVersion
+            : unbackfilled.get(unbackfilled.size() - 1).getCommitVersion();
     return new CommitQueryResult(unbackfilled, latestVersion, oldestVersion);
+  }
+
+  /**
+   * The table's backfilled version: the highest flagged row, or one below the oldest row when
+   * nothing is flagged (versions below the oldest row either predate onboarding or were backfilled
+   * and deleted by an earlier server). A page from {@link #getNewestCommits} normally holds the
+   * highest flagged row, because the unflagged rows above it are capped at {@link
+   * #MAX_NUM_COMMITS_PER_TABLE}, below the page size. A full page with nothing flagged means the
+   * table already outgrew that cap, so the answer is read from the whole log instead.
+   *
+   * @param allDesc a non-empty page of the table's commit rows, newest first
+   */
+  private static long backfilledVersionOf(
+      Session session, UUID tableId, List<DeltaCommitDAO> allDesc) {
+    Optional<Long> highestFlagged =
+        allDesc.stream()
+            .filter(DeltaCommitDAO::isBackfilled)
+            .findFirst()
+            .map(DeltaCommitDAO::getCommitVersion);
+    if (highestFlagged.isPresent()) {
+      return highestFlagged.get();
+    }
+    if (allDesc.size() < NUM_NEWEST_COMMITS) {
+      return allDesc.get(allDesc.size() - 1).getCommitVersion() - 1L;
+    }
+    Long flagged =
+        session
+            .createQuery(
+                "SELECT MAX(commitVersion) FROM DeltaCommitDAO"
+                    + " WHERE tableId = :tableId AND isBackfilled = true",
+                Long.class)
+            .setParameter("tableId", tableId)
+            .uniqueResult();
+    if (flagged != null) {
+      return flagged;
+    }
+    return session
+            .createQuery(
+                "SELECT MIN(commitVersion) FROM DeltaCommitDAO WHERE tableId = :tableId",
+                Long.class)
+            .setParameter("tableId", tableId)
+            .uniqueResult()
+        - 1L;
   }
 
   /**
@@ -210,9 +316,9 @@ public class DeltaCommitRepository {
    * endVersion] will be kept and later (higher version) commits in the version range will be
    * trimmed in order to keep the result within the limit.
    *
-   * <p><b>Backfilled commits:</b> When commits are backfilled (persisted to file storage), they are
-   * removed from the database. If the latest commit is marked as backfilled, this method returns an
-   * empty commit list but still returns the correct latestTableVersion.
+   * <p><b>Backfilled commits:</b> Commits flagged as backfilled are omitted. If everything is
+   * backfilled, this method returns an empty commit list but still returns the correct
+   * latestTableVersion.
    *
    * <p><b>Empty table behavior:</b> If the table has no commits yet, returns latestTableVersion=0
    * with an empty commit list.
@@ -291,17 +397,58 @@ public class DeltaCommitRepository {
    */
   public void postCommit(DeltaCommit commit) {
     try {
-      postCommitInTransaction(commit);
+      withPublishedCommitVerification(
+          filesChecked -> {
+            postCommitInTransaction(commit, filesChecked);
+            return null;
+          });
     } catch (CommitAlreadyAcceptedException e) {
       // Idempotent replay: the transaction rolled back to a no-op. Report success.
     } catch (CommitContentCheckRequiredException e) {
-      // Version was purged, so the DB couldn't decide: settle it out of the (rolled-back)
+      // Version no longer retained, so the DB couldn't decide: settle it out of the (rolled-back)
       // transaction by comparing file content. A match is a no-op success; a difference throws.
       verifyContentReplayOrThrowConflict(fileOperations, e);
     }
   }
 
-  private void postCommitInTransaction(DeltaCommit commit) {
+  /**
+   * Runs {@code attempt}, and when it asks for published commit files to be checked, HEADs them
+   * with no table lock held:
+   *
+   * <ol>
+   *   <li>Run {@code attempt}. If it needs no check, return its result.
+   *   <li>HEAD the range it asked for. If every file is present, run {@code attempt} with {@code
+   *       filesChecked} set so it can flag the range.
+   *   <li>Otherwise read the database again by running {@code attempt} unchecked: another request
+   *       may have backfilled the range and log cleanup removed the file. If it no longer needs a
+   *       check, return its result. Else HEAD only what it still needs, reject a missing file with
+   *       {@code INVALID_ARGUMENT}, and run {@code attempt} with {@code filesChecked} set.
+   * </ol>
+   *
+   * <p>So {@code attempt} runs at most three times and a range is HEADed at most twice. New commits
+   * only append and a backfill only flags upward, so a HEADed range still covers whatever the final
+   * attempt flags.
+   */
+  <T> T withPublishedCommitVerification(Function<Boolean, T> attempt) {
+    BackfillVerificationRequiredException required;
+    try {
+      return attempt.apply(false);
+    } catch (BackfillVerificationRequiredException e) {
+      required = e;
+    }
+    if (findMissingPublishedCommitFile(
+            fileOperations, required.tableLocation, required.fromVersion, required.toVersion)
+        .isPresent()) {
+      try {
+        return attempt.apply(false);
+      } catch (BackfillVerificationRequiredException e) {
+        requirePublishedCommitFiles(fileOperations, e.tableLocation, e.fromVersion, e.toVersion);
+      }
+    }
+    return attempt.apply(true);
+  }
+
+  private void postCommitInTransaction(DeltaCommit commit, boolean filesChecked) {
     serverProperties.checkManagedTableEnabled();
     validateCommit(commit);
     // Extract + shape-validate uniform fields outside the transaction. The subpath check (which
@@ -324,7 +471,7 @@ public class DeltaCommitRepository {
           RepositoryUtils.lockTableForCommit(
               session, tableInfoDAO, tableId, Optional.empty(), ErrorCode.COMMIT_STATE_UNKNOWN);
           validateTableForCommit(session, commit, tableInfoDAO, uniformFields);
-          postCommitCore(session, tableId, tableInfoDAO, commit, uniformFields);
+          postCommitCore(session, tableId, tableInfoDAO, commit, uniformFields, filesChecked);
           return null;
         },
         "Error committing to table: " + commit.getTableId(),
@@ -333,7 +480,7 @@ public class DeltaCommitRepository {
 
   /**
    * Shared core of {@link #postCommit} and {@link #applyCommitAndBackfillInSession}: read the
-   * first/last commits and route to {@link #handleOnboardingCommit} (no prior commits + commit info
+   * newest commits and route to {@link #handleOnboardingCommit} (no prior commits + commit info
    * present), {@link #handleBackfillOnlyCommit} (prior commits + commit info absent), or {@link
    * #handleNormalCommit} (prior commits + commit info present). A backfill-only request against an
    * empty commit log is rejected here directly with a caller-aware message.
@@ -346,9 +493,10 @@ public class DeltaCommitRepository {
       UUID tableId,
       TableInfoDAO tableInfoDAO,
       DeltaCommit commit,
-      Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields) {
-    List<DeltaCommitDAO> firstAndLastCommits = getFirstAndLastCommits(session, tableId);
-    if (firstAndLastCommits.isEmpty()) {
+      Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
+      boolean filesChecked) {
+    List<DeltaCommitDAO> newestCommits = getNewestCommits(session, tableId);
+    if (newestCommits.isEmpty()) {
       if (commit.getCommitInfo() == null) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,
@@ -356,24 +504,29 @@ public class DeltaCommitRepository {
       }
       handleOnboardingCommit(session, tableId, tableInfoDAO, commit, uniformFields);
     } else {
-      DeltaCommitDAO firstCommitDAO = firstAndLastCommits.get(0);
-      DeltaCommitDAO lastCommitDAO = firstAndLastCommits.get(1);
-      ValidationUtils.checkArgument(
-          firstCommitDAO.getCommitVersion() <= lastCommitDAO.getCommitVersion(),
-          "Inconsistent commit log: first commit version > last commit version.");
+      long backfilledThrough = backfilledVersionOf(session, tableId, newestCommits);
+      DeltaCommitDAO lastCommitDAO = newestCommits.get(0);
       if (commit.getCommitInfo() == null) {
         // latestBackfilledVersion non-null guaranteed upstream (UC REST: validateCommit;
         // Delta update: DeltaUpdateTableMapper checkNotNull).
         assert (commit.getLatestBackfilledVersion() != null);
         handleBackfillOnlyCommit(
             session,
-            tableId,
+            tableInfoDAO,
             commit.getLatestBackfilledVersion(),
-            firstCommitDAO.getCommitVersion(),
-            lastCommitDAO.getCommitVersion());
+            backfilledThrough,
+            lastCommitDAO.getCommitVersion(),
+            filesChecked);
       } else {
         handleNormalCommit(
-            session, tableId, tableInfoDAO, commit, uniformFields, firstCommitDAO, lastCommitDAO);
+            session,
+            tableId,
+            tableInfoDAO,
+            commit,
+            uniformFields,
+            backfilledThrough,
+            lastCommitDAO,
+            filesChecked);
       }
     }
   }
@@ -414,21 +567,24 @@ public class DeltaCommitRepository {
    *
    * <p>This method is called when a commit request has no commit info but specifies a backfilled
    * version. It validates that the backfilled version is not greater than the last committed
-   * version, then delegates to the backfill logic to remove old commits from the repository.
+   * version, then delegates to the backfill logic to flag the newly backfilled commits.
    *
    * @param session the Hibernate session for database operations
-   * @param tableId the unique identifier of the table
+   * @param tableInfoDAO the table information data access object
    * @param latestBackfilledVersion the version up to which backfilling has already been performed
-   * @param firstCommitVersion the version number of the first commit currently in the database
+   * @param backfilledThrough the table's current backfilled version
    * @param lastCommitVersion the version number of the last commit currently in the database
+   * @param filesChecked true on the retry, after the published files for this request were HEADed
    * @throws BaseException if the backfilled version is greater than the last commit version
+   * @throws BackfillVerificationRequiredException if the published files still need a HEAD
    */
   private static void handleBackfillOnlyCommit(
       Session session,
-      UUID tableId,
+      TableInfoDAO tableInfoDAO,
       long latestBackfilledVersion,
-      long firstCommitVersion,
-      long lastCommitVersion) {
+      long backfilledThrough,
+      long lastCommitVersion,
+      boolean filesChecked) {
     if (latestBackfilledVersion > lastCommitVersion) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
@@ -436,13 +592,9 @@ public class DeltaCommitRepository {
               "Should not backfill version %d while the last version committed is %d",
               latestBackfilledVersion, lastCommitVersion));
     }
-    backfillCommits(
-        session,
-        tableId,
-        latestBackfilledVersion,
-        firstCommitVersion,
-        lastCommitVersion,
-        Optional.empty());
+    ensurePublishedRangeVerified(
+        tableInfoDAO, backfilledThrough, latestBackfilledVersion, filesChecked);
+    backfillCommits(session, tableInfoDAO.getId(), latestBackfilledVersion, backfilledThrough);
   }
 
   /**
@@ -478,13 +630,15 @@ public class DeltaCommitRepository {
    * @param latestBackfilledVersion the {@code set-latest-backfilled-version} target, if any. Same
    *     value as the Delta wire field {@code latest-published-version}. When paired with {@code
    *     deltaCommitOpt}, the helper runs both in one read of the commit log.
+   * @param filesChecked true on the retry, after the published files for this request were HEADed
    */
   void applyCommitAndBackfillInSession(
       Session session,
       TableInfoDAO dao,
       Optional<DeltaCommitInfo> commitInfoOpt,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
-      Optional<Long> latestBackfilledVersion) {
+      Optional<Long> latestBackfilledVersion,
+      boolean filesChecked) {
     ValidationUtils.checkArgument(
         commitInfoOpt.isPresent() || latestBackfilledVersion.isPresent(),
         "At least one of add-commit or set-latest-backfilled-version is required.");
@@ -506,7 +660,8 @@ public class DeltaCommitRepository {
         new DeltaCommit()
             .commitInfo(commitInfoOpt.orElse(null))
             .latestBackfilledVersion(latestBackfilledVersion.orElse(null)),
-        uniformFields);
+        uniformFields,
+        filesChecked);
   }
 
   /**
@@ -531,17 +686,20 @@ public class DeltaCommitRepository {
    *
    * <p>A commit at an already-taken version is resolved by {@link
    * #exceptionForAlreadyTakenVersion}: a recognized replay throws {@link
-   * CommitAlreadyAcceptedException}; a purged version that needs an out-of-transaction content
-   * check throws {@link CommitContentCheckRequiredException}; anything else is a genuine conflict.
+   * CommitAlreadyAcceptedException}; a version no longer retained, which needs an
+   * out-of-transaction content check, throws {@link CommitContentCheckRequiredException}; anything
+   * else is a genuine conflict.
    *
    * @param session the Hibernate session for database operations
    * @param tableId the unique identifier of the table
    * @param tableInfoDAO the table information data access object
    * @param commit the commit request containing version info, optional backfill, and metadata
-   * @param firstCommitDAO the first commit already in the database
+   * @param backfilledThrough the table's current backfilled version
    * @param lastCommitDAO the last commit already in the database
+   * @param filesChecked true on the retry, after the published files for this request were HEADed
    * @throws CommitAlreadyAcceptedException if this is an idempotent replay of an accepted commit
-   * @throws CommitContentCheckRequiredException if a purged version needs a content check
+   * @throws CommitContentCheckRequiredException if an unretained version needs a content check
+   * @throws BackfillVerificationRequiredException if the published files still need a HEAD
    * @throws BaseException if the commit version is invalid, already exists, or violates constraints
    */
   private static void handleNormalCommit(
@@ -550,10 +708,10 @@ public class DeltaCommitRepository {
       TableInfoDAO tableInfoDAO,
       DeltaCommit commit,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
-      DeltaCommitDAO firstCommitDAO,
-      DeltaCommitDAO lastCommitDAO) {
+      long backfilledThrough,
+      DeltaCommitDAO lastCommitDAO,
+      boolean filesChecked) {
     DeltaCommitInfo commitInfo = Objects.requireNonNull(commit.getCommitInfo());
-    long firstCommitVersion = firstCommitDAO.getCommitVersion();
     long lastCommitVersion = lastCommitDAO.getCommitVersion();
     long newCommitVersion = commitInfo.getVersion();
     if (newCommitVersion <= lastCommitVersion) {
@@ -563,7 +721,7 @@ public class DeltaCommitRepository {
           tableInfoDAO,
           newCommitVersion,
           commitInfo.getFileName(),
-          firstCommitDAO,
+          backfilledThrough,
           lastCommitDAO);
     }
     if (newCommitVersion > lastCommitVersion + 1) {
@@ -584,74 +742,17 @@ public class DeltaCommitRepository {
               "Latest backfilled version %d cannot be greater than the last commit version = %d",
               latestBackfilledVersion.get(), lastCommitVersion));
     }
-    checkCommitLimit(
-        tableId, newCommitVersion, latestBackfilledVersion, firstCommitDAO, lastCommitDAO);
+    checkCommitLimit(tableId, newCommitVersion, latestBackfilledVersion, backfilledThrough);
+    // HEAD before any persist, so a missing or unreadable file rolls nothing back and does not
+    // hold the table lock. The retry of this method performs the save and the backfill.
+    latestBackfilledVersion.ifPresent(
+        latestBackfilled ->
+            ensurePublishedRangeVerified(
+                tableInfoDAO, backfilledThrough, latestBackfilled, filesChecked));
     saveCommit(session, tableId, commitInfo);
     updateTableFromCommit(session, tableId, tableInfoDAO, commit, uniformFields);
     latestBackfilledVersion.ifPresent(
-        latestBackfilled ->
-            backfillCommits(
-                session,
-                tableId,
-                latestBackfilled,
-                firstCommitVersion,
-                lastCommitVersion,
-                Optional.of(newCommitVersion)));
-  }
-
-  /**
-   * Calculates the would-be backfilled version AFTER the current commit request is completed. This
-   * considers the current state of commits and any backfill information in the request.
-   *
-   * <p>The logic handles several cases:
-   *
-   * <ul>
-   *   <li>If the last commit is already marked as backfilled, it remains the backfilled version
-   *   <li>If the request specifies a valid backfilled version >= first commit, use that
-   *   <li>If the first commit is marked as backfilled, use its version
-   *   <li>Otherwise, nothing is backfilled yet (returns firstCommitVersion - 1)
-   * </ul>
-   *
-   * @param tableId the unique identifier of the table (used for logging)
-   * @param latestBackfilledVersion optional backfilled version specified in the commit request
-   * @param firstCommitDAO the first commit currently in the database with the lowest version
-   * @param lastCommitDAO the last commit currently in the database with the highest version
-   * @return the effective backfilled version after the commit operation completes
-   */
-  private static long getEffectiveBackfilledVersion(
-      UUID tableId,
-      Optional<Long> latestBackfilledVersion,
-      DeltaCommitDAO firstCommitDAO,
-      DeltaCommitDAO lastCommitDAO) {
-    if (lastCommitDAO.isBackfilledLatestCommit()) {
-      // There should only be ONE commit if the last one is marked as backfilled which is the
-      // special case.
-      if (firstCommitDAO.getCommitVersion() != lastCommitDAO.getCommitVersion()) {
-        // This means a bug in this implementation, but recoverable.
-        LOGGER.error(
-            "Table: {}. Latest commit is marked backfilled but there are {} commits.",
-            tableId,
-            lastCommitDAO.getCommitVersion() - firstCommitDAO.getCommitVersion() + 1);
-      }
-      // In this case:
-      // 1. If the request wants to commit a newer version, it cannot possibly backfill the same
-      // newer version in the same request. So the last backfilled version remains the same.
-      // 2. If by any means the request still wants to report backfilled version in this request,
-      // it must be <= lastCommit. So it's the same result.
-      return lastCommitDAO.getCommitVersion();
-    } else if (latestBackfilledVersion
-        .filter(x -> x >= firstCommitDAO.getCommitVersion())
-        .isPresent()) {
-      // The commit request reports a valid backfilled version. We'll take that.
-      return latestBackfilledVersion.get();
-    } else if (firstCommitDAO.isBackfilledLatestCommit()) {
-      // The firstCommit is already backfilled. It remains only because it was the only commit
-      // left when being backfilled.
-      return firstCommitDAO.getCommitVersion();
-    } else {
-      // Otherwise, nothing in [first, last] is/will be backfilled.
-      return firstCommitDAO.getCommitVersion() - 1L;
-    }
+        latestBackfilled -> backfillCommits(session, tableId, latestBackfilled, backfilledThrough));
   }
 
   /**
@@ -661,93 +762,207 @@ public class DeltaCommitRepository {
    * @param tableId the unique identifier of the table
    * @param newCommitVersion the version number of the new commit being added
    * @param latestBackfilledVersion optional backfilled version specified in the commit request
-   * @param firstCommitDAO the first commit currently in the database with the lowest version
-   * @param lastCommitDAO the last commit currently in the database with the highest version
+   * @param backfilledThrough the table's current backfilled version
    * @throws BaseException if the commit would exceed the maximum commits per table limit
    */
   private static void checkCommitLimit(
       UUID tableId,
       long newCommitVersion,
       Optional<Long> latestBackfilledVersion,
-      DeltaCommitDAO firstCommitDAO,
-      DeltaCommitDAO lastCommitDAO) {
+      long backfilledThrough) {
+    // A request may only move the backfilled version forward, so the window after this request is
+    // everything above whichever of the two is higher.
     long effectiveBackfilledVersion =
-        getEffectiveBackfilledVersion(
-            tableId, latestBackfilledVersion, firstCommitDAO, lastCommitDAO);
-    long expectedFirstCommitVersionAfterBackfill = effectiveBackfilledVersion + 1L;
-    long expectedCommitCountPostCommit =
-        newCommitVersion - expectedFirstCommitVersionAfterBackfill + 1L;
-    if (expectedCommitCountPostCommit > MAX_NUM_COMMITS_PER_TABLE) {
+        Math.max(backfilledThrough, latestBackfilledVersion.orElse(backfilledThrough));
+    if (newCommitVersion - effectiveBackfilledVersion > MAX_NUM_COMMITS_PER_TABLE) {
       throw new BaseException(
           ErrorCode.RESOURCE_EXHAUSTED, "Max number of commits per table reached: " + tableId);
     }
   }
 
   /**
-   * Performs the backfilling operation by deleting old commits up to the specified version. The
-   * most recent commit is always preserved as it serves as an indicator of the current table
-   * version.
+   * Prunes rows that have aged out of retention, then flags versions {@code (backfilledThrough,
+   * latestBackfilledVersion]} as backfilled, which moves them out of the live commit window.
+   * Flagged rows stay put until a later backfill prunes them.
    *
-   * <p>For backfill-only requests (when newCommitVersion is empty), if the backfilled version
-   * equals the last commit version, that commit is marked as backfilled rather than deleted.
-   *
-   * <p>This method performs deletions in batches and retries up to 5 times if not all commits are
-   * deleted, logging errors for investigation.
+   * <p>The published-file check happens before this method, outside the transaction. Callers must
+   * invoke {@link #ensurePublishedRangeVerified} first so a missing file never gets flagged.
    *
    * @param session the Hibernate session for database operations
    * @param tableId the unique identifier of the table
    * @param latestBackfilledVersion the version up to which backfilling should be performed
-   * @param firstCommitVersion the version number of the first commit currently in the database with
-   *     the lowest version number
-   * @param lastCommitVersion the version number of the last commit currently in the database with
-   *     the highest version number
-   * @param newCommitVersion optional new commit version being added (empty for backfill-only
-   *     requests)
+   * @param backfilledThrough the table's current backfilled version
    */
   private static void backfillCommits(
-      Session session,
-      UUID tableId,
+      Session session, UUID tableId, long latestBackfilledVersion, long backfilledThrough) {
+    if (latestBackfilledVersion <= backfilledThrough) {
+      // Re-reporting a version that is already backfilled is fine, but a no-op.
+      return;
+    }
+    // Prune first: the native DELETE bypasses the session, so a row it removes must not be loaded
+    // and flagged below, or the flush would update a row that no longer exists. The rows already in
+    // the session are the newest page, which is always above the prune bound.
+    pruneRetainedCommits(session, tableId, latestBackfilledVersion);
+    // Flag through the entities rather than a bulk UPDATE: the rows were already loaded into this
+    // session, and a bulk UPDATE would leave those instances stale for the rest of the transaction
+    // (the Delta update path builds its response from them).
+    session
+        .createQuery(
+            "FROM DeltaCommitDAO WHERE tableId = :tableId"
+                + " AND commitVersion > :fromVersion AND commitVersion <= :toVersion",
+            DeltaCommitDAO.class)
+        .setParameter("tableId", tableId)
+        .setParameter("fromVersion", backfilledThrough)
+        .setParameter("toVersion", latestBackfilledVersion)
+        .list()
+        .forEach(c -> c.setBackfilled(true));
+  }
+
+  /**
+   * Throws {@link BackfillVerificationRequiredException} when versions {@code (backfilledThrough,
+   * latestBackfilledVersion]} still need their published files HEADed. No-op when {@code
+   * filesChecked} is set, or when the request backfills nothing new.
+   *
+   * <p>Called before any commit row is written, while the table lock is held. The thrown exception
+   * rolls that transaction back so {@link #withPublishedCommitVerification} can HEAD the range with
+   * no lock and no open transaction.
+   */
+  private static void ensurePublishedRangeVerified(
+      TableInfoDAO tableInfoDAO,
+      long backfilledThrough,
       long latestBackfilledVersion,
-      long firstCommitVersion,
-      long lastCommitVersion,
-      Optional<Long> newCommitVersion) {
-    // These asserts are already validated before calling this function
-    assert latestBackfilledVersion <= lastCommitVersion;
-    assert newCommitVersion.isEmpty() || newCommitVersion.get() == lastCommitVersion + 1;
-
-    if (latestBackfilledVersion < firstCommitVersion) {
-      // Backfilling a version that is already backfilled is fine. But no-op.
+      boolean filesChecked) {
+    if (filesChecked || latestBackfilledVersion <= backfilledThrough) {
       return;
     }
+    throw new BackfillVerificationRequiredException(
+        NormalizedURL.from(tableInfoDAO.getUrl()), backfilledThrough + 1L, latestBackfilledVersion);
+  }
 
-    long highestCommitVersion = newCommitVersion.orElse(lastCommitVersion);
-    // The last commit version, be it a new one or existing one, is never deleted.
-    // It serves as an indicator of the current version.
-    long deleteUpTo = Math.min(latestBackfilledVersion, highestCommitVersion - 1L);
+  /** Absolute path of the table's {@code _delta_log} directory. */
+  static String deltaLogDir(NormalizedURL tableLocation) {
+    return tableLocation + "/_delta_log";
+  }
 
-    if (newCommitVersion.isEmpty() && latestBackfilledVersion == lastCommitVersion) {
-      // Backfill only request will never delete the last existing commit. Instead, we mark it as
-      // backfilled.
-      markCommitAsLatestBackfilled(session, tableId, lastCommitVersion);
+  /**
+   * Absolute path of the published Delta commit file for {@code version} under {@code
+   * tableLocation}. Locale.ROOT keeps the zero-padded name ASCII-digit regardless of server locale.
+   */
+  static String publishedCommitPath(NormalizedURL tableLocation, long version) {
+    return String.format(Locale.ROOT, "%s/%020d.json", deltaLogDir(tableLocation), version);
+  }
+
+  /**
+   * Absolute path of the staged commit file {@code fileName} under {@code
+   * tableLocation/_delta_log/_staged_commits}.
+   */
+  static String stagedCommitPath(NormalizedURL tableLocation, String fileName) {
+    return String.format(
+        Locale.ROOT, "%s/_staged_commits/%s", deltaLogDir(tableLocation), fileName);
+  }
+
+  /**
+   * HEADs each published {@code _delta_log/<version>.json} in [{@code fromVersion}, {@code
+   * toVersion}]. No-op when {@code fromVersion > toVersion}.
+   *
+   * <p>Called outside the commit transaction, after {@link BackfillVerificationRequiredException}
+   * has released the table lock. A definitively absent file means the client reported a backfill
+   * that did not complete: {@code INVALID_ARGUMENT} (400), since retrying cannot help until the
+   * file is published. Storage failures follow {@link #findMissingPublishedCommitFile}.
+   */
+  static void requirePublishedCommitFiles(
+      FileOperations fileOperations,
+      NormalizedURL tableLocation,
+      long fromVersion,
+      long toVersion) {
+    Optional<String> missingPath =
+        findMissingPublishedCommitFile(fileOperations, tableLocation, fromVersion, toVersion);
+    if (missingPath.isPresent()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Cannot backfill through version "
+              + toVersion
+              + ": published commit file is missing: "
+              + missingPath.get());
     }
-    long numCommitsToDelete = deleteUpTo - firstCommitVersion + 1L;
-    if (numCommitsToDelete <= 0) {
-      // Nothing to delete.
-      return;
-    }
+  }
 
-    // Retry backfilling 5 times to prioritize cleaning of the commit table and log bugs where there
-    // are more commits in the table than MAX_NUM_COMMITS_PER_TABLE
-    final int MAX_ITERATIONS = 5;
-    for (int i = 0; i < MAX_ITERATIONS && numCommitsToDelete > 0; i++) {
-      numCommitsToDelete -= deleteCommitsUpTo(session, tableId, deleteUpTo);
-      if (numCommitsToDelete > 0) {
-        LOGGER.error(
-            "Failed to backfill commits for tableId: {}, upTo: {}, in batch: {}, commits left: {}",
-            tableId,
-            deleteUpTo,
-            i,
-            numCommitsToDelete);
+  /**
+   * The first published {@code _delta_log/<version>.json} in [{@code fromVersion}, {@code
+   * toVersion}] that does not exist, if any.
+   *
+   * <p>A {@link BaseException} with a permanent code ({@code FAILED_PRECONDITION}, {@code
+   * PERMISSION_DENIED}, {@code INVALID_ARGUMENT}) from FileIO, whether from acquisition (e.g. an
+   * unresolvable S3 bucket region) or from a HEAD (e.g. a local path through a symbolic link),
+   * passes through unchanged: retrying cannot help, and nothing has been persisted. Any other
+   * acquisition, HEAD, or close failure leaves existence undetermined and becomes {@code
+   * COMMIT_STATE_UNKNOWN} (500, retriable), matching {@link #verifyContentReplayOrThrowConflict}.
+   */
+  private static Optional<String> findMissingPublishedCommitFile(
+      FileOperations fileOperations,
+      NormalizedURL tableLocation,
+      long fromVersion,
+      long toVersion) {
+    if (fromVersion > toVersion) {
+      return Optional.empty();
+    }
+    // Record a miss inside the FileIO block and return it after, so it is never confused with a
+    // storage failure caught below. v == toVersion is an explicit stop so v++ cannot overflow at
+    // MAX_VALUE.
+    String missingPath = null;
+    try (FileIO fileIO = fileOperations.getFileIO(tableLocation)) {
+      for (long v = fromVersion; ; v++) {
+        String path = publishedCommitPath(tableLocation, v);
+        if (!publishedFileExists(fileIO, path)) {
+          missingPath = path;
+          break;
+        }
+        if (v == toVersion) {
+          break;
+        }
+      }
+    } catch (Exception e) {
+      if (e instanceof BaseException be && PERMANENT_FILE_IO_ERRORS.contains(be.getErrorCode())) {
+        throw be;
+      }
+      throw new BaseException(
+          ErrorCode.COMMIT_STATE_UNKNOWN,
+          "Could not verify the published commit files under "
+              + deltaLogDir(tableLocation)
+              + " for backfill through version "
+              + toVersion
+              + "; retry the request.",
+          e);
+    }
+    return Optional.ofNullable(missingPath);
+  }
+
+  /**
+   * Whether the published commit file at {@code path} exists.
+   *
+   * <p>S3 answers a HEAD on a missing key with 403 rather than 404 unless the caller may list the
+   * bucket, and the read credentials vended for a table may list only under the table's prefix (a
+   * HEAD carries no {@code s3:prefix}). So a 403 from an S3 HEAD is settled by listing the key
+   * itself, which those credentials may do. A listing failure leaves existence undetermined.
+   */
+  private static boolean publishedFileExists(FileIO fileIO, String path) {
+    try {
+      return fileIO.newInputFile(path).exists();
+    } catch (S3Exception headFailure) {
+      if (headFailure.statusCode() != 403
+          || !(fileIO instanceof SupportsPrefixOperations prefixOps)) {
+        throw headFailure;
+      }
+      try {
+        for (FileInfo file : prefixOps.listPrefix(path)) {
+          if (file.location().equals(path)) {
+            return true;
+          }
+        }
+        return false;
+      } catch (RuntimeException listFailure) {
+        headFailure.addSuppressed(listFailure);
+        throw headFailure;
       }
     }
   }
@@ -774,41 +989,38 @@ public class DeltaCommitRepository {
    * an accepted commit may safely resend; recognizing the replay lets the server report success
    * (via a rolled-back no-op) instead of a spurious conflict.
    *
-   * <p>For a version still tracked in the DB, the client-generated per-commit-unique UUID in the
-   * file name is the dedup handle: same name -&gt; replay, different name -&gt; conflict. For a
-   * version already backfilled and purged, the name is no longer tracked, so the DB cannot decide
-   * and this defers to an out-of-transaction file-content check.
+   * <p>The client-generated per-commit-unique UUID in the file name is the dedup handle: same name
+   * -&gt; replay, different name -&gt; conflict. This works for backfilled versions too, as long as
+   * their row is still retained, which is the case that would otherwise stall a retrying writer.
+   * Only a version with no row at all -- aged out of retention, or backfilled before rows were
+   * retained -- defers to an out-of-transaction file-content check.
    *
    * <p>The caller must hold the table lock (see {@link RepositoryUtils#lockTableForCommit}).
    *
    * @return a {@link CommitAlreadyAcceptedException} on a recognized replay; a {@link
-   *     CommitContentCheckRequiredException} when a purged version needs a content check; or a
+   *     CommitContentCheckRequiredException} when an unretained version needs a content check; or a
    *     {@link BaseException} ({@code COMMIT_VERSION_CONFLICT} for a genuine conflict, {@code
-   *     INTERNAL} if the tracked commit range is inconsistent)
+   *     INTERNAL} if the live commit window is inconsistent)
    */
   private static RuntimeException exceptionForAlreadyTakenVersion(
       Session session,
       TableInfoDAO tableInfoDAO,
       long version,
       String fileName,
-      DeltaCommitDAO firstCommitDAO,
+      long backfilledThrough,
       DeltaCommitDAO lastCommitDAO) {
     UUID tableId = tableInfoDAO.getId();
-    // Resolve the commit tracked at `version` against the caller's already-read boundary commits,
-    // querying the DB only for a version strictly between them (never re-reading the whole log).
-    DeltaCommitDAO existing;
-    if (version == lastCommitDAO.getCommitVersion()) {
-      existing = lastCommitDAO;
-    } else if (version == firstCommitDAO.getCommitVersion()) {
-      existing = firstCommitDAO;
-    } else if (version > firstCommitDAO.getCommitVersion()
-        && version < lastCommitDAO.getCommitVersion()) {
-      // Tracked commit versions are contiguous between the boundaries. The caller holds the table
-      // write lock, so no concurrent backfill can purge this version between reading the boundaries
-      // and this lookup; an in-range version must therefore have a row. A missing row means the
-      // uc_delta_commits table is internally inconsistent (a gap in the tracked range).
-      existing = findCommitByVersion(session, tableId, version).orElse(null);
-      if (existing == null) {
+    // The last commit is already in hand and is the version a writer most often retries; anything
+    // else costs one indexed lookup.
+    DeltaCommitDAO existing =
+        version == lastCommitDAO.getCommitVersion()
+            ? lastCommitDAO
+            : findCommitByVersion(session, tableId, version).orElse(null);
+    if (existing == null) {
+      if (version > backfilledThrough) {
+        // Versions in the live window are contiguous, and the caller holds the table write lock, so
+        // no concurrent backfill can have removed this one. A gap means uc_delta_commits is
+        // internally inconsistent.
         return new BaseException(
             ErrorCode.INTERNAL,
             "Inconsistent uc_delta_commits table for table "
@@ -816,9 +1028,8 @@ public class DeltaCommitRepository {
                 + ": no row tracked at in-range commit version "
                 + version);
       }
-    } else {
-      // Below the oldest tracked version: backfilled and purged, so the file name is no longer
-      // stored and the DB alone can't tell a replay from a conflict. Defer to a content check.
+      // Backfilled and no longer retained, so the file name is gone and the DB alone can't tell a
+      // replay from a conflict. Defer to a content check.
       return new CommitContentCheckRequiredException(
           NormalizedURL.from(tableInfoDAO.getUrl()), version, fileName);
     }
@@ -868,12 +1079,8 @@ public class DeltaCommitRepository {
    */
   static void verifyContentReplayOrThrowConflict(
       FileOperations fileOperations, CommitContentCheckRequiredException check) {
-    String logDir = check.tableLocation + "/_delta_log";
-    // Locale.ROOT: the published file name is ASCII digits regardless of the server's locale, so it
-    // matches the actual _delta_log/<v>.json path (some locales render %d with non-ASCII digits).
-    String publishedPath = String.format(Locale.ROOT, "%s/%020d.json", logDir, check.version);
-    String stagedPath =
-        String.format(Locale.ROOT, "%s/_staged_commits/%s", logDir, check.stagedFileName);
+    String publishedPath = publishedCommitPath(check.tableLocation, check.version);
+    String stagedPath = stagedCommitPath(check.tableLocation, check.stagedFileName);
     boolean sameContent;
     // getFileIO can vend credentials (cloud paths) and open resources, so it is acquired inside the
     // guarded block (and closed): a vend or read failure is equally "cannot determine" and must
@@ -928,33 +1135,47 @@ public class DeltaCommitRepository {
   }
 
   /**
-   * Deletes commits up to and including the specified version.
+   * Deletes commit rows that have fallen more than {@link #NUM_BACKFILLED_COMMITS_RETAINED}
+   * versions behind {@code latestBackfilledVersion}. The version exactly that far behind is kept. A
+   * retry at an older version goes back to the staged-vs-published content check, which is the
+   * behaviour from before rows were retained.
    *
-   * <p>This method executes a batch delete operation limited by {@code NUM_COMMITS_PER_BATCH}. If
-   * more commits need to be deleted than the batch size, this method should be called multiple
-   * times.
+   * <p>Called on every backfill that flags new rows, so in steady state only a handful of rows have
+   * newly aged out. Deletes in batches, up to {@link #MAX_DELETE_BATCHES}; anything left after that
+   * is picked up by the next backfill, so this does not need to run to completion.
    *
-   * @param session the Hibernate session for database operations
-   * @param tableId the unique identifier of the table
-   * @param upToCommitVersion the version number up to which commits should be deleted (inclusive)
-   * @return the number of commits actually deleted in this batch
+   * @return the number of rows deleted
    */
-  private static int deleteCommitsUpTo(Session session, UUID tableId, long upToCommitVersion) {
-    NativeQuery<?> query =
-        session.createNativeQuery(
-            buildBatchDeleteQuery("table_id = :tableId AND commit_version <= :upToCommitVersion"));
-    query.setParameter("tableId", tableId);
-    query.setParameter("upToCommitVersion", upToCommitVersion);
-    query.setParameter("numCommitsPerBatch", NUM_COMMITS_PER_BATCH);
-    return query.executeUpdate();
+  private static int pruneRetainedCommits(
+      Session session, UUID tableId, long latestBackfilledVersion) {
+    // Nothing can be older than the window yet, so skip the DELETE.
+    if (latestBackfilledVersion <= NUM_BACKFILLED_COMMITS_RETAINED) {
+      return 0;
+    }
+    long pruneThrough = latestBackfilledVersion - NUM_BACKFILLED_COMMITS_RETAINED - 1L;
+    int total = 0;
+    for (int i = 0; i < MAX_DELETE_BATCHES; i++) {
+      NativeQuery<?> query =
+          session.createNativeQuery(
+              buildBatchDeleteQuery("table_id = :tableId AND commit_version <= :pruneThrough"));
+      query.setParameter("tableId", tableId);
+      query.setParameter("pruneThrough", pruneThrough);
+      query.setParameter("numCommitsPerBatch", NUM_COMMITS_PER_BATCH);
+      int deleted = query.executeUpdate();
+      total += deleted;
+      if (deleted < NUM_COMMITS_PER_BATCH) {
+        break;
+      }
+    }
+    return total;
   }
 
   /**
    * Deletes commits for the specified table in a single batch.
    *
-   * <p>Unlike {@link #deleteCommitsUpTo(Session, UUID, long)}, this method deletes any commits for
-   * the table without version filtering. The operation is limited by {@code NUM_COMMITS_PER_BATCH}.
-   * Used primarily during table deletion to purge all commit history.
+   * <p>Unlike {@link #pruneRetainedCommits(Session, UUID, long)}, this method deletes any commits
+   * for the table without version filtering. The operation is limited by {@code
+   * NUM_COMMITS_PER_BATCH}. Used primarily during table deletion to purge all commit history.
    *
    * @param session the Hibernate session for database operations
    * @param tableId the unique identifier of the table
@@ -987,65 +1208,51 @@ public class DeltaCommitRepository {
   }
 
   /**
-   * Marks a specific commit as the latest backfilled commit. This is used when a backfill-only
-   * request backfills up to and including the last existing commit, which must be preserved.
+   * The newest {@link #NUM_NEWEST_COMMITS} commit rows for a table, newest first, or empty if the
+   * table has no commits yet (it has not been onboarded to Unity Catalog as commit coordinator).
    *
-   * @param session the Hibernate session for database operations
-   * @param tableId the unique identifier of the table
-   * @param commitVersion the version number of the commit to mark as backfilled
+   * <p>The first row is the table's current version. Unfiltered on purpose: the live window is the
+   * top of the log, and the backfilled row just below it is what {@link #backfilledVersionOf}
+   * needs.
    */
-  private static void markCommitAsLatestBackfilled(
-      Session session, UUID tableId, long commitVersion) {
-    NativeQuery<?> query =
-        session.createNativeQuery(
-            "UPDATE uc_delta_commits SET is_backfilled_latest_commit = true WHERE table_id ="
-                + " :tableId AND commit_version = :commitVersion");
+  private static List<DeltaCommitDAO> getNewestCommits(Session session, UUID tableId) {
+    Query<DeltaCommitDAO> query =
+        session.createQuery(
+            "FROM DeltaCommitDAO WHERE tableId = :tableId ORDER BY commitVersion DESC",
+            DeltaCommitDAO.class);
     query.setParameter("tableId", tableId);
-    query.setParameter("commitVersion", commitVersion);
-    query.executeUpdate();
+    query.setMaxResults(NUM_NEWEST_COMMITS);
+    return query.list();
   }
 
   /**
-   * Retrieves the first and last commits in database for a table ordered by version number.
+   * Resolves an {@code add-commit} whose version is already taken, before the request's other
+   * updates are applied. A replay must resolve to its original outcome, and checks that depend on
+   * the table's current state would wrongly reject it, so the request is settled first. Runs the
+   * same checks as {@link #postCommitCore} for a commit with commit info: a recognized replay
+   * throws {@link CommitAlreadyAcceptedException}, an unretained version throws {@link
+   * CommitContentCheckRequiredException}, and anything else at a taken version is a conflict.
+   * Returns normally when the version is free, leaving the commit path to validate it.
    *
-   * <p>The first commit is the commit in database with the lowest version number.
-   *
-   * <p>The last commit is the commit in database with the highest version number.
-   *
-   * <p>They may or may not be marked as backfilled already. But this function never count any of
-   * the commits that are deleted by backfillCommits() since they are no longer in database.
-   *
-   * <p>Uses a UNION ALL query to efficiently fetch both boundary commits in a single database
-   * operation. The results are sorted to ensure consistent ordering.
-   *
-   * <p>Return value interpretation:
-   *
-   * <ul>
-   *   <li>Empty list: no commits exist for this table
-   *   <li>List with two identical commits: only one commit exists (returned twice for consistency)
-   *   <li>List with two different commits: [firstCommit, lastCommit] by version number
-   * </ul>
-   *
-   * @param session the Hibernate session for database operations
-   * @param tableId the unique identifier of the table
-   * @return a list containing the first and last commits, empty if no commits exist
+   * <p>The caller must hold the table lock (see {@link RepositoryUtils#lockTableForCommit}).
    */
-  private List<DeltaCommitDAO> getFirstAndLastCommits(Session session, UUID tableId) {
-    // Use native SQL to get the first and last commits since HQL doesn't support UNION ALL.
-    // UNION ALL makes sure TWO rows are returned as long as there's any commit, even if there's
-    // only one commit in table.
-    String sql =
-        "(SELECT * FROM uc_delta_commits WHERE table_id = :tableId "
-            + "ORDER BY commit_version ASC LIMIT 1) "
-            + "UNION ALL "
-            + "(SELECT * FROM uc_delta_commits WHERE table_id = :tableId "
-            + "ORDER BY commit_version DESC LIMIT 1)";
-    Query<DeltaCommitDAO> query = session.createNativeQuery(sql, DeltaCommitDAO.class);
-    query.setParameter("tableId", tableId);
-    List<DeltaCommitDAO> result = query.getResultList();
-    // Sort to ensure the first commit is at index 0
-    result.sort(Comparator.comparing(DeltaCommitDAO::getCommitVersion));
-    return result;
+  void throwIfCommitVersionTaken(Session session, TableInfoDAO dao, DeltaCommitInfo commitInfo) {
+    serverProperties.checkManagedTableEnabled();
+    validateCommitInfo(commitInfo);
+    List<DeltaCommitDAO> newestCommits = getNewestCommits(session, dao.getId());
+    if (newestCommits.isEmpty()) {
+      return;
+    }
+    DeltaCommitDAO lastCommitDAO = newestCommits.get(0);
+    if (commitInfo.getVersion() <= lastCommitDAO.getCommitVersion()) {
+      throw exceptionForAlreadyTakenVersion(
+          session,
+          dao,
+          commitInfo.getVersion(),
+          commitInfo.getFileName(),
+          backfilledVersionOf(session, dao.getId(), newestCommits),
+          lastCommitDAO);
+    }
   }
 
   /**
@@ -1340,13 +1547,9 @@ public class DeltaCommitRepository {
    * @param tableId the unique identifier of the table whose commits should be deleted
    */
   public void permanentlyDeleteTableCommits(Session session, UUID tableId) {
-    // In case some tables got more commits than allowed, we still want to purge the commits
-    // aggressively, so we allow 10x factor here. We also cap the number of iterations at 100 for
-    // safety measures in case the constants are changed.
-    int MAX_ITERATIONS = Math.min(100, MAX_NUM_COMMITS_PER_TABLE * 10 / NUM_COMMITS_PER_BATCH);
     boolean allDeleted = false;
     int numDeleted = 0;
-    for (int i = 0; i < MAX_ITERATIONS; i++) {
+    for (int i = 0; i < MAX_DELETE_BATCHES; i++) {
       int deleted = deleteCommits(session, tableId);
       numDeleted += deleted;
       if (deleted < NUM_COMMITS_PER_BATCH) {
@@ -1354,16 +1557,18 @@ public class DeltaCommitRepository {
         break;
       }
     }
-    if (numDeleted > MAX_NUM_COMMITS_PER_TABLE) {
+    // Retained backfilled rows are expected here, so the live-window limit is not the yardstick:
+    // only a table that outgrew the retention window is worth reporting.
+    // Retention keeps versions [B - RETAINED, B], one more than RETAINED, plus the live window.
+    if (numDeleted > NUM_BACKFILLED_COMMITS_RETAINED + 1 + MAX_NUM_COMMITS_PER_TABLE) {
       LOGGER.error(
-          "Purged {} commits for table {}, which exceeds the maximum allowed number of "
-              + "commits per table",
+          "Purged {} commits for table {}, which exceeds the retained commit window",
           numDeleted,
           tableId);
     }
     if (!allDeleted) {
       LOGGER.error(
-          "Failed to purge all commits for table {} after {} iterations", tableId, MAX_ITERATIONS);
+          "Failed to purge all commits for table {} after {} batches", tableId, MAX_DELETE_BATCHES);
     }
   }
 }
