@@ -6,6 +6,7 @@ import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.server.utils.TestUtils.TABLE_FULL_NAME;
 import static io.unitycatalog.server.utils.TestUtils.TABLE_NAME;
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
+import static io.unitycatalog.server.utils.TestUtils.assertDeltaPermissionDenied;
 import static io.unitycatalog.server.utils.TestUtils.assertIcebergApiException;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,6 +29,8 @@ import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.api.VolumesApi;
+import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.model.DeltaRenameTableRequest;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCatalog;
@@ -316,7 +319,11 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
     for (Target target : targets.subList(1, 6)) {
       assertPermissionDenied(() -> readMetadata(target.type(), target.name()));
     }
+    assertThat(privilegesFor(managerGrants.get(SecurableType.FUNCTION, FUNCTION, null), REGULAR_1))
+        .isEmpty();
     grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, CATALOG_NAME, Privileges.USE_CATALOG);
+    assertThat(privilegesFor(managerGrants.get(SecurableType.FUNCTION, FUNCTION, null), REGULAR_1))
+        .containsExactly(Privilege.EXECUTE);
     for (Target target : targets.subList(1, 6)) {
       readMetadata(target.type(), target.name());
     }
@@ -413,12 +420,22 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
             new RegisteredModelsApi(manager)
                 .updateRegisteredModel(
                     MODEL, new UpdateRegisteredModel().newName("renamed_model")));
+    DeltaTablesApi tables = new DeltaTablesApi(manager);
+    DeltaRenameTableRequest rename = new DeltaRenameTableRequest().newName("renamed_table");
+    assertDeltaPermissionDenied(
+        () -> tables.renameTable(CATALOG_NAME, SCHEMA_NAME, TABLE_NAME, rename));
     grantPermissions(
         PRINCIPAL_1,
         SecurableType.SCHEMA,
         SCHEMA_FULL_NAME,
+        Privileges.CREATE_TABLE,
         Privileges.CREATE_VOLUME,
         Privileges.CREATE_FUNCTION);
+    tables.renameTable(CATALOG_NAME, SCHEMA_NAME, TABLE_NAME, rename);
+    assertThat(
+            getTable(new TablesApi(adminApiClient), SCHEMA_FULL_NAME + ".renamed_table")
+                .getTableId())
+        .isEqualTo(targets.get(2).id());
     new VolumesApi(manager)
         .updateVolume(VOLUME, new UpdateVolumeRequestContent().newName("renamed_volume"));
     new RegisteredModelsApi(manager)
