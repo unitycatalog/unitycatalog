@@ -91,7 +91,8 @@ public class SdkTemporaryPathCredentialTest extends BaseCRUDTestWithMockCredenti
         () ->
             temporaryCredentialsApi.generateTemporaryPathCredentials(
                 new GenerateTemporaryPathCredential().url(url).operation(PathOperation.PATH_READ));
-    TestUtils.assertApiException(vend, ErrorCode.NOT_FOUND, "for '" + url + "' not found");
+    TestUtils.assertApiException(
+        vend, ErrorCode.INTERNAL, "The storage credential for '" + url + "' no longer exists");
     assertThatThrownBy(vend::execute)
         .isInstanceOfSatisfying(
             ApiException.class,
