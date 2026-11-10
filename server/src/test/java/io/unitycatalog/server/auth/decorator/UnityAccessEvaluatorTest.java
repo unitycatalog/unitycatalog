@@ -107,7 +107,7 @@ class UnityAccessEvaluatorTest {
     List<TableInfo> items = new ArrayList<>(List.of(new TableInfo().tableId(table.toString())));
     ResultFilter filter =
         new ResultFilter(
-            evaluator, principal, expression, Map.of(), Map.of(), mock(KeyMapper.class));
+            evaluator, principal, expression, "", Map.of(), Map.of(), mock(KeyMapper.class));
     assertThatThrownBy(() -> filter.filter(TABLE, items)).isSameAs(failure);
     verify(authorizer, never()).refreshAuthorizations(anyLong());
   }
@@ -170,32 +170,49 @@ class UnityAccessEvaluatorTest {
   }
 
   @Test
-  void listFilteringPreservesItemResourceType() throws Exception {
+  void listFilteringSeparatesDenialsFromFailures() throws Exception {
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
     UUID principal = UUID.randomUUID();
     UUID table = UUID.randomUUID();
     UUID deniedTable = UUID.randomUUID();
+    UUID missingTable = UUID.randomUUID();
     when(authorizer.authorize(principal, TABLE, table, Privileges.OWNER)).thenReturn(true);
     when(authorizer.authorize(principal, TABLE, deniedTable, Privileges.OWNER)).thenReturn(false);
+    when(authorizer.authorize(principal, TABLE, missingTable, Privileges.OWNER))
+        .thenThrow(new BaseException(ErrorCode.NOT_FOUND, "Authorization metadata is missing"));
     List<TableInfo> items =
         new ArrayList<>(
             List.of(
                 new TableInfo().tableId(table.toString()),
-                new TableInfo().tableId(deniedTable.toString())));
+                new TableInfo().tableId(deniedTable.toString()),
+                new TableInfo().tableId(missingTable.toString())));
 
-    new ResultFilter(
+    ResultFilter filter =
+        new ResultFilter(
             new UnityAccessEvaluator(authorizer, true),
             principal,
             "#authorize(#principal, #table, OWNER)",
             "",
             Map.of(),
             Map.of(),
-            mock(KeyMapper.class))
-        .filter(TABLE, items);
+            mock(KeyMapper.class));
+    filter.filter(TABLE, items);
 
     assertThat(items).extracting(TableInfo::getTableId).containsExactly(table.toString());
     verify(authorizer).authorize(principal, TABLE, table, Privileges.OWNER);
     verify(authorizer).authorize(principal, TABLE, deniedTable, Privileges.OWNER);
+    verify(authorizer).authorize(principal, TABLE, missingTable, Privileges.OWNER);
+
+    RuntimeException failure = new IllegalStateException("Authorization failed");
+    when(authorizer.authorize(principal, TABLE, deniedTable, Privileges.OWNER)).thenThrow(failure);
+    assertThatThrownBy(
+            () ->
+                filter.filter(
+                    TABLE,
+                    new ArrayList<>(List.of(new TableInfo().tableId(deniedTable.toString())))))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("Failed to authorize list items")
+        .hasRootCause(failure);
   }
 
   @ParameterizedTest
@@ -218,6 +235,7 @@ class UnityAccessEvaluatorTest {
             evaluator,
             UUID.randomUUID(),
             "#authorize(#principal, #table, OWNER)",
+            "",
             Map.of(),
             Map.of(),
             mock(KeyMapper.class));
@@ -226,11 +244,14 @@ class UnityAccessEvaluatorTest {
   }
 
   @ParameterizedTest
-  @MethodSource("unrelatedAuthorizationFailures")
-  void listFilteringKeepsOtherFailuresAsDenials(RuntimeException failure) {
+  @EnumSource(
+      value = ErrorCode.class,
+      names = {"NOT_FOUND", "PERMISSION_DENIED"})
+  void listFilteringKeepsClientFailuresAsDenials(ErrorCode errorCode) {
     UnityAccessEvaluator evaluator = mock(UnityAccessEvaluator.class);
     UnityAccessEvaluator.Batch batch = mock(UnityAccessEvaluator.Batch.class);
     when(evaluator.batch(any(), any(), any(), anyLong())).thenReturn(batch);
+    BaseException failure = new BaseException(errorCode, "Authorization denied");
     when(batch.evaluate(any())).thenThrow(failure);
     List<TableInfo> items =
         new ArrayList<>(List.of(new TableInfo().tableId(UUID.randomUUID().toString())));
@@ -239,6 +260,7 @@ class UnityAccessEvaluatorTest {
             evaluator,
             UUID.randomUUID(),
             "#authorize(#principal, #table, OWNER)",
+            "",
             Map.of(),
             Map.of(),
             mock(KeyMapper.class))

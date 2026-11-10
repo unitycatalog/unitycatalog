@@ -93,7 +93,7 @@ class ResultFilterTest {
   }
 
   @Test
-  void mixedListKeepsFullMetadataFirstAndFiltersDeniedOrInvalidItems() throws Exception {
+  void mixedListKeepsFullMetadataFirstAndFiltersDeniedItems() throws Exception {
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
     UUID principal = UUID.randomUUID();
     UUID fullId = UUID.randomUUID();
@@ -107,10 +107,7 @@ class ResultFilterTest {
     List<CatalogInfo> items =
         new ArrayList<>(
             List.of(
-                full,
-                browse,
-                new CatalogInfo().name("hidden").id(UUID.randomUUID().toString()),
-                new CatalogInfo().name("invalid").id("invalid-id")));
+                full, browse, new CatalogInfo().name("hidden").id(UUID.randomUUID().toString())));
     ResultFilter filter =
         new ResultFilter(
             new UnityAccessEvaluator(authorizer, true),
@@ -129,20 +126,40 @@ class ResultFilterTest {
     assertThat(filter.wasCalled()).isTrue();
     verify(authorizer, never()).authorize(principal, CATALOG, fullId, BROWSE);
 
-    items = new ArrayList<>(List.of(browse, full));
-    filter.filter(
-        CATALOG,
-        items,
-        item -> {
-          throw new IllegalStateException("projection failed");
-        });
-    assertThat(items).containsExactly(full);
+    assertThatThrownBy(
+            () ->
+                filter.filter(
+                    CATALOG,
+                    new ArrayList<>(List.of(new CatalogInfo().name("invalid").id("invalid-id"))),
+                    BrowseOnlyConverter::toBrowseOnly))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INTERNAL))
+        .hasRootCauseInstanceOf(IllegalArgumentException.class);
+
+    assertThatThrownBy(
+            () ->
+                filter.filter(
+                    CATALOG,
+                    new ArrayList<>(List.of(browse, full)),
+                    item -> {
+                      throw new IllegalStateException("projection failed");
+                    }))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("Failed to authorize list items")
+        .hasRootCauseMessage("projection failed");
 
     when(authorizer.authorize(principal, CATALOG, browseId, BROWSE))
         .thenThrow(new IllegalStateException("authorization failed"));
-    items = new ArrayList<>(List.of(browse, full));
-    filter.filter(CATALOG, items, BrowseOnlyConverter::toBrowseOnly);
-    assertThat(items).containsExactly(full);
+    assertThatThrownBy(
+            () ->
+                filter.filter(
+                    CATALOG,
+                    new ArrayList<>(List.of(browse, full)),
+                    BrowseOnlyConverter::toBrowseOnly))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("Failed to authorize list items")
+        .hasRootCauseMessage("authorization failed");
   }
 
   @ParameterizedTest
@@ -220,9 +237,11 @@ class ResultFilterTest {
             .catalogName("catalog")
             .schemaName("schema");
     BaseException failure = new BaseException(ErrorCode.INTERNAL, "Failed to load model parents");
+    RuntimeException unexpectedFailure =
+        new IllegalStateException("Failed to open database session");
     when(keyMapper.mapResourceKeys(
             Map.of(CATALOG, model.getCatalogName(), SCHEMA, model.getSchemaName())))
-        .thenThrow(failure);
+        .thenThrow(failure, unexpectedFailure);
     ResultFilter filter =
         new ResultFilter(
             new UnityAccessEvaluator(authorizer, true),
@@ -235,6 +254,13 @@ class ResultFilterTest {
 
     assertThatThrownBy(() -> filter.filter(REGISTERED_MODEL, new ArrayList<>(List.of(model))))
         .isSameAs(failure);
+
+    assertThatThrownBy(() -> filter.filter(REGISTERED_MODEL, new ArrayList<>(List.of(model))))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("Failed to authorize list items")
+        .hasCause(unexpectedFailure)
+        .extracting(error -> ((BaseException) error).getErrorCode())
+        .isEqualTo(ErrorCode.INTERNAL);
     verifyNoInteractions(authorizer);
   }
 }

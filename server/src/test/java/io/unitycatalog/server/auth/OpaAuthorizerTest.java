@@ -333,7 +333,7 @@ class OpaAuthorizerTest {
     List<TableInfo> items = new ArrayList<>(List.of(new TableInfo().tableId(table.toString())));
     ResultFilter filter =
         new ResultFilter(
-            evaluator, principal, expression, Map.of(), Map.of(), mock(KeyMapper.class));
+            evaluator, principal, expression, "", Map.of(), Map.of(), mock(KeyMapper.class));
     for (Runnable check :
         List.<Runnable>of(
             () -> authorizer.authorize(principal, TABLE, table, SELECT),

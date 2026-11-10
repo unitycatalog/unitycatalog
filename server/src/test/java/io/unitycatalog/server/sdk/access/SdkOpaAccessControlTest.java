@@ -104,8 +104,9 @@ public class SdkOpaAccessControlTest extends SdkAccessControlBaseCRUDTest {
     aliceClient = TestUtils.createApiClient(createTestUserServerConfig(ALICE));
     aliceTables = new TablesApi(aliceClient);
     adminTables = new TablesApi(adminApiClient);
-    catalogId = new CatalogsApi(adminApiClient).getCatalog(TestUtils.CATALOG_NAME).getId();
-    schemaId = new SchemasApi(adminApiClient).getSchema(TestUtils.SCHEMA_FULL_NAME).getSchemaId();
+    catalogId = new CatalogsApi(adminApiClient).getCatalog(TestUtils.CATALOG_NAME, null).getId();
+    schemaId =
+        new SchemasApi(adminApiClient).getSchema(TestUtils.SCHEMA_FULL_NAME, null).getSchemaId();
   }
 
   @Test
@@ -137,21 +138,21 @@ public class SdkOpaAccessControlTest extends SdkAccessControlBaseCRUDTest {
     allow(ALICE, SecurableType.SCHEMA, schemaId, Privileges.CREATE_TABLE);
     TableInfo table = aliceTables.createTable(request);
     String fullName = TestUtils.SCHEMA_FULL_NAME + "." + request.getName();
-    assertThat(adminTables.getTable(fullName, null, null).getTableId())
+    assertThat(adminTables.getTable(fullName, null, null, null).getTableId())
         .isEqualTo(table.getTableId());
 
     // Creating the table records native ownership, but OPA still decides its privileges.
-    assertPermissionDenied(() -> aliceTables.getTable(fullName, null, null));
+    assertPermissionDenied(() -> aliceTables.getTable(fullName, null, null, null));
     assertThat(listAllTables(aliceTables, TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME)).isEmpty();
     allow(ALICE, SecurableType.TABLE, table.getTableId(), Privileges.SELECT);
-    assertThat(aliceTables.getTable(fullName, null, null).getTableId())
+    assertThat(aliceTables.getTable(fullName, null, null, null).getTableId())
         .isEqualTo(table.getTableId());
     assertThat(listAllTables(aliceTables, TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME))
         .extracting(TableInfo::getTableId)
         .containsExactly(table.getTableId());
     policyGrants.removeIf(grant -> grant.get("privilege").equals("SELECT"));
     updateGrants();
-    assertPermissionDenied(() -> aliceTables.getTable(fullName, null, null));
+    assertPermissionDenied(() -> aliceTables.getTable(fullName, null, null, null));
   }
 
   @Test
@@ -160,7 +161,7 @@ public class SdkOpaAccessControlTest extends SdkAccessControlBaseCRUDTest {
     String root = "s3://test-bucket/opa-external";
     createExternalLocationWithCredential("opa_credential", "opa_location", root);
     String locationId =
-        new ExternalLocationsApi(adminApiClient).getExternalLocation("opa_location").getId();
+        new ExternalLocationsApi(adminApiClient).getExternalLocation("opa_location", null).getId();
     CreateTable request = externalTable("external_checks", root + "/table");
     assertPermissionDenied(() -> aliceTables.createTable(request));
     allow(ALICE, SecurableType.EXTERNAL_LOCATION, locationId, Privileges.CREATE_EXTERNAL_TABLE);
@@ -227,7 +228,7 @@ public class SdkOpaAccessControlTest extends SdkAccessControlBaseCRUDTest {
     assertThat(aliceTables.createTable(request).getTableId()).isEqualTo(staging.getId());
     assertThat(
             adminTables
-                .getTable(TestUtils.SCHEMA_FULL_NAME + ".managed_table", null, null)
+                .getTable(TestUtils.SCHEMA_FULL_NAME + ".managed_table", null, null, null)
                 .getTableId())
         .isEqualTo(staging.getId());
   }
@@ -245,7 +246,7 @@ public class SdkOpaAccessControlTest extends SdkAccessControlBaseCRUDTest {
     allowCreate(ALICE);
     iceberg.createTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, request);
     TableInfo table =
-        adminTables.getTable(TestUtils.SCHEMA_FULL_NAME + ".iceberg_table", null, null);
+        adminTables.getTable(TestUtils.SCHEMA_FULL_NAME + ".iceberg_table", null, null, null);
     assertIcebergApiException(
         () ->
             iceberg.loadCredentials(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, request.name()),
