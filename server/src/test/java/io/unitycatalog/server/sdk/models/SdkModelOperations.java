@@ -36,14 +36,19 @@ public class SdkModelOperations implements ModelOperations {
       throws ApiException {
     return registeredModelsApi
         .listRegisteredModels(
-            catalogName.orElse(null), schemaName.orElse(null), 100, pageToken.orElse(null))
+            catalogName.orElse(null),
+            schemaName.orElse(null),
+            100,
+            pageToken.orElse(null),
+            /* includeBrowse= */ false)
         .getRegisteredModels();
   }
 
   @Override
   public RegisteredModelInfo getRegisteredModel(String registeredModelFullName)
       throws ApiException {
-    return registeredModelsApi.getRegisteredModel(registeredModelFullName);
+    return registeredModelsApi.getRegisteredModel(
+        registeredModelFullName, /* includeBrowse= */ false);
   }
 
   @Override
