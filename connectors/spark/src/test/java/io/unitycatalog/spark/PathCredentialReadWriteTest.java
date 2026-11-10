@@ -21,6 +21,7 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.analysis.UnresolvedRelation;
 import org.apache.spark.sql.catalyst.parser.ParseException;
+import org.apache.spark.sql.catalyst.plans.logical.InsertIntoDir;
 import org.apache.spark.sql.catalyst.plans.logical.InsertIntoStatement;
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Tests for {@link ResolvePathCredentials}: Unity Catalog credentials are vended for cloud paths
@@ -292,6 +294,26 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
   /** Applies the analyzer path-credential rule to a parsed plan (parser is side-effect free). */
   private LogicalPlan injectPathCredentials(LogicalPlan plan) {
     return new ResolvePathCredentials(session).apply(plan);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"team%20reports", "team reports"})
+  public void testDirectoryWriteCredentialPathMatchesExecutionPath(String directory)
+      throws IOException, ParseException {
+    session = createPathCredSession(SPARK_CATALOG);
+    String location = bucketPath(directory);
+    LogicalPlan parsed =
+        session
+            .sessionState()
+            .sqlParser()
+            .parsePlan(
+                String.format(
+                    "INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i", location));
+
+    InsertIntoDir withCredentials = (InsertIntoDir) injectPathCredentials(parsed);
+    assertThat(withCredentials.storage().properties().apply(UCHadoopConfConstants.UC_PATH_KEY))
+        .isEqualTo(location);
+    assertThat(injectPathCredentials(withCredentials)).isSameAs(withCredentials);
   }
 
   /** Finds a bare {@code format.`cloud-path`} relation anywhere in a parsed plan tree. */

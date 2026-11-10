@@ -3,6 +3,7 @@ package io.unitycatalog.server.sdk.delta;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.model.DeltaClusteringDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaCreateStagingTableRequest;
@@ -37,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import lombok.SneakyThrows;
+import org.apache.hadoop.fs.Path;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -117,6 +119,15 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
             externalTableRequest(externalName, externalLocation));
     assertThat(extResp.getMetadata().getTableType()).isEqualTo(DeltaTableType.EXTERNAL);
     assertThat(extResp.getMetadata().getLocation()).isEqualTo(externalLocation);
+
+    // -------- EXTERNAL location that is not a URI rejected --------
+    assertDeltaInvalidParam(
+        () ->
+            deltaTablesApi.createTable(
+                TestUtils.CATALOG_NAME2,
+                TestUtils.SCHEMA_NAME2,
+                externalTableRequest("tbl_raw_space", "s3://test-bucket0/team reports/t")),
+        "not a valid URI");
 
     // -------- name missing --------
     assertDeltaInvalidParam(
@@ -342,10 +353,10 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
 
     // -------- metadata-location oversized rejected --------
     // The DAO column is bounded; reject at the API boundary so a request that "succeeds" through
-    // the validator can never fail at persist time. Constructed by padding a query-string suffix
-    // onto a valid subpath so the path-shape rule still passes and we exercise the size check
+    // the validator can never fail at persist time. Constructed by padding the file name of a
+    // valid subpath so the path-shape rule still passes and we exercise the size check
     // specifically.
-    String oversizedSuffix = "?pad=" + "x".repeat(70_000);
+    String oversizedSuffix = "x".repeat(70_000);
     assertDeltaInvalidParam(
         () ->
             createTableWithUniform(
@@ -383,6 +394,61 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     props.put(
         TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS, DeltaConsts.UNIVERSAL_FORMAT_ICEBERG);
     return props;
+  }
+
+  /**
+   * A UniForm table under a catalog root whose folder has a space or a literal {@code %}, with the
+   * locations as Delta 4.4.1 sends them. Delta passes the staging location to Spark, which reads it
+   * as a Hadoop path and sends {@code toUri()} as the table location, and it sends the Iceberg
+   * metadata location as {@code Path.toString()} (a literal path). The connector tests don't create
+   * a managed UniForm table, so the forms are checked here.
+   */
+  @Test
+  public void testUniformLocationsAsDeltaSendsThem() throws ApiException {
+    TablesApi ucTablesApi = new TablesApi(TestUtils.createApiClient(serverConfig));
+    String[] folders = {"team reports", "team%20reports"};
+    for (int i = 0; i < folders.length; i++) {
+      String catalog = "folder_catalog_" + i;
+      catalogOperations.createCatalog(
+          new CreateCatalog().name(catalog).storageRoot("s3://test-bucket0/" + folders[i]));
+      schemaOperations.createSchema(
+          new CreateSchema().name(TestUtils.SCHEMA_NAME2).catalogName(catalog));
+
+      DeltaStagingTableResponse staging =
+          deltaTablesApi.createStagingTable(
+              catalog,
+              TestUtils.SCHEMA_NAME2,
+              new DeltaCreateStagingTableRequest().name("tbl_folder"));
+      assertThat(staging.getLocation()).startsWith("s3://test-bucket0/" + folders[i] + "/");
+
+      Path stagingPath = new Path(staging.getLocation());
+      String tableUri = stagingPath.toUri().toString();
+      String metadataLocation = stagingPath + "/metadata/00000-x.metadata.json";
+      DeltaLoadTableResponse created =
+          deltaTablesApi.createTable(
+              catalog,
+              TestUtils.SCHEMA_NAME2,
+              managedTableRequest("tbl_folder", tableUri)
+                  .properties(uniformEnabledProperties(staging.getTableId().toString()))
+                  .uniform(
+                      new DeltaUniformMetadata()
+                          .iceberg(
+                              new DeltaUniformMetadataIceberg()
+                                  .metadataLocation(metadataLocation)
+                                  .convertedDeltaVersion(0L)
+                                  .convertedDeltaTimestamp(1700000000000L))));
+      assertThat(created.getUniform().getIceberg().getMetadataLocation())
+          .isEqualTo(metadataLocation);
+
+      String fullName = catalog + "." + TestUtils.SCHEMA_NAME2 + ".tbl_folder";
+      assertThat(ucTablesApi.getTable(fullName, null, null).getStorageLocation())
+          .isEqualTo(staging.getLocation());
+      DeltaLoadTableResponse loaded =
+          deltaTablesApi.loadTable(catalog, TestUtils.SCHEMA_NAME2, "tbl_folder");
+      assertThat(loaded.getMetadata().getLocation()).isEqualTo(tableUri);
+      assertThat(loaded.getUniform().getIceberg().getMetadataLocation())
+          .isEqualTo(metadataLocation);
+    }
   }
 
   /** Creates a catalog + schema whose staging tables resolve under s3://test-bucket0/. */
