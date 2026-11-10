@@ -177,6 +177,40 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
         .withMessageContaining("Invalid type_json for column bad_column");
   }
 
+  @Test
+  public void testCreateTableKeepsColumnTypeTextCase() throws Exception {
+    String typeText = "STRUCT<UserId:INT,Tags:ARRAY<STRING>>";
+    ColumnInfo column =
+        new ColumnInfo()
+            .name("s")
+            .typeText(typeText)
+            .typeJson(
+                "{\"name\":\"s\",\"type\":{\"type\":\"struct\",\"fields\":["
+                    + "{\"name\":\"UserId\",\"type\":\"integer\","
+                    + "\"nullable\":true,\"metadata\":{}},"
+                    + "{\"name\":\"Tags\",\"type\":{\"type\":\"array\","
+                    + "\"elementType\":\"string\",\"containsNull\":true},"
+                    + "\"nullable\":true,\"metadata\":{}}]},"
+                    + "\"nullable\":true,\"metadata\":{}}")
+            .typeName(ColumnTypeName.STRUCT)
+            .position(0)
+            .nullable(true);
+    TableInfo created =
+        tableOperations.createTable(
+            new CreateTable()
+                .name(TestUtils.TABLE_NAME)
+                .catalogName(TestUtils.CATALOG_NAME)
+                .schemaName(TestUtils.SCHEMA_NAME)
+                .columns(List.of(column))
+                .tableType(TableType.MANAGED)
+                .dataSourceFormat(DataSourceFormat.DELTA));
+
+    assertThat(created.getColumns()).singleElement().isEqualTo(column);
+    assertThat(tableOperations.getTable(TestUtils.TABLE_FULL_NAME).getColumns())
+        .singleElement()
+        .isEqualTo(column);
+  }
+
   /**
    * Test the complete flow of creating a staging table and then creating a managed table using that
    * staging table's location.
