@@ -65,11 +65,14 @@ object TestParallelization {
   }
 
   lazy val globalSettings: Seq[Setting[_]] = parallelism.toSeq.map { maxJvms =>
-    // Replaces sbt's default rules, which allow a single forked test group at a time.
+    // Replaces sbt's default rules, which allow a single forked test group at a time. This drops
+    // the rules plugins add too, so restate them.
     Global / concurrentRestrictions := Seq(
       Tags.limitAll(java.lang.Runtime.getRuntime.availableProcessors),
       Tags.limit(Tags.ForkedTestGroup, maxJvms),
-      Tags.exclusiveGroup(Tags.Clean))
+      Tags.exclusiveGroup(Tags.Clean),
+      // sbt-assembly's own rule.
+      Tags.limit(sbtassembly.Assembly.assemblyTag, 1))
   }
 
   /**

@@ -38,14 +38,17 @@ RESERVED_BYTES = 4 << 30
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DURATIONS_FILE = os.path.join(ROOT, "target", "test-durations.csv")
 LOG_DIR = os.path.join(ROOT, "target", "test-logs")
+# sbt's line for a test JVM that exited before running all its suites.
+JVM_DIED = re.compile(r"sbt\.ForkMain \d+ failed with exit code (\d+)")
 SUITE_FINISHED = re.compile(r"Test run finished: (\d+) failed")
-# sbt's own result lines; forked JVM stderr is also logged as [error], so match narrowly.
-HEAP_SIZE = re.compile(r"[1-9][0-9]*[kKmMgG]?")
+# A JVM size for -Xmx, with a unit: 512m, 4g. A bare number would mean bytes.
+HEAP_SIZE = re.compile(r"[1-9][0-9]*[kKmMgG]")
 # cgroup files holding a container's memory limit and usage (v2, then v1).
 CGROUP_MEMORY_FILES = [
     ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory.current"),
     ("/sys/fs/cgroup/memory/memory.limit_in_bytes", "/sys/fs/cgroup/memory/memory.usage_in_bytes"),
 ]
+# sbt's own result lines; forked JVM stderr is also logged as [error], so match narrowly.
 STREAMED = re.compile(
     r"^\[success\]|^\[error\] (Test .* failed|Failed|Error|\(\S+ / |Total|Compilation failed"
     r"|/\S+\.(java|scala):\d+)")
@@ -139,7 +142,10 @@ def choose_parallelism(args):
 
 
 def run_sbt(args, log_path):
-    """Runs sbt, writing all output to log_path. Returns the sbt exit code."""
+    """Runs sbt, writing all output to log_path.
+
+    Returns the sbt exit code and the exit codes of test JVMs that died before finishing.
+    """
     env = dict(
         os.environ, TEST_PARALLELISM=str(args.parallelism), TEST_JVM_HEAP=args.jvm_heap,
         TEST_DURATIONS_FILE=DURATIONS_FILE)
@@ -150,6 +156,7 @@ def run_sbt(args, log_path):
     print(f"Full log: {log_path}")
 
     finished = [0, 0]  # suites finished, suites with failures
+    dead_jvms = []
     start = time.time()
     done = threading.Event()
 
@@ -170,11 +177,14 @@ def run_sbt(args, log_path):
             if match:
                 finished[0] += 1
                 finished[1] += int(match.group(1)) > 0
+            died = JVM_DIED.search(line)
+            if died:
+                dead_jvms.append(died.group(1))
             if args.verbose or STREAMED.match(line):
                 sys.stdout.write(line)
         returncode = proc.wait()
     done.set()
-    return returncode
+    return returncode, dead_jvms
 
 
 def describe_failure(case, suite_name):
@@ -229,7 +239,7 @@ def update_durations(results):
         print(f"Warning: could not update {DURATIONS_FILE}: {e}")
 
 
-def print_summary(results, start, returncode, log_path):
+def print_summary(results, start, returncode, log_path, dead_jvms=()):
     failed = [name for _, _, _, names in results for name in names]
     print(f"\n{len(results)} suites, {sum(r[2] for r in results)} tests, "
           f"{len(failed)} failed, wall time {elapsed(start)}")
@@ -241,7 +251,11 @@ def print_summary(results, start, returncode, log_path):
         for failure in failed:
             print(f"  {failure}")
         print(f"Full output and stack traces: {log_path}, and each module's target/test-reports/")
-    if returncode != 0 and not failed:
+    if dead_jvms:
+        print(f"{len(dead_jvms)} test JVM(s) exited early (exit code {', '.join(dead_jvms)}), so "
+              "their remaining suites did not run and are missing above. Exit code 137 usually "
+              "means out of memory: lower -p or raise --jvm-heap.")
+    if returncode != 0:
         print(f"sbt exited with code {returncode}; see the log for details")
 
 
@@ -265,10 +279,10 @@ def main():
     log_path = os.path.join(LOG_DIR, time.strftime("run-%Y%m%d-%H%M%S.log"))
     start = time.time()
     conf_before = conf_stamps()
-    returncode = run_sbt(args, log_path)
+    returncode, dead_jvms = run_sbt(args, log_path)
     results = collect_reports(start)
     update_durations(results)
-    print_summary(results, start, returncode, log_path)
+    print_summary(results, start, returncode, log_path, dead_jvms)
     conf_after = conf_stamps()
     touched = sorted(name for name in set(conf_before) | set(conf_after)
                      if conf_before.get(name) != conf_after.get(name))
