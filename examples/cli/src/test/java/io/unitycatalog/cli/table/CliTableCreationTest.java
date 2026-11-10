@@ -47,6 +47,8 @@ import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 public class CliTableCreationTest extends BaseServerTest {
 
@@ -161,24 +163,39 @@ public class CliTableCreationTest extends BaseServerTest {
                 .add("qty", new DecimalType(7, 0)));
   }
 
-  @Test
-  public void testParseInvalidColumns() {
-    for (String columns :
-        List.of(
-            "price DECIMAL(12,3,4)",
-            "price DECIMAL(12,)",
-            "price DECIMAL(,)",
-            "price DECIMAL()",
-            "price DECIMAL(a,2)",
-            "price DECIMAL(0,0)",
-            "price DECIMAL(39,0)",
-            "price DECIMAL(5,6)",
-            "price DECIMAL(5,-1)")) {
-      assertThatThrownBy(() -> CliUtils.parseColumns(columns))
-          .as(columns)
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageStartingWith("Invalid column definition");
-    }
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      value = {
+        "price DECIMAL(12,3,4) | DECIMAL takes at most 2 parameters: (12,3,4)",
+        "price DECIMAL(12,)    | Invalid DECIMAL parameters: (12,)",
+        "price DECIMAL(,)      | Invalid DECIMAL parameters: (,)",
+        "price DECIMAL()       | Invalid DECIMAL parameters: ()",
+        "price DECIMAL(a,2)    | Invalid DECIMAL parameters: (a,2)",
+        "price DECIMAL(5,-1)   | Invalid DECIMAL parameters: (5,-1)",
+        "price DECIMAL(0,0)    | DECIMAL precision must be between 1 and 38: 0",
+        "price DECIMAL(39,0)   | DECIMAL precision must be between 1 and 38: 39",
+        "price DECIMAL(5,6)    | DECIMAL scale must be between 0 and precision 5: 6"
+      })
+  public void testParseInvalidDecimalColumns(String columns, String reason) {
+    assertThatThrownBy(() -> CliUtils.parseColumns(columns))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageStartingWith("Invalid column definition")
+        .cause()
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage(reason);
+  }
+
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      value = {"DECIMAL(38,38) | 38 | 38", "DECIMAL(1,1) | 1 | 1", "DECIMAL(38,0) | 38 | 0"})
+  public void testParseDecimalBoundaries(String type, int precision, int scale) {
+    ColumnInfo column = CliUtils.parseColumns("price " + type).get(0);
+    assertThat(column.getTypePrecision()).isEqualTo(precision);
+    assertThat(column.getTypeScale()).isEqualTo(scale);
+    assertThat(column.getTypeText()).isEqualTo("decimal(" + precision + "," + scale + ")");
+    assertThat(DeltaKernelUtils.getDataType(column)).isEqualTo(new DecimalType(precision, scale));
   }
 
   @Test
