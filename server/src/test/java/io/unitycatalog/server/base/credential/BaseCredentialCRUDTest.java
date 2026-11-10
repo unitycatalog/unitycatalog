@@ -14,6 +14,7 @@ import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
+import io.unitycatalog.client.model.ExternalLocationInfo;
 import io.unitycatalog.client.model.UpdateCredentialRequest;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
@@ -135,10 +136,28 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
         ErrorCode.INVALID_ARGUMENT,
         "Credential still used by external location");
 
-    // Delete with force should succeed
+    // An external location on another credential must survive the force delete
+    String otherCredentialName = CREDENTIAL_NAME + "_other";
+    String otherExternalLocationName = EXTERNAL_LOCATION_NAME + "_other";
+    createCredentialRequest.setName(otherCredentialName);
+    credentialOperations.createCredential(createCredentialRequest);
+    externalLocationOperations.createExternalLocation(
+        new CreateExternalLocation()
+            .name(otherExternalLocationName)
+            .url(URL + "-other")
+            .credentialName(otherCredentialName));
+
+    // Force delete also deletes the external locations that use the credential
     credentialOperations.deleteCredential(credentialWithExternalLocationName, Optional.of(true));
-    // Clean up the external location
-    externalLocationOperations.deleteExternalLocation(EXTERNAL_LOCATION_NAME, Optional.of(true));
+    assertThat(externalLocationOperations.listExternalLocations(Optional.empty()))
+        .extracting(ExternalLocationInfo::getName)
+        .containsExactly(otherExternalLocationName);
+    assertApiException(
+        () -> externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME),
+        ErrorCode.NOT_FOUND,
+        "External location not found");
+    externalLocationOperations.deleteExternalLocation(otherExternalLocationName, Optional.empty());
+    credentialOperations.deleteCredential(otherCredentialName, Optional.empty());
 
     // Test 2: Credential without external location - delete without force should succeed
     String credentialWithoutExternalLocationName = CREDENTIAL_NAME + "_without_el";

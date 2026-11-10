@@ -151,7 +151,13 @@ public class CredentialRepository {
         /* readOnly= */ false);
   }
 
-  public UUID deleteCredential(String name, boolean force) {
+  /**
+   * Deletes a credential. With {@code force}, the external locations using it are deleted in the
+   * same transaction so none are left pointing at a missing credential.
+   *
+   * @return the IDs of the deleted credential and of any deleted external locations
+   */
+  public List<UUID> deleteCredential(String name, boolean force) {
     LOGGER.debug("Deleting storage credential {}", name);
     return TransactionManager.executeWithTransaction(
         sessionFactory,
@@ -160,34 +166,40 @@ public class CredentialRepository {
           if (existingCredential == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Credential not found: " + name);
           }
-          if (!force) {
-            // Check if it's still used by any external location.
-            ExternalLocationDAO externalLocationDAO =
-                getExternalLocationDAOUsingCredential(session, existingCredential.getId());
-            if (externalLocationDAO != null) {
-              throw new BaseException(
-                  ErrorCode.INVALID_ARGUMENT,
-                  "Credential still used by external location '"
-                      + externalLocationDAO.getName()
-                      + "'");
-            }
+          List<ExternalLocationDAO> externalLocations =
+              getExternalLocationDAOsUsingCredential(session, existingCredential.getId());
+          if (!force && !externalLocations.isEmpty()) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT,
+                "Credential still used by external location '"
+                    + externalLocations.get(0).getName()
+                    + "'");
+          }
+          List<UUID> deletedIds = new ArrayList<>();
+          for (ExternalLocationDAO externalLocation : externalLocations) {
+            session.remove(externalLocation);
+            deletedIds.add(externalLocation.getId());
+            LOGGER.info(
+                "Deleted external location {} using credential {}",
+                externalLocation.getName(),
+                name);
           }
           session.remove(existingCredential);
+          deletedIds.add(existingCredential.getId());
           LOGGER.info("Deleted credential: {}", name);
-          return existingCredential.getId();
+          return deletedIds;
         },
         "Failed to delete credential",
         /* readOnly= */ false);
   }
 
-  protected ExternalLocationDAO getExternalLocationDAOUsingCredential(
+  protected List<ExternalLocationDAO> getExternalLocationDAOsUsingCredential(
       Session session, UUID credentialId) {
     Query<ExternalLocationDAO> query =
         session.createQuery(
             "FROM ExternalLocationDAO WHERE credentialId = :value", ExternalLocationDAO.class);
     query.setParameter("value", credentialId);
-    query.setMaxResults(1);
-    return query.uniqueResult();
+    return query.list();
   }
 
   private Optional<String> getAwsS3MasterRoleArn() {

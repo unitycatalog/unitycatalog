@@ -112,8 +112,9 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
   public HttpResponse deleteCredential(
       @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name,
       @Param("force") Optional<Boolean> force) {
-    UUID deletedCredentialId = credentialRepository.deleteCredential(name, force.orElse(false));
-    removeAuthorizations(deletedCredentialId.toString());
+    for (UUID deletedId : credentialRepository.deleteCredential(name, force.orElse(false))) {
+      removeAuthorizations(deletedId.toString());
+    }
     return HttpResponse.of(HttpStatus.OK);
   }
 }
