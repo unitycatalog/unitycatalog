@@ -169,7 +169,7 @@ corrected rules by default.
 The setting covers:
 
 - [Grant validation](#valid-privilege-grants): Reject new grants on the wrong object type.
-  Existing invalid grants can still be removed.
+  `MANAGE` grants are always validated. Existing invalid grants can still be removed.
 - [Iceberg credentials](#table-credential-permissions): returning credentials from `loadTable`
   or `loadCredentials` requires `USE CATALOG`, `USE SCHEMA`, and `SELECT`, or ownership at each level.
 - Table metadata: `MODIFY` no longer substitutes for `SELECT` for table details, listings,
@@ -258,11 +258,11 @@ to use the correct object types before adding or reapplying grants.
 `MANAGE` permits full metadata and grant inspection, grant changes, supported metadata updates,
 and deletion. Managers can grant themselves other privileges, including data access.
 
-Catalog and schema grants also cover their children. Schema grants require `USE CATALOG`.
-Grants on objects within a schema require both `USE CATALOG` and `USE SCHEMA`.
-Catalogs, external locations, and storage credentials require no usage grants.
+Catalog and schema grants also cover their children. Usage grants are required only above the
+scope where `MANAGE` is granted. A schema grant needs `USE CATALOG`. A grant on an object inside
+a schema needs both `USE CATALOG` and `USE SCHEMA`. Catalogs, external locations, and storage
+credentials need no usage grants.
 
-`MANAGE` grants are validated even when `server.authorization.strict-privilege-checks=false`.
 The metastore does not support `MANAGE`.
 
 Renaming a catalog, schema, table, volume, or registered model through `MANAGE` also requires

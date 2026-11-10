@@ -474,20 +474,31 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
     DeltaRenameTableRequest rename = new DeltaRenameTableRequest().newName("renamed_table");
     assertDeltaPermissionDenied(
         () -> tables.renameTable(CATALOG_NAME, SCHEMA_NAME, TABLE_NAME, rename));
-    grantPermissions(
-        PRINCIPAL_1,
-        SecurableType.SCHEMA,
-        SCHEMA_FULL_NAME,
-        Privileges.CREATE_TABLE,
-        Privileges.CREATE_VOLUME,
-        Privileges.CREATE_FUNCTION);
+    grantPermissions(PRINCIPAL_1, SecurableType.SCHEMA, SCHEMA_FULL_NAME, Privileges.CREATE_TABLE);
+    assertPermissionDenied(
+        () ->
+            new VolumesApi(manager)
+                .updateVolume(VOLUME, new UpdateVolumeRequestContent().newName("renamed_volume")));
+    assertPermissionDenied(
+        () ->
+            new RegisteredModelsApi(manager)
+                .updateRegisteredModel(
+                    MODEL, new UpdateRegisteredModel().newName("renamed_model")));
     tables.renameTable(CATALOG_NAME, SCHEMA_NAME, TABLE_NAME, rename);
     assertThat(
             getTable(new TablesApi(adminApiClient), SCHEMA_FULL_NAME + ".renamed_table")
                 .getTableId())
         .isEqualTo(targets.get(2).id());
+    grantPermissions(PRINCIPAL_1, SecurableType.SCHEMA, SCHEMA_FULL_NAME, Privileges.CREATE_VOLUME);
+    assertPermissionDenied(
+        () ->
+            new RegisteredModelsApi(manager)
+                .updateRegisteredModel(
+                    MODEL, new UpdateRegisteredModel().newName("renamed_model")));
     new VolumesApi(manager)
         .updateVolume(VOLUME, new UpdateVolumeRequestContent().newName("renamed_volume"));
+    grantPermissions(
+        PRINCIPAL_1, SecurableType.SCHEMA, SCHEMA_FULL_NAME, Privileges.CREATE_FUNCTION);
     new RegisteredModelsApi(manager)
         .updateRegisteredModel(MODEL, new UpdateRegisteredModel().newName("renamed_model"));
     assertThat(
