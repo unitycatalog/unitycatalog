@@ -738,9 +738,20 @@ public class CliUtils {
   private static String setPrecisionAndScale(
       ColumnInfo columnInfo, String typeText, String params) {
     if (typeText.equals("DECIMAL")) {
-      String[] paramArray = params == null ? new String[0] : params.split(",");
-      int precision = paramArray.length > 0 ? Integer.parseInt(paramArray[0].trim()) : 10;
-      int scale = paramArray.length > 1 ? Integer.parseInt(paramArray[1].trim()) : 0;
+      String[] paramArray = params == null ? new String[0] : params.split(",", -1);
+      if (paramArray.length > 2) {
+        throw new IllegalArgumentException("DECIMAL takes at most 2 parameters: (" + params + ")");
+      }
+      int precision = paramArray.length > 0 ? parseDecimalParam(paramArray[0], params) : 10;
+      int scale = paramArray.length > 1 ? parseDecimalParam(paramArray[1], params) : 0;
+      if (precision < 1 || precision > 38) {
+        throw new IllegalArgumentException(
+            "DECIMAL precision must be between 1 and 38: " + precision);
+      }
+      if (scale > precision) {
+        throw new IllegalArgumentException(
+            "DECIMAL scale must be between 0 and precision " + precision + ": " + scale);
+      }
       columnInfo.setTypePrecision(precision);
       columnInfo.setTypeScale(scale);
       return "(" + precision + "," + scale + ")";
@@ -750,6 +761,14 @@ public class CliUtils {
       columnInfo.setTypeScale(0);
     }
     return "";
+  }
+
+  private static int parseDecimalParam(String token, String params) {
+    String trimmed = token.trim();
+    if (!trimmed.matches("\\d{1,9}")) {
+      throw new IllegalArgumentException("Invalid DECIMAL parameters: (" + params + ")");
+    }
+    return Integer.parseInt(trimmed);
   }
 
   /**
@@ -762,11 +781,13 @@ public class CliUtils {
    */
   public static List<ColumnInfo> parseColumns(String columnsString) {
     List<ColumnInfo> columns = new ArrayList<>();
-    Pattern pattern = Pattern.compile("(\\w+)\\s+(\\w+)(\\(([^)]+)\\))?");
+    Pattern pattern = Pattern.compile("\\G\\s*(\\w+)\\s+(\\w+)\\s*(\\(([^)]*)\\))?\\s*(,|$)");
     Matcher matcher = pattern.matcher(columnsString);
     int position = 0;
+    int end = 0;
 
     while (matcher.find()) {
+      end = matcher.end();
       try {
         ColumnInfo columnInfo = new ColumnInfo();
 
@@ -790,8 +811,13 @@ public class CliUtils {
         columnInfo.setPosition(position++);
         columns.add(columnInfo);
       } catch (Exception e) {
-        throw new IllegalArgumentException("Invalid column definition: " + matcher.group(0), e);
+        throw new IllegalArgumentException(
+            "Invalid column definition: " + matcher.group(0).trim(), e);
       }
+    }
+    if (end < columnsString.length()) {
+      throw new IllegalArgumentException(
+          "Invalid column definition: " + columnsString.substring(end).trim());
     }
 
     return columns;

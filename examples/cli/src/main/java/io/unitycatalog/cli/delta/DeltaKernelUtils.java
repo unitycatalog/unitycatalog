@@ -226,6 +226,10 @@ public class DeltaKernelUtils {
       throw new IllegalArgumentException("Column type is missing: " + column.getName());
     }
     if (column.getTypeName() == ColumnTypeName.DECIMAL) {
+      if (column.getTypePrecision() == null || column.getTypeScale() == null) {
+        throw new IllegalArgumentException(
+            "DECIMAL column is missing precision or scale: " + column.getName());
+      }
       return new DecimalType(column.getTypePrecision(), column.getTypeScale());
     }
     return findBasicTypeFromString(column.getTypeName().toString());

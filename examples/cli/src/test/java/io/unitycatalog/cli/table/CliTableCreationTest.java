@@ -7,6 +7,7 @@ import static io.unitycatalog.server.utils.TestUtils.TABLE_FULL_NAME;
 import static io.unitycatalog.server.utils.TestUtils.TABLE_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -129,21 +130,63 @@ public class CliTableCreationTest extends BaseServerTest {
 
   @Test
   public void testParseDecimalColumns() {
-    List<ColumnInfo> columns = CliUtils.parseColumns("price DECIMAL(12, 3), amount DECIMAL");
+    List<ColumnInfo> columns =
+        CliUtils.parseColumns(
+            "price DECIMAL(12, 3), amount DECIMAL, tax DECIMAL (10,2), qty DECIMAL(7), id INT,"
+                + " code CHAR(10)");
     assertThat(columns)
         .extracting(
             ColumnInfo::getName,
             ColumnInfo::getTypeText,
             ColumnInfo::getTypePrecision,
-            ColumnInfo::getTypeScale)
+            ColumnInfo::getTypeScale,
+            ColumnInfo::getPosition)
         .containsExactly(
-            tuple("price", "decimal(12,3)", 12, 3), tuple("amount", "decimal(10,0)", 10, 0));
+            tuple("price", "decimal(12,3)", 12, 3, 0),
+            tuple("amount", "decimal(10,0)", 10, 0, 1),
+            tuple("tax", "decimal(10,2)", 10, 2, 2),
+            tuple("qty", "decimal(7,0)", 7, 0, 3),
+            tuple("id", "int", 0, 0, 4),
+            tuple("code", "char", null, null, 5));
     assertThat(columns.get(0).getTypeJson()).contains("\"type\":\"decimal(12,3)\"");
-    assertThat(DeltaKernelUtils.getSchema(columns))
+    assertThat(columns.get(1).getTypeJson()).contains("\"type\":\"decimal(10,0)\"");
+    assertThat(DeltaKernelUtils.getSchema(columns.subList(0, 4)))
         .isEqualTo(
             new StructType()
                 .add("price", new DecimalType(12, 3))
-                .add("amount", new DecimalType(10, 0)));
+                .add("amount", new DecimalType(10, 0))
+                .add("tax", new DecimalType(10, 2))
+                .add("qty", new DecimalType(7, 0)));
+  }
+
+  @Test
+  public void testParseInvalidColumns() {
+    for (String columns :
+        List.of(
+            "price DECIMAL(12,3,4)",
+            "price DECIMAL(12,)",
+            "price DECIMAL(,)",
+            "price DECIMAL()",
+            "price DECIMAL(a,2)",
+            "price DECIMAL(0,0)",
+            "price DECIMAL(39,0)",
+            "price DECIMAL(5,6)",
+            "price DECIMAL(5,-1)",
+            "id INT NOT NULL",
+            "id INT, price DECIMAL(10,2) extra")) {
+      assertThatThrownBy(() -> CliUtils.parseColumns(columns))
+          .as(columns)
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageStartingWith("Invalid column definition");
+    }
+  }
+
+  @Test
+  public void testDecimalColumnWithoutPrecisionFails() {
+    ColumnInfo column = new ColumnInfo().name("price").typeName(ColumnTypeName.DECIMAL);
+    assertThatThrownBy(() -> DeltaKernelUtils.getDataType(column))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("price");
   }
 
   @Test
