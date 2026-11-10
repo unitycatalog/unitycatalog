@@ -92,7 +92,7 @@ public class SdkTemporaryPathCredentialTest extends BaseCRUDTestWithMockCredenti
             temporaryCredentialsApi.generateTemporaryPathCredentials(
                 new GenerateTemporaryPathCredential().url(url).operation(PathOperation.PATH_READ));
     TestUtils.assertApiException(vend, ErrorCode.NOT_FOUND, "for '" + url + "' not found");
-    assertThatThrownBy(vend)
+    assertThatThrownBy(vend::execute)
         .isInstanceOfSatisfying(
             ApiException.class,
             e -> assertThat(e.getResponseBody()).doesNotContain(AWS_EXTERNAL_LOCATION_NAME));
