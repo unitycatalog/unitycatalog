@@ -85,8 +85,8 @@ public abstract class AuthorizedService {
   /**
    * Clears Casbin policies and hierarchy for resources removed by a repository cascade delete.
    *
-   * @param deleted resources returned from {@code CatalogRepository#deleteCatalog}, {@code
-   *     SchemaRepository#deleteSchema} or {@code CredentialRepository#deleteCredential}
+   * @param deleted resources returned from {@code CatalogRepository#deleteCatalog} or {@code
+   *     SchemaRepository#deleteSchema}
    */
   protected void clearDeletedResourceAuthorizations(List<DeletedResource> deleted) {
     if (deleted.isEmpty()) {
@@ -109,9 +109,8 @@ public abstract class AuthorizedService {
     }
 
     for (DeletedResource resource : deleted) {
-      switch (resource.type()) {
-        case CATALOG, CREDENTIAL, EXTERNAL_LOCATION -> removeAuthorizations(resource.id());
-        default -> {}
+      if (resource.type() == SecurableType.CATALOG) {
+        removeAuthorizations(resource.id());
       }
     }
   }

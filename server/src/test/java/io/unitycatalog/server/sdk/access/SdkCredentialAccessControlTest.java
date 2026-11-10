@@ -5,13 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CredentialsApi;
-import io.unitycatalog.client.api.ExternalLocationsApi;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.CreateCredentialRequest;
-import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
-import io.unitycatalog.client.model.ExternalLocationInfo;
 import io.unitycatalog.client.model.ListCredentialsResponse;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.UpdateCredentialRequest;
@@ -188,60 +185,6 @@ public class SdkCredentialAccessControlTest extends SdkAccessControlBaseCRUDTest
     // Admin can delete any credential (metastore owner)
     assertDeleteSuccess(adminApi, userACredential1);
     assertDeleteSuccess(adminApi, adminCredential);
-  }
-
-  @Test
-  public void testForceDeleteRequiresOwnershipOfDependentLocations() throws Exception {
-    String credentialName = "userA_credential_with_locations";
-    assertCreateSuccess(userAApi, credentialName);
-    grantPermissions(
-        USER_A_EMAIL, SecurableType.METASTORE, METASTORE_NAME, Privileges.CREATE_EXTERNAL_LOCATION);
-    grantPermissions(
-        USER_B_EMAIL, SecurableType.METASTORE, METASTORE_NAME, Privileges.CREATE_EXTERNAL_LOCATION);
-    grantPermissions(
-        USER_B_EMAIL,
-        SecurableType.CREDENTIAL,
-        credentialName,
-        Privileges.CREATE_EXTERNAL_LOCATION);
-    String userALocation = "userA_location";
-    String userBLocation = "userB_location";
-    ExternalLocationInfo userALocationInfo =
-        createExternalLocation(USER_A_EMAIL, userALocation, credentialName);
-    ExternalLocationInfo userBLocationInfo =
-        createExternalLocation(USER_B_EMAIL, userBLocation, credentialName);
-    ExternalLocationsApi adminLocationsApi = new ExternalLocationsApi(adminApiClient);
-
-    assertApiException(
-        () -> userAApi.deleteCredential(credentialName, true),
-        ErrorCode.PERMISSION_DENIED,
-        userBLocation);
-    assertThat(adminApi.getCredential(credentialName).getName()).isEqualTo(credentialName);
-    assertThat(adminLocationsApi.listExternalLocations(100, null, false).getExternalLocations())
-        .extracting(ExternalLocationInfo::getName)
-        .contains(userALocation, userBLocation);
-
-    String credentialId = adminApi.getCredential(credentialName).getId();
-    adminApi.deleteCredential(credentialName, true);
-    credentialsToDelete.remove(credentialName);
-    assertThat(adminLocationsApi.listExternalLocations(100, null, false).getExternalLocations())
-        .extracting(ExternalLocationInfo::getName)
-        .doesNotContain(userALocation, userBLocation);
-    assertThat(
-            countCasbinRulesReferencing(
-                credentialId, userALocationInfo.getId(), userBLocationInfo.getId()))
-        .isZero();
-  }
-
-  @SneakyThrows
-  private ExternalLocationInfo createExternalLocation(
-      String ownerEmail, String name, String credentialName) {
-    return new ExternalLocationsApi(
-            TestUtils.createApiClient(createTestUserServerConfig(ownerEmail)))
-        .createExternalLocation(
-            new CreateExternalLocation()
-                .name(name)
-                .url("s3://test-bucket/" + name)
-                .credentialName(credentialName));
   }
 
   private void assertCreateSuccess(CredentialsApi api, String name) throws ApiException {
