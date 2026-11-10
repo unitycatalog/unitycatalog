@@ -1,7 +1,5 @@
 package io.unitycatalog.server.base;
 
-import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
-
 import com.linecorp.armeria.server.ServerPortBindException;
 import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.persist.utils.FileOperations;
@@ -100,6 +98,11 @@ public abstract class BaseServerTest {
   @SneakyThrows
   @BeforeEach
   public void setUp() {
+    if (unityCatalogServer != null) {
+      throw new IllegalStateException(
+          "setUp() ran twice in one test, starting a second server: override setUp() instead of "
+              + "calling it from another @BeforeEach method");
+    }
     if (serverConfig == null) {
       throw new IllegalArgumentException("Server config is required");
     }
@@ -136,11 +139,9 @@ public abstract class BaseServerTest {
       }
       signingKeysFolder = folder;
     }
-    // Replace: setUp() runs twice in one test when a subclass declares another @BeforeEach method
-    // that calls super.setUp(), instead of overriding setUp().
     try (Stream<Path> keys = Files.list(signingKeysFolder)) {
       for (Path key : keys.toList()) {
-        Files.copy(key, target.resolve(key.getFileName()), REPLACE_EXISTING);
+        Files.copy(key, target.resolve(key.getFileName()));
       }
     }
   }
