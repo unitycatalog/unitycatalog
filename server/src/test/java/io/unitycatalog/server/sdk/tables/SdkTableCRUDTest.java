@@ -244,8 +244,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
                 .dataSourceFormat(DataSourceFormat.DELTA));
 
     assertThat(created.getColumns()).isEqualTo(columns);
-    assertThat(tableOperations.getTable(TestUtils.TABLE_FULL_NAME).getColumns())
-        .isEqualTo(columns);
+    assertThat(tableOperations.getTable(TestUtils.TABLE_FULL_NAME).getColumns()).isEqualTo(columns);
     assertThat(
             tableOperations.listTables(
                 TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, Optional.empty()))

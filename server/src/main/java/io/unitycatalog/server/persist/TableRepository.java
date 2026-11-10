@@ -823,8 +823,7 @@ public class TableRepository {
     // normalize before validating. Whether an empty column list is acceptable is a per-table-type
     // rule decided in the create branches below, and those checks must be the ones that reject the
     // request so the caller gets INVALID_ARGUMENT instead of an NPE here.
-    List<ColumnInfo> columnInfos =
-        Optional.ofNullable(createTable.getColumns()).orElse(List.of());
+    List<ColumnInfo> columnInfos = Optional.ofNullable(createTable.getColumns()).orElse(List.of());
     columnInfos.forEach(c -> ColumnUtils.validateTypeJson(c, format));
     Long createTime = System.currentTimeMillis();
     String fullName = getTableFullName(createTable);
