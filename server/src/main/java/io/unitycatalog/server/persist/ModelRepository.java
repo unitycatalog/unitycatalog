@@ -381,7 +381,9 @@ public class ModelRepository {
     if (fullName == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No three tier full name specified.");
     }
-    if (updateRegisteredModel.getNewName() == null && updateRegisteredModel.getComment() == null) {
+    if (updateRegisteredModel.getNewName() == null
+        && updateRegisteredModel.getComment() == null
+        && updateRegisteredModel.getOwner() == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No updated fields defined.");
     }
 
@@ -415,6 +417,13 @@ public class ModelRepository {
             findRegisteredModel(session, catalogName, schemaName, registeredModelName);
         if (origRegisteredModelInfoDAO == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "Registered model not found: " + fullName);
+        }
+        if (updateRegisteredModel.getOwner() != null) {
+          origRegisteredModelInfoDAO.setOwner(
+              repositories
+                  .getOwnershipRepository()
+                  .updateOwner(
+                      session, origRegisteredModelInfoDAO, updateRegisteredModel.getOwner()));
         }
         if (updateRegisteredModel.getNewName() != null) {
           origRegisteredModelInfoDAO.setName(updateRegisteredModel.getNewName());

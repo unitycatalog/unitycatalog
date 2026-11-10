@@ -125,6 +125,40 @@ export interface paths {
     patch: operations['updateSchema'];
     trace?: never;
   };
+  '/staging-tables': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Create a staging table
+     * @description Creates a new staging table instance. Staging tables are used during managed table creation. Creating a managed
+     *     table requires performing two actions – initializing the table data in cloud storage and creating the named
+     *     table entry in the catalog – and these should appear as an atomic operation to other operations on catalog
+     *     tables. A staging table is used to allocate storage for the managed table, and the catalog_name.schema_name.name
+     *     parameters provided in this request are used to initialize any required storage properties and determine the
+     *     storage URL that should be used for the data contained by this table.
+     *
+     *     Temporary credentials can be obtained as though the staging table were a regular table to get access to the
+     *     staging table’s storage. After the table’s data is initialized, the staging table is “promoted” to a managed
+     *     table by creating a managed table with the same location as the staging table. This allows for the atomic
+     *     creation of a managed table that already has full data written to its storage location. Note: the name provided
+     *     must match the name used to initialize the staging table originally.
+     *
+     *     WARNING: This API is experimental and may change in future versions.
+     *
+     */
+    post: operations['createStagingTable'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/tables': {
     parameters: {
       query?: never;
@@ -181,7 +215,11 @@ export interface paths {
     delete: operations['deleteTable'];
     options?: never;
     head?: never;
-    patch?: never;
+    /**
+     * Update a table owner
+     * @description Transfers ownership of a table or view to an existing user.
+     */
+    patch: operations['updateTable'];
     trace?: never;
   };
   '/volumes': {
@@ -352,7 +390,11 @@ export interface paths {
     delete: operations['deleteFunction'];
     options?: never;
     head?: never;
-    patch?: never;
+    /**
+     * Update a function owner
+     * @description Transfers ownership of a function to an existing user.
+     */
+    patch: operations['updateFunction'];
     trace?: never;
   };
   '/models': {
@@ -606,6 +648,162 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/credentials': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List credentials
+     * @description Gets an array of credentials (as __CredentialInfo__ objects).
+     *     The array is limited to only those credentials the caller has permission to access.
+     *     If the caller is a metastore admin, retrieval of credentials is unrestricted.
+     *     There is no guarantee of a specific ordering of the elements in the array.
+     *
+     */
+    get: operations['listCredentials'];
+    put?: never;
+    /**
+     * Create a credential
+     * @description Creates a new credential. The type of credential to be created is determined by the **purpose** field.
+     */
+    post: operations['createCredential'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/credentials/{name}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Name of the credential. */
+        name: string;
+      };
+      cookie?: never;
+    };
+    /**
+     * Get a credential
+     * @description Gets a credential from the metastore.
+     *     The caller must be a metastore admin, the owner of the credential, or have some permission on the credential.
+     *
+     */
+    get: operations['getCredential'];
+    put?: never;
+    post?: never;
+    /**
+     * Delete a credential
+     * @description Deletes a credential from the metastore. The caller must be a metastore admin or the owner of the credential.
+     */
+    delete: operations['deleteCredential'];
+    options?: never;
+    head?: never;
+    /**
+     * Update a credential
+     * @description Updates a credential.
+     */
+    patch: operations['updateCredential'];
+    trace?: never;
+  };
+  '/external-locations': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List external locations
+     * @description Gets an array of external locations (ExternalLocationInfo objects) from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location.
+     *
+     */
+    get: operations['listExternalLocations'];
+    put?: never;
+    /**
+     * Create an external location
+     * @description Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations.
+     *
+     */
+    post: operations['createExternalLocation'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/external-locations/{name}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Name of the external location. */
+        name: string;
+      };
+      cookie?: never;
+    };
+    /**
+     * Get an external location
+     * @description Gets an external location from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location.
+     *
+     */
+    get: operations['getExternalLocation'];
+    put?: never;
+    post?: never;
+    /**
+     * Delete an external location
+     * @description Deletes the specified external location from the metastore. The caller must be a metastore admin or the owner of the external location.
+     */
+    delete: operations['deleteExternalLocation'];
+    options?: never;
+    head?: never;
+    /**
+     * Update an external location
+     * @description Updates an external location in the metastore. The caller must be the owner of the external location or a metastore admin.
+     *
+     */
+    patch: operations['updateExternalLocation'];
+    trace?: never;
+  };
+  '/delta/preview/commits': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List unbackfilled Delta table commits.
+     *     WARNING: This API is experimental and may change in future versions.
+     *
+     * @description List all the unbackfilled Delta commits that are currently being tracked by the UC coordinator.
+     *     If no commits are being tracked in the specific version range (from start_version to an optional end_version),
+     *     it will return an empty list.
+     *     WARNING: This API is experimental and may change in future versions.
+     *
+     */
+    get: operations['getCommits'];
+    put?: never;
+    /** Commit changes to a specified Delta table.
+     *     The server has a limit defined in config on how many unbackfilled commits it can hold.
+     *     Clients are expected to do active backfill of the commit after committing to UC. So in
+     *     most cases the number of unbackfilled commits should be close to zero or one. But if
+     *     clients misbehave and unbackfilled commits accumulate beyond the limit, server will
+     *     reject further commits until more backfill is done.
+     *     Replaying an already-accepted commit (same version and file-name) is an idempotent no-op
+     *     that returns 200, so a client that lost the response can safely resend.
+     *     WARNING: This API is experimental and may change in future versions.
+     *      */
+    post: operations['commit'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -630,7 +828,7 @@ export interface components {
       /** @description The comment attached to the volume */
       comment?: string;
       /** @description The storage location of the volume */
-      storage_location: string;
+      storage_location?: string;
     };
     ListVolumesResponseContent: {
       volumes?: components['schemas']['VolumeInfo'][];
@@ -640,6 +838,8 @@ export interface components {
       next_page_token?: string;
     };
     UpdateVolumeRequestContent: {
+      /** @description Username of the new owner. The user must already exist. */
+      owner?: string;
       /** @description The comment attached to the volume */
       comment?: string;
       /** @description New name for the volume. */
@@ -786,6 +986,26 @@ export interface components {
       view_definition?: string;
       view_dependencies?: components['schemas']['DependencyList'];
     };
+    StagingTableInfo: {
+      /** @description Name of table, relative to parent schema. */
+      name?: string;
+      /** @description Name of parent catalog. */
+      catalog_name?: string;
+      /** @description Name of parent schema relative to its parent catalog. */
+      schema_name?: string;
+      /** @description Unique identifier for the table. */
+      id?: string;
+      /** @description URI generated for the staging table */
+      staging_location?: string;
+    };
+    CreateStagingTable: {
+      /** @description Name of table, relative to parent schema. */
+      name: string;
+      /** @description Name of parent catalog. */
+      catalog_name: string;
+      /** @description Name of parent schema relative to its parent catalog. */
+      schema_name: string;
+    };
     ListTablesResponse: {
       /** @description An array of table information objects. */
       tables?: components['schemas']['TableInfo'][];
@@ -822,6 +1042,16 @@ export interface components {
       updated_by?: string;
       /** @description Unique identifier for the schema. */
       schema_id?: string;
+      /** @description Storage root URL for managed storage location of schema. This can be set when creating a
+       *     schema. Example: s3://bucket/ucroot
+       *      */
+      storage_root?: string;
+      /** @description Storage Location URL (full path) for managed storage location of schema. This is an
+       *     automatically generated unique path under storage_root. If it is absent, managed
+       *     securables under this schema will try to use storage_location of the parent catalog
+       *     instead. Example: s3://bucket/ucroot/__unitystorage/schemas/{schema_id}
+       *      */
+      storage_location?: string;
     };
     CreateSchema: {
       /** @description Name of schema, relative to parent catalog. */
@@ -831,8 +1061,15 @@ export interface components {
       /** @description User-provided free-form text description. */
       comment?: string;
       properties?: components['schemas']['SecurablePropertiesMap'];
+      /** @description Storage root URL for managed storage location of schema. If not set, managed securables
+       *     under this schema will try to use the storage_location of the parent catalog instead.
+       *     Example: s3://bucket/ucroot
+       *      */
+      storage_root?: string;
     };
     UpdateSchema: {
+      /** @description Username of the new owner. The user must already exist. */
+      owner?: string;
       /** @description User-provided free-form text description. */
       comment?: string;
       properties?: components['schemas']['SecurablePropertiesMap'];
@@ -871,6 +1108,15 @@ export interface components {
       updated_by?: string;
       /** @description Unique identifier for the catalog. */
       id?: string;
+      /** @description Storage root URL for managed storage location of catalog. This can be set when creating
+       *     a catalog. Example: s3://bucket/ucroot
+       *      */
+      storage_root?: string;
+      /** @description Storage Location URL (full path) for managed storage location of catalog. This is an
+       *     automatically generated unique path under storage_root.
+       *     Example: s3://bucket/ucroot/__unitystorage/catalogs/{catalog_id}
+       *      */
+      storage_location?: string;
     };
     CreateCatalog: {
       /** @description Name of catalog. */
@@ -878,8 +1124,13 @@ export interface components {
       /** @description User-provided free-form text description. */
       comment?: string;
       properties?: components['schemas']['SecurablePropertiesMap'];
+      /** @description Storage root URL for managed storage location of catalog. Example: s3://bucket/ucroot
+       *      */
+      storage_root?: string;
     };
     UpdateCatalog: {
+      /** @description Username of the new owner. The user must already exist. */
+      owner?: string;
       /** @description User-provided free-form text description. */
       comment?: string;
       properties?: components['schemas']['SecurablePropertiesMap'];
@@ -942,6 +1193,14 @@ export interface components {
     };
     CreateFunctionRequest: {
       function_info: components['schemas']['CreateFunction'];
+    };
+    UpdateFunction: {
+      /** @description Username of the new owner. Only a metastore admin can transfer a function to another user. */
+      owner: string;
+    };
+    UpdateTable: {
+      /** @description Username of the new owner. Only a metastore admin can transfer a view to another user. */
+      owner: string;
     };
     /** @description A function that is dependent on a SQL object. */
     FunctionDependency: {
@@ -1232,11 +1491,7 @@ export interface components {
       id?: string;
     };
     /**
-     * @description All possible model version statuses (MODEL_VERSION_STATUS_UNKNOWN, PENDING_REGISTRATION, FAILED_REGISTRATION, READY).
-     *     PENDING_REGISTRATION status indicates that the client has not completely written all model artifacts to external storage.
-     *     FAILED_REGISTRATION status indicates that the client has failed to write all model artifacts to external storage.
-     *     READY status indicates that the client has successfully written all model artifacts to external storage.
-     *
+     * @description All possible model version statuses.
      * @enum {string}
      */
     ModelVersionStatus: ModelVersionStatus;
@@ -1251,6 +1506,8 @@ export interface components {
       comment?: string;
     };
     UpdateRegisteredModel: {
+      /** @description Username of the new owner. Only a metastore admin can transfer a model to another user. */
+      owner?: string;
       /** @description User-provided free-form text description. */
       comment?: string;
       /** @description New name for the model. */
@@ -1360,6 +1617,285 @@ export interface components {
     GetMetastoreSummaryResponse: {
       /** @description Unique identifier of the metastore. */
       metastore_id?: string;
+    };
+    CredentialInfo: {
+      /** @description The credential name. The name must be unique within the metastore. */
+      name?: string;
+      aws_iam_role?: components['schemas']['AwsIamRoleResponse'];
+      /** @description Comment associated with the credential. */
+      comment?: string;
+      /** @description Username of current owner of credential. */
+      owner?: string;
+      /** @description The full name of the credential. */
+      full_name?: string;
+      /** @description The unique identifier of the credential. */
+      id?: string;
+      /**
+       * Format: int64
+       * @description Time at which this Credential was created, in epoch milliseconds.
+       */
+      created_at?: number;
+      /** @description Username of credential creator. */
+      created_by?: string;
+      /**
+       * Format: int64
+       * @description Time at which this credential was last modified, in epoch milliseconds.
+       */
+      updated_at?: number;
+      /** @description Username of user who last modified the credential. */
+      updated_by?: string;
+      purpose?: components['schemas']['CredentialPurpose'];
+    };
+    CreateCredentialRequest: {
+      /** @description The credential name. The name must be unique within the metastore. */
+      name: string;
+      /** @description Comment associated with the credential. */
+      comment?: string;
+      aws_iam_role?: components['schemas']['AwsIamRoleRequest'];
+      purpose?: components['schemas']['CredentialPurpose'];
+    };
+    UpdateCredentialRequest: {
+      /** @description Comment associated with the credential. */
+      comment?: string;
+      /** @description Username of the new owner. The user must already exist. */
+      owner?: string;
+      aws_iam_role?: components['schemas']['AwsIamRoleRequest'];
+      /** @description New name for the credential. */
+      new_name?: string;
+    };
+    /** @description The Amazon Resource Name (ARN) of the AWS IAM role used to vend temporary credentials. */
+    AwsIamRoleArn: string;
+    AwsIamRoleRequest: {
+      role_arn: components['schemas']['AwsIamRoleArn'];
+    };
+    AwsIamRoleResponse: {
+      role_arn: components['schemas']['AwsIamRoleArn'];
+      /** @description The Amazon Resource Name (ARN) of the AWS IAM used by the Unity Catalog Server. This is the identity that is going to assume the AWS IAM role. */
+      unity_catalog_iam_arn?: string;
+      /** @description The external ID used in role assumption to prevent confused deputy problem. */
+      external_id?: string;
+    };
+    ListCredentialsResponse: {
+      /** @description An array of credential information objects. */
+      credentials?: components['schemas']['CredentialInfo'][];
+      /** @description Opaque token to retrieve the next page of results. Absent if there are no more pages.
+       *     __page_token__ should be set to this value for the next request (for the next page of results).
+       *      */
+      next_page_token?: string;
+    };
+    /** @enum {string} */
+    CredentialPurpose: CredentialPurpose;
+    ExternalLocationInfo: {
+      /** @description Name of the external location. */
+      name?: string;
+      /** @description Unique identifier for the external location. */
+      id?: string;
+      /** @description Path URL of the external location. */
+      url?: string;
+      /** @description Name of the storage credential used with this location. */
+      credential_name?: string;
+      /** @description User-provided free-form text description. */
+      comment?: string;
+      /** @description The owner of the external location. */
+      owner?: string;
+      /** @description Unique ID of the location's storage credential. */
+      credential_id?: string;
+      /**
+       * Format: int64
+       * @description Time at which this external location was created, in epoch milliseconds.
+       */
+      created_at?: number;
+      /** @description Username of external location creator. */
+      created_by?: string;
+      /**
+       * Format: int64
+       * @description Time at which external location this was last modified, in epoch milliseconds.
+       */
+      updated_at?: number;
+      /** @description Username of user who last modified the external location. */
+      updated_by?: string;
+    };
+    CreateExternalLocation: {
+      /** @description Name of the external location. */
+      name: string;
+      /** @description Path URL of the external location. */
+      url: string;
+      /** @description Name of the storage credential used with this location. */
+      credential_name: string;
+      /** @description User-provided free-form text description. */
+      comment?: string;
+    };
+    UpdateExternalLocation: {
+      /** @description Path URL of the external location. */
+      url?: string;
+      /** @description Name of the storage credential used with this location. */
+      credential_name?: string;
+      /** @description User-provided free-form text description. */
+      comment?: string;
+      /** @description Username of the new owner. The user must already exist. */
+      owner?: string;
+      /** @description New name for the external location. */
+      new_name?: string;
+    };
+    ListExternalLocationsResponse: {
+      /** @description An array of external locations. */
+      external_locations?: components['schemas']['ExternalLocationInfo'][];
+      /** @description Opaque token to retrieve the next page of results. Absent if there are no more pages. __page_token__ should be set to this value for the next request (for the next page of results). */
+      next_page_token?: string;
+    };
+    /** @description Request body for committing changes to a specified Delta table. At least one of commit_info and latest_backfilled_version must be present. */
+    DeltaCommit: {
+      /** @description The ID of the table to commit to. This ID uniquely identifies a table. */
+      table_id: string;
+      /** @description The URI of the storage location of the table. If the table_id exists but the table_uri is
+       *     different from the one previously registered (e.g., if the client moved the table), the request will fail.
+       *     Example: s3://bucket-name/tables/some-table-id
+       *      */
+      table_uri: string;
+      commit_info?: components['schemas']['DeltaCommitInfo'];
+      /**
+       * Format: int64
+       * @description The highest version of the commits that have been backfilled for this table; meaning UC no longer
+       *     needs to keep track of commits of versions <= this version.
+       *
+       */
+      latest_backfilled_version?: number;
+      metadata?: components['schemas']['DeltaMetadata'];
+      /** @description Optional UniForm metadata to be committed alongside this Delta commit. Whether this field is
+       *     strictly required by a UC API compatible implementation is left up to the implementation.
+       *     It is set by UniForm conversion processes after converting a Delta commit. When set,
+       *     UC will atomically update the table's format-specific metadata (e.g. DeltaUniformIceberg),
+       *     keeping the conversion state synchronized with the Delta version.
+       *     Uniform enables Delta tables to be read by other table formats (e.g., Iceberg) without data conversion.
+       *     Independent of the `metadata` field, both can be provided together or separately.
+       *      */
+      uniform?: components['schemas']['DeltaUniform'];
+    };
+    /** @description Represents a Delta metadata action (see https://github.com/delta-io/delta/blob/master/PROTOCOL.md#change-metadata for more information). */
+    DeltaMetadata: {
+      /** @description The table comment. */
+      description?: string;
+      schema?: components['schemas']['ColumnInfos'];
+      properties?: components['schemas']['DeltaCommitMetadataProperties'];
+    };
+    /** @description The properties of the Delta table. Updated by UC if set. */
+    DeltaCommitMetadataProperties: {
+      properties?: components['schemas']['SecurablePropertiesMap'];
+    };
+    /** @description The schema of the table. */
+    ColumnInfos: {
+      /** @description The array of column descriptions. */
+      columns?: components['schemas']['ColumnInfo'][];
+    };
+    /** @description Represents a Delta commit version. */
+    DeltaCommitInfo: {
+      /**
+       * Format: int64
+       * @description The version of this commit.
+       */
+      version: number;
+      /**
+       * Format: int64
+       * @description The timestamp for when the commit was made. This is the in-commit timestamp as produced by the Delta client writing to the table.
+       */
+      timestamp: number;
+      /** @description The filename of the UUID-based commit file. */
+      file_name: string;
+      /**
+       * Format: int64
+       * @description The size of the commit file in bytes.
+       */
+      file_size: number;
+      /**
+       * Format: int64
+       * @description The modification time of the commit file. This is the mod time of the file as written to the file system.
+       */
+      file_modification_timestamp: number;
+    };
+    /** @description The response for the Delta commit action */
+    DeltaCommitResponse: Record<string, never>;
+    /** @description Uniform metadata that can be atomically committed alongside a Delta commit.
+     *     Uniform enables Delta tables to be read by other table formats (e.g. Iceberg)
+     *     without data conversion. When this message is provided in a Commit request,
+     *     UC will atomically update the table's format-specific metadata during the commit.
+     *      */
+    DeltaUniform: {
+      /** @description Metadata for Delta UniForm Iceberg conversion. */
+      iceberg: components['schemas']['DeltaUniformIceberg'];
+    };
+    /** @description Iceberg conversion metadata tracking the Delta-to-Iceberg conversion state.
+     *     It contains the metadata location pointer, converted Delta version, timestamp, and
+     *     optional base converted Delta version of the corresponding conversion.
+     *      */
+    DeltaUniformIceberg: {
+      /**
+       * Format: uri
+       * @description The latest Iceberg metadata location.
+       *     Example: s3://abc/def/metadata/v1.json
+       *
+       */
+      metadata_location: string;
+      /**
+       * Format: int64
+       * @description The Delta version that was converted to Iceberg to produce the Iceberg metadata location.
+       *     It should match the Delta version in the commit info.
+       *     Example: 1044
+       *
+       */
+      converted_delta_version: number;
+      /** @description The timestamp that Delta finished conversion to produce the Iceberg metadata location.
+       *     The string must represent a valid instant in UTC with ISO 8601 format.
+       *     Example: 2025-01-04T03:13:11.423Z
+       *      */
+      converted_delta_timestamp: string;
+      /**
+       * Format: int64
+       * @description Optional Delta version used to incrementally convert Delta changes to Iceberg changes to
+       *     produce the latest Iceberg metadata at the metadata_location.
+       *     Example: 1042
+       *
+       */
+      base_converted_delta_version?: number;
+    };
+    DeltaGetCommits: {
+      /** @description The ID of the table to get the commits for. This ID uniquely identifies a table. */
+      table_id: string;
+      /** @description The URI of the storage location of the table. If the table_id exists but the table_uri is
+       *     different from the one previously registered (e.g., if the client moved the table), the request will fail.
+       *     Example: s3://bucket-name/tables/some-table-id
+       *      */
+      table_uri: string;
+      /**
+       * Format: int64
+       * @description The start version from which to retrieve commits (inclusive). This along with the
+       *     optional end_version specifies the range of commit versions that this request wants.
+       *
+       */
+      start_version: number;
+      /**
+       * Format: int64
+       * @description The end version upto which to retrieve commits (inclusive).
+       *     If not set, the latest version will be used as the end version. This does not affect the
+       *     latest_table_version in the response.
+       *     If num of commits that meet this criteria is larger than a limit set by server config,
+       *     the response will be limited to the first X commits. Call can send request again with a
+       *     larger start_version according to the response to get the remaining commits.
+       *
+       */
+      end_version?: number;
+    };
+    DeltaGetCommitsResponse: {
+      /** @description The list of unbackfilled Delta table commits. Can be in arbitrary order. */
+      commits: components['schemas']['DeltaCommitInfo'][];
+      /**
+       * Format: int64
+       * @description Represents the latest version of the table tracked by UC. For a newly created managed table
+       *     with no commits, this returns 0. Use this field to manage pagination —
+       *     if the returned commits don't cover the range up to latest_table_version or end_version (whichever is smaller),
+       *     it indicates that more unbackfilled commits may be available.
+       *
+       */
+      latest_table_version: number;
     };
   };
   responses: never;
@@ -1632,6 +2168,30 @@ export interface operations {
       };
     };
   };
+  createStagingTable: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['CreateStagingTable'];
+      };
+    };
+    responses: {
+      /** @description The new staging table was successfully created. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StagingTableInfo'];
+        };
+      };
+    };
+  };
   listTables: {
     parameters: {
       query: {
@@ -1691,7 +2251,14 @@ export interface operations {
   };
   getTable: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Whether to read Streaming Tables as Managed tables.
+         *      */
+        read_streaming_table_as_managed?: boolean;
+        /** @description Whether to read Materialized Views as Managed tables.
+         *      */
+        read_materialized_view_as_managed?: boolean;
+      };
       header?: never;
       path: {
         /** @description Full name of the table. */
@@ -1731,6 +2298,33 @@ export interface operations {
         };
         content: {
           'application/json': unknown;
+        };
+      };
+    };
+  };
+  updateTable: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Full name of the table. */
+        full_name: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateTable'];
+      };
+    };
+    responses: {
+      /** @description The table owner was successfully updated. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TableInfo'];
         };
       };
     };
@@ -2041,6 +2635,33 @@ export interface operations {
         };
         content: {
           'application/json': unknown;
+        };
+      };
+    };
+  };
+  updateFunction: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description The fully-qualified name of the function (of the form __catalog_name__.__schema_name__.__function__name__). */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateFunction'];
+      };
+    };
+    responses: {
+      /** @description The function owner was successfully updated. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['FunctionInfo'];
         };
       };
     };
@@ -2444,6 +3065,408 @@ export interface operations {
       };
     };
   };
+  listCredentials: {
+    parameters: {
+      query?: {
+        /** @description Maximum number of credentials to return.
+         *       - If not set, the default max page size is used.
+         *       - When set to a value greater than 0, the page length is the minimum of
+         *         this value and a server-configured value.
+         *       - When set to 0, the page length is set to a server-configured value
+         *         (recommended).
+         *       - When set to a value less than 0, an invalid parameter error is
+         *         returned.
+         *      */
+        max_results?: number;
+        /** @description Opaque pagination token to go to next page based on previous query. */
+        page_token?: string;
+        /** @description Return only credentials for the specified purpose. */
+        purpose?: components['schemas']['CredentialPurpose'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The credentials list was successfully retrieved. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ListCredentialsResponse'];
+        };
+      };
+    };
+  };
+  createCredential: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['CreateCredentialRequest'];
+      };
+    };
+    responses: {
+      /** @description The new credential was successfully created. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CredentialInfo'];
+        };
+      };
+    };
+  };
+  getCredential: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Name of the credential. */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The credential was successfully retrieved. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CredentialInfo'];
+        };
+      };
+    };
+  };
+  deleteCredential: {
+    parameters: {
+      query?: {
+        /** @description Force deletion even if there are dependent external locations. */
+        force?: boolean;
+      };
+      header?: never;
+      path: {
+        /** @description Name of the credential. */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The credential was successfully deleted. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': unknown;
+        };
+      };
+    };
+  };
+  updateCredential: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Name of the credential. */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['UpdateCredentialRequest'];
+      };
+    };
+    responses: {
+      /** @description The credential was successfully updated. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CredentialInfo'];
+        };
+      };
+    };
+  };
+  listExternalLocations: {
+    parameters: {
+      query?: {
+        /** @description Maximum number of external locations to return. If not set, all external locations are returned.
+         *      */
+        max_results?: number;
+        /** @description Opaque pagination token to go to the next page. */
+        page_token?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The external location list was successfully retrieved. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ListExternalLocationsResponse'];
+        };
+      };
+    };
+  };
+  createExternalLocation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateExternalLocation'];
+      };
+    };
+    responses: {
+      /** @description The new external location was successfully created. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExternalLocationInfo'];
+        };
+      };
+    };
+  };
+  getExternalLocation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Name of the external location. */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The external location was successfully retrieved. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExternalLocationInfo'];
+        };
+      };
+    };
+  };
+  deleteExternalLocation: {
+    parameters: {
+      query?: {
+        /** @description Force deletion even if there are dependent external tables or mounts. */
+        force?: boolean;
+      };
+      header?: never;
+      path: {
+        /** @description Name of the external location. */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The external location was successfully deleted. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  updateExternalLocation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Name of the external location. */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateExternalLocation'];
+      };
+    };
+    responses: {
+      /** @description The external location was successfully updated. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExternalLocationInfo'];
+        };
+      };
+    };
+  };
+  getCommits: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['DeltaGetCommits'];
+      };
+    };
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DeltaGetCommitsResponse'];
+        };
+      };
+      /** @description Bad request or Invalid Argument. Example: table_uri in the request doesn't match the existing table_uri for the table.
+       *      */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unauthorized. Authentication credentials are missing or incorrect. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Forbidden. The user does not have the necessary permissions to perform this action. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not Found. The specified table does not exist. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal Server Error. An unexpected error occurred on the server. */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  commit: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DeltaCommit'];
+      };
+    };
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DeltaCommitResponse'];
+        };
+      };
+      /** @description Bad request or Invalid Argument. Example: Commit version is not expected (e.g., latest_table_version +1)
+       *     or Latest backfilled version exceeds the last commit version or table_uri in the request doesn't match the
+       *     existing table_uri for the table.
+       *      */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unauthorized. Authentication credentials are missing or incorrect. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Forbidden. The user does not have the necessary permissions to perform this action. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not Found. The specified table does not exist. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Conflict. Indicates that a different commit with the same version already exists. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The maximum number of unbackfilled commits per table has been reached. Please backfill some commits before retrying. */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal Server Error. An unexpected error occurred on the server. */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not Implemented. The requested functionality is not supported. */
+      501: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
 }
 export enum VolumeType {
   MANAGED = 'MANAGED',
@@ -2467,6 +3490,7 @@ export enum ColumnTypeName {
   ARRAY = 'ARRAY',
   STRUCT = 'STRUCT',
   MAP = 'MAP',
+  VARIANT = 'VARIANT',
   CHAR = 'CHAR',
   NULL = 'NULL',
   USER_DEFINED_TYPE = 'USER_DEFINED_TYPE',
@@ -2475,11 +3499,14 @@ export enum ColumnTypeName {
 export enum TableType {
   MANAGED = 'MANAGED',
   EXTERNAL = 'EXTERNAL',
+  STREAMING_TABLE = 'STREAMING_TABLE',
+  MATERIALIZED_VIEW = 'MATERIALIZED_VIEW',
   METRIC_VIEW = 'METRIC_VIEW',
   VIEW = 'VIEW',
 }
 export enum DataSourceFormat {
   DELTA = 'DELTA',
+  ICEBERG = 'ICEBERG',
   CSV = 'CSV',
   JSON = 'JSON',
   AVRO = 'AVRO',
@@ -2540,9 +3567,13 @@ export enum VolumeOperation {
   WRITE_VOLUME = 'WRITE_VOLUME',
 }
 export enum ModelVersionStatus {
+  // MODEL_VERSION_STATUS_UNKNOWN: Unknown
   MODEL_VERSION_STATUS_UNKNOWN = 'MODEL_VERSION_STATUS_UNKNOWN',
+  // PENDING_REGISTRATION: Indicates that the client has not completely written all model artifacts to external storage.
   PENDING_REGISTRATION = 'PENDING_REGISTRATION',
+  // FAILED_REGISTRATION: Indicates that the client has failed to write all model artifacts to external storage.
   FAILED_REGISTRATION = 'FAILED_REGISTRATION',
+  // READY: Indicates that the client has successfully written all model artifacts to external storage.
   READY = 'READY',
 }
 export enum PathOperation {
@@ -2563,18 +3594,59 @@ export enum SecurableType {
   function = 'function',
   volume = 'volume',
   registered_model = 'registered_model',
+  external_location = 'external_location',
+  credential = 'credential',
 }
 export enum Privilege {
+  // CREATE CATALOG: Enables users to create new catalogs in a metastore.
   CREATE_CATALOG = 'CREATE CATALOG',
+  // USE CATALOG: Required to interact with any object within a catalog.
   USE_CATALOG = 'USE CATALOG',
+  // CREATE SCHEMA: Enables users to create new schemas in a catalog.
   CREATE_SCHEMA = 'CREATE SCHEMA',
+  // USE SCHEMA: Required to interact with any object within a schema.
   USE_SCHEMA = 'USE SCHEMA',
+  // CREATE TABLE: Allows creating tables or views in a schema.
   CREATE_TABLE = 'CREATE TABLE',
+  // SELECT: Enables querying tables, views, materialized views.
   SELECT = 'SELECT',
+  // MODIFY: Enables adding, updating, and deleting data within tables (requires SELECT privilege also).
   MODIFY = 'MODIFY',
+  // CREATE FUNCTION: Allows users to create functions or procedures within a schema.
   CREATE_FUNCTION = 'CREATE FUNCTION',
+  // EXECUTE: Permits invoking user-defined functions or loading models for inference.
   EXECUTE = 'EXECUTE',
+  // CREATE VOLUME: Enables creating volumes in a schema.
   CREATE_VOLUME = 'CREATE VOLUME',
+  // READ VOLUME: Permits reading files and directories within volumes.
   READ_VOLUME = 'READ VOLUME',
+  // CREATE MODEL: Permits establishing MLflow registered models in a schema.
   CREATE_MODEL = 'CREATE MODEL',
+  // CREATE EXTERNAL LOCATION: Required privilege on both the metastore and referenced storage credential to create external locations.
+  CREATE_EXTERNAL_LOCATION = 'CREATE EXTERNAL LOCATION',
+  // READ FILES: Grants direct read access to files in cloud storage configured as external locations.
+  READ_FILES = 'READ FILES',
+  // WRITE FILES: Grants direct write access to files in cloud storage configured as external locations.
+  WRITE_FILES = 'WRITE FILES',
+  // CREATE EXTERNAL TABLE: Enables creating external tables through external locations.
+  CREATE_EXTERNAL_TABLE = 'CREATE EXTERNAL TABLE',
+  // CREATE EXTERNAL VOLUME: Enables creating external volumes through external locations.
+  CREATE_EXTERNAL_VOLUME = 'CREATE EXTERNAL VOLUME',
+  // CREATE MANAGED STORAGE: Allows designating managed storage locations at catalog or schema levels.
+  CREATE_MANAGED_STORAGE = 'CREATE MANAGED STORAGE',
+  // CREATE STORAGE CREDENTIAL: Required privilege on the metastore to create storage credentials.
+  CREATE_STORAGE_CREDENTIAL = 'CREATE STORAGE CREDENTIAL',
+  // BROWSE: Allows discovery of metadata for a catalog and its descendants, or an external location, without usage grants. Does not permit data access.
+  BROWSE = 'BROWSE',
+  // MANAGE: Allows metadata and grant inspection, grant changes, supported metadata changes and deletion, and ownership transfer. Does not grant data access, execution, or object creation.
+  MANAGE = 'MANAGE',
+  // WRITE VOLUME: Permits creating, changing, and deleting files in volumes; also requires READ VOLUME and parent usage privileges.
+  WRITE_VOLUME = 'WRITE VOLUME',
+  // CREATE MODEL VERSION: Allows publishing versions of registered models with USE CATALOG and USE SCHEMA.
+  CREATE_MODEL_VERSION = 'CREATE MODEL VERSION',
+  // READ METADATA: Permits reading full metadata and grants without data access or permission changes.
+  READ_METADATA = 'READ METADATA',
+}
+export enum CredentialPurpose {
+  STORAGE = 'STORAGE',
 }

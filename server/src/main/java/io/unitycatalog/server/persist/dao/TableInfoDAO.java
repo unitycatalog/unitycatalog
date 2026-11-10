@@ -23,9 +23,11 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.BatchSize;
+import org.hibernate.annotations.DynamicUpdate;
 
 // Hibernate annotations
 @Entity
+@DynamicUpdate
 @Table(
     name = "uc_tables",
     indexes = {
