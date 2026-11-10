@@ -184,6 +184,7 @@ public class SdkModelVersionPublishingTest extends SdkAccessControlBaseCRUDTest 
         "Only model version creator can finalize model version");
 
     revokePermission(PRINCIPAL_2, scope, target, Privilege.CREATE_MODEL_VERSION);
+    grantPermissions(PRINCIPAL_2, scope, target, Privileges.MANAGE);
     assertPermissionDenied(() -> publisherVersions.createModelVersion(createVersionRequest()));
     assertPermissionDenied(
         () ->
