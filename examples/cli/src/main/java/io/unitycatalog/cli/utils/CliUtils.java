@@ -748,7 +748,7 @@ public class CliUtils {
         throw new IllegalArgumentException(
             "DECIMAL precision must be between 1 and 38: " + precision);
       }
-      if (scale > precision) {
+      if (scale < 0 || scale > precision) {
         throw new IllegalArgumentException(
             "DECIMAL scale must be between 0 and precision " + precision + ": " + scale);
       }
@@ -771,6 +771,11 @@ public class CliUtils {
     return Integer.parseInt(trimmed);
   }
 
+  private static final Pattern COLUMN_PATTERN =
+      Pattern.compile("(\\w+)\\s+(\\w+)(?:\\(([^)]+)\\)|(?<=(?i:decimal))\\s*\\(([^)]*)\\))?");
+
+  private static final Pattern UNPARSED_PARAMS = Pattern.compile("\\s*[(\\[\\d]");
+
   /**
    * Method to convert the columns string to a list of ColumnInfo objects the columns string is
    * expected to be in the format: column1 type1, column2 type2, ... e.g., id INT, name String, age
@@ -781,8 +786,8 @@ public class CliUtils {
    */
   public static List<ColumnInfo> parseColumns(String columnsString) {
     List<ColumnInfo> columns = new ArrayList<>();
-    Pattern pattern = Pattern.compile("(\\w+)\\s+(\\w+)\\s*(\\(([^)]*)\\))?");
-    Matcher matcher = pattern.matcher(columnsString);
+    Matcher matcher = COLUMN_PATTERN.matcher(columnsString);
+    Matcher unparsedParams = UNPARSED_PARAMS.matcher(columnsString);
     int position = 0;
 
     while (matcher.find()) {
@@ -791,7 +796,13 @@ public class CliUtils {
 
         String name = matcher.group(1); // e.g., column name
         String typeName = matcher.group(2).toUpperCase(); // e.g., DECIMAL, VARCHAR, INT
-        String params = matcher.group(4); // e.g., 10,2 or 255
+        String params = matcher.group(3) != null ? matcher.group(3) : matcher.group(4);
+        if (typeName.equals("DECIMAL")
+            && params == null
+            && unparsedParams.region(matcher.end(), columnsString.length()).lookingAt()) {
+          throw new IllegalArgumentException(
+              "Malformed DECIMAL parameters, expected DECIMAL(p) or DECIMAL(p,s)");
+        }
 
         String precisionAndScale = setPrecisionAndScale(columnInfo, typeName, params);
 

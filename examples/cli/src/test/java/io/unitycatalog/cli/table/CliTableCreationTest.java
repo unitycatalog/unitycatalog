@@ -15,7 +15,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.delta.kernel.types.DecimalType;
-import io.delta.kernel.types.IntegerType;
 import io.delta.kernel.types.StructType;
 import io.unitycatalog.cli.catalog.CliCatalogOperations;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
@@ -175,7 +174,10 @@ public class CliTableCreationTest extends BaseServerTest {
         "price DECIMAL(5,-1)   | Invalid DECIMAL parameters: (5,-1)",
         "price DECIMAL(0,0)    | DECIMAL precision must be between 1 and 38: 0",
         "price DECIMAL(39,0)   | DECIMAL precision must be between 1 and 38: 39",
-        "price DECIMAL(5,6)    | DECIMAL scale must be between 0 and precision 5: 6"
+        "price DECIMAL(5,6)    | DECIMAL scale must be between 0 and precision 5: 6",
+        "price DECIMAL(12,3    | Malformed DECIMAL parameters, expected DECIMAL(p) or DECIMAL(p,s)",
+        "price DECIMAL[10,2]   | Malformed DECIMAL parameters, expected DECIMAL(p) or DECIMAL(p,s)",
+        "price DECIMAL 10      | Malformed DECIMAL parameters, expected DECIMAL(p) or DECIMAL(p,s)"
       })
   public void testParseInvalidDecimalColumns(String columns, String reason) {
     assertThatThrownBy(() -> CliUtils.parseColumns(columns))
@@ -203,15 +205,28 @@ public class CliTableCreationTest extends BaseServerTest {
     assertThat(CliUtils.parseColumns("id INT name STRING, "))
         .extracting(ColumnInfo::getName, ColumnInfo::getTypeText)
         .containsExactly(tuple("id", "int"), tuple("name", "string"));
+    assertThat(CliUtils.parseColumns("a INT (5), b INT(), c DECIMAL extra"))
+        .extracting(
+            ColumnInfo::getName,
+            ColumnInfo::getTypeText,
+            ColumnInfo::getTypePrecision,
+            ColumnInfo::getTypeScale)
+        .containsExactly(
+            tuple("a", "int", 0, 0), tuple("b", "int", 0, 0), tuple("c", "decimal(10,0)", 10, 0));
   }
 
-  @Test
-  public void testWriteRejectsUnsupportedColumnType() {
+  @ParameterizedTest
+  @CsvSource({"price, 'DECIMAL(10,2)'", "flag, BOOLEAN", "day, DATE"})
+  public void testWriteRejectsUnsupportedColumnType(String column, String type) {
     StructType schema =
-        new StructType().add("id", IntegerType.INTEGER).add("price", new DecimalType(10, 2));
+        DeltaKernelUtils.getSchema(CliUtils.parseColumns("id INT, " + column + " " + type));
     assertThatThrownBy(() -> DeltaKernelWriteUtils.createVectorsFromSchema(schema, 1, 0))
         .isInstanceOf(UnsupportedOperationException.class)
-        .hasMessageContaining("price");
+        .hasMessage(
+            "table write does not support column "
+                + column
+                + " of type "
+                + schema.get(column).getDataType());
   }
 
   @Test
