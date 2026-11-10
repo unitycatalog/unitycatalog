@@ -237,8 +237,8 @@ Each record is one JSON line. Fields that don't apply to a record are left out:
 A record is written for every credential issued, including ones served from the credential cache.
 For local `file:` storage there is no credential to issue. A request for credentials, through the
 temporary-credentials endpoints, the Delta API or the Iceberg REST catalog, still writes a record of
-the access the server granted, without `expires_at`. The server's own reads, writes and cleanup of
-`file:` storage write no record.
+the access the server granted, without `expires_at`. The server's own reads and writes of `file:`
+storage, and its background cleanup, write no record.
 
 Permission changes are recorded only when authorization is on. A `GRANT` is recorded when it adds a grant.
 `REVOKE` and the two `CLEAR_*` actions are recorded once the server has run them without an error, whether or
