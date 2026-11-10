@@ -345,7 +345,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     assertThat(session.table(fullTableName).schema().apply("s").getComment().get())
         .isEqualTo("note");
     assertThatThrownBy(() -> sql("INSERT INTO %s VALUES (2, 'abcd')", fullTableName))
-        .hasStackTraceContaining("EXCEED_LIMIT_LENGTH");
+        .hasStackTraceContaining("char/varchar type length limitation");
   }
 
   @Test
