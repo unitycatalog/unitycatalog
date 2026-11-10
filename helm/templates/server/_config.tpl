@@ -75,9 +75,6 @@ hibernate.connection.url=jdbc:h2:file:./etc/db/h2db;DB_CLOSE_ON_EXIT=FALSE;DB_CL
 hibernate.connection.driver_class=org.postgresql.Driver
 hibernate.connection.url=jdbc:postgresql://{{ .Values.server.db.postgresqlConfig.host }}:{{ .Values.server.db.postgresqlConfig.port }}/{{ .Values.server.db.postgresqlConfig.dbName }}{{ $urlParams }}
 hibernate.connection.user={{ .Values.server.db.postgresqlConfig.username }}
-{{- if .Values.server.db.postgresqlConfig.passwordSecretName }}
-hibernate.connection.password=${DB_PASSWORD}
-{{- end }}
 {{- else if eq .Values.server.db.type "mysql" -}}
 
 {{- $urlParamsList := list }}
@@ -94,9 +91,6 @@ hibernate.connection.driver_class=com.mysql.cj.jdbc.Driver
 {{- /* Connector/J form-decodes the whole URL, the database name too, so urlquery is the right escape for it. */}}
 hibernate.connection.url=jdbc:mysql://{{ required "server.db.mysqlConfig.host is required" .Values.server.db.mysqlConfig.host }}:{{ .Values.server.db.mysqlConfig.port }}/{{ urlquery .Values.server.db.mysqlConfig.dbName }}{{ $urlParams }}
 hibernate.connection.user={{ .Values.server.db.mysqlConfig.username }}
-{{- if .Values.server.db.mysqlConfig.passwordSecretName }}
-hibernate.connection.password=${DB_PASSWORD}
-{{- end }}
 {{- else }}
 {{ fail "Unsupported database type. Supported types are: file, postgresql, mysql." }}
 {{- end }}
@@ -157,10 +151,21 @@ rootLogger.appenderRef.console.ref=Console
 {{- end }}
 
 {{/*
-Storage credentials for the server container (see "Secrets" in docs/server/configuration.md). Every
-part comes from here, not from the generated server.properties, which is written only at pod start.
+Secrets for the server container (see "Secrets" in docs/server/configuration.md): the database
+password and every part of each storage credential come from here, not from the generated properties
+files, which are written only at pod start.
 */}}
 {{- define "unitycatalog.server.secretEnv" -}}
+{{- $db := dict "postgresql" .Values.server.db.postgresqlConfig "mysql" .Values.server.db.mysqlConfig }}
+{{- with get $db .Values.server.db.type }}
+{{- if .passwordSecretName }}
+- name: UC_HIBERNATE_CONNECTION_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ .passwordSecretName | quote }}
+      key: {{ required "Password secret key is required" .passwordSecretKey | quote }}
+{{- end }}
+{{- end }}
 {{- range $index, $config := .Values.storage.credentials.s3 }}
 - name: UC_S3_ACCESSKEY_{{ $index }}
   valueFrom:

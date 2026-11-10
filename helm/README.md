@@ -629,7 +629,14 @@ root
 not set
 </pre>
 </td>
-			<td>Override Hibernate configuration for the server</td>
+			<td>Override Hibernate configuration for the server
+
+Do not put the password here: set `passwordSecretName` and `passwordSecretKey` of the
+database's config; with `db.type: postgresql` or `mysql` the chart passes the password to the
+server as an environment variable. A password in `hibernate.properties` is deprecated.
+If the template sets `hibernate.connection.password=${DB_PASSWORD}`, remove that line: the
+server reads the password from `UC_HIBERNATE_CONNECTION_PASSWORD`.
+</td>
 		</tr>
 		<tr>
 			<td>server.db.postgresqlConfig.dbName</td>
