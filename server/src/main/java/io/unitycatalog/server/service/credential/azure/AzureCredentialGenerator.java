@@ -71,7 +71,7 @@ public interface AzureCredentialGenerator {
 
       // azure supports only downscoping to a single location for now
       // azure wants only the path
-      String path = ctx.getLocations().get(0).toUri().getPath();
+      String path = ctx.getLocations().get(0).getStoragePath();
       // remove any preceding forward slashes or trailing forward slashes
       // hadoop ABFS strips trailing slash when preforming some operations so we need to vend
       // a cred for path without trailing slash

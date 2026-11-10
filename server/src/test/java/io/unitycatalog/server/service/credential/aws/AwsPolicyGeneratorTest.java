@@ -78,22 +78,21 @@ public class AwsPolicyGeneratorTest {
 
   @ParameterizedTest(name = "{index}: {0} becomes {1}")
   @CsvSource({
-    "%2A, ${*}",
-    "%2a, ${*}",
-    "%3F, ${?}",
-    "%3f, ${?}",
+    "%2A, %2A",
+    "%2a, %2a",
+    "%3F, %3F",
+    "%3f, %3f",
     "prefix*middle, prefix${*}middle",
-    "prefix%3Fmiddle, prefix${?}middle",
-    "%24%7Baws:username%7D, ${$}{aws:username}",
-    "$%7B*%7D, ${$}{${*}}"
+    "prefix%3Fmiddle, prefix%3Fmiddle",
+    "%24%7Baws:username%7D, %24%7Baws:username%7D",
+    "$%7B*%7D, ${$}%7B${*}%7D"
   })
-  public void testPolicyEscapesIamSpecialCharacters(String encodedPath, String expectedPath)
+  public void testPolicyEscapesIamSpecialCharacters(String path, String expectedPath)
       throws Exception {
     String bucket = "victim-bucket";
     String policy =
         AwsPolicyGenerator.generatePolicy(
-            Set.of(UPDATE),
-            List.of(NormalizedURL.from("s3://%s/%s".formatted(bucket, encodedPath))));
+            Set.of(UPDATE), List.of(NormalizedURL.from("s3://%s/%s".formatted(bucket, path))));
 
     JsonNode node = JSON_MAPPER.readTree(policy);
     assertThat(node.get("Statement").get(0).get("Resource"))

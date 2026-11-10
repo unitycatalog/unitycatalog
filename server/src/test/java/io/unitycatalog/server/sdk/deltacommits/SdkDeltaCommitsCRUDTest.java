@@ -1637,6 +1637,45 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     }
   }
 
+  /**
+   * Delta sends {@code table_uri} URI-encoded, so a commit to a table whose literal location has a
+   * space, or a literal {@code %20}, is accepted when it carries the encoded form.
+   */
+  @Test
+  public void testCommitWithEncodedTableUri() throws Exception {
+    String[] folders = {"team reports", "team%20reports"};
+    for (int i = 0; i < folders.length; i++) {
+      String catalog = "encoded_uri_catalog_" + i;
+      catalogOperations.createCatalog(
+          new io.unitycatalog.client.model.CreateCatalog()
+              .name(catalog)
+              .storageRoot("s3://test-bucket0/" + folders[i]));
+      schemaOperations.createSchema(
+          new io.unitycatalog.client.model.CreateSchema()
+              .name(TestUtils.SCHEMA_NAME)
+              .catalogName(catalog));
+      TableInfo table =
+          tableOperations.createTable(
+              new io.unitycatalog.client.model.CreateTable()
+                  .name(TestUtils.TABLE_NAME)
+                  .catalogName(catalog)
+                  .schemaName(TestUtils.SCHEMA_NAME)
+                  .columns(COLUMNS)
+                  .properties(TestUtils.PROPERTIES)
+                  .tableType(TableType.MANAGED)
+                  .dataSourceFormat(io.unitycatalog.client.model.DataSourceFormat.DELTA));
+      assertThat(table.getStorageLocation()).startsWith("s3://test-bucket0/" + folders[i] + "/");
+      String encoded = new org.apache.hadoop.fs.Path(table.getStorageLocation()).toUri().toString();
+
+      deltaCommitsApi.commit(createCommitObject(table.getTableId(), 1L, encoded));
+
+      DeltaGetCommitsResponse response =
+          deltaCommitsApi.getCommits(
+              new DeltaGetCommits().tableId(table.getTableId()).tableUri(encoded).startVersion(0L));
+      assertThat(response.getLatestTableVersion()).isEqualTo(1L);
+    }
+  }
+
   private static void setMetadataLocation(
       SessionFactory sessionFactory, UUID tableId, String location) {
     try (Session session = sessionFactory.openSession()) {

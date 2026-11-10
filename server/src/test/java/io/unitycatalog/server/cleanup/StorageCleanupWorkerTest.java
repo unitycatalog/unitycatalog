@@ -333,7 +333,7 @@ class StorageCleanupWorkerTest {
     setClaim(ManagedResourceType.TABLE, LOCATION + suffix);
     assertThat(worker.runOnce()).isTrue();
     verifyNoInteractions(fileOperations);
-    verifyFailure("Storage cleanup failed: IllegalArgumentException");
+    verifyFailure("Storage cleanup failed: BaseException");
   }
 
   @Test

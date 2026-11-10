@@ -16,15 +16,23 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator;
 import io.unitycatalog.server.service.credential.gcp.TestingCredentialGenerator;
 import io.unitycatalog.server.utils.LocalMappingFileOperations;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import io.unitycatalog.spark.utils.OptionsUtil;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
@@ -320,5 +328,42 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     } catch (Exception e) {
       // Ignore
     }
+  }
+
+  /**
+   * Checks that UC's stored location for a Delta table names the directory the client actually
+   * wrote (the only directory under {@code searchRoot} holding a {@code _delta_log}), and on S3
+   * that the credential scope UC builds from it covers that directory. A fake bucket location
+   * {@code s3://<bucket>/<abs path>} stands for the local {@code /<abs path>} (see {@link FakeS3});
+   * a {@code file:} location is a URI.
+   */
+  protected static void assertStoredLocationIsWrittenDirectory(String stored, Path searchRoot)
+      throws IOException {
+    Path written;
+    try (Stream<Path> paths = Files.walk(searchRoot)) {
+      List<Path> logs = paths.filter(p -> p.endsWith("_delta_log")).collect(Collectors.toList());
+      assertThat(logs).as("Delta logs under %s", searchRoot).hasSize(1);
+      written = logs.get(0).getParent().toAbsolutePath();
+    }
+    if (stored.startsWith("file:")) {
+      assertThat(Path.of(java.net.URI.create(stored)))
+          .as("stored location %s", stored)
+          .isEqualTo(written);
+      return;
+    }
+    String bucket = stored.substring(0, stored.indexOf('/', "s3://".length()));
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(CredentialContext.Privilege.SELECT),
+            List.of(NormalizedURL.from(stored)),
+            null,
+            null);
+    org.assertj.core.api.SoftAssertions softly = new org.assertj.core.api.SoftAssertions();
+    softly
+        .assertThat(policy)
+        .as("credential scope for stored location %s covers %s", stored, written)
+        .contains(bucket.replace("s3://", "arn:aws:s3:::") + written + "/*");
+    softly.assertThat(stored).as("stored location").isEqualTo(bucket + written);
+    softly.assertAll();
   }
 }

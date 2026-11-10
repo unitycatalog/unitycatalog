@@ -2,15 +2,19 @@ package io.unitycatalog.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static io.unitycatalog.spark.DeltaVersionUtils.MIN_DELTA_VERSION_FOR_UC_DELTA_API;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -22,6 +26,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * This test suite exercise all tests in BaseTableReadWriteTest plus extra tests that are dedicated
@@ -464,5 +469,44 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     assertThat(options.getCloudScheme()).isEqualTo(managedStorageCloudScheme());
     sql(options.createManagedTableSql());
     return options.fullTableName();
+  }
+
+  /**
+   * A managed table under a schema storage root whose folder has a space or a literal {@code %}:
+   * Delta writes, commits and reads it through UC, and UC's stored location and credential scope
+   * name the folder Delta wrote.
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {"reports", "team reports", "team%20reports"})
+  public void testManagedTableUnderSchemaRootFolder(String folder) throws Exception {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    Path root = testDirectoryRoot.resolve(folder);
+    // A file: root is a URI; a cloud root is the literal path.
+    String storageRoot =
+        "file".equals(managedStorageCloudScheme())
+            ? root.toUri().toString()
+            : getManagedStorageCloudPath(root);
+    new SdkSchemaOperations(createApiClient(serverConfig))
+        .createSchema(
+            new CreateSchema()
+                .name("folder_schema")
+                .catalogName(CATALOG_NAME)
+                .storageRoot(storageRoot));
+    String table = CATALOG_NAME + ".folder_schema.t";
+    sql("CREATE TABLE %s (i INT, s STRING) USING delta", table);
+    sql("INSERT INTO %s VALUES (1, 'a')", table);
+    sql("INSERT INTO %s VALUES (2, 'b')", table);
+    assertThat(sql("SELECT i FROM %s ORDER BY i", table))
+        .extracting(row -> row.getInt(0))
+        .containsExactly(1, 2);
+    String stored = tableOperations.getTable(table).getStorageLocation();
+    assertStoredLocationIsWrittenDirectory(stored, testDirectoryRoot);
+    assertThat(Path.of(storedLocalPath(stored))).startsWith(root);
+  }
+
+  private static String storedLocalPath(String stored) {
+    return stored.startsWith("file:")
+        ? Path.of(java.net.URI.create(stored)).toString()
+        : stored.substring(stored.indexOf('/', "s3://".length()));
   }
 }
