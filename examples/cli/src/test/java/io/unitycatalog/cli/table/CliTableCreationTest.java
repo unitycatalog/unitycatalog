@@ -8,12 +8,18 @@ import static io.unitycatalog.server.utils.TestUtils.TABLE_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.fail;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.delta.kernel.types.DecimalType;
+import io.delta.kernel.types.StructType;
 import io.unitycatalog.cli.catalog.CliCatalogOperations;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
 import io.unitycatalog.cli.schema.CliSchemaOperations;
 import io.unitycatalog.cli.utils.CliException;
+import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.model.ColumnInfo;
@@ -118,6 +124,72 @@ public class CliTableCreationTest extends BaseServerTest {
     assertThat(props).containsEntry("delta.minReaderVersion", "3");
     assertThat(props).containsEntry("delta.minWriterVersion", "7");
     assertThat(props).containsEntry("delta.lastUpdateVersion", "0");
+  }
+
+  @Test
+  public void testParseDecimalColumns() {
+    List<ColumnInfo> columns = CliUtils.parseColumns("price DECIMAL(12, 3), amount DECIMAL");
+    assertThat(columns)
+        .extracting(
+            ColumnInfo::getName,
+            ColumnInfo::getTypeText,
+            ColumnInfo::getTypePrecision,
+            ColumnInfo::getTypeScale)
+        .containsExactly(
+            tuple("price", "decimal(12,3)", 12, 3), tuple("amount", "decimal(10,0)", 10, 0));
+    assertThat(columns.get(0).getTypeJson()).contains("\"type\":\"decimal(12,3)\"");
+    assertThat(DeltaKernelUtils.getSchema(columns))
+        .isEqualTo(
+            new StructType()
+                .add("price", new DecimalType(12, 3))
+                .add("amount", new DecimalType(10, 0)));
+  }
+
+  @Test
+  public void testCreateTableWithDecimalColumns() throws IOException, ApiException {
+    Path tableDir = testDirectoryRoot.resolve("table");
+    List<ColumnInfo> columns =
+        List.of(
+            new ColumnInfo()
+                .name("price")
+                .typeName(ColumnTypeName.DECIMAL)
+                .typePrecision(10)
+                .typeScale(2),
+            new ColumnInfo().name("amount").typeName(ColumnTypeName.DECIMAL));
+    tableOperations.createTable(
+        new CreateTable()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name(TABLE_NAME)
+            .tableType(TableType.EXTERNAL)
+            .storageLocation(tableDir.toUri().toString())
+            .columns(columns));
+
+    List<ColumnInfo> created = tableOperations.getTable(TABLE_FULL_NAME).getColumns();
+    assertThat(created)
+        .extracting(
+            ColumnInfo::getName,
+            ColumnInfo::getTypeText,
+            ColumnInfo::getTypePrecision,
+            ColumnInfo::getTypeScale)
+        .containsExactly(
+            tuple("price", "decimal(10,2)", 10, 2), tuple("amount", "decimal(10,0)", 10, 0));
+    assertThat(created.get(0).getTypeJson()).contains("\"type\":\"decimal(10,2)\"");
+
+    ObjectMapper mapper = new ObjectMapper();
+    JsonNode metaData = null;
+    for (String line :
+        Files.readAllLines(tableDir.resolve("_delta_log").resolve("00000000000000000000.json"))) {
+      JsonNode action = mapper.readTree(line);
+      if (action.has("metaData")) {
+        metaData = action.get("metaData");
+      }
+    }
+    assertThat(metaData).isNotNull();
+    JsonNode fields = mapper.readTree(metaData.get("schemaString").asText()).get("fields");
+    assertThat(fields)
+        .extracting(field -> field.get("name").asText(), field -> field.get("type").asText())
+        .containsExactly(tuple("price", "decimal(10,2)"), tuple("amount", "decimal(10,0)"));
   }
 
   @Test

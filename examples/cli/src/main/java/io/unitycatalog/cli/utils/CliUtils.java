@@ -737,14 +737,15 @@ public class CliUtils {
 
   private static String setPrecisionAndScale(
       ColumnInfo columnInfo, String typeText, String params) {
-    if (params != null) {
-      String[] paramArray = params.split(",");
-      if (typeText.equals("DECIMAL") && paramArray.length == 2) {
-        columnInfo.setTypePrecision(Integer.valueOf(paramArray[0].trim()));
-        columnInfo.setTypeScale(Integer.valueOf(paramArray[1].trim()));
-        return "(" + paramArray[0].trim() + "," + paramArray[1].trim() + ")";
-      }
-    } else {
+    if (typeText.equals("DECIMAL")) {
+      String[] paramArray = params == null ? new String[0] : params.split(",");
+      int precision = paramArray.length > 0 ? Integer.parseInt(paramArray[0].trim()) : 10;
+      int scale = paramArray.length > 1 ? Integer.parseInt(paramArray[1].trim()) : 0;
+      columnInfo.setTypePrecision(precision);
+      columnInfo.setTypeScale(scale);
+      return "(" + precision + "," + scale + ")";
+    }
+    if (params == null) {
       columnInfo.setTypePrecision(0);
       columnInfo.setTypeScale(0);
     }
@@ -773,15 +774,18 @@ public class CliUtils {
         String typeName = matcher.group(2).toUpperCase(); // e.g., DECIMAL, VARCHAR, INT
         String params = matcher.group(4); // e.g., 10,2 or 255
 
+        String precisionAndScale = setPrecisionAndScale(columnInfo, typeName, params);
+
         columnInfo.setName(name);
-        columnInfo.setTypeText(typeNameVsTypeText.getOrDefault(typeName, typeName.toLowerCase()));
+        columnInfo.setTypeText(
+            typeNameVsTypeText.getOrDefault(typeName, typeName.toLowerCase()) + precisionAndScale);
         columnInfo.setTypeName(ColumnTypeName.valueOf(typeName));
         columnInfo.setTypeJson(
             String.format(
                 "{\"name\":\"%s\",\"type\":\"%s\",\"nullable\":%s,\"metadata\":{}}",
                 name,
                 typeNameVsJsonText.getOrDefault(typeName, typeName.toLowerCase(Locale.ROOT))
-                    + setPrecisionAndScale(columnInfo, typeName, params),
+                    + precisionAndScale,
                 "true"));
         columnInfo.setPosition(position++);
         columns.add(columnInfo);
