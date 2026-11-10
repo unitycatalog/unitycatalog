@@ -1,0 +1,2 @@
+- column uc_function_params.type_json type=varchar size=255 nullable=YES default=null
++ column uc_function_params.type_json type=text size=2147483647 nullable=YES default=null

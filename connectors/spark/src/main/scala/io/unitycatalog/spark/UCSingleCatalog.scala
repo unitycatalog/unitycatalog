@@ -1302,6 +1302,7 @@ private[spark] class UCProxy(
     metadata(SchemaInfo.JSON_PROPERTY_CREATED_AT) = if (schema.getCreatedAt != null) {schema.getCreatedAt.toString} else {"null"}
     metadata(SchemaInfo.JSON_PROPERTY_UPDATED_AT) = if (schema.getUpdatedAt != null) {schema.getUpdatedAt.toString} else {"null"}
     metadata(SchemaInfo.JSON_PROPERTY_SCHEMA_ID) = schema.getSchemaId
+    Option(schema.getStorageRoot).foreach(metadata(SupportsNamespaces.PROP_LOCATION) = _)
     metadata.asJava
   }
 
@@ -1310,7 +1311,11 @@ private[spark] class UCProxy(
     val createSchema = new CreateSchema()
     createSchema.setCatalogName(this.name)
     createSchema.setName(namespace.head)
-    createSchema.setProperties(metadata)
+    // COMMENT and LOCATION are schema fields in UC, not properties
+    val properties = new util.HashMap[String, String](metadata)
+    Option(properties.remove(SupportsNamespaces.PROP_COMMENT)).foreach(createSchema.setComment)
+    Option(properties.remove(SupportsNamespaces.PROP_LOCATION)).foreach(createSchema.setStorageRoot)
+    createSchema.setProperties(properties)
     // Spark 4.2 removed the namespaceExists() pre-check from CreateNamespaceExec. It relies on the
     // catalog throwing NamespaceAlreadyExistsException for IF NOT EXISTS handling. On Spark 4.0/4.1
     // the pre-check prevents this path.
