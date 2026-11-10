@@ -10,6 +10,7 @@ import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -23,6 +24,7 @@ import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.ListFunctionsResponse;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.model.UpdateFunction;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.FunctionRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
@@ -106,6 +108,18 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
             SecurableType.FUNCTION,
             functionRepository.getFunction(name),
             BrowseOnlyConverter::toBrowseOnly));
+  }
+
+  @Patch("/{name}")
+  @AuthorizeResourceKey(METASTORE)
+  @AuthorizeExpression(
+      "#authorize(#principal, #metastore, OWNER) || (" + AuthorizeExpressions.UPDATE_FUNCTION + ")")
+  public HttpResponse updateFunction(
+      @Param("name") @AuthorizeResourceKey(FUNCTION) String name, UpdateFunction updateFunction) {
+    validateOwnerTransfer(updateFunction.getOwner());
+    FunctionInfo result = functionRepository.updateFunction(name, updateFunction);
+    reloadAfterOwnerChange(updateFunction.getOwner());
+    return HttpResponse.ofJson(result);
   }
 
   @Delete("/{name}")

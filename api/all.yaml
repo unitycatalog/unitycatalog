@@ -428,6 +428,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TableInfo'
+    patch:
+      tags:
+        - Tables
+      operationId: updateTable
+      summary: Update a table owner
+      description: Transfers ownership of a table or view to an existing user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTable'
+      responses:
+        '200':
+          description: The table owner was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableInfo'
     delete:
       tags:
         - Tables
@@ -811,6 +830,25 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/FunctionInfo"
+    patch:
+      tags:
+        - Functions
+      operationId: updateFunction
+      summary: Update a function owner
+      description: Transfers ownership of a function to an existing user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFunction'
+      responses:
+        '200':
+          description: The function owner was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunctionInfo'
     delete:
       tags:
         - Functions
@@ -1600,6 +1638,9 @@ components:
     UpdateVolumeRequestContent:
       type: object
       properties:
+        owner:
+          description: Username of the new owner. The user must already exist.
+          type: string
         comment:
           type: string
           maxLength: 65536
@@ -1971,6 +2012,9 @@ components:
     UpdateSchema:
       type: object
       properties:
+        owner:
+          description: Username of the new owner. The user must already exist.
+          type: string
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2057,6 +2101,9 @@ components:
     UpdateCatalog:
       type: object
       properties:
+        owner:
+          description: Username of the new owner. The user must already exist.
+          type: string
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2150,6 +2197,22 @@ components:
           "$ref": "#/components/schemas/CreateFunction"
       required:
         - function_info
+    UpdateFunction:
+      type: object
+      properties:
+        owner:
+          description: Username of the new owner. Only a metastore admin can transfer a function to another user.
+          type: string
+      required:
+        - owner
+    UpdateTable:
+      type: object
+      properties:
+        owner:
+          description: Username of the new owner. Only a metastore admin can transfer a view to another user.
+          type: string
+      required:
+        - owner
     FunctionDependency:
       description: A function that is dependent on a SQL object.
       type: object
@@ -2621,6 +2684,9 @@ components:
     UpdateRegisteredModel:
       type: object
       properties:
+        owner:
+          description: Username of the new owner. Only a metastore admin can transfer a model to another user.
+          type: string
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2927,7 +2993,7 @@ components:
           description: Comment associated with the credential.
           type: string
         owner:
-          description: Username of current owner of credential.
+          description: Username of the new owner. The user must already exist.
           type: string
         aws_iam_role:
           $ref: '#/components/schemas/AwsIamRoleRequest'
@@ -3047,7 +3113,7 @@ components:
           description: User-provided free-form text description.
           type: string
         owner:
-          description: The owner of the external location.
+          description: Username of the new owner. The user must already exist.
           type: string
         new_name:
           description: New name for the external location.
