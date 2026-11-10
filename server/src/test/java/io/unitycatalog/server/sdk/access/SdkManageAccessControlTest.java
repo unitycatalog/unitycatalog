@@ -32,6 +32,7 @@ import io.unitycatalog.client.api.VolumesApi;
 import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.model.DeltaRenameTableRequest;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
+import io.unitycatalog.client.model.CatalogInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateCredentialRequest;
@@ -54,6 +55,7 @@ import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.PermissionsChange;
 import io.unitycatalog.client.model.PermissionsList;
 import io.unitycatalog.client.model.Privilege;
+import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableOperation;
@@ -154,12 +156,12 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
             new Target(
                 SecurableType.CATALOG,
                 CATALOG_NAME,
-                new CatalogsApi(adminApiClient).getCatalog(CATALOG_NAME).getId(),
+                new CatalogsApi(adminApiClient).getCatalog(CATALOG_NAME, false).getId(),
                 Privilege.USE_CATALOG),
             new Target(
                 SecurableType.SCHEMA,
                 SCHEMA_FULL_NAME,
-                new SchemasApi(adminApiClient).getSchema(SCHEMA_FULL_NAME).getSchemaId(),
+                new SchemasApi(adminApiClient).getSchema(SCHEMA_FULL_NAME, false).getSchemaId(),
                 Privilege.USE_SCHEMA),
             new Target(SecurableType.TABLE, TABLE_FULL_NAME, table.getTableId(), Privilege.SELECT),
             new Target(SecurableType.FUNCTION, FUNCTION, functionId, Privilege.EXECUTE),
@@ -168,7 +170,9 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
             new Target(
                 SecurableType.EXTERNAL_LOCATION,
                 LOCATION,
-                new ExternalLocationsApi(adminApiClient).getExternalLocation(LOCATION).getId(),
+                new ExternalLocationsApi(adminApiClient)
+                    .getExternalLocation(LOCATION, false)
+                    .getId(),
                 Privilege.READ_FILES),
             new Target(
                 SecurableType.CREDENTIAL,
@@ -229,7 +233,7 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
       if (target.type() == SecurableType.EXTERNAL_LOCATION) {
         assertThat(
                 new ExternalLocationsApi(manager)
-                    .listExternalLocations(null, null)
+                    .listExternalLocations(null, null, false)
                     .getExternalLocations())
             .extracting(location -> location.getName())
             .containsExactly(LOCATION);
@@ -287,10 +291,10 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
       assertThat(privilegesFor(managerGrants.get(target.type(), target.name(), null), REGULAR_1))
           .containsExactly(target.delegatedPrivilege());
     }
-    assertThat(new CatalogsApi(manager).listCatalogs(null, null).getCatalogs())
+    assertThat(new CatalogsApi(manager).listCatalogs(null, null, false).getCatalogs())
         .extracting(catalog -> catalog.getName())
         .containsExactly(CATALOG_NAME);
-    assertThat(new SchemasApi(manager).listSchemas(CATALOG_NAME, null, null).getSchemas())
+    assertThat(new SchemasApi(manager).listSchemas(CATALOG_NAME, null, null, false).getSchemas())
         .extracting(schema -> schema.getName())
         .containsExactly(SCHEMA_NAME);
     assertThat(listAllFunctions(new FunctionsApi(manager), CATALOG_NAME, SCHEMA_NAME))
@@ -379,18 +383,64 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
             CATALOG_NAME,
             new UpdateCatalog().comment("managed catalog").properties(Map.of("team", "catalog")));
 
-    assertThat(new CatalogsApi(adminApiClient).getCatalog(CATALOG_NAME).getProperties())
+    assertThat(new CatalogsApi(adminApiClient).getCatalog(CATALOG_NAME, false).getProperties())
         .containsEntry("team", "catalog");
-    assertThat(new SchemasApi(adminApiClient).getSchema(SCHEMA_FULL_NAME).getProperties())
+    assertThat(new SchemasApi(adminApiClient).getSchema(SCHEMA_FULL_NAME, false).getProperties())
         .containsEntry("team", "schema");
-    assertThat(new VolumesApi(adminApiClient).getVolume(VOLUME).getComment())
+    assertThat(new VolumesApi(adminApiClient).getVolume(VOLUME, false).getComment())
         .isEqualTo("managed volume");
-    assertThat(new RegisteredModelsApi(adminApiClient).getRegisteredModel(MODEL).getComment())
+    assertThat(
+            new RegisteredModelsApi(adminApiClient).getRegisteredModel(MODEL, false).getComment())
         .isEqualTo("managed model");
-    assertThat(new ExternalLocationsApi(adminApiClient).getExternalLocation(LOCATION).getComment())
+    assertThat(
+            new ExternalLocationsApi(adminApiClient)
+                .getExternalLocation(LOCATION, false)
+                .getComment())
         .isEqualTo("managed location");
     assertThat(new CredentialsApi(adminApiClient).getCredential(CREDENTIAL).getComment())
         .isEqualTo("managed credential");
+  }
+
+  @Test
+  @SneakyThrows
+  void ownersKeepTheirRenameAccess() {
+    CatalogsApi catalogs = new CatalogsApi(manager);
+    grantPermissions(
+        PRINCIPAL_1, SecurableType.METASTORE, METASTORE_NAME, Privileges.CREATE_CATALOG);
+    CatalogInfo catalog = catalogs.createCatalog(new CreateCatalog().name("owned_catalog"));
+    grantsApi.update(
+        SecurableType.METASTORE,
+        METASTORE_NAME,
+        change(PRINCIPAL_1, List.of(), List.of(Privilege.CREATE_CATALOG)));
+    catalogs.updateCatalog("owned_catalog", new UpdateCatalog().newName("renamed_owned_catalog"));
+    assertThat(new CatalogsApi(adminApiClient).getCatalog("renamed_owned_catalog", false).getId())
+        .isEqualTo(catalog.getId());
+
+    grantPermissions(
+        PRINCIPAL_1,
+        SecurableType.CATALOG,
+        CATALOG_NAME,
+        Privileges.USE_CATALOG,
+        Privileges.CREATE_SCHEMA);
+    SchemasApi schemas = new SchemasApi(manager);
+    SchemaInfo schema =
+        schemas.createSchema(new CreateSchema().name("owned_schema").catalogName(CATALOG_NAME));
+    grantsApi.update(
+        SecurableType.CATALOG,
+        CATALOG_NAME,
+        change(PRINCIPAL_1, List.of(), List.of(Privilege.USE_CATALOG, Privilege.CREATE_SCHEMA)));
+    String fullName = CATALOG_NAME + ".owned_schema";
+    UpdateSchema rename = new UpdateSchema().newName("renamed_owned_schema");
+    assertPermissionDenied(() -> schemas.updateSchema(fullName, rename));
+    assertThat(new SchemasApi(adminApiClient).getSchema(fullName, false).getSchemaId())
+        .isEqualTo(schema.getSchemaId());
+    grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, CATALOG_NAME, Privileges.USE_CATALOG);
+    schemas.updateSchema(fullName, rename);
+    assertThat(
+            new SchemasApi(adminApiClient)
+                .getSchema(CATALOG_NAME + ".renamed_owned_schema", false)
+                .getSchemaId())
+        .isEqualTo(schema.getSchemaId());
   }
 
   @Test
@@ -442,7 +492,7 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
         .updateRegisteredModel(MODEL, new UpdateRegisteredModel().newName("renamed_model"));
     assertThat(
             new RegisteredModelsApi(adminApiClient)
-                .getRegisteredModel(SCHEMA_FULL_NAME + ".renamed_model")
+                .getRegisteredModel(SCHEMA_FULL_NAME + ".renamed_model", false)
                 .getName())
         .isEqualTo("renamed_model");
     grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, CATALOG_NAME, Privileges.CREATE_SCHEMA);
@@ -452,7 +502,7 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
         PRINCIPAL_1, SecurableType.METASTORE, METASTORE_NAME, Privileges.CREATE_CATALOG);
     new CatalogsApi(manager)
         .updateCatalog(CATALOG_NAME, new UpdateCatalog().newName("renamed_catalog"));
-    assertThat(new CatalogsApi(adminApiClient).getCatalog("renamed_catalog").getName())
+    assertThat(new CatalogsApi(adminApiClient).getCatalog("renamed_catalog", false).getName())
         .isEqualTo("renamed_catalog");
 
     new CredentialsApi(adminApiClient)
@@ -480,7 +530,7 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
             LOCATION, new UpdateExternalLocation().credentialName("replacement_credential"));
     assertThat(
             new ExternalLocationsApi(adminApiClient)
-                .getExternalLocation(LOCATION)
+                .getExternalLocation(LOCATION, false)
                 .getCredentialName())
         .isEqualTo("replacement_credential");
   }
@@ -744,22 +794,30 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
 
   private void readMetadata(SecurableType type, String name) throws Exception {
     switch (type) {
-      case CATALOG -> assertThat(new CatalogsApi(manager).getCatalog(name).getOwner()).isNotBlank();
-      case SCHEMA -> assertThat(new SchemasApi(manager).getSchema(name).getOwner()).isNotBlank();
+      case CATALOG ->
+          assertThat(new CatalogsApi(manager).getCatalog(name, false).getOwner()).isNotBlank();
+      case SCHEMA ->
+          assertThat(new SchemasApi(manager).getSchema(name, false).getOwner()).isNotBlank();
       case TABLE ->
           assertThat(getTable(new TablesApi(manager), name).getColumns())
               .hasSize(TEST_COLUMNS.size());
       case FUNCTION ->
-          assertThat(new FunctionsApi(manager).getFunction(name).getRoutineDefinition())
+          assertThat(new FunctionsApi(manager).getFunction(name, false).getRoutineDefinition())
               .isEqualTo("return 1");
       case VOLUME ->
-          assertThat(new VolumesApi(manager).getVolume(name).getStorageLocation()).isNotBlank();
+          assertThat(new VolumesApi(manager).getVolume(name, false).getStorageLocation())
+              .isNotBlank();
       case REGISTERED_MODEL ->
-          assertThat(new RegisteredModelsApi(manager).getRegisteredModel(name).getStorageLocation())
+          assertThat(
+                  new RegisteredModelsApi(manager)
+                      .getRegisteredModel(name, false)
+                      .getStorageLocation())
               .isNotBlank();
       case EXTERNAL_LOCATION ->
           assertThat(
-                  new ExternalLocationsApi(manager).getExternalLocation(name).getCredentialName())
+                  new ExternalLocationsApi(manager)
+                      .getExternalLocation(name, false)
+                      .getCredentialName())
               .isEqualTo(CREDENTIAL);
       case CREDENTIAL ->
           assertThat(new CredentialsApi(manager).getCredential(name).getAwsIamRole().getRoleArn())

@@ -115,7 +115,7 @@ public final class AuthorizeExpressions {
    * OWNER/MANAGE. Metastore admin alone is intentionally not sufficient for ordinary metadata
    * updates or deletion. Shared by the UC REST {@code updateSchema}/{@code deleteSchema} and the
    * Iceberg REST {@code updateNamespaceProperties}/{@code dropNamespace} endpoints (updating and
-   * dropping a schema require the same privilege).
+   * dropping a schema require the same privilege). Schema grant updates also reuse this policy.
    */
   public static final String UPDATE_SCHEMA =
       """
@@ -195,7 +195,8 @@ public final class AuthorizeExpressions {
   /**
    * Authorization policy for deleting a table, shared by the UC REST, UC Delta API, and Iceberg
    * REST delete endpoints. Metastore admin alone is intentionally not sufficient -- the caller must
-   * hold OWNER/MANAGE in the catalog / schema / table hierarchy, with usage above that scope.
+   * hold OWNER/MANAGE in the catalog / schema / table hierarchy, with usage above that scope. Table
+   * grant updates also reuse this policy.
    */
   public static final String DELETE_TABLE =
       """
@@ -207,7 +208,7 @@ public final class AuthorizeExpressions {
           #authorizeAny(#principal, #table, OWNER, MANAGE))
       """;
 
-  /** Function management, with usage grants required above the management scope. */
+  /** Function deletion and grant changes, with usage required above the management scope. */
   public static final String UPDATE_FUNCTION =
       """
       #authorizeAny(#principal, #catalog, OWNER, MANAGE) ||
@@ -218,7 +219,7 @@ public final class AuthorizeExpressions {
           #authorizeAny(#principal, #function, OWNER, MANAGE))
       """;
 
-  /** Volume management. File access still requires its own privileges. */
+  /** Volume metadata updates, deletion, and grant changes. File access has separate checks. */
   public static final String UPDATE_VOLUME =
       """
       #authorizeAny(#principal, #catalog, OWNER, MANAGE) ||
@@ -229,7 +230,10 @@ public final class AuthorizeExpressions {
           #authorizeAny(#principal, #volume, OWNER, MANAGE))
       """;
 
-  /** Model metadata management. Publication and file access have separate checks. */
+  /**
+   * Model metadata updates, deletion, and grant changes. Publication and file access have separate
+   * checks.
+   */
   public static final String UPDATE_REGISTERED_MODEL =
       """
       #authorizeAny(#principal, #catalog, OWNER, MANAGE) ||

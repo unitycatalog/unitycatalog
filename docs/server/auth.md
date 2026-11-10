@@ -175,8 +175,8 @@ The setting covers:
 - Table metadata: `MODIFY` no longer substitutes for `SELECT` for table details, listings,
   and existence checks across the UC REST, Delta, and Iceberg REST APIs. Existing usage and
   ownership rules still apply.
-- Volume rename: Also require permission to create volumes in the containing schema.
-- Model rename: Also require permission to create models in the containing schema.
+- Volume rename by an owner: Also require permission to create volumes in the containing schema.
+- Model rename by an owner: Also require permission to create models in the containing schema.
 
 The access checks apply only when `server.authorization=enable`.
 Grant validation also applies when authorization is disabled.
@@ -262,8 +262,11 @@ Catalog and schema grants also cover their children. Schema grants require `USE 
 Grants on objects within a schema require both `USE CATALOG` and `USE SCHEMA`.
 Catalogs, external locations, and storage credentials require no usage grants.
 
-Existing `MANAGE` grants become active after this upgrade. Review them and remove
-any unwanted grants before upgrading.
+`MANAGE` grants are validated even when `server.authorization.strict-privilege-checks=false`.
+The metastore does not support `MANAGE`.
+
+Renaming a catalog, schema, table, volume, or registered model through `MANAGE` also requires
+the matching creation permission. This applies even when strict privilege checks are disabled.
 
 ### Discover objects with BROWSE
 

@@ -128,7 +128,7 @@ No authorization required
 
 Update a credential
 
-    Updates a credential.
+    Updates a credential. The caller must be a metastore admin, the credential owner, or have MANAGE on the credential.
 
 ### Parameters
 

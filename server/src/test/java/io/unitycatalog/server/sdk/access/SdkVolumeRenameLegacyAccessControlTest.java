@@ -118,7 +118,9 @@ public class SdkVolumeRenameLegacyAccessControlTest extends SdkAccessControlBase
       grantPermissions(
           principal, SecurableType.SCHEMA, TestUtils.SCHEMA_FULL_NAME, Privileges.CREATE_VOLUME);
       callerApi.updateVolume(fullName, rename);
-      VolumeInfo renamed = observerApi.getVolume(TestUtils.SCHEMA_FULL_NAME + ".renamed");
+      VolumeInfo renamed =
+          observerApi.getVolume(
+              TestUtils.SCHEMA_FULL_NAME + ".renamed", /* includeBrowse= */ false);
       assertThat(renamed.getVolumeId()).isEqualTo(original.getVolumeId());
       assertThat(renamed.getOwner()).isEqualTo(original.getOwner());
     }
