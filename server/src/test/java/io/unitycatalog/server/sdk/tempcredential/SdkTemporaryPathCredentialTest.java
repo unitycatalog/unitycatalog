@@ -80,4 +80,17 @@ public class SdkTemporaryPathCredentialTest extends BaseCRUDTestWithMockCredenti
         ErrorCode.FAILED_PRECONDITION,
         "S3 bucket configuration not found");
   }
+
+  @Test
+  public void testPathCredentialsForLocationWithForceDeletedCredential() throws ApiException {
+    credentialsApi.deleteCredential(AWS_CREDENTIAL_NAME, true);
+    TestUtils.assertApiException(
+        () ->
+            temporaryCredentialsApi.generateTemporaryPathCredentials(
+                new GenerateTemporaryPathCredential()
+                    .url(AWS_EXTERNAL_LOCATION_PATH + "/table1")
+                    .operation(PathOperation.PATH_READ)),
+        ErrorCode.NOT_FOUND,
+        "of external location '" + AWS_EXTERNAL_LOCATION_NAME + "'");
+  }
 }

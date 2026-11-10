@@ -333,8 +333,10 @@ public class ExternalLocationUtils {
     CredentialDAO credentialDAO = session.get(CredentialDAO.class, credentialId);
     if (credentialDAO == null) {
       throw new BaseException(
-          ErrorCode.INTERNAL,
-          String.format("Credential %s for '%s' not found.", credentialId, url));
+          ErrorCode.NOT_FOUND,
+          String.format(
+              "Credential %s of external location '%s' for '%s' not found.",
+              credentialId, externalLocationDAOs.get(0).getName(), url));
     }
     return Optional.of(credentialDAO);
   }
