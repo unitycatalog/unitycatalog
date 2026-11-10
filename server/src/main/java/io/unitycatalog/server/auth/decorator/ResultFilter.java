@@ -220,9 +220,13 @@ public class ResultFilter {
         && !preResolvedIds.containsKey(CATALOG)
         && !preResolvedIds.containsKey(SCHEMA)) {
       RegisteredModelInfo model = (RegisteredModelInfo) item;
-      combined.putAll(
-          keyMapper.mapResourceKeys(
-              Map.of(CATALOG, model.getCatalogName(), SCHEMA, model.getSchemaName())));
+      try {
+        combined.putAll(
+            keyMapper.mapResourceKeys(
+                Map.of(CATALOG, model.getCatalogName(), SCHEMA, model.getSchemaName())));
+      } catch (BaseException e) {
+        throw new BaseException(e.getErrorCode(), "Failed to authorize list items", e);
+      }
     }
     // For everything else, the catalog and schema IDs are already included in preResolvedIds
     // if needed.

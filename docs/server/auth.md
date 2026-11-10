@@ -128,19 +128,25 @@ OPA must return a boolean `result.allow`:
 
 An explicit `false` follows UC's normal deny or list-filter behavior. Transport errors, timeouts,
 HTTP errors, and missing or invalid decisions fail the UC request with HTTP 503. UC never falls
-back to native grants. UC reuses repeated decisions within one operation, including checks on
-parents shared by list items. Decisions are not reused across operations. The response timeout
-applies to each OPA call. UC also cancels pending OPA HTTP calls when the UC request times out
-or is cancelled. A large list can still require calls for every item.
+back to native grants. UC reuses identical checks within one expression evaluation or across list
+items evaluated with the same expression. Full-access and BROWSE expressions have separate caches.
+Other checks in the same request can repeat OPA calls. Decisions are not reused across requests.
+The response timeout applies to each OPA call and is an ISO-8601 duration of at least 1 ms
+(`PT0.001S`). UC also cancels pending OPA HTTP calls when the UC request times out or is cancelled.
+A large list can still require calls for every item.
 
-If the user, resource, or a parent is missing from UC, the privilege check is denied.
-Failures loading UC metadata are reported separately from OPA communication failures.
+If the user, resource, or a parent is missing while building OPA input, the privilege check is
+denied. Other UC metadata failures keep their UC error code, usually HTTP 500.
 
 **Native permission APIs remain available.** Grant/revoke/list APIs still manage UC's native
 records, but those grants do not affect OPA decisions. Resource creation and deletion also
 maintain native owner and hierarchy records. Switching back to Casbin uses those records,
-including changes made while OPA was selected. OPA's `OWNER` decisions control whether a caller
-can view other users' native grants.
+including changes made while OPA was selected. OPA's `OWNER` and `READ_METADATA` decisions,
+combined with UC's usage checks, control access to other users' native grants.
+
+SCIM also asks OPA whether the target user has `OWNER` on the metastore before deleting or
+deactivating that user. An allow decision prevents the change. Native ownership alone does not
+provide this protection in OPA mode; the policy must grant metastore `OWNER` to protected users.
 
 #### Try a policy
 

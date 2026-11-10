@@ -236,7 +236,8 @@ class ResultFilterTest {
             .id(UUID.randomUUID().toString())
             .catalogName("catalog")
             .schemaName("schema");
-    BaseException failure = new BaseException(ErrorCode.INTERNAL, "Failed to load model parents");
+    BaseException failure =
+        new BaseException(ErrorCode.INTERNAL, "Failed to load model parents: private-db-detail");
     RuntimeException unexpectedFailure =
         new IllegalStateException("Failed to open database session");
     when(keyMapper.mapResourceKeys(
@@ -253,7 +254,11 @@ class ResultFilterTest {
             keyMapper);
 
     assertThatThrownBy(() -> filter.filter(REGISTERED_MODEL, new ArrayList<>(List.of(model))))
-        .isSameAs(failure);
+        .isInstanceOf(BaseException.class)
+        .hasMessage("Failed to authorize list items")
+        .hasCause(failure)
+        .extracting(error -> ((BaseException) error).getErrorCode())
+        .isEqualTo(ErrorCode.INTERNAL);
 
     assertThatThrownBy(() -> filter.filter(REGISTERED_MODEL, new ArrayList<>(List.of(model))))
         .isInstanceOf(BaseException.class)
