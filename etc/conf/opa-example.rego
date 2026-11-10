@@ -1,3 +1,6 @@
+# Example for local testing with OPA 1.x.
+# The admin rule allows all privileges. Replace it before deployment.
+
 package uc.authz
 
 import rego.v1

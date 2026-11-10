@@ -224,7 +224,9 @@ class OpaAuthorizerTest {
   @ValueSource(ints = {301, 307, 403, 404, 500})
   void rejectsHttpErrorsAndDoesNotFollowRedirects(int responseStatus) {
     status = responseStatus;
-    assertThat(unavailableDecision()).hasRootCauseMessage("OPA returned HTTP " + responseStatus);
+    assertThat(unavailableDecision())
+        .hasMessage("OPA returned HTTP " + responseStatus)
+        .hasNoCause();
     assertThat(requests).hasSize(1);
   }
 
@@ -232,6 +234,7 @@ class OpaAuthorizerTest {
   void reportsConnectionFailures() {
     opa.stop(0);
     assertThat(unavailableDecision())
+        .hasMessage("Could not get an authorization decision from OPA")
         .hasCauseInstanceOf(java.util.concurrent.CompletionException.class);
     assertThat(requests).isEmpty();
   }
@@ -410,7 +413,6 @@ class OpaAuthorizerTest {
             () -> authorizer.authorize(principal, TABLE, table, SELECT), BaseException.class);
     assertThat(error).isNotNull();
     assertThat(error.getErrorCode()).isEqualTo(ErrorCode.UNAVAILABLE);
-    assertThat(error).hasMessage("Could not get an authorization decision from OPA");
     verifyNoInteractions(nativeAuthorizer);
     return error;
   }

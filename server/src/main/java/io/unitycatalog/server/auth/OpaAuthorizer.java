@@ -123,6 +123,8 @@ public class OpaAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
             ErrorCode.UNAVAILABLE, "OPA response must contain a boolean result.allow");
       }
       return allow.booleanValue();
+    } catch (BaseException e) {
+      throw e;
     } catch (Exception e) {
       throw new BaseException(
           ErrorCode.UNAVAILABLE, "Could not get an authorization decision from OPA", e);
