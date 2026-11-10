@@ -616,14 +616,17 @@ public class UCSingleCatalogStagingTableTest {
 
   private void mockExistingTableLookup(TablesApi tablesApi, TableInfo tableInfo) throws Exception {
     when(mockDelegate.name()).thenReturn("main");
-    when(tablesApi.getTable(eq("main.schema.table"), eq(false), eq(false))).thenReturn(tableInfo);
+    when(tablesApi.getTable(
+            eq("main.schema.table"), eq(false), eq(false), /* includeBrowse= */ eq(false)))
+        .thenReturn(tableInfo);
     setField(catalog, "tablesApi", tablesApi);
     setCatalogUri(catalog);
   }
 
   private void mockMissingTableLookup(TablesApi tablesApi) throws Exception {
     when(mockDelegate.name()).thenReturn("main");
-    when(tablesApi.getTable(eq("main.schema.table"), eq(false), eq(false)))
+    when(tablesApi.getTable(
+            eq("main.schema.table"), eq(false), eq(false), /* includeBrowse= */ eq(false)))
         .thenThrow(new ApiException(404, "not found"));
     setField(catalog, "tablesApi", tablesApi);
     setCatalogUri(catalog);

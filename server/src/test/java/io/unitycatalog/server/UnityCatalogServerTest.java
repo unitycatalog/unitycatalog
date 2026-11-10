@@ -14,6 +14,7 @@ import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerPortBindException;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.prometheus.PrometheusExpositionService;
 import io.unitycatalog.server.audit.CapturingAuditSink;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
@@ -33,9 +34,11 @@ import java.net.ServerSocket;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.ServiceLoader;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.core.util.ContextDataProvider;
 import org.junit.jupiter.api.Test;
 
@@ -134,6 +137,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
     Repositories repositories =
         new Repositories(hibernateConfigurator.getSessionFactory(), properties);
 
+    UnfilteredResponseService service = new UnfilteredResponseService();
     BlockingTaskExecutor blockingTaskExecutor =
         BlockingTaskExecutor.builder().numThreads(1).build();
     try {
@@ -145,7 +149,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
                   .observabilityService(
                       "/metrics",
                       PrometheusExpositionService.of(metrics.registry().getPrometheusRegistry()))
-                  .annotate("unfiltered", new UnfilteredResponseService())
+                  .annotate("unfiltered", service)
                   .withSecurityDecorators(
                       new UnityAccessDecorator(new AllowingAuthorizer(), repositories, properties),
                       (delegate, ctx, req) -> delegate.serve(ctx, req))
@@ -171,6 +175,13 @@ public class UnityCatalogServerTest extends BaseServerTest {
                     .filter(line -> line.startsWith("http_server_requests_total{"))
                     .toList())
             .hasSize(1);
+
+        for (String query : List.of("", "?include_browse=false")) {
+          var denied = sendRawGet(serverConfig, "/api/unfiltered/denied" + query);
+          assertThat(denied.statusCode()).isEqualTo(403);
+          TestUtils.assertHttpApiException(denied, ErrorCode.PERMISSION_DENIED, "Access denied.");
+        }
+        assertThat(service.deniedCalls.get()).isZero();
       }
     } finally {
       blockingTaskExecutor.shutdown();
@@ -178,9 +189,19 @@ public class UnityCatalogServerTest extends BaseServerTest {
   }
 
   public static class UnfilteredResponseService implements UnityCatalogRestService {
+    private final AtomicInteger deniedCalls = new AtomicInteger();
+
+    @Get("/denied")
+    @AuthorizeExpression("false")
+    @ResponseAuthorizeFilter(isList = false, browse = "true")
+    public HttpResponse deniedResponse(@Param("include_browse") Optional<Boolean> includeBrowse) {
+      deniedCalls.incrementAndGet();
+      return HttpResponse.ofJson(Map.of("sensitive_data", "must-not-leak"));
+    }
+
     @Get("")
     @AuthorizeExpression("true")
-    @ResponseAuthorizeFilter
+    @ResponseAuthorizeFilter(isList = false)
     public HttpResponse unfilteredResponse() {
       return HttpResponse.ofJson(Map.of("sensitive_data", "must-not-leak"));
     }

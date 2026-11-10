@@ -101,7 +101,8 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     UserResource user = createTestUser(REGULAR_1);
     UUID userId = UUID.fromString(user.getId());
     UUID catalogId =
-        UUID.fromString(new CatalogsApi(adminApiClient).getCatalog(TestUtils.CATALOG_NAME).getId());
+        UUID.fromString(
+            new CatalogsApi(adminApiClient).getCatalog(TestUtils.CATALOG_NAME, false).getId());
     grantPermissions(
         REGULAR_1, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
     // The second grant changes nothing, so it records nothing.
@@ -189,7 +190,7 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
               assertThat(r.getAccess()).isEqualTo(AuditRecord.Access.READ);
               assertThat(r.getUser()).isEqualTo(admin);
             });
-    // The drop clears the table's grants.
+    // The drop commits first (QUEUE_CLEANUP), then clears the table's grants.
     List<AuditRecord> drop =
         records.stream()
             .filter(
@@ -197,7 +198,8 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
             .toList();
     assertThat(drop)
         .extracting(AuditRecord::getAction)
-        .containsExactly(AuditRecord.Action.CLEAR_RESOURCE_GRANTS);
+        .containsExactly(
+            AuditRecord.Action.QUEUE_CLEANUP, AuditRecord.Action.CLEAR_RESOURCE_GRANTS);
     assertThat(drop).allSatisfy(r -> assertThat(r.getUser()).isEqualTo(admin));
   }
 

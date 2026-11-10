@@ -5,6 +5,8 @@ import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.ExternalLocationInfo;
@@ -18,17 +20,19 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.service.AuthorizedService;
 import java.util.HashMap;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.UnaryOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Filters list responses based on user authorization permissions.
+ * Filters GET and LIST responses based on user authorization permissions.
  *
- * <p>This class is used in the authorization decorator layer to filter LIST operation results. When
- * a service method is annotated with {@code @ResponseAuthorizeFilter}, the {@link
+ * <p>This class is used in the authorization decorator layer to filter operation results. When a
+ * service method is annotated with {@code @ResponseAuthorizeFilter}, the {@link
  * UnityAccessDecorator} creates a ResultFilter instance and stores it in the request context. The
  * service method then retrieves this filter and calls it to remove items that the user is not
  * authorized to access.
@@ -64,6 +68,7 @@ public class ResultFilter {
 
   private final UUID principalId;
   private final String expression;
+  private final String browseExpression;
   private final UnityAccessEvaluator evaluator;
   private final Map<SecurableType, UUID> resourceIds;
   private final Map<String, Object> nonResourceValues;
@@ -74,11 +79,13 @@ public class ResultFilter {
       UnityAccessEvaluator evaluator,
       UUID principalId,
       String expression,
+      String browseExpression,
       Map<SecurableType, UUID> resourceIds,
       Map<String, Object> nonResourceValues,
       KeyMapper keyMapper) {
     this.principalId = principalId;
     this.expression = expression;
+    this.browseExpression = browseExpression;
     this.evaluator = evaluator;
     this.resourceIds = resourceIds;
     this.nonResourceValues = nonResourceValues;
@@ -110,6 +117,11 @@ public class ResultFilter {
    *     which indicates a programming error
    */
   public <T> void filter(SecurableType securableType, List<T> items) {
+    filter(securableType, items, null);
+  }
+
+  /** Filters a page, replacing BROWSE-only items with the supplied allowed fields. */
+  public <T> void filter(SecurableType securableType, List<T> items, UnaryOperator<T> browseOnly) {
     called.set(true);
 
     if (items == null || items.isEmpty()) {
@@ -124,29 +136,68 @@ public class ResultFilter {
 
     // One batch for the whole list: the checks on shared parents (metastore, catalog, schema) are
     // the same for every item, so they reach the authorizer once instead of once per item.
+    long operationStartNanos = System.nanoTime();
     UnityAccessEvaluator.Batch batch =
-        evaluator.batch(principalId, expression, nonResourceValues, System.nanoTime());
+        evaluator.batch(principalId, expression, nonResourceValues, operationStartNanos);
+    UnityAccessEvaluator.Batch browseBatch =
+        browseOnly != null && !browseExpression.isEmpty()
+            ? evaluator.batch(principalId, browseExpression, nonResourceValues, operationStartNanos)
+            : null;
 
-    items.removeIf(
-        item -> {
-          try {
-            // Resolve the item's resource ID and any parent resource IDs to make a complete
-            // collection of all needed resource IDs for this item.
-            Map<SecurableType, UUID> resourceIdsForItem =
-                resolveResourceIdsForItem(securableType, item, resourceIds);
-            boolean authorized = batch.evaluate(resourceIdsForItem);
-            if (!authorized) {
-              LOGGER.debug("Item filtered out: {}", item.getClass().getSimpleName());
-            }
-            return !authorized;
-          } catch (Exception e) {
-            LOGGER.warn(
-                "Error evaluating authorization for item, filtering out: {}", e.getMessage());
-            return true;
-          }
-        });
+    ListIterator<T> iterator = items.listIterator();
+    while (iterator.hasNext()) {
+      T item = iterator.next();
+      try {
+        Map<SecurableType, UUID> resourceIdsForItem =
+            resolveResourceIdsForItem(securableType, item, resourceIds);
+        T result = filterItem(item, resourceIdsForItem, browseOnly, batch, browseBatch);
+        if (result == null) {
+          iterator.remove();
+        } else {
+          iterator.set(result);
+        }
+      } catch (Exception e) {
+        LOGGER.warn("Error evaluating authorization for item, filtering out: {}", e.getMessage());
+        iterator.remove();
+      }
+    }
 
     LOGGER.debug("After filtering: {} items remain", items.size());
+  }
+
+  /** Filters a GET result only if its ID matches the resource resolved from the request. */
+  public <T> T filterResult(SecurableType securableType, T item, UnaryOperator<T> browseOnly) {
+    called.set(true);
+    if (!resolveResourceId(securableType, item).equals(resourceIds.get(securableType))) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+    }
+    long operationStartNanos = System.nanoTime();
+    UnityAccessEvaluator.Batch batch =
+        evaluator.batch(principalId, expression, nonResourceValues, operationStartNanos);
+    UnityAccessEvaluator.Batch browseBatch =
+        browseOnly != null && !browseExpression.isEmpty()
+            ? evaluator.batch(principalId, browseExpression, nonResourceValues, operationStartNanos)
+            : null;
+    T result = filterItem(item, resourceIds, browseOnly, batch, browseBatch);
+    if (result == null) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+    }
+    return result;
+  }
+
+  private <T> T filterItem(
+      T item,
+      Map<SecurableType, UUID> ids,
+      UnaryOperator<T> browseOnly,
+      UnityAccessEvaluator.Batch batch,
+      UnityAccessEvaluator.Batch browseBatch) {
+    if (batch.evaluate(ids)) {
+      return item;
+    }
+    if (browseBatch != null && browseBatch.evaluate(ids)) {
+      return browseOnly.apply(item);
+    }
+    return null;
   }
 
   private Map<SecurableType, UUID> resolveResourceIdsForItem(

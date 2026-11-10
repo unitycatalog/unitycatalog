@@ -64,7 +64,8 @@ public class UCProxySuite {
         new ListTablesResponse()
             .tables(List.of(new TableInfo().name("table1"), new TableInfo().name("table2")))
             .nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(response);
 
     Identifier[] result = proxy.listTables(NAMESPACE);
@@ -85,9 +86,11 @@ public class UCProxySuite {
             .tables(List.of(new TableInfo().name("table3")))
             .nextPageToken(null);
 
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(page1);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), eq("token1")))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), eq("token1"), /* includeBrowse= */ eq(false)))
         .thenReturn(page2);
 
     Identifier[] result = proxy.listTables(NAMESPACE);
@@ -97,15 +100,20 @@ public class UCProxySuite {
     assertThat(result[1]).isEqualTo(Identifier.of(NAMESPACE, "table2"));
     assertThat(result[2]).isEqualTo(Identifier.of(NAMESPACE, "table3"));
 
-    verify(mockTablesApi).listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull());
-    verify(mockTablesApi).listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), eq("token1"));
+    verify(mockTablesApi)
+        .listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false));
+    verify(mockTablesApi)
+        .listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), eq("token1"), /* includeBrowse= */ eq(false));
   }
 
   @Test
   public void testListTablesEmptyResult() throws Exception {
     ListTablesResponse response =
         new ListTablesResponse().tables(Collections.emptyList()).nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(response);
 
     Identifier[] result = proxy.listTables(NAMESPACE);
@@ -117,7 +125,8 @@ public class UCProxySuite {
   public void testListTablesEmptyStringPageTokenStopsPagination() throws Exception {
     ListTablesResponse response =
         new ListTablesResponse().tables(List.of(new TableInfo().name("table1"))).nextPageToken("");
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(response);
 
     Identifier[] result = proxy.listTables(NAMESPACE);
@@ -135,7 +144,8 @@ public class UCProxySuite {
                     new TableInfo().name("table1").tableType(TableType.EXTERNAL),
                     new TableInfo().name("mv1").tableType(TableType.METRIC_VIEW)))
             .nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+    when(mockTablesApi.listTables(
+            eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
         .thenReturn(response);
 
     Identifier[] result = proxy.listTables(NAMESPACE);
@@ -174,7 +184,8 @@ public class UCProxySuite {
                                 + "\"nullable\":true,\"metadata\":{}}")
                         .nullable(true)
                         .position(0)));
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.t1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(ucTable);
 
     // `loadTable` issues the single `getTable` RPC first (via `getUCTableLike`), then proceeds to
@@ -187,7 +198,8 @@ public class UCProxySuite {
       // Expected in the mock context: credential vending has no real UC endpoint.
     }
     verify(mockTablesApi, org.mockito.Mockito.times(1))
-        .getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true));
+        .getTable(
+            eq("test_catalog.test_schema.t1"), eq(true), eq(true), /* includeBrowse= */ eq(false));
   }
 
   /**
@@ -210,7 +222,8 @@ public class UCProxySuite {
         .getTable(
             org.mockito.ArgumentMatchers.anyString(),
             org.mockito.ArgumentMatchers.any(),
-            org.mockito.ArgumentMatchers.any());
+            org.mockito.ArgumentMatchers.any(),
+            /* includeBrowse= */ org.mockito.ArgumentMatchers.any());
   }
 
   /** Extensionless cloud paths also carry `/` and must skip the UC RPC. */
@@ -225,7 +238,8 @@ public class UCProxySuite {
         .getTable(
             org.mockito.ArgumentMatchers.anyString(),
             org.mockito.ArgumentMatchers.any(),
-            org.mockito.ArgumentMatchers.any());
+            org.mockito.ArgumentMatchers.any(),
+            /* includeBrowse= */ org.mockito.ArgumentMatchers.any());
   }
 
   // -- dropTable (table surface) tests --
@@ -238,7 +252,8 @@ public class UCProxySuite {
             .schemaName(SCHEMA_NAME)
             .name("mv1")
             .tableType(TableType.METRIC_VIEW);
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.mv1"), eq(true), eq(true), /* includeBrowse= */ eq(false)))
         .thenReturn(ucMetricView);
 
     boolean dropped = proxy.dropTable(Identifier.of(NAMESPACE, "mv1"));
@@ -258,7 +273,9 @@ public class UCProxySuite {
         new ListSchemasResponse()
             .schemas(List.of(new SchemaInfo().name("schema1"), new SchemaInfo().name("schema2")))
             .nextPageToken(null);
-    when(mockSchemasApi.listSchemas(eq(CATALOG_NAME), eq(0), isNull())).thenReturn(response);
+    when(mockSchemasApi.listSchemas(
+            eq(CATALOG_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
+        .thenReturn(response);
 
     String[][] result = proxyNs.listNamespaces();
 
@@ -278,8 +295,12 @@ public class UCProxySuite {
             .schemas(List.of(new SchemaInfo().name("schema3")))
             .nextPageToken(null);
 
-    when(mockSchemasApi.listSchemas(eq(CATALOG_NAME), eq(0), isNull())).thenReturn(page1);
-    when(mockSchemasApi.listSchemas(eq(CATALOG_NAME), eq(0), eq("token1"))).thenReturn(page2);
+    when(mockSchemasApi.listSchemas(
+            eq(CATALOG_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
+        .thenReturn(page1);
+    when(mockSchemasApi.listSchemas(
+            eq(CATALOG_NAME), eq(0), eq("token1"), /* includeBrowse= */ eq(false)))
+        .thenReturn(page2);
 
     String[][] result = proxyNs.listNamespaces();
 
@@ -288,8 +309,10 @@ public class UCProxySuite {
     assertThat(result[1]).containsExactly("schema2");
     assertThat(result[2]).containsExactly("schema3");
 
-    verify(mockSchemasApi).listSchemas(eq(CATALOG_NAME), eq(0), isNull());
-    verify(mockSchemasApi).listSchemas(eq(CATALOG_NAME), eq(0), eq("token1"));
+    verify(mockSchemasApi)
+        .listSchemas(eq(CATALOG_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false));
+    verify(mockSchemasApi)
+        .listSchemas(eq(CATALOG_NAME), eq(0), eq("token1"), /* includeBrowse= */ eq(false));
   }
 
   @Test
@@ -298,7 +321,9 @@ public class UCProxySuite {
         new ListSchemasResponse()
             .schemas(List.of(new SchemaInfo().name("schema1")))
             .nextPageToken("");
-    when(mockSchemasApi.listSchemas(eq(CATALOG_NAME), eq(0), isNull())).thenReturn(response);
+    when(mockSchemasApi.listSchemas(
+            eq(CATALOG_NAME), eq(0), isNull(), /* includeBrowse= */ eq(false)))
+        .thenReturn(response);
 
     String[][] result = proxyNs.listNamespaces();
 

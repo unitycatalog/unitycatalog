@@ -68,17 +68,18 @@ No authorization required
 
 <a name="getExternalLocation"></a>
 # **getExternalLocation**
-> ExternalLocationInfo getExternalLocation(name)
+> ExternalLocationInfo getExternalLocation(name, include\_browse)
 
 Get an external location
 
-    Gets an external location from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location. 
+    Gets an external location from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location. A BROWSE grant alone requires include_browse&#x3D;true and returns discovery metadata with browse_only&#x3D;true. 
 
 ### Parameters
 
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **name** | **String**| Name of the external location. | [default to null] |
+| **include\_browse** | **Boolean**| Include discovery metadata for objects visible through BROWSE when ordinary access fails. Such objects have browse_only&#x3D;true. Ordinary access returns full metadata.  | [optional] [default to false] |
 
 ### Return type
 
@@ -95,11 +96,11 @@ No authorization required
 
 <a name="listExternalLocations"></a>
 # **listExternalLocations**
-> ListExternalLocationsResponse listExternalLocations(max\_results, page\_token)
+> ListExternalLocationsResponse listExternalLocations(max\_results, page\_token, include\_browse)
 
 List external locations
 
-    Gets an array of external locations (ExternalLocationInfo objects) from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location. 
+    Gets an array of external locations (ExternalLocationInfo objects) from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location. Locations visible only through BROWSE are included only with include_browse&#x3D;true and return discovery metadata with browse_only&#x3D;true. 
 
 ### Parameters
 
@@ -107,6 +108,7 @@ List external locations
 |------------- | ------------- | ------------- | -------------|
 | **max\_results** | **Integer**| Maximum number of external locations to return. If not set, all external locations are returned.  | [optional] [default to null] |
 | **page\_token** | **String**| Opaque pagination token to go to the next page. | [optional] [default to null] |
+| **include\_browse** | **Boolean**| Include discovery metadata for objects visible through BROWSE when ordinary access fails. Such objects have browse_only&#x3D;true. Ordinary access returns full metadata.  | [optional] [default to false] |
 
 ### Return type
 
