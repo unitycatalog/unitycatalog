@@ -15,7 +15,8 @@ that many JVMs of --jvm-heap each.
 
 The full sbt output goes to target/test-logs/. Suite durations from each run are merged into
 target/test-durations.csv and used to balance the suites across JVMs on the next run.
-Other environment variables (e.g. UC_TEST_DATABASE) pass through to the test JVMs.
+Other environment variables pass through to the test JVMs. With UC_TEST_DATABASE, each test JVM
+starts its own database container, which the memory estimate does not count; lower -p if needed.
 """
 
 import argparse
@@ -39,27 +40,48 @@ DURATIONS_FILE = os.path.join(ROOT, "target", "test-durations.csv")
 LOG_DIR = os.path.join(ROOT, "target", "test-logs")
 SUITE_FINISHED = re.compile(r"Test run finished: (\d+) failed")
 # sbt's own result lines; forked JVM stderr is also logged as [error], so match narrowly.
+HEAP_SIZE = re.compile(r"[1-9][0-9]*[kKmMgG]?")
+# cgroup files holding a container's memory limit and usage (v2, then v1).
+CGROUP_MEMORY_FILES = [
+    ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory.current"),
+    ("/sys/fs/cgroup/memory/memory.limit_in_bytes", "/sys/fs/cgroup/memory/memory.usage_in_bytes"),
+]
 STREAMED = re.compile(
-    r"^\[success\]|^\[error\] (Test .* failed|Failed|Error|\(\S+ / |Total|Compilation failed|/\S+\.(java|scala):\d+)")
+    r"^\[success\]|^\[error\] (Test .* failed|Failed|Error|\(\S+ / |Total|Compilation failed"
+    r"|/\S+\.(java|scala):\d+)")
 
 
-def parse_args():
+def positive_int(value):
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError(f"must be at least 1, got {value}")
+    return number
+
+
+def heap_size(value):
+    if not HEAP_SIZE.fullmatch(value):
+        raise argparse.ArgumentTypeError(f"expected a JVM size such as 512m or 4g, got {value!r}")
+    return value
+
+
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         "commands", nargs="*", default=["test"],
         help="sbt commands to run (default: test)")
     parser.add_argument(
-        "-p", "--parallelism", type=int,
+        "-p", "--parallelism", type=positive_int,
         help="max concurrent test JVMs (default: half the CPUs, if memory allows)")
     parser.add_argument(
-        "--jvm-heap", default="2g",
+        "--jvm-heap", default="2g", type=heap_size,
         help="max heap of each test JVM (default: 2g; raise it if a test runs out of memory)")
     parser.add_argument(
-        "--sbt-heap", default="2g", help="heap for the sbt JVM itself (default: 2g)")
+        "--sbt-heap", default="2g", type=heap_size,
+        help="heap for the sbt JVM itself (default: 2g)")
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="stream the full sbt output")
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def parse_size(size):
@@ -70,15 +92,31 @@ def parse_size(size):
 
 
 def available_memory():
-    """Returns the available memory in bytes: MemAvailable on Linux, else half the physical RAM."""
+    """Returns the available memory in bytes: MemAvailable on Linux, else half the physical RAM.
+
+    Inside a container, the result is capped by what is left of the container's memory limit.
+    """
+    available = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // 2
     try:
         with open("/proc/meminfo") as f:
             for line in f:
                 if line.startswith("MemAvailable:"):
-                    return int(line.split()[1]) * 1024
+                    available = int(line.split()[1]) * 1024
     except OSError:
         pass
-    return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // 2
+    for limit_file, usage_file in CGROUP_MEMORY_FILES:
+        try:
+            with open(limit_file) as f:
+                limit = f.read().strip()
+            with open(usage_file) as f:
+                usage = int(f.read().strip())
+        except (OSError, ValueError):
+            continue
+        # "max" (v2) or a huge value (v1) means no limit.
+        if limit != "max" and int(limit) < 1 << 60:
+            available = min(available, int(limit) - usage)
+        break
+    return available
 
 
 def memory_limit(args):
@@ -105,7 +143,9 @@ def run_sbt(args, log_path):
     env = dict(
         os.environ, TEST_PARALLELISM=str(args.parallelism), TEST_JVM_HEAP=args.jvm_heap,
         TEST_DURATIONS_FILE=DURATIONS_FILE)
-    cmd = [os.path.join(ROOT, "build", "sbt"), f"-J-Xmx{args.sbt_heap}"] + args.commands
+    # build/sbt passes its own -Xms1000m first, so set -Xms too: a smaller -Xmx alone fails.
+    heap = [f"-J-Xms{args.sbt_heap}", f"-J-Xmx{args.sbt_heap}"]
+    cmd = [os.path.join(ROOT, "build", "sbt")] + heap + args.commands
     print(f"Running {' '.join(cmd[1:])} with {args.parallelism} test JVMs")
     print(f"Full log: {log_path}")
 
@@ -145,13 +185,14 @@ def describe_failure(case, suite_name):
     message = " ".join((problem.get("message") or problem.get("type") or "").split())
     if len(message) > 300:
         message = message[:300] + "..."
-    frames = [line.strip() for line in (problem.text or "").splitlines() if line.strip().startswith("at ")]
+    lines = (line.strip() for line in (problem.text or "").splitlines())
+    frames = [line for line in lines if line.startswith("at ")]
     location = f" ({frames[0]})" if frames else ""
     return f"{suite_name}#{case.get('name')}: {message}{location}"
 
 
 def collect_reports(since):
-    """Returns (suite, seconds, tests, failures) for every JUnit XML report written since `since`."""
+    """Returns (suite, seconds, tests, failures) for each JUnit XML report written since `since`."""
     results = []
     # Modules live one or two levels deep (server/, connectors/spark/).
     paths = glob.glob(os.path.join(ROOT, "*", "target", "test-reports", "*.xml")) + glob.glob(
@@ -174,13 +215,18 @@ def collect_reports(since):
 
 
 def update_durations(results):
+    """Merges this run's suite durations into DURATIONS_FILE. Failing to write only warns."""
     durations = {}
-    if os.path.isfile(DURATIONS_FILE):
-        with open(DURATIONS_FILE) as f:
-            durations = {row[0]: float(row[1]) for row in csv.reader(f) if len(row) == 2}
-    durations.update({suite: seconds for suite, seconds, _, _ in results})
-    with open(DURATIONS_FILE, "w", newline="") as f:
-        csv.writer(f).writerows(sorted(durations.items(), key=lambda kv: -kv[1]))
+    try:
+        if os.path.isfile(DURATIONS_FILE):
+            with open(DURATIONS_FILE) as f:
+                durations = {row[0]: float(row[1]) for row in csv.reader(f) if len(row) == 2}
+        durations.update({suite: seconds for suite, seconds, _, _ in results})
+        os.makedirs(os.path.dirname(DURATIONS_FILE), exist_ok=True)
+        with open(DURATIONS_FILE, "w", newline="") as f:
+            csv.writer(f).writerows(sorted(durations.items(), key=lambda kv: -kv[1]))
+    except (OSError, ValueError) as e:
+        print(f"Warning: could not update {DURATIONS_FILE}: {e}")
 
 
 def print_summary(results, start, returncode, log_path):
@@ -202,6 +248,8 @@ def print_summary(results, start, returncode, log_path):
 def conf_stamps():
     """Returns the mtime of each file in etc/conf, which tests should never write."""
     conf = os.path.join(ROOT, "etc", "conf")
+    if not os.path.isdir(conf):
+        return {}
     return {name: os.path.getmtime(os.path.join(conf, name)) for name in os.listdir(conf)}
 
 
@@ -222,7 +270,8 @@ def main():
     update_durations(results)
     print_summary(results, start, returncode, log_path)
     conf_after = conf_stamps()
-    touched = sorted(name for name in conf_after if conf_before.get(name) != conf_after[name])
+    touched = sorted(name for name in set(conf_before) | set(conf_after)
+                     if conf_before.get(name) != conf_after.get(name))
     if touched:
         print(f"Warning: tests wrote etc/conf: {', '.join(touched)}. A test likely started a "
               "server without its own configurationFolder.")

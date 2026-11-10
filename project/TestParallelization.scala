@@ -8,19 +8,23 @@ import scala.util.Try
  *
  * By default sbt forks one JVM per project and runs its suites serially, one project at a time.
  * When TEST_PARALLELISM is set, each project's suites are split into groups, each run in its own
- * forked JVM, and at most TEST_PARALLELISM test JVMs run at once across all projects. TEST_JVM_HEAP, if set, is the
- * max heap of each test JVM (e.g. `4g`).
+ * forked JVM, and at most TEST_PARALLELISM test JVMs run at once across all projects.
+ * TEST_JVM_HEAP, if set, is the max heap of each test JVM (e.g. `4g`).
+ *
+ * `settings` goes on every project; `globalSettings` goes once on the build.
  *
  * Suites are assigned longest first to the least loaded group. Durations come from
- * TEST_DURATIONS_FILE (CSV of `suite,seconds`, as written by dev/run-tests.py); a suite missing from
- * it counts as the average known duration. A project gets no more groups than needed to finish in
- * the time of its longest suite, which leaves JVM slots to other projects. Each group gets its own
- * java.io.tmpdir under the project's target directory.
+ * TEST_DURATIONS_FILE (CSV of `suite,seconds`, as written by dev/run-tests.py); a suite missing
+ * from it counts as the average known duration. A project gets no more groups than needed to
+ * finish in the time of its longest suite, which leaves JVM slots to other projects. Each group
+ * gets its own java.io.tmpdir under the project's target directory.
  */
 object TestParallelization {
 
-  private lazy val parallelism: Option[Int] =
-    sys.env.get("TEST_PARALLELISM").map(_.trim.toInt).filter(_ >= 1)
+  private lazy val parallelism: Option[Int] = sys.env.get("TEST_PARALLELISM").map { value =>
+    Try(value.trim.toInt).toOption.filter(_ >= 1).getOrElse(
+      sys.error(s"TEST_PARALLELISM must be a positive integer, got '$value'"))
+  }
 
   private lazy val jvmHeapOptions: Seq[String] =
     sys.env.get("TEST_JVM_HEAP").map(_.trim).filter(_.nonEmpty).map(heap => s"-Xmx$heap").toSeq
@@ -56,13 +60,16 @@ object TestParallelization {
               s"-Djava.io.tmpdir=${tmpDir.getAbsolutePath}")
           Tests.Group(s"test-group-$i", groupTests, Tests.SubProcess(opts))
         }
-      },
-      // Replaces sbt's default rules, which allow a single forked test group at a time.
-      Global / concurrentRestrictions := Seq(
-        Tags.limitAll(java.lang.Runtime.getRuntime.availableProcessors),
-        Tags.limit(Tags.ForkedTestGroup, maxJvms),
-        Tags.exclusiveGroup(Tags.Clean))
+      }
     )
+  }
+
+  lazy val globalSettings: Seq[Setting[_]] = parallelism.toSeq.map { maxJvms =>
+    // Replaces sbt's default rules, which allow a single forked test group at a time.
+    Global / concurrentRestrictions := Seq(
+      Tags.limitAll(java.lang.Runtime.getRuntime.availableProcessors),
+      Tags.limit(Tags.ForkedTestGroup, maxJvms),
+      Tags.exclusiveGroup(Tags.Clean))
   }
 
   /**

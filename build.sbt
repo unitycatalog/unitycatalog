@@ -921,8 +921,12 @@ lazy val root = (project in file("."))
     name := s"$artifactNamePrefix",
     createTarballSettings(),
     commonSettings,
-    rootReleaseSettings
+    rootReleaseSettings,
+    // dev/run-tests.py keeps its log and suite durations here, also across a `clean` in the run.
+    cleanKeepFiles ++= Seq(target.value / "test-logs", target.value / "test-durations.csv"),
   )
+
+TestParallelization.globalSettings
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
   // Generate a classpath file with the entire runtime class path.
