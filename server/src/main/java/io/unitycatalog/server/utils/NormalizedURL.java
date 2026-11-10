@@ -5,7 +5,9 @@ import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Paths;
+import java.util.Objects;
 import lombok.EqualsAndHashCode;
+import org.apache.hadoop.fs.Path;
 
 /**
  * A type-safe wrapper for normalized URLs that ensures consistent URL formatting across the Unity
@@ -16,7 +18,8 @@ import lombok.EqualsAndHashCode;
  * <ul>
  *   <li>Local file paths are converted to proper file:/// URIs
  *   <li>Local file URIs whose escapes would change the path they name are rejected
- *   <li>Cloud storage URLs (s3://, gs://, abfs://) have consistent formatting
+ *   <li>Cloud storage URLs (s3://, gs://, abfs://) have consistent formatting; their path is not
+ *       URI-decoded (a space or '%' is part of an object name), and '?' or '#' is rejected
  *   <li>Trailing slashes are removed
  *   <li>Multiple consecutive slashes are collapsed
  * </ul>
@@ -65,13 +68,28 @@ public final class NormalizedURL {
   }
 
   /**
-   * Creates a normalized URL from the given URI. Returns null if the input is null. Convenience
-   * overload of {@link #from(String)} for callers that already hold a {@link URI}.
+   * Creates a normalized URL from the given URI. Returns null if the input is null. A cloud URI's
+   * decoded path is the literal object name.
    *
    * @param uri the URI to normalize
    */
   public static NormalizedURL from(URI uri) {
-    return uri == null ? null : new NormalizedURL(uri.toString());
+    if (uri == null) {
+      return null;
+    }
+    return switch (UriScheme.fromURI(uri)) {
+      case S3, GS, ABFS, ABFSS -> {
+        if (uri.isOpaque()) {
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              "Cloud storage location must start with scheme://: " + uri);
+        }
+        rejectQueryOrFragment(uri.toString());
+        yield new NormalizedURL(
+            uri.getScheme() + "://" + Objects.toString(uri.getRawAuthority(), "") + uri.getPath());
+      }
+      case FILE, NULL -> new NormalizedURL(uri.toString());
+    };
   }
 
   /**
@@ -88,23 +106,45 @@ public final class NormalizedURL {
    * Converts the normalized URL to a URI object.
    *
    * @return the URI representation of this normalized URL
-   * @throws IllegalArgumentException if the URL string violates RFC 2396
+   * @throws IllegalArgumentException if a non-cloud URL string violates RFC 2396
    */
   public URI toUri() {
-    return URI.create(url);
+    URI cloudUri = cloudUri(url);
+    return cloudUri != null ? cloudUri : URI.create(url);
+  }
+
+  private static URI cloudUri(String location) {
+    URI uri;
+    try {
+      uri = new Path(location).toUri();
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
+    return switch (UriScheme.fromURI(uri)) {
+      case S3, GS, ABFS, ABFSS -> uri;
+      case FILE, NULL -> null;
+    };
+  }
+
+  /**
+   * Returns the path as interpreted by storage clients, with a leading slash when it is nonempty:
+   * the literal path for a cloud location, the URI-decoded path for a local file.
+   */
+  public String getStoragePath() {
+    return toUri().getPath();
   }
 
   /**
    * Returns whether this URL identifies an entire cloud storage bucket or container.
    *
-   * <p>The decoded path is checked so equivalent root forms such as a trailing slash, normalized
-   * dot segments, and encoded slashes are treated consistently.
+   * <p>A cloud root's literal path is empty or only slashes; an encoded {@code %2F} is part of an
+   * object name, not a separator.
    */
   public boolean isCloudStorageRoot() {
     URI uri = toUri();
     return switch (UriScheme.fromURI(uri)) {
       case S3, GS, ABFS, ABFSS -> {
-        String path = uri.getPath();
+        String path = getStoragePath();
         yield path == null || path.chars().allMatch(character -> character == '/');
       }
       default -> false;
@@ -112,17 +152,18 @@ public final class NormalizedURL {
   }
 
   /**
-   * Converts a given input path or URI into a standardized URI string. This method ensures that
-   * local file paths are correctly formatted as file URIs and that URIs for different storage
+   * Converts a given input path or URI into a standardized location string. This method ensures
+   * that local file paths are correctly formatted as file URIs and that URIs for different storage
    * providers (e.g., S3, Azure, GCS) are handled appropriately.
    *
-   * <p>If the input is a valid URI with a recognized scheme (e.g., "file", "s3", "abfs", etc.), the
-   * method returns a standardized version of the URI. If the input is not a valid URI, it treats
-   * the input as a local file path and converts it to a "file://" URI.
+   * <p>A cloud location ("s3", "gs", "abfs", "abfss") is returned as a literal path string. Any
+   * other input with a recognized scheme is returned as a standardized URI. If the input is not a
+   * valid URI, it treats the input as a local file path and converts it to a "file://" URI.
    *
    * @param inputPath the input path or URI to be standardized.
-   * @return the standardized URI string.
-   * @throws BaseException if the input path has an unsupported URI scheme.
+   * @return the standardized location string.
+   * @throws BaseException if the input path has an unsupported URI scheme or is an invalid cloud
+   *     location.
    *     <p>Examples of input and output:
    *     <pre>
    * // Local File System Example:
@@ -154,6 +195,19 @@ public final class NormalizedURL {
       // In any case we reject it.
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Ambiguous path: " + inputPath);
     }
+    URI cloudUri = cloudUri(inputPath);
+    if (cloudUri != null) {
+      rejectQueryOrFragment(inputPath);
+      String root = cloudUri.getScheme() + "://" + Objects.toString(cloudUri.getAuthority(), "");
+      if (cloudUri.getAuthority() != null) {
+        try {
+          new URI(root);
+        } catch (URISyntaxException e) {
+          throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unsupported path: " + inputPath);
+        }
+      }
+      return removeExtraSlashes(root + cloudUri.getPath());
+    }
     // Check if the path is already a URI with a valid scheme
     URI uri;
     try {
@@ -170,8 +224,22 @@ public final class NormalizedURL {
               inputPath);
       // A host is read as the first directory (file://tmp/x is /tmp/x): check after folding it in.
       case FILE -> validateLocalFileURI(localFileURIToString(uri), inputPath);
-      case S3, GS, ABFS, ABFSS -> removeExtraSlashes(uri.toString());
+      case S3, GS, ABFS, ABFSS -> {
+        rejectQueryOrFragment(inputPath);
+        yield removeExtraSlashes(uri.toString());
+      }
     };
+  }
+
+  /**
+   * Iceberg's S3 and GCS FileIO cut a path at '?' or '#', so cloud locations can't contain them.
+   */
+  private static void rejectQueryOrFragment(String location) {
+    if (location.indexOf('?') >= 0 || location.indexOf('#') >= 0) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Cloud storage location cannot contain '?' or '#': " + location);
+    }
   }
 
   /**
@@ -284,7 +352,7 @@ public final class NormalizedURL {
   }
 
   public NormalizedURL getStorageBase() {
-    URI uri = URI.create(url);
+    URI uri = toUri();
     return NormalizedURL.from(uri.getScheme() + "://" + uri.getAuthority());
   }
 }

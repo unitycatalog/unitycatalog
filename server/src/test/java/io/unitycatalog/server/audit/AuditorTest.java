@@ -69,7 +69,7 @@ class AuditorTest {
 
   @Test
   void cleanupCredentialNamesTheCleanupUserAndResource() {
-    NormalizedURL path = NormalizedURL.from("s3://key:secret@bkt/root/tables/" + ID + "?sig=x");
+    NormalizedURL path = NormalizedURL.from("s3://key:secret@bkt/root/tables/" + ID);
     TemporaryCredentials credential = new TemporaryCredentials().expirationTime(1792500120000L);
     StorageCredentialVendor delegate = mock(StorageCredentialVendor.class);
     when(delegate.vendCredential(path, CredentialContext.READ_WRITE, CredentialUse.cleanup(ID)))
