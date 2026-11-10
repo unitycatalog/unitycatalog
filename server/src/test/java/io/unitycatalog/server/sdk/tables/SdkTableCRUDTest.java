@@ -180,7 +180,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
   @Test
   public void testCreateTableKeepsColumnTypeTextCase() throws Exception {
     String typeText = "STRUCT<UserId:INT,Tags:ARRAY<STRING>>";
-    ColumnInfo column =
+    ColumnInfo structColumn =
         new ColumnInfo()
             .name("s")
             .typeText(typeText)
@@ -195,20 +195,34 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
             .typeName(ColumnTypeName.STRUCT)
             .position(0)
             .nullable(true);
+    ColumnInfo intColumn =
+        new ColumnInfo()
+            .name("n")
+            .typeText("INT")
+            .typeJson("{\"name\":\"n\",\"type\":\"integer\",\"nullable\":true,\"metadata\":{}}")
+            .typeName(ColumnTypeName.INT)
+            .position(1)
+            .nullable(true);
+    List<ColumnInfo> columns = List.of(structColumn, intColumn);
     TableInfo created =
         tableOperations.createTable(
             new CreateTable()
                 .name(TestUtils.TABLE_NAME)
                 .catalogName(TestUtils.CATALOG_NAME)
                 .schemaName(TestUtils.SCHEMA_NAME)
-                .columns(List.of(column))
+                .columns(columns)
                 .tableType(TableType.MANAGED)
                 .dataSourceFormat(DataSourceFormat.DELTA));
 
-    assertThat(created.getColumns()).singleElement().isEqualTo(column);
+    assertThat(created.getColumns()).isEqualTo(columns);
     assertThat(tableOperations.getTable(TestUtils.TABLE_FULL_NAME).getColumns())
+        .isEqualTo(columns);
+    assertThat(
+            tableOperations.listTables(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, Optional.empty()))
         .singleElement()
-        .isEqualTo(column);
+        .extracting(TableInfo::getColumns)
+        .isEqualTo(columns);
   }
 
   /**
