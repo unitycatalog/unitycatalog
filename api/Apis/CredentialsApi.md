@@ -51,7 +51,7 @@ Delete a credential
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **name** | **String**| Name of the credential. | [default to null] |
-| **force** | **Boolean**| Force deletion even if there are dependent external locations. | [optional] [default to null] |
+| **force** | **Boolean**| Force deletion even if there are dependent external locations. The dependent external locations are kept, and they have no credential until they are updated with a new credential_name. | [optional] [default to null] |
 
 ### Return type
 
