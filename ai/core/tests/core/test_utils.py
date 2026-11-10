@@ -553,7 +553,22 @@ def test_process_function_parameter_defaults_with_null():
     assert result["str_param"] == "default"
 
 
-def test_process_function_parameter_defaults_with_binary_literal():
+@pytest.mark.parametrize(
+    ("parameter_default", "expected"),
+    [
+        # Valid binary literals parse back to bytes, not stay strings
+        ("X'0102'", b"\x01\x02"),
+        ("X''", b""),
+        # The prefix match is case-insensitive
+        ("x'0102'", b"\x01\x02"),
+        # Malformed hex takes the ValueError fallback and stays a raw string
+        ("X'zz'", "X'zz'"),
+        # Guard misses (too short, no closing quote) also stay raw strings
+        ("X'", "X'"),
+        ("X'01", "X'01"),
+    ],
+)
+def test_process_function_parameter_defaults_with_binary_literal(parameter_default, expected):
     func_info = FunctionInfo(
         catalog_name="catalog",
         schema_name="schema",
@@ -565,14 +580,7 @@ def test_process_function_parameter_defaults_with_binary_literal():
                     type_name="BINARY",
                     type_text="binary",
                     position=0,
-                    parameter_default="X'0102'",
-                ),
-                FunctionParameterInfo(
-                    name="empty_bytes_param",
-                    type_name="BINARY",
-                    type_text="binary",
-                    position=1,
-                    parameter_default="X''",
+                    parameter_default=parameter_default,
                 ),
             ]
         ),
@@ -580,7 +588,5 @@ def test_process_function_parameter_defaults_with_binary_literal():
 
     result = process_function_parameter_defaults(func_info, {})
 
-    # The X'<hex>' binary literal must parse back to bytes, not stay a string
-    assert result["bytes_param"] == b"\x01\x02"
-    assert isinstance(result["bytes_param"], bytes)
-    assert result["empty_bytes_param"] == b""
+    assert result["bytes_param"] == expected
+    assert isinstance(result["bytes_param"], type(expected))

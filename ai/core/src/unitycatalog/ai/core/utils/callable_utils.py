@@ -286,7 +286,7 @@ def format_default_value(default: Any) -> str:
         "'2024-01-15'"
         >>> format_default_value(datetime.datetime(2024, 1, 15, 10, 30))
         "'2024-01-15T10:30:00'"
-        >>> format_default_value(b"\x01\x02")
+        >>> format_default_value(b"\\x01\\x02")
         "X'0102'"
     """
 
