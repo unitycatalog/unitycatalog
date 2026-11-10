@@ -47,15 +47,11 @@ public class ServerProperties {
    */
   public static final String DB_PASSWORD_KEY = "hibernate.connection.password";
 
-  // Secrets, which log a deprecation warning when they are read from server.properties. The server
-  // never reads the database password from this file (it comes from the environment or
-  // hibernate.properties), so there it is reported as ignored.
+  // Secrets, which log a deprecation warning when they are read from server.properties.
   private static final Pattern SECRET_KEY =
       Pattern.compile(
           "server\\.client-secret|aws\\.secretKey"
-              + "|(s3\\.secretKey|s3\\.sessionToken|adls\\.clientSecret)\\.\\d+"
-              + "|"
-              + Pattern.quote(DB_PASSWORD_KEY));
+              + "|(s3\\.secretKey|s3\\.sessionToken|adls\\.clientSecret)\\.\\d+");
 
   private final Properties properties = new Properties(generateDefaults());
   private final Map<String, String> env;
@@ -467,18 +463,7 @@ public class ServerProperties {
             name,
             propertiesFile,
             envName(name));
-      } else if (name.equals(DB_PASSWORD_KEY)) {
-        // Only the environment supplies the password; a system property does not.
-        if (getEnv(name) == null) {
-          LOGGER.warn(
-              "{} in {} is ignored; set the {} environment variable instead.",
-              name,
-              propertiesFile,
-              envName(name));
-        }
-      } else if (getOverride(name) != null) {
-        continue;
-      } else {
+      } else if (getOverride(name) == null) {
         LOGGER.warn(
             "{} is set in {}. Keeping secrets in this file is deprecated; set the {} environment"
                 + " variable instead.",
@@ -486,6 +471,15 @@ public class ServerProperties {
             propertiesFile,
             envName(name));
       }
+    }
+    // The server never reads the database password from this file. Only the environment
+    // supplies it; a system property does not.
+    if (properties.containsKey(DB_PASSWORD_KEY) && getEnv(DB_PASSWORD_KEY) == null) {
+      LOGGER.warn(
+          "{} in {} is ignored; set the {} environment variable instead.",
+          DB_PASSWORD_KEY,
+          propertiesFile,
+          envName(DB_PASSWORD_KEY));
     }
   }
 

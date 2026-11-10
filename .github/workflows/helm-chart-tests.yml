@@ -152,7 +152,7 @@ jobs:
           done
           # None in the file, which the init container writes only at pod start.
           ! grep -qE 'server\.client-secret|s3\.(accessKey|secretKey)|adls\.(tenantId|clientId|clientSecret)|hibernate\.connection\.password' <<<"$out" || exit 1
-          # The init container no longer gets the database password.
+          # The rendered chart no longer has DB_PASSWORD.
           ! grep -qF 'DB_PASSWORD' <<<"$out" || exit 1
           # The deprecated init container variables are there only for a custom template.
           legacy='S3_ACCESS_KEY_0 S3_SECRET_KEY_0 ADLS_TENANT_ID_0 ADLS_CLIENT_ID_0 ADLS_CLIENT_SECRET_0 OAUTH_CLIENT_SECRET'
