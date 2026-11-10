@@ -33,8 +33,8 @@ the checks in their own syntax):
 
 ```console
 missing check uc_function_params "TYPE_NAME" BETWEEN 0 AND 21
-missing check uc_functions "DATA_TYPE" BETWEEN 0 AND 21
 unexpected check uc_function_params "TYPE_NAME" BETWEEN 0 AND 20
+missing check uc_functions "DATA_TYPE" BETWEEN 0 AND 21
 unexpected check uc_functions "DATA_TYPE" BETWEEN 0 AND 20
 ```
 
