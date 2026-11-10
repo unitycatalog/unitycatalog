@@ -1,5 +1,6 @@
 package io.unitycatalog.server.sdk.tempcredential;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
@@ -18,6 +19,7 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -84,13 +86,15 @@ public class SdkTemporaryPathCredentialTest extends BaseCRUDTestWithMockCredenti
   @Test
   public void testPathCredentialsForLocationWithForceDeletedCredential() throws ApiException {
     credentialsApi.deleteCredential(AWS_CREDENTIAL_NAME, true);
-    TestUtils.assertApiException(
+    String url = AWS_EXTERNAL_LOCATION_PATH + "/table1";
+    Executable vend =
         () ->
             temporaryCredentialsApi.generateTemporaryPathCredentials(
-                new GenerateTemporaryPathCredential()
-                    .url(AWS_EXTERNAL_LOCATION_PATH + "/table1")
-                    .operation(PathOperation.PATH_READ)),
-        ErrorCode.NOT_FOUND,
-        "of external location '" + AWS_EXTERNAL_LOCATION_NAME + "'");
+                new GenerateTemporaryPathCredential().url(url).operation(PathOperation.PATH_READ));
+    TestUtils.assertApiException(vend, ErrorCode.NOT_FOUND, "for '" + url + "' not found");
+    assertThatThrownBy(vend)
+        .isInstanceOfSatisfying(
+            ApiException.class,
+            e -> assertThat(e.getResponseBody()).doesNotContain(AWS_EXTERNAL_LOCATION_NAME));
   }
 }

@@ -74,6 +74,7 @@ public class CredentialRepository {
         /* readOnly= */ true);
   }
 
+  /** Returns null if the credential no longer exists, e.g. after a force delete. */
   protected String getCredentialName(Session session, UUID id) {
     CredentialDAO credentialDAO = session.get(CredentialDAO.class, id);
     return credentialDAO == null ? null : credentialDAO.getName();
