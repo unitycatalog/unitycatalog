@@ -155,20 +155,20 @@ final class DataSet {
   /** Checks the data {@link #write} wrote; failures name this copy. */
   void assertReadBack(ApiClient api) {
     try {
-      assertKept(new CatalogsApi(api).getCatalog(catalog), catalog(), "catalog");
-      assertKept(new SchemasApi(api).getSchema(schema), schema(), "schema");
+      assertKept(new CatalogsApi(api).getCatalog(catalog, false), catalog(), "catalog");
+      assertKept(new SchemasApi(api).getSchema(schema, false), schema(), "schema");
 
       TablesApi tables = new TablesApi(api);
-      TableInfo managed = tables.getTable(managedTable, null, null);
+      TableInfo managed = tables.getTable(managedTable, null, null, false);
       assertListKept(managed.getColumns(), managedColumns(), "managed table columns");
       // Its location is the staging location the server chose.
       assertKept(managed, managedTable(managed.getTableId()), "managed table", "storageLocation");
-      TableInfo external = tables.getTable(externalTable, null, null);
+      TableInfo external = tables.getTable(externalTable, null, null, false);
       assertListKept(external.getColumns(), externalColumns(), "external table columns");
       assertKept(external, externalTable(), "external table");
 
-      assertKept(new VolumesApi(api).getVolume(volume), volume(), "volume");
-      FunctionInfo function = new FunctionsApi(api).getFunction(this.function);
+      assertKept(new VolumesApi(api).getVolume(volume, false), volume(), "volume");
+      FunctionInfo function = new FunctionsApi(api).getFunction(this.function, false);
       assertListKept(
           function.getInputParams().getParameters(),
           function().getInputParams().getParameters(),

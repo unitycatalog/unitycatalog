@@ -3,6 +3,7 @@
 
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
+| **browse\_only** | **Boolean** | True when the response contains only discovery metadata authorized by BROWSE. | [optional] [default to null] |
 | **name** | **String** | Name of the external location. | [optional] [default to null] |
 | **id** | **String** | Unique identifier for the external location. | [optional] [default to null] |
 | **url** | **String** | Path URL of the external location. | [optional] [default to null] |

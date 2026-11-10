@@ -68,7 +68,7 @@ No authorization required
 
 <a name="getCatalog"></a>
 # **getCatalog**
-> CatalogInfo getCatalog(name)
+> CatalogInfo getCatalog(name, include\_browse)
 
 Get a catalog
 
@@ -79,6 +79,7 @@ Get a catalog
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **name** | **String**| The name of the catalog. | [default to null] |
+| **include\_browse** | **Boolean**| Include discovery metadata for objects visible through BROWSE when ordinary access fails. Such objects have browse_only&#x3D;true. Ordinary access returns full metadata.  | [optional] [default to false] |
 
 ### Return type
 
@@ -95,7 +96,7 @@ No authorization required
 
 <a name="listCatalogs"></a>
 # **listCatalogs**
-> ListCatalogsResponse listCatalogs(page\_token, max\_results)
+> ListCatalogsResponse listCatalogs(page\_token, max\_results, include\_browse)
 
 List catalogs
 
@@ -107,6 +108,7 @@ List catalogs
 |------------- | ------------- | ------------- | -------------|
 | **page\_token** | **String**| Opaque pagination token to go to next page based on previous query.  | [optional] [default to null] |
 | **max\_results** | **Integer**| Maximum number of catalogs to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | [optional] [default to null] |
+| **include\_browse** | **Boolean**| Include discovery metadata for objects visible through BROWSE when ordinary access fails. Such objects have browse_only&#x3D;true. Ordinary access returns full metadata.  | [optional] [default to false] |
 
 ### Return type
 

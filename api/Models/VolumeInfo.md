@@ -3,6 +3,7 @@
 
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
+| **browse\_only** | **Boolean** | True when the response contains only discovery metadata authorized by BROWSE. | [optional] [default to null] |
 | **catalog\_name** | **String** | The name of the catalog where the schema and the volume are | [optional] [default to null] |
 | **schema\_name** | **String** | The name of the schema where the volume is | [optional] [default to null] |
 | **name** | **String** | The name of the volume | [optional] [default to null] |
