@@ -20,6 +20,7 @@ import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -314,6 +315,37 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
 
     assertThatThrownBy(() -> sql("ALTER TABLE %s RENAME COLUMN i TO renamed_i", fullTableName))
         .hasMessageContaining("ALTER TABLE RENAME COLUMN");
+  }
+
+  /**
+   * Loading a managed Delta table now hands UC's stored column metadata, such as Delta's {@code
+   * __CHAR_VARCHAR_TYPE_STRING} and {@code delta.columnMapping.*} keys, to the V1 table that {@code
+   * DeltaCatalog} replaces. Reads, writes, comments and VARCHAR length checks must behave as
+   * before.
+   */
+  @Test
+  @EnabledIf("canUpdateColumnsToUC")
+  public void testLoadManagedDeltaTableWithStoredColumnMetadata() throws ApiException {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String fullTableName =
+        setupTable(
+            new TableSetupOptions()
+                .setCatalogName(CATALOG_NAME)
+                .setTableName(TEST_TABLE)
+                .setColumns(
+                    List.of(Pair.of("i", "INT"), Pair.of("s", "VARCHAR(3) COMMENT 'note'"))));
+    assertThat(loadTableInfo(fullTableName).getColumns().get(1).getTypeJson())
+        .contains("\"__CHAR_VARCHAR_TYPE_STRING\":\"varchar(3)\"")
+        .contains("\"delta.columnMapping.id\"");
+
+    sql("INSERT INTO %s VALUES (1, 'abc')", fullTableName);
+
+    validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(1, "abc"));
+    assertThat(session.table(fullTableName).schema().apply("s").getComment().get())
+        .isEqualTo("note");
+    assertThatThrownBy(() -> sql("INSERT INTO %s VALUES (2, 'abcd')", fullTableName))
+        .hasStackTraceContaining("EXCEED_LIMIT_LENGTH");
   }
 
   @Test

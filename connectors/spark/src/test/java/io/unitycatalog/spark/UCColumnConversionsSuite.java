@@ -3,11 +3,15 @@ package io.unitycatalog.spark;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.stream.Stream;
 import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.MetadataBuilder;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Unit tests for the Spark V2 {@code Column} &lt;-&gt; UC {@code ColumnInfo.type_json} round-trip
@@ -96,28 +100,21 @@ public class UCColumnConversionsSuite {
     assertThat(UCColumnConversions.metadataOf("b", json)).isEqualTo(expected);
   }
 
-  @Test
-  public void testMetadataOfNullOrEmptyTypeJsonIsEmpty() {
-    assertThat(UCColumnConversions.metadataOf("b", null)).isEqualTo(Metadata.empty());
-    assertThat(UCColumnConversions.metadataOf("b", "")).isEqualTo(Metadata.empty());
+  static Stream<Arguments> typeJsonWithoutMetadata() {
+    return Stream.of(
+        Arguments.of("null type_json", null),
+        Arguments.of("empty type_json", ""),
+        Arguments.of("missing metadata", "{\"name\":\"b\",\"type\":\"integer\"}"),
+        Arguments.of("empty metadata", typeJsonWithMetadata("{}")),
+        Arguments.of("null metadata", typeJsonWithMetadata("null")),
+        Arguments.of("string metadata", typeJsonWithMetadata("\"x\"")),
+        Arguments.of("array metadata", typeJsonWithMetadata("[1]")));
   }
 
-  @Test
-  public void testMetadataOfWithoutMetadataKeyIsEmpty() {
-    assertThat(UCColumnConversions.metadataOf("b", "{\"name\":\"b\",\"type\":\"integer\"}"))
-        .isEqualTo(Metadata.empty());
-  }
-
-  @Test
-  public void testMetadataOfEmptyNullOrNonObjectMetadataIsEmpty() {
-    assertThat(UCColumnConversions.metadataOf("b", typeJsonWithMetadata("{}")))
-        .isEqualTo(Metadata.empty());
-    assertThat(UCColumnConversions.metadataOf("b", typeJsonWithMetadata("null")))
-        .isEqualTo(Metadata.empty());
-    assertThat(UCColumnConversions.metadataOf("b", typeJsonWithMetadata("\"x\"")))
-        .isEqualTo(Metadata.empty());
-    assertThat(UCColumnConversions.metadataOf("b", typeJsonWithMetadata("[1]")))
-        .isEqualTo(Metadata.empty());
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("typeJsonWithoutMetadata")
+  public void testMetadataOfAbsentMetadataIsEmpty(String description, String typeJson) {
+    assertThat(UCColumnConversions.metadataOf("b", typeJson)).isEqualTo(Metadata.empty());
   }
 
   @Test

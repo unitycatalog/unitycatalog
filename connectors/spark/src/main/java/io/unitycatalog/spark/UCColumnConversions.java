@@ -136,6 +136,10 @@ public final class UCColumnConversions {
    * {@code type_json} is malformed, or its {@code metadata} holds values Spark cannot represent
    * (such as a mixed-type array), this logs a warning and returns empty metadata instead of failing
    * the table load.
+   *
+   * @param columnName the column name, used only in the warning log
+   * @param typeJson the column's {@code type_json}, possibly null or empty
+   * @return the Spark field metadata, or empty metadata when absent or unreadable
    */
   static Metadata metadataOf(String columnName, String typeJson) {
     if (typeJson == null || typeJson.isEmpty()) {
