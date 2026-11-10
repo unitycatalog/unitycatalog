@@ -206,6 +206,53 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
         .withMessageContaining("Invalid type_json for column bad_column");
   }
 
+  @Test
+  public void testCreateTableKeepsColumnTypeTextCase() throws Exception {
+    String typeText = "STRUCT<UserId:INT,Tags:ARRAY<STRING>>";
+    ColumnInfo structColumn =
+        new ColumnInfo()
+            .name("s")
+            .typeText(typeText)
+            .typeJson(
+                "{\"name\":\"s\",\"type\":{\"type\":\"struct\",\"fields\":["
+                    + "{\"name\":\"UserId\",\"type\":\"integer\","
+                    + "\"nullable\":true,\"metadata\":{}},"
+                    + "{\"name\":\"Tags\",\"type\":{\"type\":\"array\","
+                    + "\"elementType\":\"string\",\"containsNull\":true},"
+                    + "\"nullable\":true,\"metadata\":{}}]},"
+                    + "\"nullable\":true,\"metadata\":{}}")
+            .typeName(ColumnTypeName.STRUCT)
+            .position(0)
+            .nullable(true);
+    ColumnInfo intColumn =
+        new ColumnInfo()
+            .name("n")
+            .typeText("INT")
+            .typeJson("{\"name\":\"n\",\"type\":\"integer\",\"nullable\":true,\"metadata\":{}}")
+            .typeName(ColumnTypeName.INT)
+            .position(1)
+            .nullable(true);
+    List<ColumnInfo> columns = List.of(structColumn, intColumn);
+    TableInfo created =
+        tableOperations.createTable(
+            new CreateTable()
+                .name(TestUtils.TABLE_NAME)
+                .catalogName(TestUtils.CATALOG_NAME)
+                .schemaName(TestUtils.SCHEMA_NAME)
+                .columns(columns)
+                .tableType(TableType.MANAGED)
+                .dataSourceFormat(DataSourceFormat.DELTA));
+
+    assertThat(created.getColumns()).isEqualTo(columns);
+    assertThat(tableOperations.getTable(TestUtils.TABLE_FULL_NAME).getColumns()).isEqualTo(columns);
+    assertThat(
+            tableOperations.listTables(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, Optional.empty()))
+        .singleElement()
+        .extracting(TableInfo::getColumns)
+        .isEqualTo(columns);
+  }
+
   /**
    * Test the complete flow of creating a staging table and then creating a managed table using that
    * staging table's location.
