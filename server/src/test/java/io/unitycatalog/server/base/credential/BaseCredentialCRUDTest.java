@@ -21,6 +21,7 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.externallocation.ExternalLocationOperations;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -136,6 +137,13 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
         ErrorCode.INVALID_ARGUMENT,
         "Credential still used by external location");
 
+    String secondExternalLocationName = EXTERNAL_LOCATION_NAME + "_second";
+    externalLocationOperations.createExternalLocation(
+        new CreateExternalLocation()
+            .name(secondExternalLocationName)
+            .url(URL + "-second")
+            .credentialName(credentialWithExternalLocationName));
+
     // An external location on another credential must survive the force delete
     String otherCredentialName = CREDENTIAL_NAME + "_other";
     String otherExternalLocationName = EXTERNAL_LOCATION_NAME + "_other";
@@ -151,11 +159,14 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
     credentialOperations.deleteCredential(credentialWithExternalLocationName, Optional.of(true));
     assertThat(externalLocationOperations.listExternalLocations(Optional.empty()))
         .extracting(ExternalLocationInfo::getName)
-        .containsExactly(otherExternalLocationName);
-    assertApiException(
-        () -> externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME),
-        ErrorCode.NOT_FOUND,
-        "External location not found");
+        .contains(otherExternalLocationName)
+        .doesNotContain(EXTERNAL_LOCATION_NAME, secondExternalLocationName);
+    for (String deletedName : List.of(EXTERNAL_LOCATION_NAME, secondExternalLocationName)) {
+      assertApiException(
+          () -> externalLocationOperations.getExternalLocation(deletedName),
+          ErrorCode.NOT_FOUND,
+          "External location not found");
+    }
     externalLocationOperations.deleteExternalLocation(otherExternalLocationName, Optional.empty());
     credentialOperations.deleteCredential(otherCredentialName, Optional.empty());
 

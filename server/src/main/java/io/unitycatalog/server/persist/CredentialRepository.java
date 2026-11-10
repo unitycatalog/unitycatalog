@@ -5,9 +5,11 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.ListCredentialsResponse;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdateCredentialRequest;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
+import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
@@ -18,6 +20,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Predicate;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -153,11 +156,15 @@ public class CredentialRepository {
 
   /**
    * Deletes a credential. With {@code force}, the external locations using it are deleted in the
-   * same transaction so none are left pointing at a missing credential.
+   * same transaction, with the same checks as deleting each location directly. Nothing is deleted
+   * if any of them fails those checks or is rejected by {@code canDeleteExternalLocation}.
    *
-   * @return the IDs of the deleted credential and of any deleted external locations
+   * @param canDeleteExternalLocation whether the caller may delete the external location with the
+   *     given ID
+   * @return the deleted external locations and credential
    */
-  public List<UUID> deleteCredential(String name, boolean force) {
+  public List<DeletedResource> deleteCredential(
+      String name, boolean force, Predicate<UUID> canDeleteExternalLocation) {
     LOGGER.debug("Deleting storage credential {}", name);
     return TransactionManager.executeWithTransaction(
         sessionFactory,
@@ -175,25 +182,40 @@ public class CredentialRepository {
                     + externalLocations.get(0).getName()
                     + "'");
           }
-          List<UUID> deletedIds = new ArrayList<>();
+          externalLocations.stream()
+              .filter(location -> !canDeleteExternalLocation.test(location.getId()))
+              .findFirst()
+              .ifPresent(
+                  location -> {
+                    throw new BaseException(
+                        ErrorCode.PERMISSION_DENIED,
+                        "Access denied to delete external location '"
+                            + location.getName()
+                            + "' using credential '"
+                            + name
+                            + "'");
+                  });
+          List<DeletedResource> deleted = new ArrayList<>();
           for (ExternalLocationDAO externalLocation : externalLocations) {
-            session.remove(externalLocation);
-            deletedIds.add(externalLocation.getId());
-            LOGGER.info(
-                "Deleted external location {} using credential {}",
-                externalLocation.getName(),
-                name);
+            repositories
+                .getExternalLocationRepository()
+                .removeExternalLocation(session, externalLocation, /* force= */ false);
+            deleted.add(
+                new DeletedResource(
+                    SecurableType.EXTERNAL_LOCATION, externalLocation.getId().toString(), null));
           }
           session.remove(existingCredential);
-          deletedIds.add(existingCredential.getId());
+          deleted.add(
+              new DeletedResource(
+                  SecurableType.CREDENTIAL, existingCredential.getId().toString(), null));
           LOGGER.info("Deleted credential: {}", name);
-          return deletedIds;
+          return deleted;
         },
         "Failed to delete credential",
         /* readOnly= */ false);
   }
 
-  protected List<ExternalLocationDAO> getExternalLocationDAOsUsingCredential(
+  private List<ExternalLocationDAO> getExternalLocationDAOsUsingCredential(
       Session session, UUID credentialId) {
     Query<ExternalLocationDAO> query =
         session.createQuery(

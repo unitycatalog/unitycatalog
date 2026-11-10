@@ -230,38 +230,46 @@ public class ExternalLocationRepository {
           if (existingLocation == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
           }
-          // Check if the external location is in use by any data objects (tables, volumes, models)
-          if (!force) {
-            if (ExternalLocationUtils.hasPendingCleanupOverlap(
-                session, NormalizedURL.from(existingLocation.getUrl()))) {
-              throw new BaseException(
-                  ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup.");
-            }
-            ExternalLocationUtils.getAllEntityDAOsWithURLOverlap(
-                    session,
-                    NormalizedURL.from(existingLocation.getUrl()),
-                    ExternalLocationUtils.DATA_SECURABLE_TYPES,
-                    /* limit= */ 1,
-                    /* includeParent= */ false,
-                    /* includeSelf= */ true,
-                    /* includeSubdir= */ true)
-                .stream()
-                .findAny()
-                .ifPresent(
-                    pair -> {
-                      throw new BaseException(
-                          ErrorCode.INVALID_ARGUMENT,
-                          String.format(
-                              "External location still used by %s '%s'",
-                              pair.getLeft(), pair.getRight().getId()));
-                    });
-          }
-          session.remove(existingLocation);
-          LOGGER.info("Deleted external location: {}", name);
+          removeExternalLocation(session, existingLocation, force);
           return existingLocation;
         },
         "Failed to delete external location",
         /* readOnly= */ false);
+  }
+
+  /**
+   * Removes an external location within the caller's transaction. Unless {@code force} is set, it
+   * fails if data objects (tables, volumes, models) are under the location or its URL overlaps a
+   * pending storage cleanup.
+   */
+  void removeExternalLocation(Session session, ExternalLocationDAO location, boolean force) {
+    if (!force) {
+      if (ExternalLocationUtils.hasPendingCleanupOverlap(
+          session, NormalizedURL.from(location.getUrl()))) {
+        throw new BaseException(
+            ErrorCode.PERMISSION_DENIED, "Input path overlaps pending storage cleanup.");
+      }
+      ExternalLocationUtils.getAllEntityDAOsWithURLOverlap(
+              session,
+              NormalizedURL.from(location.getUrl()),
+              ExternalLocationUtils.DATA_SECURABLE_TYPES,
+              /* limit= */ 1,
+              /* includeParent= */ false,
+              /* includeSelf= */ true,
+              /* includeSubdir= */ true)
+          .stream()
+          .findAny()
+          .ifPresent(
+              pair -> {
+                throw new BaseException(
+                    ErrorCode.INVALID_ARGUMENT,
+                    String.format(
+                        "External location still used by %s '%s'",
+                        pair.getLeft(), pair.getRight().getId()));
+              });
+    }
+    session.remove(location);
+    LOGGER.info("Deleted external location: {}", location.getName());
   }
 
   /**

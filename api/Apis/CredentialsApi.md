@@ -51,7 +51,7 @@ Delete a credential
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **name** | **String**| Name of the credential. | [default to null] |
-| **force** | **Boolean**| Force deletion even if there are dependent external locations. | [optional] [default to null] |
+| **force** | **Boolean**| Force deletion even if there are dependent external locations. The external locations using the credential are also deleted, which requires the caller to be a metastore admin or the owner of each of them, and fails if any of them still has tables, volumes or models under it. | [optional] [default to null] |
 
 ### Return type
 

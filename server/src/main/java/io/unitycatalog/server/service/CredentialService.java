@@ -1,7 +1,9 @@
 package io.unitycatalog.server.service;
 
 import static io.unitycatalog.server.model.SecurableType.CREDENTIAL;
+import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.persist.model.Privileges.OWNER;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
@@ -22,7 +24,9 @@ import io.unitycatalog.server.model.UpdateCredentialRequest;
 import io.unitycatalog.server.persist.CredentialRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.SneakyThrows;
@@ -102,6 +106,10 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
     return HttpResponse.ofJson(credentialRepository.updateCredential(name, updateRequest));
   }
 
+  /**
+   * With {@code force}, the external locations using the credential are also deleted, which
+   * requires metastore OWNER or OWNER of each of those locations.
+   */
   @Delete("/{name}")
   @AuthorizeExpression(
       """
@@ -112,9 +120,17 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
   public HttpResponse deleteCredential(
       @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name,
       @Param("force") Optional<Boolean> force) {
-    for (UUID deletedId : credentialRepository.deleteCredential(name, force.orElse(false))) {
-      removeAuthorizations(deletedId.toString());
-    }
+    UUID principalId = userRepository.findPrincipalId();
+    List<DeletedResource> deleted =
+        credentialRepository.deleteCredential(
+            name,
+            force.orElse(false),
+            externalLocationId ->
+                authorizer.authorize(
+                        principalId, METASTORE, metastoreRepository.getMetastoreId(), OWNER)
+                    || authorizer.authorize(
+                        principalId, EXTERNAL_LOCATION, externalLocationId, OWNER));
+    clearDeletedResourceAuthorizations(deleted);
     return HttpResponse.of(HttpStatus.OK);
   }
 }
