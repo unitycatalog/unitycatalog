@@ -196,7 +196,7 @@ Refer to [sbt docs](https://www.scala-sbt.org/1.x/docs/) for more commands.
   ```sh
   build/sbt createTarball
   ```
-  This will create a tarball in the `target` directory. See the full [deployment guide](docs/deployment.md) for more details.
+  This will create a tarball in the `target` directory. See the full [deployment guide](docs/server/deployment.md) for more details.
 
 ## Compiling and testing
 
