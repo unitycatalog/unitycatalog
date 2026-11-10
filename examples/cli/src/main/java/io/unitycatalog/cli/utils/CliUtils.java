@@ -781,13 +781,11 @@ public class CliUtils {
    */
   public static List<ColumnInfo> parseColumns(String columnsString) {
     List<ColumnInfo> columns = new ArrayList<>();
-    Pattern pattern = Pattern.compile("\\G\\s*(\\w+)\\s+(\\w+)\\s*(\\(([^)]*)\\))?\\s*(,|$)");
+    Pattern pattern = Pattern.compile("(\\w+)\\s+(\\w+)\\s*(\\(([^)]*)\\))?");
     Matcher matcher = pattern.matcher(columnsString);
     int position = 0;
-    int end = 0;
 
     while (matcher.find()) {
-      end = matcher.end();
       try {
         ColumnInfo columnInfo = new ColumnInfo();
 
@@ -811,13 +809,8 @@ public class CliUtils {
         columnInfo.setPosition(position++);
         columns.add(columnInfo);
       } catch (Exception e) {
-        throw new IllegalArgumentException(
-            "Invalid column definition: " + matcher.group(0).trim(), e);
+        throw new IllegalArgumentException("Invalid column definition: " + matcher.group(0), e);
       }
-    }
-    if (end < columnsString.length()) {
-      throw new IllegalArgumentException(
-          "Invalid column definition: " + columnsString.substring(end).trim());
     }
 
     return columns;

@@ -15,9 +15,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.delta.kernel.types.DecimalType;
+import io.delta.kernel.types.IntegerType;
 import io.delta.kernel.types.StructType;
 import io.unitycatalog.cli.catalog.CliCatalogOperations;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
+import io.unitycatalog.cli.delta.DeltaKernelWriteUtils;
 import io.unitycatalog.cli.schema.CliSchemaOperations;
 import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliUtils;
@@ -171,14 +173,28 @@ public class CliTableCreationTest extends BaseServerTest {
             "price DECIMAL(0,0)",
             "price DECIMAL(39,0)",
             "price DECIMAL(5,6)",
-            "price DECIMAL(5,-1)",
-            "id INT NOT NULL",
-            "id INT, price DECIMAL(10,2) extra")) {
+            "price DECIMAL(5,-1)")) {
       assertThatThrownBy(() -> CliUtils.parseColumns(columns))
           .as(columns)
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageStartingWith("Invalid column definition");
     }
+  }
+
+  @Test
+  public void testParseNonDecimalColumnsStaysLenient() {
+    assertThat(CliUtils.parseColumns("id INT name STRING, "))
+        .extracting(ColumnInfo::getName, ColumnInfo::getTypeText)
+        .containsExactly(tuple("id", "int"), tuple("name", "string"));
+  }
+
+  @Test
+  public void testWriteRejectsUnsupportedColumnType() {
+    StructType schema =
+        new StructType().add("id", IntegerType.INTEGER).add("price", new DecimalType(10, 2));
+    assertThatThrownBy(() -> DeltaKernelWriteUtils.createVectorsFromSchema(schema, 1, 0))
+        .isInstanceOf(UnsupportedOperationException.class)
+        .hasMessageContaining("price");
   }
 
   @Test
