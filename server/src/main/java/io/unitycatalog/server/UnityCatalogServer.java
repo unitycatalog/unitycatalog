@@ -18,6 +18,7 @@ import io.unitycatalog.server.cleanup.StorageCleanupWorker;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.migrate.SchemaMigrator;
 import io.unitycatalog.server.observability.DbReadinessChecker;
 import io.unitycatalog.server.observability.MetricsRegistries;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
@@ -345,8 +346,10 @@ public class UnityCatalogServer implements AutoCloseable {
         JCasbinAuthorizer authorizer =
             new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
         try {
-          new UnityAccessUtil(repositories).initializeAdmin(authorizer);
-          return authorizer;
+          UnityCatalogAuthorizer effective =
+              Optional.ofNullable(auditor).map(a -> a.wrap(authorizer)).orElse(authorizer);
+          new UnityAccessUtil(repositories).initializeAdmin(effective);
+          return effective;
         } catch (Exception e) {
           authorizer.close();
           throw e;
@@ -464,6 +467,11 @@ public class UnityCatalogServer implements AutoCloseable {
   public static void main(String[] args) {
     OptionParser options = new OptionParser();
     options.parse(args);
+    if (options.isUpgradeSchema()) {
+      int exitCode = SchemaMigrator.runCommand(Path.of("etc", "conf"), System.out);
+      LogManager.shutdown();
+      System.exit(exitCode);
+    }
     int port = options.getPort();
     ServerProperties serverProperties = new ServerProperties(SERVER_PROPERTIES_FILE);
     UnityCatalogServer.Builder serverBuilder =

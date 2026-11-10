@@ -32,6 +32,8 @@ lazy val sparkVersion = CrossSparkVersions.getSparkArtifactVersion()
 lazy val hadoopVersion = sys.props.getOrElse("hadoopVersion", "3.4.2")
 
 // Library versions
+// When bumping Iceberg, re-check the Failsafe pin in the server dependencyOverrides: iceberg-aws
+// must not need a Failsafe API that the pinned version lacks.
 lazy val icebergVersion = "1.11.0"
 lazy val jacksonVersion = "2.18.10"
 lazy val openApiToolsJacksonBindNullableVersion = "0.2.11"
@@ -44,6 +46,7 @@ lazy val micrometerVersion = "1.17.0"
 lazy val nettyVersion = "4.2.18.Final"
 lazy val nettyTcnativeVersion = "2.0.84.Final"
 lazy val postgresqlVersion = "42.7.14"
+lazy val flywayVersion = "13.10.3"
 // Keep in step with the Caffeine version iceberg-core depends on (2.9.3 in Iceberg 1.11.0).
 lazy val caffeineVersion = "2.9.3"
 lazy val junitJupiterVersion = "5.13.4"
@@ -97,6 +100,8 @@ lazy val commonSettings = Seq(
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
+    // Merged, not dropped: Flyway finds its database support through its ServiceLoader file.
+    case PathList("META-INF", "services", f) if f.startsWith("org.flywaydb") => MergeStrategy.filterDistinctLines
     // Keep the Log4j provider registration that adds request_id to log lines.
     case PathList("META-INF", "services", "org.apache.logging.log4j.core.util.ContextDataProvider") =>
       MergeStrategy.concat
@@ -117,7 +122,10 @@ lazy val commonSettings = Seq(
       targetDir = packageFile.getParentFile,
       // Also include the jar being built (packageFile) in the classpath
       // This is specifically required by the server project since the server and control models are provided dependencies
-      classpath = (Runtime / dependencyClasspath).value :+ Attributed.blank(packageFile)
+      // The jar replaces the project's own class directory: with both, Flyway finds every
+      // migration step twice.
+      classpath = (Runtime / dependencyClasspath).value
+        .filterNot(_.data == (Compile / classDirectory).value) :+ Attributed.blank(packageFile)
     )
     packageFile
   },
@@ -426,6 +434,9 @@ lazy val server = (project in file("server"))
 
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
       "com.zaxxer" % "HikariCP" % "7.1.0",
+      "org.flywaydb" % "flyway-core" % flywayVersion,
+      "org.flywaydb" % "flyway-database-postgresql" % flywayVersion,
+      "org.flywaydb" % "flyway-mysql" % flywayVersion,
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
@@ -469,6 +480,9 @@ lazy val server = (project in file("server"))
       "org.casbin" % "jdbc-adapter" % "2.13.0"
         exclude("com.microsoft.sqlserver", "mssql-jdbc")
         exclude("com.oracle.database.jdbc", "ojdbc6"),
+      // Also a direct dependency so the published POM carries the Failsafe pin from
+      // dependencyOverrides below; see the TODO there.
+      "dev.failsafe" % "failsafe" % "3.2.3",
       "org.postgresql" % "postgresql" % postgresqlVersion,
       "org.springframework" % "spring-expression" % "6.2.19",
       "com.auth0" % "java-jwt" % "4.6.1",
@@ -498,6 +512,14 @@ lazy val server = (project in file("server"))
     dependencyOverrides ++= Seq(
       // One PostgreSQL driver: jdbc-adapter brings 42.7.2. Keep in step with the direct dependency.
       "org.postgresql" % "postgresql" % postgresqlVersion,
+      // jdbc-adapter 2.13.0 calls ExecutionContext.getLastFailure, which Failsafe 3.3.0 removed, so on
+      // the 3.3.2 that iceberg-aws brings a failed policy write throws NoSuchMethodError. iceberg-aws
+      // only uses Failsafe APIs that 3.2.3 has.
+      // TODO(https://github.com/apache/casbin-jcasbin-jdbc-adapter/pull/94): drop this pin once a
+      // jdbc-adapter release includes that change. The pin applies to this project only: serverShaded
+      // ships 3.2.3 because its assembly classpath is this project's, and any other module that depends
+      // on server resolves 3.3.2 unless it pins Failsafe too.
+      "dev.failsafe" % "failsafe" % "3.2.3",
       "software.amazon.awssdk" % "sso" % awsSdkV2Version,
       "software.amazon.awssdk" % "ssooidc" % awsSdkV2Version,
       "software.amazon.awssdk" % "s3" % awsSdkV2Version,
