@@ -7,6 +7,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,9 +37,11 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Upgrades Unity Catalog's database schema with the steps of {@code db/migration/<database>}: sets
- * up an empty database and applies the pending steps to one with schema history. On PostgreSQL and
- * MySQL, each {@link #upgradeSchema()} holds a {@link RunLock} from classifying the database to the
- * last step.
+ * up an empty database, adopts a database without schema history whose schema is that of the
+ * baseline release (recording step 1 without running it) or of this build's last step, and applies
+ * the pending steps, checking at the end the schema against the steps' effect files ({@code
+ * schema-effects/<database>}). On PostgreSQL and MySQL, each {@link #upgradeSchema()} holds a
+ * {@link RunLock} from classifying the database to the last step.
  */
 public final class SchemaMigrator implements AutoCloseable {
 
@@ -97,6 +100,13 @@ public final class SchemaMigrator implements AutoCloseable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(SchemaMigrator.class);
   private static final String HISTORY_TABLE = "uc_schema_history";
+
+  /**
+   * The release whose databases are adopted as version 1: one without schema history whose schema
+   * is step 1's exactly is recorded at version 1 without running step 1. A database from an earlier
+   * release has to be started on a {@value} server once first.
+   */
+  static final String ADOPTED_RELEASE = "0.7.0";
 
   /**
    * The baseline Flyway records on a database that holds only other tables (Casbin's, another
@@ -353,15 +363,18 @@ public final class SchemaMigrator implements AutoCloseable {
 
   /**
    * For {@code bin/start-uc-server --upgrade-schema}: under the run lock, applies this build's
-   * pending steps and checks that the database ends at this build's last step. This also sets up an
-   * empty database. A database with Unity Catalog's tables but no schema history is refused. On
-   * PostgreSQL and MySQL, a second run at the same time waits for the first. Returns the number of
-   * steps it ran.
+   * pending steps and checks that the database ends with the schema of the last step. This also
+   * sets up an empty database, and adopts a database without schema history when its schema is
+   * exactly that of {@link #ADOPTED_RELEASE} (the steps after the first run) or of this build's
+   * last step (every step is recorded without running). On PostgreSQL and MySQL, a second run at
+   * the same time waits for the first. Returns the number of steps it ran or recorded.
    */
   public int upgradeSchema() {
     try (RunLock lock = RunLock.acquire(dataSource, kind)) {
-      refuseIfUnsupported(state());
+      SchemaState state = state();
+      refuseIfUnsupported(state);
       requireValidHistory(true);
+      int recorded = state == SchemaState.UNVERSIONED_UC ? adopt() : 0;
       int ran =
           flyway()
               .baselineOnMigrate(true)
@@ -371,9 +384,57 @@ public final class SchemaMigrator implements AutoCloseable {
               .migrate()
               .migrationsExecuted;
       requireCurrent();
-      requireStepIndexes();
-      return ran;
+      return recorded + ran;
     }
+  }
+
+  /**
+   * Adopts a database without schema history whose schema is exactly that of {@link
+   * #ADOPTED_RELEASE} (step 1) or of this build's last step: records the steps up to that one
+   * without running them, and returns their number.
+   *
+   * @throws IllegalStateException for any other schema, naming its differences from step 1
+   */
+  private int adopt() {
+    String first = steps().get(0);
+    String latest = latestVersion();
+    SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
+    String adoptedAt =
+        schema.equals(expected(latest)) ? latest : schema.equals(expected(first)) ? first : null;
+    if (adoptedAt == null) {
+      throw new IllegalStateException(
+          "The database has no schema history, and its schema is neither the schema of version "
+              + first
+              + " nor that of version "
+              + latest
+              + ". It differs from version "
+              + first
+              + " in:\n"
+              + differences(schema, expected(first))
+              + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup,"
+              + " then run bin/start-uc-server --upgrade-schema again. A database from a release"
+              + " before "
+              + ADOPTED_RELEASE
+              + " must be started once on a "
+              + ADOPTED_RELEASE
+              + " server first (see docs/server/upgrades.md, \"Repairing a database from"
+              + " before 0.7.0\").");
+    }
+    int recorded =
+        flyway()
+            .baselineOnMigrate(true)
+            .baselineVersion(EMPTY_BASELINE_VERSION)
+            .baselineDescription("empty")
+            .target(adoptedAt)
+            .skipExecutingMigrations(true)
+            .load()
+            .migrate()
+            .migrationsExecuted;
+    LOGGER.info(
+        "Adopted the database without schema history at version {}: recorded the steps up to it"
+            + " without running them",
+        adoptedAt);
+    return recorded;
   }
 
   /**
@@ -470,6 +531,40 @@ public final class SchemaMigrator implements AutoCloseable {
         .toList();
   }
 
+  /**
+   * The schema that this build's steps up to {@code version} leave, added up from their effect
+   * files {@code schema-effects/<database>/V<step>.txt}; {@link SchemaSnapshot#NONE} for version 0.
+   *
+   * @throws IllegalStateException when an effect file is missing or does not fit
+   */
+  SchemaSnapshot expected(String version) {
+    MigrationVersion upTo = MigrationVersion.fromVersion(version);
+    SchemaSnapshot schema = SchemaSnapshot.NONE;
+    for (String step : steps()) {
+      if (MigrationVersion.fromVersion(step).compareTo(upTo) > 0) {
+        break;
+      }
+      String path = "schema-effects/" + kind.folder() + "/V" + step + ".txt";
+      try (InputStream in = SchemaMigrator.class.getClassLoader().getResourceAsStream(path)) {
+        if (in == null) {
+          throw new IllegalStateException(
+              "This build has no effect file "
+                  + path
+                  + " for schema step "
+                  + step
+                  + ": it is incomplete. Use a release build of Unity Catalog.");
+        }
+        schema =
+            schema.with(new String(in.readAllBytes(), StandardCharsets.UTF_8).lines().toList());
+      } catch (IOException e) {
+        throw new UncheckedIOException(e);
+      } catch (IllegalArgumentException e) {
+        throw new IllegalStateException("The effect file " + path + " " + e.getMessage(), e);
+      }
+    }
+    return schema;
+  }
+
   /** Throws for a database that {@link #upgradeSchema()} must not change. */
   private void refuseIfUnsupported(SchemaState state) {
     String refusal =
@@ -480,9 +575,6 @@ public final class SchemaMigrator implements AutoCloseable {
                   + ", this release ends at "
                   + latestVersion()
                   + "). Run the newer release.";
-          case UNVERSIONED_UC ->
-              "The database has Unity Catalog's tables but no schema history: adopting a database"
-                  + " without schema history is not supported yet. Keep running the server on it.";
           default -> null;
         };
     if (refusal != null) {
@@ -491,8 +583,8 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Throws unless the database is at this build's last step: recorded as applied, and Flyway's
-   * validation passes.
+   * Throws unless the database is at this build's last step: recorded as applied, Flyway's
+   * validation passes, and the schema is the one the steps' effect files add up to.
    */
   private void requireCurrent() {
     SchemaState state = state();
@@ -501,54 +593,42 @@ public final class SchemaMigrator implements AutoCloseable {
           "The database schema is " + state + "; this release needs version " + latestVersion());
     }
     requireValidHistory(false);
+    SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
+    SchemaSnapshot expected = expected(latestVersion());
+    if (!schema.equals(expected)) {
+      throw new IllegalStateException(
+          "The database schema differs from the schema of version "
+              + latestVersion()
+              + ":\n"
+              + differences(schema, expected)
+              + "\nRepair these differences (see docs/server/upgrades.md) or restore the backup.");
+    }
   }
 
-  private static final Pattern CREATE_INDEX =
-      Pattern.compile(
-          "(?i)create\\s+(?:unique\\s+)?index\\s+if\\s+not\\s+exists\\s+(\\w+)\\s+on\\s+(\\w+)");
-
   /**
-   * Throws when an index that a step creates is missing, for example because another object already
-   * uses its name. PostgreSQL and H2 name indexes schema-wide, so {@code create index if not
-   * exists} skips ours without an error. MySQL names indexes per table and is not affected.
+   * {@code schema}'s differences from {@code expected}. Each missing index that another table's
+   * index of the same name took (see {@link #indexClashHint}) gets that clash appended.
    */
-  private void requireStepIndexes() {
-    // Flyway's info needs its own connections: list the steps before taking ours.
-    List<MigrationInfo> steps = resolvedSteps(flyway().load().info());
+  private String differences(SchemaSnapshot schema, SchemaSnapshot expected) {
+    String differences = schema.differencesFrom(expected);
+    if (kind == DatabaseKind.MYSQL) {
+      return differences; // its index names are per table: no clash
+    }
     try (Connection connection = dataSource.getConnection()) {
-      for (MigrationInfo step : steps) {
-        String path = "/db/migration/" + kind.folder() + "/" + step.getScript();
-        try (InputStream in = SchemaMigrator.class.getResourceAsStream(path)) {
-          if (in == null) {
-            continue; // a test's own step
-          }
-          Matcher m = CREATE_INDEX.matcher(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-          while (m.find()) {
-            String index = m.group(1);
-            String table = m.group(2);
-            DatabaseMetaData metaData = connection.getMetaData();
-            // H2 stores the unquoted names of the steps in upper case.
-            String stored =
-                metaData.storesUpperCaseIdentifiers() ? table.toUpperCase(Locale.ROOT) : table;
-            if (!indexNames(metaData, connection, stored)
-                .contains(index.toLowerCase(Locale.ROOT))) {
-              String hint = indexClashHint(connection, index, table);
-              throw new IllegalStateException(
-                  "Step "
-                      + step.getVersion()
-                      + " left Unity Catalog index "
-                      + index
-                      + " missing on "
-                      + table
-                      + (hint == null ? "" : ": " + hint));
-            }
-          }
-        }
+      StringBuilder out = new StringBuilder();
+      for (String line : differences.split("\n")) {
+        out.append(line);
+        Matcher m = MISSING_INDEX.matcher(line);
+        String hint = m.find() ? indexClashHint(connection, m.group(2), m.group(1)) : null;
+        out.append(hint == null ? "" : " (" + hint + ")").append('\n');
       }
-    } catch (SQLException | IOException e) {
+      return out.toString().stripTrailing();
+    } catch (SQLException e) {
       throw new IllegalStateException("Could not check the schema's indexes: " + e.getMessage(), e);
     }
   }
+
+  private static final Pattern MISSING_INDEX = Pattern.compile("^missing index (uc_\\w+)\\.(\\w+)");
 
   /**
    * For the index {@code index} missing on {@code table}: when a table that is not Unity Catalog's

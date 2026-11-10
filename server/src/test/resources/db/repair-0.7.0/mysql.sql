@@ -1,0 +1,5 @@
+-- The repair SQL of docs/server/upgrades.md for MySQL; keep the two the same.
+-- <check of uc_functions.data_type>: SELECT tc.constraint_name FROM information_schema.table_constraints tc JOIN information_schema.check_constraints cc ON cc.constraint_schema = tc.constraint_schema AND cc.constraint_name = tc.constraint_name WHERE tc.table_schema = DATABASE() AND tc.table_name = 'uc_functions' AND cc.check_clause = '(`data_type` between 0 and 20)';
+-- <check of uc_function_params.type_name>: SELECT tc.constraint_name FROM information_schema.table_constraints tc JOIN information_schema.check_constraints cc ON cc.constraint_schema = tc.constraint_schema AND cc.constraint_name = tc.constraint_name WHERE tc.table_schema = DATABASE() AND tc.table_name = 'uc_function_params' AND cc.check_clause = '(`type_name` between 0 and 20)';
+ALTER TABLE uc_functions DROP CHECK `<check of uc_functions.data_type>`, ADD CHECK (data_type BETWEEN 0 AND 21);
+ALTER TABLE uc_function_params DROP CHECK `<check of uc_function_params.type_name>`, ADD CHECK (type_name BETWEEN 0 AND 21);
