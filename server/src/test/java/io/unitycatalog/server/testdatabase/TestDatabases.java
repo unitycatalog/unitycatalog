@@ -1,9 +1,15 @@
 package io.unitycatalog.server.testdatabase;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.Comparator;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 import org.h2.api.ErrorCode;
 
 /**
@@ -24,6 +30,35 @@ public final class TestDatabases {
       case POSTGRES_18 -> PostgresDatabases.get().newDatabase(name);
       case MYSQL_8 -> MySqlDatabases.get().newDatabase(name);
     };
+  }
+
+  /** A database without tables, for tests that build the schema themselves. */
+  public static TestDatabase newEmptyDatabase() {
+    String name = "uc_" + NEXT_ID.incrementAndGet();
+    return switch (SupportedDatabase.selected()) {
+      case H2 -> h2File();
+      case POSTGRES_18 -> PostgresDatabases.get().newEmptyDatabase(name);
+      case MYSQL_8 -> MySqlDatabases.get().newEmptyDatabase(name);
+    };
+  }
+
+  private static TestDatabase h2File() {
+    Path directory;
+    try {
+      directory = Files.createTempDirectory("uc-h2-");
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+    String url = "jdbc:h2:file:" + directory.resolve("db");
+    return new TestDatabase("org.h2.Driver", url, "sa", "", "none", () -> delete(directory));
+  }
+
+  private static void delete(Path directory) {
+    try (Stream<Path> paths = Files.walk(directory)) {
+      paths.sorted(Comparator.reverseOrder()).forEach(path -> path.toFile().delete());
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
   }
 
   private static TestDatabase h2(String name) {
