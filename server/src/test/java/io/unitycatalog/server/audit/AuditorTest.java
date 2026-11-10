@@ -14,7 +14,9 @@ import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.util.SafeCloseable;
 import com.linecorp.armeria.server.ServiceRequestContext;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialUse;
@@ -351,12 +353,46 @@ class AuditorTest {
     return config;
   }
 
+  @Test
+  void grantRecordsThePrincipalAndThePublicPrivilegeName() {
+    UnityCatalogAuthorizer delegate = mock(UnityCatalogAuthorizer.class);
+    UUID principal = UUID.randomUUID();
+    when(delegate.grantAuthorization(principal, ID, Privileges.USE_CATALOG)).thenReturn(true);
+    auditor.wrap(delegate).grantAuthorization(principal, ID, Privileges.USE_CATALOG);
+    assertThat(FileAuditSink.toJson(CapturingAuditSink.RECORDS.get(0)))
+        .contains(
+            "\"action\":\"GRANT\"",
+            "\"resource_id\":\"" + ID + "\"",
+            "\"principal_id\":\"" + principal + "\"",
+            "\"privilege\":\"USE CATALOG\"");
+  }
+
+  @Test
+  void permissionChangeThatThrowsIsNotRecorded() {
+    UnityCatalogAuthorizer delegate = mock(UnityCatalogAuthorizer.class);
+    UUID principal = UUID.randomUUID();
+    UUID resource = UUID.randomUUID();
+    // jdbc-adapter throws an Error when the database delete keeps failing.
+    Error failed = new Error("delete failed");
+    when(delegate.revokeAuthorization(principal, resource, Privileges.OWNER)).thenThrow(failed);
+    when(delegate.clearAuthorizationsForPrincipal(principal)).thenThrow(failed);
+    when(delegate.clearAuthorizationsForResource(resource)).thenThrow(failed);
+    UnityCatalogAuthorizer audited = auditor.wrap(delegate);
+
+    assertThatThrownBy(() -> audited.revokeAuthorization(principal, resource, Privileges.OWNER))
+        .isSameAs(failed);
+    assertThatThrownBy(() -> audited.clearAuthorizationsForPrincipal(principal)).isSameAs(failed);
+    assertThatThrownBy(() -> audited.clearAuthorizationsForResource(resource)).isSameAs(failed);
+    assertThat(CapturingAuditSink.RECORDS).isEmpty();
+  }
+
   /**
    * A default method added to a wrapped interface is inherited silently, so it would bypass the
    * decorator. Each decorator must declare every default method.
    */
   @Test
   void decoratorsForwardEveryDefaultMethod() {
+    assertDeclaresDefaults(UnityCatalogAuthorizer.class, AuditingAuthorizer.class);
     assertDeclaresDefaults(StorageCredentialVendor.class, AuditingStorageCredentialVendor.class);
   }
 

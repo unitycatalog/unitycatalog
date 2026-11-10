@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist.utils;
 
+import static io.unitycatalog.server.utils.ServerProperties.DB_PASSWORD_KEY;
+
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
@@ -164,7 +166,7 @@ public class HibernateConfigurator implements AutoCloseable {
     HikariConfig hikariConfig = new HikariConfig(hikariProperties);
     hikariConfig.setJdbcUrl(hibernateProperties.getProperty("hibernate.connection.url"));
     hikariConfig.setUsername(resolveConnectionUsername(hibernateProperties));
-    hikariConfig.setPassword(hibernateProperties.getProperty("hibernate.connection.password"));
+    hikariConfig.setPassword(hibernateProperties.getProperty(DB_PASSWORD_KEY));
     hikariConfig.setDriverClassName(
         hibernateProperties.getProperty("hibernate.connection.driver_class"));
     if (!hikariProperties.containsKey("maximumPoolSize")) {
@@ -203,7 +205,7 @@ public class HibernateConfigurator implements AutoCloseable {
       sessionFactoryProperties.remove("hibernate.connection.url");
       sessionFactoryProperties.remove("hibernate.connection.user");
       sessionFactoryProperties.remove("hibernate.connection.username");
-      sessionFactoryProperties.remove("hibernate.connection.password");
+      sessionFactoryProperties.remove(DB_PASSWORD_KEY);
       sessionFactoryProperties.remove("hibernate.connection.pool_size");
       sessionFactoryProperties
           .keySet()
@@ -271,6 +273,8 @@ public class HibernateConfigurator implements AutoCloseable {
         throw new RuntimeException(e);
       }
     }
+    applyPasswordOverride(
+        hibernateProperties, serverProperties.getEnv(DB_PASSWORD_KEY), hibernatePropertiesPath);
 
     if ("test".equals(serverProperties.get(Property.SERVER_ENV))) {
       hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
@@ -280,5 +284,25 @@ public class HibernateConfigurator implements AutoCloseable {
       LOGGER.debug("Hibernate configuration set for testing");
     }
     return hibernateProperties;
+  }
+
+  /**
+   * Takes the database password from the environment ({@code UC_HIBERNATE_CONNECTION_PASSWORD})
+   * when it is set. A password kept in hibernate.properties still works but logs a deprecation
+   * warning. A system property is not used for the password: Hibernate copies system properties
+   * into its own settings, and a password there makes the connection pool fail.
+   */
+  static void applyPasswordOverride(
+      Properties hibernateProperties, String password, Path propertiesPath) {
+    if (password != null) {
+      hibernateProperties.setProperty(DB_PASSWORD_KEY, password);
+    } else if (!hibernateProperties.getProperty(DB_PASSWORD_KEY, "").isEmpty()) {
+      LOGGER.warn(
+          "{} is set in {}. Keeping the database password in this file is deprecated; set the {}"
+              + " environment variable instead.",
+          DB_PASSWORD_KEY,
+          propertiesPath,
+          ServerProperties.envName(DB_PASSWORD_KEY));
+    }
   }
 }
