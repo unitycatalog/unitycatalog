@@ -18,9 +18,11 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -147,13 +149,14 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
-   * Runs {@code bin/start-uc-server --upgrade-schema} on the database that the configuration files
-   * in {@code configurationFolder} set, printing what it found to {@code out}. Returns the exit
-   * code: 0 when the upgrade went through, 1 otherwise, also for a configuration with nothing to
-   * upgrade: a missing configuration file or an in-memory database.
+   * Runs {@code bin/start-uc-server --check-schema} (when {@code upgrade} is false) or {@code
+   * --upgrade-schema} on the database that the configuration files in {@code configurationFolder}
+   * set, printing what it found to {@code out}. Returns the exit code: 0 when the check or the
+   * upgrade went through, 1 otherwise, also for a configuration with nothing to upgrade: a missing
+   * configuration file or an in-memory database.
    */
-  public static int runCommand(Path configurationFolder, PrintStream out) {
-    String command = "bin/start-uc-server --upgrade-schema";
+  public static int runCommand(boolean upgrade, Path configurationFolder, PrintStream out) {
+    String command = "bin/start-uc-server " + (upgrade ? "--upgrade-schema" : "--check-schema");
     try {
       Path serverFile = configurationFolder.resolve("server.properties");
       Path hibernateFile = configurationFolder.resolve("hibernate.properties");
@@ -168,13 +171,19 @@ public final class SchemaMigrator implements AutoCloseable {
         }
       }
       ServerProperties serverProperties = new ServerProperties(serverFile.toString());
-      try (SchemaMigrator migrator =
-          fromHibernateProperties(
-              HibernateConfigurator.setupHibernateProperties(serverProperties, hibernateFile))) {
+      Properties hibernateProperties =
+          HibernateConfigurator.setupHibernateProperties(serverProperties, hibernateFile);
+      if (!upgrade) {
+        openH2OnlyIfItExists(hibernateProperties);
+      }
+      try (SchemaMigrator migrator = fromHibernateProperties(hibernateProperties)) {
         if (migrator.isInMemory()) {
           throw new IllegalStateException(
-              "The configured database is in memory, so there is nothing to upgrade: the server"
-                  + " sets up an in-memory database itself.");
+              "The configured database is in memory, so there is nothing to check or upgrade: the"
+                  + " server sets up an in-memory database itself.");
+        }
+        if (!upgrade) {
+          return migrator.checkSchema(out);
         }
         migrator.upgradeSchema();
         out.println("The database schema is at version " + migrator.latestVersion() + ".");
@@ -182,7 +191,13 @@ public final class SchemaMigrator implements AutoCloseable {
       }
     } catch (RuntimeException e) {
       LOGGER.error("{} failed", command, e);
-      out.println(e.getMessage());
+      out.println(
+          !upgrade && isH2DatabaseNotFound(e)
+              ? "The H2 database file that hibernate.connection.url names is not found, and a"
+                  + " check does not create it: check the configuration, and run "
+                  + command
+                  + " in the Unity Catalog folder, the one that holds etc/conf."
+              : e.getMessage());
       return 1;
     }
   }
@@ -193,6 +208,32 @@ public final class SchemaMigrator implements AutoCloseable {
    */
   private static boolean isH2InMemory(String url) {
     return url.startsWith("jdbc:h2:mem:") || url.matches("jdbc:h2:\\.(;.*)?");
+  }
+
+  /**
+   * Makes a check open an H2 file database only if it exists: H2 creates a missing file when it
+   * connects, and a check must change nothing.
+   */
+  private static void openH2OnlyIfItExists(Properties hibernateProperties) {
+    String url = hibernateProperties.getProperty("hibernate.connection.url");
+    String lower = url == null ? "" : url.toLowerCase(Locale.ROOT);
+    if (lower.startsWith("jdbc:h2:")
+        && !isH2InMemory(lower)
+        && setting(lower, "ifexists") == null) {
+      hibernateProperties.setProperty("hibernate.connection.url", url + ";IFEXISTS=TRUE");
+    }
+  }
+
+  /** Whether H2 failed to open {@code e}'s database because it does not exist. */
+  private static boolean isH2DatabaseNotFound(Throwable e) {
+    for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+      // 90013: database not found; 90146: not found with IFEXISTS=TRUE
+      if (cause instanceof SQLException sql
+          && (sql.getErrorCode() == 90013 || sql.getErrorCode() == 90146)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Whether the database is an in-memory H2 database, which lasts only as long as its process. */
@@ -397,7 +438,10 @@ public final class SchemaMigrator implements AutoCloseable {
                 .migrate();
         if (result.migrationsExecuted != 1 || !step.equals(recordedVersion())) {
           throw new IllegalStateException(
-              "Schema step " + step + " was not recorded as the only change of its run.");
+              "Schema step "
+                  + step
+                  + " was not recorded as the only change of its run. Run"
+                  + " bin/start-uc-server --check-schema to see the database's state.");
         }
         LOGGER.info(
             record
@@ -409,6 +453,67 @@ public final class SchemaMigrator implements AutoCloseable {
       requireCurrent();
       return changed;
     }
+  }
+
+  /**
+   * For {@code bin/start-uc-server --check-schema}: prints the database's schema version and what
+   * {@link #upgradeSchema()} would do with each pending step, and whether the schema allows the
+   * upgrade, running the same checks on the schema as it would. It does not test the database
+   * user's privileges or the run lock. Changes nothing and takes no run lock, so it can run while
+   * servers of the previous release still serve. A step that failed counts as pending, since the
+   * upgrade deletes its record first.
+   *
+   * @return 0 when the schema allows the upgrade, 1 when it would refuse
+   */
+  int checkSchema(PrintStream out) {
+    try {
+      refuseIfUnsupported(state());
+      requireValidHistory(true);
+      String recorded = recordedVersion();
+      out.println(
+          "Database schema version: "
+              + (recorded == null ? "none" : recorded)
+              + "; this release ends at "
+              + latestVersion()
+              + ".");
+      List<String> pending = pendingSteps();
+      out.println(pending.isEmpty() ? "Pending steps: none." : "Pending steps:");
+      Map<String, String> descriptions = descriptions();
+      SchemaSnapshot schema = SchemaSnapshot.of(dataSource);
+      boolean adopted = hasLastStepsSchemaWithoutHistory();
+      for (String step : pending) {
+        boolean runs = !adopted && runs(step, schema);
+        out.println(
+            "  "
+                + step
+                + " "
+                + descriptions.get(step)
+                + (runs ? ": runs" : ": recorded without running (its change is already there)"));
+        schema = expected(step);
+      }
+      SchemaSnapshot expected = expected(latestVersion());
+      if (!schema.equals(expected)) {
+        throw new IllegalStateException(
+            "The database schema differs from the schema of version "
+                + latestVersion()
+                + ":\n"
+                + differences(schema, expected));
+      }
+      out.println("The schema allows the upgrade: --upgrade-schema would run the steps above.");
+      return 0;
+    } catch (IllegalStateException e) {
+      out.println(e.getMessage());
+      out.println("The schema does not allow the upgrade.");
+      return 1;
+    }
+  }
+
+  private Map<String, String> descriptions() {
+    Map<String, String> descriptions = new HashMap<>();
+    for (MigrationInfo m : resolvedSteps(flyway().load().info())) {
+      descriptions.put(m.getVersion().getVersion(), m.getDescription());
+    }
+    return descriptions;
   }
 
   /**

@@ -12,6 +12,9 @@ import io.unitycatalog.server.migrate.SchemaMigrator.SchemaState;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabases;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.Driver;
@@ -297,6 +300,61 @@ public class SchemaMigratorTest {
     assertThat(migrator.upgradeSchema()).isEqualTo(steps);
     assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
     assertThat(migrator.recordedVersion()).isEqualTo(migrator.latestVersion());
+  }
+
+  @Test
+  void checksAnEmptyDatabaseWithoutChangingIt() {
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isZero();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("  1 baseline 0 7: runs")
+        .endsWith("The schema allows the upgrade: --upgrade-schema would run the steps above.\n");
+    assertThat(migrator.state()).isEqualTo(SchemaState.EMPTY);
+  }
+
+  @Test
+  void checksAFailedStepAsOneToRunAgain() {
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    migrator.upgradeSchema();
+    UpgradeTestUtils.execute(db, "DROP TABLE uc_test_only_step");
+    String failed =
+        historyUpdate("UPDATE %1$suc_schema_history%1$s SET %1$ssuccess%1$s = false WHERE");
+    UpgradeTestUtils.execute(db, failed);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isZero();
+    assertThat(out.toString(StandardCharsets.UTF_8)).contains("  1000 test only step: runs");
+    // The failed record is still there: the check changes nothing.
+    assertThat(failedRecords()).isOne();
+  }
+
+  @Test
+  void checksAVersionedDatabaseWithAPendingStep() {
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    String recorded = migrator.recordedVersion();
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(migrator.checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8))).isZero();
+    assertThat(out.toString(StandardCharsets.UTF_8)).contains("  1000 test only step: runs");
+    assertThat(migrator.recordedVersion()).isEqualTo(recorded);
+  }
+
+  @Test
+  void checksADatabaseWhoseSchemaDiffers() {
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    UpgradeTestUtils.execute(db, "ALTER TABLE uc_catalogs ADD extra INT");
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    assertThat(
+            new SchemaMigrator(db.dataSource())
+                .checkSchema(new PrintStream(out, true, StandardCharsets.UTF_8)))
+        .isOne();
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("unexpected column uc_catalogs.extra ")
+        .endsWith("The schema does not allow the upgrade.\n");
   }
 
   @Test

@@ -8,6 +8,7 @@ import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
+import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
@@ -16,6 +17,7 @@ import org.apache.commons.cli.ParseException;
 public class OptionParser {
   private int port = 8080;
   private Integer observabilityPort;
+  private boolean checkSchema;
   private boolean upgradeSchema;
 
   private final Options options = new Options();
@@ -35,7 +37,17 @@ public class OptionParser {
             .desc("Enable health and metrics on this port (1-65535). Disabled when omitted.")
             .type(Integer.class)
             .build());
-    options.addOption(
+    // One schema command at a time.
+    OptionGroup schemaCommands = new OptionGroup();
+    schemaCommands.addOption(
+        Option.builder()
+            .longOpt("check-schema")
+            .desc(
+                "Check whether this release can upgrade the database's schema, without changing"
+                    + " it, then exit: 0 if it can, 1 if not. Can run while servers of the previous"
+                    + " release still run (not on H2).")
+            .build());
+    schemaCommands.addOption(
         Option.builder()
             .longOpt("upgrade-schema")
             .desc(
@@ -43,6 +55,7 @@ public class OptionParser {
                     + " exit: 0 on success, 1 if not. Stop every server of the previous release"
                     + " first; after a failure, run it again.")
             .build());
+    options.addOptionGroup(schemaCommands);
     options.addOption(
         Option.builder("v")
             .longOpt("version")
@@ -84,6 +97,7 @@ public class OptionParser {
       if (cmd.hasOption("obs-port")) {
         setObservabilityPort(cmd.getParsedOptionValue("obs-port"));
       }
+      setCheckSchema(cmd.hasOption("check-schema"));
       setUpgradeSchema(cmd.hasOption("upgrade-schema"));
     } catch (ParseException e) {
       System.out.println();
