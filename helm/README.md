@@ -807,6 +807,8 @@ not set
 			<td>Command that starts the server
 
 The chart passes `--port`, and `--obs-port` when `obsPort` is set, as the container's `args`.
+The `upgrade-schema` init container runs the same command with the single argument
+`--upgrade-schema`.
 Kubernetes runs this command instead of the image's `ENTRYPOINT`, so an image that starts
 through its own wrapper can set it here; the wrapper must pass the arguments on to
 `./bin/start-uc-server`.
@@ -876,6 +878,10 @@ not set
 </pre>
 </td>
 			<td>List of additional init containers to be added to the server pod
+
+They run before the init container that upgrades the schema. Run a database proxy that the
+server needs here as a native sidecar (`restartPolicy: Always`), so that the upgrade can reach
+the database.
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/#pod)
 </td>
@@ -1193,10 +1199,13 @@ not set
 			<td>server.deployment.updateStrategy</td>
 			<td>object</td>
 			<td><pre lang="">
-# If replicaCount: 1 and db type "file"<br>type: Recreate<br># Else<br>type: RollingUpdate
+type: Recreate
 </pre>
 </td>
 			<td>Update strategy for the deployment
+
+Only `type: Recreate` is allowed: an upgrade changes the database schema, so all old servers
+stop before the new ones start.
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#updating-a-deployment)
 </td>

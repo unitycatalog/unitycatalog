@@ -10,6 +10,7 @@ import java.sql.SQLException;
 import java.util.Comparator;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
+import org.flywaydb.core.Flyway;
 import org.h2.api.ErrorCode;
 
 /**
@@ -50,7 +51,7 @@ public final class TestDatabases {
       throw new UncheckedIOException(e);
     }
     String url = "jdbc:h2:file:" + directory.resolve("db");
-    return new TestDatabase("org.h2.Driver", url, "sa", "", "none", () -> delete(directory));
+    return new TestDatabase("org.h2.Driver", url, "sa", "", () -> delete(directory));
   }
 
   private static void delete(Path directory) {
@@ -64,7 +65,23 @@ public final class TestDatabases {
   private static TestDatabase h2(String name) {
     String url = "jdbc:h2:mem:" + name + ";DB_CLOSE_DELAY=-1";
     // DB_CLOSE_DELAY=-1 keeps an in-memory database until SHUTDOWN, so release it explicitly.
-    return new TestDatabase("org.h2.Driver", url, "sa", "", "create-drop", () -> shutdown(url));
+    TestDatabase database = new TestDatabase("org.h2.Driver", url, "sa", "", () -> shutdown(url));
+    runSteps(database);
+    return database;
+  }
+
+  /**
+   * Builds the schema of a new install in the empty {@code database}: this build's steps, run by
+   * Flyway alone. Unlike SchemaMigrator, it needs no effect files, which {@code build/sbt
+   * updateSchemaDumps} writes on databases built this way.
+   */
+  static void runSteps(TestDatabase database) {
+    Flyway.configure()
+        .dataSource(database.dataSource())
+        .locations("classpath:db/migration/" + database.jdbcUrl().split(":")[1])
+        .table("uc_schema_history")
+        .load()
+        .migrate();
   }
 
   private static void shutdown(String url) {

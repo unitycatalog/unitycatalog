@@ -357,6 +357,57 @@ public class SchemaMigratorTest {
         .endsWith("The schema does not allow the upgrade.\n");
   }
 
+  @ParameterizedTest
+  @EnumSource(NotCurrent.class)
+  void serverRefusesToStartOnADatabaseNotAtThisReleasesSchema(NotCurrent database) {
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
+    String q = identifierQuote(db.dataSource());
+    String history = "UPDATE %1$suc_schema_history%1$s SET ".formatted(q);
+    switch (database) {
+      case PENDING -> new SchemaMigrator(db.dataSource()).upgradeSchema();
+      case FAILED_STEP -> {
+        migrator.upgradeSchema();
+        UpgradeTestUtils.execute(db, historyUpdate(history + "%1$ssuccess%1$s = false WHERE"));
+      }
+      case EDITED_STEP -> {
+        migrator.upgradeSchema();
+        UpgradeTestUtils.execute(
+            db,
+            (history + "%1$schecksum%1$s = %1$schecksum%1$s + 1 WHERE %1$sversion%1$s = '2'")
+                .formatted(q));
+      }
+      case STEP_MISSING_BELOW -> {
+        migrator.upgradeSchema();
+        UpgradeTestUtils.execute(
+            db, "DELETE FROM %1$suc_schema_history%1$s WHERE %1$sversion%1$s = '2'".formatted(q));
+      }
+      case AHEAD -> {
+        migrator.upgradeSchema();
+        migrator = new SchemaMigrator(db.dataSource());
+      }
+    }
+
+    assertThatThrownBy(migrator::requireCurrentSchema)
+        .hasMessageContaining(
+            database == NotCurrent.AHEAD
+                ? "newer than this release"
+                : "bin/start-uc-server --upgrade-schema");
+  }
+
+  /** Databases the server refuses to start on, for a release that ends at step 1000. */
+  private enum NotCurrent {
+    /** Step 1000 is not applied. */
+    PENDING,
+    /** Step 1000 failed (H2, MySQL). */
+    FAILED_STEP,
+    /** Step 2 was edited after it ran. */
+    EDITED_STEP,
+    /** Step 2 is not recorded, below the recorded step 1000. */
+    STEP_MISSING_BELOW,
+    /** The database is at step 1000 and the release ends at step 2. */
+    AHEAD
+  }
+
   @Test
   void refusesAStepWhenTheSchemaIsNeitherBeforeNorAfterIt() {
     new SchemaMigrator(db.dataSource()).upgradeSchema();

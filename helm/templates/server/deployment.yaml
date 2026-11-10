@@ -1,4 +1,7 @@
 {{- if .Values.server.enabled -}}
+{{- if and (eq .Values.server.db.type "file") (gt (int .Values.server.deployment.replicaCount) 1) }}
+{{- fail "server.deployment.replicaCount must be 1 with server.db.type=file: the H2 file database supports one server. Use PostgreSQL for more replicas." }}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -169,6 +172,24 @@ spec:
       {{- with .Values.server.deployment.extraInitContainers }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- /* The server never changes the schema at start. This container brings it up to date
+      first, after extraInitContainers so that a database proxy run as a native sidecar is up. */}}
+        - name: upgrade-schema
+          {{- with .Values.server.deployment.securityContext }}
+          securityContext: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: {{ include "unitycatalog.server.image" . | quote }}
+          imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
+          {{- /* The same command as the server container, so that a wrapper image works for both. */}}
+          command: {{- toYaml (.Values.server.deployment.command | default (list "./bin/start-uc-server")) | nindent 12 }}
+          args:
+            - --upgrade-schema
+          {{- $upgradeEnv := list (include "unitycatalog.server.dbPasswordEnv" . | trim) (include "unitycatalog.server.mysqlDriverEnv" . | trim) | compact }}
+          {{- with $upgradeEnv }}
+          env:
+            {{- join "\n" . | nindent 12 }}
+          {{- end }}
+          volumeMounts: {{- include "unitycatalog.server.volumeMounts" . | nindent 12 }}
       {{- $obsPort := .Values.server.deployment.obsPort }}
       {{- if and $obsPort (eq (toString $obsPort) (toString .Values.server.deployment.port)) }}
       {{- fail "server.deployment.obsPort must differ from server.deployment.port" }}
@@ -181,7 +202,7 @@ spec:
           {{- with .Values.server.deployment.lifecycle }}
           lifecycle: {{- toYaml . | nindent 12 }}
           {{- end }}
-          image: "{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}"
+          image: {{ include "unitycatalog.server.image" . | quote }}
           imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
           {{- /* An upgrade with --reuse-values from an older release has no command value. */}}
           command: {{- toYaml (.Values.server.deployment.command | default (list "./bin/start-uc-server")) | nindent 12 }}
@@ -193,19 +214,17 @@ spec:
             - {{ . | quote }}
             {{- end }}
           {{- $secretEnv := include "unitycatalog.server.secretEnv" . | trim }}
+          {{- $driverEnv := include "unitycatalog.server.mysqlDriverEnv" . | trim }}
           {{- /* One env list: a second env key would replace this one, and the secrets with it. */}}
-          {{- if or $secretEnv (eq .Values.server.db.type "mysql") }}
+          {{- if or $secretEnv $driverEnv }}
           env:
-          {{- with $secretEnv }}
+            {{- with $secretEnv }}
             # Secrets reach the server as environment variables, not through the properties files.
             {{- . | nindent 12 }}
-          {{- end }}
-          {{- if eq .Values.server.db.type "mysql" }}
-            # The image does not include the MySQL JDBC driver. Its launcher lists the classpath jars in a file, so the
-            # driver jar mounted from the volume loads from the module path instead.
-            - name: JDK_JAVA_OPTIONS
-              value: "--module-path=/home/unitycatalog/jdbc-drivers/mysql-connector-j.jar --add-modules=ALL-MODULE-PATH"
-          {{- end }}
+            {{- end }}
+            {{- with $driverEnv }}
+            {{- . | nindent 12 }}
+            {{- end }}
           {{- end }}
           ports:
             - name: api
@@ -271,28 +290,7 @@ spec:
           {{- end }}
           {{- end }}
 
-          volumeMounts:
-            - name: config-volume
-              mountPath: /home/unitycatalog/etc/conf
-          {{- if eq .Values.server.db.type "file" }}
-            - name: db-volume
-              mountPath: /home/unitycatalog/etc/db
-          {{- end }}
-          {{- if eq .Values.server.db.type "mysql" }}
-            - name: mysql-driver
-              mountPath: /home/unitycatalog/jdbc-drivers/mysql-connector-j.jar
-              subPath: {{ required "server.db.mysqlConfig.driver.subPath is required: the path of the driver jar in driver.volume" .Values.server.db.mysqlConfig.driver.subPath | quote }}
-              readOnly: true
-          {{- end }}
-          {{- range $index, $config := .Values.storage.credentials.gcs }}
-            - name: gcs-credentials-{{ $index }}
-              mountPath: /home/unitycatalog/etc/conf/gcs-credentials-{{ $index }}.json
-              subPath: jsonKey
-              readOnly: true
-          {{- end }}
-          {{- with .Values.server.deployment.extraVolumeMounts }}
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+          volumeMounts: {{- include "unitycatalog.server.volumeMounts" . | nindent 12 }}
       {{- with .Values.server.deployment.extraContainers }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -334,12 +332,12 @@ spec:
       {{- with .Values.server.deployment.tolerations }}
       tolerations: {{- toYaml . | nindent 8 }}
       {{- end }}
-  strategy:
-  {{- if .Values.server.deployment.updateStrategy }}
-    {{- toYaml .Values.server.deployment.updateStrategy | nindent 4 }}
-  {{- else if and (eq .Values.server.db.type "file") (eq (int .Values.server.deployment.replicaCount) 1) }}
-    type: Recreate
-  {{- else }}
-    type: RollingUpdate
+  {{- /* An upgrade changes the schema, so every old server stops before a new pod starts. */}}
+  {{- with .Values.server.deployment.updateStrategy }}
+  {{- if ne .type "Recreate" }}
+  {{- fail "server.deployment.updateStrategy.type must be Recreate: an upgrade changes the database schema, so the old servers must stop before the new ones start." }}
   {{- end }}
+  {{- end }}
+  strategy:
+    type: Recreate
 {{- end -}}

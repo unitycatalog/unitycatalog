@@ -60,6 +60,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 import org.apache.logging.log4j.LogManager;
@@ -123,6 +124,17 @@ public class UnityCatalogServer implements AutoCloseable {
             : unityCatalogServerBuilder.hibernateConfigurator;
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
+      Properties hibernateProperties = hibernateConfigurator.getHibernateProperties();
+      // Serves only a database already at this release's schema: bin/start-uc-server
+      // --upgrade-schema brings it there. An in-memory database lasts only as long as this
+      // server, so the server sets it up itself. The migrator has its own small pool.
+      try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(hibernateProperties)) {
+        if (migrator.isInMemory()) {
+          migrator.upgradeSchema();
+        } else {
+          migrator.requireCurrentSchema();
+        }
+      }
       createdBlockingTaskExecutor =
           BlockingTaskExecutor.builder()
               .numThreads(hibernateConfigurator.getDataSource().getMaximumPoolSize())

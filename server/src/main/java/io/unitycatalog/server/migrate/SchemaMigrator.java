@@ -517,6 +517,44 @@ public final class SchemaMigrator implements AutoCloseable {
   }
 
   /**
+   * For server start, which changes nothing: throws unless the database is at this build's last
+   * step and Flyway's validation passes (no failed step, edited step or step missing below the
+   * recorded version). The message names the command that brings the database there. Takes no run
+   * lock.
+   */
+  public void requireCurrentSchema() {
+    SchemaState state = state();
+    refuseIfUnsupported(state);
+    String upgrade =
+        "Stop every server of the previous release, run bin/start-uc-server --upgrade-schema with"
+            + " this release, then start the server.";
+    if (state == SchemaState.EMPTY) {
+      throw new IllegalStateException(
+          "The database has no Unity Catalog schema yet. Set it up with bin/start-uc-server"
+              + " --upgrade-schema, then start the server.");
+    }
+    if (state != SchemaState.CURRENT) {
+      String recorded = recordedVersion();
+      throw new IllegalStateException(
+          "The database schema is at version "
+              + (recorded == null ? "none" : recorded)
+              + ", and this release needs version "
+              + latestVersion()
+              + ". "
+              + upgrade);
+    }
+    try {
+      requireValidHistory(false);
+    } catch (IllegalStateException e) {
+      throw new IllegalStateException(
+          e.getMessage()
+              + ". Run bin/start-uc-server --check-schema to see what an upgrade would do; "
+              + upgrade,
+          e);
+    }
+  }
+
+  /**
    * Whether pending {@code step} runs on a database with {@code schema}: true when the schema is
    * the one before the step, false when it already has the step's change, and for a first step
    * whose earlier run stopped part way (the schema history exists and holds part of its schema)
