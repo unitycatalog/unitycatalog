@@ -84,7 +84,8 @@ public class RealUpgradeTest {
     try (TestServer server = TestServer.start(db, storageRoot)) {
       for (String release : List.of("v0.4.0", "v0.7.0")) {
         String name = catalogOf(release);
-        assertThat(new CatalogsApi(server.apiClient()).getCatalog(name).getName()).isEqualTo(name);
+        assertThat(new CatalogsApi(server.apiClient()).getCatalog(name, false).getName())
+            .isEqualTo(name);
       }
       DataSet data = new DataSet("HEAD", storageRoot);
       data.write(server.apiClient());
