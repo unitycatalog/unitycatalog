@@ -169,14 +169,14 @@ corrected rules by default.
 The setting covers:
 
 - [Grant validation](#valid-privilege-grants): Reject new grants on the wrong object type.
-  Existing invalid grants can still be removed.
+  `MANAGE` grants are always validated. Existing invalid grants can still be removed.
 - [Iceberg credentials](#table-credential-permissions): returning credentials from `loadTable`
   or `loadCredentials` requires `USE CATALOG`, `USE SCHEMA`, and `SELECT`, or ownership at each level.
 - Table metadata: `MODIFY` no longer substitutes for `SELECT` for table details, listings,
   and existence checks across the UC REST, Delta, and Iceberg REST APIs. Existing usage and
   ownership rules still apply.
-- Volume rename: Also require permission to create volumes in the containing schema.
-- Model rename: Also require permission to create models in the containing schema.
+- Volume rename by an owner: Also require permission to create volumes in the containing schema.
+- Model rename by an owner: Also require permission to create models in the containing schema.
 
 The access checks apply only when `server.authorization=enable`.
 Grant validation also applies when authorization is disabled.
@@ -239,6 +239,7 @@ Grant validation also runs when `server.authorization=disable`.
 | `READ FILES`, `WRITE FILES`, `CREATE EXTERNAL TABLE` | External location, storage credential |
 | `CREATE EXTERNAL VOLUME`, `CREATE MANAGED STORAGE` | External location |
 | `READ METADATA` | Metastore, catalog, schema, table, function, volume, registered model, external location, storage credential |
+| `MANAGE` | Catalog, schema, table/view, volume, function, registered model, external location, storage credential |
 
 Volume write credentials require `USE CATALOG` and `USE SCHEMA`, plus both `READ VOLUME`
 and `WRITE VOLUME`. Volume ownership satisfies the volume check. Catalog or schema ownership
@@ -251,6 +252,21 @@ saving its grants or revokes.
 After an upgrade, existing grants stay in place. The server does not remove invalid grants
 automatically. You can still remove them through the permissions API. Update grant scripts
 to use the correct object types before adding or reapplying grants.
+
+### MANAGE
+
+`MANAGE` permits full metadata and grant inspection, grant changes, supported metadata updates,
+and deletion. Managers can grant themselves other privileges, including data access.
+
+Catalog and schema grants also cover their children. Usage grants are required only above the
+scope where `MANAGE` is granted. A schema grant needs `USE CATALOG`. A grant on an object inside
+a schema needs both `USE CATALOG` and `USE SCHEMA`. Catalogs, external locations, and storage
+credentials need no usage grants.
+
+The metastore does not support `MANAGE`.
+
+Renaming a catalog, schema, table, volume, or registered model through `MANAGE` also requires
+the matching creation permission. This applies even when strict privilege checks are disabled.
 
 ### Discover objects with BROWSE
 
