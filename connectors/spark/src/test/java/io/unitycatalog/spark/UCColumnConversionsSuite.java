@@ -63,23 +63,73 @@ public class UCColumnConversionsSuite {
         .hasMessageContaining("Expected boolean `nullable`");
   }
 
+  private static String typeJsonWithMetadata(String metadataJson) {
+    return "{\"name\":\"b\",\"type\":\"integer\",\"nullable\":true,\"metadata\":"
+        + metadataJson
+        + "}";
+  }
+
   @Test
   public void testMetadataOfReadsTypeJsonMetadata() {
-    String json =
-        "{\"name\":\"b\",\"type\":\"integer\",\"nullable\":true,"
-            + "\"metadata\":{\"CURRENT_DEFAULT\":\"42\",\"EXISTS_DEFAULT\":\"42\"}}";
+    String json = typeJsonWithMetadata("{\"CURRENT_DEFAULT\":\"42\",\"EXISTS_DEFAULT\":\"42\"}");
     Metadata expected =
         new MetadataBuilder()
             .putString("CURRENT_DEFAULT", "42")
             .putString("EXISTS_DEFAULT", "42")
             .build();
-    assertThat(UCColumnConversions.metadataOf(json)).isEqualTo(expected);
+    assertThat(UCColumnConversions.metadataOf("b", json)).isEqualTo(expected);
   }
 
   @Test
-  public void testMetadataOfWithoutTypeJsonIsEmpty() {
-    assertThat(UCColumnConversions.metadataOf(null)).isEqualTo(Metadata.empty());
-    assertThat(UCColumnConversions.metadataOf("{\"name\":\"b\",\"type\":\"integer\"}"))
+  public void testMetadataOfReadsNonStringValues() {
+    String json =
+        typeJsonWithMetadata(
+            "{\"n\":7,\"d\":1.5,\"flag\":true,\"tags\":[\"x\",\"y\"],\"nested\":{\"k\":\"v\"}}");
+    Metadata expected =
+        new MetadataBuilder()
+            .putLong("n", 7)
+            .putDouble("d", 1.5)
+            .putBoolean("flag", true)
+            .putStringArray("tags", new String[] {"x", "y"})
+            .putMetadata("nested", new MetadataBuilder().putString("k", "v").build())
+            .build();
+    assertThat(UCColumnConversions.metadataOf("b", json)).isEqualTo(expected);
+  }
+
+  @Test
+  public void testMetadataOfNullOrEmptyTypeJsonIsEmpty() {
+    assertThat(UCColumnConversions.metadataOf("b", null)).isEqualTo(Metadata.empty());
+    assertThat(UCColumnConversions.metadataOf("b", "")).isEqualTo(Metadata.empty());
+  }
+
+  @Test
+  public void testMetadataOfWithoutMetadataKeyIsEmpty() {
+    assertThat(UCColumnConversions.metadataOf("b", "{\"name\":\"b\",\"type\":\"integer\"}"))
+        .isEqualTo(Metadata.empty());
+  }
+
+  @Test
+  public void testMetadataOfEmptyNullOrNonObjectMetadataIsEmpty() {
+    assertThat(UCColumnConversions.metadataOf("b", typeJsonWithMetadata("{}")))
+        .isEqualTo(Metadata.empty());
+    assertThat(UCColumnConversions.metadataOf("b", typeJsonWithMetadata("null")))
+        .isEqualTo(Metadata.empty());
+    assertThat(UCColumnConversions.metadataOf("b", typeJsonWithMetadata("\"x\"")))
+        .isEqualTo(Metadata.empty());
+    assertThat(UCColumnConversions.metadataOf("b", typeJsonWithMetadata("[1]")))
+        .isEqualTo(Metadata.empty());
+  }
+
+  @Test
+  public void testMetadataOfMalformedTypeJsonIsEmpty() {
+    assertThat(UCColumnConversions.metadataOf("b", "{not json")).isEqualTo(Metadata.empty());
+  }
+
+  @Test
+  public void testMetadataOfUnrepresentableMetadataIsEmpty() {
+    assertThat(UCColumnConversions.metadataOf("b", typeJsonWithMetadata("{\"mixed\":[1,\"a\"]}")))
+        .isEqualTo(Metadata.empty());
+    assertThat(UCColumnConversions.metadataOf("b", typeJsonWithMetadata("{\"nested\":[[1]]}")))
         .isEqualTo(Metadata.empty());
   }
 }

@@ -1095,7 +1095,7 @@ private[spark] class UCProxy(
       col.getName,
       DataType.fromDDL(col.getTypeText),
       col.getNullable,
-      UCColumnConversions.metadataOf(col.getTypeJson))
+      UCColumnConversions.metadataOf(col.getName, col.getTypeJson))
       .withComment(col.getComment)
 
   private[spark] def asV1Table(catalogTable: CatalogTable): Table = {

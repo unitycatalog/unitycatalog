@@ -8,12 +8,15 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.internal.Preconditions;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.spark.SparkRuntimeException;
 import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.connector.expressions.NamedReference;
 import org.apache.spark.sql.connector.expressions.Transform;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Shared helpers for converting Spark schema/partitioning into the wire shapes Unity Catalog
@@ -24,6 +27,8 @@ import org.apache.spark.sql.types.StructField;
 public final class UCColumnConversions {
 
   private UCColumnConversions() {}
+
+  private static final Logger LOG = LoggerFactory.getLogger(UCColumnConversions.class);
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -126,16 +131,26 @@ public final class UCColumnConversions {
    * type_json}. It carries what {@code type_text} cannot, such as the {@code CURRENT_DEFAULT} and
    * {@code EXISTS_DEFAULT} keys of a column {@code DEFAULT}. Returns empty metadata when {@code
    * type_json} or its {@code metadata} object is absent.
+   *
+   * <p>The column type always comes from {@code type_text}, so this metadata is best effort. If
+   * {@code type_json} is malformed, or its {@code metadata} holds values Spark cannot represent
+   * (such as a mixed-type array), this logs a warning and returns empty metadata instead of failing
+   * the table load.
    */
-  public static Metadata metadataOf(String typeJson) {
+  static Metadata metadataOf(String columnName, String typeJson) {
     if (typeJson == null || typeJson.isEmpty()) {
       return Metadata.empty();
     }
-    JsonNode metadataNode = readTree(typeJson).get(FIELD_METADATA);
-    if (metadataNode == null || !metadataNode.isObject()) {
+    try {
+      JsonNode metadataNode = readTree(typeJson).get(FIELD_METADATA);
+      if (metadataNode == null || !metadataNode.isObject()) {
+        return Metadata.empty();
+      }
+      return Metadata.fromJson(writeValueAsString(metadataNode));
+    } catch (IllegalArgumentException | ClassCastException | SparkRuntimeException e) {
+      LOG.warn("Ignoring unreadable metadata in type_json of column {}", columnName, e);
       return Metadata.empty();
     }
-    return Metadata.fromJson(writeValueAsString(metadataNode));
   }
 
   /**
