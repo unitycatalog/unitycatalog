@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.Metadata;
+import org.apache.spark.sql.types.MetadataBuilder;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -59,5 +61,25 @@ public class UCColumnConversionsSuite {
     assertThatThrownBy(() -> parse(json))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Expected boolean `nullable`");
+  }
+
+  @Test
+  public void testMetadataOfReadsTypeJsonMetadata() {
+    String json =
+        "{\"name\":\"b\",\"type\":\"integer\",\"nullable\":true,"
+            + "\"metadata\":{\"CURRENT_DEFAULT\":\"42\",\"EXISTS_DEFAULT\":\"42\"}}";
+    Metadata expected =
+        new MetadataBuilder()
+            .putString("CURRENT_DEFAULT", "42")
+            .putString("EXISTS_DEFAULT", "42")
+            .build();
+    assertThat(UCColumnConversions.metadataOf(json)).isEqualTo(expected);
+  }
+
+  @Test
+  public void testMetadataOfWithoutTypeJsonIsEmpty() {
+    assertThat(UCColumnConversions.metadataOf(null)).isEqualTo(Metadata.empty());
+    assertThat(UCColumnConversions.metadataOf("{\"name\":\"b\",\"type\":\"integer\"}"))
+        .isEqualTo(Metadata.empty());
   }
 }

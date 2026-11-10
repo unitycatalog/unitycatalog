@@ -12,6 +12,7 @@ import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.connector.expressions.NamedReference;
 import org.apache.spark.sql.connector.expressions.Transform;
 import org.apache.spark.sql.types.DataType;
+import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 
 /**
@@ -118,6 +119,23 @@ public final class UCColumnConversions {
     String metadataInJSON = metadataObj.isEmpty() ? null : writeValueAsString(metadataObj);
 
     return Column.create(name, dataType, nullable, comment, metadataInJSON);
+  }
+
+  /**
+   * Wire -&gt; Spark field metadata: read the {@code metadata} object of a column's {@code
+   * type_json}. It carries what {@code type_text} cannot, such as the {@code CURRENT_DEFAULT} and
+   * {@code EXISTS_DEFAULT} keys of a column {@code DEFAULT}. Returns empty metadata when {@code
+   * type_json} or its {@code metadata} object is absent.
+   */
+  public static Metadata metadataOf(String typeJson) {
+    if (typeJson == null || typeJson.isEmpty()) {
+      return Metadata.empty();
+    }
+    JsonNode metadataNode = readTree(typeJson).get(FIELD_METADATA);
+    if (metadataNode == null || !metadataNode.isObject()) {
+      return Metadata.empty();
+    }
+    return Metadata.fromJson(writeValueAsString(metadataNode));
   }
 
   /**

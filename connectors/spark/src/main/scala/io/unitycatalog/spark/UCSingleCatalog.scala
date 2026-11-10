@@ -1088,7 +1088,11 @@ private[spark] class UCProxy(
   }
 
   private[spark] def toStructField(col: ColumnInfo): StructField =
-    StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
+    StructField(
+      col.getName,
+      DataType.fromDDL(col.getTypeText),
+      col.getNullable,
+      UCColumnConversions.metadataOf(col.getTypeJson))
       .withComment(col.getComment)
 
   private[spark] def asV1Table(catalogTable: CatalogTable): Table = {

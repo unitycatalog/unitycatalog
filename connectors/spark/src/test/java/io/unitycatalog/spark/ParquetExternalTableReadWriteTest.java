@@ -8,7 +8,9 @@ import io.unitycatalog.client.model.TableInfo;
 import java.util.List;
 import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
+import org.apache.spark.sql.types.Metadata;
 import org.junit.jupiter.api.Test;
 
 public class ParquetExternalTableReadWriteTest extends ExternalTableReadWriteTest {
@@ -58,5 +60,37 @@ public class ParquetExternalTableReadWriteTest extends ExternalTableReadWriteTes
     assertThat(tableInfo.getColumns()).hasSize(7);
 
     assertThat(sql("SELECT * FROM %s", fullTableName)).isEmpty();
+  }
+
+  @Test
+  public void testLoadTableKeepsColumnDefaultValue() {
+    session = createSparkSessionWithCatalogs(CATALOG_NAME);
+
+    String fullTableName =
+        setupTable(
+            new TableSetupOptions()
+                .setCatalogName(CATALOG_NAME)
+                .setTableName(TEST_TABLE)
+                .setColumns(List.of(Pair.of("a", "INT"), Pair.of("b", "INT DEFAULT 42"))));
+
+    Metadata loaded = session.table(fullTableName).schema().apply("b").metadata();
+    assertThat(loaded.getString("CURRENT_DEFAULT")).isEqualTo("42");
+    assertThat(loaded.getString("EXISTS_DEFAULT")).isEqualTo("42");
+  }
+
+  @Test
+  public void testInsertWithoutDefaultedColumnWritesDefaultValue() {
+    session = createSparkSessionWithCatalogs(CATALOG_NAME);
+
+    String fullTableName =
+        setupTable(
+            new TableSetupOptions()
+                .setCatalogName(CATALOG_NAME)
+                .setTableName(TEST_TABLE)
+                .setColumns(List.of(Pair.of("a", "INT"), Pair.of("b", "INT DEFAULT 42"))));
+
+    sql("INSERT INTO %s (a) VALUES (1)", fullTableName);
+
+    assertThat(sql("SELECT a, b FROM %s", fullTableName)).containsExactly(RowFactory.create(1, 42));
   }
 }
