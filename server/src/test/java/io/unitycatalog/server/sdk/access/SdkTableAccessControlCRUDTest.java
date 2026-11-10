@@ -101,7 +101,8 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     UserResource user = createTestUser(REGULAR_1);
     UUID userId = UUID.fromString(user.getId());
     UUID catalogId =
-        UUID.fromString(new CatalogsApi(adminApiClient).getCatalog(TestUtils.CATALOG_NAME).getId());
+        UUID.fromString(
+            new CatalogsApi(adminApiClient).getCatalog(TestUtils.CATALOG_NAME, false).getId());
     grantPermissions(
         REGULAR_1, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
     // The second grant changes nothing, so it records nothing.
