@@ -77,7 +77,8 @@ public class ModelCli {
     }
     return objectWriter.writeValueAsString(
         registeredModelsApi
-            .listRegisteredModels(catalogName, schemaName, maxResults, pageToken)
+            .listRegisteredModels(
+                catalogName, schemaName, maxResults, pageToken, /* includeBrowse= */ false)
             .getRegisteredModels());
   }
 
@@ -85,7 +86,8 @@ public class ModelCli {
       throws JsonProcessingException, ApiException {
     String registeredModelFullName = json.getString(CliParams.FULL_NAME.getServerParam());
     return objectWriter.writeValueAsString(
-        registeredModelsApi.getRegisteredModel(registeredModelFullName));
+        registeredModelsApi.getRegisteredModel(
+            registeredModelFullName, /* includeBrowse= */ false));
   }
 
   private static String updateRegisteredModel(

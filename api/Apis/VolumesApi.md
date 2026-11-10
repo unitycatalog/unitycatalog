@@ -67,7 +67,7 @@ No authorization required
 
 <a name="getVolume"></a>
 # **getVolume**
-> VolumeInfo getVolume(name)
+> VolumeInfo getVolume(name, include\_browse)
 
 Get a Volume
 
@@ -78,6 +78,7 @@ Get a Volume
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **name** | **String**| The three-level (fully qualified) name of the volume | [default to null] |
+| **include\_browse** | **Boolean**| Include discovery metadata for objects visible through BROWSE when ordinary access fails. Such objects have browse_only&#x3D;true. Ordinary access returns full metadata.  | [optional] [default to false] |
 
 ### Return type
 
@@ -94,7 +95,7 @@ No authorization required
 
 <a name="listVolumes"></a>
 # **listVolumes**
-> ListVolumesResponseContent listVolumes(catalog\_name, schema\_name, max\_results, page\_token)
+> ListVolumesResponseContent listVolumes(catalog\_name, schema\_name, max\_results, page\_token, include\_browse)
 
 List Volumes
 
@@ -108,6 +109,7 @@ List Volumes
 | **schema\_name** | **String**| The identifier of the schema | [default to null] |
 | **max\_results** | **Integer**| Maximum number of volumes to return (page length).  If not set, the page length is set to a server configured value. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  Note: this parameter controls only the maximum number of volumes to return. The actual number of volumes returned in a page may be smaller than this value, including 0, even if there are more pages.   | [optional] [default to null] |
 | **page\_token** | **String**| Opaque token returned by a previous request. It must be included in the request to retrieve the next page of results (pagination). | [optional] [default to null] |
+| **include\_browse** | **Boolean**| Include discovery metadata for objects visible through BROWSE when ordinary access fails. Such objects have browse_only&#x3D;true. Ordinary access returns full metadata.  | [optional] [default to false] |
 
 ### Return type
 
