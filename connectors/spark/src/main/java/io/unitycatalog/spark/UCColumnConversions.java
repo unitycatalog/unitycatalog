@@ -152,6 +152,8 @@ public final class UCColumnConversions {
       }
       return Metadata.fromJson(writeValueAsString(metadataNode));
     } catch (IllegalArgumentException | ClassCastException | SparkRuntimeException e) {
+      // readTree wraps Jackson errors in IllegalArgumentException; Metadata.fromJson throws
+      // ClassCastException or SparkRuntimeException for values Spark metadata cannot hold.
       LOG.warn("Ignoring unreadable metadata in type_json of column {}", columnName, e);
       return Metadata.empty();
     }

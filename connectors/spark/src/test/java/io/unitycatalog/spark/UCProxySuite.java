@@ -25,6 +25,7 @@ import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.SupportsNamespaces;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
+import org.apache.spark.sql.types.StructField;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -329,5 +330,32 @@ public class UCProxySuite {
 
     assertThat(result).hasNumberOfRows(1);
     assertThat(result[0]).containsExactly("schema1");
+  }
+
+  // -- toStructField: ColumnInfo.comment wins over a comment stored in type_json metadata --
+
+  private static ColumnInfo columnWithStoredComment(String ucComment) {
+    return new ColumnInfo()
+        .name("c")
+        .typeText("int")
+        .nullable(true)
+        .comment(ucComment)
+        .typeJson(
+            "{\"name\":\"c\",\"type\":\"integer\",\"nullable\":true,"
+                + "\"metadata\":{\"comment\":\"stored\",\"k\":\"v\"}}");
+  }
+
+  @Test
+  public void testToStructFieldPrefersColumnInfoComment() {
+    StructField field = ((UCProxy) proxy).toStructField(columnWithStoredComment("uc"));
+    assertThat(field.getComment().get()).isEqualTo("uc");
+    assertThat(field.metadata().getString("k")).isEqualTo("v");
+  }
+
+  @Test
+  public void testToStructFieldNullColumnInfoCommentDropsStoredComment() {
+    StructField field = ((UCProxy) proxy).toStructField(columnWithStoredComment(null));
+    assertThat(field.getComment().isEmpty()).isTrue();
+    assertThat(field.metadata().getString("k")).isEqualTo("v");
   }
 }
