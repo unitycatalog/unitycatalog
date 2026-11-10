@@ -68,7 +68,7 @@ No authorization required
 
 <a name="getRegisteredModel"></a>
 # **getRegisteredModel**
-> RegisteredModelInfo getRegisteredModel(full\_name)
+> RegisteredModelInfo getRegisteredModel(full\_name, include\_browse)
 
 Get a specified registered model
 
@@ -79,6 +79,7 @@ Get a specified registered model
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **full\_name** | **String**| Full name of the model. | [default to null] |
+| **include\_browse** | **Boolean**| Include discovery metadata for objects visible through BROWSE when ordinary access fails. Such objects have browse_only&#x3D;true. Ordinary access returns full metadata.  | [optional] [default to false] |
 
 ### Return type
 
@@ -95,7 +96,7 @@ No authorization required
 
 <a name="listRegisteredModels"></a>
 # **listRegisteredModels**
-> ListRegisteredModelsResponse listRegisteredModels(catalog\_name, schema\_name, max\_results, page\_token)
+> ListRegisteredModelsResponse listRegisteredModels(catalog\_name, schema\_name, max\_results, page\_token, include\_browse)
 
 List models
 
@@ -109,6 +110,7 @@ List models
 | **schema\_name** | **String**| Name of parent schema for models of interest. | [optional] [default to null] |
 | **max\_results** | **Integer**| Maximum number of models to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | [optional] [default to null] |
 | **page\_token** | **String**| Opaque token to send for the next page of results (pagination). | [optional] [default to null] |
+| **include\_browse** | **Boolean**| Include discovery metadata for objects visible through BROWSE when ordinary access fails. Such objects have browse_only&#x3D;true. Ordinary access returns full metadata.  | [optional] [default to false] |
 
 ### Return type
 
