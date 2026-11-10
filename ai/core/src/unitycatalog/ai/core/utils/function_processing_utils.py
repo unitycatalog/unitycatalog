@@ -428,6 +428,17 @@ def process_function_parameter_defaults(
                     defaults[param.name] = None
                 elif upper_str in UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING:
                     defaults[param.name] = UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING[upper_str]
+                elif (
+                    upper_str.startswith("X'")
+                    and default_str.endswith("'")
+                    and len(default_str) > 2
+                ):
+                    # Spark SQL binary literal (X'<hex>'), the form format_default_value
+                    # writes for bytes defaults; ast.literal_eval cannot parse it.
+                    try:
+                        defaults[param.name] = bytes.fromhex(default_str[2:-1])
+                    except ValueError:
+                        defaults[param.name] = default_str
                 else:
                     try:
                         defaults[param.name] = ast.literal_eval(default_str)
