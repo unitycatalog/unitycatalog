@@ -2,12 +2,17 @@ package io.unitycatalog.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
+import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.analysis.NamespaceAlreadyExistsException;
@@ -65,6 +70,33 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
 
     // See method comment: when Delta is disabled the delegate must be UCProxy (flag stays false).
     assertThat(UCSingleCatalog.DELTA_CATALOG_LOADED().get()).isEqualTo(loadDeltaCatalog);
+  }
+
+  @ParameterizedTest(name = "loadDeltaCatalog={0}")
+  @ValueSource(booleans = {true, false})
+  public void testCreateSchemaKeepsCommentAndLocation(boolean loadDeltaCatalog)
+      throws ApiException {
+    UCSingleCatalog.LOAD_DELTA_CATALOG().set(loadDeltaCatalog);
+    session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    session.catalog().setCurrentCatalog(CATALOG_NAME);
+    String location = "s3://test-bucket0/schema_with_location";
+
+    sql("CREATE SCHEMA commented_schema COMMENT 'my comment' LOCATION '%s'", location);
+    try {
+      Map<String, String> desc =
+          sql("DESC SCHEMA EXTENDED commented_schema").stream()
+              .collect(Collectors.toMap(row -> row.getString(0), row -> row.getString(1)));
+      assertThat(desc).containsEntry("Comment", "my comment").containsEntry("Location", location);
+      assertThat(desc.getOrDefault("Properties", ""))
+          .doesNotContain("properties:comment", "properties:location");
+      // Managed tables in the schema are placed under its storage location.
+      SchemaInfo schema =
+          new SdkSchemaOperations(createApiClient(serverConfig))
+              .getSchema(CATALOG_NAME + ".commented_schema");
+      assertThat(schema.getStorageLocation()).startsWith(location + "/");
+    } finally {
+      sql("DROP SCHEMA %s.commented_schema", CATALOG_NAME);
+    }
   }
 
   // On Spark 4.2+ (SPARK-55250), this exercises the UCProxy.createNamespace catch
