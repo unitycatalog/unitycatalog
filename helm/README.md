@@ -772,6 +772,23 @@ postgres
 			<td>PostgreSQL username</td>
 		</tr>
 		<tr>
+			<td>server.db.schemaManagement</td>
+			<td>string</td>
+			<td><pre lang="json">
+"flyway"
+</pre>
+</td>
+			<td>Who changes the database schema
+
+Supported values: `flyway` (before the server starts, an init container brings the schema up to
+date with `bin/start-uc-server --upgrade-schema`), `hibernate` (Hibernate updates the schema at
+start, as before 0.8; a temporary fallback).
+With `server.config.override`, the chart can't see the override's `server.schema-management`:
+set this value to match it.
+See docs/server/upgrades.md.
+</td>
+		</tr>
+		<tr>
 			<td>server.db.type</td>
 			<td>string</td>
 			<td><pre lang="json">

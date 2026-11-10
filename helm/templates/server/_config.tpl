@@ -4,6 +4,7 @@
 {{ .Values.server.config.override }}
 {{- else -}}
 server.env=prod
+server.schema-management={{ .Values.server.db.schemaManagement | default "flyway" | lower }}
 {{- if .Values.auth.enabled }}
 server.authorization=enable
 server.authorization-url={{ .Values.auth.authorizationUrl }}

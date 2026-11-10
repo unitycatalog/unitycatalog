@@ -54,8 +54,50 @@ public class SchemaGateTest {
   }
 
   @Test
+  void databaseHibernateSetUpCanSwitchBackToTheSteps() {
+    try (TestServer server = TestServer.startWithHibernateManagedSchema(db, storageRoot)) {
+      // Hibernate created the tables, and no schema step recorded anything.
+      assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.UNVERSIONED_UC);
+    }
+
+    // Its schema is this release's, so every step is recorded without running.
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    assertThat(migrator.checkSchema(new PrintStream(new ByteArrayOutputStream()))).isZero();
+    assertThat(migrator.upgradeSchema()).isEqualTo(migrator.steps().size());
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+    try (TestServer server = TestServer.start(db, storageRoot)) {
+      assertThat(SchemaSnapshot.of(db.dataSource()))
+          .isEqualTo(UpgradeTestUtils.freshInstallSnapshot());
+    }
+  }
+
+  @Test
+  void baselineDatabaseThatHibernateRanOnIsAdopted() {
+    UpgradeTestUtils.createBaselineSchema(db);
+    try (TestServer server = TestServer.startWithHibernateManagedSchema(db, storageRoot)) {
+      assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.UNVERSIONED_UC);
+    }
+
+    SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+    assertThat(migrator.upgradeSchema()).isEqualTo(migrator.steps().size());
+    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+  }
+
+  @Test
+  void hibernateLeavesTheStepsHistoryAsItIs() {
+    new SchemaMigrator(db.dataSource()).upgradeSchema();
+    String version = new SchemaMigrator(db.dataSource()).recordedVersion();
+
+    try (TestServer server = TestServer.startWithHibernateManagedSchema(db, storageRoot)) {
+      SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
+      assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
+      assertThat(migrator.recordedVersion()).isEqualTo(version);
+    }
+  }
+
+  @Test
   void upgradeSchemaCommandSetsUpTheConfiguredDatabase(@TempDir Path conf) throws IOException {
-    writeConfiguration(conf, db.jdbcUrl());
+    writeConfiguration(conf, "", db.jdbcUrl());
     // The command's own pool is larger than the server's, which the configuration may set small.
     Files.writeString(
         conf.resolve("hibernate.properties"),
@@ -78,6 +120,8 @@ public class SchemaGateTest {
         "hibernate.properties missing | | not found: run bin/start-uc-server",
         "in-memory database | jdbc:h2:mem:schema-command | is in memory",
         "unnamed in-memory database | jdbc:h2:. | is in memory",
+        "Hibernate manages the schema | server.schema-management=hibernate"
+            + " | Set server.schema-management=flyway",
         "Hibernate default schema | hibernate.default_schema=uc | hibernate.default_schema is not",
         "Hibernate default catalog | hibernate.default_catalog=uc | hibernate.default_catalog is"
             + " not",
@@ -86,7 +130,10 @@ public class SchemaGateTest {
       throws IOException {
     boolean memoryUrl = setting != null && setting.startsWith("jdbc:");
     boolean hibernateSetting = setting != null && setting.startsWith("hibernate.");
-    writeConfiguration(conf, memoryUrl ? setting : db.jdbcUrl());
+    writeConfiguration(
+        conf,
+        memoryUrl || hibernateSetting || setting == null ? "" : setting,
+        memoryUrl ? setting : db.jdbcUrl());
     if (hibernateSetting) {
       Files.writeString(
           conf.resolve("hibernate.properties"), "\n" + setting + "\n", StandardOpenOption.APPEND);
@@ -107,7 +154,7 @@ public class SchemaGateTest {
   @Test
   void checkSchemaDoesNotCreateAMissingH2File(@TempDir Path conf, @TempDir Path data)
       throws IOException {
-    writeConfiguration(conf, "jdbc:h2:file:" + data.resolve("uc"));
+    writeConfiguration(conf, "", "jdbc:h2:file:" + data.resolve("uc"));
     ByteArrayOutputStream out = new ByteArrayOutputStream();
 
     assertThat(SchemaMigrator.runCommand(false, conf, new PrintStream(out, true, UTF_8))).isOne();
@@ -118,9 +165,12 @@ public class SchemaGateTest {
     }
   }
 
-  /** An empty {@code server.properties}, and {@code hibernate.properties} for {@code url}. */
-  private void writeConfiguration(Path conf, String url) throws IOException {
-    Files.writeString(conf.resolve("server.properties"), "\n");
+  /**
+   * {@code server.properties} with {@code serverSetting}, and {@code hibernate.properties} for
+   * {@code url}.
+   */
+  private void writeConfiguration(Path conf, String serverSetting, String url) throws IOException {
+    Files.writeString(conf.resolve("server.properties"), serverSetting + "\n");
     Properties hibernate = db.hibernateProperties();
     hibernate.setProperty("hibernate.connection.url", url);
     if (url.startsWith("jdbc:h2:")) {

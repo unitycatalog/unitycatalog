@@ -153,7 +153,7 @@ public final class SchemaMigrator implements AutoCloseable {
    * --upgrade-schema} on the database that the configuration files in {@code configurationFolder}
    * set, printing what it found to {@code out}. Returns the exit code: 0 when the check or the
    * upgrade went through, 1 otherwise, also for a configuration with nothing to upgrade: a missing
-   * configuration file or an in-memory database.
+   * configuration file, an in-memory database, or Hibernate managing the schema.
    */
   public static int runCommand(boolean upgrade, Path configurationFolder, PrintStream out) {
     String command = "bin/start-uc-server " + (upgrade ? "--upgrade-schema" : "--check-schema");
@@ -171,6 +171,12 @@ public final class SchemaMigrator implements AutoCloseable {
         }
       }
       ServerProperties serverProperties = new ServerProperties(serverFile.toString());
+      if (serverProperties.isSchemaManagedByHibernate()) {
+        throw new IllegalStateException(
+            "server.schema-management=hibernate: Hibernate manages the schema, and the schema"
+                + " steps do not run. Set server.schema-management=flyway first; see"
+                + " docs/server/upgrades.md.");
+      }
       Properties hibernateProperties =
           HibernateConfigurator.setupHibernateProperties(serverProperties, hibernateFile);
       if (!upgrade) {

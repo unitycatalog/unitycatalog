@@ -134,24 +134,6 @@ public class SchemaMigratorTest {
   }
 
   @Test
-  void adoptsADatabaseWithThisReleasesSchemaWithoutHistory() {
-    // What a server that let Hibernate set up a new database leaves: this release's schema, and no
-    // schema history. The steps build that schema here; BaselineMatchesEntitiesTest checks that
-    // Hibernate builds the same one.
-    new SchemaMigrator(db.dataSource()).upgradeSchema();
-    UpgradeTestUtils.execute(
-        db, "DROP TABLE %1$suc_schema_history%1$s".formatted(identifierQuote(db.dataSource())));
-    List<String> sent = new CopyOnWriteArrayList<>();
-    SchemaMigrator migrator = new SchemaMigrator(sending(sent));
-    assertThat(migrator.state()).isEqualTo(SchemaState.UNVERSIONED_UC);
-
-    // Every step is recorded without running.
-    assertThat(migrator.upgradeSchema()).isEqualTo(releaseSteps(migrator));
-    assertThat(sent).noneMatch(sql -> isStep1(sql) || isStep2(sql));
-    assertThat(migrator.state()).isEqualTo(SchemaState.CURRENT);
-  }
-
-  @Test
   void keepsTheRecordOfAFailedStepWhenTheHistoryIsRefused() {
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource(), NEXT_RELEASE);
     migrator.upgradeSchema();
@@ -756,11 +738,6 @@ public class SchemaMigratorTest {
   /** Whether {@code sql} is a statement of step 1, which creates every table "if not exists". */
   private static boolean isStep1(String sql) {
     return sql.toLowerCase(Locale.ROOT).contains("create table if not exists uc_");
-  }
-
-  /** Whether {@code sql} is the statement of step 2, which widens uc_function_params.type_json. */
-  private static boolean isStep2(String sql) {
-    return sql.toLowerCase(Locale.ROOT).startsWith("alter table uc_function_params");
   }
 
   /** The quote for identifiers: Flyway's history table has quoted lower-case column names. */

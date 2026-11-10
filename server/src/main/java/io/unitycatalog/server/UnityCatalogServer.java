@@ -125,14 +125,21 @@ public class UnityCatalogServer implements AutoCloseable {
     BlockingTaskExecutor createdBlockingTaskExecutor = null;
     try {
       Properties hibernateProperties = hibernateConfigurator.getHibernateProperties();
-      // Serves only a database already at this release's schema: bin/start-uc-server
-      // --upgrade-schema brings it there. An in-memory database lasts only as long as this
-      // server, so the server sets it up itself. The migrator has its own small pool.
-      try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(hibernateProperties)) {
-        if (migrator.isInMemory()) {
-          migrator.upgradeSchema();
-        } else {
-          migrator.requireCurrentSchema();
+      if (hibernateConfigurator.isSchemaManagedByHibernate()) {
+        LOGGER.warn(
+            "Hibernate manages the schema (server.schema-management=hibernate): the schema steps"
+                + " and their checks do not run. See docs/server/upgrades.md.");
+      } else {
+        // Serves only a database already at this release's schema: bin/start-uc-server
+        // --upgrade-schema brings it there. An in-memory database lasts only as long as this
+        // server, so the server sets it up itself. The migrator has its own small pool.
+        try (SchemaMigrator migrator =
+            SchemaMigrator.fromHibernateProperties(hibernateProperties)) {
+          if (migrator.isInMemory()) {
+            migrator.upgradeSchema();
+          } else {
+            migrator.requireCurrentSchema();
+          }
         }
       }
       createdBlockingTaskExecutor =
