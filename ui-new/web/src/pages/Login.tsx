@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 export default function Login() {
   const navigate = useNavigate();
   const { data: appConfig } = useAppConfig();
-  const { loginWithToken, signInWithAccessToken, loading, currentUser } = useAuth();
+  const { loginWithToken, signInWithAccessToken, currentUser } = useAuth();
   // Read-only subscription, so the check below re-runs when a background refetch settles.
   const { status, fetchStatus, data: user } = useGetCurrentUser(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,7 +64,7 @@ export default function Login() {
     markOktaToken(false);
     if (canRetryOktaSignIn()) void onOktaSignIn();
     else setError("Unity Catalog refused your Okta sign-in. Contact your administrator.");
-  }, [okta?.issuer, okta?.clientId, loading, currentUser, status, fetchStatus, user]);
+  }, [okta?.issuer, okta?.clientId, status, fetchStatus, user]);
 
   useEffect(() => {
     if (currentUser) navigate({ to: "/", replace: true });

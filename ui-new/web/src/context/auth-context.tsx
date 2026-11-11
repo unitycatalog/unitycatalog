@@ -69,17 +69,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithOkta = useCallback(
     async ({ accessToken, idToken }: OktaTokens) => {
+      let cookieSession = true;
       try {
         await loginMutation.mutateAsync(idToken);
+        // The session cookie is the credential now; a stored bearer would outrank it.
+        clearToken();
+        markOktaToken(false);
       } catch (e) {
         // TODO(PR external mode): when that PR lands, check against a server in
         // external mode that /scim2/Me accepts the Okta access token as the bearer.
         if (!(e instanceof TokenExchangeError && e.isDisabledByServer())) throw e;
+        cookieSession = false;
         signInWithAccessToken(accessToken);
         markOktaToken(true);
       }
       // Resolve only once /scim2/Me has answered, so the caller can go to a page behind the auth gate.
+      // Cancel first: a request sent before the credentials changed would otherwise be reused.
+      await queryClient.cancelQueries({ queryKey: CURRENT_USER_QUERY_KEY });
       await queryClient.refetchQueries({ queryKey: CURRENT_USER_QUERY_KEY }, { throwOnError: true });
+      // Only a cookie session fails here: in external mode a 401 sends Login back to Okta.
+      if (cookieSession && !queryClient.getQueryData(CURRENT_USER_QUERY_KEY)) {
+        throw new Error("Login failed. Contact your administrator.");
+      }
     },
     [loginMutation, signInWithAccessToken, queryClient],
   );

@@ -8,8 +8,8 @@ import { proxyClient } from "@/lib/transport";
 import { Providers, makeQueryClient } from "@/test/providers";
 import { CURRENT_USER_QUERY_KEY } from "@/hooks/user";
 import { AuthProvider, useAuth } from "@/context/auth-context";
-import { getToken } from "@/lib/session";
-import { isOktaToken } from "@/lib/okta";
+import { getToken, setToken } from "@/lib/session";
+import { isOktaToken, markOktaToken } from "@/lib/okta";
 
 const call = proxyClient.call as unknown as Mock;
 
@@ -181,6 +181,114 @@ describe("AuthProvider", () => {
       await expect(result.current.signInWithOkta(tokens)).rejects.toThrow(`Login failed (HTTP ${httpStatus})`);
       expect(getToken()).toBe("");
       expect(isOktaToken()).toBe(false);
+    });
+
+    it.each([
+      ["internal", { httpStatus: 200, body: "{}" }],
+      ["external", { httpStatus: 501, body: JSON.stringify({ error_code: "UNIMPLEMENTED" }) }],
+    ])(
+      "%s mode: ignores the page-load /scim2/Me that is still in flight when the sign-in finishes",
+      async (_mode, exchange) => {
+        stubConfig({ authEnabled: true });
+        let cookie = false;
+        let first = true;
+        let meCalls = 0;
+        call.mockImplementation(async (input: { path: string; token: string }) => {
+          if (input.path.endsWith("/auth/tokens")) {
+            cookie = exchange.httpStatus === 200;
+            return { ...exchange, ok: exchange.httpStatus < 300 };
+          }
+          if (!input.path.endsWith("/scim2/Me")) return { httpStatus: 200, ok: true, body: "{}" };
+          meCalls++;
+          // The credentials as they were when the request left, like the real server.
+          const signedIn = input.token || cookie;
+          if (first) {
+            first = false;
+            await new Promise((r) => setTimeout(r, 100));
+          }
+          return signedIn
+            ? { httpStatus: 200, ok: true, body: JSON.stringify({ displayName: "Ada" }) }
+            : { httpStatus: 401, ok: false, body: "" };
+        });
+        const client = makeQueryClient();
+        const { result } = renderHook(() => useAuth(), {
+          wrapper: ({ children }) => (
+            <Providers client={client}>
+              <AuthProvider>{children}</AuthProvider>
+            </Providers>
+          ),
+        });
+        await waitFor(() => expect(meCalls).toBe(1));
+
+        await act(async () => {
+          await result.current.signInWithOkta(tokens);
+        });
+
+        expect(client.getQueryData(CURRENT_USER_QUERY_KEY)).toEqual({ displayName: "Ada" });
+        expect(meCalls).toBe(2);
+        expect(getToken()).toBe(exchange.httpStatus === 200 ? "" : "okta-at");
+      },
+    );
+
+    it("internal mode: fails when /scim2/Me does not know the user after a successful exchange", async () => {
+      stubConfig({ authEnabled: true });
+      call.mockImplementation(async (input: { path: string }) =>
+        input.path.endsWith("/scim2/Me")
+          ? { httpStatus: 401, ok: false, body: "" }
+          : { httpStatus: 200, ok: true, body: "{}" },
+      );
+      const { result } = renderHook(() => useAuth(), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await expect(result.current.signInWithOkta(tokens)).rejects.toThrow("Login failed. Contact your administrator.");
+    });
+
+    it("external mode: a 401 from /scim2/Me is not an error, so the login page can restart Okta", async () => {
+      stubConfig({ authEnabled: true });
+      call.mockImplementation(async (input: { path: string }) => {
+        if (input.path.endsWith("/auth/tokens"))
+          return { httpStatus: 501, ok: false, body: JSON.stringify({ error_code: "UNIMPLEMENTED" }) };
+        if (input.path.endsWith("/scim2/Me")) return { httpStatus: 401, ok: false, body: "" };
+        return { httpStatus: 200, ok: true, body: "{}" };
+      });
+      const { result } = renderHook(() => useAuth(), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.signInWithOkta(tokens);
+      });
+
+      expect(getToken()).toBe("okta-at");
+      expect(isOktaToken()).toBe(true);
+    });
+
+    it("internal mode: drops a stale bearer token so it cannot outrank the new session cookie", async () => {
+      stubConfig({ authEnabled: true });
+      let cookie = false;
+      call.mockImplementation(async (input: { path: string; token: string }) => {
+        if (input.path.endsWith("/auth/tokens")) {
+          cookie = true;
+          return { httpStatus: 200, ok: true, body: "{}" };
+        }
+        if (!input.path.endsWith("/scim2/Me")) return { httpStatus: 200, ok: true, body: "{}" };
+        // Like AuthDecorator: a bearer token is checked before the cookie.
+        if (input.token) return { httpStatus: 401, ok: false, body: "" };
+        return cookie
+          ? { httpStatus: 200, ok: true, body: JSON.stringify({ displayName: "Ada" }) }
+          : { httpStatus: 401, ok: false, body: "" };
+      });
+      setToken("stale-pasted");
+      markOktaToken(true);
+      const { result } = renderHook(() => useAuth(), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.signInWithOkta(tokens);
+      });
+
+      expect(getToken()).toBe("");
+      expect(isOktaToken()).toBe(false);
+      await waitFor(() => expect(result.current.currentUser?.displayName).toBe("Ada"));
     });
 
     it("logout forgets that the token came from Okta", async () => {
