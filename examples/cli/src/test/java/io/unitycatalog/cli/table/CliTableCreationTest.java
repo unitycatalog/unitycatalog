@@ -229,12 +229,18 @@ public class CliTableCreationTest extends BaseServerTest {
                 + schema.get(column).getDataType());
   }
 
-  @Test
-  public void testDecimalColumnWithoutPrecisionFails() {
-    ColumnInfo column = new ColumnInfo().name("price").typeName(ColumnTypeName.DECIMAL);
+  @ParameterizedTest
+  @CsvSource({",", "10,", ",2"})
+  public void testDecimalColumnWithoutPrecisionOrScaleFails(Integer precision, Integer scale) {
+    ColumnInfo column =
+        new ColumnInfo()
+            .name("price")
+            .typeName(ColumnTypeName.DECIMAL)
+            .typePrecision(precision)
+            .typeScale(scale);
     assertThatThrownBy(() -> DeltaKernelUtils.getDataType(column))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("price");
+        .hasMessage("DECIMAL column is missing precision or scale: price");
   }
 
   @Test
