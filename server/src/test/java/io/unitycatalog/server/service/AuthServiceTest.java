@@ -24,8 +24,10 @@ import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.RequestHeadersBuilder;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.security.AdminTokenCommand;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
@@ -572,6 +574,32 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage(message));
 
+    // An IdP principal must be a user the admin owns, so that only the admin manages it.
+    users.createUser(
+        CreateUser.builder()
+            .name("Okta user")
+            .email("okta-owned@okta.local")
+            .owner("okta")
+            .build());
+    assertThatThrownBy(
+            () ->
+                AdminTokenCommand.createScimToken(
+                    new String[] {
+                      "--scim-principal",
+                      "okta-owned@okta.local",
+                      "--idp",
+                      "entra",
+                      "--lifetime",
+                      "P90D"
+                    },
+                    securityContext.getAlgorithm(),
+                    users))
+        .isInstanceOf(BaseException.class)
+        .hasMessage(
+            "okta-owned@okta.local is managed by identity provider okta; the SCIM principal must be"
+                + " a user the admin owns");
+    assertThat(users.getUserByEmail("okta-owned@okta.local").getIdpName()).isNull();
+
     // "admin" names the admin as a row owner, so it can't be an IdP.
     assertThatThrownBy(
             () ->
@@ -649,17 +677,6 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     }
     assertThat(users.getUserByEmail("entra-scim").getState()).isEqualTo(User.StateEnum.ENABLED);
     assertThat(users.getUserByEmail("okta-scim").getName()).isNotEqualTo("Renamed");
-
-    // A user Okta created, then made Entra's principal: Okta owns it but can't change it.
-    AggregatedHttpResponse created = scimAs(okta, HttpMethod.POST, "", OKTA_CREATE_USER);
-    String oktaOwnedId = MAPPER.readTree(created.contentUtf8()).get("id").asText();
-    users.setIdpName("test.user@okta.local", "entra");
-    for (AggregatedHttpResponse response :
-        principalChanges(okta, oktaOwnedId, "test.user@okta.local")) {
-      assertThat(response.status()).isEqualTo(HttpStatus.FORBIDDEN);
-      assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
-          .isEqualTo("An IdP principal can't be changed with a SCIM token: test.user@okta.local");
-    }
 
     // The admin disables Okta's principal; Entra's token can't revive it.
     assertThat(scim(HttpMethod.PATCH, "/" + oktaId, OKTA_DEACTIVATE_USER).status())
@@ -858,11 +875,23 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
               .withClaim(JwtClaim.SUBJECT.key(), principalId)
               .withClaim(JwtClaim.IDP.key(), idp)
               .sign(securityContext.getAlgorithm());
-      AggregatedHttpResponse response = scimAs(token, HttpMethod.GET, "", null);
-      assertThat(response.status()).as(idp).isEqualTo(HttpStatus.FORBIDDEN);
-      assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
-          .isEqualTo("The SCIM token does not name a valid IdP.");
+      for (AggregatedHttpResponse response :
+          List.of(
+              scimAs(token, HttpMethod.GET, "", null),
+              scimAs(
+                  token,
+                  HttpMethod.POST,
+                  "",
+                  OKTA_CREATE_USER
+                      .replace("test.user@okta.local", "no-idp@okta.local")
+                      .replace("00ujl29u0le5T6Aj10h7", "00ujl29u0le5T6Aj10h9")))) {
+        assertThat(response.status()).as(idp).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
+            .isEqualTo("The SCIM token does not name a valid IdP.");
+      }
     }
+    assertThatThrownBy(() -> users.getUserByEmail("no-idp@okta.local"))
+        .isInstanceOf(BaseException.class);
   }
 
   private static List<String> userEmails(AggregatedHttpResponse list) throws IOException {

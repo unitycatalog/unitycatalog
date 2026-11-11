@@ -145,6 +145,8 @@ public class Scim2UserService implements ScimService {
     if (userResource.getPhotos() != null && !userResource.getPhotos().isEmpty()) {
       pictureUrl = userResource.getPhotos().get(0).getValue().toString();
     }
+    // Outside the try: a refused SCIM token is a 403, not a bad request.
+    String owner = IdentityUtils.callerOwner();
     try {
       User user =
           userRepository.createUser(
@@ -154,7 +156,7 @@ public class Scim2UserService implements ScimService {
                   .active(userResource.getActive())
                   .externalId(userResource.getExternalId())
                   .pictureUrl(pictureUrl)
-                  .owner(IdentityUtils.callerOwner())
+                  .owner(owner)
                   .build());
       return asUserResource(user);
     } catch (BaseException e) {
@@ -288,8 +290,9 @@ public class Scim2UserService implements ScimService {
   }
 
   // Only the admin changes an IdP principal: with a SCIM token, one IdP could lock out or revive
-  // another IdP's principal, or its own. SCIM tokens are honored only with authorization
-  // enabled.
+  // another IdP's principal, or its own. A principal is a user the admin owns (bin/uc-admin-token
+  // refuses others), so a SCIM token already gets 404 for it; this keeps the rule for a principal
+  // row an IdP owns. SCIM tokens are honored only with authorization enabled.
   private void checkNotIdpPrincipalForScimToken(User user) {
     if (!serverProperties.isAuthorizationEnabled()) {
       return;

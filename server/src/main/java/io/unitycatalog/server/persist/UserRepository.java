@@ -207,7 +207,8 @@ public class UserRepository {
 
   /**
    * Marks the user as the principal of the identity provider {@code idpName}, for its SCIM token.
-   * Refuses the admin user and a user that is already the principal of another identity provider.
+   * Refuses the admin user, a user an identity provider owns (only the admin manages a principal),
+   * and a user that is already the principal of another identity provider.
    */
   public User setIdpName(String email, String idpName) {
     return TransactionManager.executeWithTransaction(
@@ -221,6 +222,14 @@ public class UserRepository {
           if ("admin".equals(userDAO.getEmail())) {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT, "The admin user can't be an IdP principal.");
+          }
+          if (!IdentityUtils.ADMIN_OWNER.equals(userDAO.getOwner())) {
+            throw new BaseException(
+                ErrorCode.FAILED_PRECONDITION,
+                String.format(
+                    "%s is managed by identity provider %s; the SCIM principal must be a user the"
+                        + " admin owns",
+                    email, userDAO.getOwner()));
           }
           if (userDAO.getIdpName() != null && !userDAO.getIdpName().equals(idpName)) {
             throw new BaseException(

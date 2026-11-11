@@ -499,15 +499,17 @@ bin/uc-admin-token --scim-principal okta-scim --idp okta --lifetime P90D
 ```
 
 - The token is accepted only under `/api/1.0/unity-control/scim2/`, and only for the users and groups that identity
-  provider created (see "Users and groups an identity provider owns" below). It gets 403 when it updates, deactivates
-  or deletes an identity provider principal. Only the admin manages those. Elsewhere it gets 403.
+  provider created (see "Users and groups an identity provider owns" below). Identity provider principals are users
+  the admin created, so the token can't see or change them (404), its own included. Only the admin manages those.
+  Elsewhere it gets 403.
 - It also gets 403 when it changes the `externalId` or email of an existing user, since token exchange signs in by both.
   An update that sends the stored values again, or omits them, is accepted. The email match is exact, so a change of
   case is refused too.
 - `--idp admin` is refused: `admin` is the owner name of the users and groups the admin creates.
 - `bin/uc-admin-token` opens the server's database from `etc/conf/hibernate.properties`, as
   `bin/start-uc-server --upgrade-schema` does, and marks the user as the identity provider's principal. That user can no
-  longer sign in, and can't be marked for another identity provider. It refuses the `admin` user.
+  longer sign in, and can't be marked for another identity provider. It refuses the `admin` user, and a user an
+  identity provider created: the principal must be a user the admin owns.
 - With the default H2 file database, stop the server before you run it: H2 lets one process open the file.
 - Mint after `bin/start-uc-server --upgrade-schema`: `bin/uc-admin-token` refuses a database with schema steps not
   applied yet, one of a newer release, or an in-memory one, and does not change the schema itself.

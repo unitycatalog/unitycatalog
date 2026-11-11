@@ -861,8 +861,9 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
     ServerConfig okta = scimTokenConfig("okta-scim@localhost", "okta");
     ServerConfig entra = scimTokenConfig("entra-scim@localhost", "entra");
     createGroup("admin-eng");
+    String oktaUser = createUserAs(okta, "okta-user@localhost");
     HttpResponse<String> created =
-        send(okta, "POST", GROUPS_PATH, groupBody("okta-eng", null, alice.getId()));
+        send(okta, "POST", GROUPS_PATH, groupBody("okta-eng", null, oktaUser));
     assertThat(created.statusCode()).as(created.body()).isEqualTo(201);
     JsonNode oktaGroup = MAPPER.readTree(created.body());
     String id = oktaGroup.get("id").asText();
@@ -897,7 +898,7 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
           send(clash.getKey(), "POST", GROUPS_PATH, groupBody(clash.getValue()));
       assertThat(response.statusCode()).as(clash.getValue()).isEqualTo(409);
     }
-    assertThat(memberIds(get(id))).containsExactly(alice.getId());
+    assertThat(memberIds(get(id))).containsExactly(oktaUser);
   }
 
   /**
@@ -908,69 +909,60 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
   @SneakyThrows
   public void testAdminChangesOnlyItsOwnListOfAnIdpGroup() {
     ServerConfig okta = scimTokenConfig("okta-scim@localhost", "okta");
-    HttpResponse<String> created =
-        send(okta, "POST", GROUPS_PATH, groupBody("okta-eng", null, alice.getId()));
+    // Users Okta created: Okta can name only its own users as members.
+    String a = createUserAs(okta, "oa@localhost");
+    String b = createUserAs(okta, "ob@localhost");
+    String c = createUserAs(okta, "oc@localhost");
+    HttpResponse<String> created = send(okta, "POST", GROUPS_PATH, groupBody("okta-eng", null, a));
     String id = MAPPER.readTree(created.body()).get("id").asText();
     String path = GROUPS_PATH + "/" + id;
 
-    // The admin adds bob and alice: alice is then in both lists.
+    // The admin adds b and a: a is then in both lists.
     assertThat(
-            send(
-                    adminConfig,
-                    "PATCH",
-                    path,
-                    patchBody(op("add", "members", memberValues(bob.getId(), alice.getId()))))
+            send(adminConfig, "PATCH", path, patchBody(op("add", "members", memberValues(b, a))))
                 .statusCode())
         .isEqualTo(200);
     JsonNode both = get(id);
-    assertThat(memberIds(both)).containsExactlyInAnyOrder(alice.getId(), bob.getId());
+    assertThat(memberIds(both)).containsExactlyInAnyOrder(a, b);
     assertThat(sourceMembers(both.get(OWNER_SCHEMA), "idpMembers"))
-        .containsExactly(alice.getId() + " alice@localhost");
+        .containsExactly(a + " oa@localhost");
     assertThat(sourceMembers(both.get(OWNER_SCHEMA), "adminMembers"))
-        .containsExactlyInAnyOrder(
-            alice.getId() + " alice@localhost", bob.getId() + " bob@localhost");
+        .containsExactlyInAnyOrder(a + " oa@localhost", b + " ob@localhost");
     // The IdP sees only its own list.
-    assertThat(memberIds(getAs(okta, id))).containsExactly(alice.getId());
+    assertThat(memberIds(getAs(okta, id))).containsExactly(a);
 
     // The IdP replaces its list, with PUT and with PATCH; the admin's list stays.
-    assertThat(send(okta, "PUT", path, groupBody("okta-eng", null, carol.getId())).statusCode())
-        .isEqualTo(200);
-    assertThat(memberIds(getAs(okta, id))).containsExactly(carol.getId());
-    assertThat(memberIds(get(id)))
-        .containsExactlyInAnyOrder(alice.getId(), bob.getId(), carol.getId());
-    send(okta, "PATCH", path, patchBody(op("replace", "members", memberValues(bob.getId()))));
-    send(
-        okta,
-        "PATCH",
-        path,
-        patchBody(op("remove", "members[value eq \\\"" + alice.getId() + "\\\"]", null)));
-    assertThat(memberIds(getAs(okta, id))).containsExactly(bob.getId());
+    assertThat(send(okta, "PUT", path, groupBody("okta-eng", null, c)).statusCode()).isEqualTo(200);
+    assertThat(memberIds(getAs(okta, id))).containsExactly(c);
+    assertThat(memberIds(get(id))).containsExactlyInAnyOrder(a, b, c);
+    send(okta, "PATCH", path, patchBody(op("replace", "members", memberValues(b))));
+    send(okta, "PATCH", path, patchBody(op("remove", "members[value eq \\\"" + a + "\\\"]", null)));
+    assertThat(memberIds(getAs(okta, id))).containsExactly(b);
     assertThat(sourceMembers(get(id).get(OWNER_SCHEMA), "adminMembers"))
-        .containsExactlyInAnyOrder(
-            alice.getId() + " alice@localhost", bob.getId() + " bob@localhost");
+        .containsExactlyInAnyOrder(a + " oa@localhost", b + " ob@localhost");
 
     // The admin's remove and replace act on the admin's list only.
     send(
         adminConfig,
         "PATCH",
         path,
-        patchBody(op("remove", "members[value eq \\\"" + bob.getId() + "\\\"]", null)));
-    assertThat(memberIds(get(id))).containsExactlyInAnyOrder(alice.getId(), bob.getId());
+        patchBody(op("remove", "members[value eq \\\"" + b + "\\\"]", null)));
+    assertThat(memberIds(get(id))).containsExactlyInAnyOrder(a, b);
     send(adminConfig, "PATCH", path, patchBody(op("replace", "members", "[]")));
-    assertThat(memberIds(get(id))).containsExactly(bob.getId());
+    assertThat(memberIds(get(id))).containsExactly(b);
     assertThat(sourceMembers(get(id).get(OWNER_SCHEMA), "adminMembers")).isEmpty();
 
     // The admin can't replace, rename or delete the IdP's group.
     String managed = "Group okta-eng is managed by identity provider okta";
     for (HttpResponse<String> response :
         List.of(
-            send(adminConfig, "PUT", path, groupBody("okta-eng", null, bob.getId())),
+            send(adminConfig, "PUT", path, groupBody("okta-eng", null, b)),
             send(
                 adminConfig,
                 "PATCH",
                 path,
                 patchBody(
-                    op("add", "members", memberValues(carol.getId())),
+                    op("add", "members", memberValues(c)),
                     op("replace", "displayName", "\"renamed\""))),
             send(
                 adminConfig,
@@ -983,11 +975,82 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
     }
     JsonNode unchanged = get(id);
     assertThat(unchanged.get("displayName").asText()).isEqualTo("okta-eng");
-    assertThat(memberIds(unchanged)).containsExactly(bob.getId());
+    assertThat(memberIds(unchanged)).containsExactly(b);
 
     // The IdP deletes its group, with the admin's rows.
     assertThat(send(okta, "DELETE", path, null).statusCode()).isEqualTo(204);
     assertThat(send(adminConfig, "GET", path, null).statusCode()).isEqualTo(404);
+  }
+
+  /**
+   * An IdP names as members only the users it created: another owner's user is not an existing user
+   * for it, on create, PUT and PATCH, and nothing changes. The admin can name any user.
+   */
+  @Test
+  @SneakyThrows
+  public void testIdpCanNameOnlyItsOwnUsersAsMembers() {
+    ServerConfig okta = scimTokenConfig("okta-scim@localhost", "okta");
+    ServerConfig entra = scimTokenConfig("entra-scim@localhost", "entra");
+    String oktaUser = createUserAs(okta, "okta-user@localhost");
+    String entraUser = createUserAs(entra, "entra-user@localhost");
+
+    for (String other : List.of(alice.getId(), entraUser)) {
+      HttpResponse<String> response =
+          send(okta, "POST", GROUPS_PATH, groupBody("okta-eng", null, oktaUser, other));
+      assertThat(response.statusCode()).as(response.body()).isEqualTo(400);
+      assertThat(MAPPER.readTree(response.body()).get("detail").asText())
+          .isEqualTo("Member is not an existing user: " + other);
+    }
+    assertThat(groupNames(list(""))).isEmpty();
+
+    HttpResponse<String> created =
+        send(okta, "POST", GROUPS_PATH, groupBody("okta-eng", null, oktaUser));
+    assertThat(created.statusCode()).as(created.body()).isEqualTo(201);
+    String id = MAPPER.readTree(created.body()).get("id").asText();
+    String path = GROUPS_PATH + "/" + id;
+    for (String other : List.of(alice.getId(), entraUser)) {
+      for (HttpResponse<String> response :
+          List.of(
+              send(okta, "PUT", path, groupBody("okta-eng", null, oktaUser, other)),
+              send(okta, "PATCH", path, patchBody(op("add", "members", memberValues(other)))),
+              send(
+                  okta, "PATCH", path, patchBody(op("replace", "members", memberValues(other)))))) {
+        assertThat(response.statusCode()).as(response.body()).isEqualTo(400);
+        assertThat(MAPPER.readTree(response.body()).get("detail").asText())
+            .isEqualTo("Member is not an existing user: " + other);
+      }
+    }
+    assertThat(memberIds(get(id))).containsExactly(oktaUser);
+
+    // The admin can name any user, in its own list.
+    assertThat(
+            send(
+                    adminConfig,
+                    "PATCH",
+                    path,
+                    patchBody(op("add", "members", memberValues(alice.getId(), entraUser))))
+                .statusCode())
+        .isEqualTo(200);
+    assertThat(memberIds(get(id))).containsExactlyInAnyOrder(oktaUser, alice.getId(), entraUser);
+    // Okta's PUT of its own list is not blocked by the admin's members.
+    assertThat(send(okta, "PUT", path, groupBody("okta-eng", null, oktaUser)).statusCode())
+        .isEqualTo(200);
+  }
+
+  /** Creates a user with {@code config}'s token and returns its id. */
+  private String createUserAs(ServerConfig config, String email) throws Exception {
+    HttpResponse<String> response =
+        send(
+            config,
+            "POST",
+            USERS_PATH,
+            "{\"displayName\":\""
+                + email
+                + "\",\"emails\":[{\"value\":\""
+                + email
+                + "\",\"primary\":true}]}");
+    assertThat(response.statusCode()).as(response.body()).isEqualTo(201);
+    return MAPPER.readTree(response.body()).get("id").asText();
   }
 
   /** A config with the SCIM token of a new IdP principal {@code email} for {@code idp}. */

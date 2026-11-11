@@ -51,7 +51,7 @@ public class GroupRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          requireUsers(session, memberIds);
+          requireUsers(session, memberIds, adminAdded ? null : owner);
           Date now = new Date();
           GroupDAO groupDAO =
               GroupDAO.builder()
@@ -116,13 +116,12 @@ public class GroupRepository {
           Group current = toGroup(groupDAO, memberships(session, groupDAO.getId()));
           Group updated = change.apply(current);
 
-          Set<UUID> added = new LinkedHashSet<>();
           for (boolean adminAdded : List.of(false, true)) {
-            Set<UUID> addedToList = new LinkedHashSet<>(updated.getMemberIds(adminAdded));
-            addedToList.removeAll(current.getMemberIds(adminAdded));
-            added.addAll(addedToList);
+            Set<UUID> added = new LinkedHashSet<>(updated.getMemberIds(adminAdded));
+            added.removeAll(current.getMemberIds(adminAdded));
+            // Only the IdP that owns the group writes its IdP list.
+            requireUsers(session, added, adminAdded ? null : groupDAO.getOwner());
           }
-          requireUsers(session, added);
 
           groupDAO.setName(updated.getName());
           groupDAO.setExternalId(updated.getExternalId());
@@ -225,23 +224,27 @@ public class GroupRepository {
    * Members are users only: an unknown id, or the id of a group, is refused. The users are locked
    * until the transaction ends, so a user deleted at the same time either waits for this change and
    * then drops the new membership too, or is gone before it is checked.
+   *
+   * <p>An IdP ({@code idpOwner} not null) can only name the users it created: another owner's user
+   * is not an existing user for it, as it is not found when the IdP looks it up.
    */
-  private void requireUsers(Session session, Collection<UUID> userIds) {
+  private void requireUsers(Session session, Collection<UUID> userIds, String idpOwner) {
     if (userIds.isEmpty()) {
       return;
     }
     // TODO(#PR3): a deleted user is DISABLED like a deactivated one, so it can still be added;
     // drop this once user delete removes the row.
-    Set<UUID> found =
-        new HashSet<>(
-            session
-                .createSelectionQuery("FROM UserDAO WHERE id IN :ids", UserDAO.class)
-                .setParameterList("ids", userIds)
-                .setHibernateLockMode(LockMode.PESSIMISTIC_READ)
-                .list()
-                .stream()
-                .map(UserDAO::getId)
-                .toList());
+    var query =
+        session
+            .createSelectionQuery(
+                "FROM UserDAO WHERE id IN :ids" + (idpOwner == null ? "" : " AND owner = :owner"),
+                UserDAO.class)
+            .setParameterList("ids", userIds)
+            .setHibernateLockMode(LockMode.PESSIMISTIC_READ);
+    if (idpOwner != null) {
+      query.setParameter("owner", idpOwner);
+    }
+    Set<UUID> found = new HashSet<>(query.list().stream().map(UserDAO::getId).toList());
     userIds.stream()
         .filter(userId -> !found.contains(userId))
         .findFirst()
