@@ -489,6 +489,97 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
     assertThat(memberIds(get(id))).isEmpty();
   }
 
+  /**
+   * Okta pushes one group, in the order and with the bodies of its SCIM 2.0 guide: look the group
+   * up by name, create it, add members (with display names), add and remove members in one request,
+   * rename it (a replace without a path), remove a member, delete it. Okta takes a 200 or a 204 for
+   * each PATCH.
+   */
+  @Test
+  @SneakyThrows
+  public void testOktaGroupPushJourney() {
+    String groupSchema = "urn:ietf:params:scim:schemas:core:2.0:Group";
+    String lookupQuery =
+        "?filter=" + encode("displayName eq \"Test SCIMv2\"") + "&startIndex=1&count=100";
+
+    // Okta looks for the group first: there is none.
+    JsonNode none = list(lookupQuery);
+    assertThat(none.get("totalResults").asInt()).isZero();
+    assertThat(groupNames(none)).isEmpty();
+
+    // Create the group, with no members.
+    HttpResponse<String> created =
+        send(
+            adminConfig,
+            "POST",
+            GROUPS_PATH,
+            "{\"schemas\":[\""
+                + groupSchema
+                + "\"],\"displayName\":\"Test SCIMv2\",\"members\":[]}");
+    assertThat(created.statusCode()).isEqualTo(201);
+    JsonNode group = MAPPER.readTree(created.body());
+    String id = group.get("id").asText();
+    assertThat(group.get("displayName").asText()).isEqualTo("Test SCIMv2");
+    assertThat(memberIds(group)).isEmpty();
+    assertThat(group.get("meta").get("resourceType").asText()).isEqualTo("Group");
+    assertThat(groupNames(list(lookupQuery))).containsExactly("Test SCIMv2");
+
+    // Add two members.
+    patchOkta(
+        id,
+        op(
+            "add",
+            "members",
+            "[{\"value\":\""
+                + alice.getId()
+                + "\",\"display\":\"alice@localhost\"},"
+                + "{\"value\":\""
+                + bob.getId()
+                + "\",\"display\":\"bob@localhost\"}]"));
+    assertThat(memberIds(get(id))).containsExactlyInAnyOrder(alice.getId(), bob.getId());
+
+    // Add and remove members in one request.
+    patchOkta(
+        id,
+        op(
+            "add",
+            "members",
+            "[{\"value\":\"" + carol.getId() + "\",\"display\":\"carol@localhost\"}]"),
+        op("remove", "members[value eq \\\"" + alice.getId() + "\\\"]", null));
+    assertThat(memberIds(get(id))).containsExactlyInAnyOrder(bob.getId(), carol.getId());
+
+    // Rename.
+    patchOkta(
+        id, op("replace", null, "{\"id\":\"" + id + "\",\"displayName\":\"Test SCIMv2 renamed\"}"));
+    JsonNode renamed = get(id);
+    assertThat(renamed.get("displayName").asText()).isEqualTo("Test SCIMv2 renamed");
+    assertThat(memberIds(renamed)).containsExactlyInAnyOrder(bob.getId(), carol.getId());
+    assertThat(list(lookupQuery).get("totalResults").asInt()).isZero();
+
+    // Remove one member.
+    patchOkta(id, op("remove", "members[value eq \\\"" + bob.getId() + "\\\"]", null));
+    assertThat(memberIds(get(id))).containsExactly(carol.getId());
+
+    // Unlink and delete the group.
+    assertThat(send(adminConfig, "DELETE", GROUPS_PATH + "/" + id, null).statusCode())
+        .isEqualTo(204);
+    assertThat(send(adminConfig, "GET", GROUPS_PATH + "/" + id, null).statusCode()).isEqualTo(404);
+    assertThat(groupNames(list(""))).isEmpty();
+    // The users stay.
+    for (UserResource user : List.of(alice, bob, carol)) {
+      assertThat(send(adminConfig, "GET", USERS_PATH + "/" + user.getId(), null).statusCode())
+          .isEqualTo(200);
+    }
+  }
+
+  /** Sends an Okta PATCH; Okta accepts a 200 or a 204. */
+  @SneakyThrows
+  private void patchOkta(String groupId, String... ops) {
+    HttpResponse<String> response =
+        send(adminConfig, "PATCH", GROUPS_PATH + "/" + groupId, patchBody(ops));
+    assertThat(response.statusCode()).as(response.body()).isIn(200, 204);
+  }
+
   /** An authorizer over the same store as the server's. */
   private JCasbinAuthorizer newAuthorizer() throws Exception {
     return new JCasbinAuthorizer(hibernateConfigurator, new ServerProperties(serverProperties));
