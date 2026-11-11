@@ -30,6 +30,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.Logger;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -56,9 +57,36 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
   private static final String OWNER_REFUSED =
       "The metastore owner can't be deleted or deactivated: admin";
 
+  private static final String NO_TOKEN = "No authorization found.";
+
+  private final List<String> errorLogs = new CopyOnWriteArrayList<>();
+  private final Logger handlerLogger = (Logger) LogManager.getLogger(BaseExceptionHandler.class);
+  private final AbstractAppender errorAppender =
+      new AbstractAppender(
+          "errors", null, null, true, new org.apache.logging.log4j.core.config.Property[0]) {
+        @Override
+        public void append(LogEvent event) {
+          if (event.getLevel().isMoreSpecificThan(Level.ERROR)) {
+            errorLogs.add(event.getMessage().getFormattedMessage());
+          }
+        }
+      };
+
   private UsersApi regularUsersApi;
   private ServerConfig regularUserConfig;
   private UserResource otherUser;
+
+  @BeforeEach
+  public void captureErrorLogs() {
+    errorAppender.start();
+    handlerLogger.addAppender(errorAppender);
+  }
+
+  @AfterEach
+  public void stopCapturingErrorLogs() {
+    handlerLogger.removeAppender(errorAppender);
+    errorAppender.stop();
+  }
 
   @BeforeEach
   public void setUpUsers() throws Exception {
@@ -187,50 +215,94 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
               (String) c[0],
               SCIM_USERS_PATH + "/" + c[1],
               Optional.ofNullable((String) c[2]));
-      assertScimError(response.statusCode(), response.body(), (int) c[3], (String) c[4]);
-      assertThat(response.headers().firstValue("content-type").orElse(""))
-          .startsWith("application/scim+json");
+      assertScimError(response, (int) c[3], (String) c[4]);
     }
 
-    HttpResponse<String> unauthenticated =
-        TestUtils.sendRaw(
-            new ServerConfig(adminConfig.getServerUrl(), ""),
-            "GET",
-            SCIM_USERS_PATH,
-            Optional.empty());
+    assertScimError(sendWithoutToken("GET", SCIM_USERS_PATH, Optional.empty()), 401, NO_TOKEN);
+  }
+
+  /**
+   * An IdP provisioning a user, then hitting each error it can meet, as it sees them on the wire.
+   */
+  @Test
+  @SneakyThrows
+  public void testScimErrorJourney() {
+    String email = "test.user@okta.local";
+    String oktaUser =
+        "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],"
+            + "\"userName\":\""
+            + email
+            + "\",\"name\":{\"givenName\":\"Test\",\"familyName\":\"User\"},"
+            + "\"emails\":[{\"primary\":true,\"value\":\""
+            + email
+            + "\",\"type\":\"work\"}],\"displayName\":\"Test User\","
+            + "\"locale\":\"en-US\",\"externalId\":\"00ujl29u0le5T6Aj10h7\","
+            + "\"groups\":[],\"password\":\"1mz050nq\",\"active\":true}";
+    String unknownId = UUID.randomUUID().toString();
+
+    // Provision the user.
+    HttpResponse<String> created =
+        TestUtils.sendRaw(adminConfig, "POST", SCIM_USERS_PATH, Optional.of(oktaUser));
+    assertThat(created.statusCode()).as(created.body()).isEqualTo(201);
+    assertScimContentType(created);
+
+    // Provisioning the same user again is a conflict naming the email.
     assertScimError(
-        unauthenticated.statusCode(), unauthenticated.body(), 401, "No authorization found.");
+        TestUtils.sendRaw(adminConfig, "POST", SCIM_USERS_PATH, Optional.of(oktaUser)),
+        409,
+        "User already exists: " + email);
+
+    // Reading users that do not exist: an unknown id and an id that is not even a UUID.
+    assertScimError(
+        TestUtils.sendRaw(adminConfig, "GET", SCIM_USERS_PATH + "/" + unknownId, Optional.empty()),
+        404,
+        "User not found: " + unknownId);
+    assertScimError(
+        TestUtils.sendRaw(adminConfig, "GET", SCIM_USERS_PATH + "/not-a-uuid", Optional.empty()),
+        404,
+        "User not found: not-a-uuid");
+
+    // An operation the server does not support is a 501, not logged as a server failure.
+    String createdId = MAPPER.readTree(created.body()).get("id").asText();
+    String profileUpdate =
+        "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],"
+            + "\"Operations\":[{\"op\":\"add\",\"path\":\"name.givenName\","
+            + "\"value\":\"Renamed\"}]}";
+    assertScimError(
+        TestUtils.sendRaw(
+            adminConfig, "PATCH", SCIM_USERS_PATH + "/" + createdId, Optional.of(profileUpdate)),
+        501,
+        "PATCH supports only");
+    assertThat(errorLogs).as("a client-caused 501 is not logged as an error").isEmpty();
+
+    // A request without a token is a 401.
+    assertScimError(sendWithoutToken("GET", SCIM_USERS_PATH, Optional.empty()), 401, NO_TOKEN);
   }
 
   @Test
   @SneakyThrows
   public void testUnsupportedPatchIsNotLoggedAsServerError() {
-    List<String> errors = new CopyOnWriteArrayList<>();
-    Logger logger = (Logger) LogManager.getLogger(BaseExceptionHandler.class);
-    AbstractAppender appender =
-        new AbstractAppender(
-            "errors", null, null, true, new org.apache.logging.log4j.core.config.Property[0]) {
-          @Override
-          public void append(LogEvent event) {
-            if (event.getLevel().isMoreSpecificThan(Level.ERROR)) {
-              errors.add(event.getMessage().getFormattedMessage());
-            }
-          }
-        };
-    appender.start();
-    logger.addAppender(appender);
-    try {
-      HttpResponse<String> response =
-          TestUtils.sendRaw(
-              adminConfig,
-              "PATCH",
-              SCIM_USERS_PATH + "/" + otherUser.getId(),
-              Optional.of(ADD_PATH));
-      assertThat(response.statusCode()).isEqualTo(501);
-      assertThat(errors).as("a client-caused 501 is not logged as an error").isEmpty();
-    } finally {
-      logger.removeAppender(appender);
-    }
+    HttpResponse<String> response =
+        TestUtils.sendRaw(
+            adminConfig, "PATCH", SCIM_USERS_PATH + "/" + otherUser.getId(), Optional.of(ADD_PATH));
+    assertThat(response.statusCode()).isEqualTo(501);
+    assertThat(errorLogs).as("a client-caused 501 is not logged as an error").isEmpty();
+  }
+
+  private HttpResponse<String> sendWithoutToken(String method, String path, Optional<String> body)
+      throws Exception {
+    return TestUtils.sendRaw(new ServerConfig(adminConfig.getServerUrl(), ""), method, path, body);
+  }
+
+  private static void assertScimContentType(HttpResponse<String> response) {
+    assertThat(response.headers().firstValue("content-type").orElse(""))
+        .startsWith("application/scim+json");
+  }
+
+  private static void assertScimError(HttpResponse<String> response, int status, String detail)
+      throws Exception {
+    assertScimError(response.statusCode(), response.body(), status, detail);
+    assertScimContentType(response);
   }
 
   private static void assertScimError(int actualStatus, String body, int status, String detail)
