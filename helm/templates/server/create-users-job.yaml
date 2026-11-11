@@ -40,17 +40,11 @@ spec:
                 echo "Private key not found in /key directory. Exiting."
                 exit 1
               fi
-              if [ -f /key/key_id.txt ]; then
-                KID=$(cat /key/key_id.txt)
-              else
-                echo "Key ID not found in /key directory. Exiting."
-                exit 1
-              fi
 
               # The server requires a token type, and the token expires; the wait loop mints a new one
               # on each attempt, so it stays valid however long the server takes to start.
               mint_token() {
-                jwt encode --kid ${KID} --jti $(uuidgen | tr '[:upper:]' '[:lower:]') --iss internal --sub admin --exp=+1h -P type=SERVICE --alg RS512 --secret "@${KEY}"
+                jwt encode --jti $(uuidgen | tr '[:upper:]' '[:lower:]') --iss internal --sub admin --exp=+1h -P type=SERVICE --alg RS512 --secret "@${KEY}"
               }
               TOKEN=$(mint_token)
 

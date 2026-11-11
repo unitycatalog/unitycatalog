@@ -128,6 +128,21 @@ public class UnityCatalogServerTest extends BaseServerTest {
   }
 
   @Test
+  public void startupUsesTheTokenSigningKeyFileSettings() {
+    Properties properties = new Properties();
+    properties.putAll(serverProperties);
+    properties.setProperty("server.token-signing-private-key-file", "/no/such/private_key.pem");
+    assertThatThrownBy(
+            () ->
+                UnityCatalogServer.builder()
+                    .port(0)
+                    .serverProperties(new ServerProperties(properties))
+                    .hibernateConfigurator(hibernateConfigurator)
+                    .build())
+        .hasMessageContaining("No token signing key file");
+  }
+
+  @Test
   public void failedConstructionClosesTheAuditSink() {
     Properties audited = new Properties();
     audited.putAll(serverProperties);
