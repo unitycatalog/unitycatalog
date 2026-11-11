@@ -187,6 +187,7 @@ public class Scim2UserService implements ScimService {
     if (Boolean.FALSE.equals(userResource.getActive())) {
       checkNotMetastoreOwner(existing);
     }
+    checkExternalIdUnchangedForScimToken(existing, userResource.getExternalId());
 
     UpdateUser updateUser =
         UpdateUser.builder()
@@ -267,6 +268,23 @@ public class Scim2UserService implements ScimService {
       throw new BaseException(
           ErrorCode.PERMISSION_DENIED,
           "An IdP principal can't be changed with a SCIM token: " + user.getEmail());
+    }
+  }
+
+  // Token exchange resolves an OAuth client to the user with that external id, so a SCIM token
+  // that relinks an existing user could take it over. A null external id leaves it unchanged, and
+  // no SCIM write changes the email. Okta's PUT resends the external id it set.
+  // TODO(PR 9 ownership): replace with the owner check (an IdP edits only rows it owns).
+  private void checkExternalIdUnchangedForScimToken(User user, String externalId) {
+    if (!serverProperties.isAuthorizationEnabled()) {
+      return;
+    }
+    if (IdentityUtils.isScimToken()
+        && externalId != null
+        && !externalId.equals(user.getExternalId())) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED,
+          "A SCIM token can't change the external id of a user: " + user.getEmail());
     }
   }
 

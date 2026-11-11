@@ -485,9 +485,17 @@ public final class SchemaMigrator implements AutoCloseable {
         : SchemaState.EMPTY;
   }
 
-  /** Whether every step of this build is applied: the database's {@link #state()} is CURRENT. */
-  public boolean isCurrent() {
-    return state() == SchemaState.CURRENT;
+  /**
+   * Throws unless every step of this build is applied (the database's {@link #state()} is CURRENT),
+   * saying what to run: the upgrade, or the newer release the database belongs to.
+   */
+  public void refuseIfNotCurrent() {
+    SchemaState state = state();
+    refuseIfUnsupported(state);
+    if (state != SchemaState.CURRENT) {
+      throw new IllegalStateException(
+          "The database schema needs an upgrade: run bin/start-uc-server --upgrade-schema first.");
+    }
   }
 
   /**

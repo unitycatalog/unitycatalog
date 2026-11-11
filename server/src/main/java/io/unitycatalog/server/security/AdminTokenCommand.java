@@ -19,6 +19,7 @@ import java.util.Date;
 import java.util.Properties;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.config.Configurator;
+import org.slf4j.LoggerFactory;
 
 /**
  * Prints an admin token signed with the server's key, for creating the first users and grants:
@@ -83,10 +84,23 @@ public final class AdminTokenCommand {
       System.err.println(e.getMessage());
       System.exit(1);
     } catch (RuntimeException e) {
-      // The connection pool's or Hibernate's, when the database can't be opened.
-      System.err.println("Could not open the database: " + e.getMessage());
+      // The connection pool's or Hibernate's, whose message can be generic, as for a failed
+      // session factory. The logger is got only here, after logging is set up above.
+      LoggerFactory.getLogger(AdminTokenCommand.class).error("bin/uc-admin-token failed", e);
+      System.err.println("bin/uc-admin-token failed: " + messageWithRootCause(e));
       System.exit(1);
     }
+  }
+
+  /** {@code e}'s message, followed by that of its deepest cause with a different message. */
+  private static String messageWithRootCause(Throwable e) {
+    String rootMessage = null;
+    for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
+      if (cause.getMessage() != null && !cause.getMessage().equals(e.getMessage())) {
+        rootMessage = cause.getMessage();
+      }
+    }
+    return rootMessage == null ? e.getMessage() : e.getMessage() + " (cause: " + rootMessage + ")";
   }
 
   /**
@@ -105,7 +119,8 @@ public final class AdminTokenCommand {
    * The same, on the database of {@code hibernateProperties}, which it opens without changing its
    * schema.
    *
-   * @throws IllegalStateException when the database has schema steps to apply first
+   * @throws IllegalStateException when the database is in memory, has schema steps to apply first,
+   *     or belongs to a newer release
    */
   public static String createScimToken(
       String[] args, Algorithm algorithm, Properties hibernateProperties) {
@@ -116,11 +131,12 @@ public final class AdminTokenCommand {
     // upgrade's steps fail.
     properties.setProperty("hibernate.hbm2ddl.auto", "none");
     try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(properties)) {
-      if (!migrator.isCurrent()) {
+      if (migrator.isInMemory()) {
         throw new IllegalStateException(
-            "The database schema needs an upgrade: run bin/start-uc-server --upgrade-schema"
-                + " first.");
+            "The configured database is in memory, so bin/uc-admin-token can't reach the server's"
+                + " users: the server sets up an in-memory database itself.");
       }
+      migrator.refuseIfNotCurrent();
     }
     try (HibernateConfigurator database = new HibernateConfigurator(properties)) {
       return createScimToken(

@@ -696,6 +696,93 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertThat(scimAs(entra, HttpMethod.GET, "", null).status()).isEqualTo(HttpStatus.OK);
   }
 
+  /**
+   * A SCIM token can't relink an existing user: it can't change the external id that token exchange
+   * resolves an OAuth client to, so it can't take over the user. Okta's own PUT, which resends the
+   * external id it set, still works.
+   */
+  @Test
+  public void testScimTokenCannotRelinkAnExistingUser() throws Exception {
+    UserRepository users = new UserRepository(null, hibernateConfigurator.getSessionFactory());
+    createEnabledUser("victim@example.com");
+    String victimId = users.getUserByEmail("victim@example.com").getId();
+    createEnabledUser("okta-scim");
+    String okta = mintScimToken(users, "okta-scim", "okta");
+
+    // Okta creates a user, then sends its full-object PUT with the same values: 200.
+    AggregatedHttpResponse oktaCreate = scimAs(okta, HttpMethod.POST, "", OKTA_CREATE_USER);
+    String oktaUserId = MAPPER.readTree(oktaCreate.contentUtf8()).get("id").asText();
+    String oktaPut =
+        OKTA_CREATE_USER.replace("\"userName\"", "\"id\":\"" + oktaUserId + "\",\"userName\"");
+    assertThat(scimAs(okta, HttpMethod.PUT, "/" + oktaUserId, oktaPut).status())
+        .isEqualTo(HttpStatus.OK);
+
+    // A PUT that changes the external id is refused, on any existing user.
+    String put =
+        "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],\"id\":\"%s\","
+            + "\"userName\":\"%s\",\"emails\":[{\"primary\":true,\"value\":\"%s\"}],"
+            + "\"displayName\":\"Test User\",\"active\":true,\"externalId\":\"attacker-client\"}";
+    for (String email : List.of("victim@example.com", "test.user@okta.local")) {
+      String id = users.getUserByEmail(email).getId();
+      AggregatedHttpResponse response =
+          scimAs(okta, HttpMethod.PUT, "/" + id, String.format(put, id, email, email));
+      assertThat(response.status()).as(email).isEqualTo(HttpStatus.FORBIDDEN);
+      assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
+          .isEqualTo("A SCIM token can't change the external id of a user: " + email);
+    }
+    // PATCH changes only active, and PUT never changes the email.
+    for (String patch :
+        List.of(
+            "{\"op\":\"replace\",\"value\":{\"externalId\":\"attacker-client\"}}",
+            "{\"op\":\"replace\",\"path\":\"externalId\",\"value\":\"attacker-client\"}",
+            "{\"op\":\"replace\",\"path\":\"emails\",\"value\":[{\"primary\":true,"
+                + "\"value\":\"attacker@example.com\"}]}")) {
+      scimAs(
+          okta,
+          HttpMethod.PATCH,
+          "/" + victimId,
+          "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],\"Operations\":["
+              + patch
+              + "]}");
+    }
+    scimAs(
+        okta,
+        HttpMethod.PUT,
+        "/" + victimId,
+        String.format(put, victimId, "attacker@example.com", "attacker@example.com")
+            .replace(",\"externalId\":\"attacker-client\"", ""));
+    User victim = users.getUser(victimId);
+    assertThat(victim.getExternalId()).isNull();
+    assertThat(victim.getEmail()).isEqualTo("victim@example.com");
+    assertThat(users.getUser(oktaUserId).getExternalId()).isEqualTo("00ujl29u0le5T6Aj10h7");
+
+    // So an access token for the attacker's OAuth client resolves to no user.
+    String accessToken =
+        JWT.create()
+            .withSubject("opaque-subject")
+            .withIssuer(testIssuer)
+            .withAudience(TEST_AUDIENCE)
+            .withIssuedAt(new Date())
+            .withKeyId(testIssuerKeyId)
+            .withClaim("azp", "attacker-client")
+            .sign(testIssuerAlgorithm);
+    AggregatedHttpResponse exchange =
+        client
+            .execute(
+                RequestHeaders.builder(HttpMethod.POST, TOKEN_ENDPOINT)
+                    .contentType(MediaType.FORM_DATA)
+                    .build(),
+                HttpData.ofUtf8(
+                    "grant_type=urn:ietf:params:oauth:grant-type:token-exchange"
+                        + "&requested_token_type=urn:ietf:params:oauth:token-type:access_token"
+                        + "&subject_token_type=urn:ietf:params:oauth:token-type:access_token"
+                        + "&subject_token="
+                        + accessToken))
+            .aggregate()
+            .join();
+    assertThat(exchange.status()).isEqualTo(HttpStatus.BAD_REQUEST);
+  }
+
   private String mintScimToken(UserRepository users, String email, String idp) {
     return AdminTokenCommand.createScimToken(
         new String[] {"--scim-principal", email, "--idp", idp, "--lifetime", "P1D"},

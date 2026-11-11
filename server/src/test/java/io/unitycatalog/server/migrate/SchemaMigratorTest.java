@@ -156,7 +156,7 @@ public class SchemaMigratorTest {
   }
 
   @Test
-  void scimTokenMintRefusesADatabaseWithPendingStepsAndLeavesThemToTheUpgrade() {
+  void scimTokenMintRefusesADatabaseNotAtThisRelease() {
     UpgradeTestUtils.migrateTo(db, "2");
     // As etc/conf/hibernate.properties sets it.
     Properties properties = db.hibernateProperties();
@@ -177,6 +177,24 @@ public class SchemaMigratorTest {
     assertThatThrownBy(() -> AdminTokenCommand.createScimToken(args, algorithm, properties))
         .isInstanceOf(BaseException.class)
         .hasMessage("User not found: okta-scim");
+
+    // A database of a newer release: the upgrade refuses it too.
+    new SchemaMigrator(db.dataSource(), NEXT_RELEASE).upgradeSchema();
+    assertThatThrownBy(() -> AdminTokenCommand.createScimToken(args, algorithm, properties))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage(
+            "The schema is newer than this release (version 1000, this release ends at 3). Run"
+                + " the newer release.");
+
+    // An in-memory database lives only in the server's process.
+    Properties inMemory = db.hibernateProperties();
+    inMemory.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+    inMemory.setProperty("hibernate.connection.url", "jdbc:h2:mem:scim_token_mint");
+    assertThatThrownBy(() -> AdminTokenCommand.createScimToken(args, algorithm, inMemory))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage(
+            "The configured database is in memory, so bin/uc-admin-token can't reach the"
+                + " server's users: the server sets up an in-memory database itself.");
   }
 
   @Test
