@@ -66,6 +66,7 @@ import java.util.UUID;
  */
 public class Scim2UserService implements ScimService {
   private static final String ACTIVE = "active";
+  private static final String CORE_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User:";
   private final UserRepository userRepository;
   private final UnityCatalogAuthorizer authorizer;
   private final MetastoreRepository metastoreRepository;
@@ -101,7 +102,7 @@ public class Scim2UserService implements ScimService {
     List<UserResource> userResourcesList =
         matches.stream()
             .skip(firstIndex - 1)
-            .limit(count.orElse(50))
+            .limit(Math.max(count.orElse(50), 0))
             .map(Scim2Utils::asUserResource)
             .toList();
 
@@ -216,8 +217,9 @@ public class Scim2UserService implements ScimService {
     if (operations.isEmpty() || !operations.stream().allMatch(this::isActiveReplace)) {
       return HttpResponse.of(HttpStatus.NOT_IMPLEMENTED);
     }
-    JsonNode last = activeValue(operations.get(operations.size() - 1));
-    boolean active = parseActive(last);
+    // Every value is validated before anything is applied; the last operation wins.
+    List<Boolean> values = operations.stream().map(op -> parseActive(activeValue(op))).toList();
+    boolean active = values.get(values.size() - 1);
     if (!active) {
       checkNotMetastoreOwner(userRepository.getUser(id));
     }
@@ -233,7 +235,11 @@ public class Scim2UserService implements ScimService {
   private JsonNode activeValue(PatchOperation operation) {
     JsonNode value = operation.getJsonNode();
     if (operation.getPath() != null) {
-      boolean isActivePath = ACTIVE.equalsIgnoreCase(operation.getPath().toString());
+      String path = operation.getPath().toString();
+      if (path.regionMatches(true, 0, CORE_USER_SCHEMA, 0, CORE_USER_SCHEMA.length())) {
+        path = path.substring(CORE_USER_SCHEMA.length());
+      }
+      boolean isActivePath = ACTIVE.equalsIgnoreCase(path);
       return isActivePath ? unwrapSingleValue(value) : null;
     }
     boolean isOnlyActive =

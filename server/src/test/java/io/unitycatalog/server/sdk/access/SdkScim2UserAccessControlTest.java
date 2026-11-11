@@ -166,6 +166,8 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
       {"startIndex=1&count=1", "1", "1", "1"},
       {"startIndex=3&count=5", "3", "1", "1"},
       {"startIndex=1&count=50", "1", "3", "3"},
+      // A negative count is read as 0 (RFC 7644 3.4.2.4).
+      {"startIndex=1&count=-1", "1", "0", "0"},
     };
     for (String[] c : cases) {
       HttpResponse<String> response =
@@ -178,17 +180,40 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
       JsonNode body = MAPPER.readTree(response.body());
       assertThat(body.get("totalResults").asInt()).as(c[0]).isEqualTo(3);
       assertThat(body.get("startIndex").asInt()).as(c[0]).isEqualTo(Integer.parseInt(c[1]));
-      assertThat(body.get("Resources")).as(c[0]).hasSize(Integer.parseInt(c[2]));
+      assertThat(body.path("Resources")).as(c[0]).hasSize(Integer.parseInt(c[2]));
       assertThat(body.get("itemsPerPage").asInt()).as(c[0]).isEqualTo(Integer.parseInt(c[3]));
     }
   }
 
   @Test
   @SneakyThrows
+  public void testListPagesPastTheRepositoryPageSize() {
+    // More users than one repository page (PagedListingHelper.DEFAULT_PAGE_SIZE = 100). Display
+    // names are distinct because the repository pages on the display name.
+    for (int i = 0; i < 105; i++) {
+      createTestUser(String.format("scim-page-%03d@localhost", i), String.format("Page %03d", i));
+    }
+    String filter = URLEncoder.encode("userName sw \"scim-page-\"", StandardCharsets.UTF_8);
+    HttpResponse<String> response =
+        TestUtils.sendRaw(
+            adminConfig,
+            "GET",
+            SCIM_USERS_PATH + "?filter=" + filter + "&startIndex=101&count=10",
+            Optional.empty());
+    assertThat(response.statusCode()).isEqualTo(200);
+    JsonNode body = MAPPER.readTree(response.body());
+    assertThat(body.get("totalResults").asInt()).isEqualTo(105);
+    assertThat(body.get("Resources")).hasSize(5);
+    assertThat(body.get("Resources").get(0).get("userName").asText())
+        .isEqualTo("scim-page-100@localhost");
+  }
+
+  @Test
+  @SneakyThrows
   public void testPatchHonoursThePathAndAttribute() {
     String patchPath = SCIM_USERS_PATH + "/" + otherUser.getId();
-    // {Operations element, expected status, expected active afterwards}. The user starts active;
-    // a refused request leaves the previous state alone.
+    // {Operations element, expected status, expected active afterwards or "unchanged"}. A refused
+    // request leaves the previous state alone.
     String[][] cases = {
       {"{\"op\":\"replace\",\"path\":\"active\",\"value\":false}", "200", "false"},
       {"{\"op\":\"Replace\",\"path\":\"active\",\"value\":true}", "200", "true"},
@@ -196,12 +221,28 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
       {"{\"op\":\"replace\",\"path\":\"active\",\"value\":\"True\"}", "200", "true"},
       {"{\"op\":\"Replace\",\"value\":{\"active\":false}}", "200", "false"},
       {"{\"op\":\"replace\",\"value\":{\"active\":true}}", "200", "true"},
+      {
+        "{\"op\":\"replace\",\"path\":\"urn:ietf:params:scim:schemas:core:2.0:User:active\","
+            + "\"value\":false}",
+        "200",
+        "false"
+      },
       // Anything but a change of active is not implemented, and must not touch active.
-      {"{\"op\":\"replace\",\"value\":{\"displayName\":\"false\"}}", "501", "true"},
-      {"{\"op\":\"replace\",\"path\":\"displayName\",\"value\":\"false\"}", "501", "true"},
-      {"{\"op\":\"replace\",\"value\":{\"active\":false,\"displayName\":\"x\"}}", "501", "true"},
-      {"{\"op\":\"add\",\"path\":\"active\",\"value\":false}", "501", "true"},
-      {"{\"op\":\"remove\",\"path\":\"active\"}", "501", "true"},
+      {"{\"op\":\"replace\",\"value\":{\"displayName\":\"false\"}}", "501", "unchanged"},
+      {"{\"op\":\"replace\",\"path\":\"displayName\",\"value\":\"false\"}", "501", "unchanged"},
+      {
+        "{\"op\":\"replace\",\"value\":{\"active\":false,\"displayName\":\"x\"}}",
+        "501",
+        "unchanged"
+      },
+      {"{\"op\":\"add\",\"path\":\"active\",\"value\":false}", "501", "unchanged"},
+      {
+        "{\"op\":\"replace\",\"path\":\"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:active\","
+            + "\"value\":false}",
+        "501",
+        "unchanged"
+      },
+      {"{\"op\":\"remove\",\"path\":\"active\"}", "501", "unchanged"},
     };
     for (String[] c : cases) {
       String body =
@@ -222,15 +263,22 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
   @Test
   @SneakyThrows
   public void testPatchActiveWithNonBooleanValueIsBadRequest() {
-    String body =
-        "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],"
-            + "\"Operations\":[{\"op\":\"replace\",\"path\":\"active\",\"value\":\"maybe\"}]}";
-    HttpResponse<String> response =
-        TestUtils.sendRaw(
-            adminConfig, "PATCH", SCIM_USERS_PATH + "/" + otherUser.getId(), Optional.of(body));
-    assertThat(response.statusCode()).isEqualTo(400);
-    assertThat(response.body()).contains("active must be true or false");
-    assertThat(usersApi.getUser(otherUser.getId()).getActive()).isTrue();
+    String maybe = "{\"op\":\"replace\",\"path\":\"active\",\"value\":\"maybe\"}";
+    String deactivate = "{\"op\":\"replace\",\"path\":\"active\",\"value\":false}";
+    // Every operation is validated, not only the last, and nothing is applied on a 400.
+    for (String operations :
+        new String[] {maybe, maybe + "," + deactivate, deactivate + "," + maybe}) {
+      String body =
+          "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],\"Operations\":["
+              + operations
+              + "]}";
+      HttpResponse<String> response =
+          TestUtils.sendRaw(
+              adminConfig, "PATCH", SCIM_USERS_PATH + "/" + otherUser.getId(), Optional.of(body));
+      assertThat(response.statusCode()).as(operations).isEqualTo(400);
+      assertThat(response.body()).as(operations).contains("active must be true or false");
+      assertThat(usersApi.getUser(otherUser.getId()).getActive()).as(operations).isTrue();
+    }
   }
 
   @Test

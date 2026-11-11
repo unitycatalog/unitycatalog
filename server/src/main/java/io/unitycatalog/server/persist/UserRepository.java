@@ -66,14 +66,14 @@ public class UserRepository {
         sessionFactory,
         session -> {
           List<User> users = new ArrayList<>();
-          Optional<String> nextPageToken = Optional.empty();
-          List<UserDAO> page;
+          String nextPageToken = null;
           do {
-            page = LISTING_HELPER.listEntity(session, Optional.empty(), nextPageToken, null);
+            List<UserDAO> page =
+                LISTING_HELPER.listEntity(
+                    session, Optional.empty(), Optional.ofNullable(nextPageToken), null);
             page.stream().map(UserDAO::toUser).filter(filter).forEach(users::add);
-            nextPageToken =
-                page.isEmpty() ? nextPageToken : Optional.of(page.get(page.size() - 1).getName());
-          } while (!page.isEmpty());
+            nextPageToken = LISTING_HELPER.getNextPageToken(page, Optional.empty());
+          } while (nextPageToken != null);
           return users;
         },
         "Failed to list users",
