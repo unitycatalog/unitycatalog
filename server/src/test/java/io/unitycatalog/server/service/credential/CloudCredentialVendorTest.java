@@ -136,7 +136,9 @@ public class CloudCredentialVendorTest {
                 vendCredential("s3://storageBase/abc", Set.of(CredentialContext.Privilege.SELECT)))
         .isInstanceOf(BaseException.class)
         .hasMessage("Failed to vend temporary storage credentials.")
-        .hasCauseInstanceOf(StsException.class);
+        .hasCauseInstanceOf(StsException.class)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.INTERNAL);
   }
 
   @Test
