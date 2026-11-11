@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
 import io.unitycatalog.cli.AuthCli;
@@ -261,6 +262,26 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
             Map.of("UC_SERVER_CLIENT_SECRET", "\n"))) {
       assertThat(Oauth2CliExchange.clientSecret(env, file)).isEqualTo("file-secret");
     }
+  }
+
+  // bin/uc auth login keeps the identity provider's access token from its token response.
+  @Test
+  public void testAuthLoginReadsTheTokensFromTheIdentityProviderResponse() throws IOException {
+    Oauth2CliExchange.IdpTokens both =
+        Oauth2CliExchange.idpTokens(
+            "{\"access_token\":\"idp-access-token\",\"id_token\":\"idp-id-token\","
+                + "\"token_type\":\"Bearer\",\"expires_in\":3600}");
+    assertThat(both.accessToken()).isEqualTo("idp-access-token");
+    assertThat(both.idToken()).isEqualTo("idp-id-token");
+
+    Oauth2CliExchange.IdpTokens noAccessToken =
+        Oauth2CliExchange.idpTokens("{\"id_token\":\"idp-id-token\"}");
+    assertThat(noAccessToken.accessToken()).isNull();
+    assertThat(noAccessToken.idToken()).isEqualTo("idp-id-token");
+
+    assertThatThrownBy(() -> Oauth2CliExchange.idpTokens("not json"))
+        .isInstanceOf(JsonProcessingException.class)
+        .hasMessageContaining("Unrecognized token 'not'");
   }
 
   @Test

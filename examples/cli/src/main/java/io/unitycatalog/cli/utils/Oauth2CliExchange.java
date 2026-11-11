@@ -66,6 +66,15 @@ public class Oauth2CliExchange {
     return secret.isEmpty() ? fileProperties.getProperty("server.client-secret") : secret;
   }
 
+  /** The tokens in an identity provider's token response. */
+  public record IdpTokens(String idToken, String accessToken) {}
+
+  /** Reads the tokens from the body of an identity provider's token response. */
+  public static IdpTokens idpTokens(String tokenResponse) throws IOException {
+    Map<String, String> params = mapper.readValue(tokenResponse, new TypeReference<>() {});
+    return new IdpTokens(params.get("id_token"), params.get("access_token"));
+  }
+
   /** The identity provider's access token from the last {@link #authenticate()}, or null. */
   public String accessToken() {
     return accessToken;
@@ -180,11 +189,10 @@ public class Oauth2CliExchange {
         tokenResponse = new String(inputStream.readAllBytes());
       }
       System.out.println("Received token response.");
-      Map<String, String> tokenResponseParams =
-          mapper.readValue(tokenResponse, new TypeReference<>() {});
+      IdpTokens tokens = idpTokens(tokenResponse);
       urlConnection.disconnect();
-      accessToken = tokenResponseParams.get("access_token");
-      return tokenResponseParams.get("id_token");
+      accessToken = tokens.accessToken();
+      return tokens.idToken();
     } else {
       String errorResponse;
       try (InputStream inputStream = urlConnection.getErrorStream()) {
