@@ -336,8 +336,8 @@ server.authentication.idp.okta.subject-claim=OKTA
 ```
 
 - Add one `server.authentication.idp.<name>.*` block per identity provider. `<name>` is the name you give its SCIM
-  token with `bin/uc-admin-token --idp <name>`. Set these keys in `server.properties`; a block set only through
-  environment variables is not found.
+  token with `bin/uc-admin-token --idp <name>`, and can't be `admin`, the owner name of the admin's users. Set these
+  keys in `server.properties`; a block set only through environment variables is not found.
 - `issuer` must equal the token's `iss` exactly; wildcards are not supported. `audience` must be one of the token's
   `aud` values. Two blocks can't share an issuer. Signing keys are read from the issuer's discovery document, with the
   same rules and caching as the token exchange (see [Signing-key requests](#signing-key-requests)): when the keys

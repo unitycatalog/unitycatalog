@@ -686,6 +686,14 @@ public class ServerPropertiesTest {
             Map.of(okta + "issuer", "internal", okta + "audience", "uc"),
             "Identity provider okta can't use issuer internal, the issuer of this server's own"
                 + " tokens",
+            // admin is the owner name of the admin's users; a first sign-in would create those.
+            Map.of(
+                "server.authentication.idp.admin.issuer",
+                "https://a.example.com",
+                "server.authentication.idp.admin.audience",
+                "uc"),
+            "Identity provider can't be named admin: that name is the owner of the admin's users"
+                + " and groups",
             Map.of(okta + "scim-principal", "okta-scim"),
             "Unknown property server.authentication.idp.okta.scim-principal; expected"
                 + " server.authentication.idp.<name>.issuer, .audience or .subject-claim");

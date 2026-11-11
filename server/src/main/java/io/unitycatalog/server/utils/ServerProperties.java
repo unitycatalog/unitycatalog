@@ -743,8 +743,8 @@ public class ServerProperties {
    * The identity providers configured as {@code server.authentication.idp.<name>.issuer}, {@code
    * .audience} and {@code .subject-claim} (default {@code SUB}). Only external mode uses them.
    *
-   * @throws BaseException if a block misses its issuer or audience, has an unknown key or subject
-   *     claim, or two blocks share an issuer
+   * @throws BaseException if a block is named {@code admin}, misses its issuer or audience, has an
+   *     unknown key or subject claim, or two blocks share an issuer
    */
   public List<IdentityProvider> getIdentityProviders() {
     Set<String> names = new TreeSet<>();
@@ -765,6 +765,13 @@ public class ServerProperties {
     List<IdentityProvider> identityProviders = new ArrayList<>();
     Map<String, String> nameByIssuer = new HashMap<>();
     for (String name : names) {
+      // A first sign-in through the block would create users the admin seems to own.
+      if (name.equals(IdentityUtils.ADMIN_OWNER)) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "Identity provider can't be named admin: that name is the owner of the admin's users"
+                + " and groups");
+      }
       IdentityProvider identityProvider =
           new IdentityProvider(
               name,
