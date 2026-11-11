@@ -3,6 +3,8 @@ package io.unitycatalog.server.persist;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -31,6 +33,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -391,6 +394,29 @@ class UserRepositoryTest {
         alterOwnerCollation("utf8mb4_0900_bin");
       }
     }
+  }
+
+  @Test
+  void linkUserReturnsTheRowAsStoredAfterAConcurrentReactivation() {
+    String email = "reactivated-between@example.com";
+    var user = userRepository.createUser(CreateUser.builder().name("R").email(email).build());
+    userRepository.updateUser(user.getId(), UpdateUser.builder().active(false).build());
+    // SCIM reactivates the row between linkUser's read and its update.
+    UserRepository racing = spy(userRepository);
+    doAnswer(
+            invocation -> {
+              Object read = invocation.callRealMethod();
+              userRepository.updateUser(user.getId(), UpdateUser.builder().active(true).build());
+              return read;
+            })
+        .when(racing)
+        .getUserByEmail(any(Session.class), eq(email));
+    Instant issuedLater = Instant.now().plusSeconds(60);
+
+    User linked =
+        racing.linkUser(IDP, email, new UserLink(ISSUER, "uid", "00u-between"), issuedLater);
+
+    assertThat(linked.getState()).isEqualTo(User.StateEnum.ENABLED);
   }
 
   private static void alterOwnerCollation(String collation) {
