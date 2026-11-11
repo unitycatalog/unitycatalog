@@ -243,6 +243,19 @@ describe("AuthProvider", () => {
       await expect(result.current.signInWithOkta(tokens)).rejects.toThrow("Login failed. Contact your administrator.");
     });
 
+    it("internal mode with auth disabled: signs in although the user query is off", async () => {
+      stubConfig({ authEnabled: false });
+      call.mockImplementation(async () => ({ httpStatus: 200, ok: true, body: "{}" }));
+      const { result } = renderHook(() => useAuth(), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.signInWithOkta(tokens);
+      });
+
+      expect(call.mock.calls.some((c) => c[0].path.endsWith("/scim2/Me"))).toBe(false);
+    });
+
     it("external mode: a 401 from /scim2/Me is not an error, so the login page can restart Okta", async () => {
       stubConfig({ authEnabled: true });
       call.mockImplementation(async (input: { path: string }) => {

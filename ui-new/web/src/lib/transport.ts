@@ -8,9 +8,9 @@ import { UnityProxyService } from "@/gen/uc/v1/proxy_pb";
 // same-origin, the browser's fetch sends the auth cookie by default
 // (credentials: "same-origin"), which the bridge forwards to the UC server.
 //
-// Every call carries X-Requested-With, which UC requires as a CSRF guard on the
-// cookie token exchange (ext=cookie); the bridge forwards it. The current ui sends
-// it on all calls too.
+// Every call carries X-Requested-With, which UC requires as a CSRF guard on every
+// cookie request except GET, HEAD and OPTIONS (the token exchange, logout, writes);
+// the bridge forwards it. The current ui sends it on all calls too.
 //
 // A static transport key gives connect-query stable query keys across reloads.
 export const transport = addStaticKeyToTransport(

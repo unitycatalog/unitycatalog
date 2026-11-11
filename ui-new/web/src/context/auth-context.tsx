@@ -88,7 +88,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await queryClient.cancelQueries({ queryKey: CURRENT_USER_QUERY_KEY });
       await queryClient.refetchQueries({ queryKey: CURRENT_USER_QUERY_KEY }, { throwOnError: true });
       // Only a cookie session fails here: in external mode a 401 sends Login back to Okta.
-      if (cookieSession && !queryClient.getQueryData(CURRENT_USER_QUERY_KEY)) {
+      // With auth off and no token the user query is disabled, so there is no user to wait for.
+      const userQuery = queryClient.getQueryCache().find({ queryKey: CURRENT_USER_QUERY_KEY });
+      if (cookieSession && userQuery && !userQuery.isDisabled() && !userQuery.state.data) {
         throw new Error("Login failed. Contact your administrator.");
       }
     },

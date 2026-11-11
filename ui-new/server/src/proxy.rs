@@ -113,7 +113,8 @@ pub async fn call_handler(
     if let Some(cookie) = headers.get(header::COOKIE) {
         rb = rb.header(header::COOKIE, cookie);
     }
-    // UC requires this CSRF header on the cookie token exchange (ext=cookie).
+    // UC requires this CSRF header on every cookie request except GET, HEAD and OPTIONS
+    // (the token exchange, logout, writes).
     if let Some(requested_with) = headers.get("x-requested-with") {
         rb = rb.header("x-requested-with", requested_with);
     }
