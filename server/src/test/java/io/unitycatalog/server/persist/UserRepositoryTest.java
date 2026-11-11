@@ -194,6 +194,42 @@ class UserRepositoryTest {
   }
 
   @Test
+  void findLinkedUserMatchesTheLinkExactlyOnAnyCollation() {
+    // MySQL's default collation ignores case and accents; the test database's doesn't.
+    boolean isMySql = testDatabase.jdbcUrl().startsWith("jdbc:mysql");
+    if (isMySql) {
+      alterLinkValueCollation("utf8mb4_0900_ai_ci");
+    }
+    try {
+      var user =
+          userRepository.createUser(
+              CreateUser.builder().name("Alice").email("collation-link@example.com").build());
+      userRepository.linkUser(
+          "collation-link@example.com", new UserLink(ISSUER, "sub", "Alice"), null);
+
+      assertThat(userRepository.findLinkedUser(new UserLink(ISSUER, "sub", "Alice")).getId())
+          .isEqualTo(user.getId());
+      assertThat(userRepository.findLinkedUser(new UserLink(ISSUER, "sub", "alice"))).isNull();
+      assertThat(userRepository.findLinkedUser(new UserLink(ISSUER, "sub", "Alïce"))).isNull();
+    } finally {
+      if (isMySql) {
+        alterLinkValueCollation("utf8mb4_0900_bin");
+      }
+    }
+  }
+
+  private static void alterLinkValueCollation(String collation) {
+    try (var session = sessionFactory.openSession()) {
+      var transaction = session.beginTransaction();
+      session
+          .createNativeMutationQuery(
+              "ALTER TABLE uc_users MODIFY link_value varchar(255) COLLATE " + collation)
+          .executeUpdate();
+      transaction.commit();
+    }
+  }
+
+  @Test
   void linkUserRefusesAMissingDisabledOrIdpPrincipalRow() {
     // The admin row is refused too; the external-mode journey in AuthServiceAllowlistTest checks
     // it, because creating "admin" here would break the bootstrap test above.
