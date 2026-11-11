@@ -244,7 +244,13 @@ public class GroupRepository {
     if (idpOwner != null) {
       query.setParameter("owner", idpOwner);
     }
-    Set<UUID> found = new HashSet<>(query.list().stream().map(UserDAO::getId).toList());
+    // MySQL at its default collation also matches owners that differ in case or accents.
+    Set<UUID> found =
+        new HashSet<>(
+            query.list().stream()
+                .filter(user -> idpOwner == null || idpOwner.equals(user.getOwner()))
+                .map(UserDAO::getId)
+                .toList());
     userIds.stream()
         .filter(userId -> !found.contains(userId))
         .findFirst()

@@ -1037,6 +1037,54 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
         .isEqualTo(200);
   }
 
+  /**
+   * An IdP matches the owner of a member exactly: "Okta" can't name the users of "okta", nor
+   * "ADMIN" the admin's, even where the database compares text case-insensitively.
+   */
+  @Test
+  @SneakyThrows
+  public void testIdpNamesMembersByExactOwnerOnAnyCollation() {
+    // MySQL's default collation ignores case and accents; the test database's doesn't.
+    boolean isMySql = testDatabase.jdbcUrl().startsWith("jdbc:mysql");
+    if (isMySql) {
+      alterOwnerCollation("utf8mb4_0900_ai_ci");
+    }
+    try {
+      String oktaUser = createUserAs(scimTokenConfig("okta-scim@localhost", "okta"), "o@localhost");
+      ServerConfig oktaUpper = scimTokenConfig("okta-upper-scim@localhost", "Okta");
+      ServerConfig adminUpper = scimTokenConfig("admin-upper-scim@localhost", "ADMIN");
+
+      for (var request :
+          List.of(Map.entry(oktaUpper, oktaUser), Map.entry(adminUpper, alice.getId()))) {
+        HttpResponse<String> response =
+            send(
+                request.getKey(),
+                "POST",
+                GROUPS_PATH,
+                groupBody("collation-group", null, request.getValue()));
+        assertThat(response.statusCode()).as(response.body()).isEqualTo(400);
+        assertThat(MAPPER.readTree(response.body()).get("detail").asText())
+            .isEqualTo("Member is not an existing user: " + request.getValue());
+      }
+      assertThat(groupNames(list(""))).isEmpty();
+    } finally {
+      if (isMySql) {
+        alterOwnerCollation("utf8mb4_0900_bin");
+      }
+    }
+  }
+
+  private void alterOwnerCollation(String collation) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction transaction = session.beginTransaction();
+      session
+          .createNativeMutationQuery(
+              "ALTER TABLE uc_users MODIFY owner varchar(255) NOT NULL COLLATE " + collation)
+          .executeUpdate();
+      transaction.commit();
+    }
+  }
+
   /** Creates a user with {@code config}'s token and returns its id. */
   private String createUserAs(ServerConfig config, String email) throws Exception {
     HttpResponse<String> response =
