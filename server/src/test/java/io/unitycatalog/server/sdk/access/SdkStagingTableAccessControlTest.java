@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.SecurableType;
+import io.unitycatalog.control.model.Email;
 import io.unitycatalog.control.model.UserResource;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.model.Privileges;
@@ -200,6 +201,29 @@ public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlB
         () ->
             finalizeManagedTable(createTestUserServerConfig(email), staging, TestUtils.TABLE_NAME),
         "User attempts to create table on a staging location without ownership");
+  }
+
+  /** A creator whose email was changed still finalizes their staging table under the new email. */
+  @Test
+  public void testRenamedCreatorCanStillFinalizeTheirStagingTable() throws Exception {
+    String email = "user_g@example.com";
+    String newEmail = "user_g_renamed@example.com";
+    String userId = createUserWithStagingRights(email).getId();
+    StagingHandle staging =
+        createStaging(
+            createTestUserServerConfig(email),
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            TestUtils.TABLE_NAME);
+    usersApi.updateUser(
+        userId,
+        new UserResource().id(userId).emails(List.of(new Email().value(newEmail).primary(true))));
+
+    assertThat(
+            finalizeManagedTable(
+                    createTestUserServerConfig(newEmail), staging, TestUtils.TABLE_NAME)
+                .tableId())
+        .isEqualTo(staging.id());
   }
 
   /** A staging table from before created_by_id existed has only the creator's email. */
