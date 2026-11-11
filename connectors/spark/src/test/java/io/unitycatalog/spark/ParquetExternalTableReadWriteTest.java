@@ -13,12 +13,12 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
+import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.MetadataBuilder;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
-import org.apache.spark.sql.types.VarcharType;
 import org.junit.jupiter.api.Test;
 
 public class ParquetExternalTableReadWriteTest extends ExternalTableReadWriteTest {
@@ -141,7 +141,7 @@ public class ParquetExternalTableReadWriteTest extends ExternalTableReadWriteTes
             new StructType()
                 .add("i", DataTypes.IntegerType, true, nullComment)
                 .add(
-                    new StructField("s", new VarcharType(3), true, Metadata.empty())
+                    new StructField("s", DataType.fromDDL("varchar(3)"), true, Metadata.empty())
                         .withComment("note")));
 
     sql("INSERT INTO %s VALUES (1, 'abc')", fullTableName);
