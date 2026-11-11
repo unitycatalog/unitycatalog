@@ -829,8 +829,8 @@ public class ServerProperties {
     }
     if (getIdentityProviders().isEmpty()) {
       LOGGER.warn(
-          "No identity provider is configured; only server-minted tokens are accepted. Set"
-              + " {}<name>.issuer and .audience.",
+          "No identity provider is configured; only the bootstrap admin's service token and SCIM"
+              + " tokens are accepted. Set {}<name>.issuer and .audience.",
           IDP_PREFIX);
     }
     List<String> unused =

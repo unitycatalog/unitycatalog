@@ -174,23 +174,24 @@ class UserRepositoryTest {
             CreateUser.builder().name("Link").email("link@example.com").build());
     UserLink link = new UserLink(ISSUER, "sub", "subject-link");
 
-    assertThat(userRepository.findLinkedUser(link)).isNull();
+    assertThat(userRepository.findLinkedUser(link, null)).isNull();
     // A token without iat links a row that was never reactivated.
     assertThat(userRepository.linkUser("link@example.com", link, null).getId())
         .isEqualTo(user.getId());
-    assertThat(userRepository.findLinkedUser(link).getId()).isEqualTo(user.getId());
+    assertThat(userRepository.findLinkedUser(link, null).getId()).isEqualTo(user.getId());
     // The same claim value from another issuer, or as another claim kind, is another identity.
     assertThat(
             userRepository.findLinkedUser(
-                new UserLink("https://other.example.com", "sub", "subject-link")))
+                new UserLink("https://other.example.com", "sub", "subject-link"), null))
         .isNull();
-    assertThat(userRepository.findLinkedUser(new UserLink(ISSUER, "uid", "subject-link"))).isNull();
+    assertThat(userRepository.findLinkedUser(new UserLink(ISSUER, "uid", "subject-link"), null))
+        .isNull();
     // A linked row is never linked again, by another identity or by the same one.
     assertThat(
             userRepository.linkUser("link@example.com", new UserLink(ISSUER, "sub", "other"), null))
         .isNull();
     assertThat(userRepository.linkUser("link@example.com", link, null)).isNull();
-    assertThat(userRepository.findLinkedUser(link).getId()).isEqualTo(user.getId());
+    assertThat(userRepository.findLinkedUser(link, null).getId()).isEqualTo(user.getId());
   }
 
   @Test
@@ -207,10 +208,12 @@ class UserRepositoryTest {
       userRepository.linkUser(
           "collation-link@example.com", new UserLink(ISSUER, "sub", "Alice"), null);
 
-      assertThat(userRepository.findLinkedUser(new UserLink(ISSUER, "sub", "Alice")).getId())
+      assertThat(userRepository.findLinkedUser(new UserLink(ISSUER, "sub", "Alice"), null).getId())
           .isEqualTo(user.getId());
-      assertThat(userRepository.findLinkedUser(new UserLink(ISSUER, "sub", "alice"))).isNull();
-      assertThat(userRepository.findLinkedUser(new UserLink(ISSUER, "sub", "Alïce"))).isNull();
+      assertThat(userRepository.findLinkedUser(new UserLink(ISSUER, "sub", "alice"), null))
+          .isNull();
+      assertThat(userRepository.findLinkedUser(new UserLink(ISSUER, "sub", "Alïce"), null))
+          .isNull();
     } finally {
       if (isMySql) {
         alterLinkValueCollation("utf8mb4_0900_bin");
@@ -244,7 +247,7 @@ class UserRepositoryTest {
         new String[] {"nobody-link@example.com", "disabled-link@example.com", "okta-scim-link"}) {
       UserLink link = new UserLink(ISSUER, "sub", "refused-" + email);
       assertThat(userRepository.linkUser(email, link, null)).as(email).isNull();
-      assertThat(userRepository.findLinkedUser(link)).as(email).isNull();
+      assertThat(userRepository.findLinkedUser(link, null)).as(email).isNull();
     }
   }
 
@@ -259,25 +262,29 @@ class UserRepositoryTest {
     // Okta sends active=true on a routine update of an active user; that keeps the link.
     userRepository.updateUser(
         user.getId(), UpdateUser.builder().name("Rehired").active(true).build());
-    assertThat(userRepository.findLinkedUser(first).getId()).isEqualTo(user.getId());
+    assertThat(userRepository.findLinkedUser(first, null).getId()).isEqualTo(user.getId());
     // Deactivation keeps it too.
     userRepository.updateUser(user.getId(), UpdateUser.builder().active(false).build());
-    assertThat(userRepository.findLinkedUser(first).getId()).isEqualTo(user.getId());
+    assertThat(userRepository.findLinkedUser(first, null).getId()).isEqualTo(user.getId());
 
     // Reactivation clears it, so the next first call links the (possibly new) identity, but only
     // with a token issued at or after the reactivation: an old unexpired token, or one without iat,
     // can't link the row first.
     Date beforeReactivation = new Date(System.currentTimeMillis() - 60_000);
     userRepository.updateUser(user.getId(), UpdateUser.builder().active(true).build());
-    assertThat(userRepository.findLinkedUser(first)).isNull();
+    assertThat(userRepository.findLinkedUser(first, null)).isNull();
     assertThat(userRepository.linkUser("rehire@example.com", first, beforeReactivation)).isNull();
     assertThat(userRepository.linkUser("rehire@example.com", first, null)).isNull();
-    assertThat(userRepository.findLinkedUser(first)).isNull();
+    assertThat(userRepository.findLinkedUser(first, null)).isNull();
     UserLink rehire = new UserLink(ISSUER, "uid", "00u-rehire");
     // iat has whole seconds, so a token issued in the second of the reactivation links.
     Date issuedNow = Date.from(Instant.now().truncatedTo(ChronoUnit.SECONDS));
     assertThat(userRepository.linkUser("rehire@example.com", rehire, issuedNow).getId())
         .isEqualTo(user.getId());
+    // The same rule holds on every later lookup of the link.
+    assertThat(userRepository.findLinkedUser(rehire, issuedNow).getId()).isEqualTo(user.getId());
+    assertThat(userRepository.findLinkedUser(rehire, beforeReactivation)).isNull();
+    assertThat(userRepository.findLinkedUser(rehire, null)).isNull();
   }
 
   @Test
@@ -312,7 +319,8 @@ class UserRepositoryTest {
     }
     long found = 0;
     for (int i = 0; i < callers; i++) {
-      User linkedUser = userRepository.findLinkedUser(new UserLink(ISSUER, "sub", "racer-" + i));
+      User linkedUser =
+          userRepository.findLinkedUser(new UserLink(ISSUER, "sub", "racer-" + i), null);
       if (linkedUser != null) {
         assertThat(linkedUser.getId()).isEqualTo(user.getId());
         found++;
@@ -354,7 +362,7 @@ class UserRepositoryTest {
         }
       }
       assertThat(linked).hasSize(1);
-      assertThat(userRepository.findLinkedUser(link).getId())
+      assertThat(userRepository.findLinkedUser(link, null).getId())
           .isEqualTo(linked.get(0))
           .isIn(rowA.getId(), rowB.getId());
     } finally {

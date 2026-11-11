@@ -50,6 +50,8 @@ public class JwksOperations {
   private static final Duration CACHE_TTL = Duration.ofHours(1);
   private static final Duration DISCOVERY_FAILURE_TTL = Duration.ofSeconds(30);
   private static final Duration MIN_KEY_REFRESH_INTERVAL = Duration.ofSeconds(6);
+  // How far an issuer's clock may run ahead of the server's for iat and nbf.
+  private static final long CLOCK_SKEW_SECONDS = 60;
 
   private final WebClient webClient;
   private static final ObjectMapper mapper = new ObjectMapper();
@@ -141,7 +143,12 @@ public class JwksOperations {
 
     Algorithm algorithm = algorithmForJwk(jwk, alg);
 
-    return JWT.require(algorithm).withIssuer(issuer).build();
+    // Tolerates an issuer clock ahead of the server's on iat and nbf; exp gets no leeway.
+    return JWT.require(algorithm)
+        .withIssuer(issuer)
+        .acceptIssuedAt(CLOCK_SKEW_SECONDS)
+        .acceptNotBefore(CLOCK_SKEW_SECONDS)
+        .build();
   }
 
   @SneakyThrows

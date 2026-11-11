@@ -492,6 +492,18 @@ public class AuthServiceAllowlistTest {
             "Invalid access token.");
       }
 
+      // An IdP clock up to 60 seconds ahead of the server's is accepted.
+      assertThat(
+              listCatalogs(
+                      idpToken(
+                          testIssuer,
+                          TEST_AUDIENCE,
+                          Instant.now().plusSeconds(300),
+                          Instant.now().plusSeconds(30),
+                          Map.of("sub", "person-1")))
+                  .status())
+          .isEqualTo(HttpStatus.OK);
+
       // A disabled user's token is refused on the next call.
       setActive(ENABLED_USER_EMAIL, false);
       assertRefused(
@@ -601,6 +613,28 @@ public class AuthServiceAllowlistTest {
           .isEqualTo(HttpStatus.OK);
       assertRefused(
           listCatalogs(person), HttpStatus.FORBIDDEN, "User not allowed: " + ENABLED_USER_EMAIL);
+
+      // Okta reactivates the same person (same uid): the new token links, and a token issued
+      // before the reactivation, or without iat, stays refused on every later call.
+      Map<String, String> rehired = Map.of("uid", "00u-rehire", "email", ENABLED_USER_EMAIL);
+      String beforeReactivation =
+          idpToken(
+              testIssuer,
+              TEST_AUDIENCE,
+              Instant.now().plusSeconds(300),
+              Instant.now().minusSeconds(60),
+              rehired);
+      String withoutIssuedAt =
+          idpToken(testIssuer, TEST_AUDIENCE, Instant.now().plusSeconds(300), null, rehired);
+      setActive(ENABLED_USER_EMAIL, false);
+      setActive(ENABLED_USER_EMAIL, true);
+      String rejoined = idpToken(rehired);
+      assertThat(listCatalogs(rejoined).status()).isEqualTo(HttpStatus.OK);
+      for (String refused : new String[] {beforeReactivation, withoutIssuedAt}) {
+        assertRefused(
+            listCatalogs(refused), HttpStatus.FORBIDDEN, "User not allowed: " + ENABLED_USER_EMAIL);
+      }
+      assertThat(listCatalogs(rejoined).status()).isEqualTo(HttpStatus.OK);
     }
   }
 

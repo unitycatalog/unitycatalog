@@ -733,7 +733,8 @@ public class ServerPropertiesTest {
       new ServerProperties(noIdentityProvider);
       assertThat(appender.messages)
           .containsExactly(
-              "WARN No identity provider is configured; only server-minted tokens are accepted."
+              "WARN No identity provider is configured; only the bootstrap admin's service token"
+                  + " and SCIM tokens are accepted."
                   + " Set server.authentication.idp.<name>.issuer and .audience.");
     } finally {
       logger.removeAppender(appender);
