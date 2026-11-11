@@ -688,12 +688,12 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   }
 
   /**
-   * A SCIM token can't relink an existing user: it can't change the external id that token exchange
-   * resolves an OAuth client to, so it can't take over the user. Okta's own PUT, which resends the
-   * external id it set, still works.
+   * A SCIM token relinks only the users its IdP owns: it can change the external id that token
+   * exchange resolves an OAuth client to, and the email, of its own user, but the admin's user is
+   * not found for it, so it can't take that user over.
    */
   @Test
-  public void testScimTokenCannotRelinkAnExistingUser() throws Exception {
+  public void testScimTokenRelinksOnlyItsOwnUsers() throws Exception {
     UserRepository users = new UserRepository(null, hibernateConfigurator.getSessionFactory());
     createEnabledUser("victim@example.com");
     String victimId = users.getUserByEmail("victim@example.com").getId();
@@ -708,30 +708,41 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertThat(scimAs(okta, HttpMethod.PUT, "/" + oktaUserId, oktaPut).status())
         .isEqualTo(HttpStatus.OK);
 
-    // A PUT that changes the external id is refused on Okta's own user. The admin's user is not
-    // found for Okta (the owner check runs first).
+    // Okta changes the external id, then the email, of its own user: 200.
+    AggregatedHttpResponse relink =
+        scimAs(
+            okta,
+            HttpMethod.PUT,
+            "/" + oktaUserId,
+            oktaPut.replace("00ujl29u0le5T6Aj10h7", "00ujl29u0le5T6Aj10h8"));
+    assertThat(relink.status()).isEqualTo(HttpStatus.OK);
+    assertThat(users.getUser(oktaUserId).getExternalId()).isEqualTo("00ujl29u0le5T6Aj10h8");
+    assertThat(
+            scimAs(
+                    okta,
+                    HttpMethod.PUT,
+                    "/" + oktaUserId,
+                    oktaPut.replace(
+                        "\"value\":\"test.user@okta.local\"", "\"value\":\"renamed@okta.local\""))
+                .status())
+        .isEqualTo(HttpStatus.OK);
+    // A PUT doesn't store a new email.
+    assertThat(users.getUser(oktaUserId).getEmail()).isEqualTo("test.user@okta.local");
+
+    // A PUT on the admin's user that changes its external id or its primary email, a case variant
+    // included, or sends no primary email, or a primary with no value: not found for Okta.
     String put =
         "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],\"id\":\"%s\","
-            + "\"userName\":\"%s\",\"emails\":[{\"primary\":true,\"value\":\"%s\"}],"
-            + "\"displayName\":\"Test User\",\"active\":true,\"externalId\":\"attacker-client\"}";
-    for (String email : List.of("victim@example.com", "test.user@okta.local")) {
-      String id = users.getUserByEmail(email).getId();
-      AggregatedHttpResponse response =
-          scimAs(okta, HttpMethod.PUT, "/" + id, String.format(put, id, email, email));
-      boolean isOktas = id.equals(oktaUserId);
-      assertThat(response.status())
-          .as(email)
-          .isEqualTo(isOktas ? HttpStatus.FORBIDDEN : HttpStatus.NOT_FOUND);
-      assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
-          .isEqualTo(
-              isOktas
-                  ? "A SCIM token can't change the external id of a user: " + email
-                  : "User not found: " + id);
-    }
-    // A PUT that changes the primary email of the admin's user, a case variant included, or sends
-    // no primary email, or a primary with no value: the user is not found for Okta.
-    String emailPut = put.replace(",\"externalId\":\"attacker-client\"", "");
+            + "\"userName\":\"%s\",\"emails\":%s,\"displayName\":\"Test User\",\"active\":true%s}";
     String storedEmails = "[{\"primary\":true,\"value\":\"victim@example.com\"}]";
+    List<String> bodies = new java.util.ArrayList<>();
+    bodies.add(
+        String.format(
+            put,
+            victimId,
+            "victim@example.com",
+            storedEmails,
+            ",\"externalId\":\"attacker-client\""));
     for (String emails :
         List.of(
             "[{\"primary\":true,\"value\":\"attacker@example.com\"}]",
@@ -740,26 +751,13 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
             "[{\"primary\":true}]",
             "[null]",
             "[null,{\"primary\":true,\"value\":\"attacker@example.com\"}]")) {
-      String body =
-          String.format(emailPut, victimId, "victim@example.com", "victim@example.com")
-              .replace(storedEmails, emails);
+      bodies.add(String.format(put, victimId, "victim@example.com", emails, ""));
+    }
+    for (String body : bodies) {
       AggregatedHttpResponse response = scimAs(okta, HttpMethod.PUT, "/" + victimId, body);
-      assertThat(response.status()).as(emails).isEqualTo(HttpStatus.NOT_FOUND);
+      assertThat(response.status()).as(body).isEqualTo(HttpStatus.NOT_FOUND);
       assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
           .isEqualTo("User not found: " + victimId);
-    }
-    // A PUT that resends the stored email as the primary email, or sends no emails: not found too.
-    for (String body :
-        List.of(
-            String.format(emailPut, victimId, "victim@example.com", "victim@example.com"),
-            String.format(emailPut, victimId, "victim@example.com", "victim@example.com")
-                .replace(storedEmails, "[null," + storedEmails.substring(1)),
-            String.format(emailPut, victimId, "victim@example.com", "victim@example.com")
-                .replace(
-                    "\"emails\":[{\"primary\":true,\"value\":\"victim@example.com\"}],", ""))) {
-      assertThat(scimAs(okta, HttpMethod.PUT, "/" + victimId, body).status())
-          .as(body)
-          .isEqualTo(HttpStatus.NOT_FOUND);
     }
     // PATCH changes only active.
     for (String patch :
@@ -779,7 +777,6 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     User victim = users.getUser(victimId);
     assertThat(victim.getExternalId()).isNull();
     assertThat(victim.getEmail()).isEqualTo("victim@example.com");
-    assertThat(users.getUser(oktaUserId).getExternalId()).isEqualTo("00ujl29u0le5T6Aj10h7");
   }
 
   /** A PUT that renames and deactivates the user, a deactivating PATCH, and a DELETE. */

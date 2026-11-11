@@ -502,9 +502,10 @@ bin/uc-admin-token --scim-principal okta-scim --idp okta --lifetime P90D
   provider created (see "Users and groups an identity provider owns" below). Identity provider principals are users
   the admin created, so the token can't see or change them (404), its own included. Only the admin manages those.
   Elsewhere it gets 403.
-- It also gets 403 when it changes the `externalId` or email of an existing user, since token exchange signs in by both.
-  An update that sends the stored values again, or omits them, is accepted. The email match is exact, so a change of
-  case is refused too.
+- A PUT that changes `externalId` or email is accepted only on users it owns (a PUT stores the new `externalId`; the
+  stored email stays); any other user is not found (404). Token exchange signs in a user by email, and an OAuth client
+  as the user with that `externalId`, so the token can't take over a user the admin or another identity provider
+  created.
 - `--idp admin` is refused: `admin` is the owner name of the users and groups the admin creates.
 - `bin/uc-admin-token` opens the server's database from `etc/conf/hibernate.properties`, as
   `bin/start-uc-server --upgrade-schema` does, and marks the user as the identity provider's principal. That user can no
