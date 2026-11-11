@@ -76,8 +76,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearToken();
         markOktaToken(false);
       } catch (e) {
-        // TODO(PR external mode): when that PR lands, check against a server in
-        // external mode that /scim2/Me accepts the Okta access token as the bearer.
         if (!(e instanceof TokenExchangeError && e.isDisabledByServer())) throw e;
         cookieSession = false;
         signInWithAccessToken(accessToken);
