@@ -4,6 +4,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.GroupDAO;
 import io.unitycatalog.server.persist.dao.GroupMemberDAO;
+import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.model.Group;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import java.util.Collection;
@@ -183,7 +184,11 @@ public class GroupRepository {
             .list());
   }
 
-  /** Members are users only: an unknown id, or the id of a group, is refused. */
+  /**
+   * Members are users only: an unknown id, or the id of a group, is refused. The users are locked
+   * until the transaction ends, so a user deleted at the same time either waits for this change and
+   * then drops the new membership too, or is gone before it is checked.
+   */
   private void requireUsers(Session session, Collection<UUID> userIds) {
     if (userIds.isEmpty()) {
       return;
@@ -191,9 +196,13 @@ public class GroupRepository {
     Set<UUID> found =
         new HashSet<>(
             session
-                .createQuery("SELECT id FROM UserDAO WHERE id IN :ids", UUID.class)
+                .createSelectionQuery("FROM UserDAO WHERE id IN :ids", UserDAO.class)
                 .setParameterList("ids", userIds)
-                .list());
+                .setHibernateLockMode(LockMode.PESSIMISTIC_READ)
+                .list()
+                .stream()
+                .map(UserDAO::getId)
+                .toList());
     userIds.stream()
         .filter(userId -> !found.contains(userId))
         .findFirst()
