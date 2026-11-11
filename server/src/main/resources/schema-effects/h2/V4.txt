@@ -1,0 +1,2 @@
+- column uc_functions.full_data_type type=character varying size=255 nullable=YES default=null
++ column uc_functions.full_data_type type=character large object size=2147483647 nullable=YES default=null

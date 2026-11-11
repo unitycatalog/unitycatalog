@@ -29,12 +29,17 @@ import org.junit.jupiter.api.Test;
 
 public class SdkFunctionCRUDTest extends BaseFunctionCRUDTest {
   // Over 255 characters, like the type of a parameter that takes a record with many fields
-  private static final String LONG_STRUCT_TYPE =
-      "STRUCT<"
-          + IntStream.range(0, 20)
-              .mapToObj(i -> "field_" + i + ": ARRAY<STRING>")
-              .collect(Collectors.joining(", "))
-          + ">";
+  private static final String LONG_STRUCT_TYPE = longStructType("field_");
+  private static final String LONG_RETURN_TYPE = longStructType("result_");
+  private static final String LONG_DEFAULT = "d".repeat(300);
+
+  private static String longStructType(String fieldPrefix) {
+    return "STRUCT<"
+        + IntStream.range(0, 20)
+            .mapToObj(i -> fieldPrefix + i + ": ARRAY<STRING>")
+            .collect(Collectors.joining(", "))
+        + ">";
+  }
 
   @Test
   public void testFunctionWithLongTypesAndComments() throws ApiException {
@@ -46,7 +51,14 @@ public class SdkFunctionCRUDTest extends BaseFunctionCRUDTest {
             .typeText(LONG_STRUCT_TYPE)
             .typeJson("{\"type\":\"struct\",\"fields\":[]}")
             .comment(LONG_COMMENT)
-            .parameterDefault(LONG_COMMENT)
+            .parameterDefault(LONG_DEFAULT)
+            .position(0);
+    FunctionParameterInfo returnParameter =
+        new FunctionParameterInfo()
+            .name("result")
+            .typeName(ColumnTypeName.STRUCT)
+            .typeText(LONG_RETURN_TYPE)
+            .typeJson("{\"type\":\"struct\",\"fields\":[]}")
             .position(0);
     CreateFunction createFunction =
         new CreateFunction()
@@ -64,7 +76,8 @@ public class SdkFunctionCRUDTest extends BaseFunctionCRUDTest {
             .securityType(CreateFunction.SecurityTypeEnum.DEFINER)
             .specificName(FUNCTION_NAME)
             .sqlDataAccess(CreateFunction.SqlDataAccessEnum.NO_SQL)
-            .inputParams(new FunctionParameterInfos().parameters(List.of(parameter)));
+            .inputParams(new FunctionParameterInfos().parameters(List.of(parameter)))
+            .returnParams(new FunctionParameterInfos().parameters(List.of(returnParameter)));
     functionOperations.createFunction(new CreateFunctionRequest().functionInfo(createFunction));
 
     FunctionInfo functionInfo = functionOperations.getFunction(FUNCTION_FULL_NAME);
@@ -75,8 +88,11 @@ public class SdkFunctionCRUDTest extends BaseFunctionCRUDTest {
             stored -> {
               assertThat(stored.getTypeText()).isEqualTo(LONG_STRUCT_TYPE);
               assertThat(stored.getComment()).isEqualTo(LONG_COMMENT);
-              assertThat(stored.getParameterDefault()).isEqualTo(LONG_COMMENT);
+              assertThat(stored.getParameterDefault()).isEqualTo(LONG_DEFAULT);
             });
+    assertThat(functionInfo.getReturnParams().getParameters())
+        .singleElement()
+        .satisfies(stored -> assertThat(stored.getTypeText()).isEqualTo(LONG_RETURN_TYPE));
   }
 
   @Override

@@ -1,12 +1,2 @@
-- column uc_function_params.comment type=character varying size=255 nullable=YES default=null
-+ column uc_function_params.comment type=character varying size=65535 nullable=YES default=null
-- column uc_function_params.parameter_default type=character varying size=255 nullable=YES default=null
-+ column uc_function_params.parameter_default type=character varying size=65535 nullable=YES default=null
 - column uc_function_params.type_text type=character varying size=255 nullable=NO default=null
 + column uc_function_params.type_text type=character large object size=2147483647 nullable=NO default=null
-- column uc_functions.full_data_type type=character varying size=255 nullable=YES default=null
-+ column uc_functions.full_data_type type=character large object size=2147483647 nullable=YES default=null
-- column uc_schemas.comment type=character varying size=255 nullable=YES default=null
-+ column uc_schemas.comment type=character varying size=65535 nullable=YES default=null
-- column uc_volumes.comment type=character varying size=255 nullable=YES default=null
-+ column uc_volumes.comment type=character varying size=65535 nullable=YES default=null
