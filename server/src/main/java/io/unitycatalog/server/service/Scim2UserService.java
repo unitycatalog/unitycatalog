@@ -153,7 +153,7 @@ public class Scim2UserService implements ScimService {
       return asUserResource(user);
     } catch (BaseException e) {
       if (e.getErrorCode() == ErrorCode.ALREADY_EXISTS) {
-        throw new Scim2RuntimeException(new ResourceConflictException(e.getMessage()));
+        throw new Scim2RuntimeException(ResourceConflictException.uniqueness(e.getMessage()));
       } else if (e.getErrorCode().getHttpStatus().isServerError()) {
         // A server failure, such as a database error, is not the caller's fault.
         throw new Scim2RuntimeException(new ServerErrorException(e.getMessage(), null, e));

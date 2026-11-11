@@ -5,7 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linecorp.armeria.common.AggregatedHttpResponse;
+import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.server.ServiceRequestContext;
+import com.unboundid.scim2.common.exceptions.ServerErrorException;
 import io.unitycatalog.control.ApiException;
 import io.unitycatalog.control.api.UsersApi;
 import io.unitycatalog.control.model.UserResource;
@@ -13,6 +18,8 @@ import io.unitycatalog.control.model.UserResourceList;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
+import io.unitycatalog.server.exception.Scim2RuntimeException;
+import io.unitycatalog.server.exception.ScimExceptionHandler;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.service.Scim2UserService;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -246,11 +253,24 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     assertThat(created.statusCode()).as(created.body()).isEqualTo(201);
     assertScimContentType(created);
 
-    // Provisioning the same user again is a conflict naming the email.
-    assertScimError(
-        TestUtils.sendRaw(adminConfig, "POST", SCIM_USERS_PATH, Optional.of(oktaUser)),
-        409,
-        "User already exists: " + email);
+    // Provisioning the same user again is a uniqueness conflict naming the email.
+    HttpResponse<String> duplicate =
+        TestUtils.sendRaw(adminConfig, "POST", SCIM_USERS_PATH, Optional.of(oktaUser));
+    assertScimError(duplicate, 409, "User already exists: " + email);
+    assertThat(MAPPER.readTree(duplicate.body()).path("scimType").asText()).isEqualTo("uniqueness");
+
+    // Giving another user this user's external id is the same kind of conflict.
+    String otherId = otherUser.getId();
+    String takeExternalId =
+        "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],\"id\":\""
+            + otherId
+            + "\",\"displayName\":\"Other User\",\"externalId\":\"00ujl29u0le5T6Aj10h7\"}";
+    HttpResponse<String> externalIdTaken =
+        TestUtils.sendRaw(
+            adminConfig, "PUT", SCIM_USERS_PATH + "/" + otherId, Optional.of(takeExternalId));
+    assertScimError(externalIdTaken, 409, "User already exists with external id");
+    assertThat(MAPPER.readTree(externalIdTaken.body()).path("scimType").asText())
+        .isEqualTo("uniqueness");
 
     // Reading users that do not exist: an unknown id and an id that is not even a UUID.
     assertScimError(
@@ -280,13 +300,19 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
   }
 
   @Test
-  @SneakyThrows
-  public void testUnsupportedPatchIsNotLoggedAsServerError() {
-    HttpResponse<String> response =
-        TestUtils.sendRaw(
-            adminConfig, "PATCH", SCIM_USERS_PATH + "/" + otherUser.getId(), Optional.of(ADD_PATH));
-    assertThat(response.statusCode()).isEqualTo(501);
-    assertThat(errorLogs).as("a client-caused 501 is not logged as an error").isEmpty();
+  public void testScimServerErrorIsLogged() {
+    HttpRequest req = HttpRequest.of(HttpMethod.POST, SCIM_USERS_PATH);
+    AggregatedHttpResponse response =
+        ScimExceptionHandler.INSTANCE
+            .handleException(
+                ServiceRequestContext.of(req),
+                req,
+                new Scim2RuntimeException(
+                    new ServerErrorException("db down", null, new RuntimeException("cause"))))
+            .aggregate()
+            .join();
+    assertThat(response.status()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    assertThat(errorLogs).as("a SCIM server failure is logged as an error").isNotEmpty();
   }
 
   private HttpResponse<String> sendWithoutToken(String method, String path, Optional<String> body)

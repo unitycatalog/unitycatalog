@@ -5,6 +5,7 @@ import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.server.ServiceRequestContext;
+import com.unboundid.scim2.common.exceptions.ResourceConflictException;
 import com.unboundid.scim2.common.exceptions.ScimException;
 import io.unitycatalog.server.utils.Scim2Utils;
 import lombok.SneakyThrows;
@@ -37,8 +38,13 @@ public final class ScimExceptionHandler extends BaseExceptionHandler {
 
   @Override
   protected HttpResponse createErrorResponse(BaseException exception) {
-    return createErrorResponse(
-        ScimException.createException(httpStatus(exception).code(), exception.getErrorMessage()));
+    // A duplicate is a uniqueness conflict (RFC 7644 section 3.12).
+    ScimException scimException =
+        exception.getErrorCode() == ErrorCode.ALREADY_EXISTS
+            ? ResourceConflictException.uniqueness(exception.getErrorMessage())
+            : ScimException.createException(
+                httpStatus(exception).code(), exception.getErrorMessage());
+    return createErrorResponse(scimException);
   }
 
   private static HttpStatus httpStatus(ScimException exception) {
