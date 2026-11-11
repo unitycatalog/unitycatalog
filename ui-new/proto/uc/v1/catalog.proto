@@ -4,6 +4,7 @@ package uc.v1;
 
 import "buf/validate/validate.proto";
 import "uc/v1/common.proto";
+import "uc/v1/predefined_string_rules.proto";
 
 // CatalogSummary contains the fields needed to render a catalog list.
 message CatalogSummary {
@@ -52,18 +53,12 @@ message GetCatalogResponse {
 
 // CreateCatalogRequest contains the user-editable fields for a new catalog.
 message CreateCatalogRequest {
-  string name = 1 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 255
-    pattern: "^[A-Za-z0-9_@-]+$"
-  }];
+  string name = 1 [(buf.validate.field).string.(securable_name) = true];
   optional string comment = 2 [(buf.validate.field).string.max_len = 65536];
   Properties properties = 3;
   optional string storage_root = 4 [(buf.validate.field).string = {
-    min_len: 1
     max_len: 8192
-    pattern: "^(?:(?:s3|gs)://[^/]+(?:/.*)?|abfss?://[^/]+(?:/.*)?|file:/+.+|(?:/|[^:/]+/).*)$"
-    uri_ref: true
+    [uc.v1.storage_path]: true
   }];
 }
 
@@ -83,11 +78,7 @@ message UpdateCatalogRequest {
   CatalogRef catalog = 1 [(buf.validate.field).required = true];
   optional string comment = 2 [(buf.validate.field).string.max_len = 65536];
   Properties properties = 3;
-  optional string new_name = 4 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 255
-    pattern: "^[A-Za-z0-9_@-]+$"
-  }];
+  optional string new_name = 4 [(buf.validate.field).string.(securable_name) = true];
 }
 
 // UpdateCatalogResponse contains the updated catalog.

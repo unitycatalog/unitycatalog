@@ -4,6 +4,7 @@ package uc.v1;
 
 import "buf/validate/validate.proto";
 import "uc/v1/common.proto";
+import "uc/v1/predefined_string_rules.proto";
 
 // ModelVersionStatus is the lifecycle status of a registered model version.
 enum ModelVersionStatus {
@@ -100,11 +101,7 @@ message UpdateRegisteredModelRequest {
 
   SchemaObjectRef model = 1 [(buf.validate.field).required = true];
   optional string comment = 2 [(buf.validate.field).string.max_len = 65536];
-  optional string new_name = 3 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 255
-    pattern: "^[A-Za-z0-9_@-]+$"
-  }];
+  optional string new_name = 3 [(buf.validate.field).string.(securable_name) = true];
 }
 
 // UpdateRegisteredModelResponse contains the updated model.

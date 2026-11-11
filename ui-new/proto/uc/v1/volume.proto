@@ -4,6 +4,7 @@ package uc.v1;
 
 import "buf/validate/validate.proto";
 import "uc/v1/common.proto";
+import "uc/v1/predefined_string_rules.proto";
 
 // VolumeType is the storage management mode of a UC volume.
 enum VolumeType {
@@ -96,11 +97,7 @@ message UpdateVolumeRequest {
     min_len: 1
     max_len: 65536
   }];
-  optional string new_name = 3 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 255
-    pattern: "^[A-Za-z0-9_@-]+$"
-  }];
+  optional string new_name = 3 [(buf.validate.field).string.(securable_name) = true];
 }
 
 // UpdateVolumeResponse contains the updated volume.

@@ -73,8 +73,7 @@ message ListTablesRequest {
 
 // ListTablesResponse contains one filtered page of non-metric-view tables.
 //
-// A page may contain no tables and still include a next-page token because the
-// Java API paginates all table types before Branch 2 filters METRIC_VIEW rows.
+// A page can be empty after filtering metric views; callers follow page tokens.
 message ListTablesResponse {
   repeated TableSummary tables = 1;
   PageResponse page = 2;
@@ -92,7 +91,7 @@ message GetTableResponse {
 
 // CreateTableRequest creates an EXTERNAL table through the native UC API.
 //
-// Branch 2 supplies table_type=EXTERNAL, assigns column positions, and derives
+// The bridge supplies table_type=EXTERNAL, assigns column positions, and derives
 // missing scalar type metadata. Native Iceberg registration uses a different
 // API and is intentionally excluded. Metric views use ViewService. UC has no
 // native update operation for this surface, so the UI contract exposes create

@@ -44,8 +44,7 @@ message ListViewsRequest {
 
 // ListViewsResponse contains one filtered page of metric views.
 //
-// A page may contain no views and still include a next-page token because the
-// Java API paginates all table types before Branch 2 filters METRIC_VIEW rows.
+// A page can be empty after filtering other table types; callers follow page tokens.
 message ListViewsResponse {
   repeated MetricViewSummary views = 1;
   PageResponse page = 2;
@@ -63,8 +62,8 @@ message GetViewResponse {
 
 // CreateViewRequest creates a METRIC_VIEW table through the UC tables API.
 //
-// Branch 2 derives canonical column type metadata and positions before calling
-// the Java API.
+// The bridge derives canonical column type metadata and positions before
+// calling the Java API.
 message CreateViewRequest {
   SchemaObjectRef view = 1 [(buf.validate.field).required = true];
   repeated ColumnInput columns = 2 [(buf.validate.field).repeated = {

@@ -50,7 +50,7 @@ message FunctionParameterInfo {
 }
 
 // FunctionParameterInput is the compact parameter shape accepted from the UI.
-// Branch 2 derives type_text, type_json, and position before calling UC. The
+// The bridge derives type_text, type_json, and position before calling UC. The
 // supported scalar set deliberately excludes types needing nested shape,
 // precision, scale, interval, or length metadata.
 message FunctionParameterInput {
@@ -142,7 +142,7 @@ message GetFunctionResponse {
 
 // CreateFunctionRequest creates a scalar SQL function.
 //
-// Branch 2 supplies UC's fixed SQL-function fields: routine_body=SQL,
+// The bridge supplies UC's fixed SQL-function fields: routine_body=SQL,
 // parameter_style=S, is_deterministic=true, sql_data_access=NO_SQL,
 // is_null_call=true, security_type=DEFINER, and specific_name=name.
 message CreateFunctionRequest {

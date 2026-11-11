@@ -4,47 +4,24 @@ package uc.v1;
 
 import "buf/validate/validate.proto";
 import "google/protobuf/timestamp.proto";
+import "uc/v1/predefined_string_rules.proto";
 
 // CatalogRef identifies a catalog by its UC name.
 message CatalogRef {
-  string name = 1 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 255
-    pattern: "^[A-Za-z0-9_@-]+$"
-  }];
+  string name = 1 [(buf.validate.field).string.(securable_name) = true];
 }
 
 // SchemaRef identifies a schema by its catalog and schema names.
 message SchemaRef {
-  string catalog_name = 1 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 255
-    pattern: "^[A-Za-z0-9_@-]+$"
-  }];
-  string name = 2 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 255
-    pattern: "^[A-Za-z0-9_@-]+$"
-  }];
+  string catalog_name = 1 [(buf.validate.field).string.(securable_name) = true];
+  string name = 2 [(buf.validate.field).string.(securable_name) = true];
 }
 
 // SchemaObjectRef identifies a three-level object under a schema.
 message SchemaObjectRef {
-  string catalog_name = 1 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 255
-    pattern: "^[A-Za-z0-9_@-]+$"
-  }];
-  string schema_name = 2 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 255
-    pattern: "^[A-Za-z0-9_@-]+$"
-  }];
-  string name = 3 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 255
-    pattern: "^[A-Za-z0-9_@-]+$"
-  }];
+  string catalog_name = 1 [(buf.validate.field).string.(securable_name) = true];
+  string schema_name = 2 [(buf.validate.field).string.(securable_name) = true];
+  string name = 3 [(buf.validate.field).string.(securable_name) = true];
 }
 
 // ModelVersionRef identifies one version of a registered model.
@@ -54,7 +31,8 @@ message ModelVersionRef {
 }
 
 // PageRequest carries an optional UC page size and opaque continuation token.
-// Individual list requests further constrain max_results to their UC endpoint.
+// Each list request caps max_results at the `maximum` its endpoint declares in
+// api/all.yaml; 10000 is the largest of those (list volumes).
 message PageRequest {
   optional int32 max_results = 1 [(buf.validate.field).int32 = {
     gte: 0
@@ -68,14 +46,28 @@ message PageResponse {
   string next_page_token = 1 [(buf.validate.field).string.max_len = 8192];
 }
 
-// ExternalStorageLocation contains a normalized non-root UC storage path.
+// ExternalStorageLocation is the storage path of an external table or volume.
+//
+// Dot segments, queries, fragments, and percent-encoding are rejected so the
+// path UC stores is the path the user entered; UC normalizes dot segments in
+// cloud URIs. UC itself rejects a bucket or container root for these resources.
 message ExternalStorageLocation {
-  string value = 1 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 8192
-    pattern: "^(?:(?:s3|gs|abfss?)://[^/?#%]+/(?:[^./?#%][^/?#%]*|\\.[^./?#%][^/?#%]*|\\.\\.[^/?#%]+)(?:/(?:[^./?#%][^/?#%]*|\\.[^./?#%][^/?#%]*|\\.\\.[^/?#%]+))*/?|file:/+.+|(?:/|[^:/]+/).*)$"
-    uri_ref: true
-  }];
+  string value = 1 [
+    (buf.validate.field).string = {
+      max_len: 8192
+      [uc.v1.storage_path]: true
+    },
+    (buf.validate.field).cel = {
+      id: "external_storage_location.dot_segments"
+      message: "must not contain '.' or '..' path segments"
+      expression: "!['/./', '/../'].exists(segment, this.contains(segment)) && !['/.', '/..'].exists(suffix, this.endsWith(suffix))"
+    },
+    (buf.validate.field).cel = {
+      id: "external_storage_location.reserved_characters"
+      message: "must not contain '?', '#', or '%'"
+      expression: "!['?', '#', '%'].exists(character, this.contains(character))"
+    }
+  ];
 }
 
 // Properties wraps UC securable properties so update requests retain presence.
@@ -153,7 +145,7 @@ message ColumnInfo {
 
 // ColumnInput contains the scalar column fields supplied by the UI.
 //
-// Branch 2 assigns positions from list order and derives canonical type_text
+// The bridge assigns positions from list order and derives canonical type_text
 // and type_json values. Complex column creation is intentionally not exposed.
 message ColumnInput {
   string name = 1 [(buf.validate.field).string = {
@@ -181,6 +173,10 @@ message ColumnInput {
 }
 
 // Dependency identifies one table or function referenced by a view.
+//
+// Each part of the catalog.schema.name follows securable_name. The members use
+// the standard pattern rule because protovalidate-buffa 0.8 cannot apply CEL or
+// predefined rules to oneof members.
 message Dependency {
   oneof target {
     option (buf.validate.oneof).required = true;
