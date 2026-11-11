@@ -708,7 +708,8 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertThat(scimAs(okta, HttpMethod.PUT, "/" + oktaUserId, oktaPut).status())
         .isEqualTo(HttpStatus.OK);
 
-    // A PUT that changes the external id is refused, on any existing user.
+    // A PUT that changes the external id is refused on Okta's own user. The admin's user is not
+    // found for Okta (the owner check runs first).
     String put =
         "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],\"id\":\"%s\","
             + "\"userName\":\"%s\",\"emails\":[{\"primary\":true,\"value\":\"%s\"}],"
@@ -717,12 +718,18 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
       String id = users.getUserByEmail(email).getId();
       AggregatedHttpResponse response =
           scimAs(okta, HttpMethod.PUT, "/" + id, String.format(put, id, email, email));
-      assertThat(response.status()).as(email).isEqualTo(HttpStatus.FORBIDDEN);
+      boolean isOktas = id.equals(oktaUserId);
+      assertThat(response.status())
+          .as(email)
+          .isEqualTo(isOktas ? HttpStatus.FORBIDDEN : HttpStatus.NOT_FOUND);
       assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
-          .isEqualTo("A SCIM token can't change the external id of a user: " + email);
+          .isEqualTo(
+              isOktas
+                  ? "A SCIM token can't change the external id of a user: " + email
+                  : "User not found: " + id);
     }
-    // A PUT that changes the primary email is refused, a case variant included: token exchange
-    // signs in a user by email. So is one with no primary email, or a primary with no value.
+    // A PUT that changes the primary email of the admin's user, a case variant included, or sends
+    // no primary email, or a primary with no value: the user is not found for Okta.
     String emailPut = put.replace(",\"externalId\":\"attacker-client\"", "");
     String storedEmails = "[{\"primary\":true,\"value\":\"victim@example.com\"}]";
     for (String emails :
@@ -737,11 +744,11 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
           String.format(emailPut, victimId, "victim@example.com", "victim@example.com")
               .replace(storedEmails, emails);
       AggregatedHttpResponse response = scimAs(okta, HttpMethod.PUT, "/" + victimId, body);
-      assertThat(response.status()).as(emails).isEqualTo(HttpStatus.FORBIDDEN);
+      assertThat(response.status()).as(emails).isEqualTo(HttpStatus.NOT_FOUND);
       assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
-          .isEqualTo("A SCIM token can't change the email of a user: victim@example.com");
+          .isEqualTo("User not found: " + victimId);
     }
-    // A PUT that resends the stored email as the primary email, or sends no emails, is accepted.
+    // A PUT that resends the stored email as the primary email, or sends no emails: not found too.
     for (String body :
         List.of(
             String.format(emailPut, victimId, "victim@example.com", "victim@example.com"),
@@ -752,7 +759,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
                     "\"emails\":[{\"primary\":true,\"value\":\"victim@example.com\"}],", ""))) {
       assertThat(scimAs(okta, HttpMethod.PUT, "/" + victimId, body).status())
           .as(body)
-          .isEqualTo(HttpStatus.OK);
+          .isEqualTo(HttpStatus.NOT_FOUND);
     }
     // PATCH changes only active.
     for (String patch :

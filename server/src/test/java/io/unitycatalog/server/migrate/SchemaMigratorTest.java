@@ -229,7 +229,7 @@ public class SchemaMigratorTest {
     assertThatThrownBy(() -> AdminTokenCommand.createScimToken(args, algorithm, properties))
         .isInstanceOf(IllegalStateException.class)
         .hasMessage(
-            "The schema is newer than this release (version 1000, this release ends at 3). Run"
+            "The schema is newer than this release (version 1000, this release ends at 5). Run"
                 + " the newer release.");
 
     // An in-memory database lives only in the server's process.
