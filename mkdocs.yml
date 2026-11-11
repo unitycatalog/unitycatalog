@@ -34,6 +34,7 @@ nav:
   - Server:
       - Configuration: server/configuration.md
       - Auth: server/auth.md
+      - Provision from an IdP: server/idp-provisioning.md
       - Users and Privileges: server/users-privileges.md
       - Deployment: server/deployment.md
       - Deploy with Helm: server/helm.md
