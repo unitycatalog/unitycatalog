@@ -25,15 +25,7 @@ export function useListCatalogs() {
           client.listCatalogs({
             page: pageToken ? { pageToken } : undefined,
           }),
-        (response) => response.catalogs,
-        (response) => response.page?.nextPageToken ?? "",
-        (response, catalogs) => ({
-          ...response,
-          catalogs,
-          page: response.page
-            ? { ...response.page, nextPageToken: "" }
-            : undefined,
-        }),
+        "catalogs",
       ),
   });
 }

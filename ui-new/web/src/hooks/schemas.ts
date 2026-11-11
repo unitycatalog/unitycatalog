@@ -28,15 +28,7 @@ export function useListSchemas(catalogName: string, enabled = true) {
             ...input,
             page: pageToken ? { pageToken } : undefined,
           }),
-        (response) => response.schemas,
-        (response) => response.page?.nextPageToken ?? "",
-        (response, schemas) => ({
-          ...response,
-          schemas,
-          page: response.page
-            ? { ...response.page, nextPageToken: "" }
-            : undefined,
-        }),
+        "schemas",
       ),
   });
 }

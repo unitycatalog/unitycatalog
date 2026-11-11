@@ -32,15 +32,7 @@ export function useListTables(
             ...input,
             page: pageToken ? { pageToken } : undefined,
           }),
-        (response) => response.tables,
-        (response) => response.page?.nextPageToken ?? "",
-        (response, tables) => ({
-          ...response,
-          tables,
-          page: response.page
-            ? { ...response.page, nextPageToken: "" }
-            : undefined,
-        }),
+        "tables",
       ),
   });
 }

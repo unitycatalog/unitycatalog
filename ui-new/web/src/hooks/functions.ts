@@ -32,15 +32,7 @@ export function useListFunctions(
             ...input,
             page: pageToken ? { pageToken } : undefined,
           }),
-        (response) => response.functions,
-        (response) => response.page?.nextPageToken ?? "",
-        (response, functions) => ({
-          ...response,
-          functions,
-          page: response.page
-            ? { ...response.page, nextPageToken: "" }
-            : undefined,
-        }),
+        "functions",
       ),
   });
 }

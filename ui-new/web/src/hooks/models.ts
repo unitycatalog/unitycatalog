@@ -32,15 +32,7 @@ export function useListModels(
             ...input,
             page: pageToken ? { pageToken } : undefined,
           }),
-        (response) => response.models,
-        (response) => response.page?.nextPageToken ?? "",
-        (response, models) => ({
-          ...response,
-          models,
-          page: response.page
-            ? { ...response.page, nextPageToken: "" }
-            : undefined,
-        }),
+        "models",
       ),
   });
 }
@@ -77,15 +69,7 @@ export function useListModelVersions(fullName: string) {
             ...input,
             page: pageToken ? { pageToken } : undefined,
           }),
-        (response) => response.versions,
-        (response) => response.page?.nextPageToken ?? "",
-        (response, versions) => ({
-          ...response,
-          versions,
-          page: response.page
-            ? { ...response.page, nextPageToken: "" }
-            : undefined,
-        }),
+        "versions",
       ),
   });
 }

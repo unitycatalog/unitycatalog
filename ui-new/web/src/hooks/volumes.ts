@@ -32,15 +32,7 @@ export function useListVolumes(
             ...input,
             page: pageToken ? { pageToken } : undefined,
           }),
-        (response) => response.volumes,
-        (response) => response.page?.nextPageToken ?? "",
-        (response, volumes) => ({
-          ...response,
-          volumes,
-          page: response.page
-            ? { ...response.page, nextPageToken: "" }
-            : undefined,
-        }),
+        "volumes",
       ),
   });
 }

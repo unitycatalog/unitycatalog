@@ -2,17 +2,21 @@ import type { DescMessage, DescMethodUnary } from "@bufbuild/protobuf";
 import { createConnectQueryKey } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 
-export async function collectAllPages<Response, Item>(
+export async function collectAllPages<
+  Key extends PropertyKey,
+  Response extends { page?: { nextPageToken: string } } & Record<
+    Key,
+    readonly unknown[]
+  >,
+>(
   fetchPage: (pageToken: string) => Promise<Response>,
-  getItems: (response: Response) => readonly Item[],
-  getNextPageToken: (response: Response) => string,
-  mergeItems: (first: Response, items: Item[]) => Response,
+  itemKey: Key,
 ): Promise<Response> {
   const seen = new Set<string>();
   const first = await fetchPage("");
-  const items = [...getItems(first)];
+  const items = [...(first[itemKey] as readonly unknown[])];
   let response = first;
-  let pageToken = getNextPageToken(response);
+  let pageToken = response.page?.nextPageToken ?? "";
 
   while (pageToken) {
     if (seen.has(pageToken)) {
@@ -20,11 +24,15 @@ export async function collectAllPages<Response, Item>(
     }
     seen.add(pageToken);
     response = await fetchPage(pageToken);
-    items.push(...getItems(response));
-    pageToken = getNextPageToken(response);
+    items.push(...(response[itemKey] as readonly unknown[]));
+    pageToken = response.page?.nextPageToken ?? "";
   }
 
-  return mergeItems(first, items);
+  return {
+    ...first,
+    [itemKey]: items,
+    page: first.page ? { ...first.page, nextPageToken: "" } : undefined,
+  } as Response;
 }
 
 export function useInvalidateMethod<

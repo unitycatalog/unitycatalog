@@ -32,15 +32,7 @@ export function useListViews(
             ...input,
             page: pageToken ? { pageToken } : undefined,
           }),
-        (response) => response.views,
-        (response) => response.page?.nextPageToken ?? "",
-        (response, views) => ({
-          ...response,
-          views,
-          page: response.page
-            ? { ...response.page, nextPageToken: "" }
-            : undefined,
-        }),
+        "views",
       ),
   });
 }
