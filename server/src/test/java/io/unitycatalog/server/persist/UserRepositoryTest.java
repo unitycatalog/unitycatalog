@@ -24,7 +24,6 @@ import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -270,7 +269,7 @@ class UserRepositoryTest {
     // Reactivation clears it, so the next first call links the (possibly new) identity, but only
     // with a token issued at or after the reactivation: an old unexpired token, or one without iat,
     // can't link the row first.
-    Date beforeReactivation = new Date(System.currentTimeMillis() - 60_000);
+    Instant beforeReactivation = Instant.now().minusSeconds(60);
     userRepository.updateUser(user.getId(), UpdateUser.builder().active(true).build());
     assertThat(userRepository.findLinkedUser(first, null)).isNull();
     assertThat(userRepository.linkUser("rehire@example.com", first, beforeReactivation)).isNull();
@@ -278,13 +277,47 @@ class UserRepositoryTest {
     assertThat(userRepository.findLinkedUser(first, null)).isNull();
     UserLink rehire = new UserLink(ISSUER, "uid", "00u-rehire");
     // iat has whole seconds, so a token issued in the second of the reactivation links.
-    Date issuedNow = Date.from(Instant.now().truncatedTo(ChronoUnit.SECONDS));
+    Instant issuedNow = Instant.now().truncatedTo(ChronoUnit.SECONDS);
     assertThat(userRepository.linkUser("rehire@example.com", rehire, issuedNow).getId())
         .isEqualTo(user.getId());
     // The same rule holds on every later lookup of the link.
     assertThat(userRepository.findLinkedUser(rehire, issuedNow).getId()).isEqualTo(user.getId());
     assertThat(userRepository.findLinkedUser(rehire, beforeReactivation)).isNull();
     assertThat(userRepository.findLinkedUser(rehire, null)).isNull();
+  }
+
+  @Test
+  void reactivationTimeIsAnInstantAcrossTheDaylightSavingFallBack() {
+    // In Los Angeles 2026-11-01 01:00-02:00 occurs twice. A reactivation at 09:10Z (01:10 PST)
+    // must refuse a token issued at 08:30Z (01:30 PDT), 40 minutes earlier. A wall-clock column
+    // fails this only when the JVM runs in such a zone (-Duser.timezone=America/Los_Angeles).
+    {
+      userRepository.createUser(CreateUser.builder().name("Dst").email("dst@example.com").build());
+      UserLink link = new UserLink(ISSUER, "uid", "00u-dst");
+      userRepository.linkUser("dst@example.com", link, null);
+      setReactivatedAt("dst@example.com", Instant.parse("2026-11-01T09:10:00Z"));
+
+      assertThat(userRepository.findLinkedUser(link, Instant.parse("2026-11-01T08:30:00Z")))
+          .isNull();
+      assertThat(userRepository.findLinkedUser(link, Instant.parse("2026-11-01T09:09:59Z")))
+          .isNull();
+      assertThat(userRepository.findLinkedUser(link, Instant.parse("2026-11-01T09:10:00Z")))
+          .isNotNull();
+    }
+  }
+
+  /** Sets the row's reactivation time directly: the repository only sets it to the current time. */
+  private static void setReactivatedAt(String email, Instant reactivatedAt) {
+    try (var session = sessionFactory.openSession()) {
+      var transaction = session.beginTransaction();
+      session
+          .createMutationQuery(
+              "UPDATE UserDAO SET reactivatedEpochSecond = :at WHERE email = :email")
+          .setParameter("at", reactivatedAt.getEpochSecond())
+          .setParameter("email", email)
+          .executeUpdate();
+      transaction.commit();
+    }
   }
 
   @Test

@@ -11,9 +11,7 @@ import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -197,7 +195,7 @@ public class UserRepository {
               userDAO.setLinkIssuer(null);
               userDAO.setLinkClaim(null);
               userDAO.setLinkValue(null);
-              userDAO.setReactivatedAt(Date.from(Instant.now().truncatedTo(ChronoUnit.SECONDS)));
+              userDAO.setReactivatedEpochSecond(Instant.now().getEpochSecond());
             }
             userDAO.setState(
                 updateUser.getActive()
@@ -269,7 +267,7 @@ public class UserRepository {
    *
    * @param issuedAt the token's {@code iat}, or null if it has none
    */
-  public User findLinkedUser(UserLink link, Date issuedAt) {
+  public User findLinkedUser(UserLink link, Instant issuedAt) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -283,7 +281,7 @@ public class UserRepository {
           query.setParameter("claim", link.claim());
           query.setParameter("value", link.value());
           if (issuedAt != null) {
-            query.setParameter("issuedAt", issuedAt);
+            query.setParameter("issuedAt", issuedAt.getEpochSecond());
           }
           // A MySQL database at its default collation compares case- and accent-insensitively, so
           // the query can return a row for another identity; only an exact match is the link.
@@ -308,14 +306,14 @@ public class UserRepository {
    * first calls link the row at most once. Only an ENABLED, unlinked row that is neither the
    * bootstrap admin nor an IdP principal is linked. A reactivated row is linked only by a token
    * issued at or after its reactivation, so a token issued before it (or without {@code iat}) can't
-   * link the row first. Both times have whole seconds, so a token issued in the second of the
-   * reactivation links it.
+   * link the row first. Both times are compared in epoch seconds, so a token issued in the second
+   * of the reactivation links it.
    *
    * @param issuedAt the token's {@code iat}, or null if it has none
    * @return the linked user, or null if no such row exists or {@code link} is already on another
    *     row
    */
-  public User linkUser(String email, UserLink link, Date issuedAt) {
+  public User linkUser(String email, UserLink link, Instant issuedAt) {
     try {
       return TransactionManager.executeWithTransaction(
           sessionFactory,
@@ -333,7 +331,7 @@ public class UserRepository {
                     .setParameter("email", email)
                     .setParameter("enabled", User.StateEnum.ENABLED.toString());
             if (issuedAt != null) {
-              update.setParameter("issuedAt", issuedAt);
+              update.setParameter("issuedAt", issuedAt.getEpochSecond());
             }
             int linked = update.executeUpdate();
             return linked == 0 ? null : getUserByEmail(session, email).toUser();
@@ -354,10 +352,10 @@ public class UserRepository {
    * null) was issued at or after the row's last reactivation; without {@code iat}, only a row that
    * was never reactivated passes.
    */
-  private static String issuedSinceReactivation(Date issuedAt) {
+  private static String issuedSinceReactivation(Instant issuedAt) {
     return issuedAt == null
-        ? " AND reactivatedAt IS NULL"
-        : " AND (reactivatedAt IS NULL OR reactivatedAt <= :issuedAt)";
+        ? " AND reactivatedEpochSecond IS NULL"
+        : " AND (reactivatedEpochSecond IS NULL OR reactivatedEpochSecond <= :issuedAt)";
   }
 
   public void deleteUser(String id) {

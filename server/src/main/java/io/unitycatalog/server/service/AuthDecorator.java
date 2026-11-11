@@ -208,18 +208,19 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
           ErrorCode.UNAUTHENTICATED,
           "Access token has no " + subjectClaim.claimNames() + " claim.");
     }
-    User user = userRepository.findLinkedUser(link, jwt.getIssuedAt());
+    User user = userRepository.findLinkedUser(link, jwt.getIssuedAtAsInstant());
     if (user == null) {
       String email = jwt.getClaim(EMAIL_CLAIM).asString();
       if (email == null) {
         throw new AuthorizationException(
             ErrorCode.UNAUTHENTICATED,
-            "Access token has no email claim to link a user; add one in the identity provider.");
+            "Access token has no email claim to link a user; add one in the identity provider. A"
+                + " token issued before the user's last reactivation is never linked.");
       }
       // A concurrent first call may have linked the row first; then the link finds it.
       user =
-          Optional.ofNullable(userRepository.linkUser(email, link, jwt.getIssuedAt()))
-              .orElseGet(() -> userRepository.findLinkedUser(link, jwt.getIssuedAt()));
+          Optional.ofNullable(userRepository.linkUser(email, link, jwt.getIssuedAtAsInstant()))
+              .orElseGet(() -> userRepository.findLinkedUser(link, jwt.getIssuedAtAsInstant()));
       // TODO(PR 11): with no row for this email, create one owned by this identity provider.
       if (user == null) {
         throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed: " + email);
