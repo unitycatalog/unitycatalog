@@ -566,6 +566,9 @@ def test_process_function_parameter_defaults_with_null():
         ("X'1'", b"\x01"),
         # Malformed hex takes the ValueError fallback and stays a raw string
         ("X'zz'", "X'zz'"),
+        # Odd-length malformed hex also falls back, after the prepend
+        ("X'12z'", "X'12z'"),
+        ("X'z'", "X'z'"),
         # Guard misses (too short, no closing quote) also stay raw strings
         ("X'", "X'"),
         ("X'01", "X'01"),
