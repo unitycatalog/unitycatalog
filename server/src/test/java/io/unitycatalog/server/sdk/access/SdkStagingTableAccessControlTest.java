@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.SecurableType;
+import io.unitycatalog.control.model.UserResource;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
@@ -179,5 +180,57 @@ public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlB
     // Either subclass's surface must exhibit the fail-closed 403; we don't pin which one wins for
     // an owner-with-regular-UUID call here.
     assertDeniedInSurfaceFormat(() -> fetchTempCreds(userBConfig, finalized.tableId()));
+  }
+
+  /** A user created again with the creator's email does not own the creator's staging table. */
+  @Test
+  public void testRecreatedEmailCannotFinalizeTheDeletedUsersStagingTable() throws Exception {
+    String email = "user_e@example.com";
+    String userId = createUserWithStagingRights(email).getId();
+    StagingHandle staging =
+        createStaging(
+            createTestUserServerConfig(email),
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            TestUtils.TABLE_NAME);
+    usersApi.deleteUser(userId);
+    createUserWithStagingRights(email);
+
+    assertDeniedInSurfaceFormat(
+        () ->
+            finalizeManagedTable(createTestUserServerConfig(email), staging, TestUtils.TABLE_NAME),
+        "User attempts to create table on a staging location without ownership");
+  }
+
+  /** A staging table from before created_by_id existed has only the creator's email. */
+  @Test
+  public void testStagingTableWithoutCreatorIdIsFinalizedByTheCreatorEmail() throws Exception {
+    String email = "user_f@example.com";
+    createUserWithStagingRights(email);
+    ServerConfig config = createTestUserServerConfig(email);
+    StagingHandle staging =
+        createStaging(config, TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
+    hibernateConfigurator
+        .getSessionFactory()
+        .inTransaction(
+            session ->
+                session
+                    .createNativeMutationQuery("UPDATE uc_staging_tables SET created_by_id = NULL")
+                    .executeUpdate());
+
+    assertThat(finalizeManagedTable(config, staging, TestUtils.TABLE_NAME).tableId())
+        .isEqualTo(staging.id());
+  }
+
+  private UserResource createUserWithStagingRights(String email) throws Exception {
+    UserResource user = createTestUser(email, "User " + email);
+    grantPermissions(email, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
+    grantPermissions(
+        email,
+        SecurableType.SCHEMA,
+        TestUtils.SCHEMA_FULL_NAME,
+        Privileges.USE_SCHEMA,
+        Privileges.CREATE_TABLE);
+    return user;
   }
 }
