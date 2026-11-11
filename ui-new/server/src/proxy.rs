@@ -113,6 +113,10 @@ pub async fn call_handler(
     if let Some(cookie) = headers.get(header::COOKIE) {
         rb = rb.header(header::COOKIE, cookie);
     }
+    // UC requires this CSRF header on the cookie token exchange (ext=cookie).
+    if let Some(requested_with) = headers.get("x-requested-with") {
+        rb = rb.header("x-requested-with", requested_with);
+    }
     // Optional explicit bearer token (paste-token style); usually empty.
     if !req.token.is_empty() {
         rb = rb.bearer_auth(&req.token);

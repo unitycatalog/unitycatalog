@@ -80,6 +80,7 @@ fn build_cors(origins: &[String]) -> Option<CorsLayer> {
                 header::CONTENT_TYPE,
                 header::AUTHORIZATION,
                 HeaderName::from_static("connect-protocol-version"),
+                HeaderName::from_static("x-requested-with"),
             ])
             .allow_credentials(true),
     )
