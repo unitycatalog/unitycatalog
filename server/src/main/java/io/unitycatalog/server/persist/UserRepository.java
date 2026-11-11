@@ -180,22 +180,14 @@ public class UserRepository {
           if (userDAO == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + id);
           }
-          if (updateUser.getName() != null) {
-            userDAO.setName(updateUser.getName());
-          }
-          if (updateUser.getActive() != null) {
-            userDAO.setState(
-                updateUser.getActive()
-                    ? User.StateEnum.ENABLED.toString()
-                    : User.StateEnum.DISABLED.toString());
-          }
+          // Check before changing anything: a query after a change flushes it outside
+          // flushOrAlreadyExists, which would report a lost race as a server error.
           if (updateUser.getEmail() != null) {
             UserDAO existingEmailUser = getUserByEmail(session, updateUser.getEmail());
             if (existingEmailUser != null && !existingEmailUser.getId().equals(userDAO.getId())) {
               throw new BaseException(
                   ErrorCode.ALREADY_EXISTS, "User already exists: " + updateUser.getEmail());
             }
-            userDAO.setEmail(updateUser.getEmail());
           }
           if (updateUser.getExternalId() != null) {
             UserDAO existingExternalIdUser =
@@ -206,6 +198,20 @@ public class UserRepository {
                   ErrorCode.ALREADY_EXISTS,
                   "User already exists with external id: " + updateUser.getExternalId());
             }
+          }
+          if (updateUser.getName() != null) {
+            userDAO.setName(updateUser.getName());
+          }
+          if (updateUser.getActive() != null) {
+            userDAO.setState(
+                updateUser.getActive()
+                    ? User.StateEnum.ENABLED.toString()
+                    : User.StateEnum.DISABLED.toString());
+          }
+          if (updateUser.getEmail() != null) {
+            userDAO.setEmail(updateUser.getEmail());
+          }
+          if (updateUser.getExternalId() != null) {
             userDAO.setExternalId(updateUser.getExternalId());
           }
           session.merge(userDAO);

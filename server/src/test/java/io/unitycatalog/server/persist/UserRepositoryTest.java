@@ -3,6 +3,8 @@ package io.unitycatalog.server.persist;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -20,12 +22,14 @@ import io.unitycatalog.server.persist.model.UpdateUser;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -182,6 +186,35 @@ class UserRepositoryTest {
               assertThat(e).hasMessageContaining("User already exists: clash-b@example.com");
             });
     assertThat(userRepository.getUser(first.getId()).getEmail()).isEqualTo("clash-a@example.com");
+  }
+
+  @Test
+  void updateUserLosingTheEmailRaceIsAlreadyExists() {
+    var a =
+        userRepository.createUser(
+            CreateUser.builder().name("Race A").email("race-a@example.com").build());
+    userRepository.createUser(
+        CreateUser.builder().name("Race B").email("race-b@example.com").build());
+    // The other writer has not committed yet, so the email pre-check finds nobody.
+    UserRepository racing = spy(userRepository);
+    doReturn(null).when(racing).getUserByEmail(any(Session.class), eq("race-b@example.com"));
+
+    for (String externalId : Arrays.asList(null, "race-ext")) {
+      assertThatThrownBy(
+              () ->
+                  racing.updateUser(
+                      a.getId(),
+                      UpdateUser.builder()
+                          .email("race-b@example.com")
+                          .externalId(externalId)
+                          .build()))
+          .isInstanceOf(BaseException.class)
+          .satisfies(
+              e -> {
+                assertThat(((BaseException) e).getErrorCode()).isEqualTo(ErrorCode.ALREADY_EXISTS);
+                assertThat(e).hasMessageContaining("User already exists: race-b@example.com");
+              });
+    }
   }
 
   @Test

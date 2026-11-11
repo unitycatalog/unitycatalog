@@ -33,6 +33,7 @@ import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.Scim2RuntimeException;
@@ -179,6 +180,9 @@ public class Scim2UserService implements ScimService {
 
     // Absent or empty emails leave the email as it is: `uc user update` without --email sends [].
     boolean hasEmails = userResource.getEmails() != null && !userResource.getEmails().isEmpty();
+    if (hasEmails && !primaryEmail(userResource).getValue().equals(existing.getEmail())) {
+      checkNotBootstrapAdmin(existing);
+    }
     UpdateUser updateUser =
         UpdateUser.builder()
             .name(userResource.getDisplayName())
@@ -199,7 +203,7 @@ public class Scim2UserService implements ScimService {
 
   private static Email primaryEmail(UserResource userResource) {
     return userResource.getEmails().stream()
-        .filter(Email::getPrimary)
+        .filter(email -> Boolean.TRUE.equals(email.getPrimary()))
         .findFirst()
         .orElseThrow(
             () ->
@@ -213,6 +217,7 @@ public class Scim2UserService implements ScimService {
   public HttpResponse deleteUser(@Param("id") String id) {
     User user = userRepository.getUser(id);
     checkNotMetastoreOwner(user);
+    checkNotBootstrapAdmin(user);
     authorizer.clearAuthorizationsForPrincipal(
         UUID.fromString(Objects.requireNonNull(user.getId())));
     userRepository.deleteUser(user.getId());
@@ -259,6 +264,16 @@ public class Scim2UserService implements ScimService {
       throw new BaseException(
           ErrorCode.FAILED_PRECONDITION,
           "The metastore owner can't be deleted or deactivated: " + user.getEmail());
+    }
+  }
+
+  // The server creates the admin user again at start when no user has its email, and then grants
+  // it metastore OWNER. This holds whether or not authorization is enabled now.
+  private void checkNotBootstrapAdmin(User user) {
+    if (UnityAccessUtil.BOOTSTRAP_ADMIN_EMAIL.equals(user.getEmail())) {
+      throw new BaseException(
+          ErrorCode.FAILED_PRECONDITION,
+          "The bootstrap admin user can't be deleted or renamed: " + user.getEmail());
     }
   }
 

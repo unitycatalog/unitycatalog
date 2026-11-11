@@ -13,6 +13,8 @@ import io.unitycatalog.server.persist.model.Privileges;
 import java.util.UUID;
 
 public class UnityAccessUtil {
+  /** The email of the user that the server creates at start to own the metastore. */
+  public static final String BOOTSTRAP_ADMIN_EMAIL = "admin";
 
   private final UserRepository userRepository;
   private final MetastoreRepository metastoreRepository;
@@ -49,7 +51,7 @@ public class UnityAccessUtil {
     // delete or deactivate it.
 
     try {
-      userRepository.getUserByEmail("admin");
+      userRepository.getUserByEmail(BOOTSTRAP_ADMIN_EMAIL);
       return;
     } catch (BaseException e) {
       // Any other lookup error, such as an unreachable database, fails startup.
@@ -58,7 +60,7 @@ public class UnityAccessUtil {
       }
     }
 
-    CreateUser createUser = CreateUser.builder().email("admin").name("Admin").build();
+    CreateUser createUser = CreateUser.builder().email(BOOTSTRAP_ADMIN_EMAIL).name("Admin").build();
 
     User adminUser = userRepository.createUser(createUser);
 

@@ -1,9 +1,9 @@
 package io.unitycatalog.server.sdk.access;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.linecorp.armeria.common.HttpStatus;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.control.ApiException;
 import io.unitycatalog.control.api.UsersApi;
@@ -12,6 +12,8 @@ import io.unitycatalog.control.model.UserResource;
 import io.unitycatalog.control.model.UserResourceList;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.service.Scim2UserService;
@@ -35,6 +37,8 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
       "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],"
           + "\"Operations\":[{\"op\":\"replace\",\"value\":{\"active\":false}}]}";
 
+  private static final String BOOTSTRAP_ADMIN_REFUSED =
+      "The bootstrap admin user can't be deleted or renamed: ";
   private static final String OWNER_REFUSED =
       "The metastore owner can't be deleted or deactivated: admin";
 
@@ -124,11 +128,26 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     assertThat(delete.getResponseBody()).contains("\"error_code\":\"FAILED_PRECONDITION\"");
     assertThat(delete.getResponseBody()).contains(OWNER_REFUSED);
     assertThat(usersApi.getUser(owner.getId()).getActive()).isTrue();
+
+    // A new email would leave the next start creating "admin" again with OWNER.
+    ApiException rename =
+        assertThrows(
+            ApiException.class,
+            () ->
+                usersApi.updateUser(
+                    owner.getId(),
+                    new UserResource()
+                        .id(owner.getId())
+                        .emails(List.of(primaryEmail("root@localhost")))));
+    assertThat(rename.getCode()).isEqualTo(400);
+    assertThat(rename.getResponseBody()).contains("\"error_code\":\"FAILED_PRECONDITION\"");
+    assertThat(rename.getResponseBody()).contains(BOOTSTRAP_ADMIN_REFUSED + "admin");
+    assertThat(usersApi.getUser(owner.getId()).getEmails().get(0).getValue()).isEqualTo("admin");
   }
 
   @Test
   @SneakyThrows
-  public void testMetastoreOwnerCanBeDeactivatedAndDeletedWithAuthorizationDisabled() {
+  public void testMetastoreOwnerCanBeDeactivatedButNotDeletedWithAuthorizationDisabled() {
     // With authorization disabled the server uses AllowingAuthorizer, which allows every OWNER
     // check, so the service skips the owner check and the owner can be deactivated and deleted.
     String ownerId =
@@ -150,7 +169,15 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     var owner = service.getUser(ownerId);
     owner.setActive(false);
     assertThat(service.updateUser(ownerId, owner).getActive()).isFalse();
-    assertThat(service.deleteUser(ownerId).aggregate().join().status()).isEqualTo(HttpStatus.OK);
+    // The bootstrap admin row stays, or the next start would create it again with OWNER.
+    assertThatThrownBy(() -> service.deleteUser(ownerId))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            e -> {
+              assertThat(e.getErrorCode()).isEqualTo(ErrorCode.FAILED_PRECONDITION);
+              assertThat(e).hasMessage(BOOTSTRAP_ADMIN_REFUSED + "admin");
+            });
+    assertThat(service.getUser(ownerId).getId()).isEqualTo(ownerId);
   }
 
   @Test
@@ -266,6 +293,23 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
       assertThat(updated.getEmails().get(0).getValue()).isEqualTo(OTHER_USER);
       assertThat(usersApi.getUser(otherUser.getId()).getEmails().get(0).getValue())
           .isEqualTo(OTHER_USER);
+    }
+  }
+
+  @Test
+  @SneakyThrows
+  public void testEmailWithoutPrimaryIsRefusedOnPutAndPost() {
+    String noPrimary = "\"emails\":[{\"value\":\"no-primary@localhost\"}]";
+    String userPath = SCIM_USERS_PATH + "/" + otherUser.getId();
+    String put = "{\"id\":\"" + otherUser.getId() + "\"," + noPrimary + "}";
+    String post = "{\"displayName\":\"No Primary\"," + noPrimary + "}";
+
+    for (HttpResponse<String> response :
+        List.of(
+            TestUtils.sendRaw(adminConfig, "PUT", userPath, Optional.of(put)),
+            TestUtils.sendRaw(adminConfig, "POST", SCIM_USERS_PATH, Optional.of(post)))) {
+      assertThat(response.statusCode()).isEqualTo(412);
+      assertThat(response.body()).contains("User does not have a primary email.");
     }
   }
 
