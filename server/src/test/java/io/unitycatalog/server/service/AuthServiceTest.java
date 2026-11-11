@@ -10,6 +10,7 @@ import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.Cookie;
@@ -31,10 +32,19 @@ import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Configurator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -302,6 +312,122 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
             accessJwt.getIssuedAt().toInstant().plus(expectedTtl), within(2, ChronoUnit.SECONDS));
   }
 
+  /**
+   * Journey for the UC tokens the server accepts: a token from the exchange and the bootstrap
+   * SERVICE token (no expiry) work; a token with a missing or unknown type, or an ACCESS token with
+   * no expiry, gets 401; disabling the user refuses its still-valid token on the next request.
+   */
+  @Test
+  public void testUcTokenChecksJourney() throws Exception {
+    createEnabledUser(ENABLED_USER_EMAIL);
+    String identityToken =
+        createIdentityToken(
+            ENABLED_USER_EMAIL, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
+    String accessToken =
+        MAPPER.readTree(exchangeToken(identityToken).contentUtf8()).get("access_token").asText();
+    assertThat(listCatalogs(accessToken).status()).isEqualTo(HttpStatus.OK);
+    String serviceToken = securityContext.getServiceToken();
+    assertThat(JWT.decode(serviceToken).getExpiresAt()).isNull();
+    assertThat(listCatalogs(serviceToken).status()).isEqualTo(HttpStatus.OK);
+
+    String typeMessage =
+        "Access token has a missing or unknown type. Get a new token from this server.";
+    Date expiresAt = Date.from(Instant.now().plus(Duration.ofMinutes(5)));
+    Map<String, String> rejected =
+        Map.of(
+            ucSignedToken(null, expiresAt), typeMessage,
+            ucSignedToken("BOGUS", expiresAt), typeMessage,
+            ucSignedToken(JwtTokenType.ACCESS.name(), null),
+                "Access token has no expiry. Get a new token from this server.");
+    for (Map.Entry<String, String> entry : rejected.entrySet()) {
+      AggregatedHttpResponse response = listCatalogs(entry.getKey());
+      assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+      JsonNode error = MAPPER.readTree(response.contentUtf8());
+      assertThat(error.get("error_code").asText()).isEqualTo("UNAUTHENTICATED");
+      assertThat(error.get("message").asText()).isEqualTo(entry.getValue());
+    }
+
+    // The admin disables the user; the token it already holds is refused on the next request.
+    JsonNode users = MAPPER.readTree(scim(HttpMethod.GET, "", null).contentUtf8());
+    ObjectNode user = null;
+    for (JsonNode resource : users.get("Resources")) {
+      if (resource.get("emails").get(0).get("value").asText().equals(ENABLED_USER_EMAIL)) {
+        user = (ObjectNode) resource;
+      }
+    }
+    user.put("active", false);
+    String id = user.get("id").asText();
+    assertThat(scim(HttpMethod.PUT, "/" + id, user.toString()).status()).isEqualTo(HttpStatus.OK);
+    AggregatedHttpResponse refused = listCatalogs(accessToken);
+    assertThat(refused.status()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(MAPPER.readTree(refused.contentUtf8()).get("message").asText())
+        .isEqualTo("User not allowed: " + ENABLED_USER_EMAIL);
+  }
+
+  /** A token signed with the server's key for the enabled user; null leaves the claim out. */
+  private String ucSignedToken(String type, Date expiresAt) {
+    var builder =
+        JWT.create()
+            .withIssuer(INTERNAL)
+            .withKeyId(securityContext.getKeyId())
+            .withExpiresAt(expiresAt)
+            .withClaim(JwtClaim.SUBJECT.key(), ENABLED_USER_EMAIL);
+    if (type != null) {
+      builder.withClaim(JwtClaim.TOKEN_TYPE.key(), type);
+    }
+    return builder.sign(securityContext.getAlgorithm());
+  }
+
+  private AggregatedHttpResponse listCatalogs(String token) {
+    return client
+        .execute(
+            RequestHeaders.builder(HttpMethod.GET, "/api/2.1/unity-catalog/catalogs")
+                .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + token)
+                .build())
+        .aggregate()
+        .join();
+  }
+
+  /** Calls the SCIM users endpoint as the admin. */
+  private AggregatedHttpResponse scim(HttpMethod method, String path, String body) {
+    RequestHeaders headers =
+        RequestHeaders.builder(method, "/api/1.0/unity-control/scim2/Users" + path)
+            .contentType(MediaType.JSON)
+            .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + securityContext.getServiceToken())
+            .build();
+    return client
+        .execute(headers, body == null ? HttpData.empty() : HttpData.ofUtf8(body))
+        .aggregate()
+        .join();
+  }
+
+  @Test
+  public void testTokenExchangeDebugLogOmitsSubjectToken() {
+    createEnabledUser(ENABLED_USER_EMAIL);
+    String token =
+        createIdentityToken(
+            ENABLED_USER_EMAIL, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
+    Logger logger = (Logger) LogManager.getLogger(AuthService.class);
+    Level previousLevel = logger.getLevel();
+    CapturingAppender appender = new CapturingAppender();
+    appender.start();
+    logger.addAppender(appender);
+    Configurator.setLevel(logger.getName(), Level.DEBUG);
+    try {
+      assertThat(exchangeToken(token).status()).isEqualTo(HttpStatus.OK);
+    } finally {
+      logger.removeAppender(appender);
+      Configurator.setLevel(logger.getName(), previousLevel);
+      appender.stop();
+    }
+    assertThat(appender.messages)
+        .contains(
+            "Token exchange request: grant_type=urn:ietf:params:oauth:grant-type:token-exchange,"
+                + " requested_token_type=urn:ietf:params:oauth:token-type:access_token,"
+                + " subject_token_type=urn:ietf:params:oauth:token-type:id_token");
+    assertThat(String.join("\n", appender.messages)).doesNotContain(token);
+  }
+
   @Test
   public void testTokenExchangeWithCorrectIssuerAndWrongAudience() {
     String token =
@@ -479,5 +605,24 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     hibernateConfigurator
         .getSessionFactory()
         .inTransaction(session -> session.createNativeMutationQuery(sql).executeUpdate());
+  }
+
+  private static final class CapturingAppender extends AbstractAppender {
+
+    private final List<String> messages = new CopyOnWriteArrayList<>();
+
+    private CapturingAppender() {
+      super(
+          "AuthServiceTest",
+          null,
+          null,
+          true,
+          org.apache.logging.log4j.core.config.Property.EMPTY_ARRAY);
+    }
+
+    @Override
+    public void append(LogEvent event) {
+      messages.add(event.getMessage().getFormattedMessage());
+    }
   }
 }
