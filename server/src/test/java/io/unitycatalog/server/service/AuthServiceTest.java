@@ -10,6 +10,7 @@ import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.Cookie;
@@ -26,6 +27,8 @@ import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
@@ -42,6 +45,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
 
   private static final String LOGOUT_ENDPOINT = "/api/1.0/unity-control/auth/logout";
   private static final String TOKEN_ENDPOINT = "/api/1.0/unity-control/auth/tokens";
+  private static final String SCIM_USERS = "/api/1.0/unity-control/scim2/Users";
   private static final String ENABLED_USER_EMAIL = "test-user@example.com";
   private static final String EMPTY_RESPONSE = "{}";
   private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -473,6 +477,115 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     } finally {
       runSql("ALTER TABLE uc_users DROP CONSTRAINT scim_db_failure");
     }
+  }
+
+  /**
+   * Replays Okta's documented SCIM 2.0 user provisioning (developer.okta.com SCIM 2.0 guide) in its
+   * order: check, create, check, update, deactivate, reactivate. The bearer token stands in for
+   * Okta's API token; sign-in is a token exchange of an identity token from the fake IdP.
+   */
+  @Test
+  public void testOktaUserProvisioningJourney() throws Exception {
+    String userName = "test.user@okta.local";
+    String filter =
+        URLEncoder.encode("userName eq \"" + userName + "\"", StandardCharsets.UTF_8)
+            + "&startIndex=1&count=100";
+    String oktaCreate =
+        "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],"
+            + "\"userName\":\"test.user@okta.local\","
+            + "\"name\":{\"givenName\":\"Test\",\"familyName\":\"User\"},"
+            + "\"emails\":[{\"primary\":true,\"value\":\"test.user@okta.local\","
+            + "\"type\":\"work\"}],"
+            + "\"displayName\":\"Test User\",\"locale\":\"en-US\","
+            + "\"externalId\":\"00ujl29u0le5T6Aj10h7\",\"groups\":[],"
+            + "\"password\":\"1mz050nq\",\"active\":true}";
+    String oktaPatchActive =
+        "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],"
+            + "\"Operations\":[{\"op\":\"replace\",\"value\":{\"active\":%s}}]}";
+
+    // 1. Okta looks the user up first: there is none.
+    JsonNode none =
+        MAPPER.readTree(scim(HttpMethod.GET, SCIM_USERS + "?filter=" + filter, null, 200));
+    assertThat(none.get("totalResults").asInt()).isZero();
+    assertThat(none.get("Resources")).isEmpty();
+
+    // 2. It creates the user, sending a password placeholder and an empty groups list.
+    JsonNode created = MAPPER.readTree(scim(HttpMethod.POST, SCIM_USERS, oktaCreate, 201));
+    String id = created.get("id").asText();
+    assertThat(created.get("userName").asText()).isEqualTo(userName);
+    assertThat(created.get("displayName").asText()).isEqualTo("Test User");
+    assertThat(created.get("active").asBoolean()).isTrue();
+    // A second create is the 409 Okta expects for an existing user.
+    scim(HttpMethod.POST, SCIM_USERS, oktaCreate, 409);
+
+    // 3. The lookup now finds exactly that user.
+    JsonNode found =
+        MAPPER.readTree(scim(HttpMethod.GET, SCIM_USERS + "?filter=" + filter, null, 200));
+    assertThat(found.get("totalResults").asInt()).isEqualTo(1);
+    assertThat(found.get("Resources").get(0).get("id").asText()).isEqualTo(id);
+    JsonNode user = found.get("Resources").get(0);
+
+    // The user signs in with an identity token from the IdP.
+    String idToken =
+        createIdentityToken(
+            userName, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
+    String accessToken =
+        MAPPER.readTree(exchangeToken(idToken).contentUtf8()).get("access_token").asText();
+    assertThat(callMe(accessToken)).isEqualTo(HttpStatus.OK);
+
+    // 4. A change of name arrives as a PUT of the full user.
+    ObjectNode update = user.deepCopy();
+    update.put("displayName", "Tess Renamed");
+    update.set("name", MAPPER.readTree("{\"givenName\":\"Tess\",\"familyName\":\"Renamed\"}"));
+    JsonNode updated =
+        MAPPER.readTree(scim(HttpMethod.PUT, SCIM_USERS + "/" + id, update.toString(), 200));
+    assertThat(updated.get("displayName").asText()).isEqualTo("Tess Renamed");
+    assertThat(updated.get("active").asBoolean()).isTrue();
+
+    // 5. Deactivation is a pathless PATCH. The user can then neither sign in nor use a token that
+    // was issued earlier.
+    scim(HttpMethod.PATCH, SCIM_USERS + "/" + id, String.format(oktaPatchActive, "false"), 200);
+    assertThat(
+            MAPPER
+                .readTree(scim(HttpMethod.GET, SCIM_USERS + "/" + id, null, 200))
+                .get("active")
+                .asBoolean())
+        .isFalse();
+    assertThat(exchangeToken(idToken).status()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(callMe(accessToken)).isEqualTo(HttpStatus.FORBIDDEN);
+
+    // Reactivation is the same PATCH with true, and the user is back, name intact.
+    scim(HttpMethod.PATCH, SCIM_USERS + "/" + id, String.format(oktaPatchActive, "true"), 200);
+    JsonNode reactivated = MAPPER.readTree(scim(HttpMethod.GET, SCIM_USERS + "/" + id, null, 200));
+    assertThat(reactivated.get("active").asBoolean()).isTrue();
+    assertThat(reactivated.get("displayName").asText()).isEqualTo("Tess Renamed");
+    assertThat(exchangeToken(idToken).status()).isEqualTo(HttpStatus.OK);
+    assertThat(callMe(accessToken)).isEqualTo(HttpStatus.OK);
+  }
+
+  /** Sends a SCIM request as the provisioning client, checks the status and returns the body. */
+  private String scim(HttpMethod method, String path, String body, int expectedStatus) {
+    RequestHeaders headers =
+        RequestHeaders.builder(method, path)
+            .contentType(MediaType.JSON)
+            .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + securityContext.getServiceToken())
+            .build();
+    AggregatedHttpResponse response =
+        (body == null ? client.execute(headers) : client.execute(headers, HttpData.ofUtf8(body)))
+            .aggregate()
+            .join();
+    assertThat(response.status().code())
+        .as("%s %s: %s", method, path, response.contentUtf8())
+        .isEqualTo(expectedStatus);
+    return response.contentUtf8();
+  }
+
+  private HttpStatus callMe(String accessToken) {
+    RequestHeaders headers =
+        RequestHeaders.builder(HttpMethod.GET, "/api/1.0/unity-control/scim2/Me")
+            .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + accessToken)
+            .build();
+    return client.execute(headers).aggregate().join().status();
   }
 
   private void runSql(String sql) {

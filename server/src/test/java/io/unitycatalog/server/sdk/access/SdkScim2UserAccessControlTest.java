@@ -112,6 +112,18 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     assertThat(patch.body()).contains(OWNER_REFUSED);
     assertThat(usersApi.getUser(owner.getId()).getActive()).isTrue();
 
+    // The last operation decides: a deactivation last is refused, one followed by an activation is
+    // not a deactivation.
+    String activate = "{\"op\":\"replace\",\"path\":\"active\",\"value\":true}";
+    String deactivate = "{\"op\":\"replace\",\"path\":\"active\",\"value\":false}";
+    HttpResponse<String> activateLast = patch(ownerPath, deactivate + "," + activate);
+    assertThat(activateLast.statusCode()).isEqualTo(200);
+    HttpResponse<String> deactivateLast = patch(ownerPath, activate + "," + deactivate);
+    assertThat(deactivateLast.statusCode()).isEqualTo(400);
+    assertThat(deactivateLast.body()).contains("\"error_code\":\"FAILED_PRECONDITION\"");
+    assertThat(deactivateLast.body()).contains(OWNER_REFUSED);
+    assertThat(usersApi.getUser(owner.getId()).getActive()).isTrue();
+
     UserResource inactive = owner.active(false);
     ApiException put =
         assertThrows(ApiException.class, () -> usersApi.updateUser(owner.getId(), inactive));
@@ -229,6 +241,15 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
             + "\"value\":false}",
         "false"
       },
+      // The path, the schema URN and the pathless attribute name ignore case.
+      {"{\"op\":\"replace\",\"path\":\"Active\",\"value\":false}", "false"},
+      {"{\"op\":\"replace\",\"path\":\"ACTIVE\",\"value\":true}", "true"},
+      {
+        "{\"op\":\"replace\",\"path\":\"urn:ietf:params:scim:schemas:core:2.0:user:Active\","
+            + "\"value\":false}",
+        "false"
+      },
+      {"{\"op\":\"replace\",\"value\":{\"Active\":true}}", "true"},
       // A single-element array is the value itself.
       {"{\"op\":\"replace\",\"path\":\"active\",\"value\":[true]}", "true"},
       {"{\"op\":\"replace\",\"value\":{\"active\":[false]}}", "false"},
@@ -265,12 +286,15 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
   }
 
   private HttpResponse<String> patchOtherUser(String operations) throws Exception {
+    return patch(SCIM_USERS_PATH + "/" + otherUser.getId(), operations);
+  }
+
+  private HttpResponse<String> patch(String path, String operations) throws Exception {
     String body =
         "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],\"Operations\":["
             + operations
             + "]}";
-    return TestUtils.sendRaw(
-        adminConfig, "PATCH", SCIM_USERS_PATH + "/" + otherUser.getId(), Optional.of(body));
+    return TestUtils.sendRaw(adminConfig, "PATCH", path, Optional.of(body));
   }
 
   @Test
@@ -278,9 +302,11 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
   public void testPatchActiveWithNonBooleanValueIsBadRequest() {
     String maybe = "{\"op\":\"replace\",\"path\":\"active\",\"value\":\"maybe\"}";
     String deactivate = "{\"op\":\"replace\",\"path\":\"active\",\"value\":false}";
+    // An array of several values is no boolean either.
+    String array = "{\"op\":\"replace\",\"path\":\"active\",\"value\":[false,true]}";
     // Every operation is validated, not only the last, and nothing is applied on a 400.
     for (String operations :
-        new String[] {maybe, maybe + "," + deactivate, deactivate + "," + maybe}) {
+        new String[] {maybe, array, maybe + "," + deactivate, deactivate + "," + maybe}) {
       HttpResponse<String> response = patchOtherUser(operations);
       assertThat(response.statusCode()).as(operations).isEqualTo(400);
       assertThat(response.body()).as(operations).contains("active must be true or false");
