@@ -3,6 +3,8 @@ package io.unitycatalog.server.sdk.access;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.common.HttpStatus;
 import io.unitycatalog.control.ApiException;
 import io.unitycatalog.control.api.UsersApi;
@@ -15,7 +17,9 @@ import io.unitycatalog.server.service.Scim2UserService;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
+import java.net.URLEncoder;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.Properties;
 import lombok.SneakyThrows;
@@ -30,6 +34,8 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
   private static final String DEACTIVATE =
       "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],"
           + "\"Operations\":[{\"op\":\"replace\",\"value\":{\"active\":false}}]}";
+
+  private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private static final String OWNER_REFUSED =
       "The metastore owner can't be deleted or deactivated: admin";
@@ -147,6 +153,97 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     owner.setActive(false);
     assertThat(service.updateUser(ownerId, owner).getActive()).isFalse();
     assertThat(service.deleteUser(ownerId).aggregate().join().status()).isEqualTo(HttpStatus.OK);
+  }
+
+  @Test
+  @SneakyThrows
+  public void testListTotalResultsIsTheMatchCountNotThePageSize() {
+    createTestUser("scim-third@localhost", "Third User");
+    String filter = URLEncoder.encode("userName sw \"scim-\"", StandardCharsets.UTF_8);
+
+    // {query, expected startIndex, expected Resources, expected itemsPerPage}
+    String[][] cases = {
+      {"startIndex=1&count=1", "1", "1", "1"},
+      {"startIndex=3&count=5", "3", "1", "1"},
+      {"startIndex=1&count=50", "1", "3", "3"},
+    };
+    for (String[] c : cases) {
+      HttpResponse<String> response =
+          TestUtils.sendRaw(
+              adminConfig,
+              "GET",
+              SCIM_USERS_PATH + "?filter=" + filter + "&" + c[0],
+              Optional.empty());
+      assertThat(response.statusCode()).isEqualTo(200);
+      JsonNode body = MAPPER.readTree(response.body());
+      assertThat(body.get("totalResults").asInt()).as(c[0]).isEqualTo(3);
+      assertThat(body.get("startIndex").asInt()).as(c[0]).isEqualTo(Integer.parseInt(c[1]));
+      assertThat(body.get("Resources")).as(c[0]).hasSize(Integer.parseInt(c[2]));
+      assertThat(body.get("itemsPerPage").asInt()).as(c[0]).isEqualTo(Integer.parseInt(c[3]));
+    }
+  }
+
+  @Test
+  @SneakyThrows
+  public void testPatchHonoursThePathAndAttribute() {
+    String patchPath = SCIM_USERS_PATH + "/" + otherUser.getId();
+    // {Operations element, expected status, expected active afterwards}. The user starts active;
+    // a refused request leaves the previous state alone.
+    String[][] cases = {
+      {"{\"op\":\"replace\",\"path\":\"active\",\"value\":false}", "200", "false"},
+      {"{\"op\":\"Replace\",\"path\":\"active\",\"value\":true}", "200", "true"},
+      {"{\"op\":\"Replace\",\"path\":\"active\",\"value\":\"False\"}", "200", "false"},
+      {"{\"op\":\"replace\",\"path\":\"active\",\"value\":\"True\"}", "200", "true"},
+      {"{\"op\":\"Replace\",\"value\":{\"active\":false}}", "200", "false"},
+      {"{\"op\":\"replace\",\"value\":{\"active\":true}}", "200", "true"},
+      // Anything but a change of active is not implemented, and must not touch active.
+      {"{\"op\":\"replace\",\"value\":{\"displayName\":\"false\"}}", "501", "true"},
+      {"{\"op\":\"replace\",\"path\":\"displayName\",\"value\":\"false\"}", "501", "true"},
+      {"{\"op\":\"replace\",\"value\":{\"active\":false,\"displayName\":\"x\"}}", "501", "true"},
+      {"{\"op\":\"add\",\"path\":\"active\",\"value\":false}", "501", "true"},
+      {"{\"op\":\"remove\",\"path\":\"active\"}", "501", "true"},
+    };
+    for (String[] c : cases) {
+      String body =
+          "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],\"Operations\":["
+              + c[0]
+              + "]}";
+      boolean activeBefore = usersApi.getUser(otherUser.getId()).getActive();
+      HttpResponse<String> response =
+          TestUtils.sendRaw(adminConfig, "PATCH", patchPath, Optional.of(body));
+      assertThat(response.statusCode()).as(c[0]).isEqualTo(Integer.parseInt(c[1]));
+      boolean expectedActive = c[1].equals("200") ? Boolean.parseBoolean(c[2]) : activeBefore;
+      assertThat(usersApi.getUser(otherUser.getId()).getActive())
+          .as(c[0])
+          .isEqualTo(expectedActive);
+    }
+  }
+
+  @Test
+  @SneakyThrows
+  public void testPatchActiveWithNonBooleanValueIsBadRequest() {
+    String body =
+        "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],"
+            + "\"Operations\":[{\"op\":\"replace\",\"path\":\"active\",\"value\":\"maybe\"}]}";
+    HttpResponse<String> response =
+        TestUtils.sendRaw(
+            adminConfig, "PATCH", SCIM_USERS_PATH + "/" + otherUser.getId(), Optional.of(body));
+    assertThat(response.statusCode()).isEqualTo(400);
+    assertThat(response.body()).contains("active must be true or false");
+    assertThat(usersApi.getUser(otherUser.getId()).getActive()).isTrue();
+  }
+
+  @Test
+  @SneakyThrows
+  public void testUserCarriesTheNameAttribute() {
+    HttpResponse<String> response =
+        TestUtils.sendRaw(
+            adminConfig, "GET", SCIM_USERS_PATH + "/" + otherUser.getId(), Optional.empty());
+    assertThat(response.statusCode()).isEqualTo(200);
+    JsonNode body = MAPPER.readTree(response.body());
+    assertThat(body.get("name").get("formatted").asText()).isEqualTo("Other User");
+    // userName stays the email (plan Q-P1).
+    assertThat(body.get("userName").asText()).isEqualTo(OTHER_USER);
   }
 
   private static void assertScimPermissionDenied(Executable request) {

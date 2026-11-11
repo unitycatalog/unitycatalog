@@ -3,7 +3,7 @@ package io.unitycatalog.server.service;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.utils.Scim2Utils.asUserResource;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
@@ -65,6 +65,7 @@ import java.util.UUID;
  * </ul>
  */
 public class Scim2UserService implements ScimService {
+  private static final String ACTIVE = "active";
   private final UserRepository userRepository;
   private final UnityCatalogAuthorizer authorizer;
   private final MetastoreRepository metastoreRepository;
@@ -93,13 +94,14 @@ public class Scim2UserService implements ScimService {
         filter.filter(f -> !f.isEmpty()).<Filter>map(this::parseFilter).orElse(null);
     FilterEvaluator filterEvaluator = new FilterEvaluator();
 
+    // totalResults is the number of matches, so the page is cut after matching (RFC 7644 3.4.2).
+    List<User> matches =
+        userRepository.listUsers(m -> match(filterEvaluator, userFilter, asUserResource(m)));
+    int firstIndex = Math.max(startIndex.orElse(1), 1);
     List<UserResource> userResourcesList =
-        userRepository
-            .listUsers(
-                startIndex.orElse(1) - 1,
-                count.orElse(50),
-                m -> match(filterEvaluator, userFilter, asUserResource(m)))
-            .stream()
+        matches.stream()
+            .skip(firstIndex - 1)
+            .limit(count.orElse(50))
             .map(Scim2Utils::asUserResource)
             .toList();
 
@@ -109,11 +111,7 @@ public class Scim2UserService implements ScimService {
     meta.setResourceType("User");
 
     ListResponse<UserResource> userResources =
-        new ListResponse<>(
-            userResourcesList.size(),
-            userResourcesList,
-            startIndex.orElse(1),
-            userResourcesList.size());
+        new ListResponse<>(matches.size(), userResourcesList, firstIndex, userResourcesList.size());
     userResources.setMeta(meta);
 
     return userResources;
@@ -211,28 +209,53 @@ public class Scim2UserService implements ScimService {
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse patchUser(@Param("id") String id, PatchRequest patchRequest) {
-    return patchRequest.getOperations().stream()
-        .filter(
-            op ->
-                op.getOpType() == PatchOpType.REPLACE
-                    && op.getPath() == null) // Only support patch for okta
-        .findFirst()
-        .map(op -> handleUserUpdate(id, op))
-        .orElse(HttpResponse.of(HttpStatus.NOT_IMPLEMENTED));
+    // Only a replace of "active" is supported, either as path "active" or as the pathless
+    // {"active": ...} object Okta sends. Any other operation, path or attribute is refused as a
+    // whole, so no part of the request is applied.
+    List<PatchOperation> operations = patchRequest.getOperations();
+    if (operations.isEmpty() || !operations.stream().allMatch(this::isActiveReplace)) {
+      return HttpResponse.of(HttpStatus.NOT_IMPLEMENTED);
+    }
+    JsonNode last = activeValue(operations.get(operations.size() - 1));
+    boolean active = parseActive(last);
+    if (!active) {
+      checkNotMetastoreOwner(userRepository.getUser(id));
+    }
+    userRepository.updateUser(id, UpdateUser.builder().active(active).build());
+    return HttpResponse.of(HttpStatus.OK);
   }
 
-  private HttpResponse handleUserUpdate(String id, PatchOperation operation) {
-    try {
-      Boolean value = operation.getValues(Boolean.class).get(0);
-      if (Boolean.FALSE.equals(value)) {
-        checkNotMetastoreOwner(userRepository.getUser(id));
-      }
-      UpdateUser updateUser = UpdateUser.builder().active(value).build();
-      userRepository.updateUser(id, updateUser);
-      return HttpResponse.of(HttpStatus.OK);
-    } catch (ScimException | JsonProcessingException e) {
-      return handleExceptionDuringPatch(e);
+  private boolean isActiveReplace(PatchOperation operation) {
+    return operation.getOpType() == PatchOpType.REPLACE && activeValue(operation) != null;
+  }
+
+  /** The value a replace sets "active" to, or null if the operation touches anything else. */
+  private JsonNode activeValue(PatchOperation operation) {
+    JsonNode value = operation.getJsonNode();
+    if (operation.getPath() != null) {
+      boolean isActivePath = ACTIVE.equalsIgnoreCase(operation.getPath().toString());
+      return isActivePath ? unwrapSingleValue(value) : null;
     }
+    boolean isOnlyActive =
+        value.isObject() && value.size() == 1 && ACTIVE.equalsIgnoreCase(value.fieldNames().next());
+    return isOnlyActive ? unwrapSingleValue(value.elements().next()) : null;
+  }
+
+  private static JsonNode unwrapSingleValue(JsonNode value) {
+    return value.isArray() && value.size() == 1 ? value.get(0) : value;
+  }
+
+  private boolean parseActive(JsonNode value) {
+    if (value.isBoolean()) {
+      return value.booleanValue();
+    }
+    if (value.isTextual() && "true".equalsIgnoreCase(value.textValue())) {
+      return true;
+    }
+    if (value.isTextual() && "false".equalsIgnoreCase(value.textValue())) {
+      return false;
+    }
+    throw new Scim2RuntimeException(new BadRequestException("active must be true or false."));
   }
 
   // With authorization disabled, every authorize() call returns true, so the owner check only
@@ -247,15 +270,6 @@ public class Scim2UserService implements ScimService {
       throw new BaseException(
           ErrorCode.FAILED_PRECONDITION,
           "The metastore owner can't be deleted or deactivated: " + user.getEmail());
-    }
-  }
-
-  private HttpResponse handleExceptionDuringPatch(Exception ex) {
-    if (ex instanceof ScimException) {
-      throw new Scim2RuntimeException((ScimException) ex);
-    } else {
-      throw new Scim2RuntimeException(
-          new ServerErrorException("Problem with patch operation", ex.getMessage(), ex));
     }
   }
 
