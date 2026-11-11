@@ -208,7 +208,7 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
           ErrorCode.UNAUTHENTICATED,
           "Access token has no " + subjectClaim.claimNames() + " claim.");
     }
-    User user = userRepository.findLinkedUser(link);
+    User user = userRepository.findLinkedUser(link, jwt.getIssuedAt());
     if (user == null) {
       String email = jwt.getClaim(EMAIL_CLAIM).asString();
       if (email == null) {
@@ -219,7 +219,7 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
       // A concurrent first call may have linked the row first; then the link finds it.
       user =
           Optional.ofNullable(userRepository.linkUser(email, link, jwt.getIssuedAt()))
-              .orElseGet(() -> userRepository.findLinkedUser(link));
+              .orElseGet(() -> userRepository.findLinkedUser(link, jwt.getIssuedAt()));
       // TODO(PR 11): with no row for this email, create one owned by this identity provider.
       if (user == null) {
         throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed: " + email);

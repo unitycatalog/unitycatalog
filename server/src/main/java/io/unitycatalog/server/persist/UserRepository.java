@@ -263,19 +263,28 @@ public class UserRepository {
         /* readOnly= */ false);
   }
 
-  /** Returns the user linked to {@code link}, or null if no row is linked to it. */
-  public User findLinkedUser(UserLink link) {
+  /**
+   * Returns the user linked to {@code link}, or null if no row is linked to it or the token was
+   * issued before the row's last reactivation (see {@link #linkUser}).
+   *
+   * @param issuedAt the token's {@code iat}, or null if it has none
+   */
+  public User findLinkedUser(UserLink link, Date issuedAt) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           Query<UserDAO> query =
               session.createQuery(
                   "FROM UserDAO WHERE linkIssuer = :issuer AND linkClaim = :claim"
-                      + " AND linkValue = :value",
+                      + " AND linkValue = :value"
+                      + issuedSinceReactivation(issuedAt),
                   UserDAO.class);
           query.setParameter("issuer", link.issuer());
           query.setParameter("claim", link.claim());
           query.setParameter("value", link.value());
+          if (issuedAt != null) {
+            query.setParameter("issuedAt", issuedAt);
+          }
           // A MySQL database at its default collation compares case- and accent-insensitively, so
           // the query can return a row for another identity; only an exact match is the link.
           return query.list().stream()
@@ -317,9 +326,7 @@ public class UserRepository {
                         "UPDATE UserDAO SET linkIssuer = :issuer, linkClaim = :claim,"
                             + " linkValue = :value WHERE email = :email AND linkIssuer IS NULL"
                             + " AND state = :enabled AND email <> 'admin' AND idpName IS NULL"
-                            + (issuedAt == null
-                                ? " AND reactivatedAt IS NULL"
-                                : " AND (reactivatedAt IS NULL OR reactivatedAt <= :issuedAt)"))
+                            + issuedSinceReactivation(issuedAt))
                     .setParameter("issuer", link.issuer())
                     .setParameter("claim", link.claim())
                     .setParameter("value", link.value())
@@ -340,6 +347,17 @@ public class UserRepository {
       }
       return null;
     }
+  }
+
+  /**
+   * The HQL condition that a token issued at {@code issuedAt} (bound as {@code :issuedAt} when not
+   * null) was issued at or after the row's last reactivation; without {@code iat}, only a row that
+   * was never reactivated passes.
+   */
+  private static String issuedSinceReactivation(Date issuedAt) {
+    return issuedAt == null
+        ? " AND reactivatedAt IS NULL"
+        : " AND (reactivatedAt IS NULL OR reactivatedAt <= :issuedAt)";
   }
 
   public void deleteUser(String id) {

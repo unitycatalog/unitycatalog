@@ -346,7 +346,8 @@ server.authentication.idp.okta.subject-claim=OKTA
   standard, for example with Keycloak. `OKTA` reads `uid` for a person and, in a token without `uid`, `cid` for a
   machine; it never reads Okta's `sub`, which an Okta admin can map to any value.
 - The token must be a JWT access token with an expiry. It is refused with 401 when its signature, expiry or audience
-  is wrong, and with 403 when its issuer is not configured.
+  is wrong, and with 403 when its issuer is not configured. Its `iat` and `nbf` may be up to 60 seconds ahead of
+  the server's clock, for an identity provider whose clock runs ahead; the expiry has no such leeway.
 - `server.allowed-issuers` and `server.audiences` are not used in this mode, and the server logs a warning at startup
   when either is set. They keep working as before in `internal` mode.
 - With no block, the server starts and logs a warning: only its own tokens (see below) are accepted. A block can't
@@ -362,10 +363,11 @@ claim from `subject-claim` counts, so a later email change in the identity provi
   provider's SCIM principal. A user linked to another identity gets 403 `User not allowed: <email>`, as does a token
   whose email has no user: create the user first (SCIM or `bin/uc user create`).
 - When SCIM reactivates a user (`active` from false to true), the link is cleared and the next call links again. Okta
-  reuses a deactivated user for a rehire, so the new person's identity is linked, not the old one's. Only a token
-  issued at or after the reactivation (its `iat`) can link the user, so the old person's unexpired token gets 403
-  `User not allowed: <email>` even when it calls first; so does a token without `iat`. Both times are compared in
-  whole seconds, so a token issued in the second of the reactivation links. If the identity provider's clock is
+  reuses a deactivated user for a rehire, so the new person's identity is linked, not the old one's. From then on,
+  only a token issued at or after the reactivation (its `iat`) is accepted for the user, on the first call and on
+  every later one, even when Okta keeps the same `uid`: the old person's unexpired token gets 403 `User not allowed:
+  <email>`, and so does any token without `iat` once the user has been reactivated. Both times are compared in
+  whole seconds, so a token issued in the second of the reactivation is accepted. If the identity provider's clock is
   behind the server's, a token issued just after the reactivation can carry an earlier `iat` and is refused; a token
   issued later links.
 
