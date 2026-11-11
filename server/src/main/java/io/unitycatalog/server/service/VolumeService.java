@@ -176,8 +176,10 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
       @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName,
       @AuthorizeKey(key = "new_name") @AuthorizeKey(key = "owner") @AuthorizeKey(key = "comment")
           UpdateVolumeRequestContent updateVolumeRequest) {
-    VolumeInfo result = volumeRepository.updateVolume(fullName, updateVolumeRequest);
-    reloadAfterOwnerChange(updateVolumeRequest.getOwner());
+    VolumeInfo result =
+        updateWithOwnerReload(
+            updateVolumeRequest.getOwner(),
+            () -> volumeRepository.updateVolume(fullName, updateVolumeRequest));
     return HttpResponse.ofJson(result);
   }
 

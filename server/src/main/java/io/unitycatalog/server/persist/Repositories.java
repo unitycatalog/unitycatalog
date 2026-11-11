@@ -130,7 +130,7 @@ public class Repositories {
     this.volumeRepository = new VolumeRepository(this, sessionFactory);
     this.userRepository = new UserRepository(this, sessionFactory);
     this.ownershipRepository =
-        new OwnershipRepository(userRepository, serverProperties.isAuthorizationEnabled());
+        new OwnershipRepository(userRepository, serverProperties.isAuthorizationEnabled(), auditor);
     this.metastoreRepository = new MetastoreRepository(this, sessionFactory);
     this.functionRepository = new FunctionRepository(this, sessionFactory);
     this.modelRepository = new ModelRepository(this, sessionFactory, serverProperties);

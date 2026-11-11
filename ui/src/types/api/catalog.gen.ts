@@ -279,7 +279,7 @@ export interface paths {
      * Update a Volume
      * @description Updates the specified volume under the specified parent catalog and schema.
      *
-     *     Currently only the name or the comment of the volume could be updated.
+     *     You can update the volume's name, comment, or owner.
      *
      */
     patch: operations['updateVolume'];

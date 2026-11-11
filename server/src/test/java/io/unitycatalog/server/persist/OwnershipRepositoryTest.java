@@ -2,13 +2,26 @@ package io.unitycatalog.server.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
+import static org.mockito.AdditionalAnswers.delegatesTo;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.util.SafeCloseable;
 import com.linecorp.armeria.server.ServiceRequestContext;
+import io.unitycatalog.server.audit.AuditRecord;
+import io.unitycatalog.server.audit.Auditor;
+import io.unitycatalog.server.audit.CapturingAuditSink;
 import io.unitycatalog.server.auth.CasbinPolicyRefresher;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdateCatalog;
@@ -24,6 +37,7 @@ import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.time.Duration;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -31,12 +45,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.function.UnaryOperator;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class OwnershipRepositoryTest {
   private static final String CATALOG = "ownership_catalog";
@@ -56,6 +73,7 @@ public class OwnershipRepositoryTest {
   private SessionFactory sessionFactory;
   private Repositories repositories;
   private JCasbinAuthorizer authorizer;
+  private Auditor auditor;
   private SafeCloseable requestContext;
 
   @BeforeEach
@@ -65,7 +83,10 @@ public class OwnershipRepositoryTest {
     values.setProperty(Property.SERVER_ENV.getKey(), "test");
     values.setProperty(Property.AUTHORIZATION_ENABLED.getKey(), "enable");
     values.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "false");
+    values.setProperty(Property.AUDIT_SINK.getKey(), CapturingAuditSink.class.getName());
     properties = new ServerProperties(values);
+    CapturingAuditSink.reset();
+    auditor = Auditor.fromProperties(properties).orElseThrow();
     database = TestDatabases.newDatabase();
     hibernateProperties = database.hibernateProperties();
     // Keep the data when reopening the persistence layer in the restart test.
@@ -111,7 +132,9 @@ public class OwnershipRepositoryTest {
   private void openRepositories() throws Exception {
     configurator = database.openHibernateConfigurator(hibernateProperties);
     sessionFactory = configurator.getSessionFactory();
-    repositories = new Repositories(sessionFactory, properties);
+    repositories =
+        new Repositories(
+            sessionFactory, properties, null, UnaryOperator.identity(), null, Optional.of(auditor));
     authorizer = new JCasbinAuthorizer(configurator, properties);
   }
 
@@ -120,6 +143,9 @@ public class OwnershipRepositoryTest {
     try {
       if (authorizer != null) {
         authorizer.close();
+      }
+      if (auditor != null) {
+        auditor.close();
       }
       if (database != null) {
         database.close();
@@ -154,16 +180,26 @@ public class OwnershipRepositoryTest {
       authorizer.reloadAuthorizations();
       assertOwnership(FIRST_OWNER, firstId);
     }
+    assertThat(CapturingAuditSink.RECORDS).isEmpty();
   }
 
   @Test
   void committedOwnershipSurvivesRestart() throws Exception {
-    CatalogService service = new CatalogService(authorizer, repositories, properties);
+    CatalogService service = new CatalogService(auditor.wrap(authorizer), repositories, properties);
     try (JCasbinAuthorizer other = new JCasbinAuthorizer(configurator, properties);
         CasbinPolicyRefresher refresher =
             new CasbinPolicyRefresher(other::reloadAuthorizations, sessionFactory, Duration.ZERO)) {
       assertThat(refresher.checkAndReload()).isTrue();
       service.updateCatalog(CATALOG, new UpdateCatalog().owner(SECOND_OWNER).comment("changed"));
+      assertThat(CapturingAuditSink.RECORDS)
+          .extracting(
+              AuditRecord::getAction,
+              AuditRecord::getPrincipalId,
+              AuditRecord::getResourceId,
+              AuditRecord::getPrivilege)
+          .containsExactly(
+              tuple(AuditRecord.Action.REVOKE, firstId, resourceId, Privileges.OWNER.getValue()),
+              tuple(AuditRecord.Action.GRANT, secondId, resourceId, Privileges.OWNER.getValue()));
       assertThat(other.authorize(firstId, SecurableType.CATALOG, resourceId, Privileges.OWNER))
           .isTrue();
       assertThat(refresher.checkAndReload()).isTrue();
@@ -179,6 +215,49 @@ public class OwnershipRepositoryTest {
     configurator.close();
     openRepositories();
     assertOwnership(SECOND_OWNER, secondId);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void sessionCloseFailureStillReloadsCommittedOwnership(boolean reloadFails) {
+    RuntimeException closeError = new IllegalStateException("session close failed");
+    RuntimeException reloadError = new IllegalStateException("policy reload failed");
+    UnityCatalogAuthorizer serviceAuthorizer =
+        mock(UnityCatalogAuthorizer.class, delegatesTo(authorizer));
+    if (reloadFails) {
+      doThrow(reloadError).when(serviceAuthorizer).reloadAuthorizations();
+    }
+    try (Session realSession = sessionFactory.openSession()) {
+      Session session = mock(Session.class, delegatesTo(realSession));
+      doAnswer(
+              invocation -> {
+                realSession.close();
+                throw closeError;
+              })
+          .when(session)
+          .close();
+      SessionFactory failingFactory = mock(SessionFactory.class);
+      when(failingFactory.openSession()).thenReturn(session);
+      Repositories serviceRepositories = spy(repositories);
+      doReturn(new CatalogRepository(repositories, failingFactory))
+          .when(serviceRepositories)
+          .getCatalogRepository();
+      CatalogService service =
+          new CatalogService(serviceAuthorizer, serviceRepositories, properties);
+
+      assertThatThrownBy(
+              () -> service.updateCatalog(CATALOG, new UpdateCatalog().owner(SECOND_OWNER)))
+          .isSameAs(closeError);
+      verify(serviceAuthorizer).reloadAuthorizations();
+    }
+    assertThat(repositories.getCatalogRepository().getCatalog(CATALOG).getOwner())
+        .isEqualTo(SECOND_OWNER);
+    if (reloadFails) {
+      assertThat(closeError.getSuppressed()).containsExactly(reloadError);
+    } else {
+      assertThat(closeError.getSuppressed()).isEmpty();
+      assertOwnership(SECOND_OWNER, secondId);
+    }
   }
 
   @Test
@@ -243,6 +322,7 @@ public class OwnershipRepositoryTest {
       assertThat(loaded.await(10, TimeUnit.SECONDS)).isTrue();
       firstCopy.setOwner(
           repositories.getOwnershipRepository().updateOwner(first, firstCopy, SECOND_OWNER));
+      assertThat(CapturingAuditSink.RECORDS).isEmpty();
       transfer.countDown();
       tx.commit();
       second.get(10, TimeUnit.SECONDS);
