@@ -40,10 +40,10 @@ import org.junit.jupiter.params.provider.CsvSource;
  *       changes nothing on that database. The first step, the 0.7.0 baseline, may create any table
  *       and index.
  *   <li>The statement is one of the changes {@link #refusal} allows, read with JSqlParser from what
- *       Flyway sent: create a table, create an index that is not unique, add a column (NOT NULL
- *       only with a DEFAULT, without a key or CHECK rule), change a column's type, or drop its NOT
- *       NULL. A type change must widen the column, and no change makes a column NOT NULL ({@link
- *       #typeChangesWiden}).
+ *       Flyway sent: create a table, create a plain index (not unique, fulltext or spatial), add a
+ *       column (NOT NULL only with a DEFAULT, without a key or CHECK rule), change a column's type,
+ *       or drop its NOT NULL. A type change must widen the column, and no change makes a column NOT
+ *       NULL ({@link #typeChangesWiden}).
  *   <li>Each step has an effect file that lists its change ({@link #eachStepHasItsEffectFile}).
  *   <li>Every step exists for all three databases, as a versioned SQL file.
  * </ul>
@@ -237,22 +237,8 @@ public class MigrationStepRulesTest {
     for (DatabaseKind kind : DatabaseKind.values()) {
       try (Stream<Path> files = Files.list(EFFECTS.resolve(kind.folder()))) {
         for (Path file : files.toList()) {
-          Map<String, String> removed = new HashMap<>();
-          for (String line : Files.readAllLines(file)) {
-            if (!line.matches("[-+] column .*")) {
-              continue;
-            }
-            Matcher column = COLUMN_LINE.matcher(line);
-            if (!column.matches()) {
-              problems.add(file + ": can't read the column line " + line);
-            } else if (column.group(1).equals("-")) {
-              removed.put(column.group(2), line);
-            } else if (removed.containsKey(column.group(2))) {
-              String problem = columnChange(kind, removed.get(column.group(2)), line);
-              if (problem != null) {
-                problems.add(file + ": " + column.group(2) + " " + problem);
-              }
-            }
+          for (String problem : narrowedColumns(kind, Files.readAllLines(file))) {
+            problems.add(file + ": " + problem);
           }
         }
       }
@@ -266,42 +252,61 @@ public class MigrationStepRulesTest {
       delimiter = '|',
       quoteCharacter = '"',
       value = {
-        "POSTGRESQL|type=varchar size=255 nullable=YES|type=varchar size=255 nullable=NO|becomes"
-            + " NOT NULL",
-        "POSTGRESQL|type=varchar size=255 nullable=YES|type=varchar size=100 nullable=YES|not"
-            + " wider",
-        "POSTGRESQL|type=numeric size=10 scale=2 nullable=YES|type=numeric size=10 scale=1"
-            + " nullable=YES|not wider",
+        "POSTGRESQL|type=varchar size=255 nullable=YES"
+            + "|type=varchar size=255 nullable=NO|becomes NOT NULL",
+        "POSTGRESQL|type=varchar size=255 nullable=YES"
+            + "|type=varchar size=100 nullable=YES|not wider",
+        "POSTGRESQL|type=numeric size=10 scale=2 nullable=YES"
+            + "|type=numeric size=10 scale=1 nullable=YES|not wider",
         "POSTGRESQL|type=int8 size=19 nullable=YES|type=int4 size=10 nullable=YES|not wider",
         "POSTGRESQL|type=varchar size=255 nullable=YES|type=text size=2147483647 nullable=YES|",
         "POSTGRESQL|type=varchar size=255 nullable=NO|type=varchar size=255 nullable=YES|",
-        "MYSQL|type=enum size=8 nullable=NO default=null values=enum('FUNCTION','TABLE')|type=enum"
-            + " size=8 nullable=NO default=null values=enum('FUNCTION')|drops the values [TABLE]",
+        "MYSQL|type=enum size=8 nullable=NO default=null values=enum('FUNCTION','TABLE')"
+            + "|type=enum size=8 nullable=NO default=null values=enum('FUNCTION')"
+            + "|drops the values [TABLE]",
         "MYSQL|type=enum size=8 nullable=NO default=null values=enum('FUNCTION','TABLE')"
             + "|type=enum size=8 nullable=NO default=null values=enum('FUNCTION','TABLE','VIEW')|",
         "POSTGRESQL|type=varchar size=255 nullable=|type=varchar size=100 nullable=YES|can't read"
       })
   void columnChangesWiden(DatabaseKind kind, String before, String after, String problem) {
-    String found =
-        columnChange(kind, "- column t.c " + before + " ", "+ column t.c " + after + " ");
+    List<String> found =
+        narrowedColumns(
+            kind, List.of("- column t.c " + before + " ", "+ column t.c " + after + " "));
     if (problem == null) {
-      assertThat(found).isNull();
+      assertThat(found).isEmpty();
     } else {
-      assertThat(found).contains(problem);
+      assertThat(found).singleElement().asString().contains(problem);
     }
   }
 
   /**
-   * Why the change from column line {@code before} to {@code after} narrows the column, or null.
+   * What the column changes in an effect file's {@code lines} do that rows already in the database
+   * could fail, one entry per change; a column line it can't read is one too.
    */
-  private static String columnChange(DatabaseKind kind, String before, String after) {
-    Matcher from = COLUMN_LINE.matcher(before);
-    Matcher to = COLUMN_LINE.matcher(after);
-    if (!from.matches() || !to.matches()) {
-      return "can't read the column lines";
+  private static List<String> narrowedColumns(DatabaseKind kind, List<String> lines) {
+    List<String> problems = new ArrayList<>();
+    Map<String, Matcher> removed = new HashMap<>();
+    for (String line : lines) {
+      if (!line.matches("[-+] column .*")) {
+        continue;
+      }
+      Matcher column = COLUMN_LINE.matcher(line);
+      if (!column.matches()) {
+        problems.add("can't read the column line " + line);
+      } else if (column.group(1).equals("-")) {
+        removed.put(column.group(2), column);
+      } else if (removed.containsKey(column.group(2))) {
+        Matcher before = removed.get(column.group(2));
+        String problem = narrowing(kind, before, column);
+        if (problem == null) {
+          problem = droppedValues(before.group(), line);
+        }
+        if (problem != null) {
+          problems.add(column.group(2) + " " + problem);
+        }
+      }
     }
-    String narrowing = narrowing(kind, from, to);
-    return narrowing != null ? narrowing : droppedValues(before, after);
+    return problems;
   }
 
   /** MySQL's enum and set members, in a column line's {@code values=}. */
@@ -309,15 +314,15 @@ public class MigrationStepRulesTest {
 
   /** The enum or set members that column line {@code after} drops from {@code before}, or null. */
   private static String droppedValues(String before, String after) {
-    Matcher from = VALUES.matcher(before);
-    if (!from.find()) {
-      return null;
-    }
-    Matcher to = VALUES.matcher(after);
-    Set<String> kept = to.find() ? Set.of(to.group(1).split("','")) : Set.of();
-    List<String> dropped =
-        Stream.of(from.group(1).split("','")).filter(v -> !kept.contains(v)).toList();
+    List<String> kept = members(after);
+    List<String> dropped = members(before).stream().filter(v -> !kept.contains(v)).toList();
     return dropped.isEmpty() ? null : "drops the values " + dropped;
+  }
+
+  /** The enum or set members in a column line, or none. */
+  private static List<String> members(String line) {
+    Matcher values = VALUES.matcher(line);
+    return values.find() ? List.of(values.group(1).split("','")) : List.of();
   }
 
   private static long scale(Matcher column) {
@@ -380,9 +385,10 @@ public class MigrationStepRulesTest {
         return "creates an index CONCURRENTLY";
       }
       String type = index.getIndex().getType();
-      return firstStep || type == null
-          ? null
-          : "creates a " + type.toLowerCase(Locale.ROOT) + " index";
+      if (firstStep || type == null) {
+        return null;
+      }
+      return "creates a " + type.toLowerCase(Locale.ROOT) + " index";
     }
     if (firstStep) {
       return "the first step only creates tables and indexes";
