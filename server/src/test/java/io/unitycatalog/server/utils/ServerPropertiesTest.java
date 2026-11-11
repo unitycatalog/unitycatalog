@@ -682,6 +682,10 @@ public class ServerPropertiesTest {
                 "server.authentication.idp.other.audience",
                 "uc"),
             "Identity providers okta and other have the same issuer https://a.example.com",
+            // The server's own tokens carry this issuer: the block would lock the admin out.
+            Map.of(okta + "issuer", "internal", okta + "audience", "uc"),
+            "Identity provider okta can't use issuer internal, the issuer of this server's own"
+                + " tokens",
             Map.of(okta + "scim-principal", "okta-scim"),
             "Unknown property server.authentication.idp.okta.scim-principal; expected"
                 + " server.authentication.idp.<name>.issuer, .audience or .subject-claim");
@@ -697,7 +701,7 @@ public class ServerPropertiesTest {
   }
 
   @Test
-  public void testWarnsAboutExchangeAllowlistsInExternalMode() {
+  public void testWarnsAboutExternalModeConfiguration() {
     Logger logger = (Logger) LogManager.getLogger(ServerProperties.class);
     Level previousLevel = logger.getLevel();
     CapturingAppender appender = new CapturingAppender();
@@ -713,12 +717,24 @@ public class ServerPropertiesTest {
       assertThat(appender.messages).isEmpty();
 
       props.setProperty("server.authentication.type", "external");
+      props.setProperty("server.authentication.idp.okta.issuer", "https://acme.okta.com");
+      props.setProperty("server.authentication.idp.okta.audience", "uc");
       new ServerProperties(props);
       assertThat(appender.messages)
           .containsExactly(
               "WARN server.allowed-issuers and server.audiences are not used in external"
                   + " authentication mode; set server.authentication.idp.<name>.issuer and"
                   + " .audience instead");
+
+      // External mode with no identity provider block starts, with a warning.
+      appender.messages.clear();
+      Properties noIdentityProvider = new Properties();
+      noIdentityProvider.setProperty("server.authentication.type", "external");
+      new ServerProperties(noIdentityProvider);
+      assertThat(appender.messages)
+          .containsExactly(
+              "WARN No identity provider is configured; only server-minted tokens are accepted."
+                  + " Set server.authentication.idp.<name>.issuer and .audience.");
     } finally {
       logger.removeAppender(appender);
       Configurator.setLevel(logger.getName(), previousLevel);

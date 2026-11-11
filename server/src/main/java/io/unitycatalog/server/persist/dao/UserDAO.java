@@ -65,6 +65,10 @@ public class UserDAO extends IdentifiableDAO {
   @Column(name = "link_value")
   private String linkValue;
 
+  // When SCIM last reactivated the row (whole seconds); a token issued before it can't link it.
+  @Column(name = "reactivated_at")
+  private Date reactivatedAt;
+
   public static UserDAO from(User user) {
     return UserDAO.builder()
         .id(UUID.fromString(user.getId()))

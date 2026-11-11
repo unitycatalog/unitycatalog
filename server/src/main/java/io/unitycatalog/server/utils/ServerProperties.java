@@ -1,5 +1,7 @@
 package io.unitycatalog.server.utils;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
+
 import com.linecorp.armeria.client.Endpoint;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -445,7 +447,7 @@ public class ServerProperties {
     validateAuthAllowlistConfiguration();
     validateStorageCleanupConfiguration();
     getIdentityProviders();
-    warnAboutExchangeAllowlistsInExternalMode();
+    warnAboutExternalModeConfiguration();
     validateOpaConfiguration();
   }
 
@@ -770,6 +772,14 @@ public class ServerProperties {
               requiredIdpProperty(name, "issuer"),
               requiredIdpProperty(name, "audience"),
               subjectClaim(name));
+      // AuthDecorator matches IdP issuers first, so this block would take the server's own tokens.
+      if (INTERNAL.equals(identityProvider.issuer())) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            String.format(
+                "Identity provider %s can't use issuer %s, the issuer of this server's own tokens",
+                name, INTERNAL));
+      }
       String other = nameByIssuer.putIfAbsent(identityProvider.issuer(), name);
       if (other != null) {
         throw new BaseException(
@@ -809,10 +819,19 @@ public class ServerProperties {
     return subjectClaim;
   }
 
-  /** The exchange's allowlists don't apply to IdP tokens sent directly. */
-  private void warnAboutExchangeAllowlistsInExternalMode() {
+  /**
+   * The exchange's allowlists don't apply to IdP tokens sent directly; without an IdP block only
+   * the bootstrap admin's SERVICE token and SCIM tokens work.
+   */
+  private void warnAboutExternalModeConfiguration() {
     if (!isExternalAuthentication()) {
       return;
+    }
+    if (getIdentityProviders().isEmpty()) {
+      LOGGER.warn(
+          "No identity provider is configured; only server-minted tokens are accepted. Set"
+              + " {}<name>.issuer and .audience.",
+          IDP_PREFIX);
     }
     List<String> unused =
         Stream.of(Property.ALLOWED_ISSUERS, Property.AUDIENCES)

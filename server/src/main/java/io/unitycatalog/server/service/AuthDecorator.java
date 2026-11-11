@@ -196,7 +196,9 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     if (jwt.getExpiresAt() == null) {
       throw new AuthorizationException(ErrorCode.UNAUTHENTICATED, "Access token has no expiry.");
     }
-    if (!jwt.getAudience().contains(identityProvider.audience())) {
+    // java-jwt returns null for a missing or empty aud.
+    List<String> audience = jwt.getAudience();
+    if (audience == null || !audience.contains(identityProvider.audience())) {
       throw new AuthorizationException(ErrorCode.UNAUTHENTICATED, "Invalid audience");
     }
     SubjectClaim subjectClaim = identityProvider.subjectClaim();
@@ -216,7 +218,7 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
       }
       // A concurrent first call may have linked the row first; then the link finds it.
       user =
-          Optional.ofNullable(userRepository.linkUser(email, link))
+          Optional.ofNullable(userRepository.linkUser(email, link, jwt.getIssuedAt()))
               .orElseGet(() -> userRepository.findLinkedUser(link));
       // TODO(PR 11): with no row for this email, create one owned by this identity provider.
       if (user == null) {

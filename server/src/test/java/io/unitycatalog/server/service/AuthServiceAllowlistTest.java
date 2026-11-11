@@ -6,6 +6,7 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpData;
@@ -24,6 +25,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
@@ -312,8 +314,20 @@ public class AuthServiceAllowlistTest {
 
     protected String idpToken(
         String issuer, String audience, Instant expiresAt, Map<String, String> claims) {
-      var builder =
-          JWT.create().withIssuer(issuer).withKeyId(testIssuerKeyId).withIssuedAt(new Date());
+      return idpToken(issuer, audience, expiresAt, Instant.now(), claims);
+    }
+
+    /** As above, issued at {@code issuedAt}, or with no {@code iat} when it is null. */
+    protected String idpToken(
+        String issuer,
+        String audience,
+        Instant expiresAt,
+        Instant issuedAt,
+        Map<String, String> claims) {
+      var builder = JWT.create().withIssuer(issuer).withKeyId(testIssuerKeyId);
+      if (issuedAt != null) {
+        builder.withIssuedAt(issuedAt);
+      }
       if (audience != null) {
         builder.withAudience(audience);
       }
@@ -449,7 +463,19 @@ public class AuthServiceAllowlistTest {
                   Map.of("sub", "person-1")),
               "Invalid access token.",
               idpToken(testIssuer, TEST_AUDIENCE, null, Map.of("sub", "person-1")),
-              "Access token has no expiry.");
+              "Access token has no expiry.",
+              idpToken(testIssuer, null, Instant.now().plusSeconds(300), Map.of("sub", "person-1")),
+              "Invalid audience",
+              JWT.create()
+                  .withIssuer(testIssuer)
+                  .withKeyId(testIssuerKeyId)
+                  .withAudience(new String[0])
+                  .withExpiresAt(Instant.now().plusSeconds(300))
+                  .withClaim("sub", "person-1")
+                  .sign(testIssuerAlgorithm),
+              "Invalid audience",
+              withoutAlgorithm(idpToken(Map.of("sub", "person-1"))),
+              "Missing signing algorithm");
       for (Map.Entry<String, String> entry : unauthenticated.entrySet()) {
         assertRefused(listCatalogs(entry.getKey()), HttpStatus.UNAUTHORIZED, entry.getValue());
       }
@@ -479,6 +505,19 @@ public class AuthServiceAllowlistTest {
     }
   }
 
+  /** {@code token} with its header's {@code alg} removed; the signature is left as it was. */
+  @SneakyThrows
+  private static String withoutAlgorithm(String token) {
+    String[] parts = token.split("\\.");
+    ObjectNode header = (ObjectNode) MAPPER.readTree(Base64.getUrlDecoder().decode(parts[0]));
+    header.remove("alg");
+    return Base64.getUrlEncoder().withoutPadding().encodeToString(MAPPER.writeValueAsBytes(header))
+        + "."
+        + parts[1]
+        + "."
+        + parts[2];
+  }
+
   /** Okta: {@code uid} names a person, else {@code cid} a machine; {@code sub} is never read. */
   @Nested
   class ExternalModeOkta extends ExternalModeTestBase {
@@ -493,9 +532,14 @@ public class AuthServiceAllowlistTest {
     @Test
     public void testOktaClaimsAndReactivation() throws IOException {
       createEnabledUser(MACHINE_EMAIL);
-      // A person's token carries uid, cid and an editable sub that defaults to the login.
+      // A person's token carries uid, cid and an editable sub that defaults to the login. Issued
+      // a minute ago, so it is older than the reactivation below.
       String person =
           idpToken(
+              testIssuer,
+              TEST_AUDIENCE,
+              Instant.now().plusSeconds(300),
+              Instant.now().minusSeconds(60),
               Map.of(
                   "uid",
                   "00u-first",
@@ -535,9 +579,22 @@ public class AuthServiceAllowlistTest {
           "Access token has no uid or cid claim.");
 
       // Okta reactivates the row for a rehire with a new uid: the link is cleared, so the new
-      // uid links by email and the old one no longer matches.
+      // uid links by email and the old one no longer matches. A token issued before the
+      // reactivation, or with no iat, can't link the row, even when it calls first.
       setActive(ENABLED_USER_EMAIL, false);
       setActive(ENABLED_USER_EMAIL, true);
+      assertRefused(
+          listCatalogs(person), HttpStatus.FORBIDDEN, "User not allowed: " + ENABLED_USER_EMAIL);
+      assertRefused(
+          listCatalogs(
+              idpToken(
+                  testIssuer,
+                  TEST_AUDIENCE,
+                  Instant.now().plusSeconds(300),
+                  null,
+                  Map.of("uid", "00u-first", "email", ENABLED_USER_EMAIL))),
+          HttpStatus.FORBIDDEN,
+          "User not allowed: " + ENABLED_USER_EMAIL);
       assertThat(
               listCatalogs(idpToken(Map.of("uid", "00u-rehire", "email", ENABLED_USER_EMAIL)))
                   .status())
