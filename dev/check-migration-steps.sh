@@ -40,6 +40,15 @@ if [[ -n "$changed" ]]; then
 fi
 echo "No merged migration step or effect file changed since $1."
 
+# A release branch takes no new steps at all, so say that before checking their numbers.
+added=$(git diff --diff-filter=A --name-only "$merge_base" HEAD -- "$steps_dir" "$effects_dir")
+if [[ -n "$added" && "$base_branch" == branch-* ]]; then
+  echo "These migration steps are new on the release branch $base_branch:" >&2
+  echo "$added" >&2
+  echo "Release branches take no new steps; add the step on main." >&2
+  exit 1
+fi
+
 # The version of a step file name V<version>__<description>.sql.
 version_of() { basename "$1" | sed -n 's/^V\([0-9]*\)__.*/\1/p'; }
 
@@ -65,11 +74,3 @@ for step in $added_steps; do
     exit 1
   fi
 done
-
-added=$(git diff --diff-filter=A --name-only "$merge_base" HEAD -- "$steps_dir" "$effects_dir")
-if [[ -n "$added" && "$base_branch" == branch-* ]]; then
-  echo "These migration steps are new on the release branch $base_branch:" >&2
-  echo "$added" >&2
-  echo "Release branches take no new steps; add the step on main." >&2
-  exit 1
-fi
