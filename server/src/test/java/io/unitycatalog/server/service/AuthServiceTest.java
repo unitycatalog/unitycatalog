@@ -22,6 +22,7 @@ import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.RequestHeadersBuilder;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
+import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.utils.ServerProperties.Property;
@@ -355,6 +356,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
         user = (ObjectNode) resource;
       }
     }
+    assertThat(user).isNotNull();
     user.put("active", false);
     String id = user.get("id").asText();
     assertThat(scim(HttpMethod.PUT, "/" + id, user.toString()).status()).isEqualTo(HttpStatus.OK);
@@ -362,6 +364,50 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertThat(refused.status()).isEqualTo(HttpStatus.FORBIDDEN);
     assertThat(MAPPER.readTree(refused.contentUtf8()).get("message").asText())
         .isEqualTo("User not allowed: " + ENABLED_USER_EMAIL);
+  }
+
+  /**
+   * An unknown key id is the caller's error: a UC token and an exchanged IdP token both get 401,
+   * with no per-request ERROR log. Each is sent twice so the IdP path also hits the rate-limited
+   * key refresh.
+   */
+  @Test
+  public void testUnknownSigningKeyIdIsUnauthenticated() throws Exception {
+    createEnabledUser(ENABLED_USER_EMAIL);
+    Logger logger = (Logger) LogManager.getLogger(BaseExceptionHandler.class);
+    CapturingAppender appender = new CapturingAppender();
+    appender.start();
+    logger.addAppender(appender);
+    try {
+      for (int i = 0; i < 2; i++) {
+        String ucToken =
+            JWT.create()
+                .withIssuer(INTERNAL)
+                .withKeyId("unknown-kid-" + i)
+                .withExpiresAt(Date.from(Instant.now().plus(Duration.ofMinutes(5))))
+                .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
+                .withClaim(JwtClaim.SUBJECT.key(), ENABLED_USER_EMAIL)
+                .sign(securityContext.getAlgorithm());
+        String identityToken =
+            createIdentityToken(
+                ENABLED_USER_EMAIL,
+                testIssuer,
+                TEST_AUDIENCE,
+                testIssuerAlgorithm,
+                "unknown-kid-" + i);
+        for (AggregatedHttpResponse response :
+            List.of(listCatalogs(ucToken), exchangeToken(identityToken))) {
+          assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+          JsonNode error = MAPPER.readTree(response.contentUtf8());
+          assertThat(error.get("error_code").asText()).isEqualTo("UNAUTHENTICATED");
+          assertThat(error.get("message").asText()).isEqualTo("Unknown signing key");
+        }
+      }
+    } finally {
+      logger.removeAppender(appender);
+      appender.stop();
+    }
+    assertThat(appender.messages).doesNotContain("Request failed");
   }
 
   /** A token signed with the server's key for the enabled user; null leaves the claim out. */

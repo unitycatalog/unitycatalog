@@ -275,7 +275,9 @@ class JwksOperationsTest {
         String missingKey = "missing-" + i;
         assertThatThrownBy(
                 () -> jwksOperations.verifierForIssuerAndKey(issuer, missingKey, "RS256"))
-            .hasMessage("Could not get signing key '" + missingKey + "' for issuer " + issuer);
+            .hasMessage("Unknown signing key")
+            .extracting(e -> ((BaseException) e).getErrorCode())
+            .isEqualTo(ErrorCode.UNAUTHENTICATED);
       }
     } finally {
       logger.removeAppender(appender);
@@ -311,9 +313,9 @@ class JwksOperationsTest {
       String missingKey = "missing-" + i;
       assertThatThrownBy(() -> jwksOperations.verifierForIssuerAndKey(issuer, missingKey, "RS256"))
           .isInstanceOf(OAuthInvalidRequestException.class)
-          .hasMessage("Could not get signing key '" + missingKey + "' for issuer " + issuer)
+          .hasMessage("Unknown signing key")
           .extracting(e -> ((BaseException) e).getErrorCode())
-          .isEqualTo(ErrorCode.INTERNAL);
+          .isEqualTo(ErrorCode.UNAUTHENTICATED);
     }
     jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256").verify(token);
     jwksOperations
@@ -345,8 +347,7 @@ class JwksOperationsTest {
                     assertThatThrownBy(
                             () -> jwksOperations.verifierForIssuerAndKey(issuer, keyId, "RS256"))
                         .isInstanceOf(OAuthInvalidRequestException.class)
-                        .hasMessage(
-                            "Could not get signing key '" + keyId + "' for issuer " + issuer);
+                        .hasMessage("Unknown signing key");
                     return null;
                   }
                   return jwksOperations

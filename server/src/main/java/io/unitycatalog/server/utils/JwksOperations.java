@@ -8,6 +8,7 @@ import com.auth0.jwk.JwkProvider;
 import com.auth0.jwk.JwkProviderBuilder;
 import com.auth0.jwk.JwksHttpClient;
 import com.auth0.jwk.JwksHttpResponse;
+import com.auth0.jwk.NetworkException;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.algorithms.Algorithm;
@@ -123,10 +124,14 @@ public class JwksOperations {
       jwk = jwkProvider.get(keyId);
     } catch (JwkException e) {
       reportKeyFailure(keyId, issuer, e);
-      throw new OAuthInvalidRequestException(
-          ErrorCode.INTERNAL,
-          String.format("Could not get signing key '%s' for issuer %s", keyId, issuer),
-          e);
+      if (e instanceof NetworkException && !(e.getCause() instanceof RefreshRateLimitedException)) {
+        throw new OAuthInvalidRequestException(
+            ErrorCode.INTERNAL,
+            String.format("Could not get signing key '%s' for issuer %s", keyId, issuer),
+            e);
+      }
+      // The keys were read (or a refresh was refused) and none has the caller's key id.
+      throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Unknown signing key", e);
     }
 
     Algorithm algorithm = algorithmForJwk(jwk, alg);
@@ -298,6 +303,13 @@ public class JwksOperations {
 
   private record DiscoveryFailure(ErrorCode errorCode, String message) {}
 
+  /** A refresh refused because the keys were fetched less than the minimum interval ago. */
+  private static final class RefreshRateLimitedException extends IOException {
+    private RefreshRateLimitedException() {
+      super("Signing-key refresh is rate limited");
+    }
+  }
+
   /** Limits HTTP fetches per provider while keeping its full cached key set available. */
   private JwksHttpClient rateLimitedSigningKeysClient() {
     return new JwksHttpClient() {
@@ -307,7 +319,7 @@ public class JwksOperations {
       public synchronized JwksHttpResponse fetch(URL url) throws IOException {
         long now = ticker.read();
         if (now - nextRefreshNanos < 0) {
-          throw new IOException("Signing-key refresh is rate limited");
+          throw new RefreshRateLimitedException();
         }
         nextRefreshNanos = now + MIN_KEY_REFRESH_INTERVAL.toNanos();
         return fetchSigningKeys(url);
