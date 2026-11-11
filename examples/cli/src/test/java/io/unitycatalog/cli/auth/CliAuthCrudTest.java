@@ -139,8 +139,6 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
 
   // In external mode the server answers the exchange with 501 UNIMPLEMENTED (token exchange is
   // off), so the CLI keeps the identity provider's access token.
-  // TODO(PR external mode): once this branch is rebased on it, add a test against a real server in
-  // external mode: `auth login --identity_token` fails with the 501 and the hint.
   @Test
   public void testAuthLoginKeepsTheIdpAccessTokenWhenTheExchangeIsUnimplemented() throws Exception {
     AtomicReference<String> received = new AtomicReference<>();
@@ -241,6 +239,73 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
             () -> AuthCli.exchangeForAccessToken(apiClient, wrongAudience, IDP_ACCESS_TOKEN))
         .isInstanceOf(ApiException.class)
         .hasMessageContaining("Error authenticating - ");
+  }
+
+  // Set by a test that needs an external mode server. JUnit makes a new test instance per method,
+  // so the other tests stay in internal mode.
+  private boolean isExternalMode;
+
+  /**
+   * In external mode the test IdP is configured as {@code server.authentication.idp.test.*}, as in
+   * AuthServiceAllowlistTest.ExternalModeSub.
+   */
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    if (isExternalMode) {
+      serverProperties.setProperty("server.authentication.type", "external");
+      serverProperties.setProperty("server.authentication.idp.test.issuer", testIssuer);
+      serverProperties.setProperty("server.authentication.idp.test.audience", TEST_AUDIENCE);
+      serverProperties.setProperty("server.authentication.idp.test.subject-claim", "SUB");
+    }
+  }
+
+  // The real server answers the exchange with 501 UNIMPLEMENTED, so `auth login` keeps the IdP
+  // access token, and that token works on a catalog list. A pasted identity token has no access
+  // token to keep.
+  @Test
+  public void testAuthLoginKeepsTheIdpAccessTokenInExternalMode() throws Exception {
+    isExternalMode = true;
+    tearDown();
+    setUp();
+    createEnabledUser(ENABLED_USER_EMAIL);
+    String identityToken =
+        createIdentityToken(
+            ENABLED_USER_EMAIL, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
+    String idpAccessToken =
+        JWT.create()
+            .withIssuer(testIssuer)
+            .withKeyId(testIssuerKeyId)
+            .withAudience(TEST_AUDIENCE)
+            .withIssuedAt(Instant.now())
+            .withExpiresAt(Instant.now().plusSeconds(300))
+            .withClaim("sub", "person-1")
+            .withClaim("email", ENABLED_USER_EMAIL)
+            .sign(testIssuerAlgorithm);
+    ApiClient apiClient = new ApiClient();
+    apiClient.setScheme("http");
+    apiClient.setHost("localhost");
+    apiClient.setPort(Integer.parseInt(serverConfig.getServerUrl().replaceAll(".*:", "")));
+    apiClient.setBasePath("/api/1.0/unity-control");
+
+    assertThat(AuthCli.exchangeForAccessToken(apiClient, identityToken, idpAccessToken))
+        .isEqualTo(idpAccessToken);
+
+    serverConfig.setAuthToken(idpAccessToken);
+    assertThat(executeCliCommand(serverConfig, List.of("catalog", "list"))).isNotNull();
+
+    serverConfig.setAuthToken("");
+    assertThatThrownBy(
+            () ->
+                executeCliCommand(
+                    serverConfig, List.of("auth", "login", "--identity_token", identityToken)))
+        .isInstanceOf(RuntimeException.class)
+        .rootCause()
+        .hasMessageStartingWith(
+            "Error authenticating - token exchange is disabled on this server; use the identity"
+                + " provider's access token as --auth_token - ")
+        .hasMessageContaining("\"error_code\":\"UNIMPLEMENTED\"")
+        .hasMessageContaining("Token exchange is disabled in external mode");
   }
 
   // bin/uc auth login without --identity_token reads the client secret for its OAuth flow.
