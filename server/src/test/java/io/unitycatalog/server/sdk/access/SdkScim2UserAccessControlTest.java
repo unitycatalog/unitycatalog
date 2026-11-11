@@ -419,6 +419,7 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
       {
         "scim-post-3@localhost", "\"displayName\":\"Shown\",\"name\":{\"givenName\":\"G\"}", "Shown"
       },
+      {"scim-post-4@localhost", "\"displayName\":\"" + "a".repeat(255) + "\"", "a".repeat(255)},
     };
     for (String[] c : created) {
       HttpResponse<String> post = postUser(c[0], c[1]);
