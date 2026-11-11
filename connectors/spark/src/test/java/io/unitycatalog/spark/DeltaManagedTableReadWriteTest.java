@@ -323,9 +323,9 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
 
   /**
    * Loading a managed Delta table hands UC's stored column metadata, such as Delta's {@code
-   * __CHAR_VARCHAR_TYPE_STRING} and {@code delta.columnMapping.*} keys, to the V1 table that {@code
-   * UCProxy} returns and {@code DeltaCatalog} replaces. Reads, writes, comments and VARCHAR length
-   * checks must behave as before.
+   * __CHAR_VARCHAR_TYPE_STRING}, to the V1 table that {@code UCProxy} returns and {@code
+   * DeltaCatalog} replaces, but leaves out the {@code delta.columnMapping.*} keys the Delta log
+   * owns. Reads, writes, comments and VARCHAR length checks must behave as before.
    */
   @Test
   @EnabledIf("canUpdateColumnsToUC")
@@ -356,10 +356,8 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
             .apply("s")
             .metadata();
     assertThat(loaded.getString("__CHAR_VARCHAR_TYPE_STRING")).isEqualTo("varchar(3)");
-    assertThat(loaded.getLong("delta.columnMapping.id"))
-        .isEqualTo(stored.get("delta.columnMapping.id").asLong());
-    assertThat(loaded.getString("delta.columnMapping.physicalName"))
-        .isEqualTo(stored.get("delta.columnMapping.physicalName").asText());
+    assertThat(loaded.contains("delta.columnMapping.id")).isFalse();
+    assertThat(loaded.contains("delta.columnMapping.physicalName")).isFalse();
 
     sql("INSERT INTO %s VALUES (1, 'abc')", fullTableName);
 

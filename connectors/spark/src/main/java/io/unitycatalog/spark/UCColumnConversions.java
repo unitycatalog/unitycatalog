@@ -39,6 +39,11 @@ public final class UCColumnConversions {
   private static final String FIELD_METADATA = "metadata";
   private static final String FIELD_COMMENT = "comment";
 
+  // Delta owns these per-column physical-layout keys through its log. They are not user schema
+  // metadata, so loading must not hand them to Spark, which would copy them into tables created
+  // from this schema (CTAS, CREATE TABLE LIKE).
+  private static final String DELTA_COLUMN_MAPPING_PREFIX = "delta.columnMapping.";
+
   /**
    * Serialize a Spark {@link StructField} to the canonical "StructField-shape" JSON that Unity
    * Catalog stores in {@code ColumnInfo.type_json}: {@code {name, type, nullable, metadata}}.
@@ -130,7 +135,8 @@ public final class UCColumnConversions {
    * Wire -&gt; Spark field metadata: read the {@code metadata} object of a column's {@code
    * type_json}. It carries what {@code type_text} cannot, such as the {@code CURRENT_DEFAULT} and
    * {@code EXISTS_DEFAULT} keys of a column {@code DEFAULT}. Returns empty metadata when {@code
-   * type_json} or its {@code metadata} object is absent.
+   * type_json} or its {@code metadata} object is absent. Delta's {@code delta.columnMapping.*} keys
+   * are dropped: they describe the physical layout recorded in the Delta log.
    *
    * <p>The column type always comes from {@code type_text}, so this metadata is best effort. If
    * {@code type_json} is malformed, or its {@code metadata} holds values Spark cannot represent
@@ -150,7 +156,11 @@ public final class UCColumnConversions {
       if (metadataNode == null || !metadataNode.isObject()) {
         return Metadata.empty();
       }
-      return Metadata.fromJson(writeValueAsString(metadataNode));
+      ObjectNode userMetadata = (ObjectNode) metadataNode.deepCopy();
+      userMetadata
+          .properties()
+          .removeIf(entry -> entry.getKey().startsWith(DELTA_COLUMN_MAPPING_PREFIX));
+      return Metadata.fromJson(writeValueAsString(userMetadata));
     } catch (IllegalArgumentException | ClassCastException | SparkRuntimeException e) {
       // readTree wraps Jackson errors in IllegalArgumentException; Metadata.fromJson throws
       // ClassCastException or SparkRuntimeException for values Spark metadata cannot hold.

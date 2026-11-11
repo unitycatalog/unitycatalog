@@ -85,6 +85,25 @@ public class UCColumnConversionsSuite {
   }
 
   @Test
+  public void testMetadataOfDropsDeltaColumnMappingKeys() {
+    String json =
+        typeJsonWithMetadata(
+            "{\"delta.columnMapping.id\":3,"
+                + "\"delta.columnMapping.physicalName\":\"col-5f1c\","
+                + "\"delta.columnMapping.nested.ids\":{\"b.element\":4},"
+                + "\"delta.columnMappingMode\":\"kept\","
+                + "\"__CHAR_VARCHAR_TYPE_STRING\":\"varchar(3)\","
+                + "\"CURRENT_DEFAULT\":\"'x'\"}");
+    Metadata expected =
+        new MetadataBuilder()
+            .putString("delta.columnMappingMode", "kept")
+            .putString("__CHAR_VARCHAR_TYPE_STRING", "varchar(3)")
+            .putString("CURRENT_DEFAULT", "'x'")
+            .build();
+    assertThat(UCColumnConversions.metadataOf("b", json)).isEqualTo(expected);
+  }
+
+  @Test
   public void testMetadataOfReadsNonStringValues() {
     String json =
         typeJsonWithMetadata(
