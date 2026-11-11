@@ -9,11 +9,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.client.model.CatalogInfo;
+import io.unitycatalog.client.model.PrivilegeAssignment;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.UpdateCatalog;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.control.model.UserResource;
-import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.auth.GroupMembershipAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -21,12 +21,13 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.dao.GroupDAO;
 import io.unitycatalog.server.persist.dao.GroupMemberDAO;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
-import java.lang.reflect.Field;
 import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -61,6 +62,13 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
   private UserResource alice;
   private UserResource bob;
   private UserResource carol;
+
+  /** Grants written through {@link #newAuthorizer()} reach the server on its next deny. */
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    serverProperties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "true");
+  }
 
   @BeforeEach
   public void setUpUsers() throws Exception {
@@ -675,6 +683,47 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
     assertPermissionDenied(() -> aliceCatalogs.getCatalog(TestUtils.CATALOG_NAME, null));
   }
 
+  /**
+   * A grant that lands while its group is being deleted (after the delete clears the group's
+   * grants, before the row goes) leaves a grant on no principal. Listing the grants must skip it.
+   * The group row is held locked, so the delete waits between the two steps.
+   */
+  @Test
+  @SneakyThrows
+  public void testGrantRacingGroupDeleteKeepsListingReadable() {
+    String id = createGroup("racing", alice.getId()).get("id").asText();
+    ExecutorService pool = Executors.newSingleThreadExecutor();
+    try (Session locking = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction tx = locking.beginTransaction();
+      locking
+          .createSelectionQuery("FROM GroupDAO WHERE id = :id", GroupDAO.class)
+          .setParameter("id", UUID.fromString(id))
+          .setHibernateLockMode(LockMode.PESSIMISTIC_WRITE)
+          .getSingleResult();
+      Future<HttpResponse<String>> delete =
+          pool.submit(() -> send(adminConfig, "DELETE", GROUPS_PATH + "/" + id, null));
+      try {
+        delete.get(200, TimeUnit.MILLISECONDS);
+      } catch (TimeoutException e) {
+        // The delete has cleared the grants and waits for the row lock, as it should.
+      }
+      grantPermissions(
+          "racing", SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
+      tx.commit();
+      HttpResponse<String> deleted = delete.get(30, TimeUnit.SECONDS);
+      assertThat(deleted.statusCode()).as(deleted.body()).isEqualTo(204);
+    } finally {
+      pool.shutdownNow();
+    }
+
+    assertThat(
+            grantsApi
+                .get(SecurableType.CATALOG, TestUtils.CATALOG_NAME, null)
+                .getPrivilegeAssignments())
+        .extracting(PrivilegeAssignment::getPrincipal)
+        .doesNotContain("racing");
+  }
+
   @Test
   @SneakyThrows
   public void testGrantNameResolvesUserEmailBeforeGroupName() {
@@ -705,7 +754,10 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
     UUID catalogId =
         UUID.fromString(
             new CatalogsApi(adminApiClient).getCatalog(TestUtils.CATALOG_NAME, null).getId());
-    serverAuthorizer().grantAuthorization(groupId, catalogId, Privileges.OWNER);
+    // OWNER can't be granted through the API.
+    try (JCasbinAuthorizer granting = newAuthorizer()) {
+      granting.grantAuthorization(groupId, catalogId, Privileges.OWNER);
+    }
     UpdateCatalog update = new UpdateCatalog().comment("owned by a group");
 
     CatalogInfo updated = catalogsApi(alice).updateCatalog(TestUtils.CATALOG_NAME, update);
@@ -755,7 +807,13 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
   @SneakyThrows
   public void testMetastoreOwnerGroupCannotBeDeleted() {
     String id = createGroup("admins", alice.getId()).get("id").asText();
-    serverAuthorizer().grantAuthorization(UUID.fromString(id), metastoreId(), Privileges.OWNER);
+    try (JCasbinAuthorizer granting = newAuthorizer()) {
+      granting.grantAuthorization(UUID.fromString(id), metastoreId(), Privileges.OWNER);
+    }
+    // A member reads the group as a metastore owner. The deny before the server's reload is what
+    // makes it reload, so the delete below sees the grant.
+    ServerConfig aliceConfig = createTestUserServerConfig(alice.getEmails().get(0).getValue());
+    assertThat(send(aliceConfig, "GET", GROUPS_PATH + "/" + id, null).statusCode()).isEqualTo(200);
 
     HttpResponse<String> refused = send(adminConfig, "DELETE", GROUPS_PATH + "/" + id, null);
     assertThat(refused.statusCode()).isEqualTo(400);
@@ -965,16 +1023,6 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
   private CatalogsApi catalogsApi(UserResource user) {
     return new CatalogsApi(
         TestUtils.createApiClient(createTestUserServerConfig(user.getEmails().get(0).getValue())));
-  }
-
-  /**
-   * The server's own authorizer. OWNER can't be granted through the API, and the test server does
-   * not reload policy, so an OWNER grant the server must see is written through it.
-   */
-  private UnityCatalogAuthorizer serverAuthorizer() throws Exception {
-    Field field = UnityCatalogServer.class.getDeclaredField("authorizer");
-    field.setAccessible(true);
-    return (UnityCatalogAuthorizer) field.get(unityCatalogServer);
   }
 
   private UUID metastoreId() {
