@@ -2,6 +2,7 @@ package io.unitycatalog.server.service;
 
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -23,6 +24,8 @@ import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.RequestHeadersBuilder;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
+import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.security.AdminTokenCommand;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.utils.JwksOperations;
@@ -57,6 +60,20 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   private static final String ENABLED_USER_EMAIL = "test-user@example.com";
   private static final String EMPTY_RESPONSE = "{}";
   private static final ObjectMapper MAPPER = new ObjectMapper();
+  // Okta's SCIM 2.0 requests, from developer.okta.com/docs/api/openapi/okta-scim/guides/scim-20/.
+  private static final String OKTA_CREATE_USER =
+      """
+      {"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],"userName":"test.user@okta.local",
+      "name":{"givenName":"Test","familyName":"User"},
+      "emails":[{"primary":true,"value":"test.user@okta.local","type":"work"}],
+      "displayName":"Test User","locale":"en-US","externalId":"00ujl29u0le5T6Aj10h7","groups":[],
+      "password":"1mz050nq","active":true}\
+      """;
+  private static final String OKTA_DEACTIVATE_USER =
+      """
+      {"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+      "Operations":[{"op":"replace","value":{"active":false}}]}\
+      """;
 
   private WebClient client;
 
@@ -434,12 +451,139 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
         .join();
   }
 
+  /**
+   * Journey for an IdP's SCIM token (design 2.1a, A10): the admin creates the IdP principal, mints
+   * its token with {@code bin/uc-admin-token}, and the IdP provisions a user with Okta's request.
+   * The token is refused off the SCIM API, the principal can't sign in, disabling it revokes the
+   * token, and an expired token is refused.
+   */
+  @Test
+  public void testIdpScimTokenJourney() throws Exception {
+    // 1. The admin creates the IdP principal.
+    AggregatedHttpResponse created =
+        scim(
+            HttpMethod.POST,
+            "",
+            "{\"displayName\":\"Okta"
+                + " SCIM\",\"emails\":[{\"value\":\"okta-scim\",\"primary\":true}]}");
+    assertThat(created.status()).isEqualTo(HttpStatus.CREATED);
+    String principalId = MAPPER.readTree(created.contentUtf8()).get("id").asText();
+
+    // 2. The admin mints its SCIM token, as bin/uc-admin-token does.
+    String scimToken =
+        AdminTokenCommand.createScimToken(
+            new String[] {"--scim-principal", "okta-scim", "--idp", "okta", "--lifetime", "P90D"},
+            securityContext.getAlgorithm(),
+            new UserRepository(null, hibernateConfigurator.getSessionFactory()));
+    DecodedJWT claims = JWT.decode(scimToken);
+    assertThat(claims.getClaim(JwtClaim.TOKEN_TYPE.key()).asString()).isEqualTo("SCIM");
+    assertThat(claims.getSubject()).isEqualTo(principalId);
+    assertThat(claims.getClaim(JwtClaim.IDP.key()).asString()).isEqualTo("okta");
+    assertThat(claims.getExpiresAt().toInstant())
+        .isCloseTo(Instant.now().plus(Duration.ofDays(90)), within(1, ChronoUnit.MINUTES));
+
+    // 3. Okta checks for the user, then creates it (Okta's SCIM 2.0 requests).
+    AggregatedHttpResponse lookup =
+        scimAs(
+            scimToken,
+            HttpMethod.GET,
+            "?filter=userName%20eq%20%22test.user%40okta.local%22&startIndex=1&count=100",
+            null);
+    assertThat(lookup.status()).isEqualTo(HttpStatus.OK);
+    assertThat(MAPPER.readTree(lookup.contentUtf8()).get("totalResults").asInt()).isZero();
+    AggregatedHttpResponse oktaCreate = scimAs(scimToken, HttpMethod.POST, "", OKTA_CREATE_USER);
+    assertThat(oktaCreate.status()).isEqualTo(HttpStatus.CREATED);
+    assertThat(MAPPER.readTree(oktaCreate.contentUtf8()).get("emails").get(0).get("value").asText())
+        .isEqualTo("test.user@okta.local");
+
+    // 4. The token is refused off the SCIM API.
+    AggregatedHttpResponse catalogs = listCatalogs(scimToken);
+    assertThat(catalogs.status()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(MAPPER.readTree(catalogs.contentUtf8()).get("message").asText())
+        .isEqualTo("A SCIM token is accepted only under /api/1.0/unity-control/scim2/.");
+
+    // 5. The IdP principal can't sign in.
+    assertExchangeRejectedAsInvalid(
+        "email=okta-scim",
+        createIdentityToken(
+            "okta-scim", testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId));
+
+    // 6. The admin disables the principal (Okta's deactivate request); its token stops working.
+    assertThat(scim(HttpMethod.PATCH, "/" + principalId, OKTA_DEACTIVATE_USER).status())
+        .isEqualTo(HttpStatus.OK);
+    AggregatedHttpResponse disabled = scimAs(scimToken, HttpMethod.GET, "", null);
+    assertThat(disabled.status()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(MAPPER.readTree(disabled.contentUtf8()).get("message").asText())
+        .isEqualTo("User not allowed: " + principalId);
+
+    // 7. An expired SCIM token is refused.
+    String expired =
+        JWT.create()
+            .withIssuer(INTERNAL)
+            .withExpiresAt(Date.from(Instant.now().minus(Duration.ofMinutes(1))))
+            .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.SCIM.name())
+            .withClaim(JwtClaim.SUBJECT.key(), principalId)
+            .withClaim(JwtClaim.IDP.key(), "okta")
+            .sign(securityContext.getAlgorithm());
+    AggregatedHttpResponse expiredResponse = scimAs(expired, HttpMethod.GET, "", null);
+    assertThat(expiredResponse.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    assertThat(MAPPER.readTree(expiredResponse.contentUtf8()).get("message").asText())
+        .isEqualTo("Invalid access token.");
+  }
+
+  /** {@code bin/uc-admin-token} refuses SCIM options it can't mint a token from. */
+  @Test
+  public void testScimTokenMintRefusals() {
+    createEnabledUser("entra-scim");
+    UserRepository users = new UserRepository(null, hibernateConfigurator.getSessionFactory());
+    users.setIdpName("entra-scim", "entra");
+    String usage =
+        "Usage: bin/uc-admin-token [--scim-principal <email> --idp <name> --lifetime <ISO-8601"
+            + " duration>]";
+    Map<List<String>, String> refusals =
+        Map.of(
+            List.of("--scim-principal", "okta-scim", "--idp", "okta"),
+            "--lifetime is required with --scim-principal. " + usage,
+            List.of("--scim-principal", "okta-scim", "--lifetime", "P90D"),
+            "--idp is required with --scim-principal. " + usage,
+            List.of("--idp", "okta", "--lifetime", "P90D"),
+            "--scim-principal is required with --idp and --lifetime. " + usage,
+            List.of("--scim-principal", "okta-scim", "--idp", "okta", "--lifetime", "90 days"),
+            "--lifetime must be a positive ISO-8601 duration, such as P90D: 90 days",
+            List.of("--scim-principal", "okta-scim", "--idp", "okta", "--lifetime", "-P1D"),
+            "--lifetime must be a positive ISO-8601 duration, such as P90D: -P1D",
+            List.of("--scim-principal", "okta-scim", "--idp"),
+            "--idp needs a value. " + usage,
+            List.of("--kid", "x"),
+            "Unknown option: --kid. " + usage,
+            List.of("--scim-principal", "nobody-scim", "--idp", "okta", "--lifetime", "P90D"),
+            "User not found: nobody-scim",
+            List.of("--scim-principal", "admin", "--idp", "okta", "--lifetime", "P90D"),
+            "The admin user can't be an IdP principal.",
+            List.of("--scim-principal", "entra-scim", "--idp", "okta", "--lifetime", "P90D"),
+            "User entra-scim is already the IdP principal of entra, not okta.");
+    refusals.forEach(
+        (args, message) ->
+            assertThatThrownBy(
+                    () ->
+                        AdminTokenCommand.createScimToken(
+                            args.toArray(String[]::new), securityContext.getAlgorithm(), users))
+                .as(String.join(" ", args))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage(message));
+  }
+
   /** Calls the SCIM users endpoint as the admin. */
   private AggregatedHttpResponse scim(HttpMethod method, String path, String body) {
+    return scimAs(securityContext.createServiceToken(), method, path, body);
+  }
+
+  /** Calls the SCIM users endpoint with {@code token}, as Okta does. */
+  private AggregatedHttpResponse scimAs(String token, HttpMethod method, String path, String body) {
     RequestHeaders headers =
         RequestHeaders.builder(method, "/api/1.0/unity-control/scim2/Users" + path)
-            .contentType(MediaType.JSON)
-            .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + securityContext.createServiceToken())
+            .contentType(MediaType.parse("application/scim+json"))
+            .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + token)
             .build();
     return client
         .execute(headers, body == null ? HttpData.empty() : HttpData.ofUtf8(body))

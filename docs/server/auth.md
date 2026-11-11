@@ -487,6 +487,27 @@ The output should look something like this
 ├────────────────────────────────────┼─────────┼────────────────────────┼───────────┼───────┼───────────┼─────────────┼─────────────┤
 ```
 
+### Give an identity provider a SCIM token
+
+An identity provider such as Okta provisions users through the SCIM API (`/api/1.0/unity-control/scim2/`) with a token
+of its own, not the admin token. Create a user for it, then mint its token; `--lifetime` is an ISO-8601 duration and
+has no default:
+
+```sh
+bin/uc --auth_token "$(bin/uc-admin-token)" user create --name "Okta SCIM" --email okta-scim
+bin/uc-admin-token --scim-principal okta-scim --idp okta --lifetime P90D
+```
+
+- The token is accepted only under `/api/1.0/unity-control/scim2/`, where it can do what the metastore owner can;
+  elsewhere it gets 403.
+- `bin/uc-admin-token` opens the server's database from `etc/conf/hibernate.properties`, as
+  `bin/start-uc-server --upgrade-schema` does, and marks the user as the identity provider's principal. That user can no
+  longer sign in, and can't be marked for another identity provider. It refuses the `admin` user.
+- With the default H2 file database, stop the server before you run it: H2 lets one process open the file.
+- To rotate the token, mint a new one, give it to the identity provider, and let the old one expire. To revoke it now,
+  disable the user, for example with `bin/uc --auth_token "$(bin/uc-admin-token)" user delete --id <id>`, which
+  disables it. The token is refused on its next request.
+
 ### Try to log in with no user in the local database
 
 As noted earlier, Unity Catalog has a local database that contains the users allowed to access it. While an

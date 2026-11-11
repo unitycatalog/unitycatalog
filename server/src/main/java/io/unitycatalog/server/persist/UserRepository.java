@@ -204,6 +204,38 @@ public class UserRepository {
         /* readOnly= */ false);
   }
 
+  /**
+   * Marks the user as the principal of the identity provider {@code idpName}, for its SCIM token.
+   * Refuses the admin user and a user that is already the principal of another identity provider.
+   */
+  public User setIdpName(String email, String idpName) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UserDAO userDAO = getUserByEmail(session, email);
+          if (userDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + email);
+          }
+          // The stored email, so that a case variant of "admin" is refused as well.
+          if ("admin".equals(userDAO.getEmail())) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT, "The admin user can't be an IdP principal.");
+          }
+          if (userDAO.getIdpName() != null && !userDAO.getIdpName().equals(idpName)) {
+            throw new BaseException(
+                ErrorCode.FAILED_PRECONDITION,
+                String.format(
+                    "User %s is already the IdP principal of %s, not %s.",
+                    email, userDAO.getIdpName(), idpName));
+          }
+          userDAO.setIdpName(idpName);
+          session.merge(userDAO);
+          return userDAO.toUser();
+        },
+        "Failed to set the IdP name of the user",
+        /* readOnly= */ false);
+  }
+
   public void deleteUser(String id) {
     TransactionManager.executeWithTransaction(
         sessionFactory,
@@ -224,10 +256,13 @@ public class UserRepository {
 
   public UUID findPrincipalId() {
     String principalEmailAddress = IdentityUtils.findPrincipalEmailAddress();
-    if (principalEmailAddress != null) {
-      return UUID.fromString(getUserByEmail(principalEmailAddress).getId());
-    } else {
+    if (principalEmailAddress == null) {
       return null;
     }
+    // A SCIM token's subject is already the user's id; AuthDecorator looked the user up by it.
+    if (IdentityUtils.isScimToken()) {
+      return UUID.fromString(principalEmailAddress);
+    }
+    return UUID.fromString(getUserByEmail(principalEmailAddress).getId());
   }
 }

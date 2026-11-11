@@ -1,5 +1,6 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.auth.AuthorizeExpressions.SCIM_PROVISIONING;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.utils.Scim2Utils.asUserResource;
 
@@ -83,7 +84,7 @@ public class Scim2UserService implements ScimService {
   @Get("")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public ListResponse<UserResource> getScimUsers(
       @Param("filter") Optional<String> filter,
@@ -122,7 +123,7 @@ public class Scim2UserService implements ScimService {
   @Post("")
   @Produces("application/scim+json")
   @StatusCode(201)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public UserResource createScimUser(UserResource userResource) {
     // Get primary email address
@@ -165,7 +166,7 @@ public class Scim2UserService implements ScimService {
   @Get("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public UserResource getUser(@Param("id") String id) {
     return asUserResource(userRepository.getUser(id));
@@ -174,7 +175,7 @@ public class Scim2UserService implements ScimService {
   @Put("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public UserResource updateUser(@Param("id") String id, UserResource userResource) {
     User existing = userRepository.getUser(id);
@@ -196,7 +197,7 @@ public class Scim2UserService implements ScimService {
   }
 
   @Delete("/{id}")
-  @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteUser(@Param("id") String id) {
     User user = userRepository.getUser(id);
@@ -208,7 +209,7 @@ public class Scim2UserService implements ScimService {
   }
 
   @Patch("/{id}")
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse patchUser(@Param("id") String id, PatchRequest patchRequest) {
     return patchRequest.getOperations().stream()

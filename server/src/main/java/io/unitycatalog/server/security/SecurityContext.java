@@ -71,6 +71,29 @@ public class SecurityContext {
         .sign(algorithm);
   }
 
+  /**
+   * Creates an IdP's SCIM token: it names the IdP principal by its user id, and expires after
+   * {@code lifetime}.
+   */
+  static String createScimToken(
+      Algorithm algorithm,
+      String serviceName,
+      String localIssuer,
+      String principalId,
+      String idpName,
+      Duration lifetime) {
+    return JWT.create()
+        .withSubject(serviceName)
+        .withIssuer(localIssuer)
+        .withIssuedAt(new Date())
+        .withExpiresAt(Date.from(Instant.now().plus(lifetime)))
+        .withJWTId(UUID.randomUUID().toString())
+        .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.SCIM.name())
+        .withClaim(JwtClaim.SUBJECT.key(), principalId)
+        .withClaim(JwtClaim.IDP.key(), idpName)
+        .sign(algorithm);
+  }
+
   // Earlier versions wrote an admin token that does not expire to token.txt in the configuration
   // folder, so remove that plaintext copy; bin/uc-admin-token prints an admin token when needed.
   // Removing the file does not revoke copies; changing the signing key does.

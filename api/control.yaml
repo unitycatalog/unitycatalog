@@ -275,6 +275,11 @@ components:
         picture_url:
           description: The URL of the user's profile picture.
           type: string
+        idp_name:
+          description: >-
+            The identity provider this user provisions users for, with a SCIM token from
+            bin/uc-admin-token. Such a user can't sign in.
+          type: string
         created_at:
           description: The time the user was created.
           type: integer

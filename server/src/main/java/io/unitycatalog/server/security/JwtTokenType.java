@@ -1,5 +1,6 @@
 package io.unitycatalog.server.security;
 
+import static io.unitycatalog.server.security.JwtClaim.IDP;
 import static io.unitycatalog.server.security.JwtClaim.SUBJECT;
 
 import java.util.Set;
@@ -8,7 +9,9 @@ import lombok.Getter;
 /** Valid UC token types. */
 public enum JwtTokenType {
   SERVICE(Set.of(SUBJECT)),
-  ACCESS(Set.of(SUBJECT));
+  ACCESS(Set.of(SUBJECT)),
+  /** An IdP's token for the SCIM API only; {@code sub} is the id of its principal's user row. */
+  SCIM(Set.of(SUBJECT, IDP));
 
   @Getter private final Set<JwtClaim> requiredClaims;
 

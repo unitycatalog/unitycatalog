@@ -48,15 +48,19 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * How {@link AuthDecorator} answers a valid internal token whose user lookup fails or finds no
- * enabled user, and an internal token signed with another key. The token is real, signed with keys
- * generated in a temp folder; only the user repository is mocked.
+ * enabled user, an internal token signed with another key, and where and for whom a SCIM token is
+ * accepted. The token is real, signed with keys generated in a temp folder; only the user
+ * repository is mocked.
  */
 class AuthDecoratorTest {
 
   private static final String EMAIL = "user@example.com";
+  private static final String SCIM_PRINCIPAL_ID = "0b6f7a3e-2c1d-4e5f-8a9b-0c1d2e3f4a5b";
+  private static final String SCIM_USERS_PATH = "/api/1.0/unity-control/scim2/Users";
 
   private final UserRepository userRepository = mock();
   private final HttpService delegate = mock();
@@ -141,6 +145,11 @@ class AuthDecoratorTest {
             "ACCESS without exp",
             (UnaryOperator<JWTCreator.Builder>)
                 b -> b.withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name()),
+            "Access token has no expiry. Get a new token from this server."),
+        Arguments.of(
+            "SCIM without exp",
+            (UnaryOperator<JWTCreator.Builder>)
+                b -> scimClaims(b).withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.SCIM.name()),
             "Access token has no expiry. Get a new token from this server."));
   }
 
@@ -156,6 +165,7 @@ class AuthDecoratorTest {
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.UNAUTHENTICATED);
     verify(userRepository, never()).getUserByEmail(any());
+    verify(userRepository, never()).getUser(any());
     verifyNotDelegated();
   }
 
@@ -211,10 +221,94 @@ class AuthDecoratorTest {
     verifyNotDelegated();
   }
 
+  @Test
+  void scimTokenOfAnEnabledIdpPrincipalIsServedOnTheScimApi() throws Exception {
+    token = scimToken();
+    when(userRepository.getUser(SCIM_PRINCIPAL_ID))
+        .thenReturn(scimPrincipal(User.StateEnum.ENABLED, "okta"));
+    HttpResponse response = HttpResponse.of(200);
+    when(delegate.serve(any(), any())).thenReturn(response);
+
+    assertThat(serve(SCIM_USERS_PATH)).isSameAs(response);
+    verify(userRepository, never()).getUserByEmail(any());
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "/api/2.1/unity-catalog/catalogs",
+        "/api/1.0/unity-control/auth/logout",
+        "/api/1.0/unity-control/scim2",
+        "/api/1.0/unity-control/scim2Users"
+      })
+  void scimTokenIsRefusedOutsideTheScimApi(String path) {
+    token = scimToken();
+    when(userRepository.getUser(SCIM_PRINCIPAL_ID))
+        .thenReturn(scimPrincipal(User.StateEnum.ENABLED, "okta"));
+
+    assertThatThrownBy(() -> serve(path))
+        .isInstanceOf(AuthorizationException.class)
+        .hasMessage("A SCIM token is accepted only under /api/1.0/unity-control/scim2/.")
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.PERMISSION_DENIED);
+    verifyNotDelegated();
+  }
+
+  static Stream<Arguments> scimPrincipalsNotAllowed() {
+    return Stream.of(
+        Arguments.of("missing", null),
+        Arguments.of("disabled", scimPrincipal(User.StateEnum.DISABLED, "okta")),
+        Arguments.of("not an IdP principal", scimPrincipal(User.StateEnum.ENABLED, null)));
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("scimPrincipalsNotAllowed")
+  void scimTokenIsRefusedUnlessItsPrincipalIsAnEnabledIdpPrincipal(String name, User principal) {
+    token = scimToken();
+    if (principal == null) {
+      when(userRepository.getUser(SCIM_PRINCIPAL_ID))
+          .thenThrow(new BaseException(ErrorCode.NOT_FOUND, "User not found"));
+    } else {
+      when(userRepository.getUser(SCIM_PRINCIPAL_ID)).thenReturn(principal);
+    }
+
+    assertThatThrownBy(() -> serve(SCIM_USERS_PATH))
+        .isInstanceOf(AuthorizationException.class)
+        .hasMessage("User not allowed: " + SCIM_PRINCIPAL_ID)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.PERMISSION_DENIED);
+    // Looked up by id: the SCIM token names its principal by the row's UUID.
+    verify(userRepository).getUser(SCIM_PRINCIPAL_ID);
+    verifyNotDelegated();
+  }
+
+  /** A SCIM token for the principal {@link #SCIM_PRINCIPAL_ID}, valid for five minutes. */
+  private String scimToken() {
+    return signedToken(
+        b ->
+            scimClaims(b)
+                .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.SCIM.name())
+                .withExpiresAt(Instant.now().plus(Duration.ofMinutes(5))));
+  }
+
+  private static JWTCreator.Builder scimClaims(JWTCreator.Builder builder) {
+    return builder
+        .withClaim(JwtClaim.SUBJECT.key(), SCIM_PRINCIPAL_ID)
+        .withClaim(JwtClaim.IDP.key(), "okta");
+  }
+
+  private static User scimPrincipal(User.StateEnum state, String idpName) {
+    return new User().id(SCIM_PRINCIPAL_ID).email("okta-scim").state(state).idpName(idpName);
+  }
+
   private HttpResponse serve() throws Exception {
+    return serve("/api/2.1/unity-catalog/catalogs");
+  }
+
+  private HttpResponse serve(String path) throws Exception {
     HttpRequest request =
         HttpRequest.of(
-            RequestHeaders.builder(HttpMethod.GET, "/api/2.1/unity-catalog/catalogs")
+            RequestHeaders.builder(HttpMethod.GET, path)
                 .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + token)
                 .build());
     return decorator.serve(delegate, ServiceRequestContext.of(request), request);
