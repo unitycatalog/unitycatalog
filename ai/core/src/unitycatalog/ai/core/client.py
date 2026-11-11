@@ -508,11 +508,6 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         function_metadata = await self.uc.functions_client.create_function(
             function_request, _request_timeout=timeout
         )
-        # NB: Clearing the function cache here only if the function creation is successful
-        # to ensure that the cache state is viable and any replacement operations, on next execution,
-        # refresh the cache with the new function definition
-        if replace:
-            self.clear_function_cache()
         return function_metadata
 
     @override
@@ -883,15 +878,21 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
     def _get_callable(self, function_info: FunctionInfo) -> Callable[..., Any]:
         """
-        Extracts or dynamically constructs the function from the FunctionInfo,
-        and caches the function for future calls.
+        Extracts or dynamically constructs the function from the FunctionInfo, and caches it
+        under the function's full name, recording the source it was built from in `_uc_source`.
+
+        The cached function is reused only while the given FunctionInfo produces the same
+        source, so a function that was deleted and recreated, or replaced by another client,
+        is rebuilt instead of running its old body.
         """
-        if function_info.full_name in self.func_cache:
-            return self.func_cache[function_info.full_name]
         python_function = get_callable_definition(function_info)
+        cached_func = self.func_cache.get(function_info.full_name)
+        if getattr(cached_func, "_uc_source", None) == python_function:
+            return cached_func
         namespace = {}
         exec(python_function, namespace)
         func = namespace[function_info.name]
+        func._uc_source = python_function
         self.func_cache[function_info.full_name] = func
         return func
 

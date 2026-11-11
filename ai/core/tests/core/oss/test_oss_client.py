@@ -1230,13 +1230,13 @@ def stored_python_function(
     )
 
 
-def int_param(name: str) -> FunctionParameterInfo:
+def int_param(name: str, position: int = 0) -> FunctionParameterInfo:
     return FunctionParameterInfo(
         name=name,
         type_name="INT",
         type_text="int",
         type_json=f'{{"name":"{name}","type":"integer","nullable":false,"metadata":{{}}}}',
-        position=0,
+        position=position,
     )
 
 
@@ -1321,6 +1321,68 @@ async def test_function_is_reexecuted_instead_of_memoized(
         results.append(result.value)
 
     assert results == ["first", "second", "third"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize("deleted_by_this_client", [True, False])
+@pytest.mark.parametrize(
+    ("new_definition", "new_param_names", "arguments", "expected"),
+    [
+        ("return x * 25", ["x"], {"x": 10}, 250),
+        ("return x * 10", ["x", "y"], {"x": 10, "y": 1}, 100),
+    ],
+)
+async def test_function_changed_in_catalog_executes_new_definition(
+    mocked_store_client,
+    use_async,
+    deleted_by_this_client,
+    new_definition,
+    new_param_names,
+    arguments,
+    expected,
+):
+    function_name = f"{CATALOG}.{SCHEMA}.tax"
+    serve_functions(
+        mocked_store_client,
+        stored_python_function(function_name, "return x * 10", "INT", [int_param("x")]),
+    )
+    first = await execute(mocked_store_client, use_async, function_name, {"x": 10})
+
+    if deleted_by_this_client:
+        mocked_store_client.delete_function(function_name)
+    serve_functions(
+        mocked_store_client,
+        stored_python_function(
+            function_name,
+            new_definition,
+            "INT",
+            [int_param(name, position) for position, name in enumerate(new_param_names)],
+        ),
+    )
+    second = await execute(mocked_store_client, use_async, function_name, arguments)
+
+    assert (first.value, second.error, second.value) == (100, None, expected)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_unchanged_function_reuses_cached_callable(mocked_store_client, use_async):
+    function_name = f"{CATALOG}.{SCHEMA}.count_calls"
+    serve_functions(
+        mocked_store_client,
+        stored_python_function(
+            function_name,
+            'globals()["calls"] = globals().get("calls", 0) + 1\nreturn globals()["calls"]',
+            "INT",
+        ),
+    )
+
+    results = [
+        (await execute(mocked_store_client, use_async, function_name, {})).value for _ in range(3)
+    ]
+
+    assert results == [1, 2, 3]
 
 
 @pytest.mark.asyncio
