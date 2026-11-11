@@ -155,6 +155,9 @@ public class UnityCatalogCli {
         case CliUtils.USER:
           UserCli.handle(cmd, getControlClient(cmd));
           break;
+        case CliUtils.GROUP:
+          GroupCli.handle(cmd, getControlClient(cmd));
+          break;
         case CliUtils.METASTORE:
           MetastoreCli.handle(cmd, apiClient);
           break;

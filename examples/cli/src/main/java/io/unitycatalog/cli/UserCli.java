@@ -152,7 +152,7 @@ public class UserCli {
         .updatedAt(fromDateString(userResource.getMeta().getLastModified()));
   }
 
-  private static Long fromDateString(String date) {
+  static Long fromDateString(String date) {
     // TODO: Should really try to get OpenAPI to convert from dates itself.
     SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
     try {
