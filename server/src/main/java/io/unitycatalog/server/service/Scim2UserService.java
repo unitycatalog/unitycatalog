@@ -70,6 +70,8 @@ import java.util.stream.Stream;
 public class Scim2UserService implements ScimService {
   private static final String ACTIVE = "active";
   private static final String CORE_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User:";
+  // The uc_users.name column is varchar(255).
+  private static final int MAX_NAME_LENGTH = 255;
   private final UserRepository userRepository;
   private final UnityCatalogAuthorizer authorizer;
   private final MetastoreRepository metastoreRepository;
@@ -142,7 +144,7 @@ public class Scim2UserService implements ScimService {
             .orElseThrow(
                 () ->
                     new Scim2RuntimeException(
-                        new BadRequestException("A user needs displayName or name.")));
+                        BadRequestException.invalidValue("A user needs displayName or name.")));
 
     String pictureUrl = "";
     if (userResource.getPhotos() != null && !userResource.getPhotos().isEmpty()) {
@@ -252,7 +254,18 @@ public class Scim2UserService implements ScimService {
                 .collect(Collectors.joining(" "));
     return Stream.of(user.getDisplayName(), formatted, givenAndFamily)
         .filter(Scim2UserService::isNotBlank)
-        .findFirst();
+        .findFirst()
+        .map(Scim2UserService::checkNameLength);
+  }
+
+  /** The name column is varchar(255); a longer name is refused as a bad request, not a 500. */
+  private static String checkNameLength(String name) {
+    if (name.length() > MAX_NAME_LENGTH) {
+      throw new Scim2RuntimeException(
+          BadRequestException.invalidValue(
+              "A user name can have at most " + MAX_NAME_LENGTH + " characters."));
+    }
+    return name;
   }
 
   private static boolean isNotBlank(String value) {

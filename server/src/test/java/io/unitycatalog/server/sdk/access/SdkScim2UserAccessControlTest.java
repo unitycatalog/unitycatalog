@@ -387,6 +387,23 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
           MAPPER.readTree(TestUtils.sendRaw(adminConfig, "GET", path, Optional.empty()).body());
       assertThat(fetched.get("displayName").asText()).as(c[0]).isEqualTo(current);
     }
+
+    // A name over the 255 characters the column holds is refused, here as the joined 301
+    // characters, and the stored name is kept.
+    String tooLong =
+        "{\"id\":\""
+            + otherUser.getId()
+            + "\",\"name\":{\"givenName\":\""
+            + "g".repeat(200)
+            + "\",\"familyName\":\""
+            + "f".repeat(100)
+            + "\"}}";
+    HttpResponse<String> refused =
+        TestUtils.sendRaw(adminConfig, "PUT", path, Optional.of(tooLong));
+    assertScimBadRequest(refused, "A user name can have at most 255 characters.");
+    JsonNode kept =
+        MAPPER.readTree(TestUtils.sendRaw(adminConfig, "GET", path, Optional.empty()).body());
+    assertThat(kept.get("displayName").asText()).isEqualTo(current);
   }
 
   @Test
@@ -411,18 +428,22 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
       assertThat(user.get("name").get("formatted").asText()).as(c[1]).isEqualTo(c[2]);
     }
 
-    // No usable name is the caller's error, and no user is created.
-    String[] nameless = {
-      "\"active\":true", "\"displayName\":\" \",\"name\":{\"formatted\":\"\",\"givenName\":\" \"}",
+    // A name that is missing or over the 255 characters the column holds is the caller's error,
+    // and no user is created.
+    String[][] refused = {
+      {"\"active\":true", "A user needs displayName or name."},
+      {
+        "\"displayName\":\" \",\"name\":{\"formatted\":\"\",\"givenName\":\" \"}",
+        "A user needs displayName or name."
+      },
+      {
+        "\"displayName\":\"" + "a".repeat(256) + "\"",
+        "A user name can have at most 255 characters."
+      },
     };
-    for (String fields : nameless) {
-      HttpResponse<String> post = postUser("scim-post-none@localhost", fields);
-      assertThat(post.statusCode()).as(fields).isEqualTo(400);
-      assertThat(post.body()).as(fields).contains("A user needs displayName or name.");
-      assertThat(post.body())
-          .as(fields)
-          .doesNotContain("UserDAO")
-          .doesNotContain("io.unitycatalog");
+    for (String[] c : refused) {
+      HttpResponse<String> post = postUser("scim-post-none@localhost", c[0]);
+      assertScimBadRequest(post, c[1]);
       String filter =
           URLEncoder.encode("userName eq \"scim-post-none@localhost\"", StandardCharsets.UTF_8);
       JsonNode found =
@@ -430,8 +451,22 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
               TestUtils.sendRaw(
                       adminConfig, "GET", SCIM_USERS_PATH + "?filter=" + filter, Optional.empty())
                   .body());
-      assertThat(found.get("totalResults").asInt()).as(fields).isZero();
+      assertThat(found.get("totalResults").asInt()).as(c[0]).isZero();
     }
+  }
+
+  /** A SCIM 400 for an invalid value, with the message and no SQL or internal type names. */
+  @SneakyThrows
+  private static void assertScimBadRequest(HttpResponse<String> response, String message) {
+    assertThat(response.statusCode()).as(response.body()).isEqualTo(400);
+    JsonNode error = MAPPER.readTree(response.body());
+    assertThat(error.get("scimType").asText()).isEqualTo("invalidValue");
+    assertThat(error.get("detail").asText()).isEqualTo(message);
+    assertThat(response.body())
+        .doesNotContain("UserDAO")
+        .doesNotContain("io.unitycatalog")
+        .doesNotContainIgnoringCase("insert into")
+        .doesNotContainIgnoringCase("update uc_");
   }
 
   private HttpResponse<String> postUser(String email, String fields) throws Exception {
