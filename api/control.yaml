@@ -335,6 +335,13 @@ components:
         displayName:
           description: The name of the user.
           type: string
+        name:
+          description: The components of the user's name.
+          type: object
+          properties:
+            formatted:
+              description: The full name of the user, the same as displayName.
+              type: string
         externalId:
           description: The SCIM external id.
           type: string
