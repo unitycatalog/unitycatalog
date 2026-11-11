@@ -481,8 +481,9 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
 
   /**
    * Replays Okta's documented SCIM 2.0 user provisioning (developer.okta.com SCIM 2.0 guide) in its
-   * order: check, create, check, update, deactivate, reactivate. The bearer token stands in for
-   * Okta's API token; sign-in is a token exchange of an identity token from the fake IdP.
+   * order: check, create, check, read by id and update (a PUT of the full user with a changed name
+   * and no displayName), deactivate, reactivate. The bearer token stands in for Okta's API token;
+   * sign-in is a token exchange of an identity token from the fake IdP.
    */
   @Test
   public void testOktaUserProvisioningJourney() throws Exception {
@@ -523,7 +524,6 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
         MAPPER.readTree(scim(HttpMethod.GET, SCIM_USERS + "?filter=" + filter, null, 200));
     assertThat(found.get("totalResults").asInt()).isEqualTo(1);
     assertThat(found.get("Resources").get(0).get("id").asText()).isEqualTo(id);
-    JsonNode user = found.get("Resources").get(0);
 
     // The user signs in with an identity token from the IdP.
     String idToken =
@@ -533,14 +533,20 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
         MAPPER.readTree(exchangeToken(idToken).contentUtf8()).get("access_token").asText();
     assertThat(callMe(accessToken)).isEqualTo(HttpStatus.OK);
 
-    // 4. A change of name arrives as a PUT of the full user.
-    ObjectNode update = user.deepCopy();
-    update.put("displayName", "Tess Renamed");
+    // 4. Okta reads the user by id, then PUTs the full user with the changed name. The PUT carries
+    // name, not displayName, and its response must be the updated user.
+    ObjectNode update =
+        (ObjectNode) MAPPER.readTree(scim(HttpMethod.GET, SCIM_USERS + "/" + id, null, 200));
+    update.remove("displayName");
     update.set("name", MAPPER.readTree("{\"givenName\":\"Tess\",\"familyName\":\"Renamed\"}"));
     JsonNode updated =
         MAPPER.readTree(scim(HttpMethod.PUT, SCIM_USERS + "/" + id, update.toString(), 200));
     assertThat(updated.get("displayName").asText()).isEqualTo("Tess Renamed");
+    assertThat(updated.get("name").get("formatted").asText()).isEqualTo("Tess Renamed");
     assertThat(updated.get("active").asBoolean()).isTrue();
+    JsonNode renamed = MAPPER.readTree(scim(HttpMethod.GET, SCIM_USERS + "/" + id, null, 200));
+    assertThat(renamed.get("displayName").asText()).isEqualTo("Tess Renamed");
+    assertThat(renamed.get("name").get("formatted").asText()).isEqualTo("Tess Renamed");
 
     // 5. Deactivation is a pathless PATCH. The user can then neither sign in nor use a token that
     // was issued earlier.

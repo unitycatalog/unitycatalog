@@ -333,7 +333,11 @@ components:
           description: The id of the user.
           type: string
         displayName:
-          description: The name of the user.
+          description: >-
+            The name of the user. On create and update the name is taken from displayName,
+            else from name.formatted, else from the name's givenName and familyName joined by a
+            space. An update with none of them keeps the current name; a create with none is
+            rejected.
           type: string
         name:
           description: The components of the user's name.

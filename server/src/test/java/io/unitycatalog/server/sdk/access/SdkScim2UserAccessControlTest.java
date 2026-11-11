@@ -221,6 +221,19 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     assertThat(body.get("Resources")).hasSize(5);
     assertThat(body.get("Resources").get(0).get("userName").asText())
         .isEqualTo("scim-page-100@localhost");
+
+    // Without count a page holds 50.
+    JsonNode defaultPage =
+        MAPPER.readTree(
+            TestUtils.sendRaw(
+                    adminConfig,
+                    "GET",
+                    SCIM_USERS_PATH + "?filter=" + filter + "&startIndex=1",
+                    Optional.empty())
+                .body());
+    assertThat(defaultPage.get("totalResults").asInt()).isEqualTo(105);
+    assertThat(defaultPage.get("Resources")).hasSize(50);
+    assertThat(defaultPage.get("itemsPerPage").asInt()).isEqualTo(50);
   }
 
   @Test
@@ -306,7 +319,14 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     String array = "{\"op\":\"replace\",\"path\":\"active\",\"value\":[false,true]}";
     // Every operation is validated, not only the last, and nothing is applied on a 400.
     for (String operations :
-        new String[] {maybe, array, maybe + "," + deactivate, deactivate + "," + maybe}) {
+        new String[] {
+          maybe,
+          array,
+          // An empty array is no boolean either.
+          "{\"op\":\"replace\",\"path\":\"active\",\"value\":[]}",
+          maybe + "," + deactivate,
+          deactivate + "," + maybe
+        }) {
       HttpResponse<String> response = patchOtherUser(operations);
       assertThat(response.statusCode()).as(operations).isEqualTo(400);
       assertThat(response.body()).as(operations).contains("active must be true or false");
@@ -325,6 +345,98 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     assertThat(body.get("name").get("formatted").asText()).isEqualTo("Other User");
     // userName stays the email.
     assertThat(body.get("userName").asText()).isEqualTo(OTHER_USER);
+  }
+
+  @Test
+  @SneakyThrows
+  public void testPutStoresTheNameInOrderOfPrecedence() {
+    // UC stores one name. It is displayName, else name.formatted, else givenName and familyName
+    // joined by a space, and the current name is kept when the request carries none. A null
+    // expected name means "kept". Okta's rename carries only the name object.
+    String[][] cases = {
+      {"\"displayName\":\"Shown\",\"name\":{\"formatted\":\"F\",\"givenName\":\"G\"}", "Shown"},
+      {
+        "\"displayName\":\" \",\"name\":{\"formatted\":\"Formatted\",\"givenName\":\"G\"}",
+        "Formatted"
+      },
+      {
+        "\"name\":{\"formatted\":\"Formatted Too\",\"givenName\":\"G\",\"familyName\":\"F\"}",
+        "Formatted Too"
+      },
+      {
+        "\"name\":{\"givenName\":\"Tess\",\"middleName\":\"M\",\"familyName\":\"Renamed\"}",
+        "Tess Renamed"
+      },
+      {"\"name\":{\"givenName\":\"Tess\"}", "Tess"},
+      {"\"name\":{\"givenName\":\" \",\"familyName\":\"Renamed\"}", "Renamed"},
+      {"\"active\":true", null},
+      {"\"displayName\":\"\",\"name\":{\"formatted\":\" \"}", null},
+      {"\"name\":{\"givenName\":\"\",\"familyName\":\" \"}", null},
+    };
+    String path = SCIM_USERS_PATH + "/" + otherUser.getId();
+    String current = "Other User";
+    for (String[] c : cases) {
+      String body = "{\"id\":\"" + otherUser.getId() + "\"," + c[0] + "}";
+      HttpResponse<String> put = TestUtils.sendRaw(adminConfig, "PUT", path, Optional.of(body));
+      assertThat(put.statusCode()).as(c[0]).isEqualTo(200);
+      current = c[1] == null ? current : c[1];
+      JsonNode updated = MAPPER.readTree(put.body());
+      assertThat(updated.get("displayName").asText()).as(c[0]).isEqualTo(current);
+      assertThat(updated.get("name").get("formatted").asText()).as(c[0]).isEqualTo(current);
+      JsonNode fetched =
+          MAPPER.readTree(TestUtils.sendRaw(adminConfig, "GET", path, Optional.empty()).body());
+      assertThat(fetched.get("displayName").asText()).as(c[0]).isEqualTo(current);
+    }
+  }
+
+  @Test
+  @SneakyThrows
+  public void testPostDerivesTheNameOrRefusesAUserWithoutOne() {
+    String[][] created = {
+      {
+        "scim-post-1@localhost",
+        "\"name\":{\"givenName\":\"Tess\",\"familyName\":\"Post\"}",
+        "Tess Post"
+      },
+      {"scim-post-2@localhost", "\"name\":{\"formatted\":\"Formatted Post\"}", "Formatted Post"},
+      {
+        "scim-post-3@localhost", "\"displayName\":\"Shown\",\"name\":{\"givenName\":\"G\"}", "Shown"
+      },
+    };
+    for (String[] c : created) {
+      HttpResponse<String> post = postUser(c[0], c[1]);
+      assertThat(post.statusCode()).as(c[1]).isEqualTo(201);
+      JsonNode user = MAPPER.readTree(post.body());
+      assertThat(user.get("displayName").asText()).as(c[1]).isEqualTo(c[2]);
+      assertThat(user.get("name").get("formatted").asText()).as(c[1]).isEqualTo(c[2]);
+    }
+
+    // No usable name is the caller's error, and no user is created.
+    String[] nameless = {
+      "\"active\":true", "\"displayName\":\" \",\"name\":{\"formatted\":\"\",\"givenName\":\" \"}",
+    };
+    for (String fields : nameless) {
+      HttpResponse<String> post = postUser("scim-post-none@localhost", fields);
+      assertThat(post.statusCode()).as(fields).isEqualTo(400);
+      assertThat(post.body()).as(fields).contains("A user needs displayName or name.");
+      assertThat(post.body())
+          .as(fields)
+          .doesNotContain("UserDAO")
+          .doesNotContain("io.unitycatalog");
+      String filter =
+          URLEncoder.encode("userName eq \"scim-post-none@localhost\"", StandardCharsets.UTF_8);
+      JsonNode found =
+          MAPPER.readTree(
+              TestUtils.sendRaw(
+                      adminConfig, "GET", SCIM_USERS_PATH + "?filter=" + filter, Optional.empty())
+                  .body());
+      assertThat(found.get("totalResults").asInt()).as(fields).isZero();
+    }
+  }
+
+  private HttpResponse<String> postUser(String email, String fields) throws Exception {
+    String body = "{\"emails\":[{\"primary\":true,\"value\":\"" + email + "\"}]," + fields + "}";
+    return TestUtils.sendRaw(adminConfig, "POST", SCIM_USERS_PATH, Optional.of(body));
   }
 
   private static void assertScimPermissionDenied(Executable request) {

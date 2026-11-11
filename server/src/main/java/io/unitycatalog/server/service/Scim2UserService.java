@@ -26,6 +26,7 @@ import com.unboundid.scim2.common.messages.PatchOperation;
 import com.unboundid.scim2.common.messages.PatchRequest;
 import com.unboundid.scim2.common.types.Email;
 import com.unboundid.scim2.common.types.Meta;
+import com.unboundid.scim2.common.types.Name;
 import com.unboundid.scim2.common.types.UserResource;
 import com.unboundid.scim2.common.utils.FilterEvaluator;
 import com.unboundid.scim2.common.utils.Parser;
@@ -49,6 +50,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * SCIM2-compliant user management.
@@ -134,6 +137,13 @@ public class Scim2UserService implements ScimService {
                     new Scim2RuntimeException(
                         new PreconditionFailedException("User does not have a primary email.")));
 
+    String name =
+        userName(userResource)
+            .orElseThrow(
+                () ->
+                    new Scim2RuntimeException(
+                        new BadRequestException("A user needs displayName or name.")));
+
     String pictureUrl = "";
     if (userResource.getPhotos() != null && !userResource.getPhotos().isEmpty()) {
       pictureUrl = userResource.getPhotos().get(0).getValue().toString();
@@ -142,7 +152,7 @@ public class Scim2UserService implements ScimService {
       User user =
           userRepository.createUser(
               CreateUser.builder()
-                  .name(userResource.getDisplayName())
+                  .name(name)
                   .email(primaryEmail.getValue())
                   .active(userResource.getActive())
                   .externalId(userResource.getExternalId())
@@ -186,7 +196,7 @@ public class Scim2UserService implements ScimService {
 
     UpdateUser updateUser =
         UpdateUser.builder()
-            .name(userResource.getDisplayName())
+            .name(userName(userResource).orElse(null))
             .active(userResource.getActive())
             .externalId(userResource.getExternalId())
             .build();
@@ -225,6 +235,28 @@ public class Scim2UserService implements ScimService {
     }
     userRepository.updateUser(id, UpdateUser.builder().active(active).build());
     return HttpResponse.of(HttpStatus.OK);
+  }
+
+  /**
+   * The single name UC stores for a SCIM user: displayName, else name.formatted, else givenName and
+   * familyName joined by a space. Blank values are skipped; empty if none is left.
+   */
+  private static Optional<String> userName(UserResource user) {
+    Name name = user.getName();
+    String formatted = name == null ? null : name.getFormatted();
+    String givenAndFamily =
+        name == null
+            ? null
+            : Stream.of(name.getGivenName(), name.getFamilyName())
+                .filter(Scim2UserService::isNotBlank)
+                .collect(Collectors.joining(" "));
+    return Stream.of(user.getDisplayName(), formatted, givenAndFamily)
+        .filter(Scim2UserService::isNotBlank)
+        .findFirst();
+  }
+
+  private static boolean isNotBlank(String value) {
+    return value != null && !value.isBlank();
   }
 
   private boolean isActiveReplace(PatchOperation operation) {
