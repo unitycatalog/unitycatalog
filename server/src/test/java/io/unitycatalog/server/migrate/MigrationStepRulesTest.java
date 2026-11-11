@@ -40,10 +40,10 @@ import org.junit.jupiter.params.provider.CsvSource;
  *       changes nothing on that database. The first step, the 0.7.0 baseline, may create any table
  *       and index.
  *   <li>The statement is one of the changes {@link #refusal} allows, read with JSqlParser from what
- *       Flyway sent: create a table, create an index that is not unique, add a column (NOT NULL
- *       only with a DEFAULT, without a key or CHECK rule), change a column's type, or drop its NOT
- *       NULL. A type change must widen the column, and no change makes a column NOT NULL ({@link
- *       #typeChangesWiden}).
+ *       Flyway sent: create a table, create a plain index (not unique, fulltext or spatial), add a
+ *       column (NOT NULL only with a DEFAULT, without a key or CHECK rule), change a column's type,
+ *       or drop its NOT NULL. A type change must widen the column, and no change makes a column NOT
+ *       NULL ({@link #typeChangesWiden}).
  *   <li>Each step has an effect file that lists its change ({@link #eachStepHasItsEffectFile}).
  *   <li>Every step exists for all three databases, as a versioned SQL file.
  * </ul>
@@ -314,15 +314,15 @@ public class MigrationStepRulesTest {
 
   /** The enum or set members that column line {@code after} drops from {@code before}, or null. */
   private static String droppedValues(String before, String after) {
-    Matcher from = VALUES.matcher(before);
-    if (!from.find()) {
-      return null;
-    }
-    Matcher to = VALUES.matcher(after);
-    Set<String> kept = to.find() ? Set.of(to.group(1).split("','")) : Set.of();
-    List<String> dropped =
-        Stream.of(from.group(1).split("','")).filter(v -> !kept.contains(v)).toList();
+    List<String> kept = members(after);
+    List<String> dropped = members(before).stream().filter(v -> !kept.contains(v)).toList();
     return dropped.isEmpty() ? null : "drops the values " + dropped;
+  }
+
+  /** The enum or set members in a column line, or none. */
+  private static List<String> members(String line) {
+    Matcher values = VALUES.matcher(line);
+    return values.find() ? List.of(values.group(1).split("','")) : List.of();
   }
 
   private static long scale(Matcher column) {
@@ -385,9 +385,10 @@ public class MigrationStepRulesTest {
         return "creates an index CONCURRENTLY";
       }
       String type = index.getIndex().getType();
-      return firstStep || type == null
-          ? null
-          : "creates a " + type.toLowerCase(Locale.ROOT) + " index";
+      if (firstStep || type == null) {
+        return null;
+      }
+      return "creates a " + type.toLowerCase(Locale.ROOT) + " index";
     }
     if (firstStep) {
       return "the first step only creates tables and indexes";
