@@ -359,7 +359,7 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
 
   @Test
   @SneakyThrows
-  public void testUnsupportedPatchAppliesNothing() {
+  public void testRefusedPatchAppliesNothing() {
     String id = createGroup("stable", alice.getId()).get("id").asText();
     String path = GROUPS_PATH + "/" + id;
 
@@ -385,6 +385,39 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
             patchBody(op("remove", "members", memberValues(alice.getId()))));
     assertThat(removeAll.statusCode()).isEqualTo(501);
     assertThat(memberIds(get(id))).containsExactly(alice.getId());
+
+    // {operation, status, detail prefix}: each is refused alone and changes nothing.
+    String bobFilter = "members[value eq \\\"" + bob.getId() + "\\\"]";
+    List<List<Object>> refused =
+        List.of(
+            // A members value that is not an array would read as no members at all.
+            List.of(op("replace", "members", "\"x\""), 400, "members needs an array value."),
+            List.of(op("add", "members", "\"x\""), 400, "members needs an array value."),
+            List.of(op("replace", "displayName", "{\"a\":1}"), 400, "Invalid PATCH value: "),
+            List.of(op("replace", "displayName", "[]"), 400, "Invalid PATCH value: "),
+            List.of(op("add", "members", "[{\"value\":{\"a\":1}}]"), 400, "Invalid PATCH value: "),
+            List.of(
+                op("add", bobFilter, memberValues(bob.getId())),
+                501,
+                "PATCH is not supported for: "),
+            List.of(
+                op("replace", null, "{\"externalId\":\"x\"}"),
+                501,
+                "PATCH is not supported for: [externalId]"));
+    for (List<Object> row : refused) {
+      String operation = (String) row.get(0);
+      HttpResponse<String> refusal = send(adminConfig, "PATCH", path, patchBody(operation));
+      assertThat(refusal.statusCode())
+          .as(operation + " -> " + refusal.body())
+          .isEqualTo(row.get(1));
+      assertThat(MAPPER.readTree(refusal.body()).get("detail").asText())
+          .as(operation)
+          .startsWith((String) row.get(2));
+      JsonNode group = get(id);
+      assertThat(group.get("displayName").asText()).as(operation).isEqualTo("stable");
+      assertThat(group.has("externalId")).as(operation).isFalse();
+      assertThat(memberIds(group)).as(operation).containsExactly(alice.getId());
+    }
   }
 
   @Test
