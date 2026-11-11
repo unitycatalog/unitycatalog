@@ -193,6 +193,8 @@ public class GroupRepository {
     if (userIds.isEmpty()) {
       return;
     }
+    // TODO(PR 3): a deleted user is DISABLED like a deactivated one, so it can still be added; PR
+    // 3's hard delete fixes this. Add probeF1 as a test after rebasing on it.
     Set<UUID> found =
         new HashSet<>(
             session
