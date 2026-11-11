@@ -2,29 +2,31 @@ package io.unitycatalog.hadoop.internal.fs;
 
 import static io.unitycatalog.hadoop.internal.id.CredIdTest.EMPTY_CRED_CONTEXT_ID;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 
 import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
-import io.unitycatalog.hadoop.internal.id.FileSystemCredId;
 import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
+import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
  * Verifies the caching behaviour of {@link CredScopedFileSystem}: same credential scope reuses the
- * same delegate, different scopes get independent instances, and evicted entries are closed.
+ * same delegate, different scopes get independent instances, closing a wrapper leaves the shared
+ * delegate open, and an evicted delegate is closed once no open wrapper uses it.
  *
  * <p>Uses {@code file://} URIs with the local filesystem so no cloud SDK is required.
  */
 class CredScopedFileSystemCacheTest {
+
+  private static final Path PATH = new Path("file:///tmp/any");
 
   private static final String CONTEXT_A =
       MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-a"));
@@ -183,13 +185,106 @@ class CredScopedFileSystemCacheTest {
   }
 
   @Test
-  void evictedEntryClosesCachedDelegate() throws Exception {
-    FileSystem mockFs = mock(FileSystem.class);
-    FileSystemCredId key = FileSystemCredId.create(tableConf("tid-evict", "READ"));
-    CredScopedFileSystem.CACHE.put(key, mockFs);
+  void evictedDelegateWithoutOpenWrappersIsClosed() throws Exception {
+    CredScopedFileSystem fs = init(URI.create("file:///tmp"), trackedConf("tid-evict"));
+    CloseTrackingFileSystem delegate = (CloseTrackingFileSystem) fs.getDelegate();
+    fs.close();
 
     CredScopedFileSystem.clearCacheForTesting();
 
-    verify(mockFs).close();
+    assertThat(delegate.closed).isTrue();
+  }
+
+  @Test
+  void closingOneWrapperKeepsOtherWrappersOfSameScopeWorking() throws Exception {
+    URI uri = URI.create("file:///tmp");
+    Configuration conf = trackedConf("tid-1");
+    CredScopedFileSystem first = init(uri, conf);
+    CredScopedFileSystem second = init(uri, conf);
+
+    first.close();
+
+    assertThat(second.getFileStatus(PATH)).isNotNull();
+  }
+
+  @Test
+  void wrapperCreatedAfterAnotherWrapperClosedWorks() throws Exception {
+    URI uri = URI.create("file:///tmp");
+    Configuration conf = trackedConf("tid-1");
+    init(uri, conf).close();
+
+    CredScopedFileSystem fresh = init(uri, conf);
+
+    assertThat(fresh.getFileStatus(PATH)).isNotNull();
+  }
+
+  @Test
+  void evictionDoesNotBreakAnOpenWrapper() throws Exception {
+    URI uri = URI.create("file:///tmp");
+    CredScopedFileSystem held = init(uri, trackedConf("tid-held"));
+
+    for (int i = 0; i < 100; i++) {
+      init(uri, trackedConf("tid-other-" + i));
+    }
+
+    assertThat(CredScopedFileSystem.CACHE.size()).isEqualTo(100);
+    assertThat(held.getFileStatus(PATH)).isNotNull();
+  }
+
+  @Test
+  void evictedDelegateIsClosedWhenItsLastWrapperCloses() throws Exception {
+    URI uri = URI.create("file:///tmp");
+    Configuration conf = trackedConf("tid-1");
+    CredScopedFileSystem first = init(uri, conf);
+    CredScopedFileSystem second = init(uri, conf);
+    CloseTrackingFileSystem delegate = (CloseTrackingFileSystem) first.getDelegate();
+
+    CredScopedFileSystem.clearCacheForTesting();
+    first.close();
+    assertThat(delegate.closed).isFalse();
+
+    second.close();
+    assertThat(delegate.closed).isTrue();
+  }
+
+  @Test
+  void closingAWrapperTwiceReleasesItOnlyOnce() throws Exception {
+    URI uri = URI.create("file:///tmp");
+    Configuration conf = trackedConf("tid-1");
+    CredScopedFileSystem first = init(uri, conf);
+    CredScopedFileSystem second = init(uri, conf);
+    CloseTrackingFileSystem delegate = (CloseTrackingFileSystem) first.getDelegate();
+
+    CredScopedFileSystem.clearCacheForTesting();
+    first.close();
+    first.close();
+
+    assertThat(delegate.closed).isFalse();
+    assertThat(second.getFileStatus(PATH)).isNotNull();
+  }
+
+  private static Configuration trackedConf(String tableId) {
+    Configuration conf = tableConf(tableId, "READ");
+    conf.set("fs.file.impl", CloseTrackingFileSystem.class.getName());
+    return conf;
+  }
+
+  /** Local filesystem stand-in that, like cloud filesystems, rejects calls once closed. */
+  public static class CloseTrackingFileSystem extends RawLocalFileSystem {
+    volatile boolean closed;
+
+    @Override
+    public FileStatus getFileStatus(Path path) throws IOException {
+      if (closed) {
+        throw new IOException("Filesystem closed");
+      }
+      return new FileStatus(0, true, 1, 0, 0, path);
+    }
+
+    @Override
+    public void close() throws IOException {
+      closed = true;
+      super.close();
+    }
   }
 }

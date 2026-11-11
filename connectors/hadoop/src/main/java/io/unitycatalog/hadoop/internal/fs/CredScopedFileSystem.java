@@ -7,9 +7,11 @@ import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.id.FileSystemCredId;
 import io.unitycatalog.hadoop.internal.util.CloseableUtils;
 import java.io.IOException;
+import java.lang.ref.Cleaner;
 import java.net.URI;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Supplier;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FilterFileSystem;
@@ -52,6 +54,11 @@ import org.apache.hadoop.fs.FilterFileSystem;
  * <p>All public {@link FileSystem} operations are delegated to the credential-scoped instance via
  * {@link FilterFileSystem}, so callers see a fully functional filesystem regardless of which
  * underlying implementation backs it.
+ *
+ * <p>The cache owns each delegate, and every wrapper of the same scope shares it. Closing a wrapper
+ * therefore only releases that wrapper's reference and never closes the delegate. A delegate is
+ * closed once it has been evicted from the cache and no open wrapper still references it. A wrapper
+ * that is never closed releases its reference when it is garbage collected.
  */
 public class CredScopedFileSystem extends FilterFileSystem {
 
@@ -59,23 +66,27 @@ public class CredScopedFileSystem extends FilterFileSystem {
       "unitycatalog.credScopedFs.cache.maxSize";
   private static final int CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT = 100;
 
+  private static final Cleaner CLEANER = Cleaner.create();
+
   /**
    * LRU cache of real {@link FileSystem} instances keyed by {@link FileSystemCredId}. Evicted
-   * entries are closed to release connection pools and SDK thread pools (e.g. AWS
-   * sdk-ScheduledExecutor threads). The cache is bounded to prevent unbounded growth when many
-   * distinct credential scopes are accessed in a long-running session. The maximum size can be
-   * tuned via the system property {@code unitycatalog.credScopedFs.cache.maxSize}.
+   * entries are closed, once no open wrapper uses them, to release connection pools and SDK thread
+   * pools (e.g. AWS sdk-ScheduledExecutor threads). The cache is bounded to prevent unbounded
+   * growth when many distinct credential scopes are accessed in a long-running session. The maximum
+   * size can be tuned via the system property {@code unitycatalog.credScopedFs.cache.maxSize}.
    */
   /** Visible for testing. */
-  static final BoundedKeyedCache<FileSystemCredId, FileSystem> CACHE;
+  static final BoundedKeyedCache<FileSystemCredId, SharedFileSystem> CACHE;
 
   static {
     int maxSize =
         Integer.getInteger(CRED_SCOPED_FS_CACHE_MAX_SIZE, CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT);
-    CACHE = new BoundedKeyedCache<>(maxSize, CloseableUtils::closeQuietly);
+    CACHE = new BoundedKeyedCache<>(maxSize, SharedFileSystem::evict);
   }
 
-  /** Visible for testing only. Clears the static cache and closes all cached delegates. */
+  private Cleaner.Cleanable release;
+
+  /** Visible for testing only. Clears the static cache, closing delegates no open wrapper uses. */
   static void clearCacheForTesting() {
     CACHE.clear();
   }
@@ -92,12 +103,71 @@ public class CredScopedFileSystem extends FilterFileSystem {
       // No selection is necessary when there is only one credential (there is only one choice).
       String prefix = credPrefixes.isEmpty() ? null : credPrefixes.get(0);
       FileSystemCredId key = FileSystemCredId.create(conf, uri, prefix);
-      this.fs = CACHE.getOrLoad(key, () -> copyConfAndCreateNewFileSystem(uri, conf, prefix));
+      acquire(key, () -> copyConfAndCreateNewFileSystem(uri, conf, prefix));
     } else {
       // When there are multiple credentials (credPrefixes > 1), select the (longest) prefix that
       // covers the requested URI.
       FileSystemCredId key = getFileSystemCredId(uri, conf, credPrefixes);
-      this.fs = CACHE.getOrLoad(key, () -> copyConfAndCreateNewFileSystem(uri, conf, key.prefix()));
+      acquire(key, () -> copyConfAndCreateNewFileSystem(uri, conf, key.prefix()));
+    }
+  }
+
+  private void acquire(FileSystemCredId key, Supplier<FileSystem> loader) {
+    SharedFileSystem shared;
+    do {
+      shared = CACHE.getOrLoad(key, () -> new SharedFileSystem(loader.get()));
+    } while (!shared.acquire());
+    this.fs = shared.fs;
+    this.release = CLEANER.register(this, shared::release);
+  }
+
+  /**
+   * Closes only this wrapper. The delegate is shared with every other wrapper of the same
+   * credential scope, so it stays open until the cache evicts it and no open wrapper uses it.
+   */
+  @Override
+  public void close() throws IOException {
+    try {
+      processDeleteOnExit();
+    } finally {
+      if (release != null) {
+        release.clean();
+      }
+    }
+  }
+
+  /** A cached delegate plus the number of open wrappers that use it. */
+  static final class SharedFileSystem {
+    private final FileSystem fs;
+    private int openWrappers;
+    private boolean evicted;
+
+    SharedFileSystem(FileSystem fs) {
+      this.fs = fs;
+    }
+
+    private synchronized boolean acquire() {
+      if (evicted) {
+        return false;
+      }
+      openWrappers++;
+      return true;
+    }
+
+    private synchronized void release() {
+      openWrappers--;
+      closeIfUnused();
+    }
+
+    private synchronized void evict() {
+      evicted = true;
+      closeIfUnused();
+    }
+
+    private void closeIfUnused() {
+      if (evicted && openWrappers == 0) {
+        CloseableUtils.closeQuietly(fs);
+      }
     }
   }
 
