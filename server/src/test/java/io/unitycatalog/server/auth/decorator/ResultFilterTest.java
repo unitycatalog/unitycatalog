@@ -100,7 +100,8 @@ class ResultFilterTest {
     UUID browseId = UUID.randomUUID();
     CatalogInfo full = new CatalogInfo().name("full").id(fullId.toString());
     CatalogInfo browse = new CatalogInfo().name("browse").id(browseId.toString());
-    when(authorizer.authorizeAny(principal, CATALOG, fullId, OWNER, USE_CATALOG, READ_METADATA))
+    when(authorizer.authorizeAny(
+            principal, CATALOG, fullId, OWNER, Privileges.MANAGE, USE_CATALOG, READ_METADATA))
         .thenReturn(true);
     when(authorizer.authorize(principal, CATALOG, fullId, BROWSE)).thenReturn(true);
     when(authorizer.authorize(principal, CATALOG, browseId, BROWSE)).thenReturn(true);
@@ -201,7 +202,8 @@ class ResultFilterTest {
     UUID catalogId = UUID.randomUUID();
     CatalogInfo item =
         new CatalogInfo().name("catalog").id((sameId ? catalogId : UUID.randomUUID()).toString());
-    when(authorizer.authorizeAny(principal, CATALOG, catalogId, OWNER, USE_CATALOG, READ_METADATA))
+    when(authorizer.authorizeAny(
+            principal, CATALOG, catalogId, OWNER, Privileges.MANAGE, USE_CATALOG, READ_METADATA))
         .thenReturn(fullAccess);
     when(authorizer.authorize(principal, CATALOG, catalogId, BROWSE)).thenReturn(true);
     ResultFilter filter =

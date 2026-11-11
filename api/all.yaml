@@ -1293,7 +1293,10 @@ paths:
         - Credentials
       operationId: updateCredential
       summary: Update a credential
-      description: Updates a credential.
+      description: |-
+        Updates a credential.
+        The caller must be a metastore admin, the credential owner,
+        or have MANAGE on the credential.
       requestBody:
         content:
           application/json:
@@ -1311,7 +1314,10 @@ paths:
         - Credentials
       operationId: deleteCredential
       summary: Delete a credential
-      description: Deletes a credential from the metastore. The caller must be a metastore admin or the owner of the credential.
+      description: |-
+        Deletes a credential from the metastore.
+        The caller must be a metastore admin, the credential owner,
+        or have MANAGE on the credential.
       parameters:
         - name: force
           in: query
@@ -1409,7 +1415,10 @@ paths:
       tags:
         - External Locations
       summary: Delete an external location
-      description: Deletes the specified external location from the metastore. The caller must be a metastore admin or the owner of the external location.
+      description: |-
+        Deletes the specified external location from the metastore.
+        The caller must be a metastore admin, the external location owner,
+        or have MANAGE on the external location.
       operationId: deleteExternalLocation
       parameters:
         - name: force
@@ -1425,8 +1434,10 @@ paths:
       tags:
         - External Locations
       summary: Update an external location
-      description: |
-        Updates an external location in the metastore. The caller must be the owner of the external location or a metastore admin.
+      description: |-
+        Updates an external location in the metastore.
+        The caller must be a metastore admin, the external location owner,
+        or have MANAGE on the external location.
       operationId: updateExternalLocation
       requestBody:
         required: true
@@ -2794,7 +2805,7 @@ components:
         - 'CREATE MANAGED STORAGE: Allows designating managed storage locations at catalog or schema levels.'
         - 'CREATE STORAGE CREDENTIAL: Required privilege on the metastore to create storage credentials.'
         - 'BROWSE: Allows discovery of metadata for a catalog and its descendants, or an external location, without usage grants. Does not permit data access.'
-        - 'MANAGE: Allows metadata and grant inspection, grant changes, supported metadata changes and deletion, and ownership transfer. Does not grant data access, execution, or object creation.'
+        - 'MANAGE: Allows full metadata and grant inspection, grant changes, supported metadata changes, and deletion. Managers can grant themselves other privileges, including data access. Data access, execution, and object creation still require their own privileges.'
         - 'WRITE VOLUME: Permits creating, changing, and deleting files in volumes; also requires READ VOLUME and parent usage privileges.'
         - 'CREATE MODEL VERSION: Allows publishing versions of registered models with USE CATALOG and USE SCHEMA.'
         - 'READ METADATA: Permits reading full metadata and grants without data access or permission changes.'
