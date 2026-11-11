@@ -4,6 +4,7 @@ import com.auth0.jwt.algorithms.Algorithm;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.migrate.SchemaMigrator;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.security.SecurityContext.Issuers;
@@ -15,6 +16,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.Date;
+import java.util.Properties;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.config.Configurator;
 
@@ -26,9 +28,9 @@ import org.apache.logging.log4j.core.config.Configurator;
  *
  * <p>With {@code --scim-principal <email> --idp <name> --lifetime <ISO-8601 duration>}, it prints
  * an IdP's SCIM token instead, accepted only on the SCIM API. It opens the server's database, as
- * {@code bin/start-uc-server --upgrade-schema} does, and marks that user as the IdP's principal,
- * which can then no longer sign in. Disabling the user stops the token until the user is enabled
- * again.
+ * {@code bin/start-uc-server --upgrade-schema} does, but refuses one that the upgrade has not
+ * brought to this release's schema, and marks that user as the IdP's principal, which can then no
+ * longer sign in. Disabling the user stops the token until the user is enabled again.
  */
 public final class AdminTokenCommand {
 
@@ -63,7 +65,7 @@ public final class AdminTokenCommand {
     }
     try {
       // Checks the options before it opens the database.
-      ScimTokenOptions options = ScimTokenOptions.parse(args);
+      ScimTokenOptions.parse(args);
       Path hibernateFile = CONFIGURATION_FOLDER.resolve("hibernate.properties");
       if (!Files.isRegularFile(hibernateFile)) {
         throw new IllegalArgumentException(
@@ -72,17 +74,17 @@ public final class AdminTokenCommand {
                 + " is not found: run bin/uc-admin-token in the Unity Catalog folder, the one that"
                 + " holds etc/conf.");
       }
-      try (HibernateConfigurator database =
-          new HibernateConfigurator(
-              HibernateConfigurator.setupHibernateProperties(serverProperties, hibernateFile))) {
-        System.out.println(
-            createScimToken(
-                options,
-                algorithm,
-                new UserRepository(/* repositories= */ null, database.getSessionFactory())));
-      }
-    } catch (IllegalArgumentException | BaseException e) {
+      System.out.println(
+          createScimToken(
+              args,
+              algorithm,
+              HibernateConfigurator.setupHibernateProperties(serverProperties, hibernateFile)));
+    } catch (IllegalArgumentException | IllegalStateException | BaseException e) {
       System.err.println(e.getMessage());
+      System.exit(1);
+    } catch (RuntimeException e) {
+      // The connection pool's or Hibernate's, when the database can't be opened.
+      System.err.println("Could not open the database: " + e.getMessage());
       System.exit(1);
     }
   }
@@ -97,6 +99,35 @@ public final class AdminTokenCommand {
    */
   public static String createScimToken(String[] args, Algorithm algorithm, UserRepository users) {
     return createScimToken(ScimTokenOptions.parse(args), algorithm, users);
+  }
+
+  /**
+   * The same, on the database of {@code hibernateProperties}, which it opens without changing its
+   * schema.
+   *
+   * @throws IllegalStateException when the database has schema steps to apply first
+   */
+  public static String createScimToken(
+      String[] args, Algorithm algorithm, Properties hibernateProperties) {
+    ScimTokenOptions options = ScimTokenOptions.parse(args);
+    Properties properties = new Properties();
+    properties.putAll(hibernateProperties);
+    // Hibernate's update would add the columns of steps not applied yet, which then make the
+    // upgrade's steps fail.
+    properties.setProperty("hibernate.hbm2ddl.auto", "none");
+    try (SchemaMigrator migrator = SchemaMigrator.fromHibernateProperties(properties)) {
+      if (!migrator.isCurrent()) {
+        throw new IllegalStateException(
+            "The database schema needs an upgrade: run bin/start-uc-server --upgrade-schema"
+                + " first.");
+      }
+    }
+    try (HibernateConfigurator database = new HibernateConfigurator(properties)) {
+      return createScimToken(
+          options,
+          algorithm,
+          new UserRepository(/* repositories= */ null, database.getSessionFactory()));
+    }
   }
 
   private static String createScimToken(

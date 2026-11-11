@@ -485,6 +485,11 @@ public final class SchemaMigrator implements AutoCloseable {
         : SchemaState.EMPTY;
   }
 
+  /** Whether every step of this build is applied: the database's {@link #state()} is CURRENT. */
+  public boolean isCurrent() {
+    return state() == SchemaState.CURRENT;
+  }
+
   /**
    * The highest version the schema history records as applied, {@code null} without one. A step
    * that failed does not count; Flyway's own {@code current()} counts it.

@@ -505,6 +505,8 @@ bin/uc-admin-token --scim-principal okta-scim --idp okta --lifetime P90D
   `bin/start-uc-server --upgrade-schema` does, and marks the user as the identity provider's principal. That user can no
   longer sign in, and can't be marked for another identity provider. It refuses the `admin` user.
 - With the default H2 file database, stop the server before you run it: H2 lets one process open the file.
+- Mint after `bin/start-uc-server --upgrade-schema`: `bin/uc-admin-token` refuses a database with schema steps not
+  applied yet, and does not change the schema itself.
 - To rotate the token, mint a new one, give it to the identity provider, and let the old one expire.
 - To pause the token, disable the user: the token is refused on its next request. Enabling the user again restores
   its tokens that have not expired.

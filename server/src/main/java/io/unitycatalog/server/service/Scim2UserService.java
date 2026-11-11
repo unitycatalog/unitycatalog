@@ -257,7 +257,8 @@ public class Scim2UserService implements ScimService {
   }
 
   // Only the admin changes an IdP principal: with a SCIM token, one IdP could lock out or revive
-  // another IdP's principal, or its own. SCIM tokens exist only with authorization enabled.
+  // another IdP's principal, or its own. SCIM tokens are honored only with authorization
+  // enabled.
   private void checkNotIdpPrincipalForScimToken(User user) {
     if (!serverProperties.isAuthorizationEnabled()) {
       return;

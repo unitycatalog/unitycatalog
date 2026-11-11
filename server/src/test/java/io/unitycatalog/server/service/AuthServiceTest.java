@@ -597,9 +597,14 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage(message));
 
-    // The lifetime is checked before the user is marked: too short, or an expiry out of range.
+    // The lifetime is checked before the user is marked: empty, zero, too short, or an expiry out
+    // of range.
     createEnabledUser("okta-scim");
     Map.of(
+            "",
+            "--lifetime needs a value. " + usage,
+            "PT0S",
+            "--lifetime must be a positive ISO-8601 duration, such as P90D: PT0S",
             "PT0.5S",
             "--lifetime must be at least 1 second: PT0.5S",
             "PT9223372036854775807S",
