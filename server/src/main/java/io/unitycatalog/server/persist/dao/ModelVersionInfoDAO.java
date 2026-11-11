@@ -57,6 +57,10 @@ public class ModelVersionInfoDAO {
   @Column(name = "created_by")
   private String createdBy;
 
+  /** The creator's user id; null for a version created before it was stored. */
+  @Column(name = "created_by_id")
+  private UUID createdById;
+
   @Column(name = "updated_at")
   private Date updatedAt;
 

@@ -14,7 +14,6 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Date;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
@@ -110,6 +109,8 @@ public class StagingTableRepository {
           stagingTableDAO.setName(createStagingTable.getName());
           stagingTableDAO.setStagingLocation(stagingLocation.toString());
           stagingTableDAO.setCreatedBy(callerId);
+          stagingTableDAO.setCreatedById(
+              repositories.getUserRepository().findUserId(session, callerId));
           session.persist(stagingTableDAO);
           return stagingTableDAO.toStagingTableInfo(
               createStagingTable.getCatalogName(), createStagingTable.getSchemaName());
@@ -199,7 +200,10 @@ public class StagingTableRepository {
       throw new BaseException(
           ErrorCode.TABLE_NOT_FOUND, "Staging table not found: " + storageLocation);
     }
-    if (!Objects.equals(stagingTableDAO.getCreatedBy(), callerId)) {
+    if (!repositories
+        .getUserRepository()
+        .isCreator(
+            session, stagingTableDAO.getCreatedById(), stagingTableDAO.getCreatedBy(), callerId)) {
       throw new BaseException(
           ErrorCode.PERMISSION_DENIED,
           "User attempts to create table on a staging location without ownership: "

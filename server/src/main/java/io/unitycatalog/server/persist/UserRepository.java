@@ -13,6 +13,7 @@ import io.unitycatalog.server.utils.IdentityUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Predicate;
@@ -127,6 +128,25 @@ public class UserRepository {
     query.setParameter("id", UUID.fromString(id));
     query.setMaxResults(1);
     return query.uniqueResult();
+  }
+
+  /** The id of the user with this email, or null if the email is null or no user has it. */
+  public UUID findUserId(Session session, String email) {
+    UserDAO userDAO = email == null ? null : getUserByEmail(session, email);
+    return userDAO == null ? null : userDAO.getId();
+  }
+
+  /**
+   * Whether the caller created a row. A row with a creator id belongs to that user, so a user
+   * created again with the same email is not its creator. A row from before the id was stored has
+   * only the creator's email, and is matched by it.
+   */
+  public boolean isCreator(
+      Session session, UUID createdById, String createdBy, String callerEmail) {
+    if (createdById == null) {
+      return Objects.equals(createdBy, callerEmail);
+    }
+    return createdById.equals(findUserId(session, callerEmail));
   }
 
   public User getUserByEmail(String email) {

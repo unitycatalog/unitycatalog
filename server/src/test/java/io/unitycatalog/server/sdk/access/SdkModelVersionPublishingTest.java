@@ -281,9 +281,10 @@ public class SdkModelVersionPublishingTest extends SdkAccessControlBaseCRUDTest 
     TransactionManager.executeWithTransaction(
         hibernateConfigurator.getSessionFactory(),
         session -> {
-          session
-              .get(ModelVersionInfoDAO.class, UUID.fromString(version.getId()))
-              .setCreatedBy(null);
+          ModelVersionInfoDAO dao =
+              session.get(ModelVersionInfoDAO.class, UUID.fromString(version.getId()));
+          dao.setCreatedBy(null);
+          dao.setCreatedById(null);
           return null;
         },
         "Failed to clear test model version creator",
@@ -469,6 +470,69 @@ public class SdkModelVersionPublishingTest extends SdkAccessControlBaseCRUDTest 
                     new FinalizeModelVersion().fullName(fullName).version(version.getVersion()))
                 .getStatus())
         .isEqualTo(ModelVersionStatus.READY);
+  }
+
+  @Test
+  public void recreatedEmailCannotFinalizeTheDeletedUsersVersion() throws Exception {
+    ModelVersionInfo pending = createPendingVersionAsPublisher();
+    FinalizeModelVersion finalize =
+        new FinalizeModelVersion().fullName(MODEL_FULL_NAME).version(pending.getVersion());
+    usersApi.deleteUser(userId(PRINCIPAL_2));
+    createTestUser(PRINCIPAL_2, "Different Person");
+    grantPublisherRights();
+
+    assertApiException(
+        () ->
+            publisherVersions.finalizeModelVersion(MODEL_FULL_NAME, pending.getVersion(), finalize),
+        ErrorCode.PERMISSION_DENIED,
+        "Only model version creator can finalize model version");
+  }
+
+  @Test
+  public void versionWithoutCreatorIdIsFinalizedByTheCreatorEmail() throws Exception {
+    ModelVersionInfo pending = createPendingVersionAsPublisher();
+    // A version created before created_by_id existed has only the email.
+    hibernateConfigurator
+        .getSessionFactory()
+        .inTransaction(
+            session ->
+                session
+                    .createNativeMutationQuery("UPDATE uc_model_versions SET created_by_id = NULL")
+                    .executeUpdate());
+
+    assertThat(
+            publisherVersions
+                .finalizeModelVersion(
+                    MODEL_FULL_NAME,
+                    pending.getVersion(),
+                    new FinalizeModelVersion()
+                        .fullName(MODEL_FULL_NAME)
+                        .version(pending.getVersion()))
+                .getStatus())
+        .isEqualTo(ModelVersionStatus.READY);
+  }
+
+  private ModelVersionInfo createPendingVersionAsPublisher() throws Exception {
+    grantPublisherRights();
+    return publisherVersions.createModelVersion(createVersionRequest());
+  }
+
+  private void grantPublisherRights() throws Exception {
+    grantPermissions(PRINCIPAL_2, SecurableType.CATALOG, CATALOG_NAME, Privileges.USE_CATALOG);
+    grantPermissions(PRINCIPAL_2, SecurableType.SCHEMA, SCHEMA_FULL_NAME, Privileges.USE_SCHEMA);
+    grantPermissions(
+        PRINCIPAL_2,
+        SecurableType.REGISTERED_MODEL,
+        MODEL_FULL_NAME,
+        Privileges.CREATE_MODEL_VERSION);
+  }
+
+  private String userId(String email) throws Exception {
+    return usersApi.listUsers(null, null, null).getResources().stream()
+        .filter(u -> email.equals(u.getEmails().get(0).getValue()))
+        .findFirst()
+        .orElseThrow()
+        .getId();
   }
 
   private CreateModelVersion createVersionRequest() {

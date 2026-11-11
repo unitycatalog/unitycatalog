@@ -20,15 +20,24 @@ import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.RequestHeadersBuilder;
+import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.client.api.GrantsApi;
+import io.unitycatalog.client.api.ModelVersionsApi;
+import io.unitycatalog.client.api.RegisteredModelsApi;
+import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.model.CreateCatalog;
+import io.unitycatalog.client.model.CreateModelVersion;
+import io.unitycatalog.client.model.CreateRegisteredModel;
+import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.FinalizeModelVersion;
 import io.unitycatalog.client.model.PermissionsChange;
 import io.unitycatalog.client.model.Privilege;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.UpdatePermissions;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.utils.ServerProperties.Property;
@@ -69,6 +78,8 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     observabilityEnabled = true;
     // BaseServerTest turns stack traces on; use the default (off) to check none leak to callers.
     serverProperties.remove(Property.INCLUDE_STACK_TRACE_IN_ERROR.getKey());
+    serverProperties.setProperty(
+        Property.MODEL_STORAGE_ROOT.getKey(), testDirectoryRoot + "/models");
   }
 
   @BeforeEach
@@ -509,6 +520,9 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     ServerConfig admin =
         new ServerConfig(serverConfig.getServerUrl(), securityContext.getServiceToken());
     String catalog = "journey_catalog";
+    String schema = "journey_schema";
+    String model = "journey_model";
+    String modelName = catalog + "." + schema + "." + model;
     new CatalogsApi(TestUtils.createApiClient(admin))
         .createCatalog(new CreateCatalog().name(catalog));
     String oldEmail = "alice@journey.example.com";
@@ -518,16 +532,12 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     HttpResponse<String> created = scim(admin, "POST", null, oktaUser(null, oldEmail, "okta-1"));
     assertThat(created.statusCode()).isEqualTo(201);
     String id = MAPPER.readTree(created.body()).get("id").asText();
-    new GrantsApi(TestUtils.createApiClient(admin))
-        .update(
-            SecurableType.CATALOG,
-            catalog,
-            new UpdatePermissions()
-                .changes(
-                    List.of(
-                        new PermissionsChange()
-                            .principal(oldEmail)
-                            .add(List.of(Privilege.USE_CATALOG)))));
+    new SchemasApi(TestUtils.createApiClient(admin))
+        .createSchema(new CreateSchema().name(schema).catalogName(catalog));
+    new RegisteredModelsApi(TestUtils.createApiClient(admin))
+        .createRegisteredModel(
+            new CreateRegisteredModel().catalogName(catalog).schemaName(schema).name(model));
+    grant(admin, SecurableType.CATALOG, catalog, oldEmail, Privilege.USE_CATALOG);
 
     // She signs in with her IdP token and reads the catalog.
     assertThat(catalogApiAfterSignIn(oldEmail).getCatalog(catalog, false).getName())
@@ -542,7 +552,23 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertThat(catalogApiAfterSignIn(newEmail).getCatalog(catalog, false).getName())
         .isEqualTo(catalog);
 
-    // The admin deletes her, and Okta creates the email again: the new user has no grants.
+    // Under the new email she starts registering a model version.
+    grant(admin, SecurableType.SCHEMA, catalog + "." + schema, newEmail, Privilege.USE_SCHEMA);
+    grant(
+        admin, SecurableType.REGISTERED_MODEL, modelName, newEmail, Privilege.CREATE_MODEL_VERSION);
+    ModelVersionsApi aliceVersions = modelVersionsApiAfterSignIn(newEmail);
+    long version =
+        aliceVersions
+            .createModelVersion(
+                new CreateModelVersion()
+                    .catalogName(catalog)
+                    .schemaName(schema)
+                    .modelName(model)
+                    .source("model-source"))
+            .getVersion();
+
+    // The admin deletes her, and Okta creates the email again: the new user has no grants, and
+    // when given the same rights still cannot finalize her version.
     assertThat(scim(admin, "DELETE", id, null).statusCode()).isEqualTo(200);
     assertExchangeRejectedAsInvalid("deleted user", identityToken(newEmail));
     HttpResponse<String> recreated = scim(admin, "POST", null, oktaUser(null, newEmail, "okta-2"));
@@ -550,6 +576,36 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertThat(MAPPER.readTree(recreated.body()).get("id").asText()).isNotEqualTo(id);
     CatalogsApi again = catalogApiAfterSignIn(newEmail);
     TestUtils.assertPermissionDenied(() -> again.getCatalog(catalog, false));
+    grant(admin, SecurableType.CATALOG, catalog, newEmail, Privilege.USE_CATALOG);
+    grant(admin, SecurableType.SCHEMA, catalog + "." + schema, newEmail, Privilege.USE_SCHEMA);
+    grant(
+        admin, SecurableType.REGISTERED_MODEL, modelName, newEmail, Privilege.CREATE_MODEL_VERSION);
+    TestUtils.assertApiException(
+        () ->
+            modelVersionsApiAfterSignIn(newEmail)
+                .finalizeModelVersion(
+                    modelName,
+                    version,
+                    new FinalizeModelVersion().fullName(modelName).version(version)),
+        ErrorCode.PERMISSION_DENIED,
+        "Only model version creator can finalize model version");
+  }
+
+  private void grant(
+      ServerConfig admin,
+      SecurableType type,
+      String name,
+      String principal,
+      Privilege... privileges)
+      throws Exception {
+    new GrantsApi(TestUtils.createApiClient(admin))
+        .update(
+            type,
+            name,
+            new UpdatePermissions()
+                .changes(
+                    List.of(
+                        new PermissionsChange().principal(principal).add(List.of(privileges)))));
   }
 
   private HttpResponse<String> scim(ServerConfig admin, String method, String id, String body)
@@ -588,12 +644,19 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   }
 
   /** Signs in by token exchange with an IdP token for the email; the API is called as that user. */
-  private CatalogsApi catalogApiAfterSignIn(String email) throws IOException {
+  private ApiClient signIn(String email) throws IOException {
     AggregatedHttpResponse response = exchangeToken(identityToken(email));
     assertThat(response.status()).as(response.contentUtf8()).isEqualTo(HttpStatus.OK);
     String accessToken = MAPPER.readTree(response.contentUtf8()).get("access_token").asText();
-    return new CatalogsApi(
-        TestUtils.createApiClient(new ServerConfig(serverConfig.getServerUrl(), accessToken)));
+    return TestUtils.createApiClient(new ServerConfig(serverConfig.getServerUrl(), accessToken));
+  }
+
+  private CatalogsApi catalogApiAfterSignIn(String email) throws IOException {
+    return new CatalogsApi(signIn(email));
+  }
+
+  private ModelVersionsApi modelVersionsApiAfterSignIn(String email) throws IOException {
+    return new ModelVersionsApi(signIn(email));
   }
 
   @Test
