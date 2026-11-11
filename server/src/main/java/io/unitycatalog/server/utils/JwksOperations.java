@@ -130,7 +130,7 @@ public class JwksOperations {
             String.format("Could not get signing key '%s' for issuer %s", keyId, issuer),
             e);
       }
-      // The keys were read (or a refresh was refused) and none has the caller's key id.
+      // No key has the caller's key id, or the key set was empty or had no usable key.
       throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Unknown signing key", e);
     }
 
@@ -303,7 +303,7 @@ public class JwksOperations {
 
   private record DiscoveryFailure(ErrorCode errorCode, String message) {}
 
-  /** A refresh refused because the keys were fetched less than the minimum interval ago. */
+  /** A refresh refused because the keys were read less than the minimum interval ago. */
   private static final class RefreshRateLimitedException extends IOException {
     private RefreshRateLimitedException() {
       super("Signing-key refresh is rate limited");
@@ -314,15 +314,22 @@ public class JwksOperations {
   private JwksHttpClient rateLimitedSigningKeysClient() {
     return new JwksHttpClient() {
       private long nextRefreshNanos = ticker.read();
+      private boolean lastFetchFailed;
 
       @Override
       public synchronized JwksHttpResponse fetch(URL url) throws IOException {
         long now = ticker.read();
         if (now - nextRefreshNanos < 0) {
-          throw new RefreshRateLimitedException();
+          // After a failed fetch no keys were read, so the refusal is a fetch failure (500).
+          throw lastFetchFailed
+              ? new IOException("Signing-key refresh is rate limited")
+              : new RefreshRateLimitedException();
         }
         nextRefreshNanos = now + MIN_KEY_REFRESH_INTERVAL.toNanos();
-        return fetchSigningKeys(url);
+        lastFetchFailed = true;
+        JwksHttpResponse keys = fetchSigningKeys(url);
+        lastFetchFailed = false;
+        return keys;
       }
     };
   }
