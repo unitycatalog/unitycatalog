@@ -59,6 +59,10 @@ public class MigrationStepRulesTest {
 
   private static final Pattern STEP_FILE = Pattern.compile("V(\\d+)__\\w+\\.sql");
 
+  /** What a MySQL MODIFY may say besides the type: nullability, and the default and collation. */
+  private static final Pattern MODIFY_SPECS =
+      Pattern.compile("((NOT NULL|NULL|DEFAULT \\S+|COLLATE \\S+)( (?=\\S)|$))*");
+
   /** What a new column may say besides its type: nullable, or NOT NULL with a default. */
   private static final Pattern NEW_COLUMN =
       Pattern.compile(
@@ -194,6 +198,8 @@ public class MigrationStepRulesTest {
         "H2|ALTER TABLE t ALTER COLUMN c CLOB|",
         "MYSQL|ALTER TABLE t ALTER COLUMN c TYPE text|is not an allowed change",
         "MYSQL|ALTER TABLE t MODIFY c mediumtext NOT NULL|",
+        "MYSQL|ALTER TABLE t MODIFY c varchar(20) NOT NULL DEFAULT 'x'|",
+        "MYSQL|ALTER TABLE t MODIFY c varchar(20) COLLATE utf8mb4_bin NULL|",
         "MYSQL|ALTER TABLE t MODIFY c INT PRIMARY KEY|is not an allowed change"
       })
   void laterStepsOnlyMakeChangesRowsCannotFail(DatabaseKind kind, String sql, String refusal) {
@@ -259,6 +265,16 @@ public class MigrationStepRulesTest {
         "POSTGRESQL|type=numeric size=10 scale=2 nullable=YES"
             + "|type=numeric size=10 scale=1 nullable=YES|not wider",
         "POSTGRESQL|type=int8 size=19 nullable=YES|type=int4 size=10 nullable=YES|not wider",
+        // PostgreSQL reports a numeric without precision, which holds any number, as size 0.
+        "POSTGRESQL|type=numeric size=0 scale=0 nullable=YES"
+            + "|type=numeric size=10 scale=2 nullable=YES|not wider",
+        "POSTGRESQL|type=numeric size=10 scale=2 nullable=YES|type=numeric size=0 scale=0"
+            + " nullable=YES|",
+        // A MySQL MODIFY that does not restate the default or collation drops it.
+        "MYSQL|type=varchar size=10 nullable=NO default=x"
+            + "|type=varchar size=20 nullable=NO default=null|changes its default from x to null",
+        "MYSQL|type=varchar size=10 nullable=YES default=null collation=utf8mb4_bin"
+            + "|type=varchar size=20 nullable=YES default=null|changes its collation",
         "POSTGRESQL|type=varchar size=255 nullable=YES|type=text size=2147483647 nullable=YES|",
         "POSTGRESQL|type=varchar size=255 nullable=NO|type=varchar size=255 nullable=YES|",
         "MYSQL|type=enum size=8 nullable=NO default=null values=enum('FUNCTION','TABLE')"
@@ -301,12 +317,39 @@ public class MigrationStepRulesTest {
         if (problem == null) {
           problem = droppedValues(before.group(), line);
         }
+        if (problem == null) {
+          problem = changedAttribute(before.group(), line);
+        }
         if (problem != null) {
           problems.add(column.group(2) + " " + problem);
         }
       }
     }
     return problems;
+  }
+
+  /** A column line's default and collation; MySQL's MODIFY drops what it does not restate. */
+  private static final Pattern DEFAULT =
+      Pattern.compile(" default=(.*?)(?: values=| collation=| ?$)");
+
+  private static final Pattern COLLATION = Pattern.compile(" collation=(\\S+)");
+
+  /** How column line {@code after} changes or drops the default or collation of {@code before}. */
+  private static String changedAttribute(String before, String after) {
+    for (Pattern attribute : List.of(DEFAULT, COLLATION)) {
+      String from = attribute(attribute, before);
+      String to = attribute(attribute, after);
+      if (!from.equals(to)) {
+        String name = attribute == DEFAULT ? "default" : "collation";
+        return "changes its " + name + " from " + from + " to " + to;
+      }
+    }
+    return null;
+  }
+
+  private static String attribute(Pattern attribute, String line) {
+    Matcher value = attribute.matcher(line);
+    return value.find() ? value.group(1) : "none";
   }
 
   /** MySQL's enum and set members, in a column line's {@code values=}. */
@@ -325,12 +368,36 @@ public class MigrationStepRulesTest {
     return values.find() ? List.of(values.group(1).split("','")) : List.of();
   }
 
-  private static long scale(Matcher column) {
+  /** PostgreSQL reports a {@code numeric} without precision, which holds any number, as size 0. */
+  private static boolean isUnbounded(DatabaseKind kind, Matcher column) {
+    return kind == DatabaseKind.POSTGRESQL
+        && column.group(3).equals("numeric")
+        && column.group(4).equals("0");
+  }
+
+  /** The digits a number column keeps before the decimal point (size minus scale). */
+  private static long integerDigits(DatabaseKind kind, Matcher column) {
+    return isUnbounded(kind, column)
+        ? Long.MAX_VALUE
+        : Long.parseLong(column.group(4)) - scale(kind, column);
+  }
+
+  private static long scale(DatabaseKind kind, Matcher column) {
+    if (isUnbounded(kind, column)) {
+      return Long.MAX_VALUE;
+    }
     return column.group(5) == null ? 0 : Long.parseLong(column.group(5));
   }
 
-  private static String sizeAndScale(Matcher column) {
-    return column.group(4) + (column.group(5) == null ? "" : "," + column.group(5));
+  private static String shape(DatabaseKind kind, Matcher column) {
+    if (isUnbounded(kind, column)) {
+      return column.group(3);
+    }
+    return column.group(3)
+        + "("
+        + column.group(4)
+        + (column.group(5) == null ? "" : "," + column.group(5))
+        + ")";
   }
 
   /** Why the change from column line {@code before} to {@code after} narrows it, or null. */
@@ -341,21 +408,14 @@ public class MigrationStepRulesTest {
     String from = before.group(3);
     String to = after.group(3);
     boolean wider = from.equals(to) || WIDER.get(kind).getOrDefault(from, Set.of()).contains(to);
-    // A number keeps its digits before the decimal point (size minus scale) and its scale.
-    long scaleBefore = scale(before);
-    long scaleAfter = scale(after);
-    boolean fewerDigits =
-        Long.parseLong(after.group(4)) - scaleAfter < Long.parseLong(before.group(4)) - scaleBefore;
-    if (!wider || fewerDigits || scaleAfter < scaleBefore) {
+    // A number keeps its digits before the decimal point and its scale.
+    boolean fewerDigits = integerDigits(kind, after) < integerDigits(kind, before);
+    if (!wider || fewerDigits || scale(kind, after) < scale(kind, before)) {
       return "changes from "
-          + from
-          + "("
-          + sizeAndScale(before)
-          + ") to "
-          + to
-          + "("
-          + sizeAndScale(after)
-          + "), which is not wider";
+          + shape(kind, before)
+          + " to "
+          + shape(kind, after)
+          + ", which is not wider";
     }
     return null;
   }
@@ -404,8 +464,10 @@ public class MigrationStepRulesTest {
           // PostgreSQL and H2: ALTER TABLE t ALTER COLUMN c [SET DATA] TYPE <type>, or
           // ALTER TABLE t ALTER COLUMN c DROP NOT NULL
           case ALTER -> kind != DatabaseKind.MYSQL && (changesType(change) || dropsNotNull(change));
-          // MySQL: ALTER TABLE t MODIFY c <type> [NULL | NOT NULL]
-          case MODIFY -> kind == DatabaseKind.MYSQL && columnSpecs(change).matches("(NOT )?NULL|");
+          // MySQL: ALTER TABLE t MODIFY c <type> [NULL | NOT NULL] [DEFAULT x] [COLLATE x], which
+          // must restate the column's default and collation (typeChangesWiden checks they stay)
+          case MODIFY ->
+              kind == DatabaseKind.MYSQL && columnSpecs(change).matches(MODIFY_SPECS.pattern());
           default -> false;
         };
     return allowed ? null : "is not an allowed change";
