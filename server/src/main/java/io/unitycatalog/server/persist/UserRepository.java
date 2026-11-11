@@ -304,16 +304,18 @@ public class UserRepository {
   /**
    * Links {@code link} to the user with {@code email}, in one conditional update, so concurrent
    * first calls link the row at most once. Only an ENABLED, unlinked row that is neither the
-   * bootstrap admin nor an IdP principal is linked. A reactivated row is linked only by a token
-   * issued at or after its reactivation, so a token issued before it (or without {@code iat}) can't
-   * link the row first. Both times are compared in epoch seconds, so a token issued in the second
-   * of the reactivation links it.
+   * bootstrap admin nor an IdP principal is linked, and only if the admin or the identity provider
+   * {@code idpName} owns it: another IdP's row is never linked through this one. A reactivated row
+   * is linked only by a token issued at or after its reactivation, so a token issued before it (or
+   * without {@code iat}) can't link the row first. Both times are compared in epoch seconds, so a
+   * token issued in the second of the reactivation links it.
    *
+   * @param idpName the name of the identity provider that issued the token
    * @param issuedAt the token's {@code iat}, or null if it has none
    * @return the linked user, or null if no such row exists or {@code link} is already on another
    *     row
    */
-  public User linkUser(String email, UserLink link, Instant issuedAt) {
+  public User linkUser(String idpName, String email, UserLink link, Instant issuedAt) {
     try {
       return TransactionManager.executeWithTransaction(
           sessionFactory,
@@ -324,7 +326,10 @@ public class UserRepository {
                         "UPDATE UserDAO SET linkIssuer = :issuer, linkClaim = :claim,"
                             + " linkValue = :value WHERE email = :email AND linkIssuer IS NULL"
                             + " AND state = :enabled AND email <> 'admin' AND idpName IS NULL"
+                            + " AND owner IN (:adminOwner, :idpName)"
                             + issuedSinceReactivation(issuedAt))
+                    .setParameter("adminOwner", IdentityUtils.ADMIN_OWNER)
+                    .setParameter("idpName", idpName)
                     .setParameter("issuer", link.issuer())
                     .setParameter("claim", link.claim())
                     .setParameter("value", link.value())
@@ -340,6 +345,55 @@ public class UserRepository {
           /* readOnly= */ false);
     } catch (RuntimeException e) {
       // A concurrent call linked this identity to another row (uc_users_link_key).
+      if (ExceptionUtils.indexOfType(e, ConstraintViolationException.class) < 0) {
+        throw e;
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Creates the user {@code email} on its first call through the identity provider {@code idpName},
+   * owned by that IdP and linked to {@code link}, with no grants. Its name is the email until the
+   * IdP's SCIM sets one. Nothing is created if a row with {@code email} exists, whatever its owner
+   * or state, or if a concurrent call linked {@code link} first (uc_users_link_key).
+   *
+   * @return the new user, or null if none was created
+   */
+  public User createLinkedUser(String idpName, String email, UserLink link) {
+    try {
+      User created =
+          TransactionManager.executeWithTransaction(
+              sessionFactory,
+              session -> {
+                if (getUserByEmail(session, email) != null) {
+                  return null;
+                }
+                User user =
+                    new User()
+                        .id(UUID.randomUUID().toString())
+                        .name(email)
+                        .email(email)
+                        .owner(idpName)
+                        .state(User.StateEnum.ENABLED)
+                        .createdAt(System.currentTimeMillis());
+                UserDAO userDAO = UserDAO.from(user);
+                userDAO.setLinkIssuer(link.issuer());
+                userDAO.setLinkClaim(link.claim());
+                userDAO.setLinkValue(link.value());
+                session.persist(userDAO);
+                return user;
+              },
+              "Failed to create user",
+              /* readOnly= */ false);
+      if (created != null) {
+        LOGGER.info("Created user {} on its first call through {}", created.getId(), idpName);
+      }
+      return created;
+    } catch (RuntimeException e) {
+      // A concurrent first call of the same identity created its row first (uc_users_link_key).
+      // TODO(PR 3): uc_users_email_key also refuses a concurrent first call of another identity
+      // with the same email; until then both rows are created.
       if (ExceptionUtils.indexOfType(e, ConstraintViolationException.class) < 0) {
         throw e;
       }

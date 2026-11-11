@@ -361,8 +361,16 @@ claim from `subject-claim` counts, so a later email change in the identity provi
   application's tokens. A token without one is refused until its user is linked.
 - Only an enabled user that is not yet linked is linked, never the `admin` user or a user marked as an identity
   provider's SCIM principal; a linked user's tokens get 403 once it is marked as one. A user linked to another
-  identity gets 403 `User not allowed: <email>`, as does a token whose email has no user: create the user first (SCIM
-  or `bin/uc user create`).
+  identity gets 403 `User not allowed: <email>`.
+- A user that an identity provider owns (see [Users and groups an identity provider
+  owns](#users-and-groups-an-identity-provider-owns)) is linked only by that identity provider's tokens; another
+  identity provider's token with its email gets 403 `User not allowed: <email>`. A user the admin owns is linked by
+  any configured identity provider.
+- When no user has the token's email, the first call creates one: owned by the identity provider whose block the
+  token's issuer matched, linked to its identity, enabled, named by its email, and with no privileges until you grant
+  them, directly or through a group. The identity provider's SCIM finds it as its own user, so its later lookup
+  updates it instead of creating a second one. A token whose email belongs to a disabled user, the `admin` user or a
+  SCIM principal creates nothing and gets 403.
 - When SCIM reactivates a user (`active` from false to true), the link is cleared and the next call links again, so an
   Okta rehire (which reuses the deactivated user) does not inherit the old person's identity. From then on, only a token
   issued at or after the reactivation (its `iat`, compared in whole seconds) is accepted for the user, on the first call

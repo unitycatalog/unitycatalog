@@ -66,6 +66,9 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
    *   <li>{@code /.well-known/openid-configuration} — OIDC discovery document
    *   <li>{@code /jwks} — JWKS endpoint with the test keypair's public key
    * </ul>
+   *
+   * <p>{@code <path>/.well-known/openid-configuration} serves the discovery document of the issuer
+   * {@code testIssuer + <path>}, with the same JWKS, so a test can configure a second issuer.
    */
   private void startMockOidcServer() throws Exception {
     // Generate a dedicated RSA keypair for the test identity provider
@@ -94,11 +97,19 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
               return t;
             }));
 
+    String discoveryPath = "/.well-known/openid-configuration";
     mockOidcServer.createContext(
-        "/.well-known/openid-configuration",
+        "/",
         exchange -> {
+          String path = exchange.getRequestURI().getPath();
+          if (!path.endsWith(discoveryPath)) {
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+            return;
+          }
+          String issuer = testIssuer + path.substring(0, path.length() - discoveryPath.length());
           String discoveryDoc =
-              String.format("{\"issuer\":\"%s\",\"jwks_uri\":\"%s\"}", testIssuer, testJwksUri);
+              String.format("{\"issuer\":\"%s\",\"jwks_uri\":\"%s\"}", issuer, testJwksUri);
           byte[] body = discoveryDoc.getBytes(StandardCharsets.UTF_8);
           exchange.getResponseHeaders().set("Content-Type", "application/json");
           exchange.sendResponseHeaders(200, body.length);

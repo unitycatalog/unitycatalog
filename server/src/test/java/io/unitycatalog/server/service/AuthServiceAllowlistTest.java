@@ -25,12 +25,18 @@ import io.unitycatalog.server.utils.WildcardAllowlist;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
@@ -452,10 +458,7 @@ public class AuthServiceAllowlistTest {
               "person-2",
               // The bootstrap admin is never linked.
               "admin",
-              "person-admin",
-              // TODO(PR 11): no row yet; then the first call creates one.
-              "nobody@example.com",
-              "person-nobody");
+              "person-admin");
       for (Map.Entry<String, String> entry : notAllowed.entrySet()) {
         assertRefused(
             listCatalogs(idpToken(Map.of("sub", entry.getValue(), "email", entry.getKey()))),
@@ -578,6 +581,198 @@ public class AuthServiceAllowlistTest {
           listCatalogs(idpToken(Map.of("sub", "person-1", "email", ENABLED_USER_EMAIL))),
           HttpStatus.FORBIDDEN,
           "Invalid access token.");
+    }
+  }
+
+  /**
+   * First sign-in with two identity providers: the test IdP plays Okta ({@code uid} names a person)
+   * and a second block, {@code entra}, is another issuer with {@code sub}.
+   */
+  @Nested
+  class ExternalModeFirstSignIn extends ExternalModeTestBase {
+
+    private static final String NEW_EMAIL = "new-person@example.com";
+    private String entraIssuer;
+
+    @Override
+    protected String subjectClaim() {
+      return "OKTA";
+    }
+
+    @Override
+    protected void setUpProperties() {
+      super.setUpProperties();
+      entraIssuer = testIssuer + "/entra";
+      serverProperties.setProperty("server.authentication.idp.entra.issuer", entraIssuer);
+      serverProperties.setProperty("server.authentication.idp.entra.audience", TEST_AUDIENCE);
+    }
+
+    private String entraToken(Map<String, String> claims) {
+      return idpToken(entraIssuer, TEST_AUDIENCE, Instant.now().plusSeconds(300), claims);
+    }
+
+    /** A SCIM token for the IdP {@code idp}, with a principal named {@code <idp>-scim}. */
+    private String scimToken(String idp) {
+      createEnabledUser(idp + "-scim");
+      return AdminTokenCommand.createScimToken(
+          new String[] {"--scim-principal", idp + "-scim", "--idp", idp, "--lifetime", "PT1H"},
+          securityContext.getAlgorithm(),
+          new UserRepository(null, hibernateConfigurator.getSessionFactory()));
+    }
+
+    /** The users whose email is {@code email}, as Okta's SCIM lookup by userName finds them. */
+    @SneakyThrows
+    private JsonNode findByUserName(String scimToken, String email) {
+      AggregatedHttpResponse response =
+          call(
+              HttpMethod.GET,
+              SCIM_USERS + "?filter=userName%20eq%20%22" + email + "%22&startIndex=1&count=100",
+              scimToken,
+              null);
+      assertThat(response.status()).isEqualTo(HttpStatus.OK);
+      return MAPPER.readTree(response.contentUtf8());
+    }
+
+    /**
+     * Journey: a new Okta user's first call creates them with no access; the admin grants them a
+     * catalog and their next call reads it; Okta's SCIM lookup finds them as its own user.
+     */
+    @Test
+    public void testNewUserFirstSignInJourney() throws IOException {
+      String admin = securityContext.createServiceToken();
+      String oktaScim = scimToken("test");
+      String entraScim = scimToken("entra");
+      assertThat(call(HttpMethod.POST, CATALOGS, admin, "{\"name\":\"journey\"}").status())
+          .isEqualTo(HttpStatus.OK);
+      assertThat(findByUserName(oktaScim, NEW_EMAIL).get("totalResults").asInt()).isZero();
+
+      // No row yet: the first call creates one, linked to the token's uid, with no grants.
+      String first = idpToken(Map.of("uid", "00u-new", "email", NEW_EMAIL));
+      AggregatedHttpResponse catalogs = listCatalogs(first);
+      assertThat(catalogs.status()).isEqualTo(HttpStatus.OK);
+      assertThat(MAPPER.readTree(catalogs.contentUtf8()).path("catalogs")).isEmpty();
+      assertThat(call(HttpMethod.GET, CATALOGS + "/journey", first, null).status())
+          .isEqualTo(HttpStatus.FORBIDDEN);
+      // The admin grants the new user the catalog; their next call reads it.
+      String grant =
+          """
+          {"changes":[{"principal":"%s","add":["USE CATALOG"],"remove":[]}]}\
+          """
+              .formatted(NEW_EMAIL);
+      AggregatedHttpResponse granted =
+          call(
+              HttpMethod.PATCH, "/api/2.1/unity-catalog/permissions/catalog/journey", admin, grant);
+      assertThat(granted.status()).as(granted.contentUtf8()).isEqualTo(HttpStatus.OK);
+      assertThat(call(HttpMethod.GET, CATALOGS + "/journey", first, null).status())
+          .isEqualTo(HttpStatus.OK);
+      JsonNode found = findByUserName(oktaScim, NEW_EMAIL);
+      assertThat(found.get("totalResults").asInt()).isEqualTo(1);
+      String id = found.get("Resources").get(0).get("id").asText();
+      // The IdP's own row: its SCIM GET sees it, another IdP's doesn't.
+      AggregatedHttpResponse own = call(HttpMethod.GET, SCIM_USERS + "/" + id, oktaScim, null);
+      assertThat(own.status()).isEqualTo(HttpStatus.OK);
+      assertThat(
+              MAPPER
+                  .readTree(own.contentUtf8())
+                  .path("urn:unitycatalog:scim:schemas:extension:2.0:Owner")
+                  .path("owner")
+                  .asText())
+          .isEqualTo("test");
+      assertThat(call(HttpMethod.GET, SCIM_USERS + "/" + id, entraScim, null).status())
+          .isEqualTo(HttpStatus.NOT_FOUND);
+
+      // Later calls match the link and reuse the row, with or without an email.
+      String later = idpToken(Map.of("uid", "00u-new"));
+      assertThat(listCatalogs(later).status()).isEqualTo(HttpStatus.OK);
+      AggregatedHttpResponse me =
+          call(HttpMethod.GET, "/api/1.0/unity-control/scim2/Me", later, null);
+      assertThat(MAPPER.readTree(me.contentUtf8()).get("id").asText()).isEqualTo(id);
+      assertThat(findByUserName(oktaScim, NEW_EMAIL).get("totalResults").asInt()).isEqualTo(1);
+
+      // Without an email nothing is created.
+      assertRefused(
+          listCatalogs(idpToken(Map.of("uid", "00u-no-email"))),
+          HttpStatus.UNAUTHORIZED,
+          "Access token has no email claim to link a user; add one in the identity provider. A"
+              + " token issued before the user's last reactivation is never linked.");
+      // An issuer with no IdP block is refused before any lookup.
+      assertRefused(
+          listCatalogs(
+              idpToken(
+                  "https://unknown.example.com",
+                  TEST_AUDIENCE,
+                  Instant.now().plusSeconds(300),
+                  Map.of("uid", "00u-unknown", "email", "unknown@example.com"))),
+          HttpStatus.FORBIDDEN,
+          "Invalid access token.");
+      assertThat(findByUserName(admin, "unknown@example.com").get("totalResults")).hasToString("0");
+    }
+
+    @Test
+    public void testIdpOwnedRowLinksOnlyThroughItsIdp() throws IOException {
+      String oktaScim = scimToken("test");
+      String oktaOwned = "okta-owned@example.com";
+      String createBody =
+          """
+          {"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],"userName":"%s",\
+          "emails":[{"primary":true,"value":"%s","type":"work"}],"displayName":"Okta Owned",\
+          "active":true}\
+          """
+              .formatted(oktaOwned, oktaOwned);
+      assertThat(call(HttpMethod.POST, SCIM_USERS, oktaScim, createBody).status())
+          .isEqualTo(HttpStatus.CREATED);
+
+      // Another IdP's token can't link it, nor create a second row for its email.
+      assertRefused(
+          listCatalogs(entraToken(Map.of("sub", "entra-person", "email", oktaOwned))),
+          HttpStatus.FORBIDDEN,
+          "User not allowed: " + oktaOwned);
+      assertThat(
+              findByUserName(securityContext.createServiceToken(), oktaOwned).get("totalResults"))
+          .hasToString("1");
+      // Its own IdP links it.
+      assertThat(listCatalogs(idpToken(Map.of("uid", "00u-okta", "email", oktaOwned))).status())
+          .isEqualTo(HttpStatus.OK);
+
+      // A row the admin owns links through either IdP.
+      createEnabledUser("admin-owned@example.com");
+      assertThat(
+              listCatalogs(
+                      entraToken(Map.of("sub", "entra-admins", "email", "admin-owned@example.com")))
+                  .status())
+          .isEqualTo(HttpStatus.OK);
+      assertThat(
+              listCatalogs(idpToken(Map.of("uid", "00u-admins", "email", ENABLED_USER_EMAIL)))
+                  .status())
+          .isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    public void testConcurrentFirstCallsCreateOneUser() throws Exception {
+      String token = idpToken(Map.of("uid", "00u-racer", "email", NEW_EMAIL));
+      int callers = 8;
+      ExecutorService executor = Executors.newFixedThreadPool(callers);
+      CountDownLatch start = new CountDownLatch(1);
+      try {
+        List<Future<HttpStatus>> results = new ArrayList<>();
+        for (int i = 0; i < callers; i++) {
+          results.add(
+              executor.submit(
+                  () -> {
+                    start.await();
+                    return listCatalogs(token).status();
+                  }));
+        }
+        start.countDown();
+        for (Future<HttpStatus> result : results) {
+          assertThat(result.get(60, TimeUnit.SECONDS)).isEqualTo(HttpStatus.OK);
+        }
+      } finally {
+        executor.shutdownNow();
+      }
+      assertThat(
+              findByUserName(securityContext.createServiceToken(), NEW_EMAIL).get("totalResults"))
+          .hasToString("1");
     }
   }
 

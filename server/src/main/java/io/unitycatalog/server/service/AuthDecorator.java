@@ -56,8 +56,10 @@ import org.slf4j.LoggerFactory;
  * <p>In {@code external} authentication mode the decorator also accepts an access token from a
  * configured identity provider, by its exact issuer: the signature (the issuer's JWKS), expiry and
  * audience are checked, and the token's subject claim finds the user linked to it. The first call
- * links the enabled row with the token's {@code email}; later calls match the link only. The
- * server's own ACCESS tokens are refused; its SERVICE and SCIM tokens still work.
+ * links the enabled row with the token's {@code email}, if the admin or this IdP owns it, or
+ * creates the row, owned by this IdP and with no grants, if no row has that email; later calls
+ * match the link only. The server's own ACCESS tokens are refused; its SERVICE and SCIM tokens
+ * still work.
  *
  * <p>The decoded token is also added to the request attributes so it can be referenced by the
  * request if needed.
@@ -189,8 +191,8 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
 
   /**
    * Returns the enabled user linked to a verified token of {@code identityProvider}. The first call
-   * links the row with the token's {@code email}; later calls use the link only, whatever the
-   * token's email.
+   * links the row with the token's {@code email}, or creates it if there is none; later calls use
+   * the link only, whatever the token's email.
    */
   private User linkedUser(IdentityProvider identityProvider, DecodedJWT jwt) {
     if (jwt.getExpiresAt() == null) {
@@ -217,15 +219,18 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
             "Access token has no email claim to link a user; add one in the identity provider. A"
                 + " token issued before the user's last reactivation is never linked.");
       }
-      // A concurrent first call may have linked the row first; then the link finds it.
+      // Link the row with this email, or create it, owned by this IdP, if there is none. A
+      // concurrent first call may have linked or created the row first; then the link finds it.
+      String idpName = identityProvider.name();
       user =
-          Optional.ofNullable(userRepository.linkUser(email, link, jwt.getIssuedAtAsInstant()))
+          Optional.ofNullable(
+                  userRepository.linkUser(idpName, email, link, jwt.getIssuedAtAsInstant()))
+              .or(() -> Optional.ofNullable(userRepository.createLinkedUser(idpName, email, link)))
               .orElseGet(() -> userRepository.findLinkedUser(link, jwt.getIssuedAtAsInstant()));
-      // TODO(PR 11): with no row for this email, create one owned by this identity provider.
       if (user == null) {
         throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed: " + email);
       }
-      LOGGER.debug("Linked user {} to identity provider {}", email, identityProvider.name());
+      LOGGER.debug("Linked user {} to identity provider {}", email, idpName);
     }
     // An IdP principal acts only through its SCIM token, even if it was linked before it became
     // one.
