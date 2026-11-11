@@ -59,6 +59,7 @@ import io.unitycatalog.server.utils.VersionUtils;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
@@ -110,7 +111,7 @@ public class UnityCatalogServer implements AutoCloseable {
   private UnityCatalogServer(UnityCatalogServer.Builder unityCatalogServerBuilder) {
     setDefaults(unityCatalogServerBuilder);
     this.shutdownTimeout = unityCatalogServerBuilder.serverProperties.getShutdownTimeout();
-    Path configurationFolder = Path.of("etc", "conf");
+    Path configurationFolder = unityCatalogServerBuilder.configurationFolder;
     SecurityConfiguration securityConfiguration = new SecurityConfiguration(configurationFolder);
 
     this.securityContext =
@@ -580,6 +581,7 @@ public class UnityCatalogServer implements AutoCloseable {
     private HibernateConfigurator hibernateConfigurator;
     private CloudCredentialVendor cloudCredentialVendor;
     private UnaryOperator<FileOperations> fileOperationsDecorator = UnaryOperator.identity();
+    private Path configurationFolder = Path.of("etc", "conf");
 
     private Builder() {}
 
@@ -628,6 +630,23 @@ public class UnityCatalogServer implements AutoCloseable {
         UnaryOperator<FileOperations> fileOperationsDecorator) {
       this.fileOperationsDecorator =
           fileOperationsDecorator != null ? fileOperationsDecorator : UnaryOperator.identity();
+      return this;
+    }
+
+    /**
+     * Sets the folder holding the signing keys, which the server creates if missing, and the {@code
+     * certs.json} and {@code token.txt} it writes when constructed. Defaults to {@code etc/conf};
+     * tests pass their own folder so concurrent servers do not share these files.
+     *
+     * <p>Only these files move: {@code server.properties}, {@code hibernate.properties} and the
+     * log4j configuration are still read from {@code etc/conf}.
+     *
+     * @param configurationFolder the folder for the signing keys, {@code certs.json} and {@code
+     *     token.txt}
+     * @return this builder
+     */
+    public UnityCatalogServer.Builder configurationFolder(Path configurationFolder) {
+      this.configurationFolder = Objects.requireNonNull(configurationFolder, "configurationFolder");
       return this;
     }
 

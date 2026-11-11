@@ -32,6 +32,7 @@ import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.ServerSocket;
 import java.net.URI;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -46,12 +47,21 @@ public class UnityCatalogServerTest extends BaseServerTest {
 
   @Test
   public void startFailsWhenThePortIsTaken() throws Exception {
+    // The server setUp() built writes certs.json and token.txt to configurationFolder, next to the
+    // signing keys copied there.
+    String keyId = Files.readString(configurationFolder.resolve("key_id.txt"));
+    assertThat(Files.readString(configurationFolder.resolve("certs.json"))).contains(keyId);
+    assertThat(configurationFolder.resolve("token.txt")).isNotEmptyFile();
+    assertThatThrownBy(() -> UnityCatalogServer.builder().configurationFolder(null))
+        .isInstanceOf(NullPointerException.class);
+
     try (ServerSocket occupied = new ServerSocket(0)) {
       UnityCatalogServer server =
           UnityCatalogServer.builder()
               .port(occupied.getLocalPort())
               .serverProperties(new ServerProperties(serverProperties))
               .hibernateConfigurator(hibernateConfigurator)
+              .configurationFolder(configurationFolder)
               .build();
       // BaseServerTest retries only a ServerPortBindException, so the cause is part of the
       // contract, as is a close() that releases what the failed start left behind.
@@ -75,6 +85,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
                     .port(0)
                     .serverProperties(new ServerProperties(audited))
                     .hibernateConfigurator(hibernateConfigurator)
+                    .configurationFolder(configurationFolder)
                     .fileOperationsDecorator(
                         fileOperations -> {
                           throw new IllegalStateException("decorator failed");
@@ -95,6 +106,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
             .port(0)
             .serverProperties(new ServerProperties(audited))
             .hibernateConfigurator(hibernateConfigurator)
+            .configurationFolder(configurationFolder)
             .build();
     server.start();
     server.close();
