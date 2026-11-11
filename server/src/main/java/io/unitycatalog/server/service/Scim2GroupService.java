@@ -1,5 +1,6 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.auth.AuthorizeExpressions.SCIM_PROVISIONING;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.utils.Scim2Utils.asGroupResource;
 
@@ -86,7 +87,7 @@ public class Scim2GroupService implements ScimService {
   @Get("")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public ListResponse<GroupResource> getScimGroups(
       @Param("filter") Optional<String> filter,
@@ -119,7 +120,7 @@ public class Scim2GroupService implements ScimService {
   @Post("")
   @Produces("application/scim+json")
   @StatusCode(201)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public GroupResource createScimGroup(GroupResource groupResource) {
     String name = requireDisplayName(groupResource.getDisplayName());
@@ -131,7 +132,7 @@ public class Scim2GroupService implements ScimService {
   @Get("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public GroupResource getGroup(@Param("id") String id) {
     return asGroupResource(scim(() -> groupRepository.getGroup(id)));
@@ -141,7 +142,7 @@ public class Scim2GroupService implements ScimService {
   @Put("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public GroupResource updateGroup(@Param("id") String id, GroupResource groupResource) {
     String name = requireDisplayName(groupResource.getDisplayName());
@@ -155,7 +156,7 @@ public class Scim2GroupService implements ScimService {
   @Patch("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public GroupResource patchGroup(@Param("id") String id, PatchRequest patchRequest) {
     if (patchRequest.getOperations().isEmpty()) {
@@ -177,7 +178,7 @@ public class Scim2GroupService implements ScimService {
 
   /** Clears the group's grants, then deletes the group and its memberships. */
   @Delete("/{id}")
-  @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteGroup(@Param("id") String id) {
     Group group = scim(() -> groupRepository.getGroup(id));
