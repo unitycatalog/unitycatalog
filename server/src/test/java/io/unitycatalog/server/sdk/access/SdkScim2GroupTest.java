@@ -652,6 +652,63 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
 
   @Test
   @SneakyThrows
+  public void testMissingOrBlankDisplayNameIsRejected() {
+    String id = createGroup("named", alice.getId()).get("id").asText();
+    String path = GROUPS_PATH + "/" + id;
+
+    // {form, response}: a missing or blank displayName is refused by POST, PUT and PATCH alike.
+    List<Map.Entry<String, HttpResponse<String>>> responses =
+        List.of(
+            Map.entry("POST without", send(adminConfig, "POST", GROUPS_PATH, "{}")),
+            Map.entry("POST blank", send(adminConfig, "POST", GROUPS_PATH, groupBody("  "))),
+            Map.entry("PUT without", send(adminConfig, "PUT", path, "{}")),
+            Map.entry("PUT blank", send(adminConfig, "PUT", path, groupBody(""))),
+            Map.entry(
+                "PATCH blank",
+                send(adminConfig, "PATCH", path, patchBody(op("replace", "displayName", "\"\"")))),
+            Map.entry(
+                "PATCH without",
+                send(
+                    adminConfig, "PATCH", path, patchBody(op("replace", null, "{\"id\":\"x\"}")))));
+
+    for (Map.Entry<String, HttpResponse<String>> response : responses) {
+      assertThat(response.getValue().statusCode())
+          .as(response.getKey() + ": " + response.getValue().body())
+          .isEqualTo(400);
+      assertThat(MAPPER.readTree(response.getValue().body()).get("detail").asText())
+          .as(response.getKey())
+          .isEqualTo("displayName is required.");
+    }
+    JsonNode group = get(id);
+    assertThat(group.get("displayName").asText()).isEqualTo("named");
+    assertThat(memberIds(group)).containsExactly(alice.getId());
+    assertThat(groupNames(list(""))).containsExactly("named");
+  }
+
+  @Test
+  @SneakyThrows
+  public void testPatchWithoutOperationsIsRejected() {
+    String id = createGroup("patched", alice.getId()).get("id").asText();
+    String path = GROUPS_PATH + "/" + id;
+
+    HttpResponse<String> empty = send(adminConfig, "PATCH", path, patchBody());
+    assertThat(empty.statusCode()).as(empty.body()).isEqualTo(400);
+    JsonNode error = MAPPER.readTree(empty.body());
+    assertThat(error.get("status").asText()).isEqualTo("400");
+    assertThat(error.get("detail").asText()).isEqualTo("PATCH has no operations.");
+
+    // A body without Operations is refused while it is read, before the service sees it.
+    HttpResponse<String> missing =
+        send(adminConfig, "PATCH", path, "{\"schemas\":[\"" + PATCH_OP + "\"]}");
+    assertThat(missing.statusCode()).as(missing.body()).isEqualTo(400);
+
+    JsonNode group = get(id);
+    assertThat(group.get("displayName").asText()).isEqualTo("patched");
+    assertThat(memberIds(group)).containsExactly(alice.getId());
+  }
+
+  @Test
+  @SneakyThrows
   public void testPatchNamesAndIdsAreCaseInsensitive() {
     String id = createGroup("insensitive", alice.getId(), bob.getId()).get("id").asText();
     String path = GROUPS_PATH + "/" + id;
