@@ -49,8 +49,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PermissionService implements UnityCatalogRestService {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(PermissionService.class);
 
   private final UnityCatalogAuthorizer authorizer;
   private final boolean strictPrivilegeChecks;
@@ -246,6 +250,7 @@ public class PermissionService implements UnityCatalogRestService {
                       .principal(principalName(entry.getKey()))
                       .privileges(privileges);
                 })
+            .filter(assignment -> assignment.getPrincipal() != null)
             .filter(assignment -> !assignment.getPrivileges().isEmpty())
             .collect(Collectors.toList());
 
@@ -385,6 +390,7 @@ public class PermissionService implements UnityCatalogRestService {
                       .principal(principalName(entry.getKey()))
                       .privileges(privileges);
                 })
+            .filter(assignment -> assignment.getPrincipal() != null)
             .filter(assignment -> !assignment.getPrivileges().isEmpty())
             .collect(Collectors.toList());
 
@@ -397,6 +403,7 @@ public class PermissionService implements UnityCatalogRestService {
    * user lookup's NOT_FOUND.
    */
   private UUID principalId(String name) {
+    // TODO(#2149): let ownership transfer take a group as the new owner, resolved as here.
     try {
       return UUID.fromString(Objects.requireNonNull(userRepository.getUserByEmail(name).getId()));
     } catch (BaseException e) {
@@ -407,7 +414,10 @@ public class PermissionService implements UnityCatalogRestService {
     }
   }
 
-  /** Names a grant's principal: a user's email, else a group's name; else the user's NOT_FOUND. */
+  /**
+   * Names a grant's principal: a user's email, else a group's name. Returns null for a principal
+   * that no longer exists (a grant that raced its group's delete), so listings skip that grant.
+   */
   private String principalName(UUID id) {
     try {
       return userRepository.getUser(id.toString()).getEmail();
@@ -415,7 +425,11 @@ public class PermissionService implements UnityCatalogRestService {
       if (e.getErrorCode() != ErrorCode.NOT_FOUND) {
         throw e;
       }
-      return groupRepository.findGroupName(id).orElseThrow(() -> e);
+      Optional<String> groupName = groupRepository.findGroupName(id);
+      if (groupName.isEmpty()) {
+        LOGGER.warn("Skipping grant to principal {}: no such user or group", id);
+      }
+      return groupName.orElse(null);
     }
   }
 
