@@ -2069,6 +2069,7 @@ dependencies = [
  "percent-encoding",
  "protoc-gen-protovalidate-buffa",
  "protovalidate-buffa",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
