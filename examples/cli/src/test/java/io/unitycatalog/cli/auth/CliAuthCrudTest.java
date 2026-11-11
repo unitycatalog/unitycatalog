@@ -318,7 +318,15 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
       assertThat(memberIds(group)).containsExactly(bob);
     }
 
-    // A second group, created with a member, and a duplicate name.
+    // A second group, created with several members: ids are split on commas and trimmed, and an
+    // empty entry is skipped. Then a duplicate name.
+    for (String members : List.of(ada + "," + bob, " " + ada + " , " + bob + ",,")) {
+      group =
+          executeCliCommand(
+              serverConfig, List.of("group", "create", "--name", "empty", "--members", members));
+      assertThat(memberIds(group)).as(members).containsExactlyInAnyOrder(ada, bob);
+      executeCliCommand(serverConfig, List.of("group", "delete", "--id", group.get("id").asText()));
+    }
     group =
         executeCliCommand(
             serverConfig, List.of("group", "create", "--name", "empty", "--members", ada));
