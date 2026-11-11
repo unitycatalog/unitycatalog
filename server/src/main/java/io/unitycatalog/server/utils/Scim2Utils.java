@@ -1,5 +1,9 @@
 package io.unitycatalog.server.utils;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.unboundid.scim2.common.BaseScimResource;
 import com.unboundid.scim2.common.types.Email;
 import com.unboundid.scim2.common.types.GroupResource;
 import com.unboundid.scim2.common.types.Member;
@@ -10,9 +14,15 @@ import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.persist.model.Group;
 import java.net.URI;
 import java.util.Calendar;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 public class Scim2Utils {
+  /** The UC extension schema with a user's or group's owner (RFC 7643 section 3.3). */
+  public static final String OWNER_SCHEMA = "urn:unitycatalog:scim:schemas:extension:2.0:Owner";
+
   public static UserResource asUserResource(User user) {
     Meta meta = new Meta();
     Calendar created = Calendar.getInstance();
@@ -42,11 +52,17 @@ public class Scim2Utils {
     userResource.setMeta(meta);
     userResource.setActive(user.getState() == User.StateEnum.ENABLED);
     userResource.setExternalId(user.getExternalId());
+    setOwnerExtension(
+        userResource, JsonNodeFactory.instance.objectNode().put("owner", user.getOwner()));
 
     return userResource;
   }
 
-  public static GroupResource asGroupResource(Group group) {
+  /**
+   * The group as {@code caller} sees it: an IdP sees only its own member list, the admin sees the
+   * members of both, and each list in the owner extension.
+   */
+  public static GroupResource asGroupResource(Group group, String caller) {
     Meta meta = new Meta();
     Calendar created = Calendar.getInstance();
     created.setTime(group.getCreatedAt());
@@ -57,16 +73,46 @@ public class Scim2Utils {
     meta.setLastModified(lastModified);
     meta.setResourceType("Group");
 
+    boolean isAdmin = IdentityUtils.ADMIN_OWNER.equals(caller);
+    Set<UUID> members = new LinkedHashSet<>(group.getIdpMemberIds());
+    if (isAdmin) {
+      members.addAll(group.getAdminMemberIds());
+    }
     GroupResource groupResource = new GroupResource();
     groupResource
         .setDisplayName(group.getName())
         .setMembers(
-            group.getMemberIds().stream()
+            members.stream()
                 .map(memberId -> new Member().setValue(memberId.toString()).setType("User"))
                 .toList());
     groupResource.setId(group.getId().toString());
     groupResource.setMeta(meta);
     groupResource.setExternalId(group.getExternalId());
+
+    ObjectNode owner = JsonNodeFactory.instance.objectNode().put("owner", group.getOwner());
+    if (isAdmin) {
+      owner.set("idpMembers", sourceMembers(group.getIdpMemberIds(), group));
+      owner.set("adminMembers", sourceMembers(group.getAdminMemberIds(), group));
+    }
+    setOwnerExtension(groupResource, owner);
     return groupResource;
+  }
+
+  private static ArrayNode sourceMembers(Set<UUID> memberIds, Group group) {
+    ArrayNode members = JsonNodeFactory.instance.arrayNode();
+    memberIds.forEach(
+        memberId ->
+            members
+                .addObject()
+                .put("value", memberId.toString())
+                .put("display", group.getMemberEmails().get(memberId)));
+    return members;
+  }
+
+  private static void setOwnerExtension(BaseScimResource resource, ObjectNode owner) {
+    Set<String> schemaUrns = new LinkedHashSet<>(resource.getSchemaUrns());
+    schemaUrns.add(OWNER_SCHEMA);
+    resource.setSchemaUrns(schemaUrns);
+    resource.getExtensionObjectNode().set(OWNER_SCHEMA, owner);
   }
 }

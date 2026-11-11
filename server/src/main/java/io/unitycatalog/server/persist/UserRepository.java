@@ -38,6 +38,7 @@ public class UserRepository {
             .name(createUser.getName())
             .email(createUser.getEmail())
             .externalId(createUser.getExternalId())
+            .owner(createUser.getOwner())
             .state(User.StateEnum.ENABLED)
             .createdAt(System.currentTimeMillis());
 

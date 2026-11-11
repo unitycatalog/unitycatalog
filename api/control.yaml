@@ -414,6 +414,11 @@ components:
             The identity provider this user provisions users for, with a SCIM token from
             bin/uc-admin-token. Such a user can't sign in.
           type: string
+        owner:
+          description: >-
+            Who manages the user: "admin", or the name of the identity provider that created it
+            with its SCIM token.
+          type: string
         created_at:
           description: The time the user was created.
           type: integer
@@ -502,6 +507,8 @@ components:
               value:
                 description: The url of the user's photo.
                 type: string
+        urn:unitycatalog:scim:schemas:extension:2.0:Owner:
+          $ref: '#/components/schemas/UserOwnerExtension'
     GroupResourceList:
       description: List of SCIM Group resources.
       type: object
@@ -537,10 +544,14 @@ components:
           description: The SCIM external id.
           type: string
         members:
-          description: The users in the group.
+          description: >-
+            The users in the group. The admin sees the users of both member lists; an identity
+            provider sees only its own list.
           type: array
           items:
             $ref: '#/components/schemas/GroupMember'
+        urn:unitycatalog:scim:schemas:extension:2.0:Owner:
+          $ref: '#/components/schemas/GroupOwnerExtension'
         meta:
           description: The metadata of the group.
           type: object
@@ -551,6 +562,47 @@ components:
               type: string
             lastModified:
               type: string
+    UserOwnerExtension:
+      description: Who manages the user.
+      type: object
+      properties:
+        owner:
+          description: >-
+            "admin", or the name of the identity provider that created the user with its SCIM
+            token. Only the owner can change or delete the user.
+          type: string
+    GroupOwnerExtension:
+      description: >-
+        Who manages the group, and, for the admin, who added each member. A group has two member
+        lists: the identity provider's and the admin's. Each side changes only its own list, and a
+        user is a member if it is in either.
+      type: object
+      properties:
+        owner:
+          description: >-
+            "admin", or the name of the identity provider that created the group with its SCIM
+            token. Only the owner can rename, replace or delete the group.
+          type: string
+        idpMembers:
+          description: The members the identity provider added. Shown to the admin only.
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupSourceMember'
+        adminMembers:
+          description: The members the admin added. Shown to the admin only.
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupSourceMember'
+    GroupSourceMember:
+      description: A user in one of a group's member lists.
+      type: object
+      properties:
+        value:
+          description: The id of the user.
+          type: string
+        display:
+          description: The email of the user.
+          type: string
     GroupMember:
       description: A user in a SCIM group.
       type: object

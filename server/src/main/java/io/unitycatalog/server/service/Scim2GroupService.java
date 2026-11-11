@@ -18,6 +18,7 @@ import com.linecorp.armeria.server.annotation.Put;
 import com.linecorp.armeria.server.annotation.StatusCode;
 import com.unboundid.scim2.common.Path;
 import com.unboundid.scim2.common.exceptions.BadRequestException;
+import com.unboundid.scim2.common.exceptions.ForbiddenException;
 import com.unboundid.scim2.common.exceptions.NotImplementedException;
 import com.unboundid.scim2.common.exceptions.ResourceConflictException;
 import com.unboundid.scim2.common.exceptions.ResourceNotFoundException;
@@ -42,7 +43,7 @@ import io.unitycatalog.server.exception.Scim2RuntimeException;
 import io.unitycatalog.server.persist.GroupRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.model.Group;
-import io.unitycatalog.server.utils.Scim2Utils;
+import io.unitycatalog.server.utils.IdentityUtils;
 import java.util.Calendar;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
@@ -64,6 +65,11 @@ import java.util.function.UnaryOperator;
  * <p>PATCH supports {@code add}, {@code remove} and {@code replace} on {@code members}, and {@code
  * replace} of {@code displayName}, by path or, for {@code replace}, as a value without a path.
  * Anything else is answered 501.
+ *
+ * <p>A group is owned by the admin, or by the IdP whose SCIM token created it. An IdP sees and
+ * changes only its own groups; any other is not found for it. A group has two member lists, the
+ * IdP's and the admin's, and each caller changes only its own: an IdP's PUT replaces only its list.
+ * On an IdP's group the admin can only change its member list.
  */
 public class Scim2GroupService implements ScimService {
   private static final String MEMBERS = "members";
@@ -97,9 +103,11 @@ public class Scim2GroupService implements ScimService {
         filter.filter(f -> !f.isEmpty()).<Filter>map(this::parseFilter).orElse(null);
     FilterEvaluator filterEvaluator = new FilterEvaluator();
 
+    String caller = IdentityUtils.callerOwner();
     List<GroupResource> matches =
         scim(groupRepository::listGroups).stream()
-            .map(Scim2Utils::asGroupResource)
+            .filter(group -> isVisible(group, caller))
+            .map(group -> asGroupResource(group, caller))
             .filter(group -> match(filterEvaluator, groupFilter, group))
             .toList();
     int start = Math.max(startIndex.orElse(1), 1);
@@ -126,7 +134,9 @@ public class Scim2GroupService implements ScimService {
     String name = requireDisplayName(groupResource.getDisplayName());
     String externalId = checkLength(EXTERNAL_ID, groupResource.getExternalId());
     Set<UUID> memberIds = memberIds(groupResource.getMembers());
-    return asGroupResource(scim(() -> groupRepository.createGroup(name, externalId, memberIds)));
+    String caller = IdentityUtils.callerOwner();
+    return asGroupResource(
+        scim(() -> groupRepository.createGroup(name, externalId, caller, memberIds)), caller);
   }
 
   @Get("/{id}")
@@ -135,10 +145,14 @@ public class Scim2GroupService implements ScimService {
   @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public GroupResource getGroup(@Param("id") String id) {
-    return asGroupResource(scim(() -> groupRepository.getGroup(id)));
+    String caller = IdentityUtils.callerOwner();
+    return asGroupResource(visibleGroup(id, caller), caller);
   }
 
-  /** Replaces the group's name, external id and members; what the body leaves out is cleared. */
+  /**
+   * Replaces the group's name, external id and the caller's member list; what the body leaves out
+   * is cleared. Only the group's owner can.
+   */
   @Put("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
@@ -148,9 +162,18 @@ public class Scim2GroupService implements ScimService {
     String name = requireDisplayName(groupResource.getDisplayName());
     String externalId = checkLength(EXTERNAL_ID, groupResource.getExternalId());
     Set<UUID> memberIds = memberIds(groupResource.getMembers());
+    String caller = IdentityUtils.callerOwner();
+    requireOwner(visibleGroup(id, caller), caller);
+    boolean adminAdded = isAdmin(caller);
     return update(
         id,
-        group -> group.toBuilder().name(name).externalId(externalId).memberIds(memberIds).build());
+        caller,
+        group ->
+            group.toBuilder()
+                .name(name)
+                .externalId(externalId)
+                .build()
+                .withMemberIds(adminAdded, memberIds));
   }
 
   @Patch("/{id}")
@@ -162,13 +185,21 @@ public class Scim2GroupService implements ScimService {
     if (patchRequest.getOperations().isEmpty()) {
       throw new Scim2RuntimeException(new BadRequestException("PATCH has no operations."));
     }
+    String caller = IdentityUtils.callerOwner();
+    Group group = visibleGroup(id, caller);
+    // On an IdP's group the admin changes only its member list.
+    if (!patchRequest.getOperations().stream().allMatch(Scim2GroupService::isMembersOperation)) {
+      requireOwner(group, caller);
+    }
+    boolean adminAdded = isAdmin(caller);
     // Every operation is checked before any is applied.
     List<UnaryOperator<Group>> changes =
-        patchRequest.getOperations().stream().map(this::toChange).toList();
+        patchRequest.getOperations().stream().map(op -> toChange(op, adminAdded)).toList();
     return update(
         id,
-        group -> {
-          Group changed = group;
+        caller,
+        current -> {
+          Group changed = current;
           for (UnaryOperator<Group> change : changes) {
             changed = change.apply(changed);
           }
@@ -176,12 +207,14 @@ public class Scim2GroupService implements ScimService {
         });
   }
 
-  /** Clears the group's grants, then deletes the group and its memberships. */
+  /** Clears the group's grants, then deletes the group and its memberships. Only its owner can. */
   @Delete("/{id}")
   @AuthorizeExpression(SCIM_PROVISIONING)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteGroup(@Param("id") String id) {
-    Group group = scim(() -> groupRepository.getGroup(id));
+    String caller = IdentityUtils.callerOwner();
+    Group group = visibleGroup(id, caller);
+    requireOwner(group, caller);
     authorizer.clearAuthorizationsForPrincipal(group.getId());
     scim(
         () -> {
@@ -191,11 +224,46 @@ public class Scim2GroupService implements ScimService {
     return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
-  private GroupResource update(String id, UnaryOperator<Group> change) {
-    return asGroupResource(scim(() -> groupRepository.updateGroup(id, change)));
+  private GroupResource update(String id, String caller, UnaryOperator<Group> change) {
+    return asGroupResource(scim(() -> groupRepository.updateGroup(id, change)), caller);
   }
 
-  private UnaryOperator<Group> toChange(PatchOperation operation) {
+  private static boolean isAdmin(String caller) {
+    return IdentityUtils.ADMIN_OWNER.equals(caller);
+  }
+
+  /** The admin sees every group; an IdP sees only its own. */
+  private static boolean isVisible(Group group, String caller) {
+    return isAdmin(caller) || caller.equals(group.getOwner());
+  }
+
+  /** The group, if {@code caller} may see it; another IdP's group is not found for an IdP. */
+  private Group visibleGroup(String id, String caller) {
+    Group group = scim(() -> groupRepository.getGroup(id));
+    if (!isVisible(group, caller)) {
+      throw new Scim2RuntimeException(new ResourceNotFoundException("Group not found: " + id));
+    }
+    return group;
+  }
+
+  /** Refuses the admin a change to an IdP's group beyond its own member list. */
+  private static void requireOwner(Group group, String caller) {
+    if (!caller.equals(group.getOwner())) {
+      throw new Scim2RuntimeException(
+          new ForbiddenException(
+              "Group " + group.getName() + " is managed by identity provider " + group.getOwner()));
+    }
+  }
+
+  private static boolean isMembersOperation(PatchOperation operation) {
+    Path path = operation.getPath();
+    return path != null
+        && path.size() == 1
+        && MEMBERS.equalsIgnoreCase(path.getElement(0).getAttribute());
+  }
+
+  /** The change {@code operation} makes; a member change acts on the caller's list. */
+  private UnaryOperator<Group> toChange(PatchOperation operation, boolean adminAdded) {
     Path path = operation.getPath();
     boolean replace = operation.getOpType() == PatchOpType.REPLACE;
     try {
@@ -212,7 +280,7 @@ public class Scim2GroupService implements ScimService {
         }
         if (MEMBERS.equalsIgnoreCase(element.getAttribute())) {
           Optional<UnaryOperator<Group>> change =
-              membersChange(operation, element.getValueFilter());
+              membersChange(operation, element.getValueFilter(), adminAdded);
           if (change.isPresent()) {
             return change.get();
           }
@@ -254,7 +322,8 @@ public class Scim2GroupService implements ScimService {
    * filter is only supported on {@code remove}, in the form {@code members[value eq "<id>"]}, and
    * {@code remove} needs it.
    */
-  private Optional<UnaryOperator<Group>> membersChange(PatchOperation operation, Filter filter)
+  private Optional<UnaryOperator<Group>> membersChange(
+      PatchOperation operation, Filter filter, boolean adminAdded)
       throws ScimException, JsonProcessingException {
     if (filter != null) {
       if (operation.getOpType() != PatchOpType.REMOVE
@@ -263,7 +332,7 @@ public class Scim2GroupService implements ScimService {
         return Optional.empty();
       }
       String value = equal.getComparisonValue().asText();
-      return Optional.of(group -> withoutMember(group, value));
+      return Optional.of(group -> withoutMember(group, adminAdded, value));
     }
     // The SCIM library reads a value that is not an array as no members: a replace would empty
     // the group.
@@ -275,14 +344,14 @@ public class Scim2GroupService implements ScimService {
         Set<UUID> added = memberIds(operation.getValues(Member.class));
         yield Optional.of(
             group -> {
-              Set<UUID> members = new LinkedHashSet<>(group.getMemberIds());
+              Set<UUID> members = new LinkedHashSet<>(group.getMemberIds(adminAdded));
               members.addAll(added);
-              return group.toBuilder().memberIds(members).build();
+              return group.withMemberIds(adminAdded, members);
             });
       }
       case REPLACE -> {
         Set<UUID> replacement = memberIds(operation.getValues(Member.class));
-        yield Optional.of(group -> group.toBuilder().memberIds(replacement).build());
+        yield Optional.of(group -> group.withMemberIds(adminAdded, replacement));
       }
       // The SCIM library drops the value of a remove, so a remove without a filter would read as
       // "remove every member" whatever the caller listed. Refuse it rather than guess.
@@ -291,10 +360,10 @@ public class Scim2GroupService implements ScimService {
   }
 
   /** Removing someone who is not a member changes nothing, so the id need not be valid. */
-  private static Group withoutMember(Group group, String userId) {
-    Set<UUID> members = new LinkedHashSet<>(group.getMemberIds());
+  private static Group withoutMember(Group group, boolean adminAdded, String userId) {
+    Set<UUID> members = new LinkedHashSet<>(group.getMemberIds(adminAdded));
     members.removeIf(memberId -> memberId.toString().equalsIgnoreCase(userId));
-    return group.toBuilder().memberIds(members).build();
+    return group.withMemberIds(adminAdded, members);
   }
 
   private static String requireDisplayName(String displayName) {

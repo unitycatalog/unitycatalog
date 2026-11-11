@@ -14,11 +14,17 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-/** One user in one group. */
+/**
+ * One user in one of a group's two member lists: the admin's ({@code adminAdded}) or the IdP's. A
+ * user in both lists has two rows.
+ */
 @Entity
 @Table(
     name = "uc_group_members",
-    indexes = {@Index(name = "uc_group_members_user_idx", columnList = "user_id")})
+    indexes = {
+      @Index(name = "uc_group_members_user_idx", columnList = "user_id"),
+      @Index(name = "uc_group_members_group_idx", columnList = "group_id")
+    })
 @IdClass(GroupMemberDAO.Key.class)
 // Lombok annotations
 @Getter
@@ -35,11 +41,16 @@ public class GroupMemberDAO {
   @Column(name = "user_id")
   private UUID userId;
 
+  @Id
+  @Column(name = "admin_added")
+  private boolean adminAdded;
+
   @NoArgsConstructor
   @AllArgsConstructor
   @EqualsAndHashCode
   public static class Key implements Serializable {
     private UUID groupId;
     private UUID userId;
+    private boolean adminAdded;
   }
 }

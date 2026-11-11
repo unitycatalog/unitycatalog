@@ -32,6 +32,10 @@ public class GroupDAO extends IdentifiableDAO {
   @Column(name = "external_id")
   private String externalId;
 
+  // "admin", or the IdP that created the group.
+  @Column(name = "owner", nullable = false)
+  private String owner;
+
   @Column(name = "created_at")
   private Date createdAt;
 

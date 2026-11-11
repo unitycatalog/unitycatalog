@@ -8,6 +8,7 @@ import io.unitycatalog.server.migrate.SchemaMigrator;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.security.SecurityContext.Issuers;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -182,6 +183,10 @@ public final class AdminTokenCommand {
       }
       if (idpName == null) {
         throw new IllegalArgumentException("--idp is required with --scim-principal. " + USAGE);
+      }
+      if (idpName.equals(IdentityUtils.ADMIN_OWNER)) {
+        throw new IllegalArgumentException(
+            "--idp can't be admin: that name is the owner of the admin's users and groups.");
       }
       if (lifetime == null) {
         throw new IllegalArgumentException(

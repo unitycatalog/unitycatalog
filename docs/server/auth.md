@@ -498,12 +498,13 @@ bin/uc --auth_token "$(bin/uc-admin-token)" user create --name "Okta SCIM" --ema
 bin/uc-admin-token --scim-principal okta-scim --idp okta --lifetime P90D
 ```
 
-- The token is accepted only under `/api/1.0/unity-control/scim2/`, where it can manage users as the metastore owner
-  can, except identity provider principals: it gets 403 when it updates, deactivates or deletes one, its own included.
-  Only the admin manages those. Elsewhere it gets 403.
+- The token is accepted only under `/api/1.0/unity-control/scim2/`, and only for the users and groups that identity
+  provider created (see "Users and groups an identity provider owns" below). It gets 403 when it updates, deactivates
+  or deletes an identity provider principal. Only the admin manages those. Elsewhere it gets 403.
 - It also gets 403 when it changes the `externalId` or email of an existing user, since token exchange signs in by both.
   An update that sends the stored values again, or omits them, is accepted. The email match is exact, so a change of
   case is refused too.
+- `--idp admin` is refused: `admin` is the owner name of the users and groups the admin creates.
 - `bin/uc-admin-token` opens the server's database from `etc/conf/hibernate.properties`, as
   `bin/start-uc-server --upgrade-schema` does, and marks the user as the identity provider's principal. That user can no
   longer sign in, and can't be marked for another identity provider. It refuses the `admin` user.
@@ -518,6 +519,23 @@ bin/uc-admin-token --scim-principal okta-scim --idp okta --lifetime P90D
   user created again with the same email then gets a new id, so the old tokens never work again. Today a delete only
   disables the user, so creating it again gets 409.
   <!-- TODO(#2207): a user delete removes the row, so a user created again gets a new id. -->
+
+### Users and groups an identity provider owns
+
+Every user and group has an owner: `admin`, or the name of the identity provider whose SCIM token created it. SCIM
+responses show it in the extension `urn:unitycatalog:scim:schemas:extension:2.0:Owner` as `owner`. Users and groups
+that existed before the upgrade are owned by `admin`.
+
+- An identity provider sees and changes only its own users and groups. Any other is not found (404) for it, so when it
+  looks for a user or group the admin created it finds none, and its create gets 409: emails and group names are
+  unique across the admin and every identity provider.
+- The admin sees every user and group, but can't update, deactivate or delete one an identity provider owns, or
+  replace (PUT), rename or delete its group (403). To move a user under an identity provider, delete it in Unity Catalog
+  and let the identity provider create it again; then grant its privileges again.
+- A group has two member lists: the identity provider's and the admin's. A user is a member if it is in either. Each
+  side adds, removes and replaces members only in its own list, so the identity provider's push never removes a
+  member the admin added. The admin sees both lists in the owner extension (`idpMembers`, `adminMembers`); the
+  identity provider's `members` shows only its own list.
 
 ### Try to log in with no user in the local database
 

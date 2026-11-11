@@ -155,6 +155,52 @@ public class SchemaMigratorTest {
     assertThat(migrator.recordedVersion()).isEqualTo("1000");
   }
 
+  /**
+   * Step 5 makes the users, groups and memberships that exist before it the admin's: owner {@code
+   * admin}, and every membership in the admin's list.
+   */
+  @Test
+  void ownershipStepGivesExistingRowsToTheAdmin() throws SQLException {
+    UpgradeTestUtils.migrateTo(db, "4");
+    String user = idLiteral("00000000-0000-0000-0000-000000000001");
+    String group = idLiteral("00000000-0000-0000-0000-000000000002");
+    UpgradeTestUtils.execute(
+        db,
+        "INSERT INTO uc_users (id, name, email, state, created_at) VALUES ("
+            + user
+            + ", 'Alice', 'alice@localhost', 'ENABLED', CURRENT_TIMESTAMP)");
+    UpgradeTestUtils.execute(
+        db, "INSERT INTO uc_groups (id, display_name) VALUES (" + group + ", 'data-eng')");
+    UpgradeTestUtils.execute(
+        db,
+        "INSERT INTO uc_group_members (group_id, user_id) VALUES (" + group + ", " + user + ")");
+
+    UpgradeTestUtils.migrateTo(db, "5");
+
+    assertThat(queryOne("SELECT owner FROM uc_users")).isEqualTo("admin");
+    assertThat(queryOne("SELECT owner FROM uc_groups")).isEqualTo("admin");
+    assertThat(queryOne("SELECT COUNT(*) FROM uc_group_members WHERE admin_added = TRUE"))
+        .isEqualTo("1");
+    assertThat(queryOne("SELECT COUNT(*) FROM uc_group_members")).isEqualTo("1");
+  }
+
+  /** An id as an SQL literal: MySQL keeps ids as binary(16). */
+  private String idLiteral(String id) {
+    return DatabaseKind.of(db.dataSource()) == DatabaseKind.MYSQL
+        ? "UNHEX('" + id.replace("-", "") + "')"
+        : "'" + id + "'";
+  }
+
+  /** The first column of the one row {@code sql} returns, as a string. */
+  private String queryOne(String sql) throws SQLException {
+    try (Connection connection = db.dataSource().getConnection();
+        java.sql.Statement statement = connection.createStatement();
+        java.sql.ResultSet rows = statement.executeQuery(sql)) {
+      assertThat(rows.next()).as(sql).isTrue();
+      return rows.getString(1);
+    }
+  }
+
   @Test
   void scimTokenMintRefusesADatabaseNotAtThisRelease() {
     UpgradeTestUtils.migrateTo(db, "2");

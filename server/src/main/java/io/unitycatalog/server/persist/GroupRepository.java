@@ -7,8 +7,10 @@ import io.unitycatalog.server.persist.dao.GroupMemberDAO;
 import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.model.Group;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.utils.IdentityUtils;
 import java.util.Collection;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -38,10 +40,14 @@ public class GroupRepository {
   }
 
   /**
+   * Creates a group that {@code owner} manages, with {@code memberIds} in the owner's member list:
+   * the admin's, or the IdP's.
+   *
    * @throws BaseException {@code ALREADY_EXISTS} if the name is taken, {@code INVALID_ARGUMENT} if
    *     a member is not an existing user. Nothing is created in either case.
    */
-  public Group createGroup(String name, String externalId, Set<UUID> memberIds) {
+  public Group createGroup(String name, String externalId, String owner, Set<UUID> memberIds) {
+    boolean adminAdded = IdentityUtils.ADMIN_OWNER.equals(owner);
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -52,13 +58,15 @@ public class GroupRepository {
                   .id(UUID.randomUUID())
                   .name(name)
                   .externalId(externalId)
+                  .owner(owner)
                   .createdAt(now)
                   .build();
           session.persist(groupDAO);
           flushOrNameTaken(session, name);
           memberIds.forEach(
-              memberId -> session.persist(new GroupMemberDAO(groupDAO.getId(), memberId)));
-          return toGroup(groupDAO, memberIds);
+              memberId ->
+                  session.persist(new GroupMemberDAO(groupDAO.getId(), memberId, adminAdded)));
+          return toGroup(groupDAO, memberships(session, groupDAO.getId()));
         },
         "Failed to create group",
         /* readOnly= */ false);
@@ -69,7 +77,7 @@ public class GroupRepository {
         sessionFactory,
         session -> {
           GroupDAO groupDAO = findGroup(session, id, /* lock= */ false);
-          return toGroup(groupDAO, memberIdsOf(session, groupDAO.getId()));
+          return toGroup(groupDAO, memberships(session, groupDAO.getId()));
         },
         "Failed to get group",
         /* readOnly= */ true);
@@ -80,14 +88,11 @@ public class GroupRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          Map<UUID, Set<UUID>> membersByGroup =
-              session.createQuery("FROM GroupMemberDAO", GroupMemberDAO.class).list().stream()
-                  .collect(
-                      Collectors.groupingBy(
-                          GroupMemberDAO::getGroupId,
-                          Collectors.mapping(GroupMemberDAO::getUserId, Collectors.toSet())));
+          Map<UUID, List<Membership>> membersByGroup =
+              memberships(session, null).stream()
+                  .collect(Collectors.groupingBy(Membership::groupId));
           return session.createQuery("FROM GroupDAO ORDER BY name", GroupDAO.class).list().stream()
-              .map(dao -> toGroup(dao, membersByGroup.getOrDefault(dao.getId(), Set.of())))
+              .map(dao -> toGroup(dao, membersByGroup.getOrDefault(dao.getId(), List.of())))
               .toList();
         },
         "Failed to list groups",
@@ -96,7 +101,7 @@ public class GroupRepository {
 
   /**
    * Replaces a group by what {@code change} returns for it, all in one transaction: the name, the
-   * external id and the members. {@code change} must not throw anything but a {@link
+   * external id and both member lists. {@code change} must not throw anything but a {@link
    * BaseException}.
    *
    * @throws BaseException {@code NOT_FOUND} if there is no such group, {@code ALREADY_EXISTS} if
@@ -108,29 +113,30 @@ public class GroupRepository {
         sessionFactory,
         session -> {
           GroupDAO groupDAO = findGroup(session, id, /* lock= */ true);
-          Set<UUID> current = memberIdsOf(session, groupDAO.getId());
-          Group updated = change.apply(toGroup(groupDAO, current));
+          Group current = toGroup(groupDAO, memberships(session, groupDAO.getId()));
+          Group updated = change.apply(current);
 
-          Set<UUID> added = new LinkedHashSet<>(updated.getMemberIds());
-          added.removeAll(current);
-          Set<UUID> removed = new HashSet<>(current);
-          removed.removeAll(updated.getMemberIds());
+          Set<UUID> added = new LinkedHashSet<>();
+          for (boolean adminAdded : List.of(false, true)) {
+            Set<UUID> addedToList = new LinkedHashSet<>(updated.getMemberIds(adminAdded));
+            addedToList.removeAll(current.getMemberIds(adminAdded));
+            added.addAll(addedToList);
+          }
           requireUsers(session, added);
 
           groupDAO.setName(updated.getName());
           groupDAO.setExternalId(updated.getExternalId());
           groupDAO.setUpdatedAt(new Date());
           flushOrNameTaken(session, updated.getName());
-          if (!removed.isEmpty()) {
-            session
-                .createMutationQuery(
-                    "DELETE FROM GroupMemberDAO WHERE groupId = :groupId AND userId IN :userIds")
-                .setParameter("groupId", groupDAO.getId())
-                .setParameterList("userIds", removed)
-                .executeUpdate();
+          for (boolean adminAdded : List.of(false, true)) {
+            replaceList(
+                session,
+                groupDAO.getId(),
+                adminAdded,
+                current.getMemberIds(adminAdded),
+                updated.getMemberIds(adminAdded));
           }
-          added.forEach(userId -> session.persist(new GroupMemberDAO(groupDAO.getId(), userId)));
-          return toGroup(groupDAO, updated.getMemberIds());
+          return toGroup(groupDAO, memberships(session, groupDAO.getId()));
         },
         "Failed to update group",
         /* readOnly= */ false);
@@ -176,12 +182,43 @@ public class GroupRepository {
     return groupDAO;
   }
 
-  private Set<UUID> memberIdsOf(Session session, UUID groupId) {
-    return new LinkedHashSet<>(
-        session
-            .createQuery("SELECT userId FROM GroupMemberDAO WHERE groupId = :groupId", UUID.class)
-            .setParameter("groupId", groupId)
-            .list());
+  /** Writes the changes from {@code current} to {@code updated} in one of the member lists. */
+  private static void replaceList(
+      Session session, UUID groupId, boolean adminAdded, Set<UUID> current, Set<UUID> updated) {
+    Set<UUID> removed = new HashSet<>(current);
+    removed.removeAll(updated);
+    if (!removed.isEmpty()) {
+      session
+          .createMutationQuery(
+              "DELETE FROM GroupMemberDAO WHERE groupId = :groupId AND adminAdded = :adminAdded"
+                  + " AND userId IN :userIds")
+          .setParameter("groupId", groupId)
+          .setParameter("adminAdded", adminAdded)
+          .setParameterList("userIds", removed)
+          .executeUpdate();
+    }
+    updated.stream()
+        .filter(userId -> !current.contains(userId))
+        .forEach(userId -> session.persist(new GroupMemberDAO(groupId, userId, adminAdded)));
+  }
+
+  /** One membership row, with its user's email. */
+  private record Membership(UUID groupId, UUID userId, boolean adminAdded, String email) {}
+
+  /** The membership rows of the group {@code groupId}, or of every group when it is null. */
+  private static List<Membership> memberships(Session session, UUID groupId) {
+    var query =
+        session.createQuery(
+            "SELECT m.groupId, m.userId, m.adminAdded, u.email FROM GroupMemberDAO m, UserDAO u"
+                + " WHERE u.id = m.userId"
+                + (groupId == null ? "" : " AND m.groupId = :groupId"),
+            Object[].class);
+    if (groupId != null) {
+      query.setParameter("groupId", groupId);
+    }
+    return query.list().stream()
+        .map(row -> new Membership((UUID) row[0], (UUID) row[1], (Boolean) row[2], (String) row[3]))
+        .toList();
   }
 
   /**
@@ -232,12 +269,22 @@ public class GroupRepository {
     }
   }
 
-  private Group toGroup(GroupDAO groupDAO, Set<UUID> memberIds) {
+  private Group toGroup(GroupDAO groupDAO, List<Membership> members) {
+    Set<UUID> idpMemberIds = new LinkedHashSet<>();
+    Set<UUID> adminMemberIds = new LinkedHashSet<>();
+    Map<UUID, String> memberEmails = new HashMap<>();
+    for (Membership member : members) {
+      (member.adminAdded() ? adminMemberIds : idpMemberIds).add(member.userId());
+      memberEmails.put(member.userId(), member.email());
+    }
     return Group.builder()
         .id(groupDAO.getId())
         .name(groupDAO.getName())
         .externalId(groupDAO.getExternalId())
-        .memberIds(memberIds)
+        .owner(groupDAO.getOwner())
+        .idpMemberIds(idpMemberIds)
+        .adminMemberIds(adminMemberIds)
+        .memberEmails(memberEmails)
         .createdAt(groupDAO.getCreatedAt())
         .updatedAt(groupDAO.getUpdatedAt())
         .build();

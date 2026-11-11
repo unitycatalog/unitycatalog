@@ -61,6 +61,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   private static final String ENABLED_USER_EMAIL = "test-user@example.com";
   private static final String EMPTY_RESPONSE = "{}";
   private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final String OWNER_SCHEMA = "urn:unitycatalog:scim:schemas:extension:2.0:Owner";
   // Okta's SCIM 2.0 requests, from developer.okta.com/docs/api/openapi/okta-scim/guides/scim-20/.
   private static final String OKTA_CREATE_USER =
       """
@@ -571,6 +572,19 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage(message));
 
+    // "admin" names the admin as a row owner, so it can't be an IdP.
+    assertThatThrownBy(
+            () ->
+                AdminTokenCommand.createScimToken(
+                    new String[] {
+                      "--scim-principal", "entra-scim", "--idp", "admin", "--lifetime", "P90D"
+                    },
+                    securityContext.getAlgorithm(),
+                    users))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage(
+            "--idp can't be admin: that name is the owner of the admin's users and groups.");
+
     // The lifetime is checked before the user is marked: empty, zero, too short, or an expiry out
     // of range.
     createEnabledUser("okta-scim");
@@ -608,7 +622,8 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
 
   /**
    * A SCIM token can't PUT, PATCH or DELETE an IdP principal, its own or another IdP's, so one IdP
-   * can't lock out or revive another; the admin still can.
+   * can't lock out or revive another; the admin still can. A principal the admin created is not
+   * found for the token; one that an IdP created is refused.
    */
   @Test
   public void testScimTokenCannotChangeIdpPrincipals() throws Exception {
@@ -619,35 +634,38 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     String entra = mintScimToken(users, "entra-scim", "entra");
     String oktaId = JWT.decode(okta).getSubject();
     String entraId = JWT.decode(entra).getSubject();
-    String put =
-        "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],\"id\":\"%s\","
-            + "\"userName\":\"%s\",\"emails\":[{\"primary\":true,\"value\":\"%s\"}],"
-            + "\"displayName\":\"Renamed\",\"active\":false}";
     String reactivate = OKTA_DEACTIVATE_USER.replace("false", "true");
     Map<String, String> principalIds = Map.of("okta-scim", oktaId, "entra-scim", entraId);
     for (String token : List.of(okta, entra)) {
       for (Map.Entry<String, String> principal : principalIds.entrySet()) {
         String email = principal.getKey();
         String id = principal.getValue();
-        for (AggregatedHttpResponse response :
-            List.of(
-                scimAs(token, HttpMethod.PUT, "/" + id, String.format(put, id, email, email)),
-                scimAs(token, HttpMethod.PATCH, "/" + id, OKTA_DEACTIVATE_USER),
-                scimAs(token, HttpMethod.DELETE, "/" + id, null))) {
-          assertThat(response.status()).as(email).isEqualTo(HttpStatus.FORBIDDEN);
+        for (AggregatedHttpResponse response : principalChanges(token, id, email)) {
+          assertThat(response.status()).as(email).isEqualTo(HttpStatus.NOT_FOUND);
           assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
-              .isEqualTo("An IdP principal can't be changed with a SCIM token: " + email);
+              .isEqualTo("User not found: " + id);
         }
       }
     }
     assertThat(users.getUserByEmail("entra-scim").getState()).isEqualTo(User.StateEnum.ENABLED);
     assertThat(users.getUserByEmail("okta-scim").getName()).isNotEqualTo("Renamed");
 
+    // A user Okta created, then made Entra's principal: Okta owns it but can't change it.
+    AggregatedHttpResponse created = scimAs(okta, HttpMethod.POST, "", OKTA_CREATE_USER);
+    String oktaOwnedId = MAPPER.readTree(created.contentUtf8()).get("id").asText();
+    users.setIdpName("test.user@okta.local", "entra");
+    for (AggregatedHttpResponse response :
+        principalChanges(okta, oktaOwnedId, "test.user@okta.local")) {
+      assertThat(response.status()).isEqualTo(HttpStatus.FORBIDDEN);
+      assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
+          .isEqualTo("An IdP principal can't be changed with a SCIM token: test.user@okta.local");
+    }
+
     // The admin disables Okta's principal; Entra's token can't revive it.
     assertThat(scim(HttpMethod.PATCH, "/" + oktaId, OKTA_DEACTIVATE_USER).status())
         .isEqualTo(HttpStatus.OK);
     assertThat(scimAs(entra, HttpMethod.PATCH, "/" + oktaId, reactivate).status())
-        .isEqualTo(HttpStatus.FORBIDDEN);
+        .isEqualTo(HttpStatus.NOT_FOUND);
     assertThat(scimAs(okta, HttpMethod.GET, "", null).status()).isEqualTo(HttpStatus.FORBIDDEN);
     assertThat(scimAs(entra, HttpMethod.GET, "", null).status()).isEqualTo(HttpStatus.OK);
   }
@@ -740,6 +758,292 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertThat(users.getUser(oktaUserId).getExternalId()).isEqualTo("00ujl29u0le5T6Aj10h7");
   }
 
+  /** A PUT that renames and deactivates the user, a deactivating PATCH, and a DELETE. */
+  private List<AggregatedHttpResponse> principalChanges(String token, String id, String email) {
+    String put =
+        "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],\"id\":\"%s\","
+            + "\"userName\":\"%s\",\"emails\":[{\"primary\":true,\"value\":\"%s\"}],"
+            + "\"displayName\":\"Renamed\",\"active\":false}";
+    return List.of(
+        scimAs(token, HttpMethod.PUT, "/" + id, String.format(put, id, email, email)),
+        scimAs(token, HttpMethod.PATCH, "/" + id, OKTA_DEACTIVATE_USER),
+        scimAs(token, HttpMethod.DELETE, "/" + id, null));
+  }
+
+  /**
+   * Each IdP sees and changes only the users it created; the admin sees every user with its owner
+   * and can't change an IdP's user. An email taken on the other side is a conflict.
+   */
+  @Test
+  public void testScimUsersAreChangedOnlyByTheirOwner() throws Exception {
+    UserRepository users = new UserRepository(null, hibernateConfigurator.getSessionFactory());
+    createEnabledUser("okta-scim");
+    createEnabledUser("entra-scim");
+    String okta = mintScimToken(users, "okta-scim", "okta");
+    String entra = mintScimToken(users, "entra-scim", "entra");
+    createEnabledUser(ENABLED_USER_EMAIL);
+
+    AggregatedHttpResponse created = scimAs(okta, HttpMethod.POST, "", OKTA_CREATE_USER);
+    assertThat(created.status()).isEqualTo(HttpStatus.CREATED);
+    JsonNode oktaUser = MAPPER.readTree(created.contentUtf8());
+    String id = oktaUser.get("id").asText();
+    assertThat(oktaUser.get(OWNER_SCHEMA).get("owner").asText()).isEqualTo("okta");
+
+    // Okta sees only its user; Entra sees none; the admin sees all, with their owners.
+    assertThat(userEmails(scimAs(okta, HttpMethod.GET, "", null)))
+        .containsExactly("test.user@okta.local");
+    assertThat(userEmails(scimAs(entra, HttpMethod.GET, "", null))).isEmpty();
+    JsonNode adminList = MAPPER.readTree(scim(HttpMethod.GET, "", null).contentUtf8());
+    Map<String, String> owners = new java.util.HashMap<>();
+    adminList
+        .get("Resources")
+        .forEach(
+            user ->
+                owners.put(
+                    user.get("userName").asText(), user.get(OWNER_SCHEMA).get("owner").asText()));
+    assertThat(owners)
+        .containsEntry("test.user@okta.local", "okta")
+        .containsEntry(ENABLED_USER_EMAIL, "admin")
+        .containsEntry("okta-scim", "admin");
+
+    // Another IdP's user, or the admin's, is not found for an IdP.
+    for (AggregatedHttpResponse response :
+        List.of(
+            scimAs(entra, HttpMethod.GET, "/" + id, null),
+            scimAs(
+                okta,
+                HttpMethod.GET,
+                "/" + users.getUserByEmail(ENABLED_USER_EMAIL).getId(),
+                null))) {
+      assertThat(response.status()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+    for (AggregatedHttpResponse response : principalChanges(entra, id, "test.user@okta.local")) {
+      assertThat(response.status()).isEqualTo(HttpStatus.NOT_FOUND);
+      assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
+          .isEqualTo("User not found: " + id);
+    }
+    // The admin can't change Okta's user.
+    for (AggregatedHttpResponse response :
+        principalChanges(securityContext.createServiceToken(), id, "test.user@okta.local")) {
+      assertThat(response.status()).isEqualTo(HttpStatus.FORBIDDEN);
+      assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
+          .isEqualTo("User test.user@okta.local is managed by identity provider okta");
+    }
+    User unchanged = users.getUserByEmail("test.user@okta.local");
+    assertThat(unchanged.getState()).isEqualTo(User.StateEnum.ENABLED);
+    assertThat(unchanged.getName()).isEqualTo("Test User");
+
+    // Emails stay unique across the admin and every IdP.
+    assertThat(scimAs(entra, HttpMethod.POST, "", OKTA_CREATE_USER).status())
+        .isEqualTo(HttpStatus.CONFLICT);
+    assertThat(
+            scimAs(
+                    okta,
+                    HttpMethod.POST,
+                    "",
+                    OKTA_CREATE_USER
+                        .replace("test.user@okta.local", ENABLED_USER_EMAIL)
+                        .replace("00ujl29u0le5T6Aj10h7", "00ujl29u0le5T6Aj10h8"))
+                .status())
+        .isEqualTo(HttpStatus.CONFLICT);
+
+    // A SCIM token that names no IdP, or "admin", is refused rather than taken for the admin.
+    String principalId = JWT.decode(okta).getSubject();
+    for (String idp : java.util.Arrays.asList(null, "admin")) {
+      String token =
+          JWT.create()
+              .withIssuer(INTERNAL)
+              .withExpiresAt(Date.from(Instant.now().plus(Duration.ofMinutes(5))))
+              .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.SCIM.name())
+              .withClaim(JwtClaim.SUBJECT.key(), principalId)
+              .withClaim(JwtClaim.IDP.key(), idp)
+              .sign(securityContext.getAlgorithm());
+      AggregatedHttpResponse response = scimAs(token, HttpMethod.GET, "", null);
+      assertThat(response.status()).as(idp).isEqualTo(HttpStatus.FORBIDDEN);
+      assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
+          .isEqualTo("The SCIM token does not name a valid IdP.");
+    }
+  }
+
+  private static List<String> userEmails(AggregatedHttpResponse list) throws IOException {
+    assertThat(list.status()).isEqualTo(HttpStatus.OK);
+    List<String> emails = new java.util.ArrayList<>();
+    JsonNode resources = MAPPER.readTree(list.contentUtf8()).get("Resources");
+    if (resources != null) {
+      resources.forEach(user -> emails.add(user.get("userName").asText()));
+    }
+    return emails;
+  }
+
+  /**
+   * Journey for two IdPs, Okta and Entra, each with its own SCIM token: each provisions a user and
+   * pushes a group, and sees only its own. The admin adds a member to Okta's group, and Okta's next
+   * push keeps it. The admin can't change Okta's user, and a name the other IdP took is a conflict.
+   * Okta's requests are from developer.okta.com/docs/api/openapi/okta-scim/guides/scim-20/.
+   */
+  @Test
+  public void testTwoIdpOwnershipJourney() throws Exception {
+    // 1. The admin creates each IdP's principal and mints its SCIM token.
+    UserRepository users = new UserRepository(null, hibernateConfigurator.getSessionFactory());
+    createEnabledUser("okta-scim");
+    createEnabledUser("entra-scim");
+    String okta = mintScimToken(users, "okta-scim", "okta");
+    String entra = mintScimToken(users, "entra-scim", "entra");
+    createEnabledUser(ENABLED_USER_EMAIL);
+    String adminMemberId = users.getUserByEmail(ENABLED_USER_EMAIL).getId();
+
+    // 2. Each IdP provisions its user.
+    AggregatedHttpResponse lookup =
+        scimAs(
+            okta,
+            HttpMethod.GET,
+            "?filter=userName%20eq%20%22test.user%40okta.local%22&startIndex=1&count=100",
+            null);
+    assertThat(MAPPER.readTree(lookup.contentUtf8()).get("totalResults").asInt()).isZero();
+    AggregatedHttpResponse oktaUser = scimAs(okta, HttpMethod.POST, "", OKTA_CREATE_USER);
+    assertThat(oktaUser.status()).isEqualTo(HttpStatus.CREATED);
+    String oktaUserId = MAPPER.readTree(oktaUser.contentUtf8()).get("id").asText();
+    AggregatedHttpResponse entraUser =
+        scimAs(
+            entra,
+            HttpMethod.POST,
+            "",
+            "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],"
+                + "\"userName\":\"entra.user@entra.local\",\"displayName\":\"Entra User\","
+                + "\"emails\":[{\"primary\":true,\"value\":\"entra.user@entra.local\"}],"
+                + "\"active\":true}");
+    assertThat(entraUser.status()).isEqualTo(HttpStatus.CREATED);
+    String entraUserId = MAPPER.readTree(entraUser.contentUtf8()).get("id").asText();
+
+    // 3. Each IdP pushes a group: Okta creates it, then adds its user.
+    AggregatedHttpResponse oktaGroup =
+        groupsAs(
+            okta,
+            HttpMethod.POST,
+            "",
+            "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:Group\"],"
+                + "\"displayName\":\"Test SCIMv2\",\"members\":[]}");
+    assertThat(oktaGroup.status()).isEqualTo(HttpStatus.CREATED);
+    String groupId = MAPPER.readTree(oktaGroup.contentUtf8()).get("id").asText();
+    assertThat(
+            groupsAs(
+                    okta,
+                    HttpMethod.PATCH,
+                    "/" + groupId,
+                    "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],"
+                        + "\"Operations\":[{\"op\":\"add\",\"path\":\"members\",\"value\":"
+                        + "[{\"value\":\""
+                        + oktaUserId
+                        + "\",\"display\":\"test.user@okta.local\"}]}]}")
+                .status())
+        .isEqualTo(HttpStatus.OK);
+    assertThat(
+            groupsAs(
+                    entra,
+                    HttpMethod.POST,
+                    "",
+                    "{\"displayName\":\"Entra Group\",\"members\":[{\"value\":\""
+                        + entraUserId
+                        + "\"}]}")
+                .status())
+        .isEqualTo(HttpStatus.CREATED);
+
+    // 4. Each IdP sees only its own users and groups.
+    assertThat(userEmails(scimAs(okta, HttpMethod.GET, "", null)))
+        .containsExactly("test.user@okta.local");
+    assertThat(userEmails(scimAs(entra, HttpMethod.GET, "", null)))
+        .containsExactly("entra.user@entra.local");
+    assertThat(groupNames(groupsAs(okta, HttpMethod.GET, "", null))).containsExactly("Test SCIMv2");
+    assertThat(groupNames(groupsAs(entra, HttpMethod.GET, "", null)))
+        .containsExactly("Entra Group");
+    assertThat(groupsAs(entra, HttpMethod.GET, "/" + groupId, null).status())
+        .isEqualTo(HttpStatus.NOT_FOUND);
+
+    // 5. The admin adds its own member to Okta's group.
+    assertThat(
+            groupsAs(
+                    securityContext.createServiceToken(),
+                    HttpMethod.PATCH,
+                    "/" + groupId,
+                    "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],"
+                        + "\"Operations\":[{\"op\":\"add\",\"path\":\"members\",\"value\":"
+                        + "[{\"value\":\""
+                        + adminMemberId
+                        + "\"}]}]}")
+                .status())
+        .isEqualTo(HttpStatus.OK);
+
+    // 6. Okta pushes the group again, replacing its members (a custom app's PUT): the admin's
+    // member
+    // stays, and Okta still sees only its own.
+    assertThat(
+            groupsAs(
+                    okta,
+                    HttpMethod.PUT,
+                    "/" + groupId,
+                    "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:Group\"],\"id\":\""
+                        + groupId
+                        + "\",\"displayName\":\"Test SCIMv2\",\"members\":[{\"value\":\""
+                        + oktaUserId
+                        + "\",\"display\":\"test.user@okta.local\"}]}")
+                .status())
+        .isEqualTo(HttpStatus.OK);
+    JsonNode adminView =
+        MAPPER.readTree(
+            groupsAs(securityContext.createServiceToken(), HttpMethod.GET, "/" + groupId, null)
+                .contentUtf8());
+    assertThat(memberValues(adminView.get("members")))
+        .containsExactlyInAnyOrder(oktaUserId, adminMemberId);
+    assertThat(adminView.get(OWNER_SCHEMA).get("owner").asText()).isEqualTo("okta");
+    assertThat(memberValues(adminView.get(OWNER_SCHEMA).get("adminMembers")))
+        .containsExactly(adminMemberId);
+    assertThat(memberValues(adminView.get(OWNER_SCHEMA).get("idpMembers")))
+        .containsExactly(oktaUserId);
+    JsonNode oktaView =
+        MAPPER.readTree(groupsAs(okta, HttpMethod.GET, "/" + groupId, null).contentUtf8());
+    assertThat(memberValues(oktaView.get("members"))).containsExactly(oktaUserId);
+
+    // 7. The admin can't change Okta's user.
+    AggregatedHttpResponse adminPut =
+        scim(
+            HttpMethod.PUT,
+            "/" + oktaUserId,
+            OKTA_CREATE_USER
+                .replace("\"userName\"", "\"id\":\"" + oktaUserId + "\",\"userName\"")
+                .replace("Test User", "Renamed User"));
+    assertThat(adminPut.status()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(MAPPER.readTree(adminPut.contentUtf8()).get("message").asText())
+        .isEqualTo("User test.user@okta.local is managed by identity provider okta");
+
+    // 8. A name the other IdP took is a conflict.
+    assertThat(groupsAs(entra, HttpMethod.POST, "", "{\"displayName\":\"Test SCIMv2\"}").status())
+        .isEqualTo(HttpStatus.CONFLICT);
+    assertThat(scimAs(entra, HttpMethod.POST, "", OKTA_CREATE_USER).status())
+        .isEqualTo(HttpStatus.CONFLICT);
+  }
+
+  private static List<String> groupNames(AggregatedHttpResponse list) throws IOException {
+    assertThat(list.status()).isEqualTo(HttpStatus.OK);
+    List<String> names = new java.util.ArrayList<>();
+    JsonNode resources = MAPPER.readTree(list.contentUtf8()).get("Resources");
+    if (resources != null) {
+      resources.forEach(group -> names.add(group.get("displayName").asText()));
+    }
+    return names;
+  }
+
+  private static List<String> memberValues(JsonNode members) {
+    List<String> values = new java.util.ArrayList<>();
+    members.forEach(member -> values.add(member.get("value").asText()));
+    return values;
+  }
+
+  /** Calls the SCIM groups endpoint with {@code token}. */
+  private AggregatedHttpResponse groupsAs(
+      String token, HttpMethod method, String path, String body) {
+    return scimCall(token, method, "/api/1.0/unity-control/scim2/Groups" + path, body);
+  }
+
   private String mintScimToken(UserRepository users, String email, String idp) {
     return AdminTokenCommand.createScimToken(
         new String[] {"--scim-principal", email, "--idp", idp, "--lifetime", "P1D"},
@@ -754,8 +1058,13 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
 
   /** Calls the SCIM users endpoint with {@code token}, as Okta does. */
   private AggregatedHttpResponse scimAs(String token, HttpMethod method, String path, String body) {
+    return scimCall(token, method, "/api/1.0/unity-control/scim2/Users" + path, body);
+  }
+
+  private AggregatedHttpResponse scimCall(
+      String token, HttpMethod method, String path, String body) {
     RequestHeaders headers =
-        RequestHeaders.builder(method, "/api/1.0/unity-control/scim2/Users" + path)
+        RequestHeaders.builder(method, path)
             .contentType(MediaType.parse("application/scim+json"))
             .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + token)
             .build();

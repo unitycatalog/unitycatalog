@@ -13,6 +13,7 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.dao.GroupMemberDAO;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.security.AdminTokenCommand;
 import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
@@ -45,6 +46,7 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
   private static final String USERS_PATH = "/api/1.0/unity-control/scim2/Users";
   private static final String PATCH_OP = "urn:ietf:params:scim:api:messages:2.0:PatchOp";
   private static final String REGULAR_USER = "group-regular@localhost";
+  private static final String OWNER_SCHEMA = "urn:unitycatalog:scim:schemas:extension:2.0:Owner";
 
   private UserResource alice;
   private UserResource bob;
@@ -77,6 +79,13 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
     assertThat(fetchedGroup.get("id")).isEqualTo(group.get("id"));
     assertThat(fetchedGroup.get("displayName").asText()).isEqualTo("data-eng");
     assertThat(memberIds(fetchedGroup)).containsExactly(alice.getId());
+    // The admin owns it, and sees its member in the admin's list.
+    JsonNode owner = fetchedGroup.get(OWNER_SCHEMA);
+    assertThat(fetchedGroup.get("schemas").toString()).contains(OWNER_SCHEMA);
+    assertThat(owner.get("owner").asText()).isEqualTo("admin");
+    assertThat(sourceMembers(owner, "adminMembers"))
+        .containsExactly(alice.getId() + " alice@localhost");
+    assertThat(sourceMembers(owner, "idpMembers")).isEmpty();
 
     // Without members the group is created empty.
     JsonNode empty = createGroup("empty");
@@ -840,6 +849,181 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
     } finally {
       pool.shutdownNow();
     }
+  }
+
+  /**
+   * An IdP sees and changes only the groups it created: another IdP's group is not found for it,
+   * whatever the method, and a name taken on the other side is a conflict.
+   */
+  @Test
+  @SneakyThrows
+  public void testIdpSeesAndChangesOnlyItsOwnGroups() {
+    ServerConfig okta = scimTokenConfig("okta-scim@localhost", "okta");
+    ServerConfig entra = scimTokenConfig("entra-scim@localhost", "entra");
+    createGroup("admin-eng");
+    HttpResponse<String> created =
+        send(okta, "POST", GROUPS_PATH, groupBody("okta-eng", null, alice.getId()));
+    assertThat(created.statusCode()).as(created.body()).isEqualTo(201);
+    JsonNode oktaGroup = MAPPER.readTree(created.body());
+    String id = oktaGroup.get("id").asText();
+    // The IdP's view: its owner, but not the admin's two member lists.
+    assertThat(oktaGroup.get(OWNER_SCHEMA).get("owner").asText()).isEqualTo("okta");
+    assertThat(oktaGroup.get(OWNER_SCHEMA).has("adminMembers")).isFalse();
+    assertThat(oktaGroup.get(OWNER_SCHEMA).has("idpMembers")).isFalse();
+
+    assertThat(groupNames(listAs(okta, ""))).containsExactly("okta-eng");
+    assertThat(listAs(entra, "").get("totalResults").asInt()).isZero();
+    assertThat(groupNames(list(""))).containsExactly("admin-eng", "okta-eng");
+    assertThat(get(id).get(OWNER_SCHEMA).get("owner").asText()).isEqualTo("okta");
+
+    String notFound = "Group not found: " + id;
+    for (HttpResponse<String> response :
+        List.of(
+            send(entra, "GET", GROUPS_PATH + "/" + id, null),
+            send(entra, "PUT", GROUPS_PATH + "/" + id, groupBody("taken-over")),
+            send(entra, "PATCH", GROUPS_PATH + "/" + id, patchBody(op("add", "members", "[]"))),
+            send(entra, "DELETE", GROUPS_PATH + "/" + id, null))) {
+      assertThat(response.statusCode()).as(response.body()).isEqualTo(404);
+      assertThat(MAPPER.readTree(response.body()).get("detail").asText()).isEqualTo(notFound);
+    }
+    String adminGroupId = groupIds(list("")).get(0);
+    assertThat(send(okta, "GET", GROUPS_PATH + "/" + adminGroupId, null).statusCode())
+        .isEqualTo(404);
+
+    // Names stay unique across the admin and every IdP.
+    for (Map.Entry<ServerConfig, String> clash :
+        Map.of(entra, "okta-eng", okta, "admin-eng", adminConfig, "okta-eng").entrySet()) {
+      HttpResponse<String> response =
+          send(clash.getKey(), "POST", GROUPS_PATH, groupBody(clash.getValue()));
+      assertThat(response.statusCode()).as(clash.getValue()).isEqualTo(409);
+    }
+    assertThat(memberIds(get(id))).containsExactly(alice.getId());
+  }
+
+  /**
+   * On an IdP's group the admin changes only its own member list: the IdP's push leaves it, and the
+   * admin can't rename, replace or delete the group.
+   */
+  @Test
+  @SneakyThrows
+  public void testAdminChangesOnlyItsOwnListOfAnIdpGroup() {
+    ServerConfig okta = scimTokenConfig("okta-scim@localhost", "okta");
+    HttpResponse<String> created =
+        send(okta, "POST", GROUPS_PATH, groupBody("okta-eng", null, alice.getId()));
+    String id = MAPPER.readTree(created.body()).get("id").asText();
+    String path = GROUPS_PATH + "/" + id;
+
+    // The admin adds bob and alice: alice is then in both lists.
+    assertThat(
+            send(
+                    adminConfig,
+                    "PATCH",
+                    path,
+                    patchBody(op("add", "members", memberValues(bob.getId(), alice.getId()))))
+                .statusCode())
+        .isEqualTo(200);
+    JsonNode both = get(id);
+    assertThat(memberIds(both)).containsExactlyInAnyOrder(alice.getId(), bob.getId());
+    assertThat(sourceMembers(both.get(OWNER_SCHEMA), "idpMembers"))
+        .containsExactly(alice.getId() + " alice@localhost");
+    assertThat(sourceMembers(both.get(OWNER_SCHEMA), "adminMembers"))
+        .containsExactlyInAnyOrder(
+            alice.getId() + " alice@localhost", bob.getId() + " bob@localhost");
+    // The IdP sees only its own list.
+    assertThat(memberIds(getAs(okta, id))).containsExactly(alice.getId());
+
+    // The IdP replaces its list, with PUT and with PATCH; the admin's list stays.
+    assertThat(send(okta, "PUT", path, groupBody("okta-eng", null, carol.getId())).statusCode())
+        .isEqualTo(200);
+    assertThat(memberIds(getAs(okta, id))).containsExactly(carol.getId());
+    assertThat(memberIds(get(id)))
+        .containsExactlyInAnyOrder(alice.getId(), bob.getId(), carol.getId());
+    send(okta, "PATCH", path, patchBody(op("replace", "members", memberValues(bob.getId()))));
+    send(
+        okta,
+        "PATCH",
+        path,
+        patchBody(op("remove", "members[value eq \\\"" + alice.getId() + "\\\"]", null)));
+    assertThat(memberIds(getAs(okta, id))).containsExactly(bob.getId());
+    assertThat(sourceMembers(get(id).get(OWNER_SCHEMA), "adminMembers"))
+        .containsExactlyInAnyOrder(
+            alice.getId() + " alice@localhost", bob.getId() + " bob@localhost");
+
+    // The admin's remove and replace act on the admin's list only.
+    send(
+        adminConfig,
+        "PATCH",
+        path,
+        patchBody(op("remove", "members[value eq \\\"" + bob.getId() + "\\\"]", null)));
+    assertThat(memberIds(get(id))).containsExactlyInAnyOrder(alice.getId(), bob.getId());
+    send(adminConfig, "PATCH", path, patchBody(op("replace", "members", "[]")));
+    assertThat(memberIds(get(id))).containsExactly(bob.getId());
+    assertThat(sourceMembers(get(id).get(OWNER_SCHEMA), "adminMembers")).isEmpty();
+
+    // The admin can't replace, rename or delete the IdP's group.
+    String managed = "Group okta-eng is managed by identity provider okta";
+    for (HttpResponse<String> response :
+        List.of(
+            send(adminConfig, "PUT", path, groupBody("okta-eng", null, bob.getId())),
+            send(
+                adminConfig,
+                "PATCH",
+                path,
+                patchBody(
+                    op("add", "members", memberValues(carol.getId())),
+                    op("replace", "displayName", "\"renamed\""))),
+            send(
+                adminConfig,
+                "PATCH",
+                path,
+                patchBody(op("replace", null, "{\"id\":\"" + id + "\",\"displayName\":\"x\"}"))),
+            send(adminConfig, "DELETE", path, null))) {
+      assertThat(response.statusCode()).as(response.body()).isEqualTo(403);
+      assertThat(MAPPER.readTree(response.body()).get("detail").asText()).isEqualTo(managed);
+    }
+    JsonNode unchanged = get(id);
+    assertThat(unchanged.get("displayName").asText()).isEqualTo("okta-eng");
+    assertThat(memberIds(unchanged)).containsExactly(bob.getId());
+
+    // The IdP deletes its group, with the admin's rows.
+    assertThat(send(okta, "DELETE", path, null).statusCode()).isEqualTo(204);
+    assertThat(send(adminConfig, "GET", path, null).statusCode()).isEqualTo(404);
+  }
+
+  /** A config with the SCIM token of a new IdP principal {@code email} for {@code idp}. */
+  private ServerConfig scimTokenConfig(String email, String idp) throws Exception {
+    createTestUser(email);
+    String token =
+        AdminTokenCommand.createScimToken(
+            new String[] {"--scim-principal", email, "--idp", idp, "--lifetime", "P1D"},
+            securityContext.getAlgorithm(),
+            new UserRepository(null, hibernateConfigurator.getSessionFactory()));
+    return new ServerConfig(serverConfig.getServerUrl(), token);
+  }
+
+  private JsonNode getAs(ServerConfig config, String id) throws Exception {
+    HttpResponse<String> response = send(config, "GET", GROUPS_PATH + "/" + id, null);
+    assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+    return MAPPER.readTree(response.body());
+  }
+
+  private JsonNode listAs(ServerConfig config, String query) throws Exception {
+    HttpResponse<String> response = send(config, "GET", GROUPS_PATH + query, null);
+    assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+    return MAPPER.readTree(response.body());
+  }
+
+  /** The "value display" pairs of one of the owner extension's member lists. */
+  private static List<String> sourceMembers(JsonNode ownerExtension, String list) {
+    return StreamSupport.stream(ownerExtension.get(list).spliterator(), false)
+        .map(member -> member.get("value").asText() + " " + member.get("display").asText())
+        .toList();
+  }
+
+  private static List<String> groupIds(JsonNode list) {
+    return StreamSupport.stream(list.get("Resources").spliterator(), false)
+        .map(group -> group.get("id").asText())
+        .toList();
   }
 
   private HttpResponse<String> send(ServerConfig config, String method, String path, String body)
