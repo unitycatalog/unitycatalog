@@ -18,6 +18,7 @@ import com.google.auth.oauth2.AccessToken;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
+import io.unitycatalog.server.model.AzureServicePrincipalRequest;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
@@ -62,6 +63,8 @@ import software.amazon.awssdk.services.sts.model.Credentials;
 public class CachingCloudCredentialVendorTest {
 
   private static final NormalizedURL LOC = NormalizedURL.from("s3://bucket/tableA");
+  private static final NormalizedURL AZURE_LOC =
+      NormalizedURL.from("abfss://container@account.dfs.core.windows.net/tableA");
   private static final long T0 = 1_000_000_000_000L;
   private static final long ONE_HOUR_MS = 3_600_000L;
 
@@ -158,9 +161,23 @@ public class CachingCloudCredentialVendorTest {
   private static CredentialContext ctx(
       String roleArn, String externalId, Set<CredentialContext.Privilege> privileges) {
     CredentialDAO dao = mock(CredentialDAO.class);
+    when(dao.getCredentialType()).thenReturn(CredentialDAO.CredentialType.AWS_IAM_ROLE);
     when(dao.getAwsIamRoleResponse())
         .thenReturn(new AwsIamRoleResponse().roleArn(roleArn).externalId(externalId));
     return CredentialContext.create(LOC, privileges, Optional.of(dao));
+  }
+
+  /** A READ_ONLY context for {@link #AZURE_LOC} with an Azure service principal credential. */
+  private static CredentialContext azureCtx(String directoryId, String applicationId) {
+    CredentialDAO dao = mock(CredentialDAO.class);
+    when(dao.getCredentialType()).thenReturn(CredentialDAO.CredentialType.AZURE_SERVICE_PRINCIPAL);
+    when(dao.getAzureServicePrincipal())
+        .thenReturn(
+            new AzureServicePrincipalRequest()
+                .directoryId(directoryId)
+                .applicationId(applicationId)
+                .clientSecret("secret"));
+    return CredentialContext.create(AZURE_LOC, READ_ONLY, Optional.of(dao));
   }
 
   private static String accessKey(TemporaryCredentials credentials) {
@@ -191,6 +208,8 @@ public class CachingCloudCredentialVendorTest {
         Arguments.of("role", original, ctx("arn:role/B", "external-A", READ_ONLY)),
         Arguments.of("external ID", original, ctx("arn:role/A", "external-B", READ_ONLY)),
         Arguments.of("no external ID", original, ctx("arn:role/A", null, READ_ONLY)),
+        Arguments.of("Azure application", azureCtx("dir-A", "app-A"), azureCtx("dir-A", "app-B")),
+        Arguments.of("Azure directory", azureCtx("dir-A", "app-A"), azureCtx("dir-B", "app-A")),
         // A READ_ONLY credential must never serve a READ_WRITE request, nor the reverse.
         Arguments.of("privileges", original, ctx("arn:role/A", "external-A", READ_WRITE)),
         Arguments.of(
@@ -240,6 +259,18 @@ public class CachingCloudCredentialVendorTest {
     assertEquals(2, vends());
     assertEquals(2.0, requests(UcMetricConstants.MISS));
     assertEquals(2.0, requests(UcMetricConstants.HIT));
+  }
+
+  @Test
+  void azureBindingIsReusedWhenOnlyTheSecretChanges() {
+    vendDistinctCredentials();
+    CachingCloudCredentialVendor cache = cache();
+
+    // Each context mocks its own DAO, so the second one stands for a credential whose secret was
+    // rotated: same directory and application, served from the cache.
+    TemporaryCredentials first = cache.vendCredential(azureCtx("dir-A", "app-A"));
+    assertEquals(first, cache.vendCredential(azureCtx("dir-A", "app-A")));
+    verify(azure, times(1)).vendAzureCredential(any());
   }
 
   @ParameterizedTest

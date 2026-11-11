@@ -239,4 +239,10 @@ public class CredentialDAO extends IdentifiableDAO {
   public AwsIamRoleResponse getAwsIamRoleResponse() {
     return parseCredential(CredentialType.AWS_IAM_ROLE, AwsIamRoleResponse.class);
   }
+
+  /** The stored service principal, including its client secret, for signing in to Azure. */
+  public AzureServicePrincipalRequest getAzureServicePrincipal() {
+    return parseCredential(
+        CredentialType.AZURE_SERVICE_PRINCIPAL, AzureServicePrincipalRequest.class);
+  }
 }
