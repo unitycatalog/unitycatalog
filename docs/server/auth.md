@@ -349,6 +349,8 @@ server.authentication.idp.okta.subject-claim=OKTA
   is wrong, and with 403 when its issuer is not configured.
 - `server.allowed-issuers` and `server.audiences` are not used in this mode, and the server logs a warning at startup
   when either is set. They keep working as before in `internal` mode.
+- With no block, the server starts and logs a warning: only its own tokens (see below) are accepted. A block can't
+  use the issuer `internal`, which the server's own tokens carry.
 
 The first call of a person or machine links their UC user, found by the token's `email` claim; after that, only the
 claim from `subject-claim` counts, so a later email change in the identity provider does not matter:
@@ -360,7 +362,12 @@ claim from `subject-claim` counts, so a later email change in the identity provi
   provider's SCIM principal. A user linked to another identity gets 403 `User not allowed: <email>`, as does a token
   whose email has no user: create the user first (SCIM or `bin/uc user create`).
 - When SCIM reactivates a user (`active` from false to true), the link is cleared and the next call links again. Okta
-  reuses a deactivated user for a rehire, so the new person's identity is linked, not the old one's.
+  reuses a deactivated user for a rehire, so the new person's identity is linked, not the old one's. Only a token
+  issued at or after the reactivation (its `iat`) can link the user, so the old person's unexpired token gets 403
+  `User not allowed: <email>` even when it calls first; so does a token without `iat`. Both times are compared in
+  whole seconds, so a token issued in the second of the reactivation links. If the identity provider's clock is
+  behind the server's, a token issued just after the reactivation can carry an earlier `iat` and is refused; a token
+  issued later links.
 
 In `external` mode the server's own tokens work only for the bootstrap admin (`bin/uc-admin-token`) and for identity
 providers' SCIM tokens. Its access tokens get 401, and `POST /auth/tokens` returns 501 `Token exchange is disabled in

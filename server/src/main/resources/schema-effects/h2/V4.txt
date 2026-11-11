@@ -1,6 +1,7 @@
 + column uc_users.link_claim type=character varying size=16 nullable=YES default=null
 + column uc_users.link_issuer type=character varying size=255 nullable=YES default=null
 + column uc_users.link_value type=character varying size=255 nullable=YES default=null
++ column uc_users.reactivated_at type=timestamp size=26 nullable=YES default=null
 + index uc_users.uc_users_link_key_index_* unique=true column=link_claim#2
 + index uc_users.uc_users_link_key_index_* unique=true column=link_issuer#1
 + index uc_users.uc_users_link_key_index_* unique=true column=link_value#3

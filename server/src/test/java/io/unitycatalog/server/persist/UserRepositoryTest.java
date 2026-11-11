@@ -21,7 +21,10 @@ import io.unitycatalog.server.persist.model.UpdateUser;
 import io.unitycatalog.server.persist.model.UserLink;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -172,7 +175,9 @@ class UserRepositoryTest {
     UserLink link = new UserLink(ISSUER, "sub", "subject-link");
 
     assertThat(userRepository.findLinkedUser(link)).isNull();
-    assertThat(userRepository.linkUser("link@example.com", link).getId()).isEqualTo(user.getId());
+    // A token without iat links a row that was never reactivated.
+    assertThat(userRepository.linkUser("link@example.com", link, null).getId())
+        .isEqualTo(user.getId());
     assertThat(userRepository.findLinkedUser(link).getId()).isEqualTo(user.getId());
     // The same claim value from another issuer, or as another claim kind, is another identity.
     assertThat(
@@ -181,9 +186,10 @@ class UserRepositoryTest {
         .isNull();
     assertThat(userRepository.findLinkedUser(new UserLink(ISSUER, "uid", "subject-link"))).isNull();
     // A linked row is never linked again, by another identity or by the same one.
-    assertThat(userRepository.linkUser("link@example.com", new UserLink(ISSUER, "sub", "other")))
+    assertThat(
+            userRepository.linkUser("link@example.com", new UserLink(ISSUER, "sub", "other"), null))
         .isNull();
-    assertThat(userRepository.linkUser("link@example.com", link)).isNull();
+    assertThat(userRepository.linkUser("link@example.com", link, null)).isNull();
     assertThat(userRepository.findLinkedUser(link).getId()).isEqualTo(user.getId());
   }
 
@@ -201,7 +207,7 @@ class UserRepositoryTest {
     for (String email :
         new String[] {"nobody-link@example.com", "disabled-link@example.com", "okta-scim-link"}) {
       UserLink link = new UserLink(ISSUER, "sub", "refused-" + email);
-      assertThat(userRepository.linkUser(email, link)).as(email).isNull();
+      assertThat(userRepository.linkUser(email, link, null)).as(email).isNull();
       assertThat(userRepository.findLinkedUser(link)).as(email).isNull();
     }
   }
@@ -212,7 +218,7 @@ class UserRepositoryTest {
         userRepository.createUser(
             CreateUser.builder().name("Rehire").email("rehire@example.com").build());
     UserLink first = new UserLink(ISSUER, "uid", "00u-first");
-    userRepository.linkUser("rehire@example.com", first);
+    userRepository.linkUser("rehire@example.com", first, null);
 
     // Okta sends active=true on a routine update of an active user; that keeps the link.
     userRepository.updateUser(
@@ -222,11 +228,19 @@ class UserRepositoryTest {
     userRepository.updateUser(user.getId(), UpdateUser.builder().active(false).build());
     assertThat(userRepository.findLinkedUser(first).getId()).isEqualTo(user.getId());
 
-    // Reactivation clears it, so the next first call links the (possibly new) identity.
+    // Reactivation clears it, so the next first call links the (possibly new) identity, but only
+    // with a token issued at or after the reactivation: an old unexpired token, or one without iat,
+    // can't link the row first.
+    Date beforeReactivation = new Date(System.currentTimeMillis() - 60_000);
     userRepository.updateUser(user.getId(), UpdateUser.builder().active(true).build());
     assertThat(userRepository.findLinkedUser(first)).isNull();
+    assertThat(userRepository.linkUser("rehire@example.com", first, beforeReactivation)).isNull();
+    assertThat(userRepository.linkUser("rehire@example.com", first, null)).isNull();
+    assertThat(userRepository.findLinkedUser(first)).isNull();
     UserLink rehire = new UserLink(ISSUER, "uid", "00u-rehire");
-    assertThat(userRepository.linkUser("rehire@example.com", rehire).getId())
+    // iat has whole seconds, so a token issued in the second of the reactivation links.
+    Date issuedNow = Date.from(Instant.now().truncatedTo(ChronoUnit.SECONDS));
+    assertThat(userRepository.linkUser("rehire@example.com", rehire, issuedNow).getId())
         .isEqualTo(user.getId());
   }
 
@@ -246,7 +260,7 @@ class UserRepositoryTest {
             executor.submit(
                 () -> {
                   start.await();
-                  return userRepository.linkUser("race-link@example.com", link);
+                  return userRepository.linkUser("race-link@example.com", link, null);
                 }));
       }
       start.countDown();
@@ -269,6 +283,47 @@ class UserRepositoryTest {
       }
     }
     assertThat(found).isEqualTo(1);
+  }
+
+  @Test
+  void concurrentLinksOfOneIdentityToTwoRowsLinkOneRow() throws Exception {
+    var rowA =
+        userRepository.createUser(
+            CreateUser.builder().name("A").email("race-a@example.com").build());
+    var rowB =
+        userRepository.createUser(
+            CreateUser.builder().name("B").email("race-b@example.com").build());
+    UserLink link = new UserLink(ISSUER, "sub", "racer-shared");
+    int callers = 8;
+    ExecutorService executor = Executors.newFixedThreadPool(callers);
+    CountDownLatch start = new CountDownLatch(1);
+    try {
+      List<Future<User>> results = new ArrayList<>();
+      for (int i = 0; i < callers; i++) {
+        String email = i % 2 == 0 ? "race-a@example.com" : "race-b@example.com";
+        results.add(
+            executor.submit(
+                () -> {
+                  start.await();
+                  return userRepository.linkUser(email, link, null);
+                }));
+      }
+      start.countDown();
+      // The loser of uc_users_link_key gets null, not an exception.
+      List<String> linked = new ArrayList<>();
+      for (Future<User> result : results) {
+        User user = result.get(60, TimeUnit.SECONDS);
+        if (user != null) {
+          linked.add(user.getId());
+        }
+      }
+      assertThat(linked).hasSize(1);
+      assertThat(userRepository.findLinkedUser(link).getId())
+          .isEqualTo(linked.get(0))
+          .isIn(rowA.getId(), rowB.getId());
+    } finally {
+      executor.shutdownNow();
+    }
   }
 
   private static void assertSetIdpNameRefused(String email, ErrorCode code, String message) {

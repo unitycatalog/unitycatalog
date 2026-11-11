@@ -10,7 +10,10 @@ import io.unitycatalog.server.persist.model.UserLink;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,6 +23,7 @@ import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.exception.ConstraintViolationException;
+import org.hibernate.query.MutationQuery;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -185,12 +189,14 @@ public class UserRepository {
           }
           if (updateUser.getActive() != null) {
             // Reactivation clears the link: the IdP may reuse the row for a new person (a rehire),
-            // so the next first call links whoever the IdP now names by this email.
+            // so the next first call links whoever the IdP now names by this email, with a token
+            // issued since (see linkUser).
             if (updateUser.getActive()
                 && User.StateEnum.DISABLED.toString().equals(userDAO.getState())) {
               userDAO.setLinkIssuer(null);
               userDAO.setLinkClaim(null);
               userDAO.setLinkValue(null);
+              userDAO.setReactivatedAt(Date.from(Instant.now().truncatedTo(ChronoUnit.SECONDS)));
             }
             userDAO.setState(
                 updateUser.getActive()
@@ -270,28 +276,38 @@ public class UserRepository {
   /**
    * Links {@code link} to the user with {@code email}, in one conditional update, so concurrent
    * first calls link the row at most once. Only an ENABLED, unlinked row that is neither the
-   * bootstrap admin nor an IdP principal is linked.
+   * bootstrap admin nor an IdP principal is linked. A reactivated row is linked only by a token
+   * issued at or after its reactivation, so a token issued before it (or without {@code iat}) can't
+   * link the row first. Both times have whole seconds, so a token issued in the second of the
+   * reactivation links it.
    *
+   * @param issuedAt the token's {@code iat}, or null if it has none
    * @return the linked user, or null if no such row exists or {@code link} is already on another
    *     row
    */
-  public User linkUser(String email, UserLink link) {
+  public User linkUser(String email, UserLink link, Date issuedAt) {
     try {
       return TransactionManager.executeWithTransaction(
           sessionFactory,
           session -> {
-            int linked =
+            MutationQuery update =
                 session
                     .createMutationQuery(
                         "UPDATE UserDAO SET linkIssuer = :issuer, linkClaim = :claim,"
                             + " linkValue = :value WHERE email = :email AND linkIssuer IS NULL"
-                            + " AND state = :enabled AND email <> 'admin' AND idpName IS NULL")
+                            + " AND state = :enabled AND email <> 'admin' AND idpName IS NULL"
+                            + (issuedAt == null
+                                ? " AND reactivatedAt IS NULL"
+                                : " AND (reactivatedAt IS NULL OR reactivatedAt <= :issuedAt)"))
                     .setParameter("issuer", link.issuer())
                     .setParameter("claim", link.claim())
                     .setParameter("value", link.value())
                     .setParameter("email", email)
-                    .setParameter("enabled", User.StateEnum.ENABLED.toString())
-                    .executeUpdate();
+                    .setParameter("enabled", User.StateEnum.ENABLED.toString());
+            if (issuedAt != null) {
+              update.setParameter("issuedAt", issuedAt);
+            }
+            int linked = update.executeUpdate();
             return linked == 0 ? null : getUserByEmail(session, email).toUser();
           },
           "Failed to link user",

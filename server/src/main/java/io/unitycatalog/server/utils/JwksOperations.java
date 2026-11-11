@@ -147,6 +147,10 @@ public class JwksOperations {
   @SneakyThrows
   private Algorithm algorithmForJwk(Jwk jwk, String alg) {
     String keyType = jwk.getType();
+    if (alg == null) {
+      throw new OAuthInvalidRequestException(
+          ErrorCode.UNAUTHENTICATED, "Missing signing algorithm");
+    }
 
     return switch (keyType) {
       case "RSA" ->
