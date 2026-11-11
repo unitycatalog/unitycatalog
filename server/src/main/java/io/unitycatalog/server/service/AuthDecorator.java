@@ -227,7 +227,9 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
       }
       LOGGER.debug("Linked user {} to identity provider {}", email, identityProvider.name());
     }
-    if (user.getState() != User.StateEnum.ENABLED) {
+    // An IdP principal acts only through its SCIM token, even if it was linked before it became
+    // one.
+    if (user.getState() != User.StateEnum.ENABLED || user.getIdpName() != null) {
       throw new AuthorizationException(
           ErrorCode.PERMISSION_DENIED, "User not allowed: " + user.getEmail());
     }

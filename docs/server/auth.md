@@ -360,7 +360,7 @@ claim from `subject-claim` counts, so a later email change in the identity provi
   with the value `user.email` to the access tokens of your custom authorization server. For a machine, add one to its
   application's tokens. A token without one is refused until its user is linked.
 - Only an enabled user that is not yet linked is linked, never the `admin` user or a user marked as an identity
-  provider's SCIM principal. A user linked to another identity gets 403 `User not allowed: <email>`, as does a token
+  provider's SCIM principal; a linked user's tokens get 403 once it is marked as one. A user linked to another identity gets 403 `User not allowed: <email>`, as does a token
   whose email has no user: create the user first (SCIM or `bin/uc user create`).
 - When SCIM reactivates a user (`active` from false to true), the link is cleared and the next call links again. Okta
   reuses a deactivated user for a rehire, so the new person's identity is linked, not the old one's. From then on,
