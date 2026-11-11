@@ -110,6 +110,17 @@ public class UCViewReadOnlySuite {
   }
 
   @Test
+  public void testLoadTablePlainViewKeepsTypeJsonMetadata() throws Exception {
+    ColumnInfo column =
+        intColumn("c")
+            .typeJson(
+                "{\"name\":\"c\",\"type\":\"integer\",\"nullable\":true,"
+                    + "\"metadata\":{\"k\":\"v\"}}");
+    CatalogTable catalogTable = loadPlainViewCatalogTable(List.of(column), null);
+    assertThat(catalogTable.schema().apply("c").metadata().getString("k")).isEqualTo("v");
+  }
+
+  @Test
   public void testLoadTablePlainViewWithNullColumnsDoesNotThrow() throws Exception {
     // Columns are nullable on the wire (older / non-Spark writer); degrade to an empty schema
     // rather than NPE-ing, and record no query-output columns.

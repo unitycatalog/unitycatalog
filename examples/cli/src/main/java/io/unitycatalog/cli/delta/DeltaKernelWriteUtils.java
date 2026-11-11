@@ -186,8 +186,10 @@ public class DeltaKernelWriteUtils {
       } else if (dataType == ShortType.SHORT) {
         values = generateRandomValues(dataType, count, false, offset);
         vectors[i] = shortVector((List<Short>) values);
+      } else {
+        throw new UnsupportedOperationException(
+            "table write does not support column " + field.getName() + " of type " + dataType);
       }
-      // Add more types as needed
     }
     return vectors;
   }
