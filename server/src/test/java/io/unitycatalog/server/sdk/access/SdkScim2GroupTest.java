@@ -1,6 +1,7 @@
 package io.unitycatalog.server.sdk.access;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,6 +13,7 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.dao.GroupMemberDAO;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.http.HttpResponse;
@@ -574,10 +576,11 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
                       "PATCH",
                       GROUPS_PATH + "/" + id,
                       patchBody(op("add", "members", memberValues(userId)))));
-      // Lets the add reach the lock before the delete starts.
-      Thread.sleep(300);
+      // The delete starts once the add waits for the lock, and the lock is released once the
+      // delete waits for the add.
+      awaitWaitingOrDone(add, 1);
       Future<?> delete = pool.submit(() -> userRepository.deleteUser(userId));
-      Thread.sleep(300);
+      awaitWaitingOrDone(delete, 2);
       tx.commit();
 
       HttpResponse<String> response = add.get(30, TimeUnit.SECONDS);
@@ -679,6 +682,40 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
     HttpResponse<String> response =
         send(adminConfig, "PATCH", GROUPS_PATH + "/" + groupId, patchBody(ops));
     assertThat(response.statusCode()).as(response.body()).isIn(200, 204);
+  }
+
+  /**
+   * Waits until {@code request} is done or the database reports at least {@code blocked} sessions
+   * waiting for a lock. A request that finds nothing to wait for, as on H2 and PostgreSQL where the
+   * reader locks no row of a group without members, is done before it is seen waiting.
+   */
+  @SneakyThrows
+  private void awaitWaitingOrDone(Future<?> request, int blocked) {
+    String sql =
+        switch (SupportedDatabase.selected()) {
+          case H2 ->
+              "SELECT COUNT(*) FROM INFORMATION_SCHEMA.SESSIONS WHERE BLOCKER_ID IS NOT NULL";
+          case POSTGRES_18 ->
+              "SELECT COUNT(*) FROM pg_stat_activity"
+                  + " WHERE datname = current_database() AND wait_event_type = 'Lock'";
+          case MYSQL_8 ->
+              "SELECT COUNT(DISTINCT REQUESTING_ENGINE_TRANSACTION_ID)"
+                  + " FROM performance_schema.data_lock_waits";
+        };
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+    while (System.nanoTime() < deadline) {
+      if (request.isDone()) {
+        return;
+      }
+      try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+        if (((Number) session.createNativeQuery(sql, Object.class).getSingleResult()).intValue()
+            >= blocked) {
+          return;
+        }
+      }
+      Thread.sleep(10);
+    }
+    fail("The request is neither done nor waiting for a lock after 10s");
   }
 
   /** An authorizer over the same store as the server's. */
