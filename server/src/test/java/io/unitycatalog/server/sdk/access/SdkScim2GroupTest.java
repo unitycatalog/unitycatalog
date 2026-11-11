@@ -1,14 +1,24 @@
 package io.unitycatalog.server.sdk.access;
 
+import static io.unitycatalog.server.utils.TestUtils.assertApiException;
+import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.client.api.CatalogsApi;
+import io.unitycatalog.client.model.CatalogInfo;
+import io.unitycatalog.client.model.SecurableType;
+import io.unitycatalog.client.model.UpdateCatalog;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.control.model.UserResource;
+import io.unitycatalog.server.UnityCatalogServer;
+import io.unitycatalog.server.auth.GroupMembershipAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.dao.GroupMemberDAO;
@@ -16,6 +26,7 @@ import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.testdatabase.SupportedDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
+import java.lang.reflect.Field;
 import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -31,6 +42,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
+import lombok.Cleanup;
 import lombok.SneakyThrows;
 import org.hibernate.LockMode;
 import org.hibernate.Session;
@@ -649,6 +661,114 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
 
   @Test
   @SneakyThrows
+  public void testDeletedGroupGrantsNothing() {
+    // The sign-in journey (grant, member removal, listing) is in AuthServiceTest.
+    String id = createGroup("readers", alice.getId()).get("id").asText();
+    grantPermissions(
+        "readers", SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
+    CatalogsApi aliceCatalogs = catalogsApi(alice);
+    assertThat(aliceCatalogs.getCatalog(TestUtils.CATALOG_NAME, null).getName())
+        .isEqualTo(TestUtils.CATALOG_NAME);
+
+    assertThat(send(adminConfig, "DELETE", GROUPS_PATH + "/" + id, null).statusCode())
+        .isEqualTo(204);
+    assertPermissionDenied(() -> aliceCatalogs.getCatalog(TestUtils.CATALOG_NAME, null));
+  }
+
+  @Test
+  @SneakyThrows
+  public void testGrantNameResolvesUserEmailBeforeGroupName() {
+    // A group may carry a user's email as its name; the grant goes to the user.
+    createGroup(bob.getEmails().get(0).getValue(), alice.getId());
+    grantPermissions(
+        bob.getEmails().get(0).getValue(),
+        SecurableType.CATALOG,
+        TestUtils.CATALOG_NAME,
+        Privileges.USE_CATALOG);
+
+    assertThat(catalogsApi(bob).getCatalog(TestUtils.CATALOG_NAME, null).getName())
+        .isEqualTo(TestUtils.CATALOG_NAME);
+    assertPermissionDenied(() -> catalogsApi(alice).getCatalog(TestUtils.CATALOG_NAME, null));
+    // A name that is neither a user nor a group is not found, as before.
+    assertApiException(
+        () ->
+            grantPermissions(
+                "nobody", SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG),
+        ErrorCode.NOT_FOUND,
+        "User not found: nobody");
+  }
+
+  @Test
+  @SneakyThrows
+  public void testGroupOwnershipAppliesToMembers() {
+    UUID groupId = UUID.fromString(createGroup("owners", alice.getId()).get("id").asText());
+    UUID catalogId =
+        UUID.fromString(
+            new CatalogsApi(adminApiClient).getCatalog(TestUtils.CATALOG_NAME, null).getId());
+    serverAuthorizer().grantAuthorization(groupId, catalogId, Privileges.OWNER);
+    UpdateCatalog update = new UpdateCatalog().comment("owned by a group");
+
+    CatalogInfo updated = catalogsApi(alice).updateCatalog(TestUtils.CATALOG_NAME, update);
+    assertThat(updated.getComment()).isEqualTo("owned by a group");
+    assertPermissionDenied(() -> catalogsApi(bob).updateCatalog(TestUtils.CATALOG_NAME, update));
+  }
+
+  @Test
+  @SneakyThrows
+  public void testDecisionsCombineOwnAndGroupGrants() {
+    UUID groupId = UUID.fromString(createGroup("writers", alice.getId()).get("id").asText());
+    UUID aliceId = UUID.fromString(alice.getId());
+    UUID bobId = UUID.fromString(bob.getId());
+    UUID catalogId =
+        UUID.fromString(
+            new CatalogsApi(adminApiClient).getCatalog(TestUtils.CATALOG_NAME, null).getId());
+    @Cleanup JCasbinAuthorizer casbin = newAuthorizer();
+    UnityCatalogAuthorizer authorizer =
+        new GroupMembershipAuthorizer(
+            casbin,
+            new Repositories(
+                    hibernateConfigurator.getSessionFactory(),
+                    new ServerProperties(serverProperties))
+                .getGroupRepository());
+    authorizer.grantAuthorization(aliceId, catalogId, Privileges.SELECT);
+    authorizer.grantAuthorization(groupId, catalogId, Privileges.MODIFY);
+    authorizer.grantAuthorization(bobId, catalogId, Privileges.SELECT);
+    io.unitycatalog.server.model.SecurableType type =
+        io.unitycatalog.server.model.SecurableType.CATALOG;
+
+    // Each privilege may come from the user or from a group.
+    assertThat(
+            authorizer.authorizeAll(aliceId, type, catalogId, Privileges.SELECT, Privileges.MODIFY))
+        .isTrue();
+    assertThat(authorizer.authorizeAny(aliceId, type, catalogId, Privileges.MODIFY)).isTrue();
+    assertThat(authorizer.authorize(aliceId, type, catalogId, Privileges.MODIFY)).isTrue();
+    // Bob is not a member, and listings keep Alice's own grants only.
+    assertThat(
+            authorizer.authorizeAll(bobId, type, catalogId, Privileges.SELECT, Privileges.MODIFY))
+        .isFalse();
+    assertThat(authorizer.authorizeAny(bobId, type, catalogId, Privileges.MODIFY)).isFalse();
+    assertThat(authorizer.listAuthorizations(aliceId, catalogId))
+        .containsExactly(Privileges.SELECT);
+  }
+
+  @Test
+  @SneakyThrows
+  public void testMetastoreOwnerGroupCannotBeDeleted() {
+    String id = createGroup("admins", alice.getId()).get("id").asText();
+    serverAuthorizer().grantAuthorization(UUID.fromString(id), metastoreId(), Privileges.OWNER);
+
+    HttpResponse<String> refused = send(adminConfig, "DELETE", GROUPS_PATH + "/" + id, null);
+    assertThat(refused.statusCode()).isEqualTo(400);
+    assertThat(refused.body()).contains("The metastore owner can't be deleted: admins");
+    assertThat(get(id).get("displayName").asText()).isEqualTo("admins");
+
+    // A member owns the metastore only through the group, so the member can still be deleted.
+    assertThat(send(adminConfig, "DELETE", USERS_PATH + "/" + alice.getId(), null).statusCode())
+        .isEqualTo(200);
+  }
+
+  @Test
+  @SneakyThrows
   public void testUserDeleteDropsMembershipsButDeactivateKeepsThem() {
     String id = createGroup("members", alice.getId(), bob.getId()).get("id").asText();
 
@@ -840,6 +960,28 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
     } finally {
       pool.shutdownNow();
     }
+  }
+
+  private CatalogsApi catalogsApi(UserResource user) {
+    return new CatalogsApi(
+        TestUtils.createApiClient(createTestUserServerConfig(user.getEmails().get(0).getValue())));
+  }
+
+  /**
+   * The server's own authorizer. OWNER can't be granted through the API, and the test server does
+   * not reload policy, so an OWNER grant the server must see is written through it.
+   */
+  private UnityCatalogAuthorizer serverAuthorizer() throws Exception {
+    Field field = UnityCatalogServer.class.getDeclaredField("authorizer");
+    field.setAccessible(true);
+    return (UnityCatalogAuthorizer) field.get(unityCatalogServer);
+  }
+
+  private UUID metastoreId() {
+    return new Repositories(
+            hibernateConfigurator.getSessionFactory(), new ServerProperties(serverProperties))
+        .getMetastoreRepository()
+        .getMetastoreId();
   }
 
   private HttpResponse<String> send(ServerConfig config, String method, String path, String body)
