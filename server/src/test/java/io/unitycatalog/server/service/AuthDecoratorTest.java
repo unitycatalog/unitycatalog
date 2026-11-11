@@ -31,6 +31,7 @@ import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -38,6 +39,7 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Properties;
 import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
@@ -80,7 +82,8 @@ class AuthDecoratorTest {
             INTERNAL);
     Repositories repositories = mock();
     when(repositories.getUserRepository()).thenReturn(userRepository);
-    decorator = new AuthDecorator(securityContext, repositories);
+    decorator =
+        new AuthDecorator(securityContext, repositories, new ServerProperties(new Properties()));
     token = securityContext.createAccessToken(EMAIL, Duration.ofMinutes(5));
   }
 

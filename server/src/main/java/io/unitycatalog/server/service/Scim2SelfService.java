@@ -3,9 +3,6 @@ package io.unitycatalog.server.service;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.utils.Scim2Utils.asUserResource;
 
-import com.auth0.jwt.interfaces.Claim;
-import com.auth0.jwt.interfaces.DecodedJWT;
-import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Produces;
 import com.linecorp.armeria.server.annotation.StatusCode;
@@ -17,7 +14,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.Scim2RuntimeException;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
-import io.unitycatalog.server.security.JwtClaim;
+import io.unitycatalog.server.utils.IdentityUtils;
 
 public class Scim2SelfService implements ScimService {
   private final UserRepository userRepository;
@@ -34,12 +31,9 @@ public class Scim2SelfService implements ScimService {
   @AuthorizeExpression("#principal != null")
   @AuthorizeResourceKey(METASTORE)
   public UserResource getCurrentUser() {
-    // TODO: will make this a util method in the access control PR
-    ServiceRequestContext ctx = ServiceRequestContext.current();
-    DecodedJWT decodedJWT = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
-    if (decodedJWT != null) {
-      Claim sub = decodedJWT.getClaim(JwtClaim.SUBJECT.key());
-      return asUserResource(userRepository.getUserByEmail(sub.asString()));
+    String email = IdentityUtils.findPrincipalEmailAddress();
+    if (email != null) {
+      return asUserResource(userRepository.getUserByEmail(email));
     } else {
       throw new Scim2RuntimeException(new BadRequestException("No user found."));
     }

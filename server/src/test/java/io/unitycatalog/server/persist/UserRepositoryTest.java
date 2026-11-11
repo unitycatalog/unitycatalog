@@ -10,6 +10,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
 import io.unitycatalog.server.exception.BaseException;
@@ -17,9 +18,17 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.model.UpdateUser;
+import io.unitycatalog.server.persist.model.UserLink;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -151,6 +160,115 @@ class UserRepositoryTest {
         "User entra-scim is already the IdP principal of entra, not okta.");
     assertThat(userRepository.getUserByEmail("entra-scim").getIdpName()).isEqualTo("entra");
     assertThat(userRepository.getUserByEmail("admin").getIdpName()).isNull();
+  }
+
+  private static final String ISSUER = "https://idp.example.com";
+
+  @Test
+  void linkUserLinksAnUnlinkedEnabledRowOnceThenFindsItByTheLink() {
+    var user =
+        userRepository.createUser(
+            CreateUser.builder().name("Link").email("link@example.com").build());
+    UserLink link = new UserLink(ISSUER, "sub", "subject-link");
+
+    assertThat(userRepository.findLinkedUser(link)).isNull();
+    assertThat(userRepository.linkUser("link@example.com", link).getId()).isEqualTo(user.getId());
+    assertThat(userRepository.findLinkedUser(link).getId()).isEqualTo(user.getId());
+    // The same claim value from another issuer, or as another claim kind, is another identity.
+    assertThat(
+            userRepository.findLinkedUser(
+                new UserLink("https://other.example.com", "sub", "subject-link")))
+        .isNull();
+    assertThat(userRepository.findLinkedUser(new UserLink(ISSUER, "uid", "subject-link"))).isNull();
+    // A linked row is never linked again, by another identity or by the same one.
+    assertThat(userRepository.linkUser("link@example.com", new UserLink(ISSUER, "sub", "other")))
+        .isNull();
+    assertThat(userRepository.linkUser("link@example.com", link)).isNull();
+    assertThat(userRepository.findLinkedUser(link).getId()).isEqualTo(user.getId());
+  }
+
+  @Test
+  void linkUserRefusesAMissingDisabledOrIdpPrincipalRow() {
+    // The admin row is refused too; the external-mode journey in AuthServiceAllowlistTest checks
+    // it, because creating "admin" here would break the bootstrap test above.
+    var disabled =
+        userRepository.createUser(
+            CreateUser.builder().name("Disabled").email("disabled-link@example.com").build());
+    userRepository.updateUser(disabled.getId(), UpdateUser.builder().active(false).build());
+    userRepository.createUser(CreateUser.builder().name("Okta").email("okta-scim-link").build());
+    userRepository.setIdpName("okta-scim-link", "okta");
+
+    for (String email :
+        new String[] {"nobody-link@example.com", "disabled-link@example.com", "okta-scim-link"}) {
+      UserLink link = new UserLink(ISSUER, "sub", "refused-" + email);
+      assertThat(userRepository.linkUser(email, link)).as(email).isNull();
+      assertThat(userRepository.findLinkedUser(link)).as(email).isNull();
+    }
+  }
+
+  @Test
+  void reactivationClearsTheLinkAndOtherUpdatesKeepIt() {
+    var user =
+        userRepository.createUser(
+            CreateUser.builder().name("Rehire").email("rehire@example.com").build());
+    UserLink first = new UserLink(ISSUER, "uid", "00u-first");
+    userRepository.linkUser("rehire@example.com", first);
+
+    // Okta sends active=true on a routine update of an active user; that keeps the link.
+    userRepository.updateUser(
+        user.getId(), UpdateUser.builder().name("Rehired").active(true).build());
+    assertThat(userRepository.findLinkedUser(first).getId()).isEqualTo(user.getId());
+    // Deactivation keeps it too.
+    userRepository.updateUser(user.getId(), UpdateUser.builder().active(false).build());
+    assertThat(userRepository.findLinkedUser(first).getId()).isEqualTo(user.getId());
+
+    // Reactivation clears it, so the next first call links the (possibly new) identity.
+    userRepository.updateUser(user.getId(), UpdateUser.builder().active(true).build());
+    assertThat(userRepository.findLinkedUser(first)).isNull();
+    UserLink rehire = new UserLink(ISSUER, "uid", "00u-rehire");
+    assertThat(userRepository.linkUser("rehire@example.com", rehire).getId())
+        .isEqualTo(user.getId());
+  }
+
+  @Test
+  void concurrentFirstLinksOfOneRowLinkItOnce() throws Exception {
+    var user =
+        userRepository.createUser(
+            CreateUser.builder().name("Race").email("race-link@example.com").build());
+    int callers = 8;
+    ExecutorService executor = Executors.newFixedThreadPool(callers);
+    CountDownLatch start = new CountDownLatch(1);
+    try {
+      List<Future<User>> results = new ArrayList<>();
+      for (int i = 0; i < callers; i++) {
+        UserLink link = new UserLink(ISSUER, "sub", "racer-" + i);
+        results.add(
+            executor.submit(
+                () -> {
+                  start.await();
+                  return userRepository.linkUser("race-link@example.com", link);
+                }));
+      }
+      start.countDown();
+      int linked = 0;
+      for (Future<User> result : results) {
+        if (result.get(60, TimeUnit.SECONDS) != null) {
+          linked++;
+        }
+      }
+      assertThat(linked).isEqualTo(1);
+    } finally {
+      executor.shutdownNow();
+    }
+    long found = 0;
+    for (int i = 0; i < callers; i++) {
+      User linkedUser = userRepository.findLinkedUser(new UserLink(ISSUER, "sub", "racer-" + i));
+      if (linkedUser != null) {
+        assertThat(linkedUser.getId()).isEqualTo(user.getId());
+        found++;
+      }
+    }
+    assertThat(found).isEqualTo(1);
   }
 
   private static void assertSetIdpNameRefused(String email, ErrorCode code, String message) {

@@ -21,12 +21,21 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.model.UserLink;
+import io.unitycatalog.server.security.IdentityProvider;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.security.SecurityContext;
+import io.unitycatalog.server.security.SubjectClaim;
 import io.unitycatalog.server.utils.JwksOperations;
+import io.unitycatalog.server.utils.ServerProperties;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.EnumUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +53,12 @@ import org.slf4j.LoggerFactory;
  * user must have an IdP name, and only a SCIM token is accepted for a user with one. If all these
  * checks pass, the request is allowed to continue.
  *
+ * <p>In {@code external} authentication mode the decorator also accepts an access token from a
+ * configured identity provider, by its exact issuer: the signature (the issuer's JWKS), expiry and
+ * audience are checked, and the token's subject claim finds the user linked to it. The first call
+ * links the enabled row with the token's {@code email}; later calls match the link only. The
+ * server's own ACCESS tokens are refused; its SERVICE and SCIM tokens still work.
+ *
  * <p>The decoded token is also added to the request attributes so it can be referenced by the
  * request if needed.
  */
@@ -56,6 +71,8 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
 
   private static final String BEARER_PREFIX = "Bearer ";
 
+  private static final String EMAIL_CLAIM = "email";
+
   /** The only paths that accept a SCIM token. */
   private static final String SCIM_PATH_PREFIX = "/api/1.0/unity-control/scim2/";
 
@@ -65,11 +82,29 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
   public static final AttributeKey<DecodedJWT> DECODED_JWT_ATTR =
       AttributeKey.valueOf(DecodedJWT.class, "DECODED_JWT_ATTR");
 
-  private final JwksOperations jwksOperations;
+  /** The email of the user an identity provider's token is linked to; its {@code sub} isn't one. */
+  public static final AttributeKey<String> PRINCIPAL_EMAIL_ATTR =
+      AttributeKey.valueOf(String.class, "PRINCIPAL_EMAIL_ATTR");
 
-  public AuthDecorator(SecurityContext securityContext, Repositories repositories) {
-    this.jwksOperations = new JwksOperations(securityContext);
+  private final JwksOperations jwksOperations;
+  private final boolean isExternalAuthentication;
+  // Empty in internal mode.
+  private final Map<String, IdentityProvider> identityProvidersByIssuer;
+
+  public AuthDecorator(
+      SecurityContext securityContext,
+      Repositories repositories,
+      ServerProperties serverProperties) {
+    this.jwksOperations =
+        new JwksOperations(securityContext, serverProperties.getAllowedJwksUris());
     this.userRepository = repositories.getUserRepository();
+    this.isExternalAuthentication = serverProperties.isExternalAuthentication();
+    List<IdentityProvider> identityProviders =
+        isExternalAuthentication ? serverProperties.getIdentityProviders() : List.of();
+    // A HashMap, so a token without an issuer finds none.
+    this.identityProvidersByIssuer =
+        identityProviders.stream()
+            .collect(Collectors.toMap(IdentityProvider::issuer, Function.identity()));
   }
 
   @Override
@@ -96,14 +131,32 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
 
     LOGGER.debug("Validating access-token for issuer: {} and keyId: {}", issuer, keyId);
 
-    if (!issuer.equals(INTERNAL)) {
+    IdentityProvider identityProvider = identityProvidersByIssuer.get(issuer);
+    if (identityProvider != null) {
+      decodedJWT = jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg).verify(decodedJWT);
+      User user = linkedUser(identityProvider, decodedJWT);
+      ctx.setAttr(DECODED_JWT_ATTR, decodedJWT);
+      ctx.setAttr(PRINCIPAL_EMAIL_ATTR, user.getEmail());
+      return delegate.serve(ctx, req);
+    }
+
+    if (!INTERNAL.equals(issuer)) {
       throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "Invalid access token.");
     }
 
     // Internal tokens don't need audience validation
     JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg);
     decodedJWT = jwtVerifier.verify(decodedJWT);
-    boolean isScimToken = validateTypeAndExpiry(decodedJWT) == JwtTokenType.SCIM;
+    JwtTokenType type = validateTypeAndExpiry(decodedJWT);
+    // In external mode people and machines send their IdP's tokens; only the bootstrap admin's
+    // SERVICE token and IdP principals' SCIM tokens come from this server.
+    if (isExternalAuthentication && type == JwtTokenType.ACCESS) {
+      throw new AuthorizationException(
+          ErrorCode.UNAUTHENTICATED,
+          "Access tokens from this server are not accepted in external authentication mode; send"
+              + " the identity provider's access token.");
+    }
+    boolean isScimToken = type == JwtTokenType.SCIM;
     if (isScimToken && !ctx.path().startsWith(SCIM_PATH_PREFIX)) {
       throw new AuthorizationException(
           ErrorCode.PERMISSION_DENIED,
@@ -132,6 +185,50 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     ctx.setAttr(DECODED_JWT_ATTR, decodedJWT);
 
     return delegate.serve(ctx, req);
+  }
+
+  /**
+   * Returns the enabled user linked to a verified token of {@code identityProvider}. The first call
+   * links the row with the token's {@code email}; later calls use the link only, whatever the
+   * token's email.
+   */
+  private User linkedUser(IdentityProvider identityProvider, DecodedJWT jwt) {
+    if (jwt.getExpiresAt() == null) {
+      throw new AuthorizationException(ErrorCode.UNAUTHENTICATED, "Access token has no expiry.");
+    }
+    if (!jwt.getAudience().contains(identityProvider.audience())) {
+      throw new AuthorizationException(ErrorCode.UNAUTHENTICATED, "Invalid audience");
+    }
+    SubjectClaim subjectClaim = identityProvider.subjectClaim();
+    UserLink link = subjectClaim.linkOf(identityProvider.issuer(), jwt);
+    if (link == null) {
+      throw new AuthorizationException(
+          ErrorCode.UNAUTHENTICATED,
+          "Access token has no " + subjectClaim.claimNames() + " claim.");
+    }
+    User user = userRepository.findLinkedUser(link);
+    if (user == null) {
+      String email = jwt.getClaim(EMAIL_CLAIM).asString();
+      if (email == null) {
+        throw new AuthorizationException(
+            ErrorCode.UNAUTHENTICATED,
+            "Access token has no email claim to link a user; add one in the identity provider.");
+      }
+      // A concurrent first call may have linked the row first; then the link finds it.
+      user =
+          Optional.ofNullable(userRepository.linkUser(email, link))
+              .orElseGet(() -> userRepository.findLinkedUser(link));
+      // TODO(PR 11): with no row for this email, create one owned by this identity provider.
+      if (user == null) {
+        throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed: " + email);
+      }
+      LOGGER.debug("Linked user {} to identity provider {}", email, identityProvider.name());
+    }
+    if (user.getState() != User.StateEnum.ENABLED) {
+      throw new AuthorizationException(
+          ErrorCode.PERMISSION_DENIED, "User not allowed: " + user.getEmail());
+    }
+    return user;
   }
 
   /** Returns the user, or null when there is none; a failed lookup propagates. */
