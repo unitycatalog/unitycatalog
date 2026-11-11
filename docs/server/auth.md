@@ -141,7 +141,7 @@ denied. Other UC metadata failures keep their UC error code, usually HTTP 500.
 **Native permission APIs remain available.** Grant/revoke/list APIs still manage UC's native
 records, but those grants do not affect OPA decisions. Resource creation and deletion also
 maintain native owner and hierarchy records. Switching back to Casbin uses those records,
-including changes made while OPA was selected. OPA's `OWNER` and `READ_METADATA` decisions,
+including changes made while OPA was selected. OPA's `OWNER`, `MANAGE`, and `READ_METADATA` decisions,
 combined with UC's usage checks, control access to other users' native grants.
 
 SCIM also asks OPA whether the target user has `OWNER` on the metastore before deleting or
