@@ -436,7 +436,13 @@ def process_function_parameter_defaults(
                     # Spark SQL binary literal (X'<hex>'), the form format_default_value
                     # writes for bytes defaults; ast.literal_eval cannot parse it.
                     try:
-                        defaults[param.name] = bytes.fromhex(default_str[2:-1])
+                        hex_str = default_str[2:-1]
+                        if len(hex_str) % 2:
+                            # Spark prepends a 0 to odd-length hex literals
+                            # (X'123' parses as X'0123'); bytes.fromhex needs
+                            # an even number of digits, so match Spark's rule.
+                            hex_str = "0" + hex_str
+                        defaults[param.name] = bytes.fromhex(hex_str)
                     except ValueError:
                         defaults[param.name] = default_str
                 else:
