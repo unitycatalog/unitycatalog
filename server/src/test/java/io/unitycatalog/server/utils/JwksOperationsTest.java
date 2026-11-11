@@ -167,10 +167,14 @@ class JwksOperationsTest {
         .extracting(e -> ((BaseException) e).getErrorCode())
         .isEqualTo(ErrorCode.INTERNAL);
 
+    // The key set was never read, so a valid key must not be called unknown during the outage.
     respondWithKey("key-1", signingKey);
     assertThatThrownBy(() -> jwksOperations.verifierForIssuerAndKey(issuer, "key-1", "RS256"))
         .isInstanceOf(OAuthInvalidRequestException.class)
-        .hasRootCauseMessage("Signing-key refresh is rate limited");
+        .hasMessage("Could not get signing key 'key-1' for issuer " + issuer)
+        .hasRootCauseMessage("Signing-key refresh is rate limited")
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.INTERNAL);
     assertThat(jwksRequests).hasValue(1);
 
     elapsedNanos.set(Duration.ofSeconds(6).toNanos());
@@ -227,7 +231,10 @@ class JwksOperationsTest {
     elapsedNanos.set(Duration.ofSeconds(6).minusNanos(1).toNanos());
     assertThatThrownBy(() -> jwksOperations.verifierForIssuerAndKey(issuer, "key-2", "RS256"))
         .isInstanceOf(OAuthInvalidRequestException.class)
-        .hasRootCauseMessage("Signing-key refresh is rate limited");
+        .hasMessage("Unknown signing key")
+        .hasRootCauseMessage("Signing-key refresh is rate limited")
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.UNAUTHENTICATED);
     assertThat(jwksRequests).hasValue(1);
 
     elapsedNanos.incrementAndGet();
