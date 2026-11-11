@@ -24,18 +24,30 @@ final class TestServer implements AutoCloseable {
 
   private final UnityCatalogServer server;
   private final int port;
+  private final Path configurationFolder;
 
-  private TestServer(UnityCatalogServer server, int port) {
+  private TestServer(UnityCatalogServer server, int port, Path configurationFolder) {
     this.server = server;
     this.port = port;
+    this.configurationFolder = configurationFolder;
   }
 
-  /** Starts the server on {@code db}, with its table storage under {@code storageRoot}. */
-  static TestServer start(TestDatabase db, Path storageRoot) {
-    return start(db.openHibernateConfigurator(db.hibernateProperties()), storageRoot);
+  /**
+   * Starts the server on {@code db}.
+   *
+   * @param db the database to run on
+   * @param storageRoot the root of the server's table storage
+   * @param configurationFolder the folder for the server's signing keys, {@code certs.json} and
+   *     {@code token.txt}, instead of the shared {@code etc/conf}
+   * @return the started server
+   */
+  static TestServer start(TestDatabase db, Path storageRoot, Path configurationFolder) {
+    return start(
+        db.openHibernateConfigurator(db.hibernateProperties()), storageRoot, configurationFolder);
   }
 
-  private static TestServer start(HibernateConfigurator configurator, Path storageRoot) {
+  private static TestServer start(
+      HibernateConfigurator configurator, Path storageRoot, Path configurationFolder) {
     try {
       int port;
       try (ServerSocket socket = new ServerSocket(0)) {
@@ -51,6 +63,7 @@ final class TestServer implements AutoCloseable {
               .port(port)
               .serverProperties(new ServerProperties(properties))
               .hibernateConfigurator(configurator)
+              .configurationFolder(configurationFolder)
               .build();
       try {
         server.start();
@@ -58,7 +71,7 @@ final class TestServer implements AutoCloseable {
         server.close();
         throw t;
       }
-      return new TestServer(server, port);
+      return new TestServer(server, port, configurationFolder);
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
@@ -67,7 +80,7 @@ final class TestServer implements AutoCloseable {
   /** A client for this server, authenticated with the server's own service token. */
   ApiClient apiClient() {
     try {
-      String token = Files.readString(Path.of("etc/conf/token.txt")).trim();
+      String token = Files.readString(configurationFolder.resolve("token.txt")).trim();
       return createApiClient(new ServerConfig("http://localhost:" + port, token));
     } catch (IOException e) {
       throw new UncheckedIOException(e);

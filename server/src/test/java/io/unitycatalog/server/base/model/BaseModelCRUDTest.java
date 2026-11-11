@@ -17,6 +17,7 @@ import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME2;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.fail;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CreateCatalog;
@@ -37,6 +38,7 @@ import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.BeforeEach;
@@ -381,12 +383,17 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
 
   /**
    * Waits until the clock is past {@code timestamp}. The server stamps writes with the current
-   * millisecond, so two writes in the same millisecond would otherwise get equal timestamps.
+   * millisecond, so two writes in the same millisecond would otherwise get equal timestamps. Fails
+   * after 5 seconds, for a wall clock that stepped backwards.
    *
    * @param timestamp a timestamp in milliseconds since the epoch
    */
   private static void waitForClockToPass(long timestamp) {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
     while (System.currentTimeMillis() <= timestamp) {
+      if (System.nanoTime() > deadline) {
+        fail("The clock did not pass %d within 5 seconds", timestamp);
+      }
       Thread.onSpinWait();
     }
   }

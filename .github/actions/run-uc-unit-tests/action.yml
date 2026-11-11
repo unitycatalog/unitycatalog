@@ -86,15 +86,7 @@ runs:
 
     - name: Check that tests left etc/conf alone
       shell: bash
-      run: |
-        # A fresh checkout has only tracked files in etc/conf. A server built without its own
-        # configurationFolder writes its signing keys, certs.json and token.txt there.
-        written=$(git ls-files --others --ignored --exclude-standard -- ':(glob)etc/conf/**' ':(glob)**/etc/conf/**')
-        if [[ -n "$written" ]]; then
-          echo "::error::Tests wrote to etc/conf; give each test server its own configurationFolder:"
-          echo "$written"
-          exit 1
-        fi
+      run: bash project/scripts/check_etc_conf.sh
 
     - name: Run license check
       if: inputs.validation-mode == 'all-tests' && inputs.test-database == 'H2'
