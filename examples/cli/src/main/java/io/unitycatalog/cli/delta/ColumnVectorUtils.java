@@ -1,9 +1,13 @@
 package io.unitycatalog.cli.delta;
 
 import io.delta.kernel.data.ColumnVector;
+import io.delta.kernel.types.ByteType;
 import io.delta.kernel.types.DataType;
 import io.delta.kernel.types.DoubleType;
+import io.delta.kernel.types.FloatType;
 import io.delta.kernel.types.IntegerType;
+import io.delta.kernel.types.LongType;
+import io.delta.kernel.types.ShortType;
 import io.delta.kernel.types.StringType;
 import java.util.List;
 import java.util.function.Function;
@@ -59,6 +63,38 @@ public class ColumnVectorUtils {
           return (Integer) getter.apply(rowId);
         }
         return ColumnVector.super.getInt(rowId);
+      }
+
+      @Override
+      public byte getByte(int rowId) {
+        if (dataType == ByteType.BYTE) {
+          return (Byte) getter.apply(rowId);
+        }
+        return ColumnVector.super.getByte(rowId);
+      }
+
+      @Override
+      public short getShort(int rowId) {
+        if (dataType == ShortType.SHORT) {
+          return (Short) getter.apply(rowId);
+        }
+        return ColumnVector.super.getShort(rowId);
+      }
+
+      @Override
+      public long getLong(int rowId) {
+        if (dataType == LongType.LONG) {
+          return (Long) getter.apply(rowId);
+        }
+        return ColumnVector.super.getLong(rowId);
+      }
+
+      @Override
+      public float getFloat(int rowId) {
+        if (dataType == FloatType.FLOAT) {
+          return (Float) getter.apply(rowId);
+        }
+        return ColumnVector.super.getFloat(rowId);
       }
     };
   }

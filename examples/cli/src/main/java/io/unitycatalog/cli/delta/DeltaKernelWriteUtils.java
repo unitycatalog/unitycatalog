@@ -213,7 +213,7 @@ public class DeltaKernelWriteUtils {
         } else if (dataType == IntegerType.INTEGER) {
           values.add((T) (Integer) random.nextInt(1000)); // Random integer values
         } else if (dataType == ByteType.BYTE) {
-          values.add((T) (Byte) (byte) random.nextInt(1000)); // Random byte values
+          values.add((T) (Byte) (byte) random.nextInt(Byte.MAX_VALUE + 1)); // Random byte values
         } else if (dataType == LongType.LONG) {
           values.add((T) (Long) (long) random.nextInt(1000)); // Random long values
         } else if (dataType == FloatType.FLOAT) {

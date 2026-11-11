@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
+import io.delta.kernel.data.ColumnVector;
 import io.delta.kernel.types.DecimalType;
 import io.delta.kernel.types.StructType;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
@@ -102,7 +103,14 @@ public class CliUtilsTest {
   }
 
   @ParameterizedTest
-  @CsvSource({"price, 'DECIMAL(10,2)'", "flag, BOOLEAN", "day, DATE"})
+  @CsvSource({
+    "price, 'DECIMAL(10,2)'",
+    "flag, BOOLEAN",
+    "day, DATE",
+    "ts, TIMESTAMP",
+    "ts_ntz, TIMESTAMP_NTZ",
+    "payload, BINARY"
+  })
   public void testWriteRejectsUnsupportedColumnType(String column, String type) {
     StructType schema =
         DeltaKernelUtils.getSchema(CliUtils.parseColumns("id INT, " + column + " " + type));
@@ -113,6 +121,31 @@ public class CliUtilsTest {
                 + column
                 + " of type "
                 + schema.get(column).getDataType());
+  }
+
+  @Test
+  public void testWriteGeneratesValuesForSupportedColumnTypes() {
+    StructType schema =
+        DeltaKernelUtils.getSchema(
+            CliUtils.parseColumns(
+                "id INT, b BYTE, s SHORT, i INT, l LONG, f FLOAT, d DOUBLE, str STRING"));
+    int count = 100;
+    ColumnVector[] vectors = DeltaKernelWriteUtils.createVectorsFromSchema(schema, count, 10);
+    assertThat(vectors).hasSize(schema.length());
+    for (int col = 0; col < vectors.length; col++) {
+      assertThat(vectors[col].getDataType()).isEqualTo(schema.at(col).getDataType());
+      assertThat(vectors[col].getSize()).isEqualTo(count);
+    }
+    for (int row = 0; row < count; row++) {
+      assertThat(vectors[0].getInt(row)).isEqualTo(row + 11);
+      assertThat(vectors[1].getByte(row)).isBetween((byte) 0, (byte) 127);
+      assertThat(vectors[2].getShort(row)).isBetween((short) 0, (short) 999);
+      assertThat(vectors[3].getInt(row)).isBetween(0, 999);
+      assertThat(vectors[4].getLong(row)).isBetween(0L, 999L);
+      assertThat(vectors[5].getFloat(row)).isBetween(0f, 999f);
+      assertThat(vectors[6].getDouble(row)).isGreaterThanOrEqualTo(0).isLessThan(1000);
+      assertThat(vectors[7].getString(row)).matches("[A-Za-z]{10}");
+    }
   }
 
   @ParameterizedTest
