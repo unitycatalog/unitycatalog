@@ -149,8 +149,9 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
     if (RepositoryUtils.isViewLike(tableRepository.getTable(fullName).getTableType().getValue())) {
       validateOwnerTransfer(updateTable.getOwner());
     }
-    TableInfo result = tableRepository.updateTable(fullName, updateTable);
-    reloadAfterOwnerChange(updateTable.getOwner());
+    TableInfo result =
+        updateWithOwnerReload(
+            updateTable.getOwner(), () -> tableRepository.updateTable(fullName, updateTable));
     return HttpResponse.ofJson(result);
   }
 

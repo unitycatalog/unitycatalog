@@ -17,6 +17,7 @@ import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import lombok.SneakyThrows;
 
@@ -59,10 +60,26 @@ public abstract class AuthorizedService {
     }
   }
 
-  /** Updates the local policy cache only after the repository transaction has committed. */
-  protected void reloadAfterOwnerChange(String newOwner) {
-    if (newOwner != null) {
-      authorizer.reloadAuthorizations();
+  /** Reloads ownership policy even when session cleanup fails after a commit. */
+  protected <T> T updateWithOwnerReload(String newOwner, Supplier<T> update) {
+    if (newOwner == null) {
+      return update.get();
+    }
+    Throwable updateError = null;
+    try {
+      return update.get();
+    } catch (RuntimeException | Error e) {
+      updateError = e;
+      throw e;
+    } finally {
+      try {
+        authorizer.reloadAuthorizations();
+      } catch (RuntimeException | Error reloadError) {
+        if (updateError == null) {
+          throw reloadError;
+        }
+        updateError.addSuppressed(reloadError);
+      }
     }
   }
 

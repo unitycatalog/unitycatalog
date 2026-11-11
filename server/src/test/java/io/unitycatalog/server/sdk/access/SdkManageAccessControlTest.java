@@ -76,13 +76,18 @@ import io.unitycatalog.client.model.UpdateTable;
 import io.unitycatalog.client.model.UpdateVolumeRequestContent;
 import io.unitycatalog.client.model.VolumeOperation;
 import io.unitycatalog.client.model.VolumeType;
+import io.unitycatalog.server.UnityCatalogServer;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.IcebergRestClient;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
+import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import lombok.SneakyThrows;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.Schema;
@@ -110,6 +115,12 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
   private List<Target> targets;
 
   private record Target(SecurableType type, String name, String id, Privilege delegatedPrivilege) {}
+
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    serverProperties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "false");
+  }
 
   @Override
   protected FileOperations decorateFileOperations(FileOperations operations) {
@@ -368,26 +379,43 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
   @Test
   @SneakyThrows
   void metadataAndOwnerChangesPersistForEveryTarget() {
+    grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, CATALOG_NAME, Privileges.USE_CATALOG);
+    grantPermissions(PRINCIPAL_1, SecurableType.SCHEMA, SCHEMA_FULL_NAME, Privileges.USE_SCHEMA);
+    grantPermissions(PRINCIPAL_1, SecurableType.TABLE, TABLE_FULL_NAME, Privileges.SELECT);
+    grantPermissions(PRINCIPAL_1, SecurableType.FUNCTION, FUNCTION, Privileges.EXECUTE);
+    assertPermissionDenied(
+        () ->
+            new TablesApi(manager)
+                .updateTable(TABLE_FULL_NAME, new UpdateTable().owner(PRINCIPAL_1)));
+    assertPermissionDenied(
+        () ->
+            new FunctionsApi(manager)
+                .updateFunction(FUNCTION, new UpdateFunction().owner(PRINCIPAL_1)));
+
     for (Target target : targets.subList(2, targets.size())) {
       grantPermissions(PRINCIPAL_1, target.type(), target.name(), Privileges.MANAGE);
     }
-    grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, CATALOG_NAME, Privileges.USE_CATALOG);
-    grantPermissions(PRINCIPAL_1, SecurableType.SCHEMA, SCHEMA_FULL_NAME, Privileges.USE_SCHEMA);
     new TablesApi(manager).updateTable(TABLE_FULL_NAME, new UpdateTable().owner(PRINCIPAL_2));
+    assertOwnerGrants(targets.get(2), recipientId);
     new FunctionsApi(manager).updateFunction(FUNCTION, new UpdateFunction().owner(PRINCIPAL_1));
+    assertOwnerGrants(targets.get(3), managerId);
     new VolumesApi(manager)
         .updateVolume(
             VOLUME, new UpdateVolumeRequestContent().owner(PRINCIPAL_2).comment("managed volume"));
+    assertOwnerGrants(targets.get(4), recipientId);
     new RegisteredModelsApi(manager)
         .updateRegisteredModel(
             MODEL, new UpdateRegisteredModel().owner(PRINCIPAL_1).comment("managed model"));
+    assertOwnerGrants(targets.get(5), managerId);
     new ExternalLocationsApi(manager)
         .updateExternalLocation(
             LOCATION, new UpdateExternalLocation().owner(PRINCIPAL_2).comment("managed location"));
+    assertOwnerGrants(targets.get(6), recipientId);
     new CredentialsApi(manager)
         .updateCredential(
             CREDENTIAL,
             new UpdateCredentialRequest().owner(PRINCIPAL_2).comment("managed credential"));
+    assertOwnerGrants(targets.get(7), recipientId);
     grantPermissions(PRINCIPAL_1, SecurableType.SCHEMA, SCHEMA_FULL_NAME, Privileges.MANAGE);
     new SchemasApi(manager)
         .updateSchema(
@@ -396,6 +424,7 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
                 .owner(PRINCIPAL_2)
                 .comment("managed schema")
                 .properties(Map.of("team", "schema")));
+    assertOwnerGrants(targets.get(1), recipientId);
     grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, CATALOG_NAME, Privileges.MANAGE);
     new CatalogsApi(manager)
         .updateCatalog(
@@ -404,6 +433,7 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
                 .owner(PRINCIPAL_2)
                 .comment("managed catalog")
                 .properties(Map.of("team", "catalog")));
+    assertOwnerGrants(targets.get(0), recipientId);
 
     assertThat(new CatalogsApi(adminApiClient).getCatalog(CATALOG_NAME, false).getProperties())
         .containsEntry("team", "catalog");
@@ -1080,6 +1110,19 @@ public class SdkManageAccessControlTest extends SdkAccessControlBaseCRUDTest {
               .isEqualTo("fake_arn");
       default -> throw new IllegalArgumentException("Unsupported test target: " + type);
     }
+  }
+
+  @SneakyThrows
+  private void assertOwnerGrants(Target target, String ownerId) {
+    // The grant API omits OWNER. Read the server's cache without triggering a policy refresh.
+    Field authorizerField = UnityCatalogServer.class.getDeclaredField("authorizer");
+    authorizerField.setAccessible(true);
+    UnityCatalogAuthorizer authorizer =
+        (UnityCatalogAuthorizer) authorizerField.get(unityCatalogServer);
+    assertThat(authorizer.listAuthorizations(UUID.fromString(target.id())).entrySet())
+        .filteredOn(entry -> entry.getValue().contains(Privileges.OWNER))
+        .extracting(Map.Entry::getKey)
+        .containsExactly(UUID.fromString(ownerId));
   }
 
   private static List<Privilege> privilegesFor(PermissionsList permissions, String principal) {

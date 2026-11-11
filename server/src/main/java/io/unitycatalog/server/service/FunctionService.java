@@ -117,8 +117,10 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
   public HttpResponse updateFunction(
       @Param("name") @AuthorizeResourceKey(FUNCTION) String name, UpdateFunction updateFunction) {
     validateOwnerTransfer(updateFunction.getOwner());
-    FunctionInfo result = functionRepository.updateFunction(name, updateFunction);
-    reloadAfterOwnerChange(updateFunction.getOwner());
+    FunctionInfo result =
+        updateWithOwnerReload(
+            updateFunction.getOwner(),
+            () -> functionRepository.updateFunction(name, updateFunction));
     return HttpResponse.ofJson(result);
   }
 

@@ -129,8 +129,9 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
           @AuthorizeKey(key = "comment")
           @AuthorizeKey(key = "properties")
           UpdateCatalog updateCatalog) {
-    CatalogInfo result = catalogRepository.updateCatalog(name, updateCatalog);
-    reloadAfterOwnerChange(updateCatalog.getOwner());
+    CatalogInfo result =
+        updateWithOwnerReload(
+            updateCatalog.getOwner(), () -> catalogRepository.updateCatalog(name, updateCatalog));
     return HttpResponse.ofJson(result);
   }
 
