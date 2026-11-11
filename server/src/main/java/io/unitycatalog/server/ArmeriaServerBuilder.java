@@ -1,11 +1,9 @@
 package io.unitycatalog.server;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.linecorp.armeria.common.AggregatedHttpRequest;
@@ -43,6 +41,7 @@ import io.unitycatalog.server.service.UnityCatalogRestService;
 import io.unitycatalog.server.service.delta.DeltaApiMappers;
 import io.unitycatalog.server.service.delta.DeltaApiService;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
+import io.unitycatalog.server.utils.Scim2Utils;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.ParameterizedType;
 import java.util.List;
@@ -154,12 +153,7 @@ public class ArmeriaServerBuilder {
     this.authorizationEnabled = serverProperties.isAuthorizationEnabled();
     this.ucMapper =
         JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
-    this.scimResponseConverter =
-        new JacksonResponseConverterFunction(
-            JsonMapper.builder()
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-                .serializationInclusion(JsonInclude.Include.NON_NULL)
-                .build());
+    this.scimResponseConverter = new JacksonResponseConverterFunction(Scim2Utils.SCIM_MAPPER);
     this.icebergMapper = IcebergObjectMapper.mapper();
     this.icebergResponseConverter = new JacksonResponseConverterFunction(icebergMapper);
     this.deltaMapper = DeltaApiMappers.MAPPER;

@@ -12,6 +12,7 @@ import io.unitycatalog.control.model.UserResource;
 import io.unitycatalog.control.model.UserResourceList;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.service.Scim2UserService;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -22,7 +23,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import lombok.SneakyThrows;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -181,6 +188,48 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
               SCIM_USERS_PATH + "/" + c[1],
               Optional.ofNullable((String) c[2]));
       assertScimError(response.statusCode(), response.body(), (int) c[3], (String) c[4]);
+      assertThat(response.headers().firstValue("content-type").orElse(""))
+          .startsWith("application/scim+json");
+    }
+
+    HttpResponse<String> unauthenticated =
+        TestUtils.sendRaw(
+            new ServerConfig(adminConfig.getServerUrl(), ""),
+            "GET",
+            SCIM_USERS_PATH,
+            Optional.empty());
+    assertScimError(
+        unauthenticated.statusCode(), unauthenticated.body(), 401, "No authorization found.");
+  }
+
+  @Test
+  @SneakyThrows
+  public void testUnsupportedPatchIsNotLoggedAsServerError() {
+    List<String> errors = new CopyOnWriteArrayList<>();
+    Logger logger = (Logger) LogManager.getLogger(BaseExceptionHandler.class);
+    AbstractAppender appender =
+        new AbstractAppender(
+            "errors", null, null, true, new org.apache.logging.log4j.core.config.Property[0]) {
+          @Override
+          public void append(LogEvent event) {
+            if (event.getLevel().isMoreSpecificThan(Level.ERROR)) {
+              errors.add(event.getMessage().getFormattedMessage());
+            }
+          }
+        };
+    appender.start();
+    logger.addAppender(appender);
+    try {
+      HttpResponse<String> response =
+          TestUtils.sendRaw(
+              adminConfig,
+              "PATCH",
+              SCIM_USERS_PATH + "/" + otherUser.getId(),
+              Optional.of(ADD_PATH));
+      assertThat(response.statusCode()).isEqualTo(501);
+      assertThat(errors).as("a client-caused 501 is not logged as an error").isEmpty();
+    } finally {
+      logger.removeAppender(appender);
     }
   }
 
@@ -193,6 +242,7 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     assertThat(error.get("schemas").get(0).asText()).as(description).isEqualTo(SCIM_ERROR_SCHEMA);
     assertThat(error.get("status").asText()).as(description).isEqualTo(String.valueOf(status));
     assertThat(error.get("detail").asText()).as(description).contains(detail);
+    error.forEach(field -> assertThat(field.isNull()).as(description).isFalse());
   }
 
   private static void assertScimPermissionDenied(Executable request) throws Exception {
