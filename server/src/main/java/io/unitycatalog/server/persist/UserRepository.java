@@ -266,8 +266,19 @@ public class UserRepository {
           query.setParameter("issuer", link.issuer());
           query.setParameter("claim", link.claim());
           query.setParameter("value", link.value());
-          UserDAO userDAO = query.uniqueResult();
-          return userDAO == null ? null : userDAO.toUser();
+          // A MySQL database at its default collation compares case- and accent-insensitively, so
+          // the query can return a row for another identity; only an exact match is the link.
+          return query.list().stream()
+              .filter(
+                  userDAO ->
+                      link.equals(
+                          new UserLink(
+                              userDAO.getLinkIssuer(),
+                              userDAO.getLinkClaim(),
+                              userDAO.getLinkValue())))
+              .findFirst()
+              .map(UserDAO::toUser)
+              .orElse(null);
         },
         "Failed to get user by link",
         /* readOnly= */ true);
