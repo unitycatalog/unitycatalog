@@ -1,16 +1,21 @@
 package io.unitycatalog.server.service.credential.aws;
 
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
 import software.amazon.awssdk.services.sts.StsClient;
@@ -56,6 +61,7 @@ public interface AwsCredentialGenerator {
   }
 
   class StsAwsCredentialGenerator implements AwsCredentialGenerator {
+    private static final Logger LOGGER = LoggerFactory.getLogger(StsAwsCredentialGenerator.class);
     private final StsClient stsClient;
     // This is the role ARN to assume for the per-bucket config. Otherwise, the CredentialContext
     // contains a CredentialDAO and it will assume the role ARN in CredentialDAO instead.
@@ -115,7 +121,14 @@ public interface AwsCredentialGenerator {
               .durationSeconds((int) Duration.ofHours(1).toSeconds());
       externalId.ifPresent(roleRequestBuilder::externalId);
 
-      return stsClient.assumeRole(roleRequestBuilder.build()).credentials();
+      try {
+        return stsClient.assumeRole(roleRequestBuilder.build()).credentials();
+      } catch (SdkException e) {
+        // Details of the STS response stay in the server log; the caller gets a general message.
+        LOGGER.error("AssumeRole of {} failed", roleArn, e);
+        throw new BaseException(
+            ErrorCode.INTERNAL, "Failed to vend temporary storage credentials.");
+      }
     }
   }
 }
