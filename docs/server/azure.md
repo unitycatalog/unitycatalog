@@ -14,7 +14,8 @@ credential. Here's a quick overview:
 # Prerequisites
 
 * Unity Catalog server version \>= 0.8.0
-* Ownership of running Unity Catalog server instance
+* Ownership of running Unity Catalog server instance. A database created by an older release needs
+  `bin/start-uc-server --upgrade-schema` first (see [Upgrading the database schema](upgrades.md)).
 * Microsoft Entra ID permissions: create an app registration and a client secret
 * Azure storage account permissions: assign roles on the storage account
 * A storage account with a hierarchical namespace (ADLS Gen2)

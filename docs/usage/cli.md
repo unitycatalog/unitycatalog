@@ -19,43 +19,100 @@ The CLI tool allows users to interact with a Unity Catalog server to create and 
 
 You can use the Unity Catalog CLI to manage Credentials within your system. The `bin/uc` script
 supports various operations such as creating, retrieving, listing, updating and deleting
-Credentials.
-Before creating a Credential, make sure the server is properly configured to support Credentials.
-Please refer to [Deploy for AWS](../server/aws.md) for how to configure server for AWS. 
+Credentials. A Credential holds one cloud identity, which decides the storage URLs it can be used
+for: an AWS IAM role for `s3://`, an Azure service principal for `abfss://`, or a GCP service
+account key for `gs://`.
+Before creating a Credential, make sure the cloud identity has access to the storage. Please refer
+to [Deploy for AWS](../server/aws.md), [Deploy for Azure](../server/azure.md) or
+[Deploy for GCP](../server/gcp.md) for how to set it up.
 
 Let's take a look at each operation.
 
 ### Create a Credential
 
-Here's how to create a Credential to access AWS cloud storage (assuming the server is already 
-configured according to [Deploy for AWS](../server/aws.md)).
+Here's how to create a Credential for each cloud (assuming the cloud identity is already configured
+according to the deployment page of that cloud).
+
+=== "AWS S3"
+
+    ```sh
+    bin/uc credential create \
+      --name <name> # (1) \
+      --aws_iam_role_arn arn:aws:iam::987654321:role/UCDbRole-EXAMPLE # (2)
+    ```
+
+    1. `name`: The name of the Credential.
+    2. `aws_iam_role_arn`: The storage accessing IAM role ARN.
+
+    This will output:
+    ```console
+    ┌────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────┐
+    │        KEY         │                                          VALUE                                           │
+    ├────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
+    │NAME                │my_aws_cred                                                                               │
+    ├────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
+    │AWS_IAM_ROLE        │{"role_arn":"arn:aws:iam::987654321:role/UCDbRole-EXAMPLE","unity_catalog_iam_arn":"arn:aw│
+    │                    │s:iam::1234567:role/UCMasterRole-EXAMPLE","external_id":"1862cf4e-5e90-4f96-9125-8ea8928cc│
+    │                    │405"}                                                                                     │
+    ├────────────────────┼────────────────────────────────────────────────...
+    ```
+
+    In the `AWS_IAM_ROLE` of the response, the server notifies the user which master role should the
+    storage access role trust in `unity_catalog_iam_arn`, additionally with an `external_id` that the
+    trust relationship must check. Please refer to [Deploy for AWS](../server/aws.md) on how to properly
+    configure both roles to make it working.
+
+=== "Azure ADLS Gen2"
+
+    ```sh
+    bin/uc credential create \
+      --name <name> # (1) \
+      --azure_directory_id <directory_id> # (2) \
+      --azure_application_id <application_id> # (3) \
+      --azure_client_secret <client_secret> # (4)
+    ```
+
+    1. `name`: The name of the Credential.
+    2. `azure_directory_id`: The directory (tenant) ID of the service principal.
+    3. `azure_application_id`: The application (client) ID of the service principal.
+    4. `azure_client_secret`: The client secret of the service principal. The server stores it and
+       never returns it; `get` and `list` show the directory and application IDs only.
+
+    The three `azure_*` options must be given together. See [Deploy for Azure](../server/azure.md)
+    for the role the service principal needs on the storage account.
+
+=== "Google Cloud Storage"
+
+    ```sh
+    bin/uc credential create \
+      --name <name> # (1) \
+      --gcp_service_account_key_file /path/to/key.json # (2)
+    ```
+
+    1. `name`: The name of the Credential.
+    2. `gcp_service_account_key_file`: The JSON key file of the service account, as downloaded from
+       the GCP console. The server stores the private key and never returns it; `get` and `list` show
+       the service account email and the key ID only.
+
+    See [Deploy for GCP](../server/gcp.md) for the role the service account needs on the bucket.
+
+### Update a Credential
+
+Here's how to rotate the secret of a Credential, or rename it. The cloud identity given must be of
+the same cloud the Credential was created with.
 
 ```sh
-bin/uc credential create \
+bin/uc credential update \
   --name <name> # (1) \
-  --aws_iam_role_arn arn:aws:iam::987654321:role/UCDbRole-EXAMPLE # (2)
+  [--new_name <new_name>] # (2) \
+  [--comment <comment>] \
+  [--aws_iam_role_arn <arn> | --azure_directory_id ... --azure_application_id ... --azure_client_secret ... | --gcp_service_account_key_file <path>] # (3)
 ```
 
 1. `name`: The name of the Credential.
-2. `aws_iam_role_arn`: The storage accessing IAM role ARN.
-
-This will output:
-```console
-┌────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────┐
-│        KEY         │                                          VALUE                                           │
-├────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
-│NAME                │my_aws_cred                                                                               │
-├────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
-│AWS_IAM_ROLE        │{"role_arn":"arn:aws:iam::987654321:role/UCDbRole-EXAMPLE","unity_catalog_iam_arn":"arn:aw│
-│                    │s:iam::1234567:role/UCMasterRole-EXAMPLE","external_id":"1862cf4e-5e90-4f96-9125-8ea8928cc│
-│                    │405"}                                                                                     │
-├────────────────────┼────────────────────────────────────────────────...
-```
-
-In the `AWS_IAM_ROLE` of the response, the server notifies the user which master role should the 
-storage access role trust in `unity_catalog_iam_arn`, additionally with an `external_id` that the
-trust relationship must check. Please refer to [Deploy for AWS](../server/aws.md) on how to properly
-configure both roles to make it working.
+2. `new_name`: The new name of the Credential.
+3. The new cloud identity, with the same options as `create`. Updating an AWS IAM role generates a
+   new `external_id`.
 
 ### List Credentials
 

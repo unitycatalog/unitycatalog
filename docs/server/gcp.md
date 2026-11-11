@@ -14,7 +14,8 @@ Here's a quick overview:
 # Prerequisites
 
 * Unity Catalog server version \>= 0.8.0
-* Ownership of running Unity Catalog server instance
+* Ownership of running Unity Catalog server instance. A database created by an older release needs
+  `bin/start-uc-server --upgrade-schema` first (see [Upgrading the database schema](upgrades.md)).
 * GCP IAM permissions: create a service account and a key for it
 * GCS bucket permissions: grant roles on the bucket
 
