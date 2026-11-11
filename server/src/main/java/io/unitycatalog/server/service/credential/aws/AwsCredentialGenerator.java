@@ -8,8 +8,6 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
@@ -61,7 +59,6 @@ public interface AwsCredentialGenerator {
   }
 
   class StsAwsCredentialGenerator implements AwsCredentialGenerator {
-    private static final Logger LOGGER = LoggerFactory.getLogger(StsAwsCredentialGenerator.class);
     private final StsClient stsClient;
     // This is the role ARN to assume for the per-bucket config. Otherwise, the CredentialContext
     // contains a CredentialDAO and it will assume the role ARN in CredentialDAO instead.
@@ -124,10 +121,10 @@ public interface AwsCredentialGenerator {
       try {
         return stsClient.assumeRole(roleRequestBuilder.build()).credentials();
       } catch (SdkException e) {
-        // Details of the STS response stay in the server log; the caller gets a general message.
-        LOGGER.error("AssumeRole of {} failed", roleArn, e);
+        // The STS response is the cause, which the exception handler logs; the caller gets a
+        // general message.
         throw new BaseException(
-            ErrorCode.INTERNAL, "Failed to vend temporary storage credentials.");
+            ErrorCode.INTERNAL, "Failed to vend temporary storage credentials.", e);
       }
     }
   }

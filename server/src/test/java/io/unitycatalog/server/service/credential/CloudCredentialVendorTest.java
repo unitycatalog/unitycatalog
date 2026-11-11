@@ -45,6 +45,7 @@ import software.amazon.awssdk.services.sts.StsClientBuilder;
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
 import software.amazon.awssdk.services.sts.model.AssumeRoleResponse;
 import software.amazon.awssdk.services.sts.model.Credentials;
+import software.amazon.awssdk.services.sts.model.StsException;
 
 @ExtendWith(MockitoExtension.class)
 public class CloudCredentialVendorTest {
@@ -134,7 +135,8 @@ public class CloudCredentialVendorTest {
             () ->
                 vendCredential("s3://storageBase/abc", Set.of(CredentialContext.Privilege.SELECT)))
         .isInstanceOf(BaseException.class)
-        .hasMessage("Failed to vend temporary storage credentials.");
+        .hasMessage("Failed to vend temporary storage credentials.")
+        .hasCauseInstanceOf(StsException.class);
   }
 
   @Test

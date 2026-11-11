@@ -3,22 +3,33 @@ package io.unitycatalog.server.exception;
 import software.amazon.awssdk.core.exception.SdkException;
 
 /**
- * Failures of the server's own S3 requests. Their messages come from the storage system and name
- * its endpoint, so callers get a general error. The failure is kept as its cause, which the
- * exception handler logs with the response.
+ * Failures of the server's own AWS SDK calls, such as to S3 or STS. Their messages come from the
+ * storage or STS service and can name its endpoint, so callers get a general error. The failure is
+ * kept as the cause, for the caller to log. Azure and GCS failures are not covered.
  */
 public final class StorageExceptions {
+  /** The message callers get when the server's storage access fails. */
+  public static final String GENERAL_MESSAGE = "Failed to access storage.";
+
+  // Bounds the walk over causes, which a cycle would otherwise make endless.
+  private static final int MAX_CAUSE_DEPTH = 64;
+
   private StorageExceptions() {}
 
-  /** Whether {@code e} or any of its causes is an S3 SDK failure. */
+  /**
+   * Whether {@code e} or one of its causes is an AWS SDK failure. The walk stops at a {@link
+   * BaseException}, which already says what callers get.
+   */
   public static boolean isStorageFailure(Throwable e) {
-    for (Throwable current = e; current != null; current = current.getCause()) {
+    Throwable current = e;
+    for (int depth = 0; current != null && depth < MAX_CAUSE_DEPTH; depth++) {
       if (current instanceof SdkException) {
         return true;
       }
-      if (current.getCause() == current) {
-        break;
+      if (current instanceof BaseException) {
+        return false;
       }
+      current = current.getCause();
     }
     return false;
   }
@@ -30,6 +41,9 @@ public final class StorageExceptions {
    * @return an INTERNAL error that carries no storage detail in its message
    */
   public static BaseException toGeneralError(Throwable e) {
-    return new BaseException(ErrorCode.INTERNAL, "Failed to access storage.", e);
+    BaseException error = new BaseException(ErrorCode.INTERNAL, GENERAL_MESSAGE, e);
+    // As BaseExceptionHandler.wrapException does: error responses then show the cause's trace.
+    error.setStackTrace(new StackTraceElement[0]);
+    return error;
   }
 }
