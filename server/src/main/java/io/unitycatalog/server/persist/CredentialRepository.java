@@ -14,6 +14,7 @@ import io.unitycatalog.server.persist.dao.CredentialDAO.CredentialType;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.service.credential.gcp.ServiceAccountKeys;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
@@ -257,6 +258,7 @@ public class CredentialRepository {
       checkNotBlank(
           gcpServiceAccountKey.getPrivateKeyId(), "gcp_service_account_key.private_key_id");
       checkNotBlank(gcpServiceAccountKey.getPrivateKey(), "gcp_service_account_key.private_key");
+      ServiceAccountKeys.parse(gcpServiceAccountKey);
       types.add(CredentialType.GCP_SERVICE_ACCOUNT_KEY);
     }
     return types;

@@ -4,6 +4,7 @@ import static io.unitycatalog.server.utils.TestUtils.COMMENT;
 import static io.unitycatalog.server.utils.TestUtils.COMMENT2;
 import static io.unitycatalog.server.utils.TestUtils.TEST_AWS_MASTER_ROLE_ARN;
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
+import static io.unitycatalog.server.utils.TestUtils.generatePkcs8PrivateKeyPem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -43,6 +44,8 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
   protected static final String SERVICE_ACCOUNT_EMAIL = "uc@my-project.iam.gserviceaccount.com";
   protected static final String PRIVATE_KEY_ID = "0123456789abcdef0123456789abcdef01234567";
   private static final String NEW_PRIVATE_KEY_ID = "fedcba9876543210fedcba9876543210fedcba98";
+  private static final String PRIVATE_KEY_PEM = generatePkcs8PrivateKeyPem();
+  private static final String ROTATED_PRIVATE_KEY_PEM = generatePkcs8PrivateKeyPem();
   protected CredentialOperations credentialOperations;
   protected ExternalLocationOperations externalLocationOperations;
 
@@ -228,7 +231,7 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
             new CreateCredentialRequest()
                 .name(CREDENTIAL_NAME)
                 .purpose(CredentialPurpose.STORAGE)
-                .gcpServiceAccountKey(gcpServiceAccountKey("pkcs8-private-key")));
+                .gcpServiceAccountKey(gcpServiceAccountKey(PRIVATE_KEY_PEM)));
     assertThat(credentialInfo.getGcpServiceAccountKey())
         .isEqualTo(
             new GcpServiceAccountKeyResponse()
@@ -245,7 +248,7 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
             CREDENTIAL_NAME,
             new UpdateCredentialRequest()
                 .gcpServiceAccountKey(
-                    gcpServiceAccountKey("rotated-pkcs8-private-key")
+                    gcpServiceAccountKey(ROTATED_PRIVATE_KEY_PEM)
                         .privateKeyId(NEW_PRIVATE_KEY_ID)));
     assertThat(updatedCredentialInfo.getGcpServiceAccountKey())
         .isEqualTo(
@@ -293,9 +296,16 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
             credentialOperations.createCredential(
                 request
                     .azureServicePrincipal(null)
-                    .gcpServiceAccountKey(gcpServiceAccountKey("key").privateKeyId(" "))),
+                    .gcpServiceAccountKey(gcpServiceAccountKey(PRIVATE_KEY_PEM).privateKeyId(" "))),
         ErrorCode.INVALID_ARGUMENT,
         "gcp_service_account_key.private_key_id must not be empty");
+    // The key is parsed at create time, not when the credential is first vended.
+    assertApiException(
+        () ->
+            credentialOperations.createCredential(
+                request.gcpServiceAccountKey(gcpServiceAccountKey("not-a-pem-key"))),
+        ErrorCode.INVALID_ARGUMENT,
+        "gcp_service_account_key.private_key is not a PEM-encoded PKCS#8 private key");
     assertThatThrownBy(() -> credentialOperations.getCredential(CREDENTIAL_NAME))
         .isInstanceOf(ApiException.class);
   }
@@ -325,7 +335,7 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
                 CREDENTIAL_NAME,
                 new UpdateCredentialRequest()
                     .awsIamRole(new AwsIamRoleRequest().roleArn(NEW_ROLE_ARN))
-                    .gcpServiceAccountKey(gcpServiceAccountKey("key"))),
+                    .gcpServiceAccountKey(gcpServiceAccountKey(PRIVATE_KEY_PEM))),
         ErrorCode.INVALID_ARGUMENT,
         "At most one of aws_iam_role, azure_service_principal or gcp_service_account_key may be"
             + " set");

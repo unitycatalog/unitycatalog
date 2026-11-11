@@ -21,6 +21,7 @@ import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.AzureServicePrincipalRequest;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.observability.UcMetric;
 import io.unitycatalog.server.observability.UcMetricConstants;
@@ -65,6 +66,7 @@ public class CachingCloudCredentialVendorTest {
   private static final NormalizedURL LOC = NormalizedURL.from("s3://bucket/tableA");
   private static final NormalizedURL AZURE_LOC =
       NormalizedURL.from("abfss://container@account.dfs.core.windows.net/tableA");
+  private static final NormalizedURL GCP_LOC = NormalizedURL.from("gs://bucket/tableA");
   private static final long T0 = 1_000_000_000_000L;
   private static final long ONE_HOUR_MS = 3_600_000L;
 
@@ -180,6 +182,19 @@ public class CachingCloudCredentialVendorTest {
     return CredentialContext.create(AZURE_LOC, READ_ONLY, Optional.of(dao));
   }
 
+  /** A READ_ONLY context for {@link #GCP_LOC} with a GCP service account key credential. */
+  private static CredentialContext gcpCtx(String email, String privateKeyId) {
+    CredentialDAO dao = mock(CredentialDAO.class);
+    when(dao.getCredentialType()).thenReturn(CredentialDAO.CredentialType.GCP_SERVICE_ACCOUNT_KEY);
+    when(dao.getGcpServiceAccountKey())
+        .thenReturn(
+            new GcpServiceAccountKeyRequest()
+                .email(email)
+                .privateKeyId(privateKeyId)
+                .privateKey("key"));
+    return CredentialContext.create(GCP_LOC, READ_ONLY, Optional.of(dao));
+  }
+
   private static String accessKey(TemporaryCredentials credentials) {
     return credentials.getAwsTempCredentials().getAccessKeyId();
   }
@@ -210,6 +225,10 @@ public class CachingCloudCredentialVendorTest {
         Arguments.of("no external ID", original, ctx("arn:role/A", null, READ_ONLY)),
         Arguments.of("Azure application", azureCtx("dir-A", "app-A"), azureCtx("dir-A", "app-B")),
         Arguments.of("Azure directory", azureCtx("dir-A", "app-A"), azureCtx("dir-B", "app-A")),
+        Arguments.of(
+            "GCP service account", gcpCtx("sa-A@p.iam", "key-A"), gcpCtx("sa-B@p.iam", "key-A")),
+        Arguments.of(
+            "GCP private key", gcpCtx("sa-A@p.iam", "key-A"), gcpCtx("sa-A@p.iam", "key-B")),
         // A READ_ONLY credential must never serve a READ_WRITE request, nor the reverse.
         Arguments.of("privileges", original, ctx("arn:role/A", "external-A", READ_WRITE)),
         Arguments.of(

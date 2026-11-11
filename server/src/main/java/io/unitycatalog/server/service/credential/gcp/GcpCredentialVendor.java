@@ -11,6 +11,7 @@ import com.google.auth.oauth2.ServiceAccountCredentials;
 import com.google.common.base.CharMatcher;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -20,8 +21,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import org.apache.iceberg.Files;
 
+/**
+ * Vends downscoped OAuth tokens for GCS storage.
+ *
+ * <p>A path under an external location is vended with the location's storage credential: the server
+ * signs in with the credential's service account key. Any other path falls back to the legacy
+ * per-bucket {@code gcs.*} configuration in server.properties, whose generators are kept per
+ * bucket.
+ */
 public class GcpCredentialVendor {
 
   public static final List<String> INITIAL_SCOPES =
@@ -33,33 +43,45 @@ public class GcpCredentialVendor {
   private final Map<NormalizedURL, GcsStorageConfig> gcsConfigurations;
   private final Map<NormalizedURL, GcpCredentialGenerator> credentialGenerators =
       new ConcurrentHashMap<>();
+  private final Function<GcpServiceAccountKeyRequest, GcpCredentialGenerator>
+      serviceAccountKeyGenerators;
 
   public GcpCredentialVendor(ServerProperties serverProperties) {
     this.gcsConfigurations = serverProperties.getGcsConfigurations();
+    this.serviceAccountKeyGenerators =
+        key -> new ServiceAccountCredentialGenerator(() -> ServiceAccountKeys.parse(key));
+  }
+
+  /**
+   * Builds the generator for a storage credential's service account key with {@code
+   * serviceAccountKeyGenerators}; tests pass one that does not call GCP.
+   */
+  GcpCredentialVendor(
+      ServerProperties serverProperties,
+      Function<GcpServiceAccountKeyRequest, GcpCredentialGenerator> serviceAccountKeyGenerators) {
+    this.gcsConfigurations = serverProperties.getGcsConfigurations();
+    this.serviceAccountKeyGenerators = serviceAccountKeyGenerators;
   }
 
   public AccessToken vendGcpCredential(CredentialContext credentialContext) {
-    credentialContext
-        .getCredentialDAO()
-        .ifPresent(
-            c -> {
-              throw new BaseException(
-                  ErrorCode.UNIMPLEMENTED,
-                  "Storage credential/external location for GCP is not supported yet.");
-            });
+    GcpCredentialGenerator generator =
+        credentialContext
+            .getCredentialDAO()
+            .map(
+                credential ->
+                    serviceAccountKeyGenerators.apply(credential.getGcpServiceAccountKey()))
+            .orElseGet(() -> perBucketGenerator(credentialContext.getStorageBase()));
+    return generator.generate(credentialContext);
+  }
 
-    NormalizedURL storageBase = credentialContext.getStorageBase();
+  private GcpCredentialGenerator perBucketGenerator(NormalizedURL storageBase) {
     GcsStorageConfig storageConfig = gcsConfigurations.get(storageBase);
-
     if (storageConfig == null) {
       throw new BaseException(
           ErrorCode.FAILED_PRECONDITION,
           format("Unknown GCS storage configuration for %s.", storageBase));
     }
-
-    GcpCredentialGenerator generator =
-        credentialGenerators.computeIfAbsent(storageBase, key -> createGenerator(storageConfig));
-    return generator.generate(credentialContext);
+    return credentialGenerators.computeIfAbsent(storageBase, key -> createGenerator(storageConfig));
   }
 
   private GcpCredentialGenerator createGenerator(GcsStorageConfig storageConfig) {
@@ -82,11 +104,11 @@ public class GcpCredentialVendor {
     }
 
     String jsonKeyFilePath = storageConfig.getJsonKeyFilePath();
-    if (jsonKeyFilePath != null && jsonKeyFilePath.isEmpty()) {
-      jsonKeyFilePath = null;
+    if (jsonKeyFilePath == null || jsonKeyFilePath.isEmpty()) {
+      return new ServiceAccountCredentialGenerator(GoogleCredentials::getApplicationDefault);
     }
-
-    return new ServiceAccountCredentialGenerator(jsonKeyFilePath);
+    return new ServiceAccountCredentialGenerator(
+        () -> ServiceAccountCredentials.fromStream(Files.localInput(jsonKeyFilePath).newStream()));
   }
 
   /**
@@ -224,23 +246,22 @@ public class GcpCredentialVendor {
     return List.of();
   }
 
-  private final class ServiceAccountCredentialGenerator implements GcpCredentialGenerator {
-    private final String jsonKeyFilePath;
+  /** Where a generator gets the credentials it downscopes: a key file, ADC, or a stored key. */
+  private interface CredentialsSource {
+    GoogleCredentials load() throws IOException;
+  }
 
-    private ServiceAccountCredentialGenerator(String jsonKeyFilePath) {
-      this.jsonKeyFilePath = jsonKeyFilePath;
+  private final class ServiceAccountCredentialGenerator implements GcpCredentialGenerator {
+    private final CredentialsSource source;
+
+    private ServiceAccountCredentialGenerator(CredentialsSource source) {
+      this.source = source;
     }
 
     @Override
     public AccessToken generate(CredentialContext context) {
       try {
-        GoogleCredentials creds;
-        if (jsonKeyFilePath != null && !jsonKeyFilePath.isEmpty()) {
-          creds =
-              ServiceAccountCredentials.fromStream(Files.localInput(jsonKeyFilePath).newStream());
-        } else {
-          creds = GoogleCredentials.getApplicationDefault();
-        }
+        GoogleCredentials creds = source.load();
         return downscopeGcpCreds(creds.createScoped(INITIAL_SCOPES), context).refreshAccessToken();
       } catch (IOException e) {
         throw credentialError(e);

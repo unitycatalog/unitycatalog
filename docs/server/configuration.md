@@ -192,6 +192,9 @@ For Azure storage credentials, the binding is the service principal's directory 
 Updating only the client secret keeps the binding, so cached SAS tokens stay in use; they were signed
 with a user delegation key and do not depend on the secret.
 
+For GCP storage credentials, the binding is the service account email and the private key ID, so
+rotating to a new key changes the binding.
+
 The cache is controlled by these keys:
 
 | Property | Default | Description |

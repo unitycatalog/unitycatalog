@@ -245,4 +245,10 @@ public class CredentialDAO extends IdentifiableDAO {
     return parseCredential(
         CredentialType.AZURE_SERVICE_PRINCIPAL, AzureServicePrincipalRequest.class);
   }
+
+  /** The stored service account key, including its private key, for signing in to GCP. */
+  public GcpServiceAccountKeyRequest getGcpServiceAccountKey() {
+    return parseCredential(
+        CredentialType.GCP_SERVICE_ACCOUNT_KEY, GcpServiceAccountKeyRequest.class);
+  }
 }

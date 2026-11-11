@@ -4,10 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Expiry;
-import io.unitycatalog.server.exception.BaseException;
-import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.AzureServicePrincipalRequest;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.observability.StorageCredentialCacheMetrics;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
@@ -140,6 +139,7 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
    *   <li>AWS IAM role: the role ARN, qualified by the external ID.
    *   <li>Azure service principal: the application ID, qualified by the directory ID. A rotated
    *       client secret keeps the binding; SAS tokens already issued do not depend on it.
+   *   <li>GCP service account key: the service account email, qualified by the private key ID.
    * </ul>
    */
   private record Key(
@@ -183,10 +183,15 @@ public class CachingCloudCredentialVendor extends CloudCredentialVendor {
               servicePrincipal.getApplicationId(),
               servicePrincipal.getDirectoryId());
         }
-        case GCP_SERVICE_ACCOUNT_KEY ->
-            throw new BaseException(
-                ErrorCode.UNIMPLEMENTED,
-                "Storage credential/external location for GCP is not supported yet.");
+        case GCP_SERVICE_ACCOUNT_KEY -> {
+          GcpServiceAccountKeyRequest key = credential.getGcpServiceAccountKey();
+          yield new Key(
+              context.getLocations(),
+              context.getPrivileges(),
+              type,
+              key.getEmail(),
+              key.getPrivateKeyId());
+        }
       };
     }
   }

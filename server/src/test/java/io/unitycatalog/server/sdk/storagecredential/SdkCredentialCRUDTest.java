@@ -1,5 +1,6 @@
 package io.unitycatalog.server.sdk.storagecredential;
 
+import static io.unitycatalog.server.utils.TestUtils.generatePkcs8PrivateKeyPem;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.model.CreateCredentialRequest;
@@ -39,17 +40,18 @@ public class SdkCredentialCRUDTest extends BaseCredentialCRUDTest {
    */
   @Test
   public void testGetAndListNeverReturnSecrets() throws Exception {
-    String secret = "secret-" + UUID.randomUUID();
+    String clientSecret = "secret-" + UUID.randomUUID();
+    String privateKeyPem = generatePkcs8PrivateKeyPem();
     credentialOperations.createCredential(
         new CreateCredentialRequest()
             .name("uc_azure_raw")
             .purpose(CredentialPurpose.STORAGE)
-            .azureServicePrincipal(azureServicePrincipal(secret)));
+            .azureServicePrincipal(azureServicePrincipal(clientSecret)));
     credentialOperations.createCredential(
         new CreateCredentialRequest()
             .name("uc_gcp_raw")
             .purpose(CredentialPurpose.STORAGE)
-            .gcpServiceAccountKey(gcpServiceAccountKey(secret)));
+            .gcpServiceAccountKey(gcpServiceAccountKey(privateKeyPem)));
 
     String credentials = "/api/2.1/unity-catalog/credentials";
     // The identities are returned, so the secrets' absence below is not an empty response.
@@ -59,9 +61,10 @@ public class SdkCredentialCRUDTest extends BaseCredentialCRUDTest {
         List.of(credentials, credentials + "/uc_azure_raw", credentials + "/uc_gcp_raw")) {
       HttpResponse<String> response = TestUtils.sendRawGet(serverConfig, path);
       assertThat(response.statusCode()).as(path).isEqualTo(200);
+      // "PRIVATE KEY" is the PEM header; private_key_id is expected, "private_key" alone is not.
       assertThat(response.body())
           .as(path)
-          .doesNotContain(secret, "client_secret", "\"private_key\"");
+          .doesNotContain(clientSecret, "client_secret", "PRIVATE KEY", "\"private_key\"");
     }
   }
 }

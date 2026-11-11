@@ -39,6 +39,7 @@ nav:
       - Deploy with Helm: server/helm.md
       - Deploy for AWS: server/aws.md
       - Deploy for Azure: server/azure.md
+      - Deploy for GCP: server/gcp.md
       - Upgrades: server/upgrades.md
       - Observability: server/observability.md
   - Integrations:
