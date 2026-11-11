@@ -274,6 +274,11 @@ public class Scim2GroupService implements ScimService {
       String value = equal.getComparisonValue().asText();
       return Optional.of(group -> withoutMember(group, value));
     }
+    // The SCIM library reads a value that is not an array as no members: a replace would empty
+    // the group.
+    if (operation.getOpType() != PatchOpType.REMOVE && !operation.getJsonNode().isArray()) {
+      throw new BadRequestException("members needs an array value.");
+    }
     return switch (operation.getOpType()) {
       case ADD -> {
         Set<UUID> added = memberIds(operation.getValues(Member.class));
