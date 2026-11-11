@@ -647,6 +647,11 @@ Save the returned token in an environment variable for later
 export token='exJ...N8zt$w'
 ```
 
+!!! note
+    A server in `external` authentication mode has no token exchange. There, `bin/uc auth login` prints the identity
+    provider's own access token, which the server accepts directly. `bin/uc auth login --identity_token` fails in that
+    mode, because a pasted identity token has no access token to use; pass the access token as `--auth_token` instead.
+
 ### Try to list catalogs with your user account
 
 Note, that while we have authenticated (with Google Identity) your account with an authorized user in the local

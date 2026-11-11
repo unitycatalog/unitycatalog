@@ -47,6 +47,8 @@ public class Oauth2CliExchange {
 
   Properties serverProperties = new Properties();
 
+  private String accessToken;
+
   public Oauth2CliExchange() throws IOException {
     // TODO: Probably should retrieve this from the server or do exchange server side
     try (InputStream input = Files.newInputStream(Paths.get("etc/conf/server.properties"))) {
@@ -62,6 +64,11 @@ public class Oauth2CliExchange {
   public static String clientSecret(Map<String, String> env, Properties fileProperties) {
     String secret = env.getOrDefault("UC_SERVER_CLIENT_SECRET", "").replaceAll("[\\r\\n]+$", "");
     return secret.isEmpty() ? fileProperties.getProperty("server.client-secret") : secret;
+  }
+
+  /** The identity provider's access token from the last {@link #authenticate()}, or null. */
+  public String accessToken() {
+    return accessToken;
   }
 
   // TODO: Some of this should probably be done server side.
@@ -176,6 +183,7 @@ public class Oauth2CliExchange {
       Map<String, String> tokenResponseParams =
           mapper.readValue(tokenResponse, new TypeReference<>() {});
       urlConnection.disconnect();
+      accessToken = tokenResponseParams.get("access_token");
       return tokenResponseParams.get("id_token");
     } else {
       String errorResponse;

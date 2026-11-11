@@ -7,11 +7,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.sun.net.httpserver.HttpServer;
+import io.unitycatalog.cli.AuthCli;
 import io.unitycatalog.cli.utils.Oauth2CliExchange;
+import io.unitycatalog.client.ApiClient;
+import io.unitycatalog.client.ApiException;
+import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
@@ -24,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 public class CliAuthCrudTest extends BaseAuthCRUDTest {
@@ -89,6 +97,149 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     List<String> argsList = List.of("auth", "login", "--identity_token", token);
     assertThatThrownBy(() -> executeCliCommand(serverConfig, argsList))
         .isInstanceOf(RuntimeException.class);
+  }
+
+  private static final String IDP_ACCESS_TOKEN = "idp-access-token";
+
+  /** The body UC sends for an error (GlobalExceptionHandler). */
+  private static String ucError(String errorCode) {
+    return "{\"error_code\":\"" + errorCode + "\",\"message\":\"Token exchange is disabled\"}";
+  }
+
+  /**
+   * Starts a server whose {@code /auth/tokens} answers with the given status and body, and passes
+   * the request body it received to {@code received}.
+   */
+  private HttpServer startTokenEndpoint(int status, String body, AtomicReference<String> received)
+      throws IOException {
+    HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+    server.createContext(
+        "/api/1.0/unity-control/auth/tokens",
+        exchange -> {
+          received.set(
+              new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+          byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+          exchange.sendResponseHeaders(status, bytes.length);
+          exchange.getResponseBody().write(bytes);
+          exchange.close();
+        });
+    server.start();
+    return server;
+  }
+
+  private static ApiClient clientFor(HttpServer server) {
+    ApiClient apiClient = new ApiClient();
+    apiClient.setScheme("http");
+    apiClient.setHost("localhost");
+    apiClient.setPort(server.getAddress().getPort());
+    apiClient.setBasePath("/api/1.0/unity-control");
+    return apiClient;
+  }
+
+  // In external mode the server answers the exchange with 501 UNIMPLEMENTED (token exchange is
+  // off), so the CLI keeps the identity provider's access token.
+  // TODO(PR external mode): once this branch is rebased on it, add a test against a real server in
+  // external mode: `auth login --identity_token` fails with the 501 and the hint.
+  @Test
+  public void testAuthLoginKeepsTheIdpAccessTokenWhenTheExchangeIsUnimplemented() throws Exception {
+    AtomicReference<String> received = new AtomicReference<>();
+    HttpServer server = startTokenEndpoint(501, ucError("UNIMPLEMENTED"), received);
+    try {
+      assertThat(
+              AuthCli.exchangeForAccessToken(clientFor(server), "the-id-token", IDP_ACCESS_TOKEN))
+          .isEqualTo(IDP_ACCESS_TOKEN);
+      // The CLI tried the exchange with the identity token first.
+      assertThat(received.get()).contains("the-id-token");
+    } finally {
+      server.stop(0);
+    }
+  }
+
+  // Only a 501 whose UC error body says UNIMPLEMENTED switches to the access token. Anything else
+  // (a proxy's 501, another error, another status) is an error.
+  @Test
+  public void testAuthLoginKeepsTheIdpAccessTokenOnlyForAnUnimplementedError() throws Exception {
+    record Reply(int status, String body) {}
+    for (Reply reply :
+        List.of(
+            new Reply(501, "Not Implemented"),
+            new Reply(501, "<html>501 Not Implemented</html>"),
+            new Reply(501, "{\"message\":\"Token exchange is disabled\"}"),
+            new Reply(501, ucError("INTERNAL")),
+            new Reply(500, ucError("UNIMPLEMENTED")),
+            new Reply(400, ucError("INVALID_ARGUMENT")))) {
+      HttpServer server = startTokenEndpoint(reply.status(), reply.body(), new AtomicReference<>());
+      try {
+        assertThatThrownBy(
+                () ->
+                    AuthCli.exchangeForAccessToken(
+                        clientFor(server), "the-id-token", IDP_ACCESS_TOKEN))
+            .as("%s", reply)
+            .isInstanceOf(ApiException.class)
+            .hasMessageContaining("Error authenticating - " + reply.body());
+      } finally {
+        server.stop(0);
+      }
+    }
+  }
+
+  // A pasted identity token has no access token to fall back to, so the 501 is reported.
+  @Test
+  public void testAuthLoginWithAnIdentityTokenReportsTheUnimplementedExchange() throws Exception {
+    HttpServer server = startTokenEndpoint(501, ucError("UNIMPLEMENTED"), new AtomicReference<>());
+    try {
+      assertThatThrownBy(
+              () -> AuthCli.exchangeForAccessToken(clientFor(server), "the-id-token", null))
+          .isInstanceOf(ApiException.class)
+          .hasMessageContaining("Token exchange is disabled")
+          .hasMessageContaining("use the identity provider's access token as --auth_token");
+
+      ServerConfig config =
+          new ServerConfig("http://localhost:" + server.getAddress().getPort(), "");
+      assertThatThrownBy(
+              () ->
+                  executeCliCommand(
+                      config, List.of("auth", "login", "--identity_token", "the-id-token")))
+          .isInstanceOf(RuntimeException.class)
+          .hasRootCauseMessage(
+              "Error authenticating - token exchange is disabled on this server; use the identity"
+                  + " provider's access token as --auth_token - "
+                  + ucError("UNIMPLEMENTED"));
+    } finally {
+      server.stop(0);
+    }
+  }
+
+  // Internal mode: the exchange works, and the CLI returns the UC token, never the access token
+  // the identity provider issued.
+  @Test
+  public void testAuthLoginInInternalModeReturnsTheExchangedToken() throws Exception {
+    serverConfig.setAuthToken(securityContext.createServiceToken());
+    executeCliCommand(
+        serverConfig,
+        List.of("user", "create", "--email", ENABLED_USER_EMAIL, "--name", "Test User"));
+    serverConfig.setAuthToken("");
+    String identityToken =
+        createIdentityToken(
+            ENABLED_USER_EMAIL, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
+    ApiClient apiClient = new ApiClient();
+    apiClient.setScheme("http");
+    apiClient.setHost("localhost");
+    apiClient.setPort(Integer.parseInt(serverConfig.getServerUrl().replaceAll(".*:", "")));
+    apiClient.setBasePath("/api/1.0/unity-control");
+
+    String accessToken = AuthCli.exchangeForAccessToken(apiClient, identityToken, IDP_ACCESS_TOKEN);
+
+    assertThat(accessToken).isNotEqualTo(IDP_ACCESS_TOKEN);
+    assertThat(JWT.decode(accessToken).getIssuer()).isEqualTo(securityContext.getLocalIssuer());
+    // A failed exchange (wrong audience) is still an error, not a fallback to the access token.
+    String wrongAudience =
+        createIdentityToken(
+            ENABLED_USER_EMAIL, testIssuer, "wrong-audience", testIssuerAlgorithm, testIssuerKeyId);
+    assertThatThrownBy(
+            () -> AuthCli.exchangeForAccessToken(apiClient, wrongAudience, IDP_ACCESS_TOKEN))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("Error authenticating - ");
   }
 
   // bin/uc auth login without --identity_token reads the client secret for its OAuth flow.
