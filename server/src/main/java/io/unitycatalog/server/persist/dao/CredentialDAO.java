@@ -6,11 +6,16 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsIamRoleRequest;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
+import io.unitycatalog.server.model.AzureServicePrincipalRequest;
+import io.unitycatalog.server.model.AzureServicePrincipalResponse;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.CredentialPurpose;
+import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
+import io.unitycatalog.server.model.GcpServiceAccountKeyResponse;
 import io.unitycatalog.server.service.CredentialService;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
+import io.unitycatalog.server.utils.UriScheme;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -19,6 +24,7 @@ import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import java.util.Date;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -32,6 +38,10 @@ import lombok.experimental.SuperBuilder;
  * Data Access Object for storing cloud provider credentials in Unity Catalog. The credential
  * payload is stored as a JSON blob in the {@code credential} column, with the {@code
  * credentialType} discriminator indicating how to deserialize it.
+ *
+ * <p>The blob holds what the server needs to vend credentials, including the Azure client secret
+ * and the GCP private key. {@link #toCredentialInfo} leaves those out, so they never reach an API
+ * response.
  *
  * @see CredentialService
  * @see AwsCredentialVendor
@@ -48,9 +58,33 @@ import lombok.experimental.SuperBuilder;
 public class CredentialDAO extends IdentifiableDAO {
   private static ObjectMapper objectMapper = new ObjectMapper();
 
+  /** The cloud identity a credential holds, and the storage URL schemes that identity can reach. */
   public enum CredentialType {
-    AWS_IAM_ROLE,
-    // Add other types as necessary
+    AWS_IAM_ROLE("aws_iam_role", Set.of(UriScheme.S3)),
+    AZURE_SERVICE_PRINCIPAL("azure_service_principal", Set.of(UriScheme.ABFS, UriScheme.ABFSS)),
+    GCP_SERVICE_ACCOUNT_KEY("gcp_service_account_key", Set.of(UriScheme.GS));
+
+    /** The request field that carries this type, as named in the API. */
+    private final String apiField;
+
+    private final Set<UriScheme> schemes;
+
+    CredentialType(String apiField, Set<UriScheme> schemes) {
+      this.apiField = apiField;
+      this.schemes = schemes;
+    }
+
+    public String getApiField() {
+      return apiField;
+    }
+
+    /**
+     * Whether this credential can vend access to a location with the given scheme. Local {@code
+     * file:} locations need no cloud credential, so any type is accepted for them.
+     */
+    public boolean supports(UriScheme scheme) {
+      return scheme == UriScheme.FILE || scheme == UriScheme.NULL || schemes.contains(scheme);
+    }
   }
 
   @Column(name = "credential_type", nullable = false)
@@ -87,6 +121,10 @@ public class CredentialDAO extends IdentifiableDAO {
   @Column(name = "updated_by")
   private String updatedBy;
 
+  /**
+   * Builds a DAO for a create request that carries exactly one cloud identity; the caller validates
+   * that before calling.
+   */
   public static CredentialDAO from(CreateCredentialRequest createRequest, String callerId) {
     Date now = new Date();
     CredentialDAO dao =
@@ -103,6 +141,10 @@ public class CredentialDAO extends IdentifiableDAO {
             .build();
     if (createRequest.getAwsIamRole() != null) {
       dao.setAwsIamRole(createRequest.getAwsIamRole());
+    } else if (createRequest.getAzureServicePrincipal() != null) {
+      dao.setAzureServicePrincipal(createRequest.getAzureServicePrincipal());
+    } else if (createRequest.getGcpServiceAccountKey() != null) {
+      dao.setGcpServiceAccountKey(createRequest.getGcpServiceAccountKey());
     } else {
       throw new IllegalArgumentException("Unknown credential type");
     }
@@ -122,14 +164,26 @@ public class CredentialDAO extends IdentifiableDAO {
             .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
             .updatedBy(updatedBy);
     switch (credentialType) {
-      case AWS_IAM_ROLE:
+      case AWS_IAM_ROLE -> {
         AwsIamRoleResponse awsIamRole = parseCredential(AwsIamRoleResponse.class);
         masterAwsIamRoleArn.ifPresent(awsIamRole::setUnityCatalogIamArn);
         credentialInfo.setAwsIamRole(awsIamRole);
-        break;
-      // TODO: support Azure and GCP.
-      default:
-        throw new IllegalArgumentException("Unknown credential type: " + credentialType);
+      }
+      case AZURE_SERVICE_PRINCIPAL -> {
+        AzureServicePrincipalRequest servicePrincipal =
+            parseCredential(AzureServicePrincipalRequest.class);
+        credentialInfo.setAzureServicePrincipal(
+            new AzureServicePrincipalResponse()
+                .directoryId(servicePrincipal.getDirectoryId())
+                .applicationId(servicePrincipal.getApplicationId()));
+      }
+      case GCP_SERVICE_ACCOUNT_KEY -> {
+        GcpServiceAccountKeyRequest key = parseCredential(GcpServiceAccountKeyRequest.class);
+        credentialInfo.setGcpServiceAccountKey(
+            new GcpServiceAccountKeyResponse()
+                .email(key.getEmail())
+                .privateKeyId(key.getPrivateKeyId()));
+      }
     }
     return credentialInfo;
   }
@@ -157,6 +211,14 @@ public class CredentialDAO extends IdentifiableDAO {
     setCredential(CredentialType.AWS_IAM_ROLE, fromAwsIamRoleRequest(awsIamRole));
   }
 
+  public void setAzureServicePrincipal(AzureServicePrincipalRequest servicePrincipal) {
+    setCredential(CredentialType.AZURE_SERVICE_PRINCIPAL, servicePrincipal);
+  }
+
+  public void setGcpServiceAccountKey(GcpServiceAccountKeyRequest key) {
+    setCredential(CredentialType.GCP_SERVICE_ACCOUNT_KEY, key);
+  }
+
   private <T> void setCredential(CredentialType type, T inputCredential) {
     credentialType = type;
     try {
@@ -164,7 +226,7 @@ public class CredentialDAO extends IdentifiableDAO {
       // TODO: encrypt the credential
     } catch (JsonProcessingException e) {
       throw new IllegalArgumentException(
-          "Failed to parse credential of " + credential.getClass().getSimpleName(), e);
+          "Failed to parse credential of " + inputCredential.getClass().getSimpleName(), e);
     }
   }
 

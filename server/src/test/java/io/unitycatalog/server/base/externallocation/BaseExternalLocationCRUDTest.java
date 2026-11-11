@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
+import io.unitycatalog.client.model.AzureServicePrincipalRequest;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCatalog;
@@ -202,6 +203,83 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     assertThat(updatedExternalLocationInfo2.getCredentialId())
         .isEqualTo(anotherCredentialInfo.getId());
     assertThat(updatedExternalLocationInfo2.getCredentialName()).isEqualTo(ANOTHER_CREDENTIAL_NAME);
+  }
+
+  @Test
+  public void testExternalLocationCredentialMustMatchUrlCloud() throws ApiException {
+    String azureCredentialName = CREDENTIAL_NAME + "_azure";
+    credentialOperations.createCredential(
+        new CreateCredentialRequest()
+            .name(azureCredentialName)
+            .purpose(CredentialPurpose.STORAGE)
+            .azureServicePrincipal(
+                new AzureServicePrincipalRequest()
+                    .directoryId("11111111-1111-1111-1111-111111111111")
+                    .applicationId("22222222-2222-2222-2222-222222222222")
+                    .clientSecret("secret")));
+    String adlsUrl = "abfss://container@account.dfs.core.windows.net/path";
+    String s3Url = "s3://bucket/path";
+
+    // A credential only reaches URLs of its own cloud.
+    assertApiException(
+        () ->
+            externalLocationOperations.createExternalLocation(
+                new CreateExternalLocation()
+                    .name(EXTERNAL_LOCATION_NAME)
+                    .url(adlsUrl)
+                    .credentialName(CREDENTIAL_NAME)),
+        ErrorCode.INVALID_ARGUMENT,
+        "Credential '" + CREDENTIAL_NAME + "' holds aws_iam_role, which cannot access " + adlsUrl);
+    for (String otherCloudUrl : List.of(s3Url, "gs://bucket/path")) {
+      assertApiException(
+          () ->
+              externalLocationOperations.createExternalLocation(
+                  new CreateExternalLocation()
+                      .name(EXTERNAL_LOCATION_NAME)
+                      .url(otherCloudUrl)
+                      .credentialName(azureCredentialName)),
+          ErrorCode.INVALID_ARGUMENT,
+          "Credential '"
+              + azureCredentialName
+              + "' holds azure_service_principal, which cannot access "
+              + otherCloudUrl);
+    }
+    ExternalLocationInfo externalLocationInfo =
+        externalLocationOperations.createExternalLocation(
+            new CreateExternalLocation()
+                .name(EXTERNAL_LOCATION_NAME)
+                .url(adlsUrl)
+                .credentialName(azureCredentialName));
+    externalLocationsToDelete.add(EXTERNAL_LOCATION_NAME);
+    assertThat(externalLocationInfo.getCredentialName()).isEqualTo(azureCredentialName);
+
+    // Neither the URL nor the credential can move to another cloud on update.
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(s3Url)),
+        ErrorCode.INVALID_ARGUMENT,
+        "holds azure_service_principal, which cannot access " + s3Url);
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                EXTERNAL_LOCATION_NAME,
+                new UpdateExternalLocation().credentialName(CREDENTIAL_NAME)),
+        ErrorCode.INVALID_ARGUMENT,
+        "holds aws_iam_role, which cannot access " + adlsUrl);
+    assertThat(externalLocationOperations.getExternalLocation(EXTERNAL_LOCATION_NAME))
+        .isEqualTo(externalLocationInfo);
+
+    // A local file URL needs no cloud credential, so any credential is accepted for it.
+    assertThat(
+            externalLocationOperations
+                .updateExternalLocation(
+                    EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(testUrl()))
+                .getUrl())
+        .isEqualTo(testUrl());
+
+    delete(EXTERNAL_LOCATION_NAME, Optional.empty());
+    credentialOperations.deleteCredential(azureCredentialName, Optional.empty());
   }
 
   @Test
