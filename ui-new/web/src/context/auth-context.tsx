@@ -72,16 +72,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         await loginMutation.mutateAsync(idToken);
       } catch (e) {
-        // TODO(PR external mode): this follows the external-mode server's agreed
-        // reply (501 with error_code UNIMPLEMENTED). When that PR lands, run
-        // this sign-in against a server in external mode and make sure the reply
-        // and a call to /scim2/Me with the Okta access token look as assumed here.
+        // TODO(PR external mode): when that PR lands, check against a server in
+        // external mode that /scim2/Me accepts the Okta access token as the bearer.
         if (!(e instanceof TokenExchangeError && e.isDisabledByServer())) throw e;
         signInWithAccessToken(accessToken);
         markOktaToken(true);
       }
+      // Resolve only once /scim2/Me has answered, so the caller can go to a page behind the auth gate.
+      await queryClient.refetchQueries({ queryKey: CURRENT_USER_QUERY_KEY });
     },
-    [loginMutation, signInWithAccessToken],
+    [loginMutation, signInWithAccessToken, queryClient],
   );
 
   const logout = useCallback(async () => {

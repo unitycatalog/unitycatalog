@@ -5,7 +5,8 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 vi.mock("@/lib/transport", () => ({ proxyClient: { call: vi.fn() } }));
 
 import { proxyClient } from "@/lib/transport";
-import { Providers } from "@/test/providers";
+import { Providers, makeQueryClient } from "@/test/providers";
+import { CURRENT_USER_QUERY_KEY } from "@/hooks/user";
 import { AuthProvider, useAuth } from "@/context/auth-context";
 import { getToken } from "@/lib/session";
 import { isOktaToken } from "@/lib/okta";
@@ -79,16 +80,44 @@ describe("AuthProvider", () => {
   describe("signInWithOkta", () => {
     const tokens = { accessToken: "okta-at", idToken: "okta-id" };
 
-    // /scim2/Me needs a bearer token or the session cookie the exchange sets.
+    // /scim2/Me needs a bearer token or the session cookie the exchange sets, and answers slowly.
     function stubUc(exchange: { httpStatus: number; body: string }) {
       stubConfig({ authEnabled: true });
+      let cookie = false;
       call.mockImplementation(async (input: { path: string; token: string }) => {
         if (input.path.endsWith("/auth/tokens")) {
+          cookie = exchange.httpStatus === 200;
           return { ...exchange, ok: exchange.httpStatus < 300 };
         }
-        return { httpStatus: 200, ok: true, body: JSON.stringify({ displayName: "Ada" }) };
+        if (!input.path.endsWith("/scim2/Me")) return { httpStatus: 200, ok: true, body: "{}" };
+        await new Promise((r) => setTimeout(r, 20));
+        return input.token || cookie
+          ? { httpStatus: 200, ok: true, body: JSON.stringify({ displayName: "Ada" }) }
+          : { httpStatus: 401, ok: false, body: "" };
       });
     }
+
+    it.each([
+      ["internal", { httpStatus: 200, body: "{}" }],
+      ["external", { httpStatus: 501, body: JSON.stringify({ error_code: "UNIMPLEMENTED" }) }],
+    ])("%s mode: resolves only after /scim2/Me has returned the signed-in user", async (_mode, exchange) => {
+      stubUc(exchange);
+      const client = makeQueryClient();
+      const { result } = renderHook(() => useAuth(), {
+        wrapper: ({ children }) => (
+          <Providers client={client}>
+            <AuthProvider>{children}</AuthProvider>
+          </Providers>
+        ),
+      });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.signInWithOkta(tokens);
+      });
+
+      expect(client.getQueryData(CURRENT_USER_QUERY_KEY)).toEqual({ displayName: "Ada" });
+    });
 
     it("internal mode: exchanges the ID token for the UC session cookie and keeps no bearer token", async () => {
       stubUc({ httpStatus: 200, body: "{}" });

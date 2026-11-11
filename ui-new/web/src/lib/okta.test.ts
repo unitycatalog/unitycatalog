@@ -71,6 +71,11 @@ describe("callback state check", () => {
   it.each([
     ["a different state", "?code=abc&state=forged", "state does not match"],
     ["no state", "?code=abc", "state does not match"],
+    [
+      "an Okta error with a different state",
+      "?error=access_denied&error_description=Call+helpdesk&state=forged",
+      "state does not match",
+    ],
     ["no code", "?state=SAME", "did not return a code"],
     ["an Okta error", "?error=access_denied&error_description=User+is+not+assigned&state=SAME", "User is not assigned"],
   ])("refuses %s", async (_name, search, message) => {
@@ -133,14 +138,15 @@ describe("exchangeCode", () => {
 });
 
 describe("oktaConfigFrom", () => {
-  it("is null until both the issuer and the client id are set", () => {
-    expect(oktaConfigFrom({})).toBeNull();
-    expect(oktaConfigFrom({ oktaIssuer: "https://i" })).toBeNull();
-    expect(oktaConfigFrom({ oktaClientId: "c" })).toBeNull();
+  it("is null unless Okta is enabled and both the issuer and the client id are set", () => {
+    expect(oktaConfigFrom({ oktaEnabled: true })).toBeNull();
+    expect(oktaConfigFrom({ oktaEnabled: true, oktaIssuer: "https://i" })).toBeNull();
+    expect(oktaConfigFrom({ oktaEnabled: true, oktaClientId: "c" })).toBeNull();
+    expect(oktaConfigFrom({ oktaEnabled: false, oktaIssuer: "https://i", oktaClientId: "c" })).toBeNull();
   });
 
   it("defaults the scopes and the redirect URI", () => {
-    expect(oktaConfigFrom({ oktaIssuer: "https://i", oktaClientId: "c" })).toEqual({
+    expect(oktaConfigFrom({ oktaEnabled: true, oktaIssuer: "https://i", oktaClientId: "c" })).toEqual({
       issuer: "https://i",
       clientId: "c",
       scopes: "openid profile email",
@@ -151,6 +157,7 @@ describe("oktaConfigFrom", () => {
   it("keeps configured scopes and redirect URI", () => {
     expect(
       oktaConfigFrom({
+        oktaEnabled: true,
         oktaIssuer: "https://i",
         oktaClientId: "c",
         oktaScopes: "openid email",

@@ -30,11 +30,11 @@ const RETRY_WINDOW_MS = 60_000;
 const DEFAULT_SCOPES = "openid profile email";
 
 // oktaConfigFrom reads the Okta client settings the bridge serves at /config.
-// Null until both the issuer and the client id are set.
+// Null unless Okta is enabled and both the issuer and the client id are set.
 export function oktaConfigFrom(
-  config: Pick<AppConfig, "oktaIssuer" | "oktaClientId" | "oktaScopes" | "oktaRedirectUri">,
+  config: Pick<AppConfig, "oktaEnabled" | "oktaIssuer" | "oktaClientId" | "oktaScopes" | "oktaRedirectUri">,
 ): OktaConfig | null {
-  if (!config.oktaIssuer || !config.oktaClientId) return null;
+  if (!config.oktaEnabled || !config.oktaIssuer || !config.oktaClientId) return null;
   return {
     issuer: config.oktaIssuer,
     clientId: config.oktaClientId,
@@ -105,11 +105,11 @@ export function takeCallback(search: string): {
     throw new Error("No Okta sign-in is in progress. Start again from the login page.");
   }
   const params = new URLSearchParams(search);
-  const error = params.get("error");
-  if (error) throw new Error(params.get("error_description") || `Okta sign-in failed: ${error}`);
   if (params.get("state") !== expectedState) {
     throw new Error("Okta sign-in failed: the state does not match. Start again from the login page.");
   }
+  const error = params.get("error");
+  if (error) throw new Error(params.get("error_description") || `Okta sign-in failed: ${error}`);
   const code = params.get("code");
   if (!code) throw new Error("Okta did not return a code. Start again from the login page.");
   return { code, verifier };

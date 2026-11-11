@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { CURRENT_USER_QUERY_KEY } from "@/hooks/user";
 import { useAppConfig } from "@/lib/appConfig";
 import { useAuth } from "@/context/auth-context";
 import { beginOktaLogin, canRetryOktaSignIn, isOktaToken, markOktaToken, oktaConfigFrom } from "@/lib/okta";
@@ -13,8 +15,9 @@ import { Label } from "@/components/ui/label";
 
 export default function Login() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: appConfig } = useAppConfig();
-  const { loginWithToken, signInWithAccessToken } = useAuth();
+  const { loginWithToken, signInWithAccessToken, loading, currentUser } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [pastedToken, setPastedToken] = useState("");
 
@@ -51,14 +54,22 @@ export default function Login() {
   };
 
   // An Okta token that is still stored while we are on the login page was
-  // refused (expired): sign in with Okta again, but only once in a while.
+  // refused (expired): sign in with Okta again, but only once in a while. Act
+  // only on a settled 401 from /scim2/Me (the cached user is null and idle), not
+  // on a manual visit, a request in flight or a 5xx.
   useEffect(() => {
     if (!okta || !getToken() || !isOktaToken()) return;
+    const user = queryClient.getQueryState(CURRENT_USER_QUERY_KEY);
+    if (user?.status !== "success" || user.data !== null || user.fetchStatus !== "idle") return;
     clearToken();
     markOktaToken(false);
     if (canRetryOktaSignIn()) void onOktaSignIn();
     else setError("Unity Catalog refused your Okta sign-in. Contact your administrator.");
-  }, [okta?.issuer, okta?.clientId]);
+  }, [okta?.issuer, okta?.clientId, loading, currentUser]);
+
+  useEffect(() => {
+    if (currentUser) navigate({ to: "/" });
+  }, [currentUser]);
 
   const googleClientId = appConfig?.googleClientId ?? "";
   const anyProvider = googleClientId || okta || appConfig?.oktaEnabled || appConfig?.keycloakEnabled;

@@ -24,7 +24,7 @@ export default function OktaCallback() {
       if (!okta) throw new Error("Okta sign-in is not configured on the server.");
       const { code, verifier } = takeCallback(window.location.search);
       await signInWithOkta(await exchangeCode(okta, code, verifier));
-      navigate({ to: "/" });
+      navigate({ to: "/", replace: true });
     })().catch((e) => setError(e instanceof Error ? e.message : "Okta sign-in failed."));
   }, [appConfig, navigate, signInWithOkta]);
 

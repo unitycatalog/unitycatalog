@@ -9,8 +9,16 @@ const { signInWithAccessToken, loginWithToken, signInWithOkta } = vi.hoisted(() 
   loginWithToken: vi.fn().mockResolvedValue(undefined),
   signInWithOkta: vi.fn().mockResolvedValue(undefined),
 }));
+const { auth } = vi.hoisted(() => ({ auth: { current: {} as Record<string, unknown> } }));
 vi.mock("@/context/auth-context", () => ({
-  useAuth: () => ({ loginWithToken, signInWithAccessToken, signInWithOkta }),
+  useAuth: () => ({
+    loginWithToken,
+    signInWithAccessToken,
+    signInWithOkta,
+    loading: false,
+    currentUser: null,
+    ...auth.current,
+  }),
 }));
 
 const { appConfig } = vi.hoisted(() => ({ appConfig: { current: {} as Record<string, unknown> } }));
@@ -23,6 +31,8 @@ import OktaCallback from "@/pages/OktaCallback";
 import { navigateMock } from "@/test/tanstack-router-mock";
 import { beginOktaLogin, markOktaToken, type OktaConfig } from "@/lib/okta";
 import { getToken, setToken } from "@/lib/session";
+import { CURRENT_USER_QUERY_KEY } from "@/hooks/user";
+import { makeQueryClient, renderWithProviders } from "@/test/providers";
 
 const oktaAppConfig = {
   oktaEnabled: true,
@@ -36,8 +46,12 @@ const oktaCfg: OktaConfig = {
   redirectUri: `${window.location.origin}/login/callback`,
 };
 const assignMock = vi.fn();
+let client = makeQueryClient();
+const renderLogin = () => renderWithProviders(<Login />, { client });
 
 beforeEach(() => {
+  client = makeQueryClient();
+  auth.current = {};
   navigateMock.mockReset();
   signInWithAccessToken.mockReset();
   signInWithOkta.mockReset().mockResolvedValue(undefined);
@@ -53,26 +67,26 @@ afterEach(() => {
 
 describe("Login", () => {
   it("shows a no-providers message when nothing is enabled", () => {
-    render(<Login />);
+    renderLogin();
     expect(screen.getByText(/No auth providers are enabled/)).toBeInTheDocument();
   });
 
   it("advertises Okta and Keycloak when enabled", () => {
     appConfig.current = { oktaEnabled: true, keycloakEnabled: true };
-    render(<Login />);
+    renderLogin();
     expect(screen.getByText(/Okta sign-in is enabled/)).toBeInTheDocument();
     expect(screen.getByText(/Keycloak sign-in is enabled/)).toBeInTheDocument();
   });
 
   it("validates an empty pasted token", async () => {
-    render(<Login />);
+    renderLogin();
     await userEvent.click(screen.getByRole("button", { name: /Use token/ }));
     expect(screen.getByText("Paste a JWT access token.")).toBeInTheDocument();
     expect(signInWithAccessToken).not.toHaveBeenCalled();
   });
 
   it("signs in with a pasted token and navigates home", async () => {
-    render(<Login />);
+    renderLogin();
     await userEvent.type(screen.getByLabelText("JWT access token"), "jwt-abc");
     await userEvent.click(screen.getByRole("button", { name: /Use token/ }));
     expect(signInWithAccessToken).toHaveBeenCalledWith("jwt-abc");
@@ -81,14 +95,14 @@ describe("Login", () => {
 
   it("tells the admin which settings are missing when Okta is enabled without a client", () => {
     appConfig.current = { oktaEnabled: true };
-    render(<Login />);
+    renderLogin();
     expect(screen.getByText(/OKTA_ISSUER and OKTA_CLIENT_ID/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Sign in with Okta/ })).not.toBeInTheDocument();
   });
 
   it("sends the browser to the Okta authorize URL with a PKCE challenge", async () => {
     appConfig.current = oktaAppConfig;
-    render(<Login />);
+    renderLogin();
     await userEvent.click(screen.getByRole("button", { name: /Sign in with Okta/ }));
     await waitFor(() => expect(assignMock).toHaveBeenCalledTimes(1));
     const url = new URL(assignMock.mock.calls[0][0]);
@@ -102,7 +116,8 @@ describe("Login", () => {
     appConfig.current = oktaAppConfig;
     setToken("expired-okta-token");
     markOktaToken(true);
-    const { unmount } = render(<Login />);
+    client.setQueryData(CURRENT_USER_QUERY_KEY, null); // /scim2/Me answered 401
+    const { unmount } = renderLogin();
     await waitFor(() => expect(assignMock).toHaveBeenCalledTimes(1));
     expect(getToken()).toBe("");
 
@@ -110,15 +125,55 @@ describe("Login", () => {
     unmount();
     setToken("refused-okta-token");
     markOktaToken(true);
-    render(<Login />);
+    renderLogin();
     expect(await screen.findByText(/refused your Okta sign-in/)).toBeInTheDocument();
     expect(assignMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["the user was not fetched yet (a manual visit)", () => {}],
+    [
+      "the user is still being fetched",
+      () => void client.fetchQuery({ queryKey: CURRENT_USER_QUERY_KEY, queryFn: () => new Promise(() => {}) }),
+    ],
+    [
+      "/scim2/Me failed with a 5xx",
+      () =>
+        client
+          .fetchQuery({
+            queryKey: CURRENT_USER_QUERY_KEY,
+            queryFn: () => Promise.reject(new Error("Failed to fetch user (HTTP 503)")),
+          })
+          .catch(() => {}),
+    ],
+  ])("keeps the stored Okta token when %s", async (_name, setUp) => {
+    appConfig.current = oktaAppConfig;
+    setToken("valid-okta-token");
+    markOktaToken(true);
+    await setUp();
+    renderLogin();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(getToken()).toBe("valid-okta-token");
+    expect(assignMock).not.toHaveBeenCalled();
+  });
+
+  it("goes home as soon as a user is known", () => {
+    auth.current = { currentUser: { displayName: "Ada" } };
+    renderLogin();
+    expect(navigateMock).toHaveBeenCalledWith({ to: "/" });
+  });
+
+  it("shows no Okta button or message when OKTA_AUTH_ENABLED is false", () => {
+    appConfig.current = { ...oktaAppConfig, oktaEnabled: false };
+    renderLogin();
+    expect(screen.queryByRole("button", { name: /Sign in with Okta/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/OKTA_ISSUER and OKTA_CLIENT_ID/)).not.toBeInTheDocument();
   });
 
   it("does not redirect to Okta for a refused pasted token", () => {
     appConfig.current = oktaAppConfig;
     setToken("pasted-token");
-    render(<Login />);
+    renderLogin();
     expect(assignMock).not.toHaveBeenCalled();
     expect(getToken()).toBe("pasted-token");
   });
@@ -143,7 +198,7 @@ describe("OktaCallback", () => {
     stubOkta();
     render(<OktaCallback />);
     await waitFor(() => expect(signInWithOkta).toHaveBeenCalledWith({ accessToken: "at", idToken: "idt" }));
-    expect(navigateMock).toHaveBeenCalledWith({ to: "/" });
+    expect(navigateMock).toHaveBeenCalledWith({ to: "/", replace: true });
     window.history.replaceState({}, "", "/");
   });
 
