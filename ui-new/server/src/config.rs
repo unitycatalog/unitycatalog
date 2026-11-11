@@ -15,7 +15,7 @@ pub struct Config {
     pub google_client_id: String,
     pub okta_enabled: bool,
     /// Okta authorization server URL (for example https://dev-1.okta.com/oauth2/default).
-    /// With `okta_client_id` it enables the SPA's authorization code + PKCE sign-in.
+    /// With `okta_client_id` and `okta_enabled` it enables the SPA's authorization code + PKCE sign-in.
     pub okta_issuer: String,
     /// Client id of the Okta OIDC app (public client, PKCE) the SPA signs in with.
     pub okta_client_id: String,

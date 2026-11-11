@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("@tanstack/react-router", () => import("@/test/tanstack-router-mock"));
@@ -52,6 +52,7 @@ const renderLogin = () => renderWithProviders(<Login />, { client });
 beforeEach(() => {
   client = makeQueryClient();
   auth.current = {};
+  sessionStorage.clear(); // the Okta retry guard lives there
   navigateMock.mockReset();
   signInWithAccessToken.mockReset();
   signInWithOkta.mockReset().mockResolvedValue(undefined);
@@ -157,10 +158,31 @@ describe("Login", () => {
     expect(assignMock).not.toHaveBeenCalled();
   });
 
+  it("acts on a 401 that arrives by a background refetch while the login page is showing", async () => {
+    appConfig.current = oktaAppConfig;
+    setToken("valid-okta-token");
+    markOktaToken(true);
+    await client
+      .fetchQuery({
+        queryKey: CURRENT_USER_QUERY_KEY,
+        queryFn: () => Promise.reject(new Error("Failed to fetch user (HTTP 503)")),
+      })
+      .catch(() => {});
+    renderLogin();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(assignMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await client.fetchQuery({ queryKey: CURRENT_USER_QUERY_KEY, queryFn: async () => null }); // reconnect, now 401
+    });
+    await waitFor(() => expect(assignMock).toHaveBeenCalledTimes(1));
+    expect(getToken()).toBe("");
+  });
+
   it("goes home as soon as a user is known", () => {
     auth.current = { currentUser: { displayName: "Ada" } };
     renderLogin();
-    expect(navigateMock).toHaveBeenCalledWith({ to: "/" });
+    expect(navigateMock).toHaveBeenCalledWith({ to: "/", replace: true });
   });
 
   it("shows no Okta button or message when OKTA_AUTH_ENABLED is false", () => {

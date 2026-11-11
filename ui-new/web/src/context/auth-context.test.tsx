@@ -119,6 +119,20 @@ describe("AuthProvider", () => {
       expect(client.getQueryData(CURRENT_USER_QUERY_KEY)).toEqual({ displayName: "Ada" });
     });
 
+    it("fails with the fetch error when /scim2/Me answers a 5xx after the sign-in", async () => {
+      stubConfig({ authEnabled: true });
+      let exchanged = false;
+      call.mockImplementation(async (input: { path: string }) => {
+        if (input.path.endsWith("/auth/tokens")) exchanged = true;
+        if (!input.path.endsWith("/scim2/Me")) return { httpStatus: 200, ok: true, body: "{}" };
+        return exchanged ? { httpStatus: 503, ok: false, body: "" } : { httpStatus: 401, ok: false, body: "" };
+      });
+      const { result } = renderHook(() => useAuth(), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await expect(result.current.signInWithOkta(tokens)).rejects.toThrow("Failed to fetch user (HTTP 503)");
+    });
+
     it("internal mode: exchanges the ID token for the UC session cookie and keeps no bearer token", async () => {
       stubUc({ httpStatus: 200, body: "{}" });
       const { result } = renderHook(() => useAuth(), { wrapper });

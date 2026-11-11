@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         markOktaToken(true);
       }
       // Resolve only once /scim2/Me has answered, so the caller can go to a page behind the auth gate.
-      await queryClient.refetchQueries({ queryKey: CURRENT_USER_QUERY_KEY });
+      await queryClient.refetchQueries({ queryKey: CURRENT_USER_QUERY_KEY }, { throwOnError: true });
     },
     [loginMutation, signInWithAccessToken, queryClient],
   );
