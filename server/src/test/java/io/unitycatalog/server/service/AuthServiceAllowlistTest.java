@@ -3,6 +3,7 @@ package io.unitycatalog.server.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.auth0.jwt.JWT;
+import com.auth0.jwt.JWTCreator;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,8 +28,10 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -338,6 +341,22 @@ public class AuthServiceAllowlistTest {
       return builder.sign(testIssuerAlgorithm);
     }
 
+    /**
+     * A token for {@code person-1} from the test IdP's issuer and audience, valid for 5 minutes,
+     * with {@code claims} applied last.
+     */
+    protected String person1Token(UnaryOperator<JWTCreator.Builder> claims) {
+      return claims
+          .apply(
+              JWT.create()
+                  .withIssuer(testIssuer)
+                  .withKeyId(testIssuerKeyId)
+                  .withAudience(TEST_AUDIENCE)
+                  .withExpiresAt(Instant.now().plusSeconds(300))
+                  .withClaim("sub", "person-1"))
+          .sign(testIssuerAlgorithm);
+    }
+
     protected AggregatedHttpResponse call(
         HttpMethod method, String path, String token, String body) {
       RequestHeaders headers =
@@ -447,7 +466,8 @@ public class AuthServiceAllowlistTest {
       Map<String, String> unauthenticated =
           Map.of(
               idpToken(Map.of("sub", "person-3")),
-              "Access token has no email claim to link a user; add one in the identity provider.",
+              "Access token has no email claim to link a user; add one in the identity provider. A"
+                  + " token issued before the user's last reactivation is never linked.",
               idpToken(Map.of("email", ENABLED_USER_EMAIL)),
               "Access token has no sub claim.",
               idpToken(
@@ -492,17 +512,23 @@ public class AuthServiceAllowlistTest {
             "Invalid access token.");
       }
 
-      // An IdP clock up to 60 seconds ahead of the server's is accepted.
-      assertThat(
-              listCatalogs(
-                      idpToken(
-                          testIssuer,
-                          TEST_AUDIENCE,
-                          Instant.now().plusSeconds(300),
-                          Instant.now().plusSeconds(30),
-                          Map.of("sub", "person-1")))
-                  .status())
-          .isEqualTo(HttpStatus.OK);
+      // An IdP clock up to 60 seconds ahead of the server's is accepted on iat and nbf; exp has
+      // no leeway.
+      Instant now = Instant.now();
+      for (UnaryOperator<JWTCreator.Builder> claims :
+          List.<UnaryOperator<JWTCreator.Builder>>of(
+              b -> b.withIssuedAt(now.plusSeconds(30)),
+              b -> b.withNotBefore(now.plusSeconds(55)))) {
+        assertThat(listCatalogs(person1Token(claims)).status()).isEqualTo(HttpStatus.OK);
+      }
+      for (UnaryOperator<JWTCreator.Builder> claims :
+          List.<UnaryOperator<JWTCreator.Builder>>of(
+              b -> b.withIssuedAt(now.plusSeconds(75)),
+              b -> b.withNotBefore(now.plusSeconds(75)),
+              b -> b.withExpiresAt(now.minusSeconds(5)))) {
+        assertRefused(
+            listCatalogs(person1Token(claims)), HttpStatus.UNAUTHORIZED, "Invalid access token.");
+      }
 
       // A disabled user's token is refused on the next call.
       setActive(ENABLED_USER_EMAIL, false);
@@ -634,6 +660,18 @@ public class AuthServiceAllowlistTest {
         assertRefused(
             listCatalogs(refused), HttpStatus.FORBIDDEN, "User not allowed: " + ENABLED_USER_EMAIL);
       }
+      // Without an email claim it can't be linked either; the message says why.
+      assertRefused(
+          listCatalogs(
+              idpToken(
+                  testIssuer,
+                  TEST_AUDIENCE,
+                  Instant.now().plusSeconds(300),
+                  Instant.now().minusSeconds(60),
+                  Map.of("uid", "00u-rehire"))),
+          HttpStatus.UNAUTHORIZED,
+          "Access token has no email claim to link a user; add one in the identity provider. A"
+              + " token issued before the user's last reactivation is never linked.");
       assertThat(listCatalogs(rejoined).status()).isEqualTo(HttpStatus.OK);
     }
   }
