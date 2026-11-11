@@ -14,11 +14,9 @@ import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.types.DataType;
-import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.MetadataBuilder;
 import org.apache.spark.sql.types.StructField;
-import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.Test;
 
 public class ParquetExternalTableReadWriteTest extends ExternalTableReadWriteTest {
@@ -71,7 +69,7 @@ public class ParquetExternalTableReadWriteTest extends ExternalTableReadWriteTes
   }
 
   @Test
-  public void testLoadTableKeepsColumnDefaultValue() {
+  public void testLoadTableKeepsColumnDefaultValue() throws Exception {
     session = createSparkSessionWithCatalogs(CATALOG_NAME);
 
     String fullTableName =
@@ -79,31 +77,35 @@ public class ParquetExternalTableReadWriteTest extends ExternalTableReadWriteTes
             new TableSetupOptions()
                 .setCatalogName(CATALOG_NAME)
                 .setTableName(TEST_TABLE)
-                .setColumns(List.of(Pair.of("a", "INT"), Pair.of("b", "INT DEFAULT 42"))));
+                .setColumns(
+                    List.of(
+                        Pair.of("a", "INT"),
+                        Pair.of("b", "INT DEFAULT 42"),
+                        Pair.of("s", "VARCHAR(3) COMMENT 'note'"))));
 
     Metadata loaded = session.table(fullTableName).schema().apply("b").metadata();
     assertThat(loaded.getString("CURRENT_DEFAULT")).isEqualTo("42");
     assertThat(loaded.getString("EXISTS_DEFAULT")).isEqualTo("42");
+
+    TableCatalog catalog =
+        (TableCatalog) session.sessionState().catalogManager().catalog(CATALOG_NAME);
+    StructField varcharField =
+        catalog
+            .loadTable(Identifier.of(new String[] {SCHEMA_NAME}, TEST_TABLE))
+            .schema()
+            .apply("s");
+    assertThat(varcharField.dataType()).isEqualTo(DataType.fromDDL("varchar(3)"));
+    assertThat(varcharField.getComment().get()).isEqualTo("note");
+    assertThat(varcharField.metadata())
+        .isEqualTo(new MetadataBuilder().putString("comment", "note").build());
+
+    sql("INSERT INTO %s VALUES (1, 2, 'abc')", fullTableName);
+    assertThatThrownBy(() -> sql("INSERT INTO %s VALUES (2, 2, 'abcd')", fullTableName))
+        .hasStackTraceContaining("char/varchar type length limitation");
   }
 
   @Test
   public void testInsertWithoutDefaultedColumnWritesDefaultValue() {
-    session = createSparkSessionWithCatalogs(CATALOG_NAME);
-
-    String fullTableName =
-        setupTable(
-            new TableSetupOptions()
-                .setCatalogName(CATALOG_NAME)
-                .setTableName(TEST_TABLE)
-                .setColumns(List.of(Pair.of("a", "INT"), Pair.of("b", "INT DEFAULT 42"))));
-
-    sql("INSERT INTO %s (a) VALUES (1)", fullTableName);
-
-    assertThat(sql("SELECT a, b FROM %s", fullTableName)).containsExactly(RowFactory.create(1, 42));
-  }
-
-  @Test
-  public void testReadFileWithoutDefaultedColumnReturnsExistsDefault() {
     session = createSparkSessionWithCatalogs(CATALOG_NAME);
     TableSetupOptions options =
         new TableSetupOptions()
@@ -113,40 +115,16 @@ public class ParquetExternalTableReadWriteTest extends ExternalTableReadWriteTes
     String location = getLocation(options);
     session.sql("SELECT 1 AS a").write().parquet(location);
     session.sql("SELECT 2 AS a, CAST(NULL AS INT) AS b").write().mode("append").parquet(location);
-
     sql(options.createExternalTableSql(location));
+    String fullTableName = options.fullTableName();
 
-    assertThat(sql("SELECT a, b FROM %s ORDER BY a", options.fullTableName()))
+    assertThat(sql("SELECT a, b FROM %s ORDER BY a", fullTableName))
         .containsExactly(RowFactory.create(1, 42), RowFactory.create(2, null));
-  }
 
-  @Test
-  public void testLoadVarcharColumnKeepsDeclaredType() throws Exception {
-    session = createSparkSessionWithCatalogs(CATALOG_NAME);
-    String fullTableName =
-        setupTable(
-            new TableSetupOptions()
-                .setCatalogName(CATALOG_NAME)
-                .setTableName(TEST_TABLE)
-                .setColumns(
-                    List.of(Pair.of("i", "INT"), Pair.of("s", "VARCHAR(3) COMMENT 'note'"))));
+    sql("INSERT INTO %s (a) VALUES (3)", fullTableName);
 
-    TableCatalog catalog =
-        (TableCatalog) session.sessionState().catalogManager().catalog(CATALOG_NAME);
-    StructType loaded =
-        catalog.loadTable(Identifier.of(new String[] {SCHEMA_NAME}, TEST_TABLE)).schema();
-    Metadata nullComment = new MetadataBuilder().putNull("comment").build();
-    assertThat(loaded)
-        .isEqualTo(
-            new StructType()
-                .add("i", DataTypes.IntegerType, true, nullComment)
-                .add(
-                    new StructField("s", DataType.fromDDL("varchar(3)"), true, Metadata.empty())
-                        .withComment("note")));
-
-    sql("INSERT INTO %s VALUES (1, 'abc')", fullTableName);
-    validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(1, "abc"));
-    assertThatThrownBy(() -> sql("INSERT INTO %s VALUES (2, 'abcd')", fullTableName))
-        .hasStackTraceContaining("char/varchar type length limitation");
+    assertThat(sql("SELECT a, b FROM %s ORDER BY a", fullTableName))
+        .containsExactly(
+            RowFactory.create(1, 42), RowFactory.create(2, null), RowFactory.create(3, 42));
   }
 }

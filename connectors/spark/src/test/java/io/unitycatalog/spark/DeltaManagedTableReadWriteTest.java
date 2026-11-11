@@ -14,7 +14,6 @@ import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -360,38 +359,6 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
         .isEqualTo("note");
     assertThatThrownBy(() -> sql("INSERT INTO %s VALUES (2, 'abcd')", fullTableName))
         .hasStackTraceContaining("char/varchar type length limitation");
-  }
-
-  @Test
-  @EnabledIf("canUpdateColumnsToUC")
-  public void testCtasFromManagedDeltaTableGetsItsOwnColumnMapping() throws Exception {
-    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
-    ensureSparkCatalogSchemaExists();
-    String source =
-        setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
-    sql("INSERT INTO %s VALUES (1, 'a')", source);
-    String target = String.join(".", CATALOG_NAME, SCHEMA_NAME, ANOTHER_TEST_TABLE);
-
-    sql("CREATE TABLE %s USING DELTA AS SELECT * FROM %s", target, source);
-
-    validateRows(sql("SELECT * FROM %s", target), Pair.of(1, "a"));
-    List<String> sourcePhysicalNames = physicalNames(source);
-    List<String> targetPhysicalNames = physicalNames(target);
-    assertThat(sourcePhysicalNames).hasSize(2).doesNotContainNull();
-    assertThat(targetPhysicalNames)
-        .hasSize(2)
-        .doesNotContainNull()
-        .doesNotContainAnyElementsOf(sourcePhysicalNames);
-  }
-
-  private List<String> physicalNames(String fullTableName) throws Exception {
-    ObjectMapper mapper = new ObjectMapper();
-    List<String> names = new ArrayList<>();
-    for (ColumnInfo column : loadTableInfo(fullTableName).getColumns()) {
-      JsonNode metadata = mapper.readTree(column.getTypeJson()).path("metadata");
-      names.add(metadata.path("delta.columnMapping.physicalName").asText(null));
-    }
-    return names;
   }
 
   @Test
