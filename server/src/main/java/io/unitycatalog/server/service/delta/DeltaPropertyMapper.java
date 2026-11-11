@@ -174,6 +174,30 @@ public final class DeltaPropertyMapper {
     return features;
   }
 
+  /**
+   * Inverse of {@link #deriveFromProtocol}, for validating the stored state when a request changes
+   * protocol properties without {@code set-protocol}. Properties do not record which features are
+   * reader features, so every stored feature is listed as both a reader and a writer feature. A
+   * missing or non-numeric version comes back as null.
+   */
+  public static DeltaProtocol synthesizeProtocolFromProperties(Map<String, String> props) {
+    List<String> features = List.copyOf(extractFeaturesFromProperties(props));
+    return new DeltaProtocol()
+        .minReaderVersion(parseVersion(props.get(TableProperties.MIN_READER_VERSION)))
+        .minWriterVersion(parseVersion(props.get(TableProperties.MIN_WRITER_VERSION)))
+        .readerFeatures(features)
+        .writerFeatures(features);
+  }
+
+  private static Integer parseVersion(String value) {
+    if (value == null) return null;
+    try {
+      return Integer.valueOf(value);
+    } catch (NumberFormatException e) {
+      return null;
+    }
+  }
+
   private static void addFeatureProperties(Map<String, String> props, List<String> features) {
     if (features == null) return;
     for (String feature : features) {

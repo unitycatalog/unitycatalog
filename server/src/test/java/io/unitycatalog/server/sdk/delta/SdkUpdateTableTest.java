@@ -1506,6 +1506,69 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     Files.createDirectories(Path.of(URI.create(storageLocation + "/" + relativePath)));
   }
 
+  @Test
+  public void testReservedPropertiesOfManagedTableCannotBeRemovedOrChanged() throws Exception {
+    Handle h = createDeltaManaged("tbl_reserved_props", Map.of("drop_me", "v"));
+    Map<String, String> before = loadProperties(h.name());
+    List<String> reserved =
+        List.of(
+            TableProperties.FEATURE_PREFIX + TableFeature.CATALOG_MANAGED.specName(),
+            TableProperties.UC_TABLE_ID,
+            TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS);
+    for (String key : reserved) {
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h, new DeltaRemovePropertiesUpdate().removals(List.of(key))),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          key.substring(key.lastIndexOf('.') + 1));
+    }
+    String otherId = UUID.randomUUID().toString();
+    TestUtils.assertDeltaApiException(
+        () ->
+            updateTable(
+                h,
+                new DeltaSetPropertiesUpdate()
+                    .updates(Map.of(TableProperties.UC_TABLE_ID, otherId))),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        "does not match");
+    assertThat(loadProperties(h.name())).isEqualTo(before);
+
+    Map<String, String> after =
+        updateTable(
+                h,
+                new DeltaSetPropertiesUpdate().updates(Map.of("k", "v")),
+                new DeltaRemovePropertiesUpdate().removals(List.of("drop_me")))
+            .getMetadata()
+            .getProperties();
+    assertThat(after).containsEntry("k", "v").doesNotContainKey("drop_me");
+
+    Handle external = createDeltaExternal("tbl_reserved_props_external");
+    Map<String, String> reservedValues =
+        Map.of(
+            TableProperties.FEATURE_PREFIX + TableFeature.CATALOG_MANAGED.specName(),
+            "supported",
+            TableProperties.UC_TABLE_ID,
+            otherId,
+            TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS,
+            "true");
+    Handle set =
+        external.withEtag(
+            updateTable(external, new DeltaSetPropertiesUpdate().updates(reservedValues))
+                .getMetadata()
+                .getEtag());
+    assertThat(
+            updateTable(set, new DeltaRemovePropertiesUpdate().removals(reserved))
+                .getMetadata()
+                .getProperties())
+        .doesNotContainKeys(reserved.toArray(String[]::new));
+  }
+
+  private Map<String, String> loadProperties(String tableName) throws ApiException {
+    return deltaTablesApi
+        .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName)
+        .getMetadata()
+        .getProperties();
+  }
+
   // ---------------------------------------------------------------- column-mapping identity tests
 
   /**

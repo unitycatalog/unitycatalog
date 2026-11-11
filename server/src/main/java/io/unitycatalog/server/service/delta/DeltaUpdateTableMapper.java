@@ -422,17 +422,28 @@ public final class DeltaUpdateTableMapper {
     c.removeDomainMetadata.ifPresent(u -> applyRemoveDomainMetadata(properties, u.getDomains()));
     c.setTableComment.ifPresent(u -> applySetTableComment(dao, u));
     c.updateSnapshotVersion.ifPresent(u -> applyUpdateSnapshotVersion(dao, properties, u));
-    // Re-validate the MANAGED contract against the final post-apply state. set-protocol runs
-    // full validation; set-domain-metadata alone only needs the DM-vs-writer-features check.
+    // Re-validate the MANAGED contract against the final post-apply state. set-protocol, or a
+    // set-/remove-properties that touches a reserved key, runs full validation; set-domain-metadata
+    // alone only needs the DM-vs-writer-features check.
     if (TableType.MANAGED.toString().equals(dao.getType())) {
+      boolean touchesReservedProperty = touchesReservedProperty(c);
       DeltaDomainMetadataUpdates effectiveDm =
           DeltaPropertyMapper.synthesizeDomainMetadataFromProperties(properties.asMap());
       if (c.setProtocol.isPresent()) {
         UcManagedDeltaContract.validate(
             c.setProtocol.get().getProtocol(), effectiveDm, properties.asMap(), serverProperties);
+      } else if (touchesReservedProperty) {
+        UcManagedDeltaContract.validate(
+            DeltaPropertyMapper.synthesizeProtocolFromProperties(properties.asMap()),
+            effectiveDm,
+            properties.asMap(),
+            serverProperties);
       } else if (c.setDomainMetadata.isPresent()) {
         UcManagedDeltaContract.validateDomainMetadataAgainstWriterFeatures(
             DeltaPropertyMapper.extractFeaturesFromProperties(properties.asMap()), effectiveDm);
+      }
+      if (touchesReservedProperty) {
+        UcManagedDeltaContract.validateTableIdProperty(properties.asMap(), dao.getId().toString());
       }
     }
     if (c.addCommit.isPresent() || c.setLatestBackfilledVersion.isPresent()) {
@@ -445,6 +456,15 @@ public final class DeltaUpdateTableMapper {
               c.hasManagedTableMetadataChange()));
     }
     return Optional.empty();
+  }
+
+  private static boolean touchesReservedProperty(CollectedUpdates c) {
+    Set<String> setKeys =
+        c.setProperties.map(DeltaSetPropertiesUpdate::getUpdates).map(Map::keySet).orElse(Set.of());
+    List<String> removedKeys =
+        c.removeProperties.map(DeltaRemovePropertiesUpdate::getRemovals).orElse(List.of());
+    return setKeys.stream().anyMatch(UcManagedDeltaContract.RESERVED_PROPERTY_KEYS::contains)
+        || removedKeys.stream().anyMatch(UcManagedDeltaContract.RESERVED_PROPERTY_KEYS::contains);
   }
 
   private static void applySetProperties(MutablePropertyMap properties, Map<String, String> toSet) {

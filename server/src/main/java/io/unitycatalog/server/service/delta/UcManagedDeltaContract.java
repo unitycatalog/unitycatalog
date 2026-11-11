@@ -11,6 +11,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -76,6 +77,23 @@ public final class UcManagedDeltaContract {
    * values the engine substituted. This is placeholder for adding properties in the future.
    */
   public static final List<String> ENGINE_GENERATED_PROPERTY_KEYS = List.of();
+
+  /**
+   * Stored properties that carry the contract: the fixed-value and engine-generated properties, the
+   * UC table id, the protocol versions and the required features. A request that sets or removes
+   * one of them on a MANAGED table is re-validated against the whole contract.
+   */
+  public static final Set<String> RESERVED_PROPERTY_KEYS = buildReservedPropertyKeys();
+
+  private static Set<String> buildReservedPropertyKeys() {
+    Set<String> keys = new HashSet<>(REQUIRED_FIXED_PROPERTIES.keySet());
+    keys.addAll(ENGINE_GENERATED_PROPERTY_KEYS);
+    keys.add(TableProperties.UC_TABLE_ID);
+    keys.add(TableProperties.MIN_READER_VERSION);
+    keys.add(TableProperties.MIN_WRITER_VERSION);
+    REQUIRED_WRITER_FEATURES.forEach(f -> keys.add(TableProperties.FEATURE_PREFIX + f));
+    return Collections.unmodifiableSet(keys);
+  }
 
   /**
    * Suggested properties. Null values mean the client generates the value at commit time (required

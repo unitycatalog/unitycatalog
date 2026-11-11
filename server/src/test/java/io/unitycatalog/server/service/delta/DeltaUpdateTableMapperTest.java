@@ -40,6 +40,7 @@ import io.unitycatalog.server.service.delta.DeltaUpdateTableMapper.CollectedRequ
 import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -430,6 +431,134 @@ public class DeltaUpdateTableMapperTest {
                     collectUpdatesRequest(cmMode("name").action("set-properties")),
                     new ServerProperties()))
         .doesNotThrowAnyException();
+  }
+
+  // ---------- reserved properties on MANAGED tables ----------
+
+  static Stream<String> reservedPropertyKeys() {
+    return Stream.of(
+        TableProperties.FEATURE_PREFIX + TableFeature.CATALOG_MANAGED.specName(),
+        TableProperties.UC_TABLE_ID,
+        TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS,
+        TableProperties.CHECKPOINT_POLICY,
+        TableProperties.MIN_READER_VERSION);
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("reservedPropertyKeys")
+  public void removingReservedPropertyOfManagedTableIsRejected(String key) {
+    TableInfoDAO dao = managedDao();
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    dao,
+                    propsFrom(contractProperties(dao)),
+                    collectUpdatesRequest(new DeltaRemovePropertiesUpdate().removals(List.of(key))),
+                    new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(key.substring(key.lastIndexOf('.') + 1))
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+  }
+
+  @Test
+  public void changingReservedPropertyOfManagedTableIsRejected() {
+    TableInfoDAO dao = managedDao();
+    String otherId = UUID.randomUUID().toString();
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    dao,
+                    propsFrom(contractProperties(dao)),
+                    collectUpdatesRequest(
+                        new DeltaSetPropertiesUpdate()
+                            .updates(Map.of(TableProperties.UC_TABLE_ID, otherId))),
+                    new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("does not match")
+        .hasMessageContaining(otherId)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    dao,
+                    propsFrom(contractProperties(dao)),
+                    collectUpdatesRequest(
+                        new DeltaSetPropertiesUpdate()
+                            .updates(Map.of(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "false"))),
+                    new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
+  }
+
+  @Test
+  public void ordinaryAndUnchangedReservedPropertiesOfManagedTableCanBeChanged() {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = new HashMap<>(contractProperties(dao));
+    stored.put("drop_me", "v");
+    MutablePropertyMap props = propsFrom(stored);
+    DeltaUpdateTableMapper.applyUpdates(
+        null,
+        dao,
+        props,
+        collectUpdatesRequest(
+            new DeltaSetPropertiesUpdate()
+                .updates(Map.of("k", "v", TableProperties.UC_TABLE_ID, dao.getId().toString())),
+            new DeltaRemovePropertiesUpdate().removals(List.of("drop_me"))),
+        new ServerProperties());
+    assertThat(props.asMap()).containsEntry("k", "v").doesNotContainKey("drop_me");
+
+    // A MANAGED table whose stored properties predate the contract can still change its own keys.
+    MutablePropertyMap legacy = propsFrom(Map.of("drop_me", "v"));
+    DeltaUpdateTableMapper.applyUpdates(
+        null,
+        managedDao(),
+        legacy,
+        collectUpdatesRequest(
+            new DeltaSetPropertiesUpdate().updates(Map.of("k", "v")),
+            new DeltaRemovePropertiesUpdate().removals(List.of("drop_me"))),
+        new ServerProperties());
+    assertThat(legacy.asMap()).containsExactly(Map.entry("k", "v"));
+  }
+
+  @Test
+  public void reservedPropertiesOfExternalTableCanBeChanged() {
+    TableInfoDAO dao = managedDao();
+    dao.setType("EXTERNAL");
+    MutablePropertyMap props = propsFrom(contractProperties(dao));
+    List<String> removed = reservedPropertyKeys().toList();
+    DeltaUpdateTableMapper.applyUpdates(
+        null,
+        dao,
+        props,
+        collectUpdatesRequest(
+            new DeltaRemovePropertiesUpdate().removals(removed),
+            new DeltaSetPropertiesUpdate()
+                .updates(Map.of(TableProperties.ENABLE_DELETION_VECTORS, "false"))),
+        new ServerProperties());
+    assertThat(props.asMap())
+        .doesNotContainKeys(removed.toArray(String[]::new))
+        .containsEntry(TableProperties.ENABLE_DELETION_VECTORS, "false");
+  }
+
+  /** Stored properties of a MANAGED table created under the catalog-managed contract. */
+  private static Map<String, String> contractProperties(TableInfoDAO dao) {
+    Map<String, String> props = new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
+    props.put(TableProperties.UC_TABLE_ID, dao.getId().toString());
+    DeltaPropertyMapper.deriveFromProtocol(
+        props,
+        new DeltaProtocol()
+            .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
+            .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
+            .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
+            .writerFeatures(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES));
+    return props;
   }
 
   // --- set-columns column-mapping guards ---
