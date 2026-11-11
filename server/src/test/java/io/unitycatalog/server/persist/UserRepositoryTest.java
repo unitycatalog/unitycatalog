@@ -291,23 +291,19 @@ class UserRepositoryTest {
     // In Los Angeles 2026-11-01 01:00-02:00 occurs twice. A reactivation at 09:10Z (01:10 PST)
     // must refuse a token issued at 08:30Z (01:30 PDT), 40 minutes earlier. A wall-clock column
     // fails this only when the JVM runs in such a zone (-Duser.timezone=America/Los_Angeles).
-    {
-      userRepository.createUser(CreateUser.builder().name("Dst").email("dst@example.com").build());
-      UserLink link = new UserLink(ISSUER, "uid", "00u-dst");
-      userRepository.linkUser("dst@example.com", link, null);
-      setReactivatedAt("dst@example.com", Instant.parse("2026-11-01T09:10:00Z"));
+    userRepository.createUser(CreateUser.builder().name("Dst").email("dst@example.com").build());
+    UserLink link = new UserLink(ISSUER, "uid", "00u-dst");
+    userRepository.linkUser("dst@example.com", link, null);
+    setReactivatedEpochSecond("dst@example.com", Instant.parse("2026-11-01T09:10:00Z"));
 
-      assertThat(userRepository.findLinkedUser(link, Instant.parse("2026-11-01T08:30:00Z")))
-          .isNull();
-      assertThat(userRepository.findLinkedUser(link, Instant.parse("2026-11-01T09:09:59Z")))
-          .isNull();
-      assertThat(userRepository.findLinkedUser(link, Instant.parse("2026-11-01T09:10:00Z")))
-          .isNotNull();
-    }
+    assertThat(userRepository.findLinkedUser(link, Instant.parse("2026-11-01T08:30:00Z"))).isNull();
+    assertThat(userRepository.findLinkedUser(link, Instant.parse("2026-11-01T09:09:59Z"))).isNull();
+    assertThat(userRepository.findLinkedUser(link, Instant.parse("2026-11-01T09:10:00Z")))
+        .isNotNull();
   }
 
   /** Sets the row's reactivation time directly: the repository only sets it to the current time. */
-  private static void setReactivatedAt(String email, Instant reactivatedAt) {
+  private static void setReactivatedEpochSecond(String email, Instant reactivatedAt) {
     try (var session = sessionFactory.openSession()) {
       var transaction = session.beginTransaction();
       session

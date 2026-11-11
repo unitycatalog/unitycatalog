@@ -541,6 +541,52 @@ public class AuthServiceAllowlistTest {
           HttpStatus.NOT_IMPLEMENTED,
           "Token exchange is disabled in external mode");
     }
+
+    @Test
+    public void testIdpTokenRefusedOnceItsUserIsAnIdpPrincipal() throws IOException {
+      String token = idpToken(Map.of("sub", "person-1", "email", ENABLED_USER_EMAIL));
+      assertThat(listCatalogs(token).status()).isEqualTo(HttpStatus.OK);
+      // The admin then makes the linked user an IdP principal; only its SCIM token works now.
+      String scimToken =
+          AdminTokenCommand.createScimToken(
+              new String[] {
+                "--scim-principal", ENABLED_USER_EMAIL, "--idp", "okta", "--lifetime", "PT1H"
+              },
+              securityContext.getAlgorithm(),
+              new UserRepository(null, hibernateConfigurator.getSessionFactory()));
+      for (String path : new String[] {CATALOGS, "/api/1.0/unity-control/scim2/Me"}) {
+        assertRefused(
+            call(HttpMethod.GET, path, token, null),
+            HttpStatus.FORBIDDEN,
+            "User not allowed: " + ENABLED_USER_EMAIL);
+      }
+      assertThat(call(HttpMethod.GET, SCIM_USERS, scimToken, null).status())
+          .isEqualTo(HttpStatus.OK);
+    }
+  }
+
+  /** {@code internal} mode ignores an IdP block: the IdP's token is not accepted directly. */
+  @Nested
+  class InternalModeWithIdentityProviderBlock extends ExternalModeTestBase {
+
+    @Override
+    protected String subjectClaim() {
+      return "SUB";
+    }
+
+    @Override
+    protected void setUpProperties() {
+      super.setUpProperties();
+      serverProperties.setProperty("server.authentication.type", "internal");
+    }
+
+    @Test
+    public void testIdpTokenRefused() throws IOException {
+      assertRefused(
+          listCatalogs(idpToken(Map.of("sub", "person-1", "email", ENABLED_USER_EMAIL))),
+          HttpStatus.FORBIDDEN,
+          "Invalid access token.");
+    }
   }
 
   /** {@code token} with its header's {@code alg} removed; the signature is left as it was. */
