@@ -17,8 +17,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -60,7 +58,7 @@ class OAuthTokenProvider implements TokenProvider {
 
   OAuthTokenProvider() {}
 
-  // Package-private constructor for testing.
+  // Package-private constructor for testing with a custom OAuth scope.
   OAuthTokenProvider(
       String oauthUri,
       String oauthClientId,
@@ -138,13 +136,12 @@ class OAuthTokenProvider implements TokenProvider {
 
   @Override
   public Map<String, String> configs() {
-    Map<String, String> configs = new HashMap<>();
-    configs.put(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE);
-    configs.put(AuthConfigs.OAUTH_URI, oauthUri);
-    configs.put(AuthConfigs.OAUTH_CLIENT_ID, oauthClientId);
-    configs.put(AuthConfigs.OAUTH_CLIENT_SECRET, oauthClientSecret);
-    configs.put(AuthConfigs.OAUTH_SCOPE, oauthScope);
-    return Collections.unmodifiableMap(configs);
+    return Map.of(
+        AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE,
+        AuthConfigs.OAUTH_URI, oauthUri,
+        AuthConfigs.OAUTH_CLIENT_ID, oauthClientId,
+        AuthConfigs.OAUTH_CLIENT_SECRET, oauthClientSecret,
+        AuthConfigs.OAUTH_SCOPE, oauthScope);
   }
 
   private TempToken renewToken() {
@@ -174,19 +171,18 @@ class OAuthTokenProvider implements TokenProvider {
             .header("Content-Type", "application/x-www-form-urlencoded")
             .POST(HttpRequest.BodyPublishers.ofString(formData))
             .build();
-    return sendTokenRequest(request, "Failed to fetch OAuth token");
+    return sendTokenRequest(request);
   }
 
-  private JsonNode sendTokenRequest(HttpRequest request, String errorMessage)
-      throws IOException, InterruptedException {
+  private JsonNode sendTokenRequest(HttpRequest request) throws IOException, InterruptedException {
     // Send request with retry support
     HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
     if (response.statusCode() != 200) {
       throw new IOException(
           String.format(
-              "%s. HTTP status: %d, Response: %s",
-              errorMessage, response.statusCode(), response.body()));
+              "Failed to fetch OAuth token. HTTP status: %d, Response: %s",
+              response.statusCode(), response.body()));
     }
 
     return OBJECT_MAPPER.readTree(response.body());

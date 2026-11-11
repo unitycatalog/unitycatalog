@@ -16,6 +16,11 @@ import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
+import com.sun.net.httpserver.HttpServer;
+import io.unitycatalog.client.ApiClientBuilder;
+import io.unitycatalog.client.api.CatalogsApi;
+import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
 import io.unitycatalog.server.base.auth.KeycloakIdentityProvider;
 import io.unitycatalog.server.persist.UserRepository;
@@ -23,6 +28,8 @@ import io.unitycatalog.server.security.AdminTokenCommand;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.WildcardAllowlist;
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
@@ -416,6 +423,50 @@ public class AuthServiceAllowlistTest {
     @Override
     protected String subjectClaim() {
       return "SUB";
+    }
+
+    @Test
+    public void testJavaClientOAuthProviderSendsIdpTokenAsIs() throws Exception {
+      // The Java client's type=oauth provider fetches the token with client credentials from a fake
+      // IdP and sends it as is; external mode accepts it, with no token exchange.
+      HttpServer idp = HttpServer.create(new InetSocketAddress(0), 0);
+      idp.createContext(
+          "/token",
+          exchange -> {
+            String accessToken = idpToken(Map.of("sub", "machine-1", "email", ENABLED_USER_EMAIL));
+            byte[] body =
+                String.format(
+                        "{\"access_token\":\"%s\",\"token_type\":\"Bearer\",\"expires_in\":300}",
+                        accessToken)
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+          });
+      idp.start();
+      try {
+        TokenProvider provider =
+            TokenProvider.create(
+                Map.of(
+                    "type", "oauth",
+                    "oauth.uri", "http://localhost:" + idp.getAddress().getPort() + "/token",
+                    "oauth.clientId", "client-1",
+                    "oauth.clientSecret", "client-secret"));
+        CatalogsApi catalogsApi =
+            new CatalogsApi(
+                ApiClientBuilder.create()
+                    .uri(serverConfig.getServerUrl())
+                    .tokenProvider(provider)
+                    .retryPolicy(JitterDelayRetryPolicy.builder().maxAttempts(1).build())
+                    .build());
+
+        assertThat(JWT.decode(provider.accessToken()).getIssuer()).isEqualTo(testIssuer);
+        assertThat(catalogsApi.listCatalogs(null, null, /* includeBrowse= */ false).getCatalogs())
+            .isNullOrEmpty();
+      } finally {
+        idp.stop(0);
+      }
     }
 
     @Test

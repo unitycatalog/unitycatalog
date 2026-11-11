@@ -776,7 +776,8 @@ Key names differ by client:
 | Server | Client |
 | --- | --- |
 | `server.authorization=disable` (default) | Java: `type=static` with `token=""`. Spark: legacy `token=""` (`export UC_TOKEN=`), or `auth.type=static` with `auth.token=""`. The client may send `Authorization: Bearer ` with an empty token; the server ignores it. |
-| `server.authorization=enable` | Java: `type=static` with a real token, or `type=oauth` with `oauth.uri`, `oauth.clientId`, and `oauth.clientSecret`. Spark: the same keys under the `auth.` prefix, or a non-empty legacy `token`. See the sections below. |
+| `server.authorization=enable`, `server.authentication.type=internal` (default) | The server accepts only its own tokens. Java: `type=static` with a real Unity Catalog token. Spark: the same keys under the `auth.` prefix, or a non-empty legacy `token`. `type=oauth` sends the identity provider's token as is, which this mode refuses with 403. |
+| `server.authorization=enable`, `server.authentication.type=external` | The server accepts the identity provider's token (see [External authentication mode](#external-authentication-mode)). Java: `type=oauth` with `oauth.uri`, `oauth.clientId`, and `oauth.clientSecret`. Spark: the same keys under the `auth.` prefix. See the sections below. |
 
 Spark maps a present `token` catalog property to `type=static` even when the value is empty.
 Hive JDBC / Beeline URLs that omit empty query parameters cannot express an empty token;
