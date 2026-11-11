@@ -237,22 +237,8 @@ public class MigrationStepRulesTest {
     for (DatabaseKind kind : DatabaseKind.values()) {
       try (Stream<Path> files = Files.list(EFFECTS.resolve(kind.folder()))) {
         for (Path file : files.toList()) {
-          Map<String, String> removed = new HashMap<>();
-          for (String line : Files.readAllLines(file)) {
-            if (!line.matches("[-+] column .*")) {
-              continue;
-            }
-            Matcher column = COLUMN_LINE.matcher(line);
-            if (!column.matches()) {
-              problems.add(file + ": can't read the column line " + line);
-            } else if (column.group(1).equals("-")) {
-              removed.put(column.group(2), line);
-            } else if (removed.containsKey(column.group(2))) {
-              String problem = columnChange(kind, removed.get(column.group(2)), line);
-              if (problem != null) {
-                problems.add(file + ": " + column.group(2) + " " + problem);
-              }
-            }
+          for (String problem : narrowedColumns(kind, Files.readAllLines(file))) {
+            problems.add(file + ": " + problem);
           }
         }
       }
@@ -266,42 +252,61 @@ public class MigrationStepRulesTest {
       delimiter = '|',
       quoteCharacter = '"',
       value = {
-        "POSTGRESQL|type=varchar size=255 nullable=YES|type=varchar size=255 nullable=NO|becomes"
-            + " NOT NULL",
-        "POSTGRESQL|type=varchar size=255 nullable=YES|type=varchar size=100 nullable=YES|not"
-            + " wider",
-        "POSTGRESQL|type=numeric size=10 scale=2 nullable=YES|type=numeric size=10 scale=1"
-            + " nullable=YES|not wider",
+        "POSTGRESQL|type=varchar size=255 nullable=YES"
+            + "|type=varchar size=255 nullable=NO|becomes NOT NULL",
+        "POSTGRESQL|type=varchar size=255 nullable=YES"
+            + "|type=varchar size=100 nullable=YES|not wider",
+        "POSTGRESQL|type=numeric size=10 scale=2 nullable=YES"
+            + "|type=numeric size=10 scale=1 nullable=YES|not wider",
         "POSTGRESQL|type=int8 size=19 nullable=YES|type=int4 size=10 nullable=YES|not wider",
         "POSTGRESQL|type=varchar size=255 nullable=YES|type=text size=2147483647 nullable=YES|",
         "POSTGRESQL|type=varchar size=255 nullable=NO|type=varchar size=255 nullable=YES|",
-        "MYSQL|type=enum size=8 nullable=NO default=null values=enum('FUNCTION','TABLE')|type=enum"
-            + " size=8 nullable=NO default=null values=enum('FUNCTION')|drops the values [TABLE]",
+        "MYSQL|type=enum size=8 nullable=NO default=null values=enum('FUNCTION','TABLE')"
+            + "|type=enum size=8 nullable=NO default=null values=enum('FUNCTION')"
+            + "|drops the values [TABLE]",
         "MYSQL|type=enum size=8 nullable=NO default=null values=enum('FUNCTION','TABLE')"
             + "|type=enum size=8 nullable=NO default=null values=enum('FUNCTION','TABLE','VIEW')|",
         "POSTGRESQL|type=varchar size=255 nullable=|type=varchar size=100 nullable=YES|can't read"
       })
   void columnChangesWiden(DatabaseKind kind, String before, String after, String problem) {
-    String found =
-        columnChange(kind, "- column t.c " + before + " ", "+ column t.c " + after + " ");
+    List<String> found =
+        narrowedColumns(
+            kind, List.of("- column t.c " + before + " ", "+ column t.c " + after + " "));
     if (problem == null) {
-      assertThat(found).isNull();
+      assertThat(found).isEmpty();
     } else {
-      assertThat(found).contains(problem);
+      assertThat(found).singleElement().asString().contains(problem);
     }
   }
 
   /**
-   * Why the change from column line {@code before} to {@code after} narrows the column, or null.
+   * What the column changes in an effect file's {@code lines} do that rows already in the database
+   * could fail, one entry per change; a column line it can't read is one too.
    */
-  private static String columnChange(DatabaseKind kind, String before, String after) {
-    Matcher from = COLUMN_LINE.matcher(before);
-    Matcher to = COLUMN_LINE.matcher(after);
-    if (!from.matches() || !to.matches()) {
-      return "can't read the column lines";
+  private static List<String> narrowedColumns(DatabaseKind kind, List<String> lines) {
+    List<String> problems = new ArrayList<>();
+    Map<String, Matcher> removed = new HashMap<>();
+    for (String line : lines) {
+      if (!line.matches("[-+] column .*")) {
+        continue;
+      }
+      Matcher column = COLUMN_LINE.matcher(line);
+      if (!column.matches()) {
+        problems.add("can't read the column line " + line);
+      } else if (column.group(1).equals("-")) {
+        removed.put(column.group(2), column);
+      } else if (removed.containsKey(column.group(2))) {
+        Matcher before = removed.get(column.group(2));
+        String problem = narrowing(kind, before, column);
+        if (problem == null) {
+          problem = droppedValues(before.group(), line);
+        }
+        if (problem != null) {
+          problems.add(column.group(2) + " " + problem);
+        }
+      }
     }
-    String narrowing = narrowing(kind, from, to);
-    return narrowing != null ? narrowing : droppedValues(before, after);
+    return problems;
   }
 
   /** MySQL's enum and set members, in a column line's {@code values=}. */
