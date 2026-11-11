@@ -320,26 +320,31 @@ public class UserRepository {
       return TransactionManager.executeWithTransaction(
           sessionFactory,
           session -> {
+            // The owner is compared here, exactly: a MySQL database at its default collation
+            // would match okta to Okta, and admin to Admin, in the query.
+            UserDAO userDAO = getUserByEmail(session, email);
+            if (userDAO == null
+                || !(IdentityUtils.ADMIN_OWNER.equals(userDAO.getOwner())
+                    || idpName.equals(userDAO.getOwner()))) {
+              return null;
+            }
             MutationQuery update =
                 session
                     .createMutationQuery(
                         "UPDATE UserDAO SET linkIssuer = :issuer, linkClaim = :claim,"
-                            + " linkValue = :value WHERE email = :email AND linkIssuer IS NULL"
+                            + " linkValue = :value WHERE id = :id AND linkIssuer IS NULL"
                             + " AND state = :enabled AND email <> 'admin' AND idpName IS NULL"
-                            + " AND owner IN (:adminOwner, :idpName)"
                             + issuedSinceReactivation(issuedAt))
-                    .setParameter("adminOwner", IdentityUtils.ADMIN_OWNER)
-                    .setParameter("idpName", idpName)
                     .setParameter("issuer", link.issuer())
                     .setParameter("claim", link.claim())
                     .setParameter("value", link.value())
-                    .setParameter("email", email)
+                    .setParameter("id", userDAO.getId())
                     .setParameter("enabled", User.StateEnum.ENABLED.toString());
             if (issuedAt != null) {
               update.setParameter("issuedAt", issuedAt.getEpochSecond());
             }
             int linked = update.executeUpdate();
-            return linked == 0 ? null : getUserByEmail(session, email).toUser();
+            return linked == 0 ? null : getUserById(session, userDAO.getId().toString()).toUser();
           },
           "Failed to link user",
           /* readOnly= */ false);

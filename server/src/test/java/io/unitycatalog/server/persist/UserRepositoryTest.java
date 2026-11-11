@@ -362,6 +362,49 @@ class UserRepositoryTest {
   }
 
   @Test
+  void linkUserComparesTheOwnerExactlyOnAnyCollation() {
+    // MySQL's default collation ignores case and accents; the test database's doesn't.
+    boolean isMySql = testDatabase.jdbcUrl().startsWith("jdbc:mysql");
+    if (isMySql) {
+      alterOwnerCollation("utf8mb4_0900_ai_ci");
+    }
+    try {
+      userRepository.createUser(
+          CreateUser.builder().name("Lower").email("owner-okta@example.com").owner(IDP).build());
+      userRepository.createUser(
+          CreateUser.builder()
+              .name("Upper")
+              .email("owner-admin@example.com")
+              .owner("Admin")
+              .build());
+
+      // The IdP Okta is not okta, and a row owned by Admin is not the admin's.
+      UserLink oktaUpper = new UserLink("https://okta-upper.example.com", "uid", "00u-upper");
+      assertThat(userRepository.linkUser("Okta", "owner-okta@example.com", oktaUpper, null))
+          .isNull();
+      UserLink entra = new UserLink("https://entra.example.com", "oid", "entra-admin-upper");
+      assertThat(userRepository.linkUser("entra", "owner-admin@example.com", entra, null)).isNull();
+      assertThat(userRepository.findLinkedUser(oktaUpper, null)).isNull();
+      assertThat(userRepository.findLinkedUser(entra, null)).isNull();
+    } finally {
+      if (isMySql) {
+        alterOwnerCollation("utf8mb4_0900_bin");
+      }
+    }
+  }
+
+  private static void alterOwnerCollation(String collation) {
+    try (var session = sessionFactory.openSession()) {
+      var transaction = session.beginTransaction();
+      session
+          .createNativeMutationQuery(
+              "ALTER TABLE uc_users MODIFY owner varchar(255) NOT NULL COLLATE " + collation)
+          .executeUpdate();
+      transaction.commit();
+    }
+  }
+
+  @Test
   void createLinkedUserCreatesARowOwnedByTheIdpUnlessTheEmailHasOne() {
     UserLink link = new UserLink(ISSUER, "uid", "00u-new");
     User created = userRepository.createLinkedUser(IDP, "new-person@example.com", link);

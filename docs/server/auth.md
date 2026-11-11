@@ -586,9 +586,9 @@ bin/uc-admin-token --scim-principal okta-scim --idp okta --lifetime P90D
 
 ### Users and groups an identity provider owns
 
-Every user and group has an owner: `admin`, or the name of the identity provider whose SCIM token created it. SCIM
-responses show it in the extension `urn:unitycatalog:scim:schemas:extension:2.0:Owner` as `owner`. Users and groups
-that existed before the upgrade are owned by `admin`.
+Every user and group has an owner: `admin`, or the name of the identity provider whose SCIM token or first sign-in
+created it. SCIM responses show it in the extension `urn:unitycatalog:scim:schemas:extension:2.0:Owner` as `owner`.
+Users and groups that existed before the upgrade are owned by `admin`.
 
 - An identity provider sees and changes only its own users and groups. Any other is not found (404) for it, so when it
   looks for a user or group the admin created it finds none, and its create gets 409: emails and group names are
