@@ -174,9 +174,7 @@ class AuthDecoratorTest {
   /** A token signed with the server's key, with the given type and expiry claims. */
   private String signedToken(UnaryOperator<JWTCreator.Builder> claims) {
     JWTCreator.Builder builder =
-        JWT.create()
-            .withIssuer(INTERNAL)
-            .withClaim(JwtClaim.SUBJECT.key(), EMAIL);
+        JWT.create().withIssuer(INTERNAL).withClaim(JwtClaim.SUBJECT.key(), EMAIL);
     return claims.apply(builder).sign(securityContext.getAlgorithm());
   }
 

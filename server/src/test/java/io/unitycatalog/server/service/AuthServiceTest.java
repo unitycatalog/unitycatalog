@@ -327,7 +327,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     String accessToken =
         MAPPER.readTree(exchangeToken(identityToken).contentUtf8()).get("access_token").asText();
     assertThat(listCatalogs(accessToken).status()).isEqualTo(HttpStatus.OK);
-    String serviceToken = securityContext.getServiceToken();
+    String serviceToken = securityContext.createServiceToken();
     assertThat(JWT.decode(serviceToken).getExpiresAt()).isNull();
     assertThat(listCatalogs(serviceToken).status()).isEqualTo(HttpStatus.OK);
 
@@ -367,9 +367,9 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   }
 
   /**
-   * An unknown key id is the caller's error: a UC token and an exchanged IdP token both get 401,
-   * with no per-request ERROR log and no WARN from the key lookup. Each is sent twice so the IdP
-   * path also hits the rate-limited key refresh.
+   * An unknown key id on an exchanged IdP token is the caller's error: 401, with no per-request
+   * ERROR log and no WARN from the key lookup. It is sent twice so it also hits the rate-limited
+   * key refresh. (The server ignores the key id of its own tokens.)
    */
   @Test
   public void testUnknownSigningKeyIdIsUnauthenticated() throws Exception {
@@ -386,14 +386,6 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     Configurator.setLevel(jwksLogger.getName(), Level.DEBUG);
     try {
       for (int i = 0; i < 2; i++) {
-        String ucToken =
-            JWT.create()
-                .withIssuer(INTERNAL)
-                .withKeyId("unknown-kid-" + i)
-                .withExpiresAt(Date.from(Instant.now().plus(Duration.ofMinutes(5))))
-                .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
-                .withClaim(JwtClaim.SUBJECT.key(), ENABLED_USER_EMAIL)
-                .sign(securityContext.getAlgorithm());
         String identityToken =
             createIdentityToken(
                 ENABLED_USER_EMAIL,
@@ -401,13 +393,11 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
                 TEST_AUDIENCE,
                 testIssuerAlgorithm,
                 "unknown-kid-" + i);
-        for (AggregatedHttpResponse response :
-            List.of(listCatalogs(ucToken), exchangeToken(identityToken))) {
-          assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
-          JsonNode error = MAPPER.readTree(response.contentUtf8());
-          assertThat(error.get("error_code").asText()).isEqualTo("UNAUTHENTICATED");
-          assertThat(error.get("message").asText()).isEqualTo("Unknown signing key");
-        }
+        AggregatedHttpResponse response = exchangeToken(identityToken);
+        assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        JsonNode error = MAPPER.readTree(response.contentUtf8());
+        assertThat(error.get("error_code").asText()).isEqualTo("UNAUTHENTICATED");
+        assertThat(error.get("message").asText()).isEqualTo("Unknown signing key");
       }
     } finally {
       logger.removeAppender(appender);
@@ -426,7 +416,6 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     var builder =
         JWT.create()
             .withIssuer(INTERNAL)
-            .withKeyId(securityContext.getKeyId())
             .withExpiresAt(expiresAt)
             .withClaim(JwtClaim.SUBJECT.key(), ENABLED_USER_EMAIL);
     if (type != null) {
@@ -450,7 +439,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     RequestHeaders headers =
         RequestHeaders.builder(method, "/api/1.0/unity-control/scim2/Users" + path)
             .contentType(MediaType.JSON)
-            .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + securityContext.getServiceToken())
+            .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + securityContext.createServiceToken())
             .build();
     return client
         .execute(headers, body == null ? HttpData.empty() : HttpData.ofUtf8(body))
