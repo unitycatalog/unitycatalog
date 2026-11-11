@@ -4,20 +4,20 @@
 * @tdas @dennyglee
 
 # Build
-/build.sbt @tdas @yili-db
-/version.sbt @tdas @yili-db
-/build/ @tdas @yili-db
-/project/ @tdas @yili-db
+/build.sbt @tdas @yili-db @TimothyW553
+/version.sbt @tdas @yili-db @TimothyW553
+/build/ @tdas @yili-db @TimothyW553
+/project/ @tdas @yili-db @TimothyW553
 
 # GitHub Actions and Workflows
-/.github/actions/ @tdas @yili-db
-/.github/workflows/ @tdas @yili-db
+/.github/actions/ @tdas @yili-db @TimothyW553
+/.github/workflows/ @tdas @yili-db @TimothyW553
 
 # Misc
-/.gitignore @tdas @yili-db
+/.gitignore @tdas @yili-db @TimothyW553
 
 # Etc
-/etc/ @tdas @yili-db
+/etc/ @tdas @yili-db @TimothyW553
 
 # Spark Connector
 /connectors/spark/ @tdas @openinx @yili-db @TimothyW553
@@ -47,14 +47,14 @@
 /ui-new/ @yili-db @newfront @roeap @tdas
 
 # AI Integration
-/ai/ @tdas @yili-db
+/ai/ @tdas @yili-db @TimothyW553
 
 # AI Skills
-/CODE_REVIEW.md @tdas @yili-db
-/AGENTS.md @tdas @yili-db
+/CODE_REVIEW.md @tdas @yili-db @TimothyW553
+/AGENTS.md @tdas @yili-db @TimothyW553
 
 # Helm
-/helm/ @tdas @yili-db
+/helm/ @tdas @yili-db @TimothyW553
 
 # Helper scripts
 /bin/ @tdas @openinx @yili-db @TimothyW553

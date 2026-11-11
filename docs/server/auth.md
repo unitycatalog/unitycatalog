@@ -57,6 +57,127 @@ server.audiences=<Client ID provided earlier>
 export UC_SERVER_CLIENT_SECRET='<Client secret provided earlier>'
 ```
 
+### List authorization
+
+For both Casbin and OPA, permission denials and client errors (HTTP 4xx) filter out
+individual items. Unexpected errors during authorization or resource resolution fail
+the whole request.
+
+### OPA authorization
+
+Casbin is the default authorization backend. To use Open Policy Agent (OPA) for privilege
+decisions, add these settings to `etc/conf/server.properties` and restart UC:
+
+```properties
+server.authorization=enable
+server.authorization.provider=opa
+server.authorization.opa.decision-url=http://localhost:8181/v1/data/uc/authz
+server.authorization.opa.response-timeout=PT5S
+```
+
+The decision URL is the full OPA data API URL for your policy package. It must use HTTP or
+HTTPS, without credentials in the URL or a fragment. Use HTTPS or a trusted local connection.
+Selecting OPA requires authorization to be enabled and a decision URL; otherwise startup fails.
+Authentication and UC user provisioning work as before. UC does not forward the user's token
+to OPA.
+
+UC keeps its existing authorization expressions and asks OPA about each evaluated privilege,
+including `OWNER`. For example, creating a table in `analytics.reports` can require:
+
+| Privilege | Resource |
+| --- | --- |
+| `USE_CATALOG` | Catalog `analytics` |
+| `USE_SCHEMA` | Schema `analytics.reports` |
+| `CREATE_TABLE` | Schema `analytics.reports` |
+| `CREATE_EXTERNAL_TABLE` | The external location, when an external table resolves to one |
+
+Each privilege is a separate request. UC checks the existing `OWNER` alternatives too and
+short-circuits when an expression allows or denies the operation. Path resolution, overlap
+validation, and staging-table creator checks remain in UC.
+
+For the `CREATE_TABLE` check, UC sends:
+
+```json
+{
+  "input": {
+    "principal": { "id": "<UC user UUID>", "email": "alice@example.com" },
+    "privilege": "CREATE_TABLE",
+    "resource": {
+      "id": "<schema UUID>", "type": "SCHEMA", "name": "reports",
+      "parents": [
+        { "id": "<catalog UUID>", "type": "CATALOG", "name": "analytics" }
+      ]
+    }
+  }
+}
+```
+
+`principal.external_id` is included when provisioned on the UC user. UC has no group or role
+membership to include; your policy can resolve it using your own data sources. Privileges and
+resource types use uppercase enum names, such as `CREATE_TABLE` and `REGISTERED_MODEL`.
+Names are local names. Parents are ordered from schema to catalog for data objects; schemas
+have a catalog parent. Catalogs, external locations, credentials, and the metastore have empty
+parent arrays. The metastore has no name. Staging table IDs use resource type `TABLE`.
+UC sends no native grants, owner fields, or cloud credentials.
+
+OPA must return a boolean `result.allow`:
+
+```json
+{ "result": { "allow": true } }
+```
+
+An explicit `false` follows UC's normal deny or list-filter behavior. Transport errors, timeouts,
+HTTP errors, and missing or invalid decisions fail the UC request with HTTP 503. UC never falls
+back to native grants. UC reuses identical checks within one expression evaluation or across list
+items evaluated with the same expression. Full-access and BROWSE expressions have separate caches.
+Other checks in the same request can repeat OPA calls. Decisions are not reused across requests.
+The response timeout applies to each OPA call and is an ISO-8601 duration of at least 1 ms
+(`PT0.001S`). UC also cancels pending OPA HTTP calls when the UC request times out or is cancelled.
+A large list can still require calls for every item.
+
+If the user, resource, or a parent is missing while building OPA input, the privilege check is
+denied. Other UC metadata failures keep their UC error code, usually HTTP 500.
+
+**Native permission APIs remain available.** Grant/revoke/list APIs still manage UC's native
+records, but those grants do not affect OPA decisions. Resource creation and deletion also
+maintain native owner and hierarchy records. Switching back to Casbin uses those records,
+including changes made while OPA was selected. OPA's `OWNER`, `MANAGE`, and `READ_METADATA` decisions,
+combined with UC's usage checks, control access to other users' native grants.
+
+SCIM also asks OPA whether the target user has `OWNER` on the metastore before deleting or
+deactivating that user. An allow decision prevents the change. Native ownership alone does not
+provide this protection in OPA mode; the policy must grant metastore `OWNER` to protected users.
+
+#### Try a policy
+
+The example in [`etc/conf/opa-example.rego`](https://github.com/unitycatalog/unitycatalog/blob/main/etc/conf/opa-example.rego)
+allows the local bootstrap account (`admin`) and looks up other privileges in OPA's own
+`data.grants`. Replace this example with your policy for deployment.
+
+From the repository root, start OPA 1.x:
+
+```sh
+opa run --server --addr=127.0.0.1:8181 etc/conf/opa-example.rego
+```
+
+In another terminal, add grants directly to OPA. Replace the UUID placeholders with the UC
+catalog and schema IDs:
+
+```sh
+curl -X PUT http://localhost:8181/v1/data/grants \
+  -H 'Content-Type: application/json' \
+  -d '[
+    {"principal":"alice@example.com","privilege":"USE_CATALOG","type":"CATALOG","id":"<catalog UUID>"},
+    {"principal":"alice@example.com","privilege":"USE_SCHEMA","type":"SCHEMA","id":"<schema UUID>"},
+    {"principal":"alice@example.com","privilege":"CREATE_TABLE","type":"SCHEMA","id":"<schema UUID>"}
+  ]'
+```
+
+With Alice provisioned in UC, these grants let her create tables in that schema. An external
+table under a registered external location also needs `CREATE_EXTERNAL_TABLE` on that location.
+The example grants no table read or ownership privileges to Alice; add those to your OPA policy
+as needed. OPA policy and data administration is separate from UC's grant APIs.
+
 ### Issuer and Audience Validation
 
 When authorization is enabled, the server validates incoming identity tokens against configured issuers and audiences:
@@ -164,7 +285,8 @@ where you run `bin/uc auth login`; the server does not read it. The file still w
 
 `server.authorization.strict-privilege-checks` is a temporary migration setting. It defaults to
 `true` and will be removed in a future release. Permission fixes that use this setting apply the
-corrected rules by default.
+corrected rules by default. With OPA, this setting also changes which privileges UC asks OPA
+to authorize.
 
 The setting covers:
 
@@ -194,6 +316,9 @@ and grants. Set it back to `true` when the migration is complete.
 Use the same value on every server instance. Restart each instance after changing it.
 
 ### Multiple server instances
+
+This section applies to Casbin. With OPA, `server.authorization.policy-refresh` does not change
+authorization decisions.
 
 Authorization decisions use an in-memory Casbin policy loaded from the shared `casbin_rule` table.
 A grant or revoke written on one server process is not visible to other processes until they reload
