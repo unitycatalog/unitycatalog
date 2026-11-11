@@ -125,15 +125,7 @@ public class Scim2UserService implements ScimService {
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public UserResource createScimUser(UserResource userResource) {
-    // Get primary email address
-    Email primaryEmail =
-        userResource.getEmails().stream()
-            .filter(Email::getPrimary)
-            .findFirst()
-            .orElseThrow(
-                () ->
-                    new Scim2RuntimeException(
-                        new PreconditionFailedException("User does not have a primary email.")));
+    Email primaryEmail = primaryEmail(userResource);
 
     String pictureUrl = "";
     if (userResource.getPhotos() != null && !userResource.getPhotos().isEmpty()) {
@@ -185,14 +177,34 @@ public class Scim2UserService implements ScimService {
       checkNotMetastoreOwner(existing);
     }
 
+    // Absent or empty emails leave the email as it is: `uc user update` without --email sends [].
+    boolean hasEmails = userResource.getEmails() != null && !userResource.getEmails().isEmpty();
     UpdateUser updateUser =
         UpdateUser.builder()
             .name(userResource.getDisplayName())
+            .email(hasEmails ? primaryEmail(userResource).getValue() : null)
             .active(userResource.getActive())
             .externalId(userResource.getExternalId())
             .build();
 
-    return asUserResource(userRepository.updateUser(id, updateUser));
+    try {
+      return asUserResource(userRepository.updateUser(id, updateUser));
+    } catch (BaseException e) {
+      if (e.getErrorCode() == ErrorCode.ALREADY_EXISTS) {
+        throw new Scim2RuntimeException(new ResourceConflictException(e.getMessage()));
+      }
+      throw e;
+    }
+  }
+
+  private static Email primaryEmail(UserResource userResource) {
+    return userResource.getEmails().stream()
+        .filter(Email::getPrimary)
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new Scim2RuntimeException(
+                    new PreconditionFailedException("User does not have a primary email.")));
   }
 
   @Delete("/{id}")

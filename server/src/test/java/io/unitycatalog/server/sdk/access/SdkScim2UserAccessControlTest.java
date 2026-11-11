@@ -4,18 +4,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.linecorp.armeria.common.HttpStatus;
+import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.control.ApiException;
 import io.unitycatalog.control.api.UsersApi;
+import io.unitycatalog.control.model.Email;
 import io.unitycatalog.control.model.UserResource;
 import io.unitycatalog.control.model.UserResourceList;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.service.Scim2UserService;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.http.HttpResponse;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import lombok.SneakyThrows;
@@ -147,6 +151,126 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     owner.setActive(false);
     assertThat(service.updateUser(ownerId, owner).getActive()).isFalse();
     assertThat(service.deleteUser(ownerId).aggregate().join().status()).isEqualTo(HttpStatus.OK);
+  }
+
+  @Test
+  @SneakyThrows
+  public void testDeleteRemovesTheUserAndFreesTheEmail() {
+    grantPermissions(
+        OTHER_USER, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
+    String catalogPath = "/api/2.1/unity-catalog/catalogs/" + TestUtils.CATALOG_NAME;
+    assertThat(
+            TestUtils.sendRawGet(createTestUserServerConfig(OTHER_USER), catalogPath).statusCode())
+        .isEqualTo(200);
+    String userPath = SCIM_USERS_PATH + "/" + otherUser.getId();
+    String put =
+        "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],\"id\":\""
+            + otherUser.getId()
+            + "\",\"displayName\":\"Renamed\"}";
+
+    assertThat(TestUtils.sendRaw(adminConfig, "DELETE", userPath, Optional.empty()).statusCode())
+        .isEqualTo(200);
+
+    // Every later call on the id is a 404.
+    String notFound = "User not found: " + otherUser.getId();
+    for (HttpResponse<String> response :
+        List.of(
+            TestUtils.sendRaw(adminConfig, "GET", userPath, Optional.empty()),
+            TestUtils.sendRaw(adminConfig, "PUT", userPath, Optional.of(put)),
+            TestUtils.sendRaw(adminConfig, "PATCH", userPath, Optional.of(DEACTIVATE)),
+            TestUtils.sendRaw(adminConfig, "DELETE", userPath, Optional.empty()))) {
+      assertThat(response.statusCode()).isEqualTo(404);
+      assertThat(response.body()).contains(notFound);
+    }
+    assertThat(usersApi.listUsers(null, null, null).getResources())
+        .extracting(UserResource::getId)
+        .doesNotContain(otherUser.getId());
+
+    // The email can be created again, as a new user without the old grants.
+    UserResource recreated = createTestUser(OTHER_USER, "Other User Again");
+    assertThat(recreated.getId()).isNotEqualTo(otherUser.getId());
+    assertThat(
+            TestUtils.sendRawGet(createTestUserServerConfig(OTHER_USER), catalogPath).statusCode())
+        .isEqualTo(403);
+  }
+
+  @Test
+  @SneakyThrows
+  public void testPutUpdatesTheEmail() {
+    UserResource renamed =
+        usersApi.updateUser(
+            otherUser.getId(),
+            new UserResource()
+                .id(otherUser.getId())
+                .emails(List.of(primaryEmail("moved@localhost"))));
+
+    assertThat(renamed.getId()).isEqualTo(otherUser.getId());
+    assertThat(renamed.getEmails().get(0).getValue()).isEqualTo("moved@localhost");
+    assertThat(usersApi.getUser(otherUser.getId()).getEmails().get(0).getValue())
+        .isEqualTo("moved@localhost");
+    // The old email is free again, and there is no alias for it.
+    createTestUser(OTHER_USER, "Takes The Old Email");
+
+    // The user's own email is not a clash, and a list without a primary email is refused as on
+    // create.
+    assertThat(
+            usersApi
+                .updateUser(
+                    otherUser.getId(),
+                    new UserResource()
+                        .id(otherUser.getId())
+                        .emails(List.of(primaryEmail("moved@localhost"))))
+                .getEmails()
+                .get(0)
+                .getValue())
+        .isEqualTo("moved@localhost");
+    ApiException noPrimary =
+        assertThrows(
+            ApiException.class,
+            () ->
+                usersApi.updateUser(
+                    otherUser.getId(),
+                    new UserResource()
+                        .id(otherUser.getId())
+                        .emails(List.of(new Email().value("other@localhost").primary(false)))));
+    assertThat(noPrimary.getCode()).isEqualTo(412);
+    assertThat(noPrimary.getResponseBody()).contains("User does not have a primary email.");
+
+    // An email that belongs to another user is a conflict.
+    ApiException clash =
+        assertThrows(
+            ApiException.class,
+            () ->
+                usersApi.updateUser(
+                    otherUser.getId(),
+                    new UserResource()
+                        .id(otherUser.getId())
+                        .emails(List.of(primaryEmail(REGULAR_USER)))));
+    assertThat(clash.getCode()).isEqualTo(409);
+    assertThat(clash.getResponseBody()).contains("User already exists: " + REGULAR_USER);
+    assertThat(usersApi.getUser(otherUser.getId()).getEmails().get(0).getValue())
+        .isEqualTo("moved@localhost");
+  }
+
+  @Test
+  @SneakyThrows
+  public void testPutWithAbsentOrEmptyEmailsKeepsTheEmail() {
+    // `uc user update` without --email sends `emails: []`.
+    for (List<Email> emails : java.util.Arrays.asList(null, List.<Email>of())) {
+      UserResource updated =
+          usersApi.updateUser(
+              otherUser.getId(),
+              new UserResource().id(otherUser.getId()).displayName("Renamed").emails(emails));
+
+      assertThat(updated.getDisplayName()).isEqualTo("Renamed");
+      assertThat(updated.getEmails().get(0).getValue()).isEqualTo(OTHER_USER);
+      assertThat(usersApi.getUser(otherUser.getId()).getEmails().get(0).getValue())
+          .isEqualTo(OTHER_USER);
+    }
+  }
+
+  private static Email primaryEmail(String value) {
+    return new Email().value(value).primary(true);
   }
 
   private static void assertScimPermissionDenied(Executable request) {

@@ -8,6 +8,7 @@ import lombok.Getter;
 public class UpdateUser {
 
   private String name;
+  private String email;
   private Boolean active;
   private String externalId;
 }
