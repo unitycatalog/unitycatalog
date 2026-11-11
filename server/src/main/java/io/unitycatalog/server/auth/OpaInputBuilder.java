@@ -9,6 +9,7 @@ import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
+import io.unitycatalog.server.persist.dao.GroupDAO;
 import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import io.unitycatalog.server.persist.dao.MetastoreDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
@@ -20,11 +21,16 @@ import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.JsonUtils;
+import java.util.List;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 
-/** Builds OPA input from identity and resource metadata, without native grants or credentials. */
+/**
+ * Builds OPA input from identity and resource metadata, without native grants or credentials. The
+ * principal carries its groups as {@code groups}: {@code id}, {@code name} and, when set, {@code
+ * external_id}, like the principal itself.
+ */
 class OpaInputBuilder {
   private final SessionFactory sessionFactory;
 
@@ -48,12 +54,36 @@ class OpaInputBuilder {
           if (user.getExternalId() != null) {
             principal.put("external_id", user.getExternalId());
           }
+          ArrayNode groups = principal.putArray("groups");
+          groupsOf(session, user.getId())
+              .forEach(
+                  group -> {
+                    ObjectNode node =
+                        groups
+                            .addObject()
+                            .put("id", group.getId().toString())
+                            .put("name", group.getName());
+                    if (group.getExternalId() != null) {
+                      node.put("external_id", group.getExternalId());
+                    }
+                  });
           input.put("privilege", privilege.name());
           input.set("resource", resource(session, resourceType, resourceId));
           return request;
         },
         "Could not build OPA authorization input",
         /* readOnly= */ true);
+  }
+
+  /** The user's groups, by name, so the input is stable. */
+  private static List<GroupDAO> groupsOf(Session session, UUID userId) {
+    return session
+        .createSelectionQuery(
+            "FROM GroupDAO WHERE id IN (SELECT groupId FROM GroupMemberDAO WHERE userId = :userId)"
+                + " ORDER BY name",
+            GroupDAO.class)
+        .setParameter("userId", userId)
+        .list();
   }
 
   private ObjectNode resource(Session session, SecurableType type, UUID id) {

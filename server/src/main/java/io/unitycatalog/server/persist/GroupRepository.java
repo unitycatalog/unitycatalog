@@ -13,6 +13,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.UnaryOperator;
@@ -91,6 +92,42 @@ public class GroupRepository {
               .toList();
         },
         "Failed to list groups",
+        /* readOnly= */ true);
+  }
+
+  /** The id of the group with this name, if there is one. */
+  public Optional<UUID> findGroupIdByName(String name) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session ->
+            session
+                .createSelectionQuery("SELECT id FROM GroupDAO WHERE name = :name", UUID.class)
+                .setParameter("name", name)
+                .uniqueResultOptional(),
+        "Failed to find group",
+        /* readOnly= */ true);
+  }
+
+  /** The name of the group with this id, if there is one. */
+  public Optional<String> findGroupName(UUID id) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> Optional.ofNullable(session.get(GroupDAO.class, id)).map(GroupDAO::getName),
+        "Failed to find group",
+        /* readOnly= */ true);
+  }
+
+  /** The ids of the groups the user is a member of. */
+  public List<UUID> listGroupIdsOfUser(UUID userId) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session ->
+            session
+                .createSelectionQuery(
+                    "SELECT groupId FROM GroupMemberDAO WHERE userId = :userId", UUID.class)
+                .setParameter("userId", userId)
+                .list(),
+        "Failed to list the user's groups",
         /* readOnly= */ true);
   }
 

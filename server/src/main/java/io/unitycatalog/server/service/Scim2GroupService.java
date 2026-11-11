@@ -39,8 +39,10 @@ import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.Scim2RuntimeException;
 import io.unitycatalog.server.persist.GroupRepository;
+import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.model.Group;
+import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.Scim2Utils;
 import java.util.Calendar;
 import java.util.Iterator;
@@ -73,10 +75,12 @@ public class Scim2GroupService implements ScimService {
 
   private final UnityCatalogAuthorizer authorizer;
   private final GroupRepository groupRepository;
+  private final MetastoreRepository metastoreRepository;
 
   public Scim2GroupService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
     this.groupRepository = repositories.getGroupRepository();
+    this.metastoreRepository = repositories.getMetastoreRepository();
   }
 
   /**
@@ -175,12 +179,21 @@ public class Scim2GroupService implements ScimService {
         });
   }
 
-  /** Clears the group's grants, then deletes the group and its memberships. */
+  /**
+   * Clears the group's grants, then deletes the group and its memberships. A group that owns the
+   * metastore can't be deleted, the same as such a user.
+   */
   @Delete("/{id}")
   @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteGroup(@Param("id") String id) {
     Group group = scim(() -> groupRepository.getGroup(id));
+    if (authorizer
+        .listAuthorizations(group.getId(), metastoreRepository.getMetastoreId())
+        .contains(Privileges.OWNER)) {
+      throw new Scim2RuntimeException(
+          new BadRequestException("The metastore owner can't be deleted: " + group.getName()));
+    }
     authorizer.clearAuthorizationsForPrincipal(group.getId());
     scim(
         () -> {
