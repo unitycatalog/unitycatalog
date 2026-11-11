@@ -28,6 +28,10 @@ async fn config_handler(
         "authEnabled": state.config.auth_enabled,
         "googleClientId": state.config.google_client_id,
         "oktaEnabled": state.config.okta_enabled,
+        "oktaIssuer": state.config.okta_issuer,
+        "oktaClientId": state.config.okta_client_id,
+        "oktaScopes": state.config.okta_scopes,
+        "oktaRedirectUri": state.config.okta_redirect_uri,
         "keycloakEnabled": state.config.keycloak_enabled,
     }))
 }

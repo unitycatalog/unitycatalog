@@ -15,6 +15,10 @@ fn test_config(uc_server: String) -> Config {
         auth_enabled: true,
         google_client_id: "gid".to_string(),
         okta_enabled: false,
+        okta_issuer: "https://dev-1.okta.com/oauth2/aus1".to_string(),
+        okta_client_id: "okta-cid".to_string(),
+        okta_scopes: "openid profile email".to_string(),
+        okta_redirect_uri: String::new(),
         keycloak_enabled: true,
         allowed_origins: vec![],
         // A path that certainly does not exist, so the SPA fallback stays inert.
@@ -164,6 +168,10 @@ async fn config_reports_auth_flags() {
     assert_eq!(json["googleClientId"], "gid");
     assert_eq!(json["keycloakEnabled"], true);
     assert_eq!(json["oktaEnabled"], false);
+    assert_eq!(json["oktaIssuer"], "https://dev-1.okta.com/oauth2/aus1");
+    assert_eq!(json["oktaClientId"], "okta-cid");
+    assert_eq!(json["oktaScopes"], "openid profile email");
+    assert_eq!(json["oktaRedirectUri"], "");
 }
 
 #[tokio::test]

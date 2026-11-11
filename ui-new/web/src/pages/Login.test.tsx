@@ -1,15 +1,16 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("@tanstack/react-router", () => import("@/test/tanstack-router-mock"));
 
-const { signInWithAccessToken, loginWithToken } = vi.hoisted(() => ({
+const { signInWithAccessToken, loginWithToken, signInWithOkta } = vi.hoisted(() => ({
   signInWithAccessToken: vi.fn(),
   loginWithToken: vi.fn().mockResolvedValue(undefined),
+  signInWithOkta: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/context/auth-context", () => ({
-  useAuth: () => ({ loginWithToken, signInWithAccessToken }),
+  useAuth: () => ({ loginWithToken, signInWithAccessToken, signInWithOkta }),
 }));
 
 const { appConfig } = vi.hoisted(() => ({ appConfig: { current: {} as Record<string, unknown> } }));
@@ -18,12 +19,36 @@ vi.mock("@/lib/appConfig", () => ({
 }));
 
 import Login from "@/pages/Login";
+import OktaCallback from "@/pages/OktaCallback";
 import { navigateMock } from "@/test/tanstack-router-mock";
+import { beginOktaLogin, markOktaToken, type OktaConfig } from "@/lib/okta";
+import { getToken, setToken } from "@/lib/session";
+
+const oktaAppConfig = {
+  oktaEnabled: true,
+  oktaIssuer: "https://dev-1.okta.com/oauth2/aus1",
+  oktaClientId: "client-1",
+};
+const oktaCfg: OktaConfig = {
+  issuer: oktaAppConfig.oktaIssuer,
+  clientId: "client-1",
+  scopes: "openid profile email",
+  redirectUri: `${window.location.origin}/login/callback`,
+};
+const assignMock = vi.fn();
 
 beforeEach(() => {
   navigateMock.mockReset();
   signInWithAccessToken.mockReset();
+  signInWithOkta.mockReset().mockResolvedValue(undefined);
+  assignMock.mockReset();
+  vi.spyOn(window.location, "assign").mockImplementation(assignMock);
   appConfig.current = {};
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("Login", () => {
@@ -52,5 +77,95 @@ describe("Login", () => {
     await userEvent.click(screen.getByRole("button", { name: /Use token/ }));
     expect(signInWithAccessToken).toHaveBeenCalledWith("jwt-abc");
     expect(navigateMock).toHaveBeenCalledWith({ to: "/" });
+  });
+
+  it("tells the admin which settings are missing when Okta is enabled without a client", () => {
+    appConfig.current = { oktaEnabled: true };
+    render(<Login />);
+    expect(screen.getByText(/OKTA_ISSUER and OKTA_CLIENT_ID/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Sign in with Okta/ })).not.toBeInTheDocument();
+  });
+
+  it("sends the browser to the Okta authorize URL with a PKCE challenge", async () => {
+    appConfig.current = oktaAppConfig;
+    render(<Login />);
+    await userEvent.click(screen.getByRole("button", { name: /Sign in with Okta/ }));
+    await waitFor(() => expect(assignMock).toHaveBeenCalledTimes(1));
+    const url = new URL(assignMock.mock.calls[0][0]);
+    expect(`${url.origin}${url.pathname}`).toBe("https://dev-1.okta.com/oauth2/aus1/v1/authorize");
+    expect(url.searchParams.get("client_id")).toBe("client-1");
+    expect(url.searchParams.get("redirect_uri")).toBe(`${window.location.origin}/login/callback`);
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+  });
+
+  it("starts a new Okta sign-in when the stored Okta token was refused, once", async () => {
+    appConfig.current = oktaAppConfig;
+    setToken("expired-okta-token");
+    markOktaToken(true);
+    const { unmount } = render(<Login />);
+    await waitFor(() => expect(assignMock).toHaveBeenCalledTimes(1));
+    expect(getToken()).toBe("");
+
+    // Okta's new token is refused too: no second automatic redirect.
+    unmount();
+    setToken("refused-okta-token");
+    markOktaToken(true);
+    render(<Login />);
+    expect(await screen.findByText(/refused your Okta sign-in/)).toBeInTheDocument();
+    expect(assignMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not redirect to Okta for a refused pasted token", () => {
+    appConfig.current = oktaAppConfig;
+    setToken("pasted-token");
+    render(<Login />);
+    expect(assignMock).not.toHaveBeenCalled();
+    expect(getToken()).toBe("pasted-token");
+  });
+});
+
+describe("OktaCallback", () => {
+  beforeEach(() => {
+    appConfig.current = oktaAppConfig;
+  });
+
+  async function startLogin() {
+    return new URL(await beginOktaLogin(oktaCfg)).searchParams.get("state")!;
+  }
+
+  function stubOkta(tokenResponse: unknown = { access_token: "at", id_token: "idt" }) {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => tokenResponse }));
+  }
+
+  it("exchanges the code, signs in and goes home", async () => {
+    const state = await startLogin();
+    window.history.replaceState({}, "", `/login/callback?code=abc&state=${state}`);
+    stubOkta();
+    render(<OktaCallback />);
+    await waitFor(() => expect(signInWithOkta).toHaveBeenCalledWith({ accessToken: "at", idToken: "idt" }));
+    expect(navigateMock).toHaveBeenCalledWith({ to: "/" });
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("shows the failure and a way back when the state does not match", async () => {
+    await startLogin();
+    window.history.replaceState({}, "", "/login/callback?code=abc&state=forged");
+    stubOkta();
+    render(<OktaCallback />);
+    expect(await screen.findByText(/state does not match/)).toBeInTheDocument();
+    expect(signInWithOkta).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: /Back to login/ })).toHaveAttribute("href", "/login");
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("shows the failure when Unity Catalog refuses the login", async () => {
+    const state = await startLogin();
+    window.history.replaceState({}, "", `/login/callback?code=abc&state=${state}`);
+    stubOkta();
+    signInWithOkta.mockRejectedValue(new Error("Login failed (HTTP 403)"));
+    render(<OktaCallback />);
+    expect(await screen.findByText("Login failed (HTTP 403)")).toBeInTheDocument();
+    expect(navigateMock).not.toHaveBeenCalled();
+    window.history.replaceState({}, "", "/");
   });
 });

@@ -3,8 +3,10 @@ import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppConfig } from "@/lib/appConfig";
 import { clearToken, setToken, useToken } from "@/lib/session";
+import { markOktaToken, type OktaTokens } from "@/lib/okta";
 import {
   CURRENT_USER_QUERY_KEY,
+  TokenExchangeError,
   useGetCurrentUser,
   useLoginWithToken,
   useLogoutCurrentUser,
@@ -25,6 +27,11 @@ interface AuthContextValue {
   // Paste-a-token bypass: store a UC access JWT and use it as a bearer on every
   // call. Refetches the current user so the gate updates immediately.
   signInWithAccessToken: (accessToken: string) => void;
+  // Finishes "Sign in with Okta" with the tokens from the code exchange: the ID
+  // token goes through the UC token exchange as for Google; if the server has
+  // turned the exchange off (external mode), the Okta access token is kept as
+  // the bearer instead.
+  signInWithOkta: (tokens: OktaTokens) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -60,8 +67,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [queryClient],
   );
 
+  const signInWithOkta = useCallback(
+    async ({ accessToken, idToken }: OktaTokens) => {
+      try {
+        await loginMutation.mutateAsync(idToken);
+      } catch (e) {
+        // TODO(PR external mode): this follows the external-mode server's agreed
+        // reply (501 with error_code UNIMPLEMENTED). When that PR lands, run
+        // this sign-in against a server in external mode and make sure the reply
+        // and a call to /scim2/Me with the Okta access token look as assumed here.
+        if (!(e instanceof TokenExchangeError && e.isDisabledByServer())) throw e;
+        signInWithAccessToken(accessToken);
+        markOktaToken(true);
+      }
+    },
+    [loginMutation, signInWithAccessToken],
+  );
+
   const logout = useCallback(async () => {
     clearToken();
+    markOktaToken(false);
     try {
       await logoutMutation.mutateAsync();
     } finally {
@@ -77,9 +102,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasAccessToken: token.length > 0,
       loginWithToken,
       signInWithAccessToken,
+      signInWithOkta,
       logout,
     }),
-    [authEnabled, configLoading, userLoading, currentUser, token, loginWithToken, signInWithAccessToken, logout],
+    [
+      authEnabled,
+      configLoading,
+      userLoading,
+      currentUser,
+      token,
+      loginWithToken,
+      signInWithAccessToken,
+      signInWithOkta,
+      logout,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

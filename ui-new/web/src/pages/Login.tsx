@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAppConfig } from "@/lib/appConfig";
 import { useAuth } from "@/context/auth-context";
+import { beginOktaLogin, canRetryOktaSignIn, isOktaToken, markOktaToken, oktaConfigFrom } from "@/lib/okta";
+import { clearToken, getToken } from "@/lib/session";
 import Logo from "@/components/Logo";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
 import { Button } from "@/components/ui/button";
@@ -36,8 +38,30 @@ export default function Login() {
     navigate({ to: "/" });
   };
 
+  const okta = appConfig ? oktaConfigFrom(appConfig) : null;
+
+  const onOktaSignIn = async () => {
+    if (!okta) return;
+    setError(null);
+    try {
+      window.location.assign(await beginOktaLogin(okta));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start the Okta sign-in.");
+    }
+  };
+
+  // An Okta token that is still stored while we are on the login page was
+  // refused (expired): sign in with Okta again, but only once in a while.
+  useEffect(() => {
+    if (!okta || !getToken() || !isOktaToken()) return;
+    clearToken();
+    markOktaToken(false);
+    if (canRetryOktaSignIn()) void onOktaSignIn();
+    else setError("Unity Catalog refused your Okta sign-in. Contact your administrator.");
+  }, [okta?.issuer, okta?.clientId]);
+
   const googleClientId = appConfig?.googleClientId ?? "";
-  const anyProvider = googleClientId || appConfig?.oktaEnabled || appConfig?.keycloakEnabled;
+  const anyProvider = googleClientId || okta || appConfig?.oktaEnabled || appConfig?.keycloakEnabled;
 
   return (
     <div className="flex min-h-full items-center justify-center bg-neutral-900 p-6">
@@ -57,9 +81,14 @@ export default function Login() {
                 <GoogleAuthButton clientId={googleClientId} onCredential={onGoogleCredential} />
               </div>
             )}
-            {appConfig?.oktaEnabled && (
+            {okta && (
+              <Button className="w-full" onClick={onOktaSignIn}>
+                Sign in with Okta
+              </Button>
+            )}
+            {appConfig?.oktaEnabled && !okta && (
               <p className="text-sm text-muted-foreground">
-                Okta sign-in is enabled on the server. Complete the Okta flow, then return here.
+                Okta sign-in is enabled on the server, but OKTA_ISSUER and OKTA_CLIENT_ID are not both set.
               </p>
             )}
             {appConfig?.keycloakEnabled && (

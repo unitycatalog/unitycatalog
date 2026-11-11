@@ -81,6 +81,10 @@ The bridge then serves the SPA and the RPCs from one origin on `PORT` (default
 | `UI_AUTH_ENABLED` | `false` | Gate the SPA behind login |
 | `GOOGLE_CLIENT_ID` | _(empty)_ | Enables the Google sign-in button |
 | `OKTA_AUTH_ENABLED` | `false` | Advertise Okta as enabled |
+| `OKTA_ISSUER` | _(empty)_ | Okta authorization server URL, e.g. `https://dev-1.okta.com/oauth2/default`. With `OKTA_CLIENT_ID` it enables the "Sign in with Okta" button (authorization code + PKCE) |
+| `OKTA_CLIENT_ID` | _(empty)_ | Client id of the Okta OIDC app (single-page app, PKCE) |
+| `OKTA_SCOPES` | `openid profile email` | Scopes the SPA requests. The access token's audience is set by the Okta admin in the authorization server |
+| `OKTA_REDIRECT_URI` | _(empty)_ | Redirect URI registered in the Okta app. Empty means `<SPA origin>/login/callback` |
 | `KEYCLOAK_AUTH_ENABLED` | `false` | Advertise Keycloak as enabled |
 | `ALLOWED_ORIGINS` | _(empty)_ | Extra CORS origins (comma-separated); empty = same-origin only |
 | `WEB_DIST` | `../web/dist` | Built SPA directory to serve |
