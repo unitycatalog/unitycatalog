@@ -5,14 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.control.model.UserResource;
-import io.unitycatalog.server.UnityCatalogServer;
-import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
-import java.lang.reflect.Field;
 import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -25,9 +23,13 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import lombok.SneakyThrows;
+import org.hibernate.Session;
+import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -414,25 +416,82 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
   @SneakyThrows
   public void testDeleteGroupClearsItsGrants() {
     String id = createGroup("granted", alice.getId()).get("id").asText();
-    // The server's own authorizer, so the grant is the one the delete has to clear.
-    Field field = UnityCatalogServer.class.getDeclaredField("authorizer");
-    field.setAccessible(true);
-    UnityCatalogAuthorizer authorizer = (UnityCatalogAuthorizer) field.get(unityCatalogServer);
     UUID groupId = UUID.fromString(id);
     UUID metastoreId =
         new Repositories(
                 hibernateConfigurator.getSessionFactory(), new ServerProperties(serverProperties))
             .getMetastoreRepository()
             .getMetastoreId();
-    authorizer.grantAuthorization(groupId, metastoreId, Privileges.CREATE_CATALOG);
-    assertThat(authorizer.listAuthorizations(groupId, metastoreId))
-        .containsExactly(Privileges.CREATE_CATALOG);
+    // A grant to the group id, written through another authorizer over the server's store.
+    try (JCasbinAuthorizer granting = newAuthorizer()) {
+      granting.grantAuthorization(groupId, metastoreId, Privileges.CREATE_CATALOG);
+    }
+    try (JCasbinAuthorizer before = newAuthorizer()) {
+      assertThat(before.listAuthorizations(groupId, metastoreId))
+          .containsExactly(Privileges.CREATE_CATALOG);
+    }
 
     assertThat(send(adminConfig, "DELETE", GROUPS_PATH + "/" + id, null).statusCode())
         .isEqualTo(204);
 
-    assertThat(authorizer.listAuthorizations(groupId, metastoreId)).isEmpty();
+    try (JCasbinAuthorizer after = newAuthorizer()) {
+      assertThat(after.listAuthorizations(groupId, metastoreId)).isEmpty();
+    }
     assertThat(send(adminConfig, "GET", GROUPS_PATH + "/" + id, null).statusCode()).isEqualTo(404);
+  }
+
+  /**
+   * A user deleted at the same time as it is added to a group must not stay a member. The delete
+   * here removes the memberships and then the user row (as the hard delete of a user will), and is
+   * held uncommitted while the add arrives. The add has to wait for it and then find no user.
+   */
+  @Test
+  @SneakyThrows
+  public void testAddRacingAUserDeleteLeavesNoMembership() {
+    String userId = createTestUser("race-del@localhost", "RaceDel").getId();
+    String id = createGroup("race-del").get("id").asText();
+    UUID uid = UUID.fromString(userId);
+    ExecutorService pool = Executors.newSingleThreadExecutor();
+    try (Session deleting = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction tx = deleting.beginTransaction();
+      deleting
+          .createMutationQuery("DELETE FROM GroupMemberDAO WHERE userId = :userId")
+          .setParameter("userId", uid)
+          .executeUpdate();
+      deleting
+          .createMutationQuery("DELETE FROM UserDAO WHERE id = :userId")
+          .setParameter("userId", uid)
+          .executeUpdate();
+      Future<HttpResponse<String>> add =
+          pool.submit(
+              () ->
+                  send(
+                      adminConfig,
+                      "PATCH",
+                      GROUPS_PATH + "/" + id,
+                      patchBody(op("add", "members", memberValues(userId)))));
+      // Without the lock the add finishes at once, before the delete commits. The hold stays
+      // short, as H2 gives up on a lock it waits for too long.
+      try {
+        add.get(500, TimeUnit.MILLISECONDS);
+      } catch (TimeoutException e) {
+        // The add is waiting for the delete, as it should.
+      }
+      tx.commit();
+
+      HttpResponse<String> response = add.get(30, TimeUnit.SECONDS);
+      assertThat(response.statusCode()).as(response.body()).isEqualTo(400);
+      assertThat(MAPPER.readTree(response.body()).get("detail").asText())
+          .contains("Member is not an existing user: " + userId);
+    } finally {
+      pool.shutdownNow();
+    }
+    assertThat(memberIds(get(id))).isEmpty();
+  }
+
+  /** An authorizer over the same store as the server's. */
+  private JCasbinAuthorizer newAuthorizer() throws Exception {
+    return new JCasbinAuthorizer(hibernateConfigurator, new ServerProperties(serverProperties));
   }
 
   @Test
