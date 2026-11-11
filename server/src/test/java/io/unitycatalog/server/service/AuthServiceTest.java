@@ -97,8 +97,10 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
       AggregatedHttpResponse response = client.execute(headers.build()).aggregate().join();
       assertThat(response.status()).isEqualTo(HttpStatus.FORBIDDEN);
       JsonNode error = MAPPER.readTree(response.contentUtf8());
-      assertThat(error.get("error_code").asText()).isEqualTo("PERMISSION_DENIED");
-      assertThat(error.get("message").asText())
+      assertThat(error.get("schemas").get(0).asText())
+          .isEqualTo("urn:ietf:params:scim:api:messages:2.0:Error");
+      assertThat(error.get("status").asText()).isEqualTo("403");
+      assertThat(error.get("detail").asText())
           .isEqualTo("Cookie requests require X-Requested-With: XMLHttpRequest");
       assertThat(response.headers().get(HttpHeaderNames.SET_COOKIE)).isNull();
     }

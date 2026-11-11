@@ -3,6 +3,8 @@ package io.unitycatalog.server.sdk.access;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.common.HttpStatus;
 import io.unitycatalog.control.ApiException;
 import io.unitycatalog.control.api.UsersApi;
@@ -16,8 +18,10 @@ import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.http.HttpResponse;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.UUID;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,6 +34,17 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
   private static final String DEACTIVATE =
       "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],"
           + "\"Operations\":[{\"op\":\"replace\",\"value\":{\"active\":false}}]}";
+
+  private static final String ACTIVATE =
+      "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],"
+          + "\"Operations\":[{\"op\":\"replace\",\"value\":{\"active\":true}}]}";
+  private static final String ADD_PATH =
+      "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],"
+          + "\"Operations\":[{\"op\":\"add\",\"path\":\"displayName\",\"value\":\"x\"}]}";
+  private static final String USER_BODY =
+      "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],\"displayName\":\"x\"}";
+  private static final String SCIM_ERROR_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:Error";
+  private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private static final String OWNER_REFUSED =
       "The metastore owner can't be deleted or deactivated: admin";
@@ -70,8 +85,7 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     // A regular user cannot patch another user.
     HttpResponse<String> denied =
         TestUtils.sendRaw(regularUserConfig, "PATCH", patchPath, Optional.of(DEACTIVATE));
-    assertThat(denied.statusCode()).isEqualTo(403);
-    assertThat(denied.body()).contains("\"error_code\":\"PERMISSION_DENIED\"");
+    assertScimError(denied.statusCode(), denied.body(), 403, "Access denied.");
 
     // The metastore admin can, and the user ends up deactivated.
     HttpResponse<String> allowed =
@@ -101,24 +115,18 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     // can still call the API afterwards.
     HttpResponse<String> patch =
         TestUtils.sendRaw(adminConfig, "PATCH", ownerPath, Optional.of(DEACTIVATE));
-    assertThat(patch.statusCode()).isEqualTo(400);
-    assertThat(patch.body()).contains("\"error_code\":\"FAILED_PRECONDITION\"");
-    assertThat(patch.body()).contains(OWNER_REFUSED);
+    assertScimError(patch.statusCode(), patch.body(), 400, OWNER_REFUSED);
     assertThat(usersApi.getUser(owner.getId()).getActive()).isTrue();
 
     UserResource inactive = owner.active(false);
     ApiException put =
         assertThrows(ApiException.class, () -> usersApi.updateUser(owner.getId(), inactive));
-    assertThat(put.getCode()).isEqualTo(400);
-    assertThat(put.getResponseBody()).contains("\"error_code\":\"FAILED_PRECONDITION\"");
-    assertThat(put.getResponseBody()).contains(OWNER_REFUSED);
+    assertScimError(put.getCode(), put.getResponseBody(), 400, OWNER_REFUSED);
     assertThat(usersApi.getUser(owner.getId()).getActive()).isTrue();
 
     ApiException delete =
         assertThrows(ApiException.class, () -> usersApi.deleteUser(owner.getId()));
-    assertThat(delete.getCode()).isEqualTo(400);
-    assertThat(delete.getResponseBody()).contains("\"error_code\":\"FAILED_PRECONDITION\"");
-    assertThat(delete.getResponseBody()).contains(OWNER_REFUSED);
+    assertScimError(delete.getCode(), delete.getResponseBody(), 400, OWNER_REFUSED);
     assertThat(usersApi.getUser(owner.getId()).getActive()).isTrue();
   }
 
@@ -149,9 +157,46 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     assertThat(service.deleteUser(ownerId).aggregate().join().status()).isEqualTo(HttpStatus.OK);
   }
 
-  private static void assertScimPermissionDenied(Executable request) {
+  @Test
+  @SneakyThrows
+  public void testErrorsAreScimErrors() {
+    String unknownId = UUID.randomUUID().toString();
+    String notUuid = "not-a-uuid";
+    String existing = otherUser.getId();
+    // method, id, body, expected status, expected detail
+    List<Object[]> cases =
+        List.of(
+            new Object[] {"GET", unknownId, null, 404, "User not found: " + unknownId},
+            new Object[] {"GET", notUuid, null, 404, "User not found: " + notUuid},
+            new Object[] {"PUT", notUuid, USER_BODY, 404, "User not found: " + notUuid},
+            new Object[] {"DELETE", notUuid, null, 404, "User not found: " + notUuid},
+            new Object[] {"PATCH", notUuid, DEACTIVATE, 404, "User not found: " + notUuid},
+            new Object[] {"PATCH", notUuid, ACTIVATE, 404, "User not found: " + notUuid},
+            new Object[] {"PATCH", existing, ADD_PATH, 501, "PATCH supports only"});
+    for (Object[] c : cases) {
+      HttpResponse<String> response =
+          TestUtils.sendRaw(
+              adminConfig,
+              (String) c[0],
+              SCIM_USERS_PATH + "/" + c[1],
+              Optional.ofNullable((String) c[2]));
+      assertScimError(response.statusCode(), response.body(), (int) c[3], (String) c[4]);
+    }
+  }
+
+  private static void assertScimError(int actualStatus, String body, int status, String detail)
+      throws Exception {
+    String description = actualStatus + " " + body;
+    assertThat(actualStatus).as(description).isEqualTo(status);
+    JsonNode error = MAPPER.readTree(body);
+    assertThat(error.get("schemas")).as(description).hasSize(1);
+    assertThat(error.get("schemas").get(0).asText()).as(description).isEqualTo(SCIM_ERROR_SCHEMA);
+    assertThat(error.get("status").asText()).as(description).isEqualTo(String.valueOf(status));
+    assertThat(error.get("detail").asText()).as(description).contains(detail);
+  }
+
+  private static void assertScimPermissionDenied(Executable request) throws Exception {
     ApiException exception = assertThrows(ApiException.class, request);
-    assertThat(exception.getCode()).isEqualTo(403);
-    assertThat(exception.getResponseBody()).contains("\"error_code\":\"PERMISSION_DENIED\"");
+    assertScimError(exception.getCode(), exception.getResponseBody(), 403, "Access denied.");
   }
 }
