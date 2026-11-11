@@ -30,9 +30,12 @@ public class SchemaGateTest {
 
   @TempDir Path storageRoot;
 
+  // The server's signing keys, certs.json and token.txt, instead of the shared etc/conf.
+  @TempDir Path configurationFolder;
+
   @Test
   void refusesToStartOnADatabaseThatIsNotSetUp() {
-    assertThatThrownBy(() -> TestServer.start(db, storageRoot))
+    assertThatThrownBy(() -> TestServer.start(db, storageRoot, configurationFolder))
         .hasMessageContaining("The database has no Unity Catalog schema yet")
         .hasMessageContaining("bin/start-uc-server --upgrade-schema");
     assertThat(new SchemaMigrator(db.dataSource()).state()).isEqualTo(SchemaState.EMPTY);
@@ -45,7 +48,7 @@ public class SchemaGateTest {
     inMemory.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
     inMemory.setProperty("hibernate.connection.url", "jdbc:h2:mem:gate;DB_CLOSE_DELAY=-1");
 
-    try (TestServer server = TestServer.start(db, inMemory, storageRoot)) {
+    try (TestServer server = TestServer.start(db, inMemory, storageRoot, configurationFolder)) {
       assertThat(
               new CatalogsApi(server.apiClient())
                   .listCatalogs(null, null, /* includeBrowse= */ false)

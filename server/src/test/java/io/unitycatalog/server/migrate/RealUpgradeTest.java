@@ -52,7 +52,7 @@ public class RealUpgradeTest {
     }
 
     new SchemaMigrator(db.dataSource()).upgradeSchema();
-    try (TestServer server = TestServer.start(db, storageRoot)) {
+    try (TestServer server = TestServer.start(db, storageRoot, workDir.resolve("conf"))) {
       copies.forEach(copy -> copy.assertReadBack(server.apiClient()));
     }
   }
@@ -81,7 +81,7 @@ public class RealUpgradeTest {
     repair();
     migrator.upgradeSchema();
 
-    try (TestServer server = TestServer.start(db, storageRoot)) {
+    try (TestServer server = TestServer.start(db, storageRoot, workDir.resolve("conf"))) {
       for (String release : List.of("v0.4.0", "v0.7.0")) {
         String name = catalogOf(release);
         assertThat(new CatalogsApi(server.apiClient()).getCatalog(name, false).getName())
