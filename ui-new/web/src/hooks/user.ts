@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { ucCall, ucJson, UC_AUTH_API_PREFIX } from "@/lib/uc";
 
 // A SCIM 2.0 user resource, as returned by GET /scim2/Me. Typed to just the
@@ -77,13 +77,9 @@ export function useLoginWithToken() {
 
 // useLogoutCurrentUser clears the session cookie via POST /auth/logout.
 export function useLogoutCurrentUser() {
-  const queryClient = useQueryClient();
   return useMutation<void, Error, void>({
     mutationFn: async () => {
       await ucJson("POST", `${UC_AUTH_API_PREFIX}/auth/logout`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY });
     },
   });
 }

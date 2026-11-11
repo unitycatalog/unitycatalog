@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TransportProvider } from "@connectrpc/connect-query";
 import { createRouterTransport, type Transport } from "@connectrpc/connect";
 import { render, renderHook } from "@testing-library/react";
@@ -16,6 +16,7 @@ import { FunctionService } from "@/gen/uc/v1/function_pb";
 import { ModelService, ModelVersionStatus } from "@/gen/uc/v1/model_pb";
 import { ViewService } from "@/gen/uc/v1/view_pb";
 import { ColumnTypeName } from "@/gen/uc/v1/common_pb";
+import { createQueryClient } from "@/lib/queryClient";
 import { ThemeProvider } from "@/lib/theme";
 
 // A single UC call as the bridge would forward it, plus the canned reply a test
@@ -449,9 +450,7 @@ function pageQuery(page?: {
 }
 
 export function makeQueryClient(): QueryClient {
-  return new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  return createQueryClient();
 }
 
 export function Providers({

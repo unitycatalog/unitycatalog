@@ -1,8 +1,9 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { TransportProvider } from "@connectrpc/connect-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
+import { createQueryClient } from "@/lib/queryClient";
 import { transport } from "@/lib/transport";
 import { ThemeProvider } from "@/lib/theme";
 import { AuthProvider } from "@/context/auth-context";
@@ -10,15 +11,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { routeTree } from "@/routeTree.gen";
 import "@/index.css";
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: false,
-      refetchOnWindowFocus: false,
-      staleTime: 1000 * 60 * 5,
-    },
-  },
-});
+const queryClient = createQueryClient();
 
 const router = createRouter({
   routeTree,

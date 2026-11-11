@@ -34,6 +34,8 @@ interface AuthContextValue {
   // Paste-a-token bypass: store a UC access JWT and use it as a bearer on every
   // call. Validates it against the current-user endpoint before signing in.
   signInWithAccessToken: (accessToken: string) => Promise<void>;
+  // Clears the local session, then ends the UC session. Rejects if UC could not
+  // end it, so the caller can tell the user they may still be signed in.
   logout: () => Promise<void>;
 }
 
@@ -59,7 +61,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithToken = useCallback(
     async (idToken: string) => {
+      // UC prefers a Bearer header over the session cookie, so a leftover pasted
+      // token would make the new provider session fail verification.
+      clearToken();
       await loginMutation.mutateAsync(idToken);
+      queryClient.clear();
       setAuthenticating(true);
       try {
         const user = await queryClient.fetchQuery({
@@ -82,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithAccessToken = useCallback(
     async (accessToken: string) => {
       setToken(accessToken);
+      queryClient.clear();
       try {
         const user = await queryClient.fetchQuery({
           queryKey: CURRENT_USER_QUERY_KEY,
@@ -92,7 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         clearToken();
-        queryClient.removeQueries({ queryKey: CURRENT_USER_QUERY_KEY });
+        queryClient.clear();
         throw error;
       }
     },
@@ -101,10 +108,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     clearToken();
+    queryClient.clear();
     try {
       await logoutMutation.mutateAsync();
     } finally {
-      queryClient.invalidateQueries();
+      queryClient.clear();
     }
   }, [logoutMutation, queryClient]);
 
