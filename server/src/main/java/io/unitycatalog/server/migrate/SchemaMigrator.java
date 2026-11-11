@@ -819,7 +819,12 @@ public final class SchemaMigrator implements AutoCloseable {
   private void refuseIfUnsupported(SchemaState state) {
     String repeatable =
         Arrays.stream(flyway().load().info().all())
-            .filter(m -> m.getVersion() == null && !m.getType().isSynthetic())
+            // Only this build's steps: the history may record steps of another build.
+            .filter(
+                m ->
+                    m.getState().isResolved()
+                        && m.getVersion() == null
+                        && !m.getType().isSynthetic())
             .map(MigrationInfo::getScript)
             .findFirst()
             .orElse(null);
