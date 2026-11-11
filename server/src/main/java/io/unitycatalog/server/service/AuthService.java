@@ -122,6 +122,11 @@ public class AuthService implements RegisteredService {
       @Param("ext") Optional<TokenEndpointExtensionType> ext,
       @RequestConverter(ToOAuthTokenExchangeFormConverter.class) OAuthTokenExchangeForm form,
       HttpRequest request) {
+    // Clients send the identity provider's access token directly instead.
+    if (serverProperties.isExternalAuthentication()) {
+      throw new OAuthInvalidRequestException(
+          ErrorCode.UNIMPLEMENTED, "Token exchange is disabled in external mode");
+    }
     // Never the form itself: its toString() includes the subject token.
     LOGGER.debug(
         "Token exchange request: grant_type={}, requested_token_type={}, subject_token_type={}",

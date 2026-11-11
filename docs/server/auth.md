@@ -321,6 +321,51 @@ Other changes to the server's own tokens:
   Secret. The create-users job signs with that key and retries without a limit, so with another key the install or
   upgrade waits until Helm's timeout.
 
+### External authentication mode
+
+By default (`server.authentication.type=internal`), people and machines call the server with its own token, which
+`POST /auth/tokens` issues in exchange for an identity provider's token. In `external` mode they send the identity
+provider's access token directly, as in Apache Polaris' external mode:
+
+```properties
+server.authorization=enable
+server.authentication.type=external
+server.authentication.idp.okta.issuer=https://example.okta.com/oauth2/<authorization server id>
+server.authentication.idp.okta.audience=unitycatalog
+server.authentication.idp.okta.subject-claim=OKTA
+```
+
+- Add one `server.authentication.idp.<name>.*` block per identity provider. `<name>` is the name you give its SCIM
+  token with `bin/uc-admin-token --idp <name>`. Set these keys in `server.properties`; a block set only through
+  environment variables is not found.
+- `issuer` must equal the token's `iss` exactly; wildcards are not supported. `audience` must be one of the token's
+  `aud` values. Two blocks can't share an issuer. Signing keys are read from the issuer's discovery document, with the
+  same rules and caching as the token exchange (see [Signing-key requests](#signing-key-requests)): when the keys
+  can't be fetched, the identity provider's tokens are refused until they can.
+- `subject-claim` names the claim that identifies the person or machine. `SUB` (the default) reads `sub`, the OIDC
+  standard, for example with Keycloak. `OKTA` reads `uid` for a person and, in a token without `uid`, `cid` for a
+  machine; it never reads Okta's `sub`, which an Okta admin can map to any value.
+- The token must be a JWT access token with an expiry. It is refused with 401 when its signature, expiry or audience
+  is wrong, and with 403 when its issuer is not configured.
+- `server.allowed-issuers` and `server.audiences` are not used in this mode, and the server logs a warning at startup
+  when either is set. They keep working as before in `internal` mode.
+
+The first call of a person or machine links their UC user, found by the token's `email` claim; after that, only the
+claim from `subject-claim` counts, so a later email change in the identity provider does not matter:
+
+- The token needs an `email` claim for the first call. Okta access tokens have none by default: add a claim `email`
+  with the value `user.email` to the access tokens of your custom authorization server. For a machine, add one to its
+  application's tokens. A token without one is refused until its user is linked.
+- Only an enabled user that is not yet linked is linked, never the `admin` user or a user marked as an identity
+  provider's SCIM principal. A user linked to another identity gets 403 `User not allowed: <email>`, as does a token
+  whose email has no user: create the user first (SCIM or `bin/uc user create`).
+- When SCIM reactivates a user (`active` from false to true), the link is cleared and the next call links again. Okta
+  reuses a deactivated user for a rehire, so the new person's identity is linked, not the old one's.
+
+In `external` mode the server's own tokens work only for the bootstrap admin (`bin/uc-admin-token`) and for identity
+providers' SCIM tokens. Its access tokens get 401, and `POST /auth/tokens` returns 501 `Token exchange is disabled in
+external mode`.
+
 ### Permission-check migration
 
 `server.authorization.strict-privilege-checks` is a temporary migration setting. It defaults to

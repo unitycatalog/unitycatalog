@@ -18,7 +18,10 @@ import lombok.experimental.SuperBuilder;
 @Table(
     name = "uc_users",
     uniqueConstraints = {
-      @UniqueConstraint(name = "uc_users_external_id_key", columnNames = "external_id")
+      @UniqueConstraint(name = "uc_users_external_id_key", columnNames = "external_id"),
+      @UniqueConstraint(
+          name = "uc_users_link_key",
+          columnNames = {"link_issuer", "link_claim", "link_value"})
     })
 // Lombok annotations
 @Getter
@@ -51,6 +54,16 @@ public class UserDAO extends IdentifiableDAO {
 
   @Column(name = "owner", nullable = false)
   private String owner;
+
+  // The identity provider identity this row is linked to in external mode; see UserLink.
+  @Column(name = "link_issuer")
+  private String linkIssuer;
+
+  @Column(name = "link_claim", length = 16)
+  private String linkClaim;
+
+  @Column(name = "link_value")
+  private String linkValue;
 
   public static UserDAO from(User user) {
     return UserDAO.builder()

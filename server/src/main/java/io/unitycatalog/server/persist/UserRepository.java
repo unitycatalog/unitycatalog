@@ -6,6 +6,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.UpdateUser;
+import io.unitycatalog.server.persist.model.UserLink;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
@@ -15,8 +16,10 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.exception.ConstraintViolationException;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -182,6 +185,14 @@ public class UserRepository {
             userDAO.setName(updateUser.getName());
           }
           if (updateUser.getActive() != null) {
+            // Reactivation clears the link: the IdP may reuse the row for a new person (a rehire),
+            // so the next first call links whoever the IdP now names by this email.
+            if (updateUser.getActive()
+                && User.StateEnum.DISABLED.toString().equals(userDAO.getState())) {
+              userDAO.setLinkIssuer(null);
+              userDAO.setLinkClaim(null);
+              userDAO.setLinkValue(null);
+            }
             userDAO.setState(
                 updateUser.getActive()
                     ? User.StateEnum.ENABLED.toString()
@@ -244,6 +255,64 @@ public class UserRepository {
         },
         "Failed to set the IdP name of the user",
         /* readOnly= */ false);
+  }
+
+  /** Returns the user linked to {@code link}, or null if no row is linked to it. */
+  public User findLinkedUser(UserLink link) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          Query<UserDAO> query =
+              session.createQuery(
+                  "FROM UserDAO WHERE linkIssuer = :issuer AND linkClaim = :claim"
+                      + " AND linkValue = :value",
+                  UserDAO.class);
+          query.setParameter("issuer", link.issuer());
+          query.setParameter("claim", link.claim());
+          query.setParameter("value", link.value());
+          UserDAO userDAO = query.uniqueResult();
+          return userDAO == null ? null : userDAO.toUser();
+        },
+        "Failed to get user by link",
+        /* readOnly= */ true);
+  }
+
+  /**
+   * Links {@code link} to the user with {@code email}, in one conditional update, so concurrent
+   * first calls link the row at most once. Only an ENABLED, unlinked row that is neither the
+   * bootstrap admin nor an IdP principal is linked.
+   *
+   * @return the linked user, or null if no such row exists or {@code link} is already on another
+   *     row
+   */
+  public User linkUser(String email, UserLink link) {
+    try {
+      return TransactionManager.executeWithTransaction(
+          sessionFactory,
+          session -> {
+            int linked =
+                session
+                    .createMutationQuery(
+                        "UPDATE UserDAO SET linkIssuer = :issuer, linkClaim = :claim,"
+                            + " linkValue = :value WHERE email = :email AND linkIssuer IS NULL"
+                            + " AND state = :enabled AND email <> 'admin' AND idpName IS NULL")
+                    .setParameter("issuer", link.issuer())
+                    .setParameter("claim", link.claim())
+                    .setParameter("value", link.value())
+                    .setParameter("email", email)
+                    .setParameter("enabled", User.StateEnum.ENABLED.toString())
+                    .executeUpdate();
+            return linked == 0 ? null : getUserByEmail(session, email).toUser();
+          },
+          "Failed to link user",
+          /* readOnly= */ false);
+    } catch (RuntimeException e) {
+      // A concurrent call linked this identity to another row (uc_users_link_key).
+      if (ExceptionUtils.indexOfType(e, ConstraintViolationException.class) < 0) {
+        throw e;
+      }
+      return null;
+    }
   }
 
   public void deleteUser(String id) {
