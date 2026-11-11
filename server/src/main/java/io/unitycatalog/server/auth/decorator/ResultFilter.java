@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.UnaryOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.expression.spel.SpelEvaluationException;
 
 /**
  * Filters GET and LIST responses based on user authorization permissions.
@@ -106,8 +107,8 @@ public class ResultFilter {
    *   <li>Removes the item if the expression evaluates to false
    * </ol>
    *
-   * <p>If an error occurs during authorization evaluation for an item, that item is filtered out
-   * (removed from the list) as a security precaution.
+   * <p>Explicit denials and 4xx {@link BaseException}s filter out the item. Unexpected errors fail
+   * the request so a failed authorization check cannot look like a successful list.
    *
    * @param securableType The type of resources being filtered (TABLE, VOLUME, FUNCTION, etc.)
    * @param items The list of items to filter in-place. This list is modified by removing
@@ -157,6 +158,14 @@ public class ResultFilter {
           iterator.set(result);
         }
       } catch (Exception e) {
+        // SpEL wraps client errors from privilege checks.
+        Throwable failure = e instanceof SpelEvaluationException ? e.getCause() : e;
+        if (!(failure instanceof BaseException baseException)) {
+          throw new BaseException(ErrorCode.INTERNAL, "Failed to authorize list items", e);
+        }
+        if (!baseException.getErrorCode().getHttpStatus().isClientError()) {
+          throw baseException;
+        }
         LOGGER.warn("Error evaluating authorization for item, filtering out: {}", e.getMessage());
         iterator.remove();
       }
@@ -211,9 +220,13 @@ public class ResultFilter {
         && !preResolvedIds.containsKey(CATALOG)
         && !preResolvedIds.containsKey(SCHEMA)) {
       RegisteredModelInfo model = (RegisteredModelInfo) item;
-      combined.putAll(
-          keyMapper.mapResourceKeys(
-              Map.of(CATALOG, model.getCatalogName(), SCHEMA, model.getSchemaName())));
+      try {
+        combined.putAll(
+            keyMapper.mapResourceKeys(
+                Map.of(CATALOG, model.getCatalogName(), SCHEMA, model.getSchemaName())));
+      } catch (BaseException e) {
+        throw new BaseException(e.getErrorCode(), "Failed to authorize list items", e);
+      }
     }
     // For everything else, the catalog and schema IDs are already included in preResolvedIds
     // if needed.

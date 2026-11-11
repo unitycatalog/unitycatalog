@@ -11,6 +11,7 @@ import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.unitycatalog.server.audit.Auditor;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
+import io.unitycatalog.server.auth.OpaAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
@@ -110,6 +111,7 @@ public class UnityCatalogServer implements AutoCloseable {
 
   private UnityCatalogServer(UnityCatalogServer.Builder unityCatalogServerBuilder) {
     setDefaults(unityCatalogServerBuilder);
+    unityCatalogServerBuilder.serverProperties.validateProperties();
     this.shutdownTimeout = unityCatalogServerBuilder.serverProperties.getShutdownTimeout();
     Path configurationFolder = unityCatalogServerBuilder.configurationFolder;
     SecurityConfiguration securityConfiguration = new SecurityConfiguration(configurationFolder);
@@ -346,8 +348,20 @@ public class UnityCatalogServer implements AutoCloseable {
         JCasbinAuthorizer authorizer =
             new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
         try {
+          UnityCatalogAuthorizer backend;
+          if (serverProperties.isOpaAuthorizationEnabled()) {
+            LOGGER.info("Using OPA for authorization decisions.");
+            backend =
+                new OpaAuthorizer(
+                    authorizer,
+                    hibernateConfigurator.getSessionFactory(),
+                    serverProperties.getOpaDecisionUrl(),
+                    serverProperties.getOpaResponseTimeout());
+          } else {
+            backend = authorizer;
+          }
           UnityCatalogAuthorizer effective =
-              Optional.ofNullable(auditor).map(a -> a.wrap(authorizer)).orElse(authorizer);
+              Optional.ofNullable(auditor).map(a -> a.wrap(backend)).orElse(backend);
           new UnityAccessUtil(repositories).initializeAdmin(effective);
           return effective;
         } catch (Exception e) {

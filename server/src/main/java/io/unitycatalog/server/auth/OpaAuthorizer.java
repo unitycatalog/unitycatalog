@@ -2,11 +2,13 @@ package io.unitycatalog.server.auth;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.linecorp.armeria.client.ClientRequestContext;
 import com.linecorp.armeria.client.ResponseTimeoutMode;
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.client.redirect.RedirectConfig;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.server.ServiceRequestContext;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
@@ -17,6 +19,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +56,23 @@ public class OpaAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
             .followRedirects(RedirectConfig.disabled())
             .responseTimeoutMode(ResponseTimeoutMode.FROM_START)
             .responseTimeout(responseTimeout)
+            .contextCustomizer(
+                ctx -> {
+                  ServiceRequestContext root = ctx.root();
+                  if (root != null) {
+                    // Successful UC requests never complete the cancellation future.
+                    AtomicReference<ClientRequestContext> pending = new AtomicReference<>(ctx);
+                    root.whenRequestCancelling()
+                        .thenAccept(
+                            cause -> {
+                              ClientRequestContext call = pending.getAndSet(null);
+                              if (call != null) {
+                                call.cancel(cause);
+                              }
+                            });
+                    ctx.log().whenComplete().thenAccept(unused -> pending.set(null));
+                  }
+                })
             .maxResponseLength(MAX_RESPONSE_LENGTH)
             .build();
   }
@@ -60,23 +80,25 @@ public class OpaAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
   @Override
   public boolean authorize(
       UUID principal, SecurableType resourceType, UUID resource, Privileges action) {
+    JsonNode input;
     try {
-      JsonNode input;
-      try {
-        input = inputBuilder.build(principal, resourceType, resource, action);
-      } catch (BaseException e) {
-        if (e.getErrorCode() != ErrorCode.NOT_FOUND) {
-          throw e;
-        }
-        LOGGER.warn(
-            "Authorization check denied: principal={}, privilege={}, resource={} {}: {}",
-            principal,
-            action,
-            resourceType,
-            resource,
-            e.getMessage());
-        return false;
+      input = inputBuilder.build(principal, resourceType, resource, action);
+    } catch (RuntimeException e) {
+      ErrorCode code =
+          e instanceof BaseException failure ? failure.getErrorCode() : ErrorCode.INTERNAL;
+      if (code != ErrorCode.NOT_FOUND) {
+        throw new BaseException(code, "Could not build OPA authorization input", e);
       }
+      LOGGER.warn(
+          "Authorization check denied: principal={}, privilege={}, resource={} {}: {}",
+          principal,
+          action,
+          resourceType,
+          resource,
+          e.getMessage());
+      return false;
+    }
+    try {
       String request = JsonUtils.getInstance().writeValueAsString(input);
       AggregatedHttpResponse response =
           webClient
@@ -101,6 +123,8 @@ public class OpaAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
             ErrorCode.UNAVAILABLE, "OPA response must contain a boolean result.allow");
       }
       return allow.booleanValue();
+    } catch (BaseException e) {
+      throw e;
     } catch (Exception e) {
       throw new BaseException(
           ErrorCode.UNAVAILABLE, "Could not get an authorization decision from OPA", e);

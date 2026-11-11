@@ -2,6 +2,7 @@ package io.unitycatalog.server.auth.decorator;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.persist.model.Privileges.BROWSE;
@@ -17,6 +18,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.auth.AuthorizeExpressions;
@@ -24,6 +26,7 @@ import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.RegisteredModelInfo;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.model.Privileges;
 import java.util.ArrayList;
@@ -90,7 +93,7 @@ class ResultFilterTest {
   }
 
   @Test
-  void mixedListKeepsFullMetadataFirstAndFiltersDeniedOrInvalidItems() throws Exception {
+  void mixedListKeepsFullMetadataFirstAndFiltersDeniedItems() throws Exception {
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
     UUID principal = UUID.randomUUID();
     UUID fullId = UUID.randomUUID();
@@ -105,10 +108,7 @@ class ResultFilterTest {
     List<CatalogInfo> items =
         new ArrayList<>(
             List.of(
-                full,
-                browse,
-                new CatalogInfo().name("hidden").id(UUID.randomUUID().toString()),
-                new CatalogInfo().name("invalid").id("invalid-id")));
+                full, browse, new CatalogInfo().name("hidden").id(UUID.randomUUID().toString())));
     ResultFilter filter =
         new ResultFilter(
             new UnityAccessEvaluator(authorizer, true),
@@ -127,20 +127,40 @@ class ResultFilterTest {
     assertThat(filter.wasCalled()).isTrue();
     verify(authorizer, never()).authorize(principal, CATALOG, fullId, BROWSE);
 
-    items = new ArrayList<>(List.of(browse, full));
-    filter.filter(
-        CATALOG,
-        items,
-        item -> {
-          throw new IllegalStateException("projection failed");
-        });
-    assertThat(items).containsExactly(full);
+    assertThatThrownBy(
+            () ->
+                filter.filter(
+                    CATALOG,
+                    new ArrayList<>(List.of(new CatalogInfo().name("invalid").id("invalid-id"))),
+                    BrowseOnlyConverter::toBrowseOnly))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INTERNAL))
+        .hasRootCauseInstanceOf(IllegalArgumentException.class);
+
+    assertThatThrownBy(
+            () ->
+                filter.filter(
+                    CATALOG,
+                    new ArrayList<>(List.of(browse, full)),
+                    item -> {
+                      throw new IllegalStateException("projection failed");
+                    }))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("Failed to authorize list items")
+        .hasRootCauseMessage("projection failed");
 
     when(authorizer.authorize(principal, CATALOG, browseId, BROWSE))
         .thenThrow(new IllegalStateException("authorization failed"));
-    items = new ArrayList<>(List.of(browse, full));
-    filter.filter(CATALOG, items, BrowseOnlyConverter::toBrowseOnly);
-    assertThat(items).containsExactly(full);
+    assertThatThrownBy(
+            () ->
+                filter.filter(
+                    CATALOG,
+                    new ArrayList<>(List.of(browse, full)),
+                    BrowseOnlyConverter::toBrowseOnly))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("Failed to authorize list items")
+        .hasRootCauseMessage("authorization failed");
   }
 
   @ParameterizedTest
@@ -207,5 +227,47 @@ class ResultFilterTest {
               exception ->
                   assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PERMISSION_DENIED));
     }
+  }
+
+  @Test
+  void listFilteringPropagatesParentResolutionFailures() throws Exception {
+    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
+    KeyMapper keyMapper = mock(KeyMapper.class);
+    RegisteredModelInfo model =
+        new RegisteredModelInfo()
+            .id(UUID.randomUUID().toString())
+            .catalogName("catalog")
+            .schemaName("schema");
+    BaseException failure =
+        new BaseException(ErrorCode.INTERNAL, "Failed to load model parents: private-db-detail");
+    RuntimeException unexpectedFailure =
+        new IllegalStateException("Failed to open database session");
+    when(keyMapper.mapResourceKeys(
+            Map.of(CATALOG, model.getCatalogName(), SCHEMA, model.getSchemaName())))
+        .thenThrow(failure, unexpectedFailure);
+    ResultFilter filter =
+        new ResultFilter(
+            new UnityAccessEvaluator(authorizer, true),
+            UUID.randomUUID(),
+            "#authorize(#principal, #registered_model, OWNER)",
+            "",
+            Map.of(),
+            Map.of(),
+            keyMapper);
+
+    assertThatThrownBy(() -> filter.filter(REGISTERED_MODEL, new ArrayList<>(List.of(model))))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("Failed to authorize list items")
+        .hasCause(failure)
+        .extracting(error -> ((BaseException) error).getErrorCode())
+        .isEqualTo(ErrorCode.INTERNAL);
+
+    assertThatThrownBy(() -> filter.filter(REGISTERED_MODEL, new ArrayList<>(List.of(model))))
+        .isInstanceOf(BaseException.class)
+        .hasMessage("Failed to authorize list items")
+        .hasCause(unexpectedFailure)
+        .extracting(error -> ((BaseException) error).getErrorCode())
+        .isEqualTo(ErrorCode.INTERNAL);
+    verifyNoInteractions(authorizer);
   }
 }
