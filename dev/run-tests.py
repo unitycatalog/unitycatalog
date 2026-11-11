@@ -24,6 +24,7 @@ import csv
 import glob
 import os
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -43,11 +44,14 @@ JVM_DIED = re.compile(r"sbt\.ForkMain \d+ failed with exit code (\d+)")
 SUITE_FINISHED = re.compile(r"Test run finished: (\d+) failed")
 # A JVM size for -Xmx, with a unit: 512m, 4g. A bare number would mean bytes.
 HEAP_SIZE = re.compile(r"[1-9][0-9]*[kKmMgG]")
-# cgroup files holding a container's memory limit and usage (v2, then v1).
-CGROUP_MEMORY_FILES = [
-    ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory.current"),
-    ("/sys/fs/cgroup/memory/memory.limit_in_bytes", "/sys/fs/cgroup/memory/memory.usage_in_bytes"),
-]
+PROC_CGROUP = "/proc/self/cgroup"
+# Per cgroup version: mount point, limit file, usage file, and the memory.stat key for reclaimable
+# page cache, which counts as usage but is freed under pressure.
+CGROUP_MEMORY = {
+    "v2": ("/sys/fs/cgroup", "memory.max", "memory.current", "inactive_file"),
+    "v1": ("/sys/fs/cgroup/memory", "memory.limit_in_bytes", "memory.usage_in_bytes",
+           "total_inactive_file"),
+}
 # sbt's own result lines; forked JVM stderr is also logged as [error], so match narrowly.
 STREAMED = re.compile(
     r"^\[success\]|^\[error\] (Test .* failed|Failed|Error|\(\S+ / |Total|Compilation failed"
@@ -97,7 +101,7 @@ def parse_size(size):
 def available_memory():
     """Returns the available memory in bytes: MemAvailable on Linux, else half the physical RAM.
 
-    Inside a container, the result is capped by what is left of the container's memory limit.
+    The result is also capped by what is left of this process's cgroup memory limits.
     """
     available = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // 2
     try:
@@ -107,19 +111,70 @@ def available_memory():
                     available = int(line.split()[1]) * 1024
     except OSError:
         pass
-    for limit_file, usage_file in CGROUP_MEMORY_FILES:
-        try:
-            with open(limit_file) as f:
-                limit = f.read().strip()
-            with open(usage_file) as f:
-                usage = int(f.read().strip())
-        except (OSError, ValueError):
+    left = cgroup_memory_left()
+    return available if left is None else min(available, left)
+
+
+def cgroup_memory_left():
+    """Returns the memory left under this process's cgroup limits, or None if there are none.
+
+    Checks the process's own cgroup and each parent, since every level's limit applies, and does
+    not count reclaimable page cache as used.
+    """
+    try:
+        with open(PROC_CGROUP) as f:
+            entries = [line.rstrip("\n").split(":", 2) for line in f]
+    except OSError:
+        return None
+    left = None
+    for _, controllers, path in entries:
+        if controllers == "":
+            version = "v2"
+        elif "memory" in controllers.split(","):
+            version = "v1"
+        else:
             continue
-        # "max" (v2) or a huge value (v1) means no limit.
-        if limit != "max" and int(limit) < 1 << 60:
-            available = min(available, int(limit) - usage)
-        break
-    return available
+        mount, limit_file, usage_file, cache_key = CGROUP_MEMORY[version]
+        directory = os.path.normpath(mount + path)
+        while directory.startswith(mount):
+            limit = read_number(os.path.join(directory, limit_file))
+            # "max" (v2) or a huge value (v1) means no limit at this level.
+            if limit is not None and limit < 1 << 60:
+                usage = read_number(os.path.join(directory, usage_file)) or 0
+                used = usage - memory_stat(directory, cache_key)
+                left = limit - used if left is None else min(left, limit - used)
+            if directory == mount:
+                break
+            directory = os.path.dirname(directory)
+    return left
+
+
+def read_number(path):
+    try:
+        with open(path) as f:
+            value = f.read().strip()
+    except OSError:
+        return None
+    return int(value) if value.isdigit() else None
+
+
+def memory_stat(directory, key):
+    try:
+        with open(os.path.join(directory, "memory.stat")) as f:
+            for line in f:
+                name, _, value = line.partition(" ")
+                if name == key:
+                    return int(value)
+    except (OSError, ValueError):
+        pass
+    return 0
+
+
+def cpu_count():
+    """Returns the CPUs this process may run on, which respects pinning such as taskset."""
+    if hasattr(os, "sched_getaffinity"):
+        return len(os.sched_getaffinity(0))
+    return os.cpu_count() or 2
 
 
 def memory_limit(args):
@@ -129,7 +184,7 @@ def memory_limit(args):
 
 
 def choose_parallelism(args):
-    cpu_limit = max(1, (os.cpu_count() or 2) // 2)
+    cpu_limit = max(1, cpu_count() // 2)
     mem_limit = memory_limit(args)
     gb = available_memory() / (1 << 30)
     if args.parallelism is None:
@@ -167,24 +222,46 @@ def run_sbt(args, log_path):
 
     if not args.verbose:
         threading.Thread(target=report_progress, daemon=True).start()
-    with open(log_path, "w") as log:
-        proc = subprocess.Popen(
-            cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL, universal_newlines=True, errors="replace", bufsize=1)
-        for line in proc.stdout:
-            log.write(line)
-            match = SUITE_FINISHED.search(line)
-            if match:
-                finished[0] += 1
-                finished[1] += int(match.group(1)) > 0
-            died = JVM_DIED.search(line)
-            if died:
-                dead_jvms.append(died.group(1))
-            if args.verbose or STREAMED.match(line):
-                sys.stdout.write(line)
+    # sbt gets its own process group, so the script can stop it and its test JVMs together.
+    proc = subprocess.Popen(
+        cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        stdin=subprocess.DEVNULL, universal_newlines=True, errors="replace", bufsize=1,
+        start_new_session=True)
+    try:
+        with open(log_path, "w") as log:
+            for line in proc.stdout:
+                log.write(line)
+                match = SUITE_FINISHED.search(line)
+                if match:
+                    finished[0] += 1
+                    finished[1] += int(match.group(1)) > 0
+                died = JVM_DIED.search(line)
+                if died:
+                    dead_jvms.append(died.group(1))
+                if args.verbose or STREAMED.match(line):
+                    sys.stdout.write(line)
         returncode = proc.wait()
-    done.set()
+    except BaseException:
+        # A failed log or terminal write, or Ctrl-C: do not leave sbt and its test JVMs running.
+        stop_process_group(proc)
+        raise
+    finally:
+        done.set()
     return returncode, dead_jvms
+
+
+def stop_process_group(proc):
+    """Stops proc and everything in its process group: SIGTERM, then SIGKILL after 10s."""
+    for sig, timeout in ((signal.SIGTERM, 10), (signal.SIGKILL, None)):
+        try:
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            return
+        try:
+            proc.wait(timeout)
+            return
+        except subprocess.TimeoutExpired:
+            continue
 
 
 def describe_failure(case, suite_name):
@@ -230,11 +307,19 @@ def update_durations(results):
     try:
         if os.path.isfile(DURATIONS_FILE):
             with open(DURATIONS_FILE) as f:
-                durations = {row[0]: float(row[1]) for row in csv.reader(f) if len(row) == 2}
+                for row in csv.reader(f):
+                    # Skip a damaged row, as the sbt side does, instead of failing every run.
+                    try:
+                        durations[row[0]] = float(row[1])
+                    except (IndexError, ValueError):
+                        continue
         durations.update({suite: seconds for suite, seconds, _, _ in results})
         os.makedirs(os.path.dirname(DURATIONS_FILE), exist_ok=True)
-        with open(DURATIONS_FILE, "w", newline="") as f:
+        # Write a temp file and rename it, so an interrupted write cannot damage the file.
+        partial = DURATIONS_FILE + ".tmp"
+        with open(partial, "w", newline="") as f:
             csv.writer(f).writerows(sorted(durations.items(), key=lambda kv: -kv[1]))
+        os.replace(partial, DURATIONS_FILE)
     except (OSError, ValueError) as e:
         print(f"Warning: could not update {DURATIONS_FILE}: {e}")
 
@@ -255,8 +340,20 @@ def print_summary(results, start, returncode, log_path, dead_jvms=()):
         print(f"{len(dead_jvms)} test JVM(s) exited early (exit code {', '.join(dead_jvms)}), so "
               "their remaining suites did not run and are missing above. Exit code 137 usually "
               "means out of memory: lower -p or raise --jvm-heap.")
+    if returncode != 0 and not results and not dead_jvms:
+        # sbt failed before any suite reported, e.g. a mistyped task: show why.
+        print("\n".join(first_errors(log_path)))
     if returncode != 0:
         print(f"sbt exited with code {returncode}; see the log for details")
+
+
+def first_errors(log_path, limit=10):
+    """Returns the first `[error]` lines of the log, or nothing if the log cannot be read."""
+    try:
+        with open(log_path, errors="replace") as f:
+            return [line.rstrip() for line in f if line.startswith("[error]")][:limit]
+    except OSError:
+        return []
 
 
 def conf_stamps():

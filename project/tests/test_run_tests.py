@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -57,6 +58,58 @@ def check_failure_summary(run_tests) -> None:
         assert expected in out.getvalue(), f"{expected!r} missing from:\n{out.getvalue()}"
 
 
+def check_sbt_errors_shown(run_tests) -> None:
+    # sbt failed before any suite reported, e.g. a mistyped task: its errors must reach the console.
+    with tempfile.TemporaryDirectory() as tmp:
+        log = Path(tmp) / "run.log"
+        log.write_text("[info] loading\n[error] Not a valid key: tset\n[info] done\n")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            run_tests.print_summary([], 0, 1, str(log))
+    assert "[error] Not a valid key: tset" in out.getvalue(), out.getvalue()
+
+
+def check_durations_file(run_tests) -> None:
+    saved = run_tests.DURATIONS_FILE
+    with tempfile.TemporaryDirectory() as tmp:
+        durations = Path(tmp) / "test-durations.csv"
+        # A row cut off mid-write must be skipped, not stop the merge.
+        durations.write_text("a.Old,3.0\nb.Trunc,\n")
+        run_tests.DURATIONS_FILE = str(durations)
+        try:
+            run_tests.update_durations([("c.New", 2.0, 1, [])])
+        finally:
+            run_tests.DURATIONS_FILE = saved
+        assert durations.read_text().splitlines() == ["a.Old,3.0", "c.New,2.0"], (
+            durations.read_text())
+        assert [p.name for p in Path(tmp).iterdir()] == ["test-durations.csv"], "temp file left"
+
+
+def check_cgroup_memory(run_tests) -> None:
+    gib = 1 << 30
+    saved = run_tests.PROC_CGROUP, run_tests.CGROUP_MEMORY
+    with tempfile.TemporaryDirectory() as root:
+        files = {
+            # The limit is on the parent: 8 GiB, 6 GiB used, of which 4 GiB is reclaimable cache.
+            "a/memory.max": str(8 * gib),
+            "a/memory.current": str(6 * gib),
+            "a/memory.stat": f"anon 1\ninactive_file {4 * gib}\n",
+            "a/b/memory.max": "max",
+            "a/b/memory.current": str(6 * gib),
+            "proc_cgroup": "0::/a/b\n",
+        }
+        for name, content in files.items():
+            (Path(root) / name).parent.mkdir(parents=True, exist_ok=True)
+            (Path(root) / name).write_text(content)
+        run_tests.PROC_CGROUP = str(Path(root) / "proc_cgroup")
+        run_tests.CGROUP_MEMORY = {"v2": (root, "memory.max", "memory.current", "inactive_file")}
+        try:
+            left = run_tests.cgroup_memory_left()
+        finally:
+            run_tests.PROC_CGROUP, run_tests.CGROUP_MEMORY = saved
+    assert left == 6 * gib, f"expected 6 GiB left under the parent's limit, got {left}"
+
+
 def check_concurrency_limit() -> None:
     command = [str(UC_ROOT / "build" / "sbt"), "-no-colors", "-batch",
                "show Global / concurrentRestrictions"]
@@ -89,8 +142,12 @@ def check_parallel_run() -> None:
 
     log = Path(re.search(r"Full log: (\S+)", output).group(1))
     assert log.is_file(), f"the log is missing after the run: {log}"
-    assert re.search(r"unitycatalog-client: \d+ suites in 2 test JVMs", log.read_text()), (
+    log_text = log.read_text()
+    assert re.search(r"unitycatalog-client: \d+ suites in 2 test JVMs", log_text), (
         f"the client suites were not split across 2 test JVMs; see {log}")
+    group_size = re.compile(r"unitycatalog-client test-group-\d+: (\d+) suites")
+    sizes = [int(n) for n in group_size.findall(log_text)]
+    assert len(sizes) == 2 and min(sizes) > 0, f"suites not spread across both groups: {sizes}"
     summary = re.search(r"(\d+) suites, (\d+) tests, (\d+) failed", output)
     assert summary and int(summary.group(1)) > 1 and summary.group(3) == "0", output
     assert SEED_ROW in rows, f"{DURATIONS} lost its earlier rows across `clean`"
@@ -103,6 +160,9 @@ def main() -> None:
     check_arguments(run_tests)
     check_failure_description(run_tests)
     check_failure_summary(run_tests)
+    check_sbt_errors_shown(run_tests)
+    check_durations_file(run_tests)
+    check_cgroup_memory(run_tests)
     check_concurrency_limit()
     check_parallel_run()
     print("PASS: dev/run-tests.py validates its arguments and runs client/test in 2 test JVMs")

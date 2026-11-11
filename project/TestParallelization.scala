@@ -52,7 +52,9 @@ object TestParallelization {
         streams.value.log.info(
           f"${name.value}: ${tests.size} suites in ${groups.size} test JVMs, " +
             f"longest group ~$estimate%.0fs")
-        groups.zipWithIndex.map { case ((groupTests, _), i) =>
+        groups.zipWithIndex.map { case ((groupTests, load), i) =>
+          streams.value.log.info(
+            f"${name.value} test-group-$i: ${groupTests.size} suites, ~$load%.0fs")
           val tmpDir = tmpRoot / i.toString
           IO.createDirectory(tmpDir)
           val opts = forkOpts.withRunJVMOptions(
