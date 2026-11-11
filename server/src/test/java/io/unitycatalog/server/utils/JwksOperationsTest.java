@@ -25,12 +25,19 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Configurator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -247,6 +254,42 @@ class JwksOperationsTest {
         .isInstanceOf(SignatureVerificationException.class);
     assertThat(discoveryRequests).hasValue(2);
     assertThat(jwksRequests).hasValue(3);
+  }
+
+  @Test
+  void verifierForIssuerAndKey_logsUnknownKeysAtMostOncePerMinute() {
+    respondWithDiscovery(issuer + "/jwks");
+    respondWithKey("key-1", signingKey);
+    Logger logger = (Logger) LogManager.getLogger(JwksOperations.class);
+    Level previousLevel = logger.getLevel();
+    CapturingAppender appender = new CapturingAppender();
+    appender.start();
+    logger.addAppender(appender);
+    Configurator.setLevel(logger.getName(), Level.WARN);
+    try {
+      // The key id comes from the caller, so a flood of unknown ids must not flood the log.
+      for (int i = 0; i <= 10; i++) {
+        if (i == 10) {
+          elapsedNanos.addAndGet(Duration.ofMinutes(1).toNanos());
+        }
+        String missingKey = "missing-" + i;
+        assertThatThrownBy(
+                () -> jwksOperations.verifierForIssuerAndKey(issuer, missingKey, "RS256"))
+            .hasMessage("Could not get signing key '" + missingKey + "' for issuer " + issuer);
+      }
+    } finally {
+      logger.removeAppender(appender);
+      Configurator.setLevel(logger.getName(), previousLevel);
+      appender.stop();
+    }
+    assertThat(appender.messages)
+        .containsExactly(
+            "WARN Failed to get signing key 'missing-0' for issuer '"
+                + issuer
+                + "'; 0 more failure(s) since the last report",
+            "WARN Failed to get signing key 'missing-10' for issuer '"
+                + issuer
+                + "'; 9 more failure(s) since the last report");
   }
 
   @ParameterizedTest
@@ -560,5 +603,24 @@ class JwksOperationsTest {
     Algorithm algorithm =
         Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
     return JWT.create().withIssuer(issuer).withKeyId(keyId).sign(algorithm);
+  }
+
+  private static final class CapturingAppender extends AbstractAppender {
+
+    private final List<String> messages = new CopyOnWriteArrayList<>();
+
+    private CapturingAppender() {
+      super(
+          "JwksOperationsTest",
+          null,
+          null,
+          true,
+          org.apache.logging.log4j.core.config.Property.EMPTY_ARRAY);
+    }
+
+    @Override
+    public void append(LogEvent event) {
+      messages.add(event.getLevel() + " " + event.getMessage().getFormattedMessage());
+    }
   }
 }

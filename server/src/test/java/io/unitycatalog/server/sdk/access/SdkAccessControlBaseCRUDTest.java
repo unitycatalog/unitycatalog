@@ -54,8 +54,12 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.security.JwtClaim;
+import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.utils.TestUtils;
 import java.lang.reflect.Field;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -304,7 +308,9 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
           // Tokens with a key ID are accepted; the server ignores it for its own tokens.
           .withKeyId("any-key-id")
           .withIssuedAt(new Date())
+          .withExpiresAt(Date.from(Instant.now().plus(Duration.ofHours(1))))
           .withJWTId(UUID.randomUUID().toString())
+          .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
           .withClaim("email", subject)
           .sign(algorithm);
     } catch (Exception e) {

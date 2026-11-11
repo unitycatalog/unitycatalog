@@ -122,7 +122,12 @@ public class AuthService implements RegisteredService {
       @Param("ext") Optional<TokenEndpointExtensionType> ext,
       @RequestConverter(ToOAuthTokenExchangeFormConverter.class) OAuthTokenExchangeForm form,
       HttpRequest request) {
-    LOGGER.debug("Got token: {}", form);
+    // Never the form itself: its toString() includes the subject token.
+    LOGGER.debug(
+        "Token exchange request: grant_type={}, requested_token_type={}, subject_token_type={}",
+        form.getGrantType(),
+        form.getRequestedTokenType(),
+        form.getSubjectTokenType());
 
     boolean isCookie = ext.orElse(null) == TokenEndpointExtensionType.COOKIE;
     if (isCookie) {
