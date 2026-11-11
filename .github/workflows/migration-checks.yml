@@ -33,3 +33,12 @@ jobs:
           UC_TEST_DATABASE: ${{ matrix.test-database }}
           UC_TEST_MIGRATION_CHECKS: "true"
         run: build/sbt -J-Xmx2G "server/testOnly io.unitycatalog.server.migrate.MigrationStepRulesTest io.unitycatalog.server.migrate.BaselineMatchesEntitiesTest io.unitycatalog.server.migrate.SchemaMigratorTest"
+      - name: Check that both test classes ran
+        # testOnly passes when no class matches a name, and both classes skip their tests without
+        # UC_TEST_MIGRATION_CHECKS, so each class's report must show tests and none skipped.
+        run: |
+          for class in MigrationStepRulesTest BaselineMatchesEntitiesTest; do
+            report="server/target/test-reports/TEST-io.unitycatalog.server.migrate.$class.xml"
+            grep -qE '<testsuite [^>]* tests="[1-9]' "$report"
+            grep -qE '<testsuite [^>]* skipped="0"' "$report"
+          done
