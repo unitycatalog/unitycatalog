@@ -165,21 +165,39 @@ public class MigrationStepRulesTest {
         .isEmpty();
   }
 
-  /** A new column may be NOT NULL only with a default that is not NULL, in either order. */
+  /**
+   * What a step after the first may send: a change that rows already in the database can't make
+   * fail. A new column may be NOT NULL only with a default that is not NULL, in either order.
+   */
   @ParameterizedTest
   @CsvSource(
       delimiter = '|',
       value = {
-        "ALTER TABLE t ADD c INT DEFAULT NULL NOT NULL|false",
-        "ALTER TABLE t ADD c INT NOT NULL DEFAULT NULL|false",
-        "ALTER TABLE t ADD c INT NOT NULL|false",
-        "ALTER TABLE t ADD c INT NOT NULL DEFAULT 0|true",
-        "ALTER TABLE t ADD c INT DEFAULT 0 NOT NULL|true",
-        "ALTER TABLE t ADD c INT DEFAULT NULL|true",
-        "ALTER TABLE t ADD c INT|true"
+        "POSTGRESQL|ALTER TABLE t ADD c INT DEFAULT NULL NOT NULL|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t ADD c INT NOT NULL DEFAULT NULL|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t ADD c INT NOT NULL|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t ADD c INT NOT NULL DEFAULT 0|",
+        "POSTGRESQL|ALTER TABLE t ADD c INT DEFAULT 0 NOT NULL|",
+        "POSTGRESQL|ALTER TABLE t ADD c INT DEFAULT NULL|",
+        "POSTGRESQL|ALTER TABLE t ADD c INT|",
+        "POSTGRESQL|CREATE INDEX i ON t (c)|",
+        "POSTGRESQL|CREATE INDEX CONCURRENTLY i ON t (c)|creates an index CONCURRENTLY",
+        "POSTGRESQL|CREATE UNIQUE INDEX i ON t (c)|creates a unique index",
+        "MYSQL|CREATE FULLTEXT INDEX i ON t (c)|creates a fulltext index",
+        "POSTGRESQL|ALTER TABLE t ALTER COLUMN c TYPE text|",
+        "POSTGRESQL|ALTER TABLE t ALTER COLUMN c TYPE int USING c::int|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t ALTER COLUMN c DROP NOT NULL|",
+        "POSTGRESQL|ALTER TABLE t ALTER COLUMN c SET NOT NULL|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t ADD UNIQUE (c)|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t ADD CONSTRAINT k CHECK (c > 0)|is not an allowed change",
+        "POSTGRESQL|ALTER TABLE t DROP COLUMN c|is not an allowed change",
+        "H2|ALTER TABLE t ALTER COLUMN c CLOB|",
+        "MYSQL|ALTER TABLE t ALTER COLUMN c TYPE text|is not an allowed change",
+        "MYSQL|ALTER TABLE t MODIFY c mediumtext NOT NULL|",
+        "MYSQL|ALTER TABLE t MODIFY c INT PRIMARY KEY|is not an allowed change"
       })
-  void newColumnNotNullNeedsNonNullDefault(String sql, boolean allowed) {
-    assertThat(refusalOfSent(sql, DatabaseKind.POSTGRESQL, false) == null).isEqualTo(allowed);
+  void laterStepsOnlyMakeChangesRowsCannotFail(DatabaseKind kind, String sql, String refusal) {
+    assertThat(refusalOfSent(sql, kind, false)).isEqualTo(refusal);
   }
 
   /** Every step is a versioned SQL file, and exists for all three databases. */
@@ -219,16 +237,18 @@ public class MigrationStepRulesTest {
     for (DatabaseKind kind : DatabaseKind.values()) {
       try (Stream<Path> files = Files.list(EFFECTS.resolve(kind.folder()))) {
         for (Path file : files.toList()) {
-          Map<String, Matcher> removed = new HashMap<>();
+          Map<String, String> removed = new HashMap<>();
           for (String line : Files.readAllLines(file)) {
-            Matcher column = COLUMN_LINE.matcher(line);
-            if (!column.matches()) {
+            if (!line.matches("[-+] column .*")) {
               continue;
             }
-            if (column.group(1).equals("-")) {
-              removed.put(column.group(2), column);
+            Matcher column = COLUMN_LINE.matcher(line);
+            if (!column.matches()) {
+              problems.add(file + ": can't read the column line " + line);
+            } else if (column.group(1).equals("-")) {
+              removed.put(column.group(2), line);
             } else if (removed.containsKey(column.group(2))) {
-              String problem = narrowing(kind, removed.get(column.group(2)), column);
+              String problem = columnChange(kind, removed.get(column.group(2)), line);
               if (problem != null) {
                 problems.add(file + ": " + column.group(2) + " " + problem);
               }
@@ -238,6 +258,66 @@ public class MigrationStepRulesTest {
       }
     }
     assertThat(problems).isEmpty();
+  }
+
+  /** Column changes that rows already in the database could fail, and ones they can't. */
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      quoteCharacter = '"',
+      value = {
+        "POSTGRESQL|type=varchar size=255 nullable=YES|type=varchar size=255 nullable=NO|becomes"
+            + " NOT NULL",
+        "POSTGRESQL|type=varchar size=255 nullable=YES|type=varchar size=100 nullable=YES|not"
+            + " wider",
+        "POSTGRESQL|type=numeric size=10 scale=2 nullable=YES|type=numeric size=10 scale=1"
+            + " nullable=YES|not wider",
+        "POSTGRESQL|type=int8 size=19 nullable=YES|type=int4 size=10 nullable=YES|not wider",
+        "POSTGRESQL|type=varchar size=255 nullable=YES|type=text size=2147483647 nullable=YES|",
+        "POSTGRESQL|type=varchar size=255 nullable=NO|type=varchar size=255 nullable=YES|",
+        "MYSQL|type=enum size=8 nullable=NO default=null values=enum('FUNCTION','TABLE')|type=enum"
+            + " size=8 nullable=NO default=null values=enum('FUNCTION')|drops the values [TABLE]",
+        "MYSQL|type=enum size=8 nullable=NO default=null values=enum('FUNCTION','TABLE')"
+            + "|type=enum size=8 nullable=NO default=null values=enum('FUNCTION','TABLE','VIEW')|",
+        "POSTGRESQL|type=varchar size=255 nullable=|type=varchar size=100 nullable=YES|can't read"
+      })
+  void columnChangesWiden(DatabaseKind kind, String before, String after, String problem) {
+    String found =
+        columnChange(kind, "- column t.c " + before + " ", "+ column t.c " + after + " ");
+    if (problem == null) {
+      assertThat(found).isNull();
+    } else {
+      assertThat(found).contains(problem);
+    }
+  }
+
+  /**
+   * Why the change from column line {@code before} to {@code after} narrows the column, or null.
+   */
+  private static String columnChange(DatabaseKind kind, String before, String after) {
+    Matcher from = COLUMN_LINE.matcher(before);
+    Matcher to = COLUMN_LINE.matcher(after);
+    if (!from.matches() || !to.matches()) {
+      return "can't read the column lines";
+    }
+    String narrowing = narrowing(kind, from, to);
+    return narrowing != null ? narrowing : droppedValues(before, after);
+  }
+
+  /** MySQL's enum and set members, in a column line's {@code values=}. */
+  private static final Pattern VALUES = Pattern.compile(" values=(?:enum|set)\\('(.*)'\\)");
+
+  /** The enum or set members that column line {@code after} drops from {@code before}, or null. */
+  private static String droppedValues(String before, String after) {
+    Matcher from = VALUES.matcher(before);
+    if (!from.find()) {
+      return null;
+    }
+    Matcher to = VALUES.matcher(after);
+    Set<String> kept = to.find() ? Set.of(to.group(1).split("','")) : Set.of();
+    List<String> dropped =
+        Stream.of(from.group(1).split("','")).filter(v -> !kept.contains(v)).toList();
+    return dropped.isEmpty() ? null : "drops the values " + dropped;
   }
 
   private static long scale(Matcher column) {
@@ -299,7 +379,10 @@ public class MigrationStepRulesTest {
         // On PostgreSQL a failed CONCURRENTLY leaves an index that is not valid.
         return "creates an index CONCURRENTLY";
       }
-      return firstStep || index.getIndex().getType() == null ? null : "creates a unique index";
+      String type = index.getIndex().getType();
+      return firstStep || type == null
+          ? null
+          : "creates a " + type.toLowerCase(Locale.ROOT) + " index";
     }
     if (firstStep) {
       return "the first step only creates tables and indexes";
