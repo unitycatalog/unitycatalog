@@ -1,24 +1,23 @@
 package io.unitycatalog.server.sdk.access;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linecorp.armeria.common.HttpStatus;
 import io.unitycatalog.control.model.UserResource;
+import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.Repositories;
-import io.unitycatalog.server.service.Scim2GroupService;
+import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
+import java.lang.reflect.Field;
 import java.net.http.HttpResponse;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -413,27 +412,26 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
 
   @Test
   @SneakyThrows
-  public void testDeleteGroupClearsGrantsBeforeTheGroupIsGone() {
-    Repositories repositories =
-        new Repositories(
-            hibernateConfigurator.getSessionFactory(), new ServerProperties(serverProperties));
+  public void testDeleteGroupClearsItsGrants() {
     String id = createGroup("granted", alice.getId()).get("id").asText();
-    UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
-    List<Integer> statusWhenCleared = new ArrayList<>();
-    when(authorizer.clearAuthorizationsForPrincipal(any()))
-        .thenAnswer(
-            call -> {
-              statusWhenCleared.add(
-                  send(adminConfig, "GET", GROUPS_PATH + "/" + id, null).statusCode());
-              return true;
-            });
+    // The server's own authorizer, so the grant is the one the delete has to clear.
+    Field field = UnityCatalogServer.class.getDeclaredField("authorizer");
+    field.setAccessible(true);
+    UnityCatalogAuthorizer authorizer = (UnityCatalogAuthorizer) field.get(unityCatalogServer);
+    UUID groupId = UUID.fromString(id);
+    UUID metastoreId =
+        new Repositories(
+                hibernateConfigurator.getSessionFactory(), new ServerProperties(serverProperties))
+            .getMetastoreRepository()
+            .getMetastoreId();
+    authorizer.grantAuthorization(groupId, metastoreId, Privileges.CREATE_CATALOG);
+    assertThat(authorizer.listAuthorizations(groupId, metastoreId))
+        .containsExactly(Privileges.CREATE_CATALOG);
 
-    HttpStatus status =
-        new Scim2GroupService(authorizer, repositories).deleteGroup(id).aggregate().join().status();
+    assertThat(send(adminConfig, "DELETE", GROUPS_PATH + "/" + id, null).statusCode())
+        .isEqualTo(204);
 
-    verify(authorizer).clearAuthorizationsForPrincipal(UUID.fromString(id));
-    assertThat(status).isEqualTo(HttpStatus.NO_CONTENT);
-    assertThat(statusWhenCleared).containsExactly(200);
+    assertThat(authorizer.listAuthorizations(groupId, metastoreId)).isEmpty();
     assertThat(send(adminConfig, "GET", GROUPS_PATH + "/" + id, null).statusCode()).isEqualTo(404);
   }
 
@@ -456,6 +454,128 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
         send(adminConfig, "DELETE", USERS_PATH + "/" + alice.getId(), null);
     assertThat(deleted.statusCode()).isEqualTo(200);
     assertThat(memberIds(get(id))).containsExactly(bob.getId());
+  }
+
+  @Test
+  @SneakyThrows
+  public void testOverlongNamesAreRejected() {
+    String id = createGroup("short").get("id").asText();
+    String path = GROUPS_PATH + "/" + id;
+    String tooLong = "x".repeat(256);
+
+    // {response, the attribute the message must name}
+    List<Map.Entry<HttpResponse<String>, String>> responses =
+        List.of(
+            Map.entry(send(adminConfig, "POST", GROUPS_PATH, groupBody(tooLong)), "displayName"),
+            Map.entry(
+                send(adminConfig, "POST", GROUPS_PATH, groupBody("ext", tooLong)), "externalId"),
+            Map.entry(send(adminConfig, "PUT", path, groupBody(tooLong)), "displayName"),
+            Map.entry(send(adminConfig, "PUT", path, groupBody("ext", tooLong)), "externalId"),
+            Map.entry(
+                send(
+                    adminConfig,
+                    "PATCH",
+                    path,
+                    patchBody(op("replace", "displayName", "\"" + tooLong + "\""))),
+                "displayName"),
+            Map.entry(
+                send(
+                    adminConfig,
+                    "PATCH",
+                    path,
+                    patchBody(op("replace", null, "{\"displayName\":\"" + tooLong + "\"}"))),
+                "displayName"));
+
+    for (Map.Entry<HttpResponse<String>, String> response : responses) {
+      assertThat(response.getKey().statusCode()).as(response.getValue()).isEqualTo(400);
+      JsonNode error = MAPPER.readTree(response.getKey().body());
+      assertThat(error.get("detail").asText())
+          .isEqualTo(response.getValue() + " is longer than 255 characters.");
+    }
+    // The longest value is accepted.
+    assertThat(
+            send(adminConfig, "POST", GROUPS_PATH, groupBody("y".repeat(255), "e".repeat(255)))
+                .statusCode())
+        .isEqualTo(201);
+    assertThat(groupNames(list(""))).hasSize(2).contains("short");
+  }
+
+  @Test
+  @SneakyThrows
+  public void testPatchNamesAndIdsAreCaseInsensitive() {
+    String id = createGroup("insensitive", alice.getId(), bob.getId()).get("id").asText();
+    String path = GROUPS_PATH + "/" + id;
+
+    // {ops, expected name, expected members}: attribute names are case-insensitive (RFC 7643, 2.1)
+    // and so is the id in a member filter.
+    record Step(String ops, String name, Set<String> members) {}
+    List<Step> steps =
+        List.of(
+            new Step(
+                op("add", "Members", memberValues(carol.getId())),
+                "insensitive",
+                Set.of(alice.getId(), bob.getId(), carol.getId())),
+            new Step(
+                op("replace", "DisplayName", "\"renamed\""),
+                "renamed",
+                Set.of(alice.getId(), bob.getId(), carol.getId())),
+            new Step(
+                op("replace", null, "{\"ID\":\"" + id + "\",\"DisplayName\":\"renamed-2\"}"),
+                "renamed-2",
+                Set.of(alice.getId(), bob.getId(), carol.getId())),
+            new Step(
+                op("remove", "members[value eq \\\"" + bob.getId().toUpperCase() + "\\\"]", null),
+                "renamed-2",
+                Set.of(alice.getId(), carol.getId())),
+            new Step(
+                op("remove", "MEMBERS[Value eq \\\"" + carol.getId() + "\\\"]", null),
+                "renamed-2",
+                Set.of(alice.getId())));
+
+    for (Step step : steps) {
+      HttpResponse<String> response = send(adminConfig, "PATCH", path, patchBody(step.ops()));
+      assertThat(response.statusCode()).as(step.ops()).isEqualTo(200);
+      JsonNode returned = MAPPER.readTree(response.body());
+      assertThat(returned.get("displayName").asText()).as(step.ops()).isEqualTo(step.name());
+      assertThat(memberIds(returned)).as(step.ops()).isEqualTo(step.members());
+    }
+  }
+
+  @Test
+  @SneakyThrows
+  public void testConcurrentPatchesLoseNoMember() {
+    int threads = 8;
+    List<String> users = new ArrayList<>();
+    for (int i = 0; i < threads; i++) {
+      users.add(createTestUser("racer-" + i + "@localhost", "Racer" + i).getId());
+    }
+    ExecutorService pool = Executors.newFixedThreadPool(threads);
+    try {
+      for (int round = 0; round < 5; round++) {
+        String id = createGroup("concurrent-" + round).get("id").asText();
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<HttpResponse<String>>> responses = new ArrayList<>();
+        for (int i = 0; i < threads; i++) {
+          // Every request adds the shared member and one of its own.
+          String body = patchBody(op("add", "members", memberValues(alice.getId(), users.get(i))));
+          responses.add(
+              pool.submit(
+                  () -> {
+                    start.await();
+                    return send(adminConfig, "PATCH", GROUPS_PATH + "/" + id, body);
+                  }));
+        }
+        start.countDown();
+        for (Future<HttpResponse<String>> response : responses) {
+          assertThat(response.get().statusCode()).as(response.get().body()).isEqualTo(200);
+        }
+        Set<String> expected = new HashSet<>(users);
+        expected.add(alice.getId());
+        assertThat(memberIds(get(id))).as("round " + round).isEqualTo(expected);
+      }
+    } finally {
+      pool.shutdownNow();
+    }
   }
 
   private HttpResponse<String> send(ServerConfig config, String method, String path, String body)

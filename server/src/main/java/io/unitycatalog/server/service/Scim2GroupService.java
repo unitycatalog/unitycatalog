@@ -44,8 +44,10 @@ import io.unitycatalog.server.persist.model.Group;
 import io.unitycatalog.server.utils.Scim2Utils;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -66,6 +68,9 @@ import java.util.function.UnaryOperator;
 public class Scim2GroupService implements ScimService {
   private static final String MEMBERS = "members";
   private static final String DISPLAY_NAME = "displayName";
+  private static final String EXTERNAL_ID = "externalId";
+  // The width of the displayName and externalId columns.
+  private static final int MAX_LENGTH = 255;
 
   private final UnityCatalogAuthorizer authorizer;
   private final GroupRepository groupRepository;
@@ -121,9 +126,9 @@ public class Scim2GroupService implements ScimService {
   @AuthorizeResourceKey(METASTORE)
   public GroupResource createScimGroup(GroupResource groupResource) {
     String name = requireDisplayName(groupResource.getDisplayName());
+    String externalId = checkLength(EXTERNAL_ID, groupResource.getExternalId());
     Set<UUID> memberIds = memberIds(groupResource.getMembers());
-    return asGroupResource(
-        scim(() -> groupRepository.createGroup(name, groupResource.getExternalId(), memberIds)));
+    return asGroupResource(scim(() -> groupRepository.createGroup(name, externalId, memberIds)));
   }
 
   @Get("/{id}")
@@ -146,15 +151,11 @@ public class Scim2GroupService implements ScimService {
   @AuthorizeResourceKey(METASTORE)
   public GroupResource updateGroup(@Param("id") String id, GroupResource groupResource) {
     String name = requireDisplayName(groupResource.getDisplayName());
+    String externalId = checkLength(EXTERNAL_ID, groupResource.getExternalId());
     Set<UUID> memberIds = memberIds(groupResource.getMembers());
     return update(
         id,
-        group ->
-            group.toBuilder()
-                .name(name)
-                .externalId(groupResource.getExternalId())
-                .memberIds(memberIds)
-                .build());
+        group -> group.toBuilder().name(name).externalId(externalId).memberIds(memberIds).build());
   }
 
   @Patch("/{id}")
@@ -210,11 +211,11 @@ public class Scim2GroupService implements ScimService {
       if (path != null && path.size() == 1) {
         Path.Element element = path.getElement(0);
         if (replace
-            && DISPLAY_NAME.equals(element.getAttribute())
+            && DISPLAY_NAME.equalsIgnoreCase(element.getAttribute())
             && element.getValueFilter() == null) {
           return renameTo(requireDisplayName(operation.getValue(String.class)));
         }
-        if (MEMBERS.equals(element.getAttribute())) {
+        if (MEMBERS.equalsIgnoreCase(element.getAttribute())) {
           Optional<UnaryOperator<Group>> change =
               membersChange(operation, element.getValueFilter());
           if (change.isPresent()) {
@@ -237,13 +238,20 @@ public class Scim2GroupService implements ScimService {
       throw new BadRequestException("PATCH replace without a path needs an object value.");
     }
     Set<String> unsupported = new LinkedHashSet<>();
-    value.fieldNames().forEachRemaining(unsupported::add);
-    unsupported.removeAll(Set.of("id", DISPLAY_NAME));
+    String displayName = null;
+    for (Iterator<Map.Entry<String, JsonNode>> fields = value.fields(); fields.hasNext(); ) {
+      Map.Entry<String, JsonNode> field = fields.next();
+      if (DISPLAY_NAME.equalsIgnoreCase(field.getKey())) {
+        displayName = field.getValue().asText(null);
+      } else if (!"id".equalsIgnoreCase(field.getKey())) {
+        unsupported.add(field.getKey());
+      }
+    }
     if (!unsupported.isEmpty()) {
       throw new Scim2RuntimeException(
           new NotImplementedException("PATCH is not supported for: " + unsupported));
     }
-    return renameTo(requireDisplayName(value.path(DISPLAY_NAME).asText(null)));
+    return renameTo(requireDisplayName(displayName));
   }
 
   private static UnaryOperator<Group> renameTo(String name) {
@@ -260,7 +268,7 @@ public class Scim2GroupService implements ScimService {
     if (filter != null) {
       if (operation.getOpType() != PatchOpType.REMOVE
           || !(filter instanceof EqualFilter equal)
-          || !"value".equals(equal.getAttributePath().toString())) {
+          || !"value".equalsIgnoreCase(equal.getAttributePath().toString())) {
         return Optional.empty();
       }
       String value = equal.getComparisonValue().asText();
@@ -289,7 +297,7 @@ public class Scim2GroupService implements ScimService {
   /** Removing someone who is not a member changes nothing, so the id need not be valid. */
   private static Group withoutMember(Group group, String userId) {
     Set<UUID> members = new LinkedHashSet<>(group.getMemberIds());
-    members.removeIf(memberId -> memberId.toString().equals(userId));
+    members.removeIf(memberId -> memberId.toString().equalsIgnoreCase(userId));
     return group.toBuilder().memberIds(members).build();
   }
 
@@ -297,7 +305,16 @@ public class Scim2GroupService implements ScimService {
     if (displayName == null || displayName.isBlank()) {
       throw new Scim2RuntimeException(new BadRequestException("displayName is required."));
     }
-    return displayName;
+    return checkLength(DISPLAY_NAME, displayName);
+  }
+
+  /** Refuses a value the column cannot hold, which the database would report as a 500. */
+  private static String checkLength(String attribute, String value) {
+    if (value != null && value.length() > MAX_LENGTH) {
+      throw new Scim2RuntimeException(
+          new BadRequestException(attribute + " is longer than " + MAX_LENGTH + " characters."));
+    }
+    return value;
   }
 
   /** A member's value is a user id; one that is not even a UUID cannot be a user. */
