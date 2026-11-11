@@ -166,6 +166,9 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
       {"startIndex=1&count=1", "1", "1", "1"},
       {"startIndex=3&count=5", "3", "1", "1"},
       {"startIndex=1&count=50", "1", "3", "3"},
+      // A startIndex below 1 is read as 1 (RFC 7644 3.4.2.4).
+      {"startIndex=0&count=1", "1", "1", "1"},
+      {"startIndex=-5&count=5", "1", "3", "3"},
       // A negative count is read as 0 (RFC 7644 3.4.2.4).
       {"startIndex=1&count=-1", "1", "0", "0"},
     };
@@ -211,53 +214,63 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
   @Test
   @SneakyThrows
   public void testPatchHonoursThePathAndAttribute() {
-    String patchPath = SCIM_USERS_PATH + "/" + otherUser.getId();
-    // {Operations element, expected status, expected active afterwards or "unchanged"}. A refused
-    // request leaves the previous state alone.
-    String[][] cases = {
-      {"{\"op\":\"replace\",\"path\":\"active\",\"value\":false}", "200", "false"},
-      {"{\"op\":\"Replace\",\"path\":\"active\",\"value\":true}", "200", "true"},
-      {"{\"op\":\"Replace\",\"path\":\"active\",\"value\":\"False\"}", "200", "false"},
-      {"{\"op\":\"replace\",\"path\":\"active\",\"value\":\"True\"}", "200", "true"},
-      {"{\"op\":\"Replace\",\"value\":{\"active\":false}}", "200", "false"},
-      {"{\"op\":\"replace\",\"value\":{\"active\":true}}", "200", "true"},
+    String activate = "{\"op\":\"replace\",\"path\":\"active\",\"value\":true}";
+    String deactivate = "{\"op\":\"replace\",\"path\":\"active\",\"value\":false}";
+    // {Operations, expected active afterwards}, each answered 200.
+    String[][] applied = {
+      {deactivate, "false"},
+      {"{\"op\":\"Replace\",\"path\":\"active\",\"value\":true}", "true"},
+      {"{\"op\":\"Replace\",\"path\":\"active\",\"value\":\"False\"}", "false"},
+      {"{\"op\":\"replace\",\"path\":\"active\",\"value\":\"True\"}", "true"},
+      {"{\"op\":\"Replace\",\"value\":{\"active\":false}}", "false"},
+      {"{\"op\":\"replace\",\"value\":{\"active\":true}}", "true"},
       {
         "{\"op\":\"replace\",\"path\":\"urn:ietf:params:scim:schemas:core:2.0:User:active\","
             + "\"value\":false}",
-        "200",
         "false"
       },
-      // Anything but a change of active is not implemented, and must not touch active.
-      {"{\"op\":\"replace\",\"value\":{\"displayName\":\"false\"}}", "501", "unchanged"},
-      {"{\"op\":\"replace\",\"path\":\"displayName\",\"value\":\"false\"}", "501", "unchanged"},
-      {
-        "{\"op\":\"replace\",\"value\":{\"active\":false,\"displayName\":\"x\"}}",
-        "501",
-        "unchanged"
-      },
-      {"{\"op\":\"add\",\"path\":\"active\",\"value\":false}", "501", "unchanged"},
-      {
-        "{\"op\":\"replace\",\"path\":\"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:active\","
-            + "\"value\":false}",
-        "501",
-        "unchanged"
-      },
-      {"{\"op\":\"remove\",\"path\":\"active\"}", "501", "unchanged"},
+      // A single-element array is the value itself.
+      {"{\"op\":\"replace\",\"path\":\"active\",\"value\":[true]}", "true"},
+      {"{\"op\":\"replace\",\"value\":{\"active\":[false]}}", "false"},
+      // With several operations the last one wins.
+      {activate + "," + deactivate, "false"},
+      {deactivate + "," + activate, "true"},
     };
-    for (String[] c : cases) {
-      String body =
-          "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],\"Operations\":["
-              + c[0]
-              + "]}";
-      boolean activeBefore = usersApi.getUser(otherUser.getId()).getActive();
-      HttpResponse<String> response =
-          TestUtils.sendRaw(adminConfig, "PATCH", patchPath, Optional.of(body));
-      assertThat(response.statusCode()).as(c[0]).isEqualTo(Integer.parseInt(c[1]));
-      boolean expectedActive = c[1].equals("200") ? Boolean.parseBoolean(c[2]) : activeBefore;
+    for (String[] c : applied) {
+      assertThat(patchOtherUser(c[0]).statusCode()).as(c[0]).isEqualTo(200);
       assertThat(usersApi.getUser(otherUser.getId()).getActive())
           .as(c[0])
-          .isEqualTo(expectedActive);
+          .isEqualTo(Boolean.parseBoolean(c[1]));
     }
+
+    // Anything but a change of active is not implemented, and applies nothing, even next to an
+    // active change. Each case starts from an active user, so an applied deactivation shows.
+    String[] notImplemented = {
+      "{\"op\":\"replace\",\"value\":{\"displayName\":\"false\"}}",
+      "{\"op\":\"replace\",\"path\":\"displayName\",\"value\":\"false\"}",
+      "{\"op\":\"replace\",\"value\":{\"active\":false,\"displayName\":\"x\"}}",
+      "{\"op\":\"add\",\"path\":\"active\",\"value\":false}",
+      "{\"op\":\"replace\",\"path\":\"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:active\","
+          + "\"value\":false}",
+      "{\"op\":\"remove\",\"path\":\"active\"}",
+      deactivate + ",{\"op\":\"replace\",\"path\":\"displayName\",\"value\":\"x\"}",
+      "",
+    };
+    for (String operations : notImplemented) {
+      assertThat(patchOtherUser(activate).statusCode()).isEqualTo(200);
+      assertThat(usersApi.getUser(otherUser.getId()).getActive()).isTrue();
+      assertThat(patchOtherUser(operations).statusCode()).as(operations).isEqualTo(501);
+      assertThat(usersApi.getUser(otherUser.getId()).getActive()).as(operations).isTrue();
+    }
+  }
+
+  private HttpResponse<String> patchOtherUser(String operations) throws Exception {
+    String body =
+        "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],\"Operations\":["
+            + operations
+            + "]}";
+    return TestUtils.sendRaw(
+        adminConfig, "PATCH", SCIM_USERS_PATH + "/" + otherUser.getId(), Optional.of(body));
   }
 
   @Test
@@ -268,13 +281,7 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     // Every operation is validated, not only the last, and nothing is applied on a 400.
     for (String operations :
         new String[] {maybe, maybe + "," + deactivate, deactivate + "," + maybe}) {
-      String body =
-          "{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:PatchOp\"],\"Operations\":["
-              + operations
-              + "]}";
-      HttpResponse<String> response =
-          TestUtils.sendRaw(
-              adminConfig, "PATCH", SCIM_USERS_PATH + "/" + otherUser.getId(), Optional.of(body));
+      HttpResponse<String> response = patchOtherUser(operations);
       assertThat(response.statusCode()).as(operations).isEqualTo(400);
       assertThat(response.body()).as(operations).contains("active must be true or false");
       assertThat(usersApi.getUser(otherUser.getId()).getActive()).as(operations).isTrue();
@@ -290,7 +297,7 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     assertThat(response.statusCode()).isEqualTo(200);
     JsonNode body = MAPPER.readTree(response.body());
     assertThat(body.get("name").get("formatted").asText()).isEqualTo("Other User");
-    // userName stays the email (plan Q-P1).
+    // userName stays the email.
     assertThat(body.get("userName").asText()).isEqualTo(OTHER_USER);
   }
 
