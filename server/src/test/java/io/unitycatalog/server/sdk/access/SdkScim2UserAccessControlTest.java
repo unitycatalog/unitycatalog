@@ -149,7 +149,8 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
   @SneakyThrows
   public void testMetastoreOwnerCanBeDeactivatedButNotDeletedWithAuthorizationDisabled() {
     // With authorization disabled the server uses AllowingAuthorizer, which allows every OWNER
-    // check, so the service skips the owner check and the owner can be deactivated and deleted.
+    // check, so the service skips the owner check and the owner can be deactivated. The bootstrap
+    // admin still can't be deleted or renamed.
     String ownerId =
         usersApi.listUsers(null, null, null).getResources().stream()
             .filter(user -> "admin".equals(user.getEmails().get(0).getValue()))

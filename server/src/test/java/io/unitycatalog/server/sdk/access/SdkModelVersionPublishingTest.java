@@ -34,6 +34,8 @@ import io.unitycatalog.client.model.Privilege;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.UpdateModelVersion;
 import io.unitycatalog.client.model.UpdatePermissions;
+import io.unitycatalog.control.model.Email;
+import io.unitycatalog.control.model.UserResource;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
 import io.unitycatalog.server.persist.model.Privileges;
@@ -486,6 +488,28 @@ public class SdkModelVersionPublishingTest extends SdkAccessControlBaseCRUDTest 
             publisherVersions.finalizeModelVersion(MODEL_FULL_NAME, pending.getVersion(), finalize),
         ErrorCode.PERMISSION_DENIED,
         "Only model version creator can finalize model version");
+  }
+
+  @Test
+  public void renamedCreatorCanStillFinalizeTheirVersion() throws Exception {
+    ModelVersionInfo pending = createPendingVersionAsPublisher();
+    String id = userId(PRINCIPAL_2);
+    String newEmail = "renamed-publisher@localhost";
+    usersApi.updateUser(
+        id, new UserResource().id(id).emails(List.of(new Email().value(newEmail).primary(true))));
+    ModelVersionsApi renamed =
+        new ModelVersionsApi(TestUtils.createApiClient(createTestUserServerConfig(newEmail)));
+
+    assertThat(
+            renamed
+                .finalizeModelVersion(
+                    MODEL_FULL_NAME,
+                    pending.getVersion(),
+                    new FinalizeModelVersion()
+                        .fullName(MODEL_FULL_NAME)
+                        .version(pending.getVersion()))
+                .getStatus())
+        .isEqualTo(ModelVersionStatus.READY);
   }
 
   @Test
