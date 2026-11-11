@@ -8,9 +8,11 @@ import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.UpdateUser;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.persist.utils.UniqueViolations;
 import io.unitycatalog.server.utils.IdentityUtils;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Predicate;
@@ -55,6 +57,7 @@ public class UserRepository {
                 "User already exists with external id: " + user.getExternalId());
           }
           session.persist(UserDAO.from(user));
+          flushOrAlreadyExists(session, user.getEmail(), user.getExternalId());
           return user;
         },
         "Failed to create user",
@@ -186,6 +189,14 @@ public class UserRepository {
                     ? User.StateEnum.ENABLED.toString()
                     : User.StateEnum.DISABLED.toString());
           }
+          if (updateUser.getEmail() != null) {
+            UserDAO existingEmailUser = getUserByEmail(session, updateUser.getEmail());
+            if (existingEmailUser != null && !existingEmailUser.getId().equals(userDAO.getId())) {
+              throw new BaseException(
+                  ErrorCode.ALREADY_EXISTS, "User already exists: " + updateUser.getEmail());
+            }
+            userDAO.setEmail(updateUser.getEmail());
+          }
           if (updateUser.getExternalId() != null) {
             UserDAO existingExternalIdUser =
                 getUserByExternalId(session, updateUser.getExternalId());
@@ -198,6 +209,7 @@ public class UserRepository {
             userDAO.setExternalId(updateUser.getExternalId());
           }
           session.merge(userDAO);
+          flushOrAlreadyExists(session, userDAO.getEmail(), userDAO.getExternalId());
           return userDAO.toUser();
         },
         "Failed to update user",
@@ -210,8 +222,7 @@ public class UserRepository {
         session -> {
           UserDAO userDAO = getUserById(session, id);
           if (userDAO != null) {
-            userDAO.setState(User.StateEnum.DISABLED.toString());
-            session.merge(userDAO);
+            session.remove(userDAO);
             LOGGER.info("Deleted user: {}", id);
             return null;
           } else {
@@ -220,6 +231,18 @@ public class UserRepository {
         },
         "Failed to delete user",
         /* readOnly= */ false);
+  }
+
+  /**
+   * Check-then-insert lets two requests pass the checks together, so the unique constraints decide
+   * the race; this reports the loser with the message of the sequential duplicate.
+   */
+  private static void flushOrAlreadyExists(Session session, String email, String externalId) {
+    UniqueViolations.flushOrAlreadyExists(
+        session,
+        Map.of(
+            "uc_users_email_key", "User already exists: " + email,
+            "uc_users_external_id_key", "User already exists with external id: " + externalId));
   }
 
   public UUID findPrincipalId() {

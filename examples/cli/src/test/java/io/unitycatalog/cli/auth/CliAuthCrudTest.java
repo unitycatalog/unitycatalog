@@ -241,6 +241,8 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     assertThat(responseJsonInfo).isNotNull();
     assertThat(responseJsonInfo.get("name").asText()).isEqualTo("Test User Updated");
     assertThat(responseJsonInfo.get("external_id").asText()).isEqualTo("123");
+    // `user update` without --email sends `emails: []` and leaves the email as it is.
+    assertThat(responseJsonInfo.get("email").asText()).isEqualTo("user@localhost");
 
     // Test getting a user
     List<String> argsGetUser = List.of("user", "get", "--id", id);

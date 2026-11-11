@@ -1,0 +1,1 @@
++ index uc_users.uc_users_email_key_index_* unique=true column=email#1
