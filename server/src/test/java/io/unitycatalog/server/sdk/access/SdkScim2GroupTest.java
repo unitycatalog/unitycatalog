@@ -4,10 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.control.model.User;
 import io.unitycatalog.control.model.UserResource;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.dao.GroupMemberDAO;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
@@ -28,6 +31,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import lombok.SneakyThrows;
+import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
@@ -171,6 +175,19 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
       assertThat(unchanged.get("displayName").asText()).isEqualTo("target");
       assertThat(memberIds(unchanged)).containsExactly(alice.getId());
     }
+    // A null member is refused the same way.
+    String nullMember = "{\"displayName\":\"renamed\",\"members\":[null]}";
+    for (HttpResponse<String> response :
+        List.of(
+            send(adminConfig, "POST", GROUPS_PATH, nullMember),
+            send(adminConfig, "PUT", groupPath, nullMember))) {
+      assertThat(response.statusCode()).as(response.body()).isEqualTo(400);
+      assertThat(MAPPER.readTree(response.body()).get("detail").asText())
+          .isEqualTo("Member is not an existing user: null");
+    }
+    JsonNode unchanged = get(group.get("id").asText());
+    assertThat(unchanged.get("displayName").asText()).isEqualTo("target");
+    assertThat(memberIds(unchanged)).containsExactly(alice.getId());
     assertThat(groupNames(list(""))).containsExactly("other", "target");
   }
 
@@ -397,6 +414,9 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
             List.of(op("replace", "displayName", "[]"), 400, "Invalid PATCH value: "),
             List.of(op("add", "members", "[{\"value\":{\"a\":1}}]"), 400, "Invalid PATCH value: "),
             List.of(
+                op("add", "members", "[\"" + bob.getId() + "\"]"), 400, "Invalid PATCH value: "),
+            List.of(op("add", "members", "[null]"), 400, "Member is not an existing user: null"),
+            List.of(
                 op("add", bobFilter, memberValues(bob.getId())),
                 501,
                 "PATCH is not supported for: "),
@@ -412,7 +432,8 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
           .isEqualTo(row.get(1));
       assertThat(MAPPER.readTree(refusal.body()).get("detail").asText())
           .as(operation)
-          .startsWith((String) row.get(2));
+          .startsWith((String) row.get(2))
+          .doesNotContain("com.unboundid");
       JsonNode group = get(id);
       assertThat(group.get("displayName").asText()).as(operation).isEqualTo("stable");
       assertThat(group.has("externalId")).as(operation).isFalse();
@@ -519,6 +540,53 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
     } finally {
       pool.shutdownNow();
     }
+    assertThat(memberIds(get(id))).isEmpty();
+  }
+
+  /**
+   * A user delete racing an add of that user to a group must not deadlock with it. A reader locks
+   * the group's memberships, so on MySQL the add waits there after reading the user row, and the
+   * delete arrives meanwhile. The delete writes the user row first, so it waits for the add;
+   * dropping the memberships first would deadlock the two.
+   */
+  @Test
+  @SneakyThrows
+  public void testUserDeleteRacingAnAddDoesNotDeadlock() {
+    String userId = createTestUser("race-disable@localhost", "RaceDisable").getId();
+    createGroup("race-disable-other", userId);
+    String id = createGroup("race-disable").get("id").asText();
+    UserRepository userRepository =
+        new UserRepository(null, hibernateConfigurator.getSessionFactory());
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    try (Session reading = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction tx = reading.beginTransaction();
+      reading
+          .createSelectionQuery(
+              "FROM GroupMemberDAO WHERE groupId = :groupId", GroupMemberDAO.class)
+          .setParameter("groupId", UUID.fromString(id))
+          .setHibernateLockMode(LockMode.PESSIMISTIC_WRITE)
+          .list();
+      Future<HttpResponse<String>> add =
+          pool.submit(
+              () ->
+                  send(
+                      adminConfig,
+                      "PATCH",
+                      GROUPS_PATH + "/" + id,
+                      patchBody(op("add", "members", memberValues(userId)))));
+      // Lets the add reach the lock before the delete starts.
+      Thread.sleep(300);
+      Future<?> delete = pool.submit(() -> userRepository.deleteUser(userId));
+      Thread.sleep(300);
+      tx.commit();
+
+      HttpResponse<String> response = add.get(30, TimeUnit.SECONDS);
+      assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+      delete.get(30, TimeUnit.SECONDS);
+    } finally {
+      pool.shutdownNow();
+    }
+    assertThat(userRepository.getUser(userId).getState()).isEqualTo(User.StateEnum.DISABLED);
     assertThat(memberIds(get(id))).isEmpty();
   }
 
