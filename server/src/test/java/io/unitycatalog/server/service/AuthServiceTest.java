@@ -730,7 +730,40 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
       assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
           .isEqualTo("A SCIM token can't change the external id of a user: " + email);
     }
-    // PATCH changes only active, and PUT never changes the email.
+    // A PUT that changes the primary email is refused, a case variant included: token exchange
+    // signs in a user by email. So is one with no primary email, or a primary with no value.
+    String emailPut = put.replace(",\"externalId\":\"attacker-client\"", "");
+    String storedEmails = "[{\"primary\":true,\"value\":\"victim@example.com\"}]";
+    for (String emails :
+        List.of(
+            "[{\"primary\":true,\"value\":\"attacker@example.com\"}]",
+            "[{\"primary\":true,\"value\":\"Victim@example.com\"}]",
+            "[{\"primary\":false,\"value\":\"victim@example.com\"},{\"value\":\"x@example.com\"}]",
+            "[{\"primary\":true}]",
+            "[null]",
+            "[null,{\"primary\":true,\"value\":\"attacker@example.com\"}]")) {
+      String body =
+          String.format(emailPut, victimId, "victim@example.com", "victim@example.com")
+              .replace(storedEmails, emails);
+      AggregatedHttpResponse response = scimAs(okta, HttpMethod.PUT, "/" + victimId, body);
+      assertThat(response.status()).as(emails).isEqualTo(HttpStatus.FORBIDDEN);
+      assertThat(MAPPER.readTree(response.contentUtf8()).get("message").asText())
+          .isEqualTo("A SCIM token can't change the email of a user: victim@example.com");
+    }
+    // A PUT that resends the stored email as the primary email, or sends no emails, is accepted.
+    for (String body :
+        List.of(
+            String.format(emailPut, victimId, "victim@example.com", "victim@example.com"),
+            String.format(emailPut, victimId, "victim@example.com", "victim@example.com")
+                .replace(storedEmails, "[null," + storedEmails.substring(1)),
+            String.format(emailPut, victimId, "victim@example.com", "victim@example.com")
+                .replace(
+                    "\"emails\":[{\"primary\":true,\"value\":\"victim@example.com\"}],", ""))) {
+      assertThat(scimAs(okta, HttpMethod.PUT, "/" + victimId, body).status())
+          .as(body)
+          .isEqualTo(HttpStatus.OK);
+    }
+    // PATCH changes only active.
     for (String patch :
         List.of(
             "{\"op\":\"replace\",\"value\":{\"externalId\":\"attacker-client\"}}",
@@ -745,12 +778,6 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
               + patch
               + "]}");
     }
-    scimAs(
-        okta,
-        HttpMethod.PUT,
-        "/" + victimId,
-        String.format(put, victimId, "attacker@example.com", "attacker@example.com")
-            .replace(",\"externalId\":\"attacker-client\"", ""));
     User victim = users.getUser(victimId);
     assertThat(victim.getExternalId()).isNull();
     assertThat(victim.getEmail()).isEqualTo("victim@example.com");

@@ -503,6 +503,9 @@ bin/uc-admin-token --scim-principal okta-scim --idp okta --lifetime P90D
   Only the admin manages those. Elsewhere it gets 403.
 - It also gets 403 when it changes the `externalId` of an existing user, since token exchange signs in an OAuth client
   as the user with that `externalId`. An update that sends the stored `externalId` again, or none, is accepted.
+- It also gets 403 when it changes the email of an existing user, since token exchange signs in a user by email. The
+  match is exact, so a change of case is refused too. An update that sends the stored email again as the primary email,
+  or sends no emails, is accepted.
 - `bin/uc-admin-token` opens the server's database from `etc/conf/hibernate.properties`, as
   `bin/start-uc-server --upgrade-schema` does, and marks the user as the identity provider's principal. That user can no
   longer sign in, and can't be marked for another identity provider. It refuses the `admin` user.
