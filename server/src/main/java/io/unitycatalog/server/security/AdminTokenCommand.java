@@ -10,8 +10,11 @@ import io.unitycatalog.server.security.SecurityContext.Issuers;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.DateTimeException;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.Date;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.config.Configurator;
 
@@ -24,7 +27,8 @@ import org.apache.logging.log4j.core.config.Configurator;
  * <p>With {@code --scim-principal <email> --idp <name> --lifetime <ISO-8601 duration>}, it prints
  * an IdP's SCIM token instead, accepted only on the SCIM API. It opens the server's database, as
  * {@code bin/start-uc-server --upgrade-schema} does, and marks that user as the IdP's principal,
- * which can then no longer sign in. Disabling the user revokes the token.
+ * which can then no longer sign in. Disabling the user stops the token until the user is enabled
+ * again.
  */
 public final class AdminTokenCommand {
 
@@ -36,6 +40,10 @@ public final class AdminTokenCommand {
   private AdminTokenCommand() {}
 
   public static void main(String[] args) throws Exception {
+    if (args.length == 1 && args[0].equals("--help")) {
+      System.out.println(USAGE);
+      return;
+    }
     // Logs go to the CLI log file, or nowhere when there is none (as in a Helm pod), so standard
     // output holds only the token.
     Path logConfig = CONFIGURATION_FOLDER.resolve("cli.log4j2.properties");
@@ -100,10 +108,10 @@ public final class AdminTokenCommand {
         Issuers.INTERNAL,
         principal.getId(),
         options.idpName(),
-        options.lifetime());
+        options.expiresAt());
   }
 
-  private record ScimTokenOptions(String email, String idpName, Duration lifetime) {
+  private record ScimTokenOptions(String email, String idpName, Date expiresAt) {
 
     static ScimTokenOptions parse(String[] args) {
       String email = null;
@@ -132,10 +140,13 @@ public final class AdminTokenCommand {
         throw new IllegalArgumentException(
             "--lifetime is required with --scim-principal. " + USAGE);
       }
-      return new ScimTokenOptions(email, idpName, parseLifetime(lifetime));
+      return new ScimTokenOptions(email, idpName, expiryAfter(lifetime));
     }
 
-    private static Duration parseLifetime(String lifetime) {
+    /**
+     * The expiry of a token minted now with {@code lifetime}, checked before the user is marked.
+     */
+    private static Date expiryAfter(String lifetime) {
       Duration duration;
       try {
         duration = Duration.parse(lifetime);
@@ -146,7 +157,15 @@ public final class AdminTokenCommand {
         throw new IllegalArgumentException(
             "--lifetime must be a positive ISO-8601 duration, such as P90D: " + lifetime);
       }
-      return duration;
+      if (duration.compareTo(Duration.ofSeconds(1)) < 0) {
+        throw new IllegalArgumentException("--lifetime must be at least 1 second: " + lifetime);
+      }
+      try {
+        return Date.from(Instant.now().plus(duration));
+      } catch (DateTimeException | ArithmeticException | IllegalArgumentException e) {
+        // Instant.plus or Date.from: an expiry beyond what they can hold.
+        throw new IllegalArgumentException("--lifetime is too long: " + lifetime);
+      }
     }
   }
 }

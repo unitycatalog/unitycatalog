@@ -43,6 +43,7 @@ import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.model.UpdateUser;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.Scim2Utils;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Calendar;
@@ -179,6 +180,7 @@ public class Scim2UserService implements ScimService {
   @AuthorizeResourceKey(METASTORE)
   public UserResource updateUser(@Param("id") String id, UserResource userResource) {
     User existing = userRepository.getUser(id);
+    checkNotIdpPrincipalForScimToken(existing);
     if (!id.equals(userResource.getId())) {
       throw new Scim2RuntimeException(new ResourceConflictException("User id mismatch."));
     }
@@ -201,6 +203,7 @@ public class Scim2UserService implements ScimService {
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteUser(@Param("id") String id) {
     User user = userRepository.getUser(id);
+    checkNotIdpPrincipalForScimToken(user);
     checkNotMetastoreOwner(user);
     authorizer.clearAuthorizationsForPrincipal(
         UUID.fromString(Objects.requireNonNull(user.getId())));
@@ -224,9 +227,11 @@ public class Scim2UserService implements ScimService {
 
   private HttpResponse handleUserUpdate(String id, PatchOperation operation) {
     try {
+      User user = userRepository.getUser(id);
+      checkNotIdpPrincipalForScimToken(user);
       Boolean value = operation.getValues(Boolean.class).get(0);
       if (Boolean.FALSE.equals(value)) {
-        checkNotMetastoreOwner(userRepository.getUser(id));
+        checkNotMetastoreOwner(user);
       }
       UpdateUser updateUser = UpdateUser.builder().active(value).build();
       userRepository.updateUser(id, updateUser);
@@ -248,6 +253,19 @@ public class Scim2UserService implements ScimService {
       throw new BaseException(
           ErrorCode.FAILED_PRECONDITION,
           "The metastore owner can't be deleted or deactivated: " + user.getEmail());
+    }
+  }
+
+  // Only the admin changes an IdP principal: with a SCIM token, one IdP could lock out or revive
+  // another IdP's principal, or its own. SCIM tokens exist only with authorization enabled.
+  private void checkNotIdpPrincipalForScimToken(User user) {
+    if (!serverProperties.isAuthorizationEnabled()) {
+      return;
+    }
+    if (IdentityUtils.isScimToken() && user.getIdpName() != null) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED,
+          "An IdP principal can't be changed with a SCIM token: " + user.getEmail());
     }
   }
 

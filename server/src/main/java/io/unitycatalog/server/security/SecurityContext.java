@@ -72,8 +72,8 @@ public class SecurityContext {
   }
 
   /**
-   * Creates an IdP's SCIM token: it names the IdP principal by its user id, and expires after
-   * {@code lifetime}.
+   * Creates an IdP's SCIM token: it names the IdP principal by its user id, and expires at {@code
+   * expiresAt}.
    */
   static String createScimToken(
       Algorithm algorithm,
@@ -81,12 +81,12 @@ public class SecurityContext {
       String localIssuer,
       String principalId,
       String idpName,
-      Duration lifetime) {
+      Date expiresAt) {
     return JWT.create()
         .withSubject(serviceName)
         .withIssuer(localIssuer)
         .withIssuedAt(new Date())
-        .withExpiresAt(Date.from(Instant.now().plus(lifetime)))
+        .withExpiresAt(expiresAt)
         .withJWTId(UUID.randomUUID().toString())
         .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.SCIM.name())
         .withClaim(JwtClaim.SUBJECT.key(), principalId)

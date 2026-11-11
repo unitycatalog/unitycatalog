@@ -222,6 +222,20 @@ class AuthDecoratorTest {
   }
 
   @Test
+  void accessTokenOfAnIdpPrincipalIsDenied() {
+    // An ACCESS token issued before the user was marked as an IdP principal stops working.
+    when(userRepository.getUserByEmail(EMAIL))
+        .thenReturn(new User().email(EMAIL).state(User.StateEnum.ENABLED).idpName("okta"));
+
+    assertThatThrownBy(this::serve)
+        .isInstanceOf(AuthorizationException.class)
+        .hasMessage("User not allowed: " + EMAIL)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.PERMISSION_DENIED);
+    verifyNotDelegated();
+  }
+
+  @Test
   void scimTokenOfAnEnabledIdpPrincipalIsServedOnTheScimApi() throws Exception {
     token = scimToken();
     when(userRepository.getUser(SCIM_PRINCIPAL_ID))

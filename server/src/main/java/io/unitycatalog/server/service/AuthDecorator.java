@@ -41,7 +41,8 @@ import org.slf4j.LoggerFactory;
  * type}, and an {@code ACCESS} or {@code SCIM} token must carry an expiry; the bootstrap {@code
  * SERVICE} token has none. The token's user must be enabled. A {@code SCIM} token, an IdP's token
  * from {@code bin/uc-admin-token}, is accepted only on the SCIM API, and names its user by id; that
- * user must have an IdP name. If all these checks pass, the request is allowed to continue.
+ * user must have an IdP name, and only a SCIM token is accepted for a user with one. If all these
+ * checks pass, the request is allowed to continue.
  *
  * <p>The decoded token is also added to the request attributes so it can be referenced by the
  * request if needed.
@@ -121,7 +122,8 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
                     : userRepository.getUserByEmail(subject));
     if (user == null
         || user.getState() != User.StateEnum.ENABLED
-        || (isScimToken && user.getIdpName() == null)) {
+        // Only a SCIM token acts as an IdP principal, and a SCIM token only as one.
+        || isScimToken != (user.getIdpName() != null)) {
       throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed: " + subject);
     }
 

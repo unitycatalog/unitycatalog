@@ -498,15 +498,19 @@ bin/uc --auth_token "$(bin/uc-admin-token)" user create --name "Okta SCIM" --ema
 bin/uc-admin-token --scim-principal okta-scim --idp okta --lifetime P90D
 ```
 
-- The token is accepted only under `/api/1.0/unity-control/scim2/`, where it can do what the metastore owner can;
-  elsewhere it gets 403.
+- The token is accepted only under `/api/1.0/unity-control/scim2/`, where it can manage users as the metastore owner
+  can, except identity provider principals: it gets 403 when it updates, deactivates or deletes one, its own included.
+  Only the admin manages those. Elsewhere it gets 403.
 - `bin/uc-admin-token` opens the server's database from `etc/conf/hibernate.properties`, as
   `bin/start-uc-server --upgrade-schema` does, and marks the user as the identity provider's principal. That user can no
   longer sign in, and can't be marked for another identity provider. It refuses the `admin` user.
 - With the default H2 file database, stop the server before you run it: H2 lets one process open the file.
-- To rotate the token, mint a new one, give it to the identity provider, and let the old one expire. To revoke it now,
-  disable the user, for example with `bin/uc --auth_token "$(bin/uc-admin-token)" user delete --id <id>`, which
-  disables it. The token is refused on its next request.
+- To rotate the token, mint a new one, give it to the identity provider, and let the old one expire.
+- To pause the token, disable the user: the token is refused on its next request. Enabling the user again restores
+  its tokens that have not expired.
+- To revoke the token for good, delete the user, for example with
+  `bin/uc --auth_token "$(bin/uc-admin-token)" user delete --id <id>`. A user created again with the same email gets a
+  new id, so the old tokens never work again.
 
 ### Try to log in with no user in the local database
 
