@@ -212,6 +212,10 @@ public class UserRepository {
           if (userDAO != null) {
             userDAO.setState(User.StateEnum.DISABLED.toString());
             session.merge(userDAO);
+            session
+                .createMutationQuery("DELETE FROM GroupMemberDAO WHERE userId = :userId")
+                .setParameter("userId", userDAO.getId())
+                .executeUpdate();
             LOGGER.info("Deleted user: {}", id);
             return null;
           } else {
