@@ -224,8 +224,7 @@ public class Scim2GroupService implements ScimService {
         }
       }
     } catch (JsonProcessingException | IllegalArgumentException e) {
-      throw new Scim2RuntimeException(
-          new BadRequestException("Invalid PATCH value: " + e.getMessage()));
+      throw new Scim2RuntimeException(new BadRequestException("Invalid PATCH value: " + operation));
     } catch (ScimException e) {
       throw new Scim2RuntimeException(e);
     }
@@ -234,9 +233,6 @@ public class Scim2GroupService implements ScimService {
   }
 
   private UnaryOperator<Group> renameFromValue(JsonNode value) throws BadRequestException {
-    if (value == null || !value.isObject()) {
-      throw new BadRequestException("PATCH replace without a path needs an object value.");
-    }
     Set<String> unsupported = new LinkedHashSet<>();
     String displayName = null;
     for (Iterator<Map.Entry<String, JsonNode>> fields = value.fields(); fields.hasNext(); ) {
@@ -330,7 +326,8 @@ public class Scim2GroupService implements ScimService {
         memberIds.add(UUID.fromString(member.getValue()));
       } catch (IllegalArgumentException | NullPointerException e) {
         throw new Scim2RuntimeException(
-            new BadRequestException("Member is not an existing user: " + member.getValue()));
+            new BadRequestException(
+                "Member is not an existing user: " + (member == null ? null : member.getValue())));
       }
     }
     return memberIds;
