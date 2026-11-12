@@ -50,6 +50,10 @@ jobs:
       ${{ matrix.validation-mode == 'spark-tests' && 'Spark tests' || 'All tests' }}
       (Spark ${{ matrix.spark-version }}${{ matrix.delta-version != '' && format(', Delta {0}', matrix.delta-version) || '' }}${{ matrix.test-database && format(', {0}', matrix.test-database) || '' }})
     continue-on-error: ${{ matrix.non-blocking || false }}
+    # The all-tests rows (H2, PostgreSQL 18, MySQL 8) also run the schema step checks, which run only
+    # with this set.
+    env:
+      UC_TEST_MIGRATION_CHECKS: ${{ matrix.validation-mode == 'all-tests' && 'true' || 'false' }}
     strategy:
       fail-fast: false
       matrix:
@@ -111,6 +115,17 @@ jobs:
           # to H2 here; an empty value would skip the license check and fail the database lookup.
           test-database: ${{ matrix.test-database || 'H2' }}
           use-spark-source-cache: ${{ matrix.spark-source-build }}
+      - name: Check that the schema step checks ran
+        if: matrix.validation-mode == 'all-tests'
+        # Both classes skip their tests without UC_TEST_MIGRATION_CHECKS, so each class's report must
+        # show tests and none skipped.
+        run: |
+          for class in MigrationStepRulesTest BaselineMatchesEntitiesTest; do
+            report="$(find server/target -name "TEST-io.unitycatalog.server.migrate.$class.xml" | head -n 1)"
+            [ -n "$report" ]
+            grep -qE '<testsuite [^>]* tests="[1-9]' "$report"
+            grep -qE '<testsuite [^>]* skipped="0"' "$report"
+          done
 
   # Databases already ran the merged schema steps, so a pull request may only add steps, and none
   # on a release branch.
