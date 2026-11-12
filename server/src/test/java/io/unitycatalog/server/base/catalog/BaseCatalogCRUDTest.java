@@ -14,9 +14,11 @@ import io.unitycatalog.client.model.CatalogInfo;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.UpdateCatalog;
 import io.unitycatalog.server.base.BaseCRUDTest;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -210,5 +212,25 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
 
   private static CreateCatalog newCatalog(String name) {
     return new CreateCatalog().name(name).comment(COMMENT);
+  }
+
+  /** An update that waits for a concurrent rename of the catalog misses it and changes nothing. */
+  @Test
+  public void updateRacingARenameIsNotFound() throws Exception {
+    UUID id = UUID.fromString(catalogOperations.createCatalog(newCatalog("update_race")).getId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> setColumn(held, CatalogInfoDAO.class, id, "name", "update_race_renamed"),
+                () ->
+                    catalogOperations.updateCatalog(
+                        "update_race", new UpdateCatalog().comment("lost"))),
+        ErrorCode.CATALOG_NOT_FOUND,
+        "Catalog not found");
+
+    CatalogInfo renamed = catalogOperations.getCatalog("update_race_renamed");
+    assertThat(renamed.getId()).isEqualTo(id.toString());
+    assertThat(renamed.getComment()).isNotEqualTo("lost");
   }
 }
