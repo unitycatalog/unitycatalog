@@ -149,6 +149,10 @@ bin/uc external_location create \
 2. `url`: The URL of the storage location. Example: s3://my-bucket/path
 3. `credential_name`: The name of the credential to be associated with.
 
+The credential must be for the URL's cloud: an AWS IAM role for `s3://`, an Azure service principal
+for `abfs://` and `abfss://`, and a GCS service account key for `gs://`. Otherwise the create, or an
+update of the URL or credential, fails with `INVALID_ARGUMENT`. Local paths accept any credential.
+
 ### List External Location
 
 Here's how to list credentials contained in a Unity Catalog instance.

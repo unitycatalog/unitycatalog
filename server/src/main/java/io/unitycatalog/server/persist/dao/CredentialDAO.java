@@ -15,6 +15,7 @@ import io.unitycatalog.server.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.server.model.GcpServiceAccountKeyResponse;
 import io.unitycatalog.server.service.CredentialService;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
+import io.unitycatalog.server.utils.UriScheme;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -23,6 +24,7 @@ import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import java.util.Date;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -55,10 +57,22 @@ import lombok.experimental.SuperBuilder;
 public class CredentialDAO extends IdentifiableDAO {
   private static ObjectMapper objectMapper = new ObjectMapper();
 
+  /** The cloud identity a credential holds, and the URL schemes of the storage it can reach. */
   public enum CredentialType {
-    AWS_IAM_ROLE,
-    AZURE_SERVICE_PRINCIPAL,
-    GCP_SERVICE_ACCOUNT_KEY
+    AWS_IAM_ROLE(Set.of(UriScheme.S3)),
+    AZURE_SERVICE_PRINCIPAL(Set.of(UriScheme.ABFS, UriScheme.ABFSS)),
+    GCP_SERVICE_ACCOUNT_KEY(Set.of(UriScheme.GS));
+
+    private final Set<UriScheme> schemes;
+
+    CredentialType(Set<UriScheme> schemes) {
+      this.schemes = schemes;
+    }
+
+    /** Local paths need no cloud credential, so any type is accepted for them. */
+    public boolean supports(UriScheme scheme) {
+      return scheme == UriScheme.FILE || scheme == UriScheme.NULL || schemes.contains(scheme);
+    }
   }
 
   @Column(name = "credential_type", nullable = false)

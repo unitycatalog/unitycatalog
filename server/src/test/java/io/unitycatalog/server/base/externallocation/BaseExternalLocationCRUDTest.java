@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
+import io.unitycatalog.client.model.AzureServicePrincipalRequest;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCatalog;
@@ -21,6 +22,7 @@ import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.ExternalLocationInfo;
+import io.unitycatalog.client.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdateExternalLocation;
 import io.unitycatalog.client.model.VolumeType;
@@ -34,10 +36,12 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.ManagedResourceType;
 import io.unitycatalog.server.persist.StorageCleanupTaskRepository;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -202,6 +206,99 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     assertThat(updatedExternalLocationInfo2.getCredentialId())
         .isEqualTo(anotherCredentialInfo.getId());
     assertThat(updatedExternalLocationInfo2.getCredentialName()).isEqualTo(ANOTHER_CREDENTIAL_NAME);
+  }
+
+  @Test
+  public void testCredentialMustReachTheUrlsCloud() throws ApiException {
+    credentialOperations.createCredential(
+        new CreateCredentialRequest()
+            .name("azure_cred")
+            .purpose(CredentialPurpose.STORAGE)
+            .azureServicePrincipal(
+                new AzureServicePrincipalRequest()
+                    .directoryId("directory-id")
+                    .applicationId("application-id")
+                    .clientSecret("client-secret")));
+    credentialOperations.createCredential(
+        new CreateCredentialRequest()
+            .name("gcs_cred")
+            .purpose(CredentialPurpose.STORAGE)
+            .gcpServiceAccountKey(
+                new GcpServiceAccountKeyRequest()
+                    .email("uc@project.iam.gserviceaccount.com")
+                    .privateKeyId("key-id")
+                    .privateKey(TestUtils.generatePkcs8PrivateKeyPem())));
+    String s3 = "s3://bucket/location";
+    String abfss = "abfss://container@account.dfs.core.windows.net/location";
+    String abfs = "abfs://container@account.dfs.core.windows.net/other";
+    String gs = "gs://bucket/location";
+
+    // Each credential type reaches only its own cloud's schemes.
+    Map<String, List<String>> rejectedUrls =
+        Map.of(
+            CREDENTIAL_NAME,
+            List.of(abfss, gs),
+            "azure_cred",
+            List.of(s3, gs),
+            "gcs_cred",
+            List.of(s3, abfss));
+    rejectedUrls.forEach(
+        (credential, urls) ->
+            urls.forEach(
+                url ->
+                    assertApiException(
+                        () ->
+                            externalLocationOperations.createExternalLocation(
+                                new CreateExternalLocation()
+                                    .name("rejected")
+                                    .url(url)
+                                    .credentialName(credential)),
+                        ErrorCode.INVALID_ARGUMENT,
+                        "Storage credential '" + credential + "' (")));
+    Map<String, String> accepted =
+        Map.of(
+            "s3_loc", CREDENTIAL_NAME,
+            "abfss_loc", "azure_cred",
+            "abfs_loc", "azure_cred",
+            "gs_loc", "gcs_cred");
+    Map<String, String> urlOf =
+        Map.of("s3_loc", s3, "abfss_loc", abfss, "abfs_loc", abfs, "gs_loc", gs);
+    for (Map.Entry<String, String> location : accepted.entrySet()) {
+      externalLocationsToDelete.add(location.getKey());
+      assertThat(
+              externalLocationOperations.createExternalLocation(
+                  new CreateExternalLocation()
+                      .name(location.getKey())
+                      .url(urlOf.get(location.getKey()))
+                      .credentialName(location.getValue())))
+          .returns(location.getValue(), ExternalLocationInfo::getCredentialName);
+    }
+
+    // An update is checked against the location's URL and credential after the update.
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                "s3_loc", new UpdateExternalLocation().url("gs://bucket/moved")),
+        ErrorCode.INVALID_ARGUMENT,
+        "Storage credential '" + CREDENTIAL_NAME + "' (AWS_IAM_ROLE) cannot be used for gs://");
+    assertApiException(
+        () ->
+            externalLocationOperations.updateExternalLocation(
+                "s3_loc", new UpdateExternalLocation().credentialName("azure_cred")),
+        ErrorCode.INVALID_ARGUMENT,
+        "Storage credential 'azure_cred' (AZURE_SERVICE_PRINCIPAL) cannot be used for s3://");
+    assertThat(
+            externalLocationOperations.updateExternalLocation(
+                "s3_loc",
+                new UpdateExternalLocation().url("gs://bucket/moved").credentialName("gcs_cred")))
+        .returns("gs://bucket/moved", ExternalLocationInfo::getUrl)
+        .returns("gcs_cred", ExternalLocationInfo::getCredentialName);
+
+    for (String name : accepted.keySet()) {
+      delete(name, Optional.of(true));
+    }
+    credentialOperations.deleteCredential("azure_cred", Optional.of(true));
+    credentialOperations.deleteCredential("gcs_cred", Optional.of(true));
   }
 
   @Test
