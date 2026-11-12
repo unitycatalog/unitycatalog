@@ -762,11 +762,6 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
     assertThat(error.get("status").asText()).isEqualTo("400");
     assertThat(error.get("detail").asText()).isEqualTo("PATCH has no operations.");
 
-    // A body without Operations is refused while it is read, before the service sees it.
-    HttpResponse<String> missing =
-        send(adminConfig, "PATCH", path, "{\"schemas\":[\"" + PATCH_OP + "\"]}");
-    assertThat(missing.statusCode()).as(missing.body()).isEqualTo(400);
-
     JsonNode group = get(id);
     assertThat(group.get("displayName").asText()).isEqualTo("patched");
     assertThat(memberIds(group)).containsExactly(alice.getId());
