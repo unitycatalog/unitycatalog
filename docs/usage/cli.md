@@ -796,7 +796,7 @@ _Optional Params:_
 
     -- server: UC Server to connect to. Default is reference server.
     -- auth_token: PAT token to authorize uc requests.
-    -- external_id: The identity provider's id for the user
+    -- external_id: The identity provider's id for the user or group
     -- output: To indicate CLI output format preference. Supported values are json and jsonPretty.
 
 ### Delete User
@@ -868,7 +868,7 @@ _Optional Params:_
     --auth_token PAT token to authorize uc requests.
     --output To indicate CLI output format preference. Supported values are json and jsonPretty.
     --name The name of the entity.
-    --external_id The identity provider's id for the user
+    --external_id The identity provider's id for the user or group
     --email The email address for the user
 
 ## Manage Groups
