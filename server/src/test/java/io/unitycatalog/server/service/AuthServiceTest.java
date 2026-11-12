@@ -25,6 +25,7 @@ import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
+import io.unitycatalog.server.utils.JwksOperations;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
@@ -368,8 +369,8 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
 
   /**
    * An unknown key id is the caller's error: a UC token and an exchanged IdP token both get 401,
-   * with no per-request ERROR log. Each is sent twice so the IdP path also hits the rate-limited
-   * key refresh.
+   * with no per-request ERROR log and no WARN from the key lookup. Each is sent twice so the IdP
+   * path also hits the rate-limited key refresh.
    */
   @Test
   public void testUnknownSigningKeyIdIsUnauthenticated() throws Exception {
@@ -378,6 +379,12 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     CapturingAppender appender = new CapturingAppender();
     appender.start();
     logger.addAppender(appender);
+    Logger jwksLogger = (Logger) LogManager.getLogger(JwksOperations.class);
+    Level previousJwksLevel = jwksLogger.getLevel();
+    CapturingAppender jwksAppender = new CapturingAppender();
+    jwksAppender.start();
+    jwksLogger.addAppender(jwksAppender);
+    Configurator.setLevel(jwksLogger.getName(), Level.DEBUG);
     try {
       for (int i = 0; i < 2; i++) {
         String ucToken =
@@ -406,8 +413,13 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     } finally {
       logger.removeAppender(appender);
       appender.stop();
+      jwksLogger.removeAppender(jwksAppender);
+      Configurator.setLevel(jwksLogger.getName(), previousJwksLevel);
+      jwksAppender.stop();
     }
     assertThat(appender.messages).doesNotContain("Request failed");
+    assertThat(jwksAppender.messages).anyMatch(m -> m.startsWith("No usable signing key"));
+    assertThat(jwksAppender.levels).allMatch(level -> level.isLessSpecificThan(Level.INFO));
   }
 
   /** A token signed with the server's key for the enabled user; null leaves the claim out. */
@@ -656,6 +668,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   private static final class CapturingAppender extends AbstractAppender {
 
     private final List<String> messages = new CopyOnWriteArrayList<>();
+    private final List<Level> levels = new CopyOnWriteArrayList<>();
 
     private CapturingAppender() {
       super(
@@ -669,6 +682,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     @Override
     public void append(LogEvent event) {
       messages.add(event.getMessage().getFormattedMessage());
+      levels.add(event.getLevel());
     }
   }
 }
