@@ -222,9 +222,8 @@ public class Scim2UserService implements ScimService {
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse patchUser(@Param("id") String id, PatchRequest patchRequest) {
-    // Only a replace of "active" is supported, as path "active" (also with the core User schema
-    // URN) or as the pathless {"active": ...} object Okta sends. Any other operation, path or
-    // attribute is refused as a whole, so no part of the request is applied.
+    // Only a replace of "active" is supported. Any other operation, path or attribute is refused
+    // as a whole, so no part of the request is applied.
     List<PatchOperation> operations = patchRequest.getOperations();
     if (operations.isEmpty() || !operations.stream().allMatch(this::isActiveReplace)) {
       return HttpResponse.of(HttpStatus.NOT_IMPLEMENTED);
