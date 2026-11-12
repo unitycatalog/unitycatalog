@@ -274,7 +274,7 @@ public class Scim2UserService implements ScimService {
   }
 
   /** The value a replace sets "active" to, or null if the operation touches anything else. */
-  private JsonNode activeValue(PatchOperation operation) {
+  private static JsonNode activeValue(PatchOperation operation) {
     JsonNode value = operation.getJsonNode();
     if (operation.getPath() != null) {
       String path = operation.getPath().toString();
