@@ -45,6 +45,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
+import org.hibernate.Session;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -559,5 +560,73 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
 
     assertThat(StorageCleanupTestSupport.findTask(hibernateConfigurator.getSessionFactory(), id))
         .isNull();
+  }
+
+  /** An update that waits for a concurrent rename of the model misses it and changes nothing. */
+  @Test
+  public void updateRacingARenameIsNotFound() throws Exception {
+    RegisteredModelInfo model = createModel("update_model_race");
+    UUID id = UUID.fromString(model.getId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held ->
+                    setColumn(
+                        held,
+                        RegisteredModelInfoDAO.class,
+                        id,
+                        "name",
+                        "update_model_race_renamed"),
+                () ->
+                    modelOperations.updateRegisteredModel(
+                        modelFullName("update_model_race"),
+                        new UpdateRegisteredModel().comment("lost"))),
+        ErrorCode.NOT_FOUND,
+        "Registered model not found");
+
+    RegisteredModelInfo renamed =
+        modelOperations.getRegisteredModel(modelFullName("update_model_race_renamed"));
+    assertThat(renamed.getId()).isEqualTo(id.toString());
+    assertThat(renamed.getComment()).isEqualTo(model.getComment());
+  }
+
+  /**
+   * A version create that waits for a concurrent rename of its model misses it and adds nothing.
+   */
+  @Test
+  public void createVersionRacingAModelRenameIsNotFound() throws Exception {
+    UUID id = UUID.fromString(createModel("create_version_race").getId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held ->
+                    setColumn(
+                        held,
+                        RegisteredModelInfoDAO.class,
+                        id,
+                        "name",
+                        "create_version_race_renamed"),
+                () ->
+                    modelOperations.createModelVersion(
+                        new CreateModelVersion()
+                            .catalogName(CATALOG_NAME)
+                            .schemaName(SCHEMA_NAME)
+                            .modelName("create_version_race")
+                            .source(MV_SOURCE))),
+        ErrorCode.NOT_FOUND,
+        "Registered model not found");
+
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      assertThat(
+              session
+                  .createSelectionQuery(
+                      "select count(*) from ModelVersionInfoDAO where registeredModelId = :id",
+                      Long.class)
+                  .setParameter("id", id)
+                  .getSingleResult())
+          .isZero();
+    }
   }
 }
