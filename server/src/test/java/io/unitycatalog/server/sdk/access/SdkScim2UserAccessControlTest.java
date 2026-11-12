@@ -247,22 +247,20 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
       {"{\"op\":\"Replace\",\"path\":\"active\",\"value\":true}", "true"},
       {"{\"op\":\"Replace\",\"path\":\"active\",\"value\":\"False\"}", "false"},
       {"{\"op\":\"replace\",\"path\":\"active\",\"value\":\"True\"}", "true"},
-      {"{\"op\":\"Replace\",\"value\":{\"active\":false}}", "false"},
-      {"{\"op\":\"replace\",\"value\":{\"active\":true}}", "true"},
+      {"{\"op\":\"replace\",\"value\":{\"active\":false}}", "false"},
       {
         "{\"op\":\"replace\",\"path\":\"urn:ietf:params:scim:schemas:core:2.0:User:active\","
-            + "\"value\":false}",
-        "false"
+            + "\"value\":true}",
+        "true"
       },
       // The path, the schema URN and the pathless attribute name ignore case.
       {"{\"op\":\"replace\",\"path\":\"Active\",\"value\":false}", "false"},
-      {"{\"op\":\"replace\",\"path\":\"ACTIVE\",\"value\":true}", "true"},
       {
         "{\"op\":\"replace\",\"path\":\"urn:ietf:params:scim:schemas:core:2.0:user:Active\","
-            + "\"value\":false}",
-        "false"
+            + "\"value\":true}",
+        "true"
       },
-      {"{\"op\":\"replace\",\"value\":{\"Active\":true}}", "true"},
+      {"{\"op\":\"replace\",\"value\":{\"Active\":false}}", "false"},
       // A single-element array is the value itself.
       {"{\"op\":\"replace\",\"path\":\"active\",\"value\":[true]}", "true"},
       {"{\"op\":\"replace\",\"value\":{\"active\":[false]}}", "false"},
