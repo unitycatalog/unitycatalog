@@ -161,6 +161,29 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     }
   }
 
+  // In external mode the CLI refuses an IdP access token that is not a JWT (Google's are opaque),
+  // since the server verifies only JWTs.
+  @Test
+  public void testAuthLoginRefusesAnOpaqueIdpAccessTokenInExternalMode() throws Exception {
+    HttpServer server = startTokenEndpoint(501, ucError("UNIMPLEMENTED"));
+    try {
+      for (String opaque : List.of(IDP_ACCESS_TOKEN, "ya29.a0Af", "a.b.c.d", "a..c", "a.b.")) {
+        assertThatThrownBy(
+                () -> AuthCli.exchangeForAccessToken(clientFor(server), "the-id-token", opaque))
+            .as(opaque)
+            .isInstanceOf(ApiException.class)
+            .hasMessageStartingWith(
+                "Error authenticating - token exchange is disabled on this server and the identity"
+                    + " provider returned an opaque access token; the server needs the identity"
+                    + " provider's JWT access token - ");
+      }
+      assertThat(AuthCli.exchangeForAccessToken(clientFor(server), "the-id-token", "a.b.c"))
+          .isEqualTo("a.b.c");
+    } finally {
+      server.stop(0);
+    }
+  }
+
   // Internal mode: the exchange works, and the CLI returns the UC token, never the access token
   // the identity provider issued.
   @Test

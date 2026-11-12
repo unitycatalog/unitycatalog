@@ -652,7 +652,8 @@ export token='exJ...N8zt$w'
     provider's own access token, which the server accepts directly. `bin/uc auth login --identity_token` fails in that
     mode, because a pasted identity token has no access token to use; pass the access token as `--auth_token` instead.
     This works with identity providers whose access tokens are JWTs the server can verify (Okta, Keycloak). Google
-    access tokens are opaque, so the server refuses them with 401.
+    access tokens are opaque: `bin/uc auth login` stops with an error instead of printing one, and the server refuses
+    one passed as `--auth_token` with 401.
 
 ### Try to list catalogs with your user account
 

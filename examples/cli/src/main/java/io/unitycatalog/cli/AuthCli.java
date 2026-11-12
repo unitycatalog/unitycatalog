@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.Arrays;
 import java.util.Map;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
@@ -85,7 +86,7 @@ public class AuthCli {
    *     when there is none
    * @return the UC access token, or {@code idpAccessToken} in external mode
    * @throws ApiException if the exchange fails, or if the server is in external mode and {@code
-   *     idpAccessToken} is null
+   *     idpAccessToken} is null or not a JWT
    */
   public static String exchangeForAccessToken(
       ApiClient apiClient, String identityToken, String idpAccessToken)
@@ -118,6 +119,13 @@ public class AuthCli {
                   + " provider's access token as --auth_token - "
                   + response.body());
         }
+        if (!isJwt(idpAccessToken)) {
+          throw new ApiException(
+              "Error authenticating - token exchange is disabled on this server and the identity"
+                  + " provider returned an opaque access token; the server needs the identity"
+                  + " provider's JWT access token - "
+                  + response.body());
+        }
         return idpAccessToken;
       } else if (response.statusCode() != HTTP_OK) {
         throw new ApiException("Error authenticating - " + response.body());
@@ -129,6 +137,12 @@ public class AuthCli {
     } catch (InterruptedException | IOException e) {
       throw new ApiException(e);
     }
+  }
+
+  /** True for three dot-separated non-empty parts, the shape of a JWT. */
+  private static boolean isJwt(String token) {
+    String[] parts = token.split("\\.", -1);
+    return parts.length == 3 && Arrays.stream(parts).noneMatch(String::isEmpty);
   }
 
   /**
