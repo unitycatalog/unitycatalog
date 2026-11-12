@@ -7,9 +7,11 @@ import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.id.FileSystemCredId;
 import io.unitycatalog.hadoop.internal.util.CloseableUtils;
 import java.io.IOException;
+import java.lang.ref.Cleaner;
 import java.net.URI;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Supplier;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FilterFileSystem;
@@ -38,8 +40,8 @@ import org.apache.hadoop.fs.FilterFileSystem;
  *   <li><b>Hadoop cache disabled for {@code CredScopedFileSystem} itself.</b> {@link
  *       io.unitycatalog.hadoop.internal.CredPropsUtil} sets {@code
  *       fs.<scheme>.impl.disable.cache=true} so that Hadoop always instantiates a fresh {@code
- *       CredScopedFileSystem} for each file access. Because {@code CredScopedFileSystem} is a thin,
- *       stateless wrapper, this is cheap.
+ *       CredScopedFileSystem} for each file access. Because {@code CredScopedFileSystem} is a thin
+ *       wrapper that only holds a reference to a shared delegate, this is cheap.
  *   <li><b>Global credential-scoped cache for the real delegate.</b> {@code CredScopedFileSystem}
  *       maintains a static {@link #CACHE} keyed by {@link FileSystemCredId}. On each {@link
  *       #initialize(URI, Configuration)} call the key is derived from the Hadoop {@link
@@ -52,6 +54,32 @@ import org.apache.hadoop.fs.FilterFileSystem;
  * <p>All public {@link FileSystem} operations are delegated to the credential-scoped instance via
  * {@link FilterFileSystem}, so callers see a fully functional filesystem regardless of which
  * underlying implementation backs it.
+ *
+ * <h2>Delegate lifetime</h2>
+ *
+ * <p>The cache owns each delegate, and every wrapper of the same scope shares it. Each wrapper
+ * therefore wraps its own {@code Lease} on the delegate rather than the delegate itself, so closing
+ * a wrapper runs the regular {@link FileSystem#close()} bookkeeping and then releases the lease,
+ * even when that bookkeeping throws. A wrapper that is never closed releases its lease once the
+ * lease is garbage collected. A wrapper obtained through {@link FileSystem#newInstance(URI,
+ * Configuration)} is held by Hadoop's cache until it is closed, so only {@code close()} releases
+ * it. A delegate is closed once it has been evicted from the cache and every lease on it has been
+ * released, so it is not closed while an open wrapper of it is strongly reachable. The cache's
+ * maximum size therefore bounds the cached delegates, not the open ones: an evicted delegate stays
+ * open while a wrapper still uses it, and a cached delegate stays open after its last wrapper
+ * closes until it is evicted.
+ *
+ * <p>Nothing else keeps a lease alive. A call still running on a wrapper that the caller no longer
+ * references, as in {@code path.getFileSystem(conf).listStatus(path)}, and the streams, iterators
+ * and builders that a wrapper returns can find an evicted delegate closed under them once the
+ * wrapper has been collected. See <a
+ * href="https://github.com/unitycatalog/unitycatalog/issues/2191">issue #2191</a>.
+ *
+ * <p>These guarantees hold for delegates that are not shared outside this cache. For the {@code
+ * s3}, {@code s3a}, {@code gs}, {@code abfs} and {@code abfss} schemes the delegate is created with
+ * Hadoop's own cache disabled. For any other scheme, including {@code wasb}, {@link
+ * FileSystem#get(URI, Configuration)} can return a JVM-wide instance from Hadoop's cache, which
+ * other scopes and callers may share, and evicting a scope closes it regardless.
  */
 public class CredScopedFileSystem extends FilterFileSystem {
 
@@ -59,30 +87,53 @@ public class CredScopedFileSystem extends FilterFileSystem {
       "unitycatalog.credScopedFs.cache.maxSize";
   private static final int CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT = 100;
 
+  /** The effective maximum size of {@link #CACHE}. Visible for testing. */
+  static final int CACHE_MAX_SIZE =
+      Integer.getInteger(CRED_SCOPED_FS_CACHE_MAX_SIZE, CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT);
+
+  private static final Cleaner CLEANER = Cleaner.create();
+
   /**
    * LRU cache of real {@link FileSystem} instances keyed by {@link FileSystemCredId}. Evicted
-   * entries are closed to release connection pools and SDK thread pools (e.g. AWS
-   * sdk-ScheduledExecutor threads). The cache is bounded to prevent unbounded growth when many
-   * distinct credential scopes are accessed in a long-running session. The maximum size can be
-   * tuned via the system property {@code unitycatalog.credScopedFs.cache.maxSize}.
+   * entries are closed as described in the class javadoc, to release connection pools and SDK
+   * thread pools (e.g. AWS sdk-ScheduledExecutor threads). The maximum size can be tuned via the
+   * system property {@code unitycatalog.credScopedFs.cache.maxSize}.
+   *
+   * <p>Visible for testing.
    */
-  /** Visible for testing. */
-  static final BoundedKeyedCache<FileSystemCredId, FileSystem> CACHE;
+  static final BoundedKeyedCache<FileSystemCredId, SharedFileSystem> CACHE =
+      new BoundedKeyedCache<>(CACHE_MAX_SIZE, SharedFileSystem::evict);
 
-  static {
-    int maxSize =
-        Integer.getInteger(CRED_SCOPED_FS_CACHE_MAX_SIZE, CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT);
-    CACHE = new BoundedKeyedCache<>(maxSize, CloseableUtils::closeQuietly);
-  }
-
-  /** Visible for testing only. Clears the static cache and closes all cached delegates. */
+  /** Visible for testing only. Clears the static cache, closing delegates no open wrapper uses. */
   static void clearCacheForTesting() {
     CACHE.clear();
   }
 
-  /** Visible for testing only. Returns the cached delegate filesystem. */
-  FileSystem getDelegate() {
-    return this.fs;
+  private Lease lease;
+
+  /**
+   * Returns the shared delegate, or {@code null} before {@link #initialize(URI, Configuration)}.
+   * The delegate is not leased to the caller, so callers must not close it.
+   */
+  @Override
+  public FileSystem getRawFileSystem() {
+    return lease == null ? null : lease.getRawFileSystem();
+  }
+
+  @Override
+  public FileSystem[] getChildFileSystems() {
+    return new FileSystem[] {getRawFileSystem()};
+  }
+
+  @Override
+  public void close() throws IOException {
+    try {
+      super.close();
+    } finally {
+      if (lease != null) {
+        lease.close();
+      }
+    }
   }
 
   @Override
@@ -92,12 +143,90 @@ public class CredScopedFileSystem extends FilterFileSystem {
       // No selection is necessary when there is only one credential (there is only one choice).
       String prefix = credPrefixes.isEmpty() ? null : credPrefixes.get(0);
       FileSystemCredId key = FileSystemCredId.create(conf, uri, prefix);
-      this.fs = CACHE.getOrLoad(key, () -> copyConfAndCreateNewFileSystem(uri, conf, prefix));
+      acquire(key, () -> copyConfAndCreateNewFileSystem(uri, conf, prefix));
     } else {
       // When there are multiple credentials (credPrefixes > 1), select the (longest) prefix that
       // covers the requested URI.
       FileSystemCredId key = getFileSystemCredId(uri, conf, credPrefixes);
-      this.fs = CACHE.getOrLoad(key, () -> copyConfAndCreateNewFileSystem(uri, conf, key.prefix()));
+      acquire(key, () -> copyConfAndCreateNewFileSystem(uri, conf, key.prefix()));
+    }
+  }
+
+  private void acquire(FileSystemCredId key, Supplier<FileSystem> loader) {
+    // A delegate loaded here is published with this wrapper's lease already taken, so a concurrent
+    // eviction cannot close it before it is used. A cached entry evicted between the lookup and
+    // acquire() is already gone from the cache, so the retry leases whichever delegate is cached
+    // next, either one it loads itself or one another thread has loaded.
+    SharedFileSystem[] loaded = new SharedFileSystem[1];
+    SharedFileSystem shared;
+    do {
+      try {
+        shared = CACHE.getOrLoad(key, () -> loaded[0] = new SharedFileSystem(loader.get()));
+      } catch (RuntimeException | Error e) {
+        // An eviction listener can throw after the loaded entry was published with this wrapper's
+        // lease counted, so give the lease back or the entry is never closed once evicted.
+        if (loaded[0] != null) {
+          loaded[0].release();
+        }
+        throw e;
+      }
+    } while (shared != loaded[0] && !shared.acquire());
+    this.lease = new Lease(shared);
+    this.fs = lease;
+  }
+
+  /** One wrapper's lease on a shared delegate. Closing it releases the lease, not the delegate. */
+  // TODO(#2191): fence forwarded calls and lease returned streams, iterators and builders.
+  private static final class Lease extends FilterFileSystem {
+    private final Cleaner.Cleanable release;
+
+    private Lease(SharedFileSystem shared) {
+      super(shared.fs);
+      this.release = CLEANER.register(this, shared::release);
+    }
+
+    @Override
+    public void close() {
+      release.clean();
+    }
+  }
+
+  /** A cached delegate plus the number of open wrappers that use it. */
+  static final class SharedFileSystem {
+    private final FileSystem fs;
+    private int openWrappers;
+    private boolean evicted;
+
+    /** Creates an entry that already counts the lease of the wrapper that loads it. */
+    private SharedFileSystem(FileSystem fs) {
+      this.fs = fs;
+      this.openWrappers = 1;
+    }
+
+    private synchronized boolean acquire() {
+      if (evicted) {
+        return false;
+      }
+      openWrappers++;
+      return true;
+    }
+
+    private synchronized void release() {
+      openWrappers--;
+      closeIfUnused();
+    }
+
+    private synchronized void evict() {
+      evicted = true;
+      closeIfUnused();
+    }
+
+    // TODO(#2191): close outside the monitor, outside the cache's key lock on eviction, and off the
+    // shared Cleaner thread, which a slow close otherwise stalls for every other release.
+    private void closeIfUnused() {
+      if (evicted && openWrappers == 0) {
+        CloseableUtils.closeQuietly(fs);
+      }
     }
   }
 
