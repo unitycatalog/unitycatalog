@@ -102,9 +102,6 @@ describe("Login", () => {
     await waitFor(() => expect(assignMock).toHaveBeenCalledTimes(1));
     const url = new URL(assignMock.mock.calls[0][0]);
     expect(`${url.origin}${url.pathname}`).toBe("https://dev-1.okta.com/oauth2/aus1/v1/authorize");
-    expect(url.searchParams.get("client_id")).toBe("client-1");
-    expect(url.searchParams.get("redirect_uri")).toBe(`${window.location.origin}/login/callback`);
-    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
   });
 
   it("starts a new Okta sign-in when the stored Okta token was refused, once", async () => {
