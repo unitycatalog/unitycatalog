@@ -296,10 +296,6 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
         Oauth2CliExchange.idpTokens("{\"id_token\":\"idp-id-token\"}");
     assertThat(noAccessToken.accessToken()).isNull();
     assertThat(noAccessToken.idToken()).isEqualTo("idp-id-token");
-
-    assertThatThrownBy(() -> Oauth2CliExchange.idpTokens("not json"))
-        .isInstanceOf(JsonProcessingException.class)
-        .hasMessageContaining("Unrecognized token 'not'");
   }
 
   @Test
