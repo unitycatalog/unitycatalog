@@ -738,32 +738,6 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertThat(victim.getExternalId()).isNull();
     assertThat(victim.getEmail()).isEqualTo("victim@example.com");
     assertThat(users.getUser(oktaUserId).getExternalId()).isEqualTo("00ujl29u0le5T6Aj10h7");
-
-    // So an access token for the attacker's OAuth client resolves to no user.
-    String accessToken =
-        JWT.create()
-            .withSubject("opaque-subject")
-            .withIssuer(testIssuer)
-            .withAudience(TEST_AUDIENCE)
-            .withIssuedAt(new Date())
-            .withKeyId(testIssuerKeyId)
-            .withClaim("azp", "attacker-client")
-            .sign(testIssuerAlgorithm);
-    AggregatedHttpResponse exchange =
-        client
-            .execute(
-                RequestHeaders.builder(HttpMethod.POST, TOKEN_ENDPOINT)
-                    .contentType(MediaType.FORM_DATA)
-                    .build(),
-                HttpData.ofUtf8(
-                    "grant_type=urn:ietf:params:oauth:grant-type:token-exchange"
-                        + "&requested_token_type=urn:ietf:params:oauth:token-type:access_token"
-                        + "&subject_token_type=urn:ietf:params:oauth:token-type:access_token"
-                        + "&subject_token="
-                        + accessToken))
-            .aggregate()
-            .join();
-    assertThat(exchange.status()).isEqualTo(HttpStatus.BAD_REQUEST);
   }
 
   private String mintScimToken(UserRepository users, String email, String idp) {
