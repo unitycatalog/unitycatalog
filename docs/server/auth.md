@@ -536,7 +536,7 @@ that existed before the upgrade are owned by `admin`.
   replace (PUT), rename or delete its group (403). To move a user under an identity provider, delete it in Unity Catalog,
   let the identity provider create it again, and grant its privileges again. This works once a delete removes the user;
   today a delete only disables it, so the identity provider's create gets 409.
-  <!-- TODO(PR 3): a user delete removes the row, so the re-create works. -->
+  <!-- TODO(#2207): a user delete removes the row, so the re-create works. -->
 - A group has two member lists: the identity provider's and the admin's. A user is a member if it is in either. Each
   side adds, removes and replaces members only in its own list, so the identity provider's push never removes a
   member the admin added. The admin sees both lists in the owner extension (`idpMembers`, `adminMembers`); the
