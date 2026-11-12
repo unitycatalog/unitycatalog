@@ -514,8 +514,10 @@ bin/uc-admin-token --scim-principal okta-scim --idp okta --lifetime P90D
 - To pause the token, disable the user: the token is refused on its next request. Enabling the user again restores
   its tokens that have not expired.
 - To revoke the token for good, delete the user, for example with
-  `bin/uc --auth_token "$(bin/uc-admin-token)" user delete --id <id>`. A user created again with the same email gets a
-  new id, so the old tokens never work again.
+  `bin/uc --auth_token "$(bin/uc-admin-token)" user delete --id <id>`. This works once a delete removes the user: a
+  user created again with the same email then gets a new id, so the old tokens never work again. Today a delete only
+  disables the user, so creating it again gets 409.
+  <!-- TODO(PR 3): a user delete removes the row, so a user created again gets a new id. -->
 
 ### Try to log in with no user in the local database
 
