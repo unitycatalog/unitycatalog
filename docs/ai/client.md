@@ -648,13 +648,17 @@ These configurations can be controlled by setting the following environment vari
 | Environment Variable          | Default Value | Description                                             |
 |-------------------------------|---------------|---------------------------------------------------------|
 | `EXECUTOR_MAX_CPU_TIME_LIMIT` | 10 (seconds)  | Maximum allowable CPU execution time                    |
-| `EXECUTOR_MAX_MEMORY_LIMIT`   | 100 (MB)      | Maximum allowable Virtual Memory allocation for process |
+| `EXECUTOR_MAX_MEMORY_LIMIT`   | 100 (MB)      | Maximum Virtual Memory the callable can add to process  |
 | `EXECUTOR_TIMEOUT`            | 20 (seconds)  | Maximum Total wall clock time                           |
 | `EXECUTOR_DISALLOWED_MODULES` | (see below)   | A list of blocked library imports                       |
 
 Note that the maximum CPU time limit is not based on wall clock time; rather, it is the time that the CPU has spent at 100% allocation working on executing
 the callable. Based on system scheduling and concurrent process activity, this is almost never equal to wall clock time and is in reality longer in duration
 than the wall clock execution time.
+
+The memory limit applies to the virtual memory that the callable allocates on top of what the sandbox process inherits
+from your application when it is forked, so the callable gets the same allowance no matter how much memory your application
+already uses.
 
 There are restrictions in which packages can be imported for use within a sandbox environment.
 

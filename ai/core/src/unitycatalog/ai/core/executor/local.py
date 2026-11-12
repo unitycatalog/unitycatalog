@@ -2,6 +2,7 @@ import asyncio
 import builtins
 import logging
 import multiprocessing
+import multiprocessing.connection
 import traceback
 from typing import Any, Callable
 
@@ -17,6 +18,7 @@ from unitycatalog.ai.core.envs.executor_env_vars import (
     EXECUTOR_TIMEOUT,
 )
 from unitycatalog.ai.core.executor.common import (
+    EXITED_WITHOUT_RESULT_MESSAGE_TEMPLATE,
     IMPORT_DISALLOWED_MESSAGE,
     IMPORT_DISALLOWED_MESSAGE_TEMPLATE,
     MB_CONVERSION,
@@ -38,8 +40,11 @@ def _limit_resources(cpu_time_limit: int, memory_limit: int):
         This CPU restriction will only work on Unix-based systems. When
         operating in an OS that does not support these limits, the function
         execution process will have full access to system resources.
-        The memory limit is set for the virtual memory size (address space).
-        The memory limit configuration will only work on Linux machines.
+        The memory limit caps the virtual memory (address space) that the process can
+        allocate on top of what it already holds when the limit is applied. A forked
+        process inherits the whole address space of its parent, which can already be
+        far larger than the limit, so an absolute cap would leave it unable to allocate
+        anything at all. The memory limit configuration will only work on Linux machines.
         The CPU time limit is for total CPU execution time and is not related
         to the wall-clock time. The process may still be terminated if it exceeds
         the wall-clock time limit set by the multiprocessing library, depending on
@@ -58,10 +63,19 @@ def _limit_resources(cpu_time_limit: int, memory_limit: int):
         _logger.info("Warning: unable to set RLIMIT_CPU: %s", e)
 
     try:
-        memory_bytes = memory_limit * MB_CONVERSION
+        memory_bytes = _address_space_in_use() + memory_limit * MB_CONVERSION
         resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
     except Exception as e:
         _logger.info("Warning: unable to set RLIMIT_AS: %s", e)
+
+
+def _address_space_in_use() -> int:
+    """Returns the current process's virtual memory size in bytes, or 0 when it is unknown."""
+    try:
+        with open("/proc/self/statm") as statm:
+            return int(statm.read().split()[0]) * resource.getpagesize()
+    except (OSError, ValueError, IndexError):
+        return 0
 
 
 def _disable_unwanted_imports():
@@ -88,7 +102,11 @@ def _disable_unwanted_imports():
 
 
 def _sandboxed_wrapper(
-    q, func: Callable[..., Any], params: dict[str, Any], cpu_time_limit: int, memory_limit: int
+    sender: multiprocessing.connection.Connection,
+    func: Callable[..., Any],
+    params: dict[str, Any],
+    cpu_time_limit: int,
+    memory_limit: int,
 ):
     """
     Execute the provided callable in a sandboxed environment.
@@ -96,7 +114,10 @@ def _sandboxed_wrapper(
     Applies resource limits and restricts dangerous module imports.
     The function `func` is called with keyword arguments from `params`.
     If the function returns a coroutine, it is executed via asyncio.run().
-    The result or any exception's full stack trace is placed on a queue.
+    The result or any exception's full stack trace is sent through `sender`.
+    The send happens on the calling thread, because starting a new thread
+    (as `multiprocessing.Queue.put` does) needs a fresh stack mapping that the
+    memory limit may not leave room for.
     """
     try:
         _limit_resources(cpu_time_limit, memory_limit)
@@ -105,10 +126,35 @@ def _sandboxed_wrapper(
         if asyncio.iscoroutine(result):
             result = asyncio.run(result)
         parsed_result = result if result is not None else NO_OUTPUT_MESSAGE
-        q.put((True, parsed_result))
+        sender.send((True, parsed_result))
     except Exception:
         tb = traceback.format_exc()
-        q.put((False, tb))
+        sender.send((False, tb))
+
+
+def _receive_result(
+    receiver: multiprocessing.connection.Connection, process: multiprocessing.Process
+) -> tuple[bool, Any]:
+    """
+    Waits for the sandboxed process to send its result or to exit, then reaps it.
+
+    The result is read before joining the process, so a result larger than the pipe
+    buffer cannot block the process from exiting. When the process exits without
+    sending anything, the returned error describes how it exited.
+    """
+    with receiver:
+        multiprocessing.connection.wait([receiver, process.sentinel])
+        try:
+            result = receiver.recv() if receiver.poll() else None
+        except EOFError:
+            result = None
+    process.join()
+    if result is not None:
+        return result
+    exit_code = process.exitcode
+    if exit_code is not None and exit_code < 0:
+        return False, TERMINATED_MESSAGE_TEMPLATE.format(signal_num=-exit_code)
+    return False, EXITED_WITHOUT_RESULT_MESSAGE_TEMPLATE.format(exit_code=exit_code)
 
 
 def is_sandbox_supported() -> bool:
@@ -141,26 +187,22 @@ async def run_in_sandbox_async(
     timeout = EXECUTOR_TIMEOUT.get()
 
     ctx = multiprocessing.get_context("fork")
-    q = ctx.Queue()
-    p = ctx.Process(target=_sandboxed_wrapper, args=(q, func, params, cpu_time_limit, memory_limit))
+    receiver, sender = ctx.Pipe(duplex=False)
+    p = ctx.Process(
+        target=_sandboxed_wrapper, args=(sender, func, params, cpu_time_limit, memory_limit)
+    )
     p.start()
+    sender.close()
 
     loop = asyncio.get_event_loop()
     try:
-        await asyncio.wait_for(loop.run_in_executor(None, p.join), timeout)
+        return await asyncio.wait_for(
+            loop.run_in_executor(None, _receive_result, receiver, p), timeout
+        )
     except asyncio.TimeoutError:
         p.terminate()
         await loop.run_in_executor(None, p.join)
         return False, TIMEOUT_ERROR_MESSAGE
-
-    if not q.empty():
-        return q.get()
-    else:
-        exitcode = p.exitcode
-        if exitcode is not None and exitcode < 0:
-            signal_num = -exitcode
-            return False, TERMINATED_MESSAGE_TEMPLATE.format(signal_num=signal_num)
-        return False, NO_OUTPUT_MESSAGE
 
 
 def run_in_sandbox(func: Callable[..., Any], params: dict[str, Any]) -> tuple[bool, Any]:

@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import importlib
 import logging
+import mmap
 import multiprocessing
 import sys
 import time
@@ -264,3 +265,89 @@ def test_sandbox_reports_unsupported_platform_without_fork(monkeypatch):
         False,
         SANDBOX_UNSUPPORTED_MESSAGE,
     )
+
+
+MB = 1024 * 1024
+
+linux_only = pytest.mark.skipif(
+    sys.platform != "linux", reason="The memory limit is only enforced on Linux"
+)
+
+
+@pytest.fixture
+def parent_address_space_above_memory_limit():
+    reservation = mmap.mmap(-1, 1024 * MB)
+    yield
+    reservation.close()
+
+
+def allocate_and_return_size(megabytes: int) -> int:
+    return len(bytearray(megabytes * MB))
+
+
+@linux_only
+def test_function_can_allocate_memory_when_parent_address_space_exceeds_limit(
+    parent_address_space_above_memory_limit,
+):
+    succeeded, result = run_in_sandbox(allocate_and_return_size, {"megabytes": 80})
+
+    assert succeeded, result
+    assert result == 80 * MB
+
+
+@linux_only
+@pytest.mark.asyncio
+async def test_concurrent_calls_return_results_when_parent_address_space_exceeds_limit(
+    parent_address_space_above_memory_limit,
+):
+    results = await asyncio.gather(
+        *[run_in_sandbox_async(simple_function, {"x": i, "y": 1}) for i in range(5)]
+    )
+
+    assert results == [(True, i + 1) for i in range(5)]
+
+
+@linux_only
+def test_memory_limit_is_still_enforced_when_parent_address_space_exceeds_limit(
+    parent_address_space_above_memory_limit, monkeypatch
+):
+    monkeypatch.setenv("EXECUTOR_MAX_MEMORY_LIMIT", "50")
+
+    succeeded, result = run_in_sandbox(allocate_and_return_size, {"megabytes": 200})
+
+    assert not succeeded
+    assert "MemoryError" in result
+
+
+def test_result_larger_than_pipe_buffer_is_returned(monkeypatch):
+    monkeypatch.setenv("EXECUTOR_TIMEOUT", "5")
+
+    def large_result():
+        return "x" * MB
+
+    succeeded, result = run_in_sandbox(large_result, {})
+
+    assert succeeded, result
+    assert result == "x" * MB
+
+
+def test_unpicklable_result_reports_the_pickling_error():
+    def unpicklable_result():
+        return lambda: None
+
+    succeeded, result = run_in_sandbox(unpicklable_result, {})
+
+    assert not succeeded
+    assert "pickle" in result.lower()
+
+
+def test_process_exiting_without_result_reports_its_exit_code():
+    def exit_process():
+        import os
+
+        os._exit(3)
+
+    succeeded, result = run_in_sandbox(exit_process, {})
+
+    assert not succeeded
+    assert "exited with code 3" in result
