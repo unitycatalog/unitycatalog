@@ -554,4 +554,29 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     assertThat(updated.getCredentialName()).isEqualTo(NEW_CREDENTIAL_NAME);
     credentialOperations.deleteCredential(NEW_CREDENTIAL_NAME, Optional.of(true));
   }
+
+  /** An update that waits for a concurrent rename of the location misses it, changing nothing. */
+  @Test
+  public void updateRacingARenameIsNotFound() throws Exception {
+    UUID id = UUID.fromString(create("update_race", testUrl()).getId());
+    externalLocationsToDelete.remove("update_race");
+    externalLocationsToDelete.add("update_race_renamed");
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held ->
+                    TestDatabase.setColumn(
+                        held, ExternalLocationDAO.class, id, "name", "update_race_renamed"),
+                () ->
+                    externalLocationOperations.updateExternalLocation(
+                        "update_race", new UpdateExternalLocation().comment("lost"))),
+        ErrorCode.NOT_FOUND,
+        "External location not found");
+
+    ExternalLocationInfo renamed =
+        externalLocationOperations.getExternalLocation("update_race_renamed");
+    assertThat(renamed.getId()).isEqualTo(id.toString());
+    assertThat(renamed.getComment()).isNull();
+  }
 }
