@@ -33,6 +33,7 @@ import io.unitycatalog.client.model.UpdateRegisteredModel;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
+import io.unitycatalog.server.cleanup.StorageCleanupTestSupport;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
@@ -401,6 +402,9 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
 
     assertThat(modelOperations.getRegisteredModel(modelFullName("drop_race_renamed")).getId())
         .isEqualTo(id.toString());
+    // A refused drop queues no cleanup of the live model's storage.
+    assertThat(StorageCleanupTestSupport.findTask(hibernateConfigurator.getSessionFactory(), id))
+        .isNull();
   }
 
   /** A rename that waits for a concurrent edit of another column keeps that edit. */
