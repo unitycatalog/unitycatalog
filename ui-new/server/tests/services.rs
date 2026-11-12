@@ -562,3 +562,49 @@ async fn upstream_gateway_timeout_maps_to_deadline_exceeded() {
     let json = body_json(response).await;
     assert_eq!(json["code"], "deadline_exceeded");
 }
+
+#[tokio::test]
+async fn upstream_body_timeout_maps_to_deadline_exceeded() {
+    // Send the response head, then stall before the body completes.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = [0; 4096];
+        let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await;
+        tokio::io::AsyncWriteExt::write_all(
+            &mut socket,
+            b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 64\r\n\r\n{",
+        )
+        .await
+        .unwrap();
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    });
+    let app = app(AppState {
+        http: reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(200))
+            .build()
+            .unwrap(),
+        config: Arc::new(Config {
+            port: 0,
+            uc_server: format!("http://{address}"),
+            auth_enabled: true,
+            google_client_id: String::new(),
+            okta_enabled: false,
+            keycloak_enabled: false,
+            allowed_origins: vec![],
+            web_dist: std::path::PathBuf::from("/nonexistent-web-dist"),
+        }),
+    });
+
+    let response = app
+        .oneshot(rpc_request(
+            "CatalogService",
+            "GetCatalog",
+            serde_json::json!({"catalog": {"name": "main"}}),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(body_json(response).await["code"], "deadline_exceeded");
+}

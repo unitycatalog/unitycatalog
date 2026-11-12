@@ -98,11 +98,7 @@ impl Upstream {
 
         let mut response = request.send().await.map_err(|error| {
             tracing::warn!(%error, "Unity Catalog request failed");
-            if error.is_timeout() {
-                ConnectError::deadline_exceeded("Unity Catalog request timed out")
-            } else {
-                ConnectError::unavailable("Unity Catalog server is unavailable")
-            }
+            transport_error(&error)
         })?;
         let status = response.status();
         let mut bytes = Vec::new();
@@ -119,9 +115,7 @@ impl Upstream {
                 Ok(None) => break,
                 Err(error) => {
                     tracing::warn!(%error, "failed to read Unity Catalog response");
-                    return Err(ConnectError::internal(
-                        "Invalid response from Unity Catalog server",
-                    ));
+                    return Err(transport_error(&error));
                 }
             }
         }
@@ -136,6 +130,14 @@ impl Upstream {
             tracing::warn!(%error, "failed to decode Unity Catalog response");
             ConnectError::internal("Invalid response from Unity Catalog server")
         })
+    }
+}
+
+fn transport_error(error: &reqwest::Error) -> ConnectError {
+    if error.is_timeout() {
+        ConnectError::deadline_exceeded("Unity Catalog request timed out")
+    } else {
+        ConnectError::unavailable("Unity Catalog server is unavailable")
     }
 }
 
