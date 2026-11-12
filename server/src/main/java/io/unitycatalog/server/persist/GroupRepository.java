@@ -193,8 +193,8 @@ public class GroupRepository {
     if (userIds.isEmpty()) {
       return;
     }
-    // TODO: a deleted user is DISABLED like a deactivated one, so it can still be added; drop this
-    // once user delete removes the row.
+    // TODO(#PR3): a deleted user is DISABLED like a deactivated one, so it can still be added;
+    // drop this once user delete removes the row.
     Set<UUID> found =
         new HashSet<>(
             session
