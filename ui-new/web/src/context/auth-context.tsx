@@ -7,7 +7,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAppConfig } from "@/lib/appConfig";
+import { APP_CONFIG_QUERY_KEY, useAppConfig } from "@/lib/appConfig";
 import { clearToken, setToken, useToken } from "@/lib/session";
 import {
   CURRENT_USER_QUERY_KEY,
@@ -59,13 +59,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginMutation = useLoginWithToken();
   const logoutMutation = useLogoutCurrentUser();
 
+  // Removes every cached result that belongs to the signed-in identity. The
+  // runtime config does not, so it stays and the app keeps its auth settings.
+  const clearIdentityQueries = useCallback(
+    () =>
+      queryClient.removeQueries({
+        predicate: ({ queryKey }) => queryKey[0] !== APP_CONFIG_QUERY_KEY[0],
+      }),
+    [queryClient],
+  );
+
   const loginWithToken = useCallback(
     async (idToken: string) => {
       // UC prefers a Bearer header over the session cookie, so a leftover pasted
       // token would make the new provider session fail verification.
       clearToken();
       await loginMutation.mutateAsync(idToken);
-      queryClient.clear();
+      clearIdentityQueries();
       setAuthenticating(true);
       try {
         const user = await queryClient.fetchQuery({
@@ -82,13 +92,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAuthenticating(false);
       }
     },
-    [loginMutation, queryClient],
+    [clearIdentityQueries, loginMutation, queryClient],
   );
 
   const signInWithAccessToken = useCallback(
     async (accessToken: string) => {
       setToken(accessToken);
-      queryClient.clear();
+      clearIdentityQueries();
       try {
         const user = await queryClient.fetchQuery({
           queryKey: CURRENT_USER_QUERY_KEY,
@@ -99,22 +109,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         clearToken();
-        queryClient.clear();
+        clearIdentityQueries();
         throw error;
       }
     },
-    [queryClient],
+    [clearIdentityQueries, queryClient],
   );
 
   const logout = useCallback(async () => {
     clearToken();
-    queryClient.clear();
+    clearIdentityQueries();
     try {
       await logoutMutation.mutateAsync();
     } finally {
-      queryClient.clear();
+      clearIdentityQueries();
     }
-  }, [logoutMutation, queryClient]);
+  }, [clearIdentityQueries, logoutMutation]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

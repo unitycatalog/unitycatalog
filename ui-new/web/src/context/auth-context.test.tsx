@@ -275,6 +275,30 @@ describe("AuthProvider", () => {
     expect(client.getQueryData(["private-catalog-data"])).toBeUndefined();
   });
 
+  it("keeps the runtime config across a sign-in and sign-out", async () => {
+    stubConfig({ authEnabled: true });
+    call.mockImplementation(async (input: { path: string; token: string }) =>
+      input.token || input.path.endsWith("/auth/logout")
+        ? {
+            httpStatus: 200,
+            ok: true,
+            body: JSON.stringify({ displayName: "Ada" }),
+          }
+        : { httpStatus: 401, ok: false, body: "" },
+    );
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.signInWithAccessToken("jwt-xyz");
+      await result.current.logout();
+    });
+
+    expect(result.current.authEnabled).toBe(true);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("useAuth throws outside a provider", () => {
     expect(() => renderHook(() => useAuth())).toThrow(/AuthProvider/);
   });
