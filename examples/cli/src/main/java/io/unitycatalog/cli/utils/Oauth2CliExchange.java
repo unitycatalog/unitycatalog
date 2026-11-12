@@ -158,6 +158,18 @@ public class Oauth2CliExchange {
 
     server.stop(0);
 
+    return requestTokens(tokenUrl, clientId, clientSecret, authCode, redirectUrl);
+  }
+
+  /**
+   * Trades the authorization code for the identity provider's tokens at {@code tokenUrl}, and keeps
+   * the access token for {@link #accessToken()}.
+   *
+   * @return the identity token, or null if the identity provider refused the code
+   */
+  public String requestTokens(
+      String tokenUrl, String clientId, String clientSecret, String authCode, String redirectUrl)
+      throws IOException {
     String tokenBody =
         new OAuthAccessTokenForm()
             .grantType(AuthorizationGrantType.AUTHORIZATION_CODE)

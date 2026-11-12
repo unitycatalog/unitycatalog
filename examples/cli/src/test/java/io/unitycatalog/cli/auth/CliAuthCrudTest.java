@@ -312,6 +312,28 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     assertThat(noAccessToken.idToken()).isEqualTo("idp-id-token");
   }
 
+  // After the browser step, bin/uc auth login keeps the access token of the identity provider's
+  // token response, not its identity token, and returns the identity token for the exchange.
+  @Test
+  public void testAuthLoginKeepsTheAccessTokenOfTheTokenResponse() throws Exception {
+    HttpServer server =
+        startTokenEndpoint(
+            200, "{\"access_token\":\"idp-access-token\",\"id_token\":\"idp-id-token\"}");
+    try {
+      Oauth2CliExchange exchange = new Oauth2CliExchange();
+      String tokenUrl =
+          "http://localhost:"
+              + server.getAddress().getPort()
+              + "/api/1.0/unity-control/auth/tokens";
+
+      assertThat(exchange.requestTokens(tokenUrl, "client", "secret", "code", "http://localhost"))
+          .isEqualTo("idp-id-token");
+      assertThat(exchange.accessToken()).isEqualTo("idp-access-token");
+    } finally {
+      server.stop(0);
+    }
+  }
+
   @Test
   public void testAuthLoginExchangeWithWrongIssuerAndCorrectAudience()
       throws NoSuchAlgorithmException {
