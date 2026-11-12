@@ -2,15 +2,11 @@ package io.unitycatalog.server.sdk.delta;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.delta.model.DeltaAddCommitUpdate;
-import io.unitycatalog.client.delta.model.DeltaAssertTableUUID;
-import io.unitycatalog.client.delta.model.DeltaCommit;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.client.delta.model.DeltaRemovePropertiesUpdate;
 import io.unitycatalog.client.delta.model.DeltaSetPropertiesUpdate;
 import io.unitycatalog.client.delta.model.DeltaTableUpdate;
-import io.unitycatalog.client.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.delta.DeltaBaseTableCRUDTestEnv;
@@ -54,14 +50,14 @@ public class SdkUpdateTableAllowMissingDvTest extends DeltaBaseTableCRUDTestEnv 
         createDeltaManaged(
             "tbl_replay_contract_input", Map.of("delta.enableIcebergCompatV2", "true"));
     DeltaTableUpdate[] v1 = {
-      new DeltaAddCommitUpdate().commit(commit(1L)),
+      new DeltaAddCommitUpdate().commit(commit(1L, "00000001.json")),
       new DeltaRemovePropertiesUpdate().removals(List.of("delta.enableDeletionVectors"))
     };
-    updateTable(h, v1);
+    DeltaLoadTableResponse r1 = updateTable(h, v1);
     DeltaLoadTableResponse r2 =
         updateTable(
-            h,
-            new DeltaAddCommitUpdate().commit(commit(2L)),
+            h.withEtag(r1.getMetadata().getEtag()),
+            new DeltaAddCommitUpdate().commit(commit(2L, "00000002.json")),
             new DeltaRemovePropertiesUpdate().removals(List.of("delta.enableIcebergCompatV2")),
             new DeltaSetPropertiesUpdate().updates(Map.of("delta.enableDeletionVectors", "true")));
 
@@ -72,25 +68,5 @@ public class SdkUpdateTableAllowMissingDvTest extends DeltaBaseTableCRUDTestEnv 
         .isEqualTo(r2.getMetadata().getProperties())
         .containsEntry("delta.enableDeletionVectors", "true")
         .doesNotContainKey("delta.enableIcebergCompatV2");
-  }
-
-  private DeltaLoadTableResponse updateTable(Handle h, DeltaTableUpdate... updates)
-      throws ApiException {
-    return deltaTablesApi.updateTable(
-        TestUtils.CATALOG_NAME,
-        TestUtils.SCHEMA_NAME,
-        h.name(),
-        new DeltaUpdateTableRequest()
-            .requirements(List.of(new DeltaAssertTableUUID().uuid(h.tableId())))
-            .updates(List.of(updates)));
-  }
-
-  private static DeltaCommit commit(long version) {
-    return new DeltaCommit()
-        .version(version)
-        .timestamp(1700000000L + version)
-        .fileName(String.format("%08d.json", version))
-        .fileSize(1024L)
-        .fileModificationTimestamp(1700000000L + version);
   }
 }

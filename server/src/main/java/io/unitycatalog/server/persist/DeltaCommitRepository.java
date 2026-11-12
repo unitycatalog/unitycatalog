@@ -637,8 +637,9 @@ public class DeltaCommitRepository {
    * @param latestBackfilledVersion the {@code set-latest-backfilled-version} target, if any. Same
    *     value as the Delta wire field {@code latest-published-version}. When paired with {@code
    *     deltaCommitOpt}, the helper runs both in one read of the commit log.
-   * @param newestCommits the commit log head that {@link #throwIfCommitVersionTaken} read earlier
-   *     in this transaction, if it ran; read here otherwise.
+   * @param newestCommits the commit log head that {@link #readNewestCommitsOrThrowIfTaken} read
+   *     earlier in this transaction for the same commit, which also ran the managed-table and
+   *     commit-info checks; when empty, those checks run and the commit log is read here.
    * @param filesChecked true on the retry, after the published files for this request were HEADed
    */
   void applyCommitAndBackfillInSession(
@@ -656,13 +657,17 @@ public class DeltaCommitRepository {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "Uniform metadata requires an accompanying commit.");
     }
-    serverProperties.checkManagedTableEnabled();
+    if (newestCommits.isEmpty()) {
+      serverProperties.checkManagedTableEnabled();
+    }
     uniformFields.ifPresent(
         uf ->
             DeltaUniformUtils.requireMetadataLocationSubpath(
                 uf.metadataLocation(), NormalizedURL.from(dao.getUrl())));
-    // Same per-field commit-info check as the UC REST validateCommit path.
-    commitInfoOpt.ifPresent(DeltaCommitRepository::validateCommitInfo);
+    if (newestCommits.isEmpty()) {
+      // Same per-field commit-info check as the UC REST validateCommit path.
+      commitInfoOpt.ifPresent(DeltaCommitRepository::validateCommitInfo);
+    }
     postCommitCore(
         session,
         dao.getId(),
@@ -1250,7 +1255,7 @@ public class DeltaCommitRepository {
    * @return the newest commits read for the check, so {@link #applyCommitAndBackfillInSession} in
    *     the same transaction can reuse them instead of reading the commit log again.
    */
-  List<DeltaCommitDAO> throwIfCommitVersionTaken(
+  List<DeltaCommitDAO> readNewestCommitsOrThrowIfTaken(
       Session session, TableInfoDAO dao, DeltaCommitInfo commitInfo) {
     serverProperties.checkManagedTableEnabled();
     validateCommitInfo(commitInfo);

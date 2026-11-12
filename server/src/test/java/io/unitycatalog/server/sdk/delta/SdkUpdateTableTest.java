@@ -5,8 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.delta.model.DeltaAddCommitUpdate;
 import io.unitycatalog.client.delta.model.DeltaArrayType;
-import io.unitycatalog.client.delta.model.DeltaAssertEtag;
-import io.unitycatalog.client.delta.model.DeltaAssertTableUUID;
 import io.unitycatalog.client.delta.model.DeltaClusteringDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaCommit;
 import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
@@ -31,7 +29,6 @@ import io.unitycatalog.client.delta.model.DeltaStagingTableResponse;
 import io.unitycatalog.client.delta.model.DeltaStructField;
 import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.client.delta.model.DeltaStructType;
-import io.unitycatalog.client.delta.model.DeltaTableRequirement;
 import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.delta.model.DeltaTableUpdate;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadata;
@@ -2036,15 +2033,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
         "set-columns dropped column mapping metadata for column(s): a, amount, id");
   }
 
-  private static DeltaCommit commit(long version, String fileName) {
-    return new DeltaCommit()
-        .version(version)
-        .timestamp(1700000000L + version)
-        .fileName(fileName)
-        .fileSize(1024L)
-        .fileModificationTimestamp(1700000000L + version);
-  }
-
   /**
    * Top-level rename on an id-mode table (CM identity keyed on {@code delta.columnMapping.id}).
    * After "a" → "b" the new logical name is present, old is gone, and the CM id remains 1 in the
@@ -2143,37 +2131,6 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
   }
 
   // ---------------------------------------------------------------- helpers
-
-  /** Pins the update to the table's UUID and the Handle's etag. */
-  private DeltaLoadTableResponse updateTable(Handle h, DeltaTableUpdate... updates)
-      throws ApiException {
-    return updateTable(h.name(), requestWith(h.tableId(), Optional.of(h.etag()), updates));
-  }
-
-  /** Escape hatch for tests that hand-build the request (custom requirements / empty updates). */
-  private DeltaLoadTableResponse updateTable(String tableName, DeltaUpdateTableRequest request)
-      throws ApiException {
-    return deltaTablesApi.updateTable(
-        TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName, request);
-  }
-
-  /**
-   * Build an {@link DeltaUpdateTableRequest} with the canonical {@code assert-table-uuid}
-   * requirement and an optional {@code assert-etag} requirement. Empty {@code updates} is allowed
-   * for the empty-list rejection case.
-   */
-  private static DeltaUpdateTableRequest requestWith(
-      UUID assertUuid, Optional<String> assertEtag, DeltaTableUpdate... updates) {
-    List<DeltaTableRequirement> requirements = new ArrayList<>();
-    requirements.add(new DeltaAssertTableUUID().uuid(assertUuid));
-    assertEtag.ifPresent(etag -> requirements.add(new DeltaAssertEtag().etag(etag)));
-    return new DeltaUpdateTableRequest().requirements(requirements).updates(List.of(updates));
-  }
-
-  /** Convenience: assert-table-uuid only, no assert-etag. */
-  private static DeltaUpdateTableRequest requestWith(UUID assertUuid, DeltaTableUpdate... updates) {
-    return requestWith(assertUuid, Optional.empty(), updates);
-  }
 
   // -------------------------------------------------------- CM table creation helpers
 

@@ -84,7 +84,7 @@ public final class UcManagedDeltaContract {
    * #isSyntheticPropertyKey}) they are the synthetic property keys of the managed Delta tables
    * spec, which clients must not send in {@code set-properties} or {@code remove-properties}.
    */
-  static final Set<String> SYNTHETIC_PROPERTY_KEYS =
+  private static final Set<String> SYNTHETIC_PROPERTY_KEYS =
       Set.of(
           TableProperties.MIN_READER_VERSION,
           TableProperties.MIN_WRITER_VERSION,
@@ -107,7 +107,7 @@ public final class UcManagedDeltaContract {
    * Real {@code metaData.configuration} entries that carry the contract: the fixed-value and
    * engine-generated properties and the UC table id.
    */
-  static final Set<String> CONTRACT_PROPERTY_KEYS = buildContractPropertyKeys();
+  private static final Set<String> CONTRACT_PROPERTY_KEYS = buildContractPropertyKeys();
 
   private static Set<String> buildContractPropertyKeys() {
     Set<String> keys = new HashSet<>(REQUIRED_FIXED_PROPERTIES.keySet());

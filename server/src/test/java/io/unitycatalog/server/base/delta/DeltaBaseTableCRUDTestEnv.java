@@ -2,6 +2,9 @@ package io.unitycatalog.server.base.delta;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.model.DeltaAssertEtag;
+import io.unitycatalog.client.delta.model.DeltaAssertTableUUID;
+import io.unitycatalog.client.delta.model.DeltaCommit;
 import io.unitycatalog.client.delta.model.DeltaCreateStagingTableRequest;
 import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
 import io.unitycatalog.client.delta.model.DeltaDomainMetadataUpdates;
@@ -13,7 +16,10 @@ import io.unitycatalog.client.delta.model.DeltaStagingTableResponse;
 import io.unitycatalog.client.delta.model.DeltaStructField;
 import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.client.delta.model.DeltaStructType;
+import io.unitycatalog.client.delta.model.DeltaTableRequirement;
 import io.unitycatalog.client.delta.model.DeltaTableType;
+import io.unitycatalog.client.delta.model.DeltaTableUpdate;
+import io.unitycatalog.client.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.table.BaseTableCRUDTestEnv;
 import io.unitycatalog.server.base.table.TableOperations;
@@ -27,6 +33,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -197,5 +204,47 @@ public abstract class DeltaBaseTableCRUDTestEnv extends BaseTableCRUDTestEnv {
     return properties.entrySet().stream()
         .filter(e -> e.getKey().startsWith(TableProperties.FEATURE_PREFIX))
         .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+  }
+
+  /** Pins the update to the table's UUID and the Handle's etag. */
+  protected DeltaLoadTableResponse updateTable(Handle h, DeltaTableUpdate... updates)
+      throws ApiException {
+    return updateTable(h.name(), requestWith(h.tableId(), Optional.of(h.etag()), updates));
+  }
+
+  /** Escape hatch for tests that hand-build the request (custom requirements / empty updates). */
+  protected DeltaLoadTableResponse updateTable(String tableName, DeltaUpdateTableRequest request)
+      throws ApiException {
+    return deltaTablesApi.updateTable(
+        TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName, request);
+  }
+
+  /**
+   * Build an {@link DeltaUpdateTableRequest} with the canonical {@code assert-table-uuid}
+   * requirement and an optional {@code assert-etag} requirement. Empty {@code updates} is allowed
+   * for the empty-list rejection case.
+   */
+  protected static DeltaUpdateTableRequest requestWith(
+      UUID assertUuid, Optional<String> assertEtag, DeltaTableUpdate... updates) {
+    List<DeltaTableRequirement> requirements = new ArrayList<>();
+    requirements.add(new DeltaAssertTableUUID().uuid(assertUuid));
+    assertEtag.ifPresent(etag -> requirements.add(new DeltaAssertEtag().etag(etag)));
+    return new DeltaUpdateTableRequest().requirements(requirements).updates(List.of(updates));
+  }
+
+  /** Convenience: assert-table-uuid only, no assert-etag. */
+  protected static DeltaUpdateTableRequest requestWith(
+      UUID assertUuid, DeltaTableUpdate... updates) {
+    return requestWith(assertUuid, Optional.empty(), updates);
+  }
+
+  /** A catalog-managed commit at {@code version} with fixed, version-derived timestamps. */
+  protected static DeltaCommit commit(long version, String fileName) {
+    return new DeltaCommit()
+        .version(version)
+        .timestamp(1700000000L + version)
+        .fileName(fileName)
+        .fileSize(1024L)
+        .fileModificationTimestamp(1700000000L + version);
   }
 }
