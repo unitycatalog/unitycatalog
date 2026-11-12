@@ -525,4 +525,39 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     assertThat(updated.getComment()).isEqualTo("updated");
     assertThat(updated.getStatus()).isEqualTo(ModelVersionStatus.READY);
   }
+
+  /**
+   * A version delete that waits for a concurrent delete of the same version finds no row, and
+   * queues no cleanup of the version's storage.
+   */
+  @Test
+  public void deleteVersionRacingADeleteIsNotFound() throws Exception {
+    createModel("delete_version_race");
+    ModelVersionInfo version =
+        modelOperations.createModelVersion(
+            new CreateModelVersion()
+                .catalogName(CATALOG_NAME)
+                .schemaName(SCHEMA_NAME)
+                .modelName("delete_version_race")
+                .source(MV_SOURCE));
+    UUID id = UUID.fromString(version.getId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held ->
+                    held.createMutationQuery("delete from ModelVersionInfoDAO where id = :id")
+                        .setParameter("id", id)
+                        .executeUpdate(),
+                () -> {
+                  modelOperations.deleteModelVersion(
+                      modelFullName("delete_version_race"), version.getVersion());
+                  return null;
+                }),
+        ErrorCode.NOT_FOUND,
+        "Model version not found");
+
+    assertThat(StorageCleanupTestSupport.findTask(hibernateConfigurator.getSessionFactory(), id))
+        .isNull();
+  }
 }
