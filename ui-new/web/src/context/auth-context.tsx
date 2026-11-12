@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { ReactNode } from "react";
@@ -59,6 +60,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginMutation = useLoginWithToken();
   const logoutMutation = useLogoutCurrentUser();
 
+  // Counts sign-ins and sign-outs. A token verification that a newer one
+  // superseded must not clear the token or cache that the newer one set up.
+  const identityChanges = useRef(0);
+
   // Removes every cached result that belongs to the signed-in identity. The
   // runtime config does not, so it stays and the app keeps its auth settings.
   const clearIdentityQueries = useCallback(
@@ -71,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithToken = useCallback(
     async (idToken: string) => {
+      identityChanges.current += 1;
       // UC prefers a Bearer header over the session cookie, so a leftover pasted
       // token would make the new provider session fail verification.
       clearToken();
@@ -97,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithAccessToken = useCallback(
     async (accessToken: string) => {
+      const attempt = ++identityChanges.current;
       setToken(accessToken);
       clearIdentityQueries();
       try {
@@ -108,6 +115,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error("Unity Catalog rejected this access token.");
         }
       } catch (error) {
+        // A newer sign-in or sign-out cancelled this one and owns the session.
+        if (attempt !== identityChanges.current) return;
         clearToken();
         clearIdentityQueries();
         throw error;
@@ -117,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    identityChanges.current += 1;
     clearToken();
     clearIdentityQueries();
     try {

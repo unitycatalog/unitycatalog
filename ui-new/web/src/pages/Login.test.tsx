@@ -102,4 +102,18 @@ describe("Login", () => {
     ).toBeInTheDocument();
     expect(navigateMock).not.toHaveBeenCalled();
   });
+
+  it("ignores Enter while a pasted token is being verified", async () => {
+    signInWithAccessToken.mockReturnValue(new Promise(() => {}));
+    render(<Login />);
+
+    const input = screen.getByLabelText("JWT access token");
+    await userEvent.type(input, "jwt-abc{Enter}");
+    expect(
+      await screen.findByRole("button", { name: "Verifying token…" }),
+    ).toBeDisabled();
+    await userEvent.type(input, "{Enter}");
+
+    expect(signInWithAccessToken).toHaveBeenCalledTimes(1);
+  });
 });

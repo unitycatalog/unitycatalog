@@ -38,6 +38,8 @@ export default function Login() {
   };
 
   const onPasteToken = async () => {
+    // Enter can fire while a verification is in flight; the button cannot.
+    if (isVerifyingToken) return;
     setError(null);
     if (!pastedToken.trim()) {
       setError("Paste a JWT access token.");

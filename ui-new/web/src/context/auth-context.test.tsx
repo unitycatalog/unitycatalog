@@ -299,6 +299,48 @@ describe("AuthProvider", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it("lets a newer token sign-in finish when it supersedes an older one", async () => {
+    stubConfig({ authEnabled: true });
+    type Reply = { httpStatus: number; ok: boolean; body: string };
+    const deferred = () => {
+      let resolve!: (reply: Reply) => void;
+      const promise = new Promise<Reply>((done) => (resolve = done));
+      return { promise, resolve };
+    };
+    const replies: Record<string, ReturnType<typeof deferred>> = {
+      "first-jwt": deferred(),
+      "second-jwt": deferred(),
+    };
+    call.mockImplementation(async (input: { token: string }) =>
+      input.token in replies
+        ? replies[input.token].promise
+        : { httpStatus: 401, ok: false, body: "" },
+    );
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.signInWithAccessToken("first-jwt");
+      second = result.current.signInWithAccessToken("second-jwt");
+    });
+    await act(async () => {
+      replies["first-jwt"].resolve({ httpStatus: 401, ok: false, body: "" });
+      replies["second-jwt"].resolve({
+        httpStatus: 200,
+        ok: true,
+        body: JSON.stringify({ displayName: "Ada" }),
+      });
+      await Promise.all([first, second]);
+    });
+
+    expect(getToken()).toBe("second-jwt");
+    await waitFor(() =>
+      expect(result.current.currentUser?.displayName).toBe("Ada"),
+    );
+  });
+
   it("useAuth throws outside a provider", () => {
     expect(() => renderHook(() => useAuth())).toThrow(/AuthProvider/);
   });
