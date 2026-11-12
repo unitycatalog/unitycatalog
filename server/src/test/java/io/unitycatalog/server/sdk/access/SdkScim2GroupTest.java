@@ -265,23 +265,6 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
     JsonNode none = list("?filter=" + encode("displayName eq \"missing\""));
     assertThat(none.get("totalResults").asInt()).isZero();
 
-    JsonNode withoutMembers = list("?excludedAttributes=members");
-    assertThat(withoutMembers.get("Resources").get(0).has("members")).isFalse();
-    assertThat(
-            MAPPER
-                .readTree(
-                    send(
-                            adminConfig,
-                            "GET",
-                            GROUPS_PATH
-                                + "/"
-                                + all.get("Resources").get(0).get("id").asText()
-                                + "?excludedAttributes=members",
-                            null)
-                        .body())
-                .has("members"))
-        .isFalse();
-
     HttpResponse<String> badFilter =
         send(adminConfig, "GET", GROUPS_PATH + "?filter=" + encode("displayName eq"), null);
     assertThat(badFilter.statusCode()).isEqualTo(400);

@@ -42,7 +42,6 @@ import io.unitycatalog.server.persist.GroupRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.model.Group;
 import io.unitycatalog.server.utils.Scim2Utils;
-import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
@@ -92,8 +91,7 @@ public class Scim2GroupService implements ScimService {
   public ListResponse<GroupResource> getScimGroups(
       @Param("filter") Optional<String> filter,
       @Param("startIndex") Optional<Integer> startIndex,
-      @Param("count") Optional<Integer> count,
-      @Param("excludedAttributes") Optional<String> excludedAttributes) {
+      @Param("count") Optional<Integer> count) {
     final Filter groupFilter =
         filter.filter(f -> !f.isEmpty()).<Filter>map(this::parseFilter).orElse(null);
     FilterEvaluator filterEvaluator = new FilterEvaluator();
@@ -107,7 +105,6 @@ public class Scim2GroupService implements ScimService {
     int from = Math.min(start - 1, matches.size());
     int to = (int) Math.min((long) from + Math.max(count.orElse(50), 0), matches.size());
     List<GroupResource> page = matches.subList(from, to);
-    page.forEach(group -> excludeAttributes(group, excludedAttributes));
 
     Meta meta = new Meta();
     meta.setCreated(Calendar.getInstance());
@@ -136,11 +133,8 @@ public class Scim2GroupService implements ScimService {
   @StatusCode(200)
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
-  public GroupResource getGroup(
-      @Param("id") String id, @Param("excludedAttributes") Optional<String> excludedAttributes) {
-    GroupResource group = asGroupResource(scim(() -> groupRepository.getGroup(id)));
-    excludeAttributes(group, excludedAttributes);
-    return group;
+  public GroupResource getGroup(@Param("id") String id) {
+    return asGroupResource(scim(() -> groupRepository.getGroup(id)));
   }
 
   /** Replaces the group's name, external id and members; what the body leaves out is cleared. */
@@ -331,16 +325,6 @@ public class Scim2GroupService implements ScimService {
       }
     }
     return memberIds;
-  }
-
-  private static void excludeAttributes(GroupResource group, Optional<String> excludedAttributes) {
-    boolean excludesMembers =
-        excludedAttributes.stream()
-            .flatMap(attributes -> Arrays.stream(attributes.split(",")))
-            .anyMatch(attribute -> MEMBERS.equalsIgnoreCase(attribute.trim()));
-    if (excludesMembers) {
-      group.setMembers(null);
-    }
   }
 
   /** Runs a repository call, answering its errors as SCIM errors. */

@@ -165,12 +165,6 @@ paths:
             type: integer
             format: int32
           required: false
-        - name: excludedAttributes
-          in: query
-          description: Attributes to leave out of the results. Only `members` is supported.
-          schema:
-            type: string
-          required: false
       operationId: listGroups
       summary: List groups
       description: |
@@ -193,13 +187,6 @@ paths:
     get:
       tags:
         - Groups
-      parameters:
-        - name: excludedAttributes
-          in: query
-          description: Attributes to leave out of the result. Only `members` is supported.
-          schema:
-            type: string
-          required: false
       operationId: getGroup
       summary: Get a group
       description: |
