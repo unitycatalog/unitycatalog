@@ -57,6 +57,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
                     .port(0)
                     .serverProperties(properties)
                     .hibernateConfigurator(hibernateConfigurator)
+                    .configurationFolder(configurationFolder)
                     .build())
         .isInstanceOf(BaseException.class)
         .hasMessage(
@@ -76,6 +77,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
                     .port(0)
                     .serverProperties(properties)
                     .hibernateConfigurator(hibernateConfigurator)
+                    .configurationFolder(configurationFolder)
                     .build())
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("server.authorization.opa.decision-url is required");
@@ -88,6 +90,7 @@ public class UnityCatalogServerTest extends BaseServerTest {
             .port(0)
             .serverProperties(properties)
             .hibernateConfigurator(hibernateConfigurator)
+            .configurationFolder(configurationFolder)
             .build();
     try {
       assertThat(hibernateConfigurator.getDataSource().getHikariPoolMXBean().getActiveConnections())
