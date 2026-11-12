@@ -130,7 +130,7 @@ public class UserRepository {
     return query.uniqueResult();
   }
 
-  public UUID findUserId(Session session, String email) {
+  UUID findUserId(Session session, String email) {
     UserDAO userDAO = email == null ? null : getUserByEmail(session, email);
     return userDAO == null ? null : userDAO.getId();
   }
@@ -140,7 +140,7 @@ public class UserRepository {
    * created again with the same email is not its creator. A row from before the id was stored has
    * only the creator's email, and is matched by it.
    */
-  public boolean isCreator(
+  boolean isCreator(
       Session session, UUID createdById, String createdBy, String callerEmail) {
     if (createdById == null) {
       return Objects.equals(createdBy, callerEmail);
