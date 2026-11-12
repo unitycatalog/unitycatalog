@@ -1,7 +1,7 @@
 use connectrpc::{RequestContext, Response, ServiceRequest, ServiceResult};
 use serde_json::{json, Map, Value};
 
-use super::page_query;
+use super::{object_full_name, page_query};
 use crate::mapping;
 use crate::proto::uc::v1::*;
 use crate::upstream::{path_segment, Upstream};
@@ -56,7 +56,10 @@ impl ModelService for ModelRpc {
             .upstream
             .get(
                 &ctx,
-                &format!("/models/{}", path_segment(&full_name(&request.model))),
+                &format!(
+                    "/models/{}",
+                    path_segment(&object_full_name(&request.model))
+                ),
                 Vec::new(),
             )
             .await?;
@@ -93,7 +96,7 @@ impl ModelService for ModelRpc {
         request: ServiceRequest<'_, UpdateRegisteredModelRequest>,
     ) -> ServiceResult<UpdateRegisteredModelResponse> {
         let request = request.to_owned_message();
-        let name = full_name(&request.model);
+        let name = object_full_name(&request.model);
         let mut body = Map::new();
         if let Some(comment) = request.comment {
             body.insert("comment".to_string(), json!(comment));
@@ -124,7 +127,10 @@ impl ModelService for ModelRpc {
         self.upstream
             .delete(
                 &ctx,
-                &format!("/models/{}", path_segment(&full_name(&request.model))),
+                &format!(
+                    "/models/{}",
+                    path_segment(&object_full_name(&request.model))
+                ),
                 vec![("force", request.force.to_string())],
             )
             .await?;
@@ -143,7 +149,7 @@ impl ModelService for ModelRpc {
                 &ctx,
                 &format!(
                     "/models/{}/versions",
-                    path_segment(&full_name(&request.model))
+                    path_segment(&object_full_name(&request.model))
                 ),
                 page_query(&request.page),
             )
@@ -223,7 +229,7 @@ impl ModelService for ModelRpc {
         request: ServiceRequest<'_, FinalizeModelVersionRequest>,
     ) -> ServiceResult<FinalizeModelVersionResponse> {
         let request = request.to_owned_message();
-        let model = full_name(&request.model_version.model);
+        let model = object_full_name(&request.model_version.model);
         let value = self
             .upstream
             .patch(
@@ -267,14 +273,7 @@ async fn get_version(
 fn version_path(reference: &ModelVersionRef) -> String {
     format!(
         "/models/{}/versions/{}",
-        path_segment(&full_name(&reference.model)),
+        path_segment(&object_full_name(&reference.model)),
         reference.version
-    )
-}
-
-fn full_name(reference: &SchemaObjectRef) -> String {
-    format!(
-        "{}.{}.{}",
-        reference.catalog_name, reference.schema_name, reference.name
     )
 }

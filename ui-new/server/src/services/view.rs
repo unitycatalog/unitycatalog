@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use connectrpc::{ConnectError, RequestContext, Response, ServiceRequest, ServiceResult};
 use serde_json::{json, Map, Value};
 
-use super::{column_value, dependencies_value, page_query, properties_value};
+use super::{column_value, dependencies_value, object_full_name, page_query, properties_value};
 use crate::mapping;
 use crate::proto::uc::v1::*;
 use crate::upstream::{path_segment, Upstream};
@@ -55,7 +55,7 @@ impl ViewService for ViewRpc {
         request: ServiceRequest<'_, GetViewRequest>,
     ) -> ServiceResult<GetViewResponse> {
         let request = request.to_owned_message();
-        let name = full_name(&request.view);
+        let name = object_full_name(&request.view);
         let value = self
             .upstream
             .get(
@@ -142,7 +142,7 @@ impl ViewService for ViewRpc {
         request: ServiceRequest<'_, DeleteViewRequest>,
     ) -> ServiceResult<DeleteViewResponse> {
         let request = request.to_owned_message();
-        let name = full_name(&request.view);
+        let name = object_full_name(&request.view);
         let value = self
             .upstream
             .get(
@@ -213,11 +213,4 @@ fn collect_metric_fields(
         }
     }
     Ok(())
-}
-
-fn full_name(reference: &SchemaObjectRef) -> String {
-    format!(
-        "{}.{}.{}",
-        reference.catalog_name, reference.schema_name, reference.name
-    )
 }

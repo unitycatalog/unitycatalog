@@ -1,7 +1,7 @@
 use connectrpc::{ConnectError, RequestContext, Response, ServiceRequest, ServiceResult};
 use serde_json::{json, Map, Value};
 
-use super::{column_value, data_source_format, page_query, properties_value};
+use super::{column_value, data_source_format, object_full_name, page_query, properties_value};
 use crate::mapping;
 use crate::proto::uc::v1::*;
 use crate::upstream::{path_segment, Upstream};
@@ -150,11 +150,4 @@ impl TableService for TableRpc {
             .await?;
         Ok(Response::new(DeleteTableResponse::default()))
     }
-}
-
-fn object_full_name(reference: &SchemaObjectRef) -> String {
-    format!(
-        "{}.{}.{}",
-        reference.catalog_name, reference.schema_name, reference.name
-    )
 }

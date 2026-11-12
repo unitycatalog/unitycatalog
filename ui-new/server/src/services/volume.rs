@@ -1,7 +1,7 @@
 use connectrpc::{RequestContext, Response, ServiceRequest, ServiceResult};
 use serde_json::{json, Map, Value};
 
-use super::{page_query, volume_type};
+use super::{object_full_name, page_query, volume_type};
 use crate::mapping;
 use crate::proto::uc::v1::*;
 use crate::upstream::{path_segment, Upstream};
@@ -54,7 +54,10 @@ impl VolumeService for VolumeRpc {
             .upstream
             .get(
                 &ctx,
-                &format!("/volumes/{}", path_segment(&full_name(&request.volume))),
+                &format!(
+                    "/volumes/{}",
+                    path_segment(&object_full_name(&request.volume))
+                ),
                 Vec::new(),
             )
             .await?;
@@ -106,7 +109,7 @@ impl VolumeService for VolumeRpc {
         request: ServiceRequest<'_, UpdateVolumeRequest>,
     ) -> ServiceResult<UpdateVolumeResponse> {
         let request = request.to_owned_message();
-        let name = full_name(&request.volume);
+        let name = object_full_name(&request.volume);
         let mut body = Map::new();
         if let Some(comment) = request.comment {
             body.insert("comment".to_string(), json!(comment));
@@ -137,17 +140,13 @@ impl VolumeService for VolumeRpc {
         self.upstream
             .delete(
                 &ctx,
-                &format!("/volumes/{}", path_segment(&full_name(&request.volume))),
+                &format!(
+                    "/volumes/{}",
+                    path_segment(&object_full_name(&request.volume))
+                ),
                 Vec::new(),
             )
             .await?;
         Ok(Response::new(DeleteVolumeResponse::default()))
     }
-}
-
-fn full_name(reference: &SchemaObjectRef) -> String {
-    format!(
-        "{}.{}.{}",
-        reference.catalog_name, reference.schema_name, reference.name
-    )
 }

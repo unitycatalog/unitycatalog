@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::proto::uc::v1::{
     dependency, ColumnInput, ColumnTypeName, DataSourceFormat, Dependency, PageRequest, Properties,
-    VolumeType,
+    SchemaObjectRef, VolumeType,
 };
 use crate::AppState;
 
@@ -44,6 +44,13 @@ fn page_query(page: &PageRequest) -> Vec<(&'static str, String)> {
         query.push(("page_token", page.page_token.clone()));
     }
     query
+}
+
+fn object_full_name(reference: &SchemaObjectRef) -> String {
+    format!(
+        "{}.{}.{}",
+        reference.catalog_name, reference.schema_name, reference.name
+    )
 }
 
 fn properties_value(values: &Properties) -> Value {

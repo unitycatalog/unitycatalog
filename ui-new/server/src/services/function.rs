@@ -1,7 +1,7 @@
 use connectrpc::{RequestContext, Response, ServiceRequest, ServiceResult};
 use serde_json::{json, Value};
 
-use super::{page_query, scalar_type};
+use super::{object_full_name, page_query, scalar_type};
 use crate::mapping;
 use crate::proto::uc::v1::*;
 use crate::upstream::{path_segment, Upstream};
@@ -54,7 +54,10 @@ impl FunctionService for FunctionRpc {
             .upstream
             .get(
                 &ctx,
-                &format!("/functions/{}", path_segment(&full_name(&request.function))),
+                &format!(
+                    "/functions/{}",
+                    path_segment(&object_full_name(&request.function))
+                ),
                 Vec::new(),
             )
             .await?;
@@ -127,17 +130,13 @@ impl FunctionService for FunctionRpc {
         self.upstream
             .delete(
                 &ctx,
-                &format!("/functions/{}", path_segment(&full_name(&request.function))),
+                &format!(
+                    "/functions/{}",
+                    path_segment(&object_full_name(&request.function))
+                ),
                 Vec::new(),
             )
             .await?;
         Ok(Response::new(DeleteFunctionResponse::default()))
     }
-}
-
-fn full_name(reference: &SchemaObjectRef) -> String {
-    format!(
-        "{}.{}.{}",
-        reference.catalog_name, reference.schema_name, reference.name
-    )
 }
