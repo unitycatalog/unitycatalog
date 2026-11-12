@@ -45,8 +45,6 @@ from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
     async_int_func,
     random_func_name,
-    str_func_no_doc,
-    wrap_func_no_doc,
 )
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_core_test")
@@ -509,22 +507,12 @@ def test_create_python_function_rejects_async_function(client: DatabricksFunctio
     client.create_function.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    ("primary_func", "functions"),
-    [
-        (async_int_func, []),
-        (wrap_func_no_doc, [async_int_func, str_func_no_doc]),
-    ],
-    ids=["async_primary", "async_helper"],
-)
-def test_create_wrapped_function_rejects_async_function(
-    client: DatabricksFunctionClient, primary_func, functions
-):
+def test_create_wrapped_function_rejects_async_function(client: DatabricksFunctionClient):
     client.create_function = MagicMock()
 
     with pytest.raises(ValueError, match="is an async function"):
         client.create_wrapped_function(
-            primary_func=primary_func, functions=functions, catalog=CATALOG, schema=SCHEMA
+            primary_func=async_int_func, functions=[], catalog=CATALOG, schema=SCHEMA
         )
 
     client.create_function.assert_not_called()

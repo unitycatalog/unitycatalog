@@ -1522,25 +1522,15 @@ async def test_create_python_function_rejects_async_function(mocked_store_client
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("use_async", [False, True])
-@pytest.mark.parametrize(
-    ("primary_func", "functions"),
-    [
-        (async_int_func, []),
-        (wrap_func_no_doc, [async_int_func, str_func_no_doc]),
-    ],
-    ids=["async_primary", "async_helper"],
-)
-async def test_create_wrapped_function_rejects_async_function(
-    mocked_store_client, use_async, primary_func, functions
-):
+async def test_create_wrapped_function_rejects_async_function(mocked_store_client, use_async):
     with pytest.raises(ValueError, match="is an async function"):
         if use_async:
             await mocked_store_client.create_wrapped_function_async(
-                primary_func=primary_func, functions=functions, catalog=CATALOG, schema=SCHEMA
+                primary_func=async_int_func, functions=[], catalog=CATALOG, schema=SCHEMA
             )
         else:
             mocked_store_client.create_wrapped_function(
-                primary_func=primary_func, functions=functions, catalog=CATALOG, schema=SCHEMA
+                primary_func=async_int_func, functions=[], catalog=CATALOG, schema=SCHEMA
             )
 
     mocked_store_client.uc.functions_client.create_function.assert_not_called()

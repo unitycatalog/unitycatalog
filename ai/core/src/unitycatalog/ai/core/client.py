@@ -584,8 +584,8 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             The created FunctionInfo object.
 
         Raises:
-            ValueError: If `func` is defined with `async def`, or is a `functools.wraps` wrapper
-                around an `async def` function.
+            ValueError: If `func` is not a valid function to register, for example if it is defined
+                with `async def`.
         """
 
         if not callable(func):
@@ -636,8 +636,8 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             The created FunctionInfo object.
 
         Raises:
-            ValueError: If `func` is defined with `async def`, or is a `functools.wraps` wrapper
-                around an `async def` function.
+            ValueError: If `func` is not a valid function to register, for example if it is defined
+                with `async def`.
         """
 
         pass
@@ -674,8 +674,8 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             The created FunctionInfo object.
 
         Raises:
-            ValueError: If `primary_func` or any of `functions` is defined with `async def`, or is a
-                `functools.wraps` wrapper around an `async def` function.
+            ValueError: If `primary_func` or `functions` are not valid to register, for example if
+                `primary_func` is defined with `async def`.
         """
 
         if not callable(primary_func):
@@ -757,8 +757,8 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             The created FunctionInfo object.
 
         Raises:
-            ValueError: If `primary_func` or any of `functions` is defined with `async def`, or is a
-                `functools.wraps` wrapper around an `async def` function.
+            ValueError: If `primary_func` or `functions` are not valid to register, for example if
+                `primary_func` is defined with `async def`.
         """
 
         pass

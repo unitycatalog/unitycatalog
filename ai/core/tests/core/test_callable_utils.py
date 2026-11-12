@@ -2575,7 +2575,7 @@ def test_identifiers_are_quoted_verbatim(identifier, expected):
         (async_int_func, ASYNC_FUNCTION_ERROR.format("async_int_func")),
         (async_int_gen, ASYNC_FUNCTION_ERROR.format("async_int_gen")),
         (staticmethod(async_int_func), ASYNC_FUNCTION_ERROR.format("async_int_func")),
-        (async_int_func_partial, ASYNC_FUNCTION_ERROR.format(repr(async_int_func_partial))),
+        (async_int_func_partial, ASYNC_FUNCTION_ERROR.format("async_int_func")),
         (run_sync(async_int_func), ASYNC_WRAPPER_ERROR.format("async_int_func")),
     ],
     ids=[

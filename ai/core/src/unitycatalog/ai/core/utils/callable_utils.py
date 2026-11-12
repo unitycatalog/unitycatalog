@@ -1,5 +1,6 @@
 import ast
 import datetime
+import functools
 import inspect
 import json
 import re
@@ -172,7 +173,8 @@ def _reject_async_function(func: Callable[..., Any]) -> None:
         problem, target = "is an async function", "it"
     else:
         problem, target = "wraps an async function", "the wrapped function"
-    name = getattr(func, "__name__", repr(func))
+    named = func.func if isinstance(func, functools.partial) else func
+    name = getattr(named, "__name__", repr(func))
     raise ValueError(
         f"Function '{name}' {problem}. Async functions are not supported in Unity "
         f"Catalog. Define {target} with a regular 'def' instead of 'async def'."
@@ -220,8 +222,6 @@ def extract_wrapped_functions(functions: list[Callable[..., Any]]) -> str:
 
     sources = []
     for func in functions:
-        func = unwrap_function(func)
-        _reject_async_function(func)
         src, _ = inspect.getsourcelines(func)
         sources.append(dedent("".join(src)))
     return "\n".join(sources)

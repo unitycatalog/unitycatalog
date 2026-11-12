@@ -219,7 +219,7 @@ wrapped_function = uc_client.create_wrapped_function(
 
 This API in-lines the helper functions (`a` and `b`) into the primary function (`wrapper`) so that they are part of the same function definition stored in Unity Catalog.
 
-The primary function and every helper function must be a regular `def`. An `async def` helper is rejected the same way as an `async def` primary function.
+The primary function must be a regular `def`. A helper can be an `async def` as long as the primary function runs it, for example with `asyncio.run`.
 
 #### Testing a function
 

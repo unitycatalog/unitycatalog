@@ -47,6 +47,9 @@ When using the `UnitycatalogFunctionClient` for UC, be mindful of the following 
 - **Function Overwriting**:
     - The `create_function`, `create_function_async`, `create_wrapped_function` and `create_wrapped_function_async` methods allow overwriting existing functions by setting the replace parameter to True.
     - **Warning**: Overwriting functions can disrupt workflows that depend on existing function definitions. Use this feature judiciously and ensure that overwriting is intentional.
+- **No Async Primary Functions**:
+    - The function passed to `create_python_function`, or as `primary_func` to `create_wrapped_function`, must be a regular `def`. An `async def` function, or a `functools.wraps` wrapper around one, raises a `ValueError`.
+    - Helpers passed to `create_wrapped_function` through `functions` can be `async def`, as long as the primary function runs them, for example with `asyncio.run`.
 - **Type Validation and Compatibility**:
     - The client performs strict type validation based on the defined schemas. Ensure that your function parameters and return types adhere to the expected types to prevent execution errors.
 
@@ -93,7 +96,7 @@ SCHEMA = "my_schema"
 
 You can create a UC function either by providing a Python callable or by submitting a `FunctionInfo` object. Below is an example (recommended) of using the `create_python_function` API that accepts a Python callable (function) as input.
 
-To create a UC function from a Python function, define your function with appropriate type hints and a Google-style docstring:
+To create a UC function from a Python function, define your function as a regular `def` (not `async def`) with appropriate type hints and a Google-style docstring:
 
 ```python
 def add_numbers(a: float, b: float) -> float:
