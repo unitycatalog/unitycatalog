@@ -22,6 +22,7 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
+import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Optional;
@@ -127,7 +128,7 @@ public class SdkDeleteTableTest extends BaseServerTest {
         () ->
             runBlockedByHeldWrite(
                 held ->
-                    setColumn(
+                    TestDatabase.setColumn(
                         held,
                         TableInfoDAO.class,
                         UUID.fromString(table.getTableId()),

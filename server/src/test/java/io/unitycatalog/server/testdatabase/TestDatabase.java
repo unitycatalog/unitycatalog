@@ -164,7 +164,7 @@ public final class TestDatabase implements AutoCloseable {
             try {
               result.get();
             } catch (ExecutionException e) {
-              throw e.getCause() instanceof Exception cause ? cause : e;
+              throw unwrap(e);
             }
           }
           fail("The operation did not wait for the held write's lock");
@@ -177,7 +177,7 @@ public final class TestDatabase implements AutoCloseable {
       try {
         return result.get(30, TimeUnit.SECONDS);
       } catch (ExecutionException e) {
-        throw e.getCause() instanceof Exception cause ? cause : e;
+        throw unwrap(e);
       }
     } finally {
       executor.shutdownNow();
@@ -225,5 +225,10 @@ public final class TestDatabase implements AutoCloseable {
         release.run();
       }
     }
+  }
+
+  /** The operation's own exception, not the executor's wrapper. */
+  private static Exception unwrap(ExecutionException e) {
+    return e.getCause() instanceof Exception cause ? cause : e;
   }
 }
