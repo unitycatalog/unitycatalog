@@ -3,13 +3,9 @@ import type {
   DescMethodUnary,
   DescService,
 } from "@bufbuild/protobuf";
-import {
-  createConnectQueryKey,
-  type ConnectQueryKey,
-} from "@connectrpc/connect-query";
+import { createConnectQueryKey } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
-import { UnityProxyService } from "@/gen/uc/v1/proxy_pb";
-import { UC_API_PREFIX } from "@/lib/uc";
+import { useMarkPermissionsStale } from "@/hooks/permissions";
 
 export async function collectAllPages<
   Key extends PropertyKey,
@@ -65,21 +61,22 @@ export function useInvalidateMethod<
   };
 }
 
-const PERMISSIONS_PATH = `${UC_API_PREFIX}/permissions/`;
-
-// useMarkDescendantsStale returns a callback for a renamed parent. Cached
-// pages of its descendants, and its grants, sit at the old name, which no
-// longer resolves. The callback marks every cached result of the given
+// useMarkDescendantsStale returns a callback for a renamed or deleted parent.
+// Cached pages of its descendants, and its grants, sit at the old name, which
+// no longer resolves. The callback marks every cached result of the given
 // services or methods, plus every cached permissions read, stale without
-// refetching. That is broader than the renamed parent, but renames are rare,
-// and a stale mark only costs a refetch on the next visit.
+// refetching. That is broader than the parent, but renames and parent deletes
+// are rare, and a stale mark only costs a refetch on the next visit.
 export function useMarkDescendantsStale(
   descendants: readonly (DescService | DescMethodUnary)[],
 ) {
   const queryClient = useQueryClient();
+  const markPermissionsStale = useMarkPermissionsStale();
   return () => {
     for (const schema of descendants) {
       void queryClient.invalidateQueries({
+        // The branches are identical, but each createConnectQueryKey overload
+        // takes only a service or only a method, so the union must be narrowed.
         queryKey:
           schema.kind === "service"
             ? createConnectQueryKey({ schema, cardinality: undefined })
@@ -87,20 +84,6 @@ export function useMarkDescendantsStale(
         refetchType: "none",
       });
     }
-    void queryClient.invalidateQueries({
-      queryKey: createConnectQueryKey({
-        schema: UnityProxyService.method.call,
-        cardinality: undefined,
-      }),
-      predicate: ({ queryKey }) => {
-        const input = (queryKey as ConnectQueryKey)[1].input;
-        return (
-          typeof input === "object" &&
-          typeof input.path === "string" &&
-          input.path.startsWith(PERMISSIONS_PATH)
-        );
-      },
-      refetchType: "none",
-    });
+    markPermissionsStale();
   };
 }

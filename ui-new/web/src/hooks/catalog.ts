@@ -15,6 +15,8 @@ import {
 } from "@/hooks/query";
 import { SCHEMA_OBJECT_SERVICES } from "@/hooks/schemas";
 
+const CATALOG_DESCENDANTS = [SchemaService, ...SCHEMA_OBJECT_SERVICES];
+
 export function useListCatalogs() {
   const transport = useTransport();
   const client = createClient(CatalogService, transport);
@@ -67,10 +69,7 @@ export function useUpdateCatalog() {
     CatalogService.method.getCatalog,
     { refetch: false },
   );
-  const markDescendantsStale = useMarkDescendantsStale([
-    SchemaService,
-    ...SCHEMA_OBJECT_SERVICES,
-  ]);
+  const markDescendantsStale = useMarkDescendantsStale(CATALOG_DESCENDANTS);
   return useMutation(CatalogService.method.updateCatalog, {
     onSuccess: (_response, request) => {
       invalidateList();
@@ -92,10 +91,12 @@ export function useDeleteCatalog() {
     CatalogService.method.getCatalog,
     { refetch: false },
   );
+  const markDescendantsStale = useMarkDescendantsStale(CATALOG_DESCENDANTS);
   return useMutation(CatalogService.method.deleteCatalog, {
     onSuccess: () => {
       invalidateList();
       markDetailStale();
+      markDescendantsStale();
     },
   });
 }

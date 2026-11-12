@@ -111,6 +111,15 @@ export function splitFullName(fullName: string): [string, string, string] {
   return [first, second, third];
 }
 
+// objectFullName joins a schema-object reference into its dotted full name.
+export function objectFullName(ref?: {
+  catalogName?: string;
+  schemaName?: string;
+  name?: string;
+}): string {
+  return [ref?.catalogName, ref?.schemaName, ref?.name].join(".");
+}
+
 export function formatTimestamp(value?: Timestamp): string {
   if (!value) return "—";
   return new Date(

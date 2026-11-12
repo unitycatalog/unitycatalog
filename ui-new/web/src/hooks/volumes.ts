@@ -7,8 +7,9 @@ import {
 } from "@connectrpc/connect-query";
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { VolumeService } from "@/gen/uc/v1/volume_pb";
-import { splitFullName } from "@/lib/uc";
+import { objectFullName, splitFullName } from "@/lib/uc";
 import { collectAllPages, useInvalidateMethod } from "@/hooks/query";
+import { useMarkPermissionsStale } from "@/hooks/permissions";
 
 export function useListVolumes(
   catalogName: string,
@@ -63,11 +64,19 @@ export function useUpdateVolume() {
   const markDetailStale = useInvalidateMethod(VolumeService.method.getVolume, {
     refetch: false,
   });
+  const markPermissionsStale = useMarkPermissionsStale();
   return useMutation(VolumeService.method.updateVolume, {
     onSuccess: (_response, request) => {
       invalidateList();
-      if (request.newName) markDetailStale();
-      else invalidateDetail();
+      if (request.newName) {
+        markDetailStale();
+        markPermissionsStale({
+          type: "volume",
+          fullName: objectFullName(request.volume),
+        });
+      } else {
+        invalidateDetail();
+      }
     },
   });
 }
@@ -77,10 +86,15 @@ export function useDeleteVolume() {
   const markDetailStale = useInvalidateMethod(VolumeService.method.getVolume, {
     refetch: false,
   });
+  const markPermissionsStale = useMarkPermissionsStale();
   return useMutation(VolumeService.method.deleteVolume, {
-    onSuccess: () => {
+    onSuccess: (_response, request) => {
       invalidateList();
       markDetailStale();
+      markPermissionsStale({
+        type: "volume",
+        fullName: objectFullName(request.volume),
+      });
     },
   });
 }

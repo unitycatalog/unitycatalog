@@ -7,12 +7,13 @@ import {
 } from "@connectrpc/connect-query";
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { ModelService } from "@/gen/uc/v1/model_pb";
-import { splitFullName } from "@/lib/uc";
+import { objectFullName, splitFullName } from "@/lib/uc";
 import {
   collectAllPages,
   useInvalidateMethod,
   useMarkDescendantsStale,
 } from "@/hooks/query";
+import { useMarkPermissionsStale } from "@/hooks/permissions";
 
 export function useListModels(
   catalogName: string,
@@ -152,10 +153,15 @@ export function useDeleteModel() {
     ModelService.method.getRegisteredModel,
     { refetch: false },
   );
+  const markPermissionsStale = useMarkPermissionsStale();
   return useMutation(ModelService.method.deleteRegisteredModel, {
-    onSuccess: () => {
+    onSuccess: (_response, request) => {
       invalidateList();
       markDetailStale();
+      markPermissionsStale({
+        type: "registered_model",
+        fullName: objectFullName(request.model),
+      });
     },
   });
 }

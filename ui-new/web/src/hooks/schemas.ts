@@ -96,10 +96,12 @@ export function useDeleteSchema() {
   const markDetailStale = useInvalidateMethod(SchemaService.method.getSchema, {
     refetch: false,
   });
+  const markDescendantsStale = useMarkDescendantsStale(SCHEMA_OBJECT_SERVICES);
   return useMutation(SchemaService.method.deleteSchema, {
     onSuccess: () => {
       invalidateList();
       markDetailStale();
+      markDescendantsStale();
     },
   });
 }

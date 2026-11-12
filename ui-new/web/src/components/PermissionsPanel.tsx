@@ -1,5 +1,4 @@
-import { useUcQuery } from "@/lib/ucQuery";
-import { UC_API_PREFIX } from "@/lib/uc";
+import { usePermissions, type SecurableType } from "@/hooks/permissions";
 import { QueryState } from "@/components/QueryState";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -11,17 +10,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-type PrivilegeAssignment = { principal: string; privileges: string[] };
-type PermissionsResponse = { privilege_assignments?: PrivilegeAssignment[] };
-
-export type SecurableType =
-  | "catalog"
-  | "schema"
-  | "table"
-  | "volume"
-  | "function"
-  | "registered_model";
-
 // PermissionsPanel lists the privilege assignments (principal -> privileges) on
 // a securable via GET /permissions/{type}/{full_name}. It is read-only for this
 // milestone (granting/revoking is deferred).
@@ -32,11 +20,7 @@ export default function PermissionsPanel({
   securableType: SecurableType;
   fullName: string;
 }) {
-  const q = useUcQuery<PermissionsResponse>(
-    "GET",
-    `${UC_API_PREFIX}/permissions/${securableType}/${encodeURIComponent(fullName)}`,
-    { queryOptions: { enabled: !!fullName } },
-  );
+  const q = usePermissions(securableType, fullName);
 
   return (
     <QueryState isLoading={q.isLoading} error={q.error}>

@@ -40,8 +40,10 @@ import {
   useUpdateModelVersion,
 } from "@/hooks/models";
 import { useCreateView, useDeleteView } from "@/hooks/views";
+import { usePermissions, type SecurableType } from "@/hooks/permissions";
 import {
   makeQueryClient,
+  makeTransport,
   renderHookWithProviders,
   type UcHandler,
 } from "@/test/providers";
@@ -54,6 +56,7 @@ type CatalogHooks = {
 
 function useDetailHooks() {
   return {
+    deleteCatalog: useDeleteCatalog(),
     updateSchema: useUpdateSchema(),
     deleteSchema: useDeleteSchema(),
     deleteTable: useDeleteTable(),
@@ -487,6 +490,95 @@ describe("domain mutation hooks", () => {
         expect(isStale(methodKey(method)), method.name).toBe(false);
       }
       expect(isStale(grants)).toBe(false);
+    },
+  );
+
+  it.each([
+    {
+      name: "deleteCatalog",
+      type: "catalog",
+      fullName: "main",
+      run: (h: DetailHooks) =>
+        h.deleteCatalog.mutateAsync({ catalog: { name: "main" }, force: true }),
+    },
+    {
+      name: "deleteSchema",
+      type: "schema",
+      fullName: "main.default",
+      run: (h: DetailHooks) =>
+        h.deleteSchema.mutateAsync({
+          schema: { catalogName: "main", name: "default" },
+        }),
+    },
+    {
+      name: "deleteTable",
+      type: "table",
+      run: (h: DetailHooks) => h.deleteTable.mutateAsync({ table: object }),
+    },
+    {
+      name: "deleteView",
+      type: "table",
+      run: (h: DetailHooks) => h.deleteView.mutateAsync({ view: object }),
+    },
+    {
+      name: "deleteVolume",
+      type: "volume",
+      run: (h: DetailHooks) => h.deleteVolume.mutateAsync({ volume: object }),
+    },
+    {
+      name: "renaming a volume",
+      type: "volume",
+      run: (h: DetailHooks) =>
+        h.updateVolume.mutateAsync({ volume: object, newName: "renamed" }),
+    },
+    {
+      name: "deleteFunction",
+      type: "function",
+      run: (h: DetailHooks) =>
+        h.deleteFunction.mutateAsync({ function: object }),
+    },
+    {
+      name: "deleteModel",
+      type: "registered_model",
+      run: (h: DetailHooks) => h.deleteModel.mutateAsync({ model: object }),
+    },
+  ] satisfies {
+    name: string;
+    type: SecurableType;
+    fullName?: string;
+    run: (hooks: DetailHooks) => Promise<unknown>;
+  }[])(
+    "$name reloads the old name's permissions on the next visit",
+    async ({ type, fullName = "main.default.obj", run }) => {
+      let reads = 0;
+      const handler: UcHandler = ({ path }) => {
+        if (path === `/api/2.1/unity-catalog/permissions/${type}/${fullName}`) {
+          reads += 1;
+        }
+        return { httpStatus: 200, ok: true, body: "{}" };
+      };
+      // One client and transport for every render, so the cache key matches.
+      const opts = {
+        client: makeQueryClient(),
+        transport: makeTransport(handler),
+      };
+      const visitPermissions = async () => {
+        const { result, unmount } = renderHookWithProviders(
+          () => usePermissions(type, fullName),
+          opts,
+        );
+        await waitFor(() => expect(result.current.isSuccess).toBe(true));
+        unmount();
+      };
+
+      await visitPermissions();
+      const { result } = renderHookWithProviders(useDetailHooks, opts);
+      await act(async () => {
+        await run(result.current);
+      });
+      await visitPermissions();
+
+      expect(reads).toBe(2);
     },
   );
 });

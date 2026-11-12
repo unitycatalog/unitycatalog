@@ -7,8 +7,9 @@ import {
 } from "@connectrpc/connect-query";
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { TableService } from "@/gen/uc/v1/table_pb";
-import { splitFullName } from "@/lib/uc";
+import { objectFullName, splitFullName } from "@/lib/uc";
 import { collectAllPages, useInvalidateMethod } from "@/hooks/query";
+import { useMarkPermissionsStale } from "@/hooks/permissions";
 
 export function useListTables(
   catalogName: string,
@@ -62,10 +63,15 @@ export function useDeleteTable() {
   const markDetailStale = useInvalidateMethod(TableService.method.getTable, {
     refetch: false,
   });
+  const markPermissionsStale = useMarkPermissionsStale();
   return useMutation(TableService.method.deleteTable, {
-    onSuccess: () => {
+    onSuccess: (_response, request) => {
       invalidateList();
       markDetailStale();
+      markPermissionsStale({
+        type: "table",
+        fullName: objectFullName(request.table),
+      });
     },
   });
 }

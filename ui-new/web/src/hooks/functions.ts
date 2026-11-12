@@ -7,8 +7,9 @@ import {
 } from "@connectrpc/connect-query";
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { FunctionService } from "@/gen/uc/v1/function_pb";
-import { splitFullName } from "@/lib/uc";
+import { objectFullName, splitFullName } from "@/lib/uc";
 import { collectAllPages, useInvalidateMethod } from "@/hooks/query";
+import { useMarkPermissionsStale } from "@/hooks/permissions";
 
 export function useListFunctions(
   catalogName: string,
@@ -67,10 +68,15 @@ export function useDeleteFunction() {
     FunctionService.method.getFunction,
     { refetch: false },
   );
+  const markPermissionsStale = useMarkPermissionsStale();
   return useMutation(FunctionService.method.deleteFunction, {
-    onSuccess: () => {
+    onSuccess: (_response, request) => {
       invalidateList();
       markDetailStale();
+      markPermissionsStale({
+        type: "function",
+        fullName: objectFullName(request.function),
+      });
     },
   });
 }
