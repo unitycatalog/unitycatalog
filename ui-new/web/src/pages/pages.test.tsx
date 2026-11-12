@@ -1,8 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Code, ConnectError, createRouterTransport } from "@connectrpc/connect";
+import { ModelService, ModelVersionStatus } from "@/gen/uc/v1/model_pb";
 
 vi.mock("@tanstack/react-router", () => import("@/test/tanstack-router-mock"));
+
+const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+  return { ...actual, toast: { ...actual.toast, error: toastError } };
+});
 
 import { renderWithProviders, type UcHandler } from "@/test/providers";
 import CatalogsList from "@/pages/CatalogsList";
@@ -260,6 +268,44 @@ describe("ModelVersionDetails", () => {
       { handler },
     );
     expect(await screen.findByText("s3://m")).toBeInTheDocument();
+  });
+
+  it("reports a failed finalize and re-enables the button", async () => {
+    const transport = createRouterTransport(({ service }) => {
+      service(ModelService, {
+        getModelVersion: () => ({
+          modelVersion: {
+            version: 1n,
+            status: ModelVersionStatus.PENDING_REGISTRATION,
+          },
+        }),
+        finalizeModelVersion: () => {
+          throw new ConnectError(
+            "only the creator can finalize",
+            Code.PermissionDenied,
+          );
+        },
+      });
+    });
+    renderWithProviders(
+      <ModelVersionDetails
+        catalog="main"
+        schema="default"
+        model="mdl"
+        version="1"
+      />,
+      { transport },
+    );
+
+    const finalize = await screen.findByRole("button", { name: "Finalize" });
+    await userEvent.click(finalize);
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "Finalize failed: [permission_denied] only the creator can finalize",
+      ),
+    );
+    expect(finalize).toBeEnabled();
   });
 
   it("rejects invalid version route parameters without crashing", async () => {

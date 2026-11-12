@@ -1,5 +1,6 @@
 import { Box } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
+import { toast } from "sonner";
 import {
   useDeleteModelVersion,
   useFinalizeModelVersion,
@@ -81,7 +82,15 @@ export default function ModelVersionDetails({
                   size="sm"
                   variant="outline"
                   disabled={finalizeVersion.isPending}
-                  onClick={() => finalizeVersion.mutate({ modelVersion })}
+                  onClick={() =>
+                    finalizeVersion.mutate(
+                      { modelVersion },
+                      {
+                        onError: (error) =>
+                          toast.error(`Finalize failed: ${error.message}`),
+                      },
+                    )
+                  }
                 >
                   Finalize
                 </Button>
