@@ -61,15 +61,14 @@ import org.apache.hadoop.fs.FilterFileSystem;
  * wrapper that is never closed releases its lease once the lease is garbage collected. A wrapper
  * obtained through {@link FileSystem#newInstance(URI, Configuration)} is held by Hadoop's cache
  * until it is closed, so only {@code close()} releases it. A delegate is closed once it has been
- * evicted from the cache and every lease on it has been released. A lease stays reachable until
- * each call forwarded through it returns (see {@link ReachabilityFencedFileSystem}), so a call on
- * an open wrapper never sees its delegate closed, even when the caller keeps no reference to the
- * wrapper.
+ * evicted from the cache and every lease on it has been released, so it is not closed while an open
+ * wrapper of it is strongly reachable.
  *
- * <p>Objects that a call returns, such as streams, iterators and builders, come from the delegate
- * and do not hold a lease. One that is still in use after every lease of an evicted scope has been
- * released can find the delegate closed under it, so callers should keep the wrapper reachable
- * until they close those objects.
+ * <p>Nothing else keeps a lease alive. A call still running on a wrapper that the caller no longer
+ * references, as in {@code path.getFileSystem(conf).listStatus(path)}, and the streams, iterators
+ * and builders that a wrapper returns can find an evicted delegate closed under them once the
+ * wrapper has been collected. This is no worse than closing the delegate on eviction regardless of
+ * its users. Fencing in-flight calls and leasing returned objects is tracked in #2191.
  *
  * <p>These guarantees hold for delegates that are not shared outside this cache. For S3, GCS and
  * Azure schemes the delegate is created with Hadoop's own cache disabled. For any other scheme
@@ -149,7 +148,7 @@ public class CredScopedFileSystem extends FilterFileSystem {
    * usual bookkeeping on the wrapper and then close this lease, which releases the reference
    * without closing the delegate.
    */
-  private static final class Lease extends ReachabilityFencedFileSystem {
+  private static final class Lease extends FilterFileSystem {
     private final Cleaner.Cleanable release;
 
     private Lease(SharedFileSystem shared) {

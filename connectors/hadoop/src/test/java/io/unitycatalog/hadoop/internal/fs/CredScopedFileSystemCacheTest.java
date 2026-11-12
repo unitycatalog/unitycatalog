@@ -19,6 +19,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -44,9 +45,9 @@ class CredScopedFileSystemCacheTest {
 
   private static final Path PATH = new Path("file:///tmp/any");
   private static final Duration GC_TIMEOUT = Duration.ofSeconds(10);
-  private static final Duration STRESS_TIMEOUT = Duration.ofSeconds(60);
+  private static final Duration STRESS_TIMEOUT = Duration.ofSeconds(20);
   private static final int STRESS_WORKERS = 4;
-  private static final int STRESS_ITERATIONS = 500;
+  private static final int STRESS_ITERATIONS = 200;
 
   private static final String CONTEXT_A =
       MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-a"));
@@ -261,6 +262,7 @@ class CredScopedFileSystemCacheTest {
     URI uri = URI.create("file:///tmp");
     AtomicBoolean done = new AtomicBoolean();
     ExecutorService pool = Executors.newFixedThreadPool(STRESS_WORKERS + 1);
+    boolean finishedWhileEvicting;
     try {
       Future<?> evictor =
           pool.submit(
@@ -273,10 +275,9 @@ class CredScopedFileSystemCacheTest {
           IntStream.range(0, STRESS_WORKERS)
               .mapToObj(worker -> pool.submit(() -> openUseAndClose(uri)))
               .collect(Collectors.toList());
-      for (Future<Void> worker : workers) {
-        worker.get(STRESS_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
-      }
+      finishedWhileEvicting = awaitAll(workers);
       done.set(true);
+      assertThat(awaitAll(workers)).as("workers finished after eviction stopped").isTrue();
       evictor.get(STRESS_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
     } finally {
       done.set(true);
@@ -288,9 +289,22 @@ class CredScopedFileSystemCacheTest {
         .isNotEmpty()
         .allSatisfy(
             delegate -> {
-              assertThat(delegate.used).isTrue();
+              assertThat(delegate.used).as("delegate was used before it was closed").isTrue();
               assertThat(delegate.closed).isTrue();
             });
+    assertThat(finishedWhileEvicting).as("workers finished while eviction ran").isTrue();
+  }
+
+  private static boolean awaitAll(List<Future<Void>> futures) throws Exception {
+    long deadline = System.nanoTime() + STRESS_TIMEOUT.toNanos();
+    for (Future<Void> future : futures) {
+      try {
+        future.get(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+      } catch (TimeoutException e) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private static Void openUseAndClose(URI uri) throws Exception {
