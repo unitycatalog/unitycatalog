@@ -727,6 +727,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
                 .status())
         .isEqualTo(HttpStatus.OK);
     // A PUT doesn't store a new email.
+    // TODO(#PR3): PR 3 lets a PUT change the email; flip this assertion when it merges.
     assertThat(users.getUser(oktaUserId).getEmail()).isEqualTo("test.user@okta.local");
 
     // A PUT or a PATCH on the admin's user is not found for Okta, whatever the body.
