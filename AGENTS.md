@@ -150,7 +150,7 @@ Conventions:
   - is a new Flyway step for each database under `server/src/main/resources/db/migration/{h2,postgresql,mysql}/`, numbered after the last one; never edit a merged step or its effect file;
   - is checked for step order against the PR's base by `dev/check-migration-steps.sh`, so two open PRs can each pass with steps out of order: just before a PR that adds a step merges, rebase it or merge main into it so its step is numbered above every merged one (or turn on the branch protection "Require branches to be up to date before merging"); a release branch (`branch-*`) takes no new steps, so add them on main;
   - holds one SQL statement per step; `MigrationStepRulesTest` (run with `UC_TEST_MIGRATION_CHECKS=true`) holds the rules for what a step may change (adding a Java enum constant is not supported yet on PostgreSQL, where it means replacing a CHECK constraint);
-  - comes with an effect file per database, `server/src/main/resources/schema-effects/{h2,postgresql,mysql}/V<n>.txt`, written by `build/sbt updateSchemaDumps` (PostgreSQL and MySQL need Docker); check it in with the step;
+  - comes with an effect file per database, `server/src/main/resources/schema-effects/{h2,postgresql,mysql}/V<n>.txt`, written by `build/sbt updateSchemaDumps` (PostgreSQL and MySQL need Docker), which only writes them: run the tests with `UC_TEST_MIGRATION_CHECKS=true` afterwards to check them; check it in with the step;
   - matches the entities: `BaselineMatchesEntitiesTest` (also run with `UC_TEST_MIGRATION_CHECKS=true`) compares the schema the steps build with the one Hibernate builds from the entities.
 - **Enforce invariants at the database level** (unique constraints) rather than only in code, where duplicate creation or races are possible.
 
