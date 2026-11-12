@@ -2201,4 +2201,37 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         Files.readString(source).replace("file:/tmp/uniform_iceberg_table", tableLocation);
     return Files.writeString(metadataFile, metadata);
   }
+
+  /** A property update that waits for a concurrent rename of the namespace misses it. */
+  @Test
+  public void namespacePropertyUpdateRacingARenameIsNotFound() throws Exception {
+    catalogOperations.createCatalog(new CreateCatalog().name(TestUtils.CATALOG_NAME));
+    UUID schemaId =
+        UUID.fromString(
+            schemaOperations
+                .createSchema(
+                    new CreateSchema()
+                        .catalogName(TestUtils.CATALOG_NAME)
+                        .name(TestUtils.SCHEMA_NAME)
+                        .properties(Map.of("a", "1")))
+                .getSchemaId());
+    String renamed = TestUtils.SCHEMA_NAME + "_renamed";
+
+    TestUtils.assertIcebergApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> setColumn(held, SchemaInfoDAO.class, schemaId, "name", renamed),
+                () ->
+                    icebergClient.updateNamespaceProperties(
+                        TestUtils.CATALOG_NAME,
+                        TestUtils.SCHEMA_NAME,
+                        UpdateNamespacePropertiesRequest.builder().update("c", "3").build())),
+        404,
+        NoSuchNamespaceException.class,
+        "Schema not found");
+
+    assertThat(icebergClient.loadNamespace(TestUtils.CATALOG_NAME, renamed).properties())
+        .containsEntry("a", "1")
+        .doesNotContainKey("c");
+  }
 }
