@@ -166,7 +166,7 @@ On a person's first call with an IdP access token, the server finds their user r
 links the row to the IdP identity in the token (the issuer plus the claim named by `subject-claim`). From then on it
 recognizes the person by that identity and not by email. An IdP-owned row links only through its own IdP. The server
 never links a disabled row. When the IdP reactivates a user, the server clears the link, and the next sign-in links
-the row again by email, with a token issued after the reactivation. See [External authentication
+the row again by email, with a token issued at or after the reactivation. See [External authentication
 mode](auth.md#external-authentication-mode) for the full rules.
 
 A person who signs in through a configured IdP but has no user row gets one, owned by that IdP. The new user has no
