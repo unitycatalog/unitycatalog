@@ -334,7 +334,7 @@ public class Scim2GroupService implements ScimService {
     } catch (BaseException e) {
       ScimException scimException =
           switch (e.getErrorCode()) {
-            case ALREADY_EXISTS -> new ResourceConflictException(e.getMessage());
+            case ALREADY_EXISTS -> ResourceConflictException.uniqueness(e.getMessage());
             case NOT_FOUND -> new ResourceNotFoundException(e.getMessage());
             default ->
                 e.getErrorCode().getHttpStatus().isServerError()
