@@ -67,6 +67,7 @@ class UnityCatalogServerShutdownTest {
               .port(port)
               .serverProperties(serverProperties)
               .hibernateConfigurator(hibernateConfigurator)
+              .configurationFolder(tempDir.resolve("conf"))
               .credentialOperations(
                   new WedgedCredentialVendor(serverProperties, entered, release, interrupted))
               .build();
