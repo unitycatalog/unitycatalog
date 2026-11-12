@@ -158,7 +158,7 @@ public class Scim2GroupService implements ScimService {
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public GroupResource patchGroup(@Param("id") String id, PatchRequest patchRequest) {
-    if (patchRequest.getOperations() == null || patchRequest.getOperations().isEmpty()) {
+    if (patchRequest.getOperations().isEmpty()) {
       throw new Scim2RuntimeException(new BadRequestException("PATCH has no operations."));
     }
     // Every operation is checked before any is applied.
