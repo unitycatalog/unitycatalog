@@ -29,7 +29,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import lombok.SneakyThrows;
@@ -453,13 +452,10 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
                       "PATCH",
                       GROUPS_PATH + "/" + id,
                       patchBody(op("add", "members", memberValues(userId)))));
-      // Without the lock the add finishes at once, before the delete commits. The hold stays
-      // short, as H2 gives up on a lock it waits for too long.
-      try {
-        add.get(500, TimeUnit.MILLISECONDS);
-      } catch (TimeoutException e) {
-        // The add is waiting for the delete, as it should.
-      }
+      // Without the lock the add finishes at once, before the delete commits; with it, the add
+      // is blocked on the delete until this waits it out. Held no longer than needed, as H2 gives
+      // up on a lock it waits for too long.
+      awaitWaitingOrDone(add, 1);
       tx.commit();
 
       HttpResponse<String> response = add.get(30, TimeUnit.SECONDS);
