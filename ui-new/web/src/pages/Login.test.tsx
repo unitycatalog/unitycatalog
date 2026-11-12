@@ -76,6 +76,7 @@ describe("Login", () => {
     appConfig.current = { oktaEnabled: true, keycloakEnabled: true };
     renderLogin();
     expect(screen.getByText(/Okta sign-in is enabled/)).toBeInTheDocument();
+    expect(screen.getByText(/OKTA_ISSUER and OKTA_CLIENT_ID/)).toBeInTheDocument();
     expect(screen.getByText(/Keycloak sign-in is enabled/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Sign in with Okta/ })).not.toBeInTheDocument();
   });
