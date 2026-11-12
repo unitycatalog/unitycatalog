@@ -68,17 +68,11 @@ bin/uc-admin-token --scim-principal okta-scim --idp okta --lifetime P90D
 file, so stop the server before you run it, then start it again. H2 is meant for development only. See
 [Give an identity provider a SCIM token](auth.md#give-an-identity-provider-a-scim-token) for the other conditions.
 
-What the SCIM token can and cannot do:
-
-- It works only under `/api/1.0/unity-control/scim2/`. Every other endpoint refuses it with `403`.
-- The principal cannot sign in. The server refuses to issue or accept a sign-in token for a user that is marked as an
-  IdP's SCIM principal.
-- To pause the IdP, disable the user. Its tokens stop working on the next request, and enabling the user again
-  restores them.
 <!-- TODO(PR 3): a delete must remove the user row, so that a user created again with the same email gets a new id
 and the old SCIM tokens stay invalid. Today a delete only disables the user. -->
-- To revoke the tokens for good, delete the user. Creating a user with the same email later gets a new id, and the old
-  tokens stay invalid.
+To pause the IdP, disable its principal. To revoke its tokens for good, delete it (a user created again with the same
+email gets a new id). See [Give an identity provider a SCIM token](auth.md#give-an-identity-provider-a-scim-token) for
+what the token can reach.
 
 Treat the token like a password. Anyone who holds it can create and change the users and groups that the IdP owns.
 
