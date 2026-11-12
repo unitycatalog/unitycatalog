@@ -71,7 +71,7 @@ export default function Login() {
   }, [currentUser]);
 
   const googleClientId = appConfig?.googleClientId ?? "";
-  const anyProvider = googleClientId || okta || appConfig?.oktaEnabled || appConfig?.keycloakEnabled;
+  const anyProvider = googleClientId || appConfig?.oktaEnabled || appConfig?.keycloakEnabled;
 
   return (
     <div className="flex min-h-full items-center justify-center bg-neutral-900 p-6">
