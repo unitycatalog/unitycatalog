@@ -501,11 +501,9 @@ bin/uc-admin-token --scim-principal okta-scim --idp okta --lifetime P90D
 - The token is accepted only under `/api/1.0/unity-control/scim2/`, where it can manage users as the metastore owner
   can, except identity provider principals: it gets 403 when it updates, deactivates or deletes one, its own included.
   Only the admin manages those. Elsewhere it gets 403.
-- It also gets 403 when it changes the `externalId` of an existing user, since token exchange signs in an OAuth client
-  as the user with that `externalId`. An update that sends the stored `externalId` again, or none, is accepted.
-- It also gets 403 when it changes the email of an existing user, since token exchange signs in a user by email. The
-  match is exact, so a change of case is refused too. An update that sends the stored email again as the primary email,
-  or sends no emails, is accepted.
+- It also gets 403 when it changes the `externalId` or email of an existing user, since token exchange signs in by both.
+  An update that sends the stored values again, or omits them, is accepted. The email match is exact, so a change of
+  case is refused too.
 - `bin/uc-admin-token` opens the server's database from `etc/conf/hibernate.properties`, as
   `bin/start-uc-server --upgrade-schema` does, and marks the user as the identity provider's principal. That user can no
   longer sign in, and can't be marked for another identity provider. It refuses the `admin` user.
