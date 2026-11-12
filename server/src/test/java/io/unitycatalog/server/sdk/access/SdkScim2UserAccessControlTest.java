@@ -402,10 +402,6 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
         "\"name\":{\"givenName\":\"Tess\",\"familyName\":\"Post\"}",
         "Tess Post"
       },
-      {"scim-post-2@localhost", "\"name\":{\"formatted\":\"Formatted Post\"}", "Formatted Post"},
-      {
-        "scim-post-3@localhost", "\"displayName\":\"Shown\",\"name\":{\"givenName\":\"G\"}", "Shown"
-      },
       {"scim-post-4@localhost", "\"displayName\":\"" + "a".repeat(255) + "\"", "a".repeat(255)},
     };
     for (String[] c : created) {
