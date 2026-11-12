@@ -1,7 +1,6 @@
 import { ChartNoAxesCombined } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useDeleteView, useGetView } from "@/hooks/views";
-import { ColumnTypeName } from "@/gen/uc/v1/common_pb";
 import { formatTimestamp } from "@/lib/uc";
 import EntityHeader from "@/components/EntityHeader";
 import { QueryState } from "@/components/QueryState";
@@ -10,6 +9,7 @@ import MetaGrid from "@/components/MetaGrid";
 import PermissionsPanel from "@/components/PermissionsPanel";
 import PropertiesCard from "@/components/PropertiesCard";
 import OwnerDeleteAction from "@/components/OwnerDeleteAction";
+import ColumnsTable from "@/components/ColumnsTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -65,32 +65,7 @@ export default function MetricViewDetails({
 
             <TabsContent value="overview" className="space-y-4">
               <DescriptionCard comment={data?.comment} />
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">
-                    Columns ({data?.columns.length ?? 0})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {(data?.columns ?? []).length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No columns.</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {(data?.columns ?? []).map((column) => (
-                        <li
-                          key={column.name}
-                          className="flex justify-between rounded-md border p-2 text-sm"
-                        >
-                          <span className="font-medium">{column.name}</span>
-                          <span className="font-mono text-muted-foreground">
-                            {column.typeText || ColumnTypeName[column.typeName]}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
+              <ColumnsTable columns={data?.columns ?? []} />
               {data?.viewDefinition && (
                 <Card>
                   <CardHeader>

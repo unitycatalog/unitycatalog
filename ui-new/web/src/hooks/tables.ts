@@ -7,6 +7,7 @@ import {
 } from "@connectrpc/connect-query";
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { TableService } from "@/gen/uc/v1/table_pb";
+import { splitFullName } from "@/lib/uc";
 import { collectAllPages, useInvalidateMethod } from "@/hooks/query";
 
 export function useListTables(
@@ -38,7 +39,7 @@ export function useListTables(
 }
 
 export function useGetTable(fullName: string) {
-  const [catalogName = "", schemaName = "", name = ""] = fullName.split(".");
+  const [catalogName, schemaName, name] = splitFullName(fullName);
   return useQuery(
     TableService.method.getTable,
     { table: { catalogName, schemaName, name } },

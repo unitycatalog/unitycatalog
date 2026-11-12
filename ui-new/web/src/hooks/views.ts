@@ -7,6 +7,7 @@ import {
 } from "@connectrpc/connect-query";
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { ViewService } from "@/gen/uc/v1/view_pb";
+import { splitFullName } from "@/lib/uc";
 import { collectAllPages, useInvalidateMethod } from "@/hooks/query";
 
 export function useListViews(
@@ -38,7 +39,7 @@ export function useListViews(
 }
 
 export function useGetView(fullName: string) {
-  const [catalogName = "", schemaName = "", name = ""] = fullName.split(".");
+  const [catalogName, schemaName, name] = splitFullName(fullName);
   return useQuery(
     ViewService.method.getView,
     { view: { catalogName, schemaName, name } },

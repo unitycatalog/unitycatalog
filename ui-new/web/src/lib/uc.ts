@@ -103,13 +103,12 @@ export function prettyJson(raw: string): string {
   }
 }
 
-// formatEpoch renders a UC millisecond epoch (number or numeric string) as a
-// locale date/time, or an em dash when absent/invalid.
-export function formatEpoch(ms?: number | string | null): string {
-  if (ms === undefined || ms === null || ms === "") return "—";
-  const n = typeof ms === "string" ? Number(ms) : ms;
-  if (!Number.isFinite(n) || n <= 0) return "—";
-  return new Date(n).toLocaleString();
+// splitFullName splits a dotted UC full name (catalog.schema.object) into its
+// parts. UC names cannot contain ".", and a missing part is "" so a partial
+// route parameter leaves the dependent query disabled.
+export function splitFullName(fullName: string): [string, string, string] {
+  const [first = "", second = "", third = ""] = fullName.split(".");
+  return [first, second, third];
 }
 
 export function formatTimestamp(value?: Timestamp): string {

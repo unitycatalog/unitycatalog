@@ -7,6 +7,7 @@ import {
 } from "@connectrpc/connect-query";
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { SchemaService } from "@/gen/uc/v1/schema_pb";
+import { splitFullName } from "@/lib/uc";
 import { collectAllPages, useInvalidateMethod } from "@/hooks/query";
 
 export function useListSchemas(catalogName: string, enabled = true) {
@@ -34,7 +35,7 @@ export function useListSchemas(catalogName: string, enabled = true) {
 }
 
 export function useGetSchema(fullName: string) {
-  const [catalogName = "", name = ""] = fullName.split(".");
+  const [catalogName, name] = splitFullName(fullName);
   return useQuery(
     SchemaService.method.getSchema,
     { schema: { catalogName, name } },

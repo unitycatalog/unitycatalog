@@ -7,6 +7,7 @@ import {
 } from "@connectrpc/connect-query";
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { ModelService } from "@/gen/uc/v1/model_pb";
+import { splitFullName } from "@/lib/uc";
 import { collectAllPages, useInvalidateMethod } from "@/hooks/query";
 
 export function useListModels(
@@ -38,7 +39,7 @@ export function useListModels(
 }
 
 export function useGetModel(fullName: string) {
-  const [catalogName = "", schemaName = "", name = ""] = fullName.split(".");
+  const [catalogName, schemaName, name] = splitFullName(fullName);
   return useQuery(
     ModelService.method.getRegisteredModel,
     { model: { catalogName, schemaName, name } },
@@ -50,7 +51,7 @@ export function useGetModel(fullName: string) {
 }
 
 export function useListModelVersions(fullName: string) {
-  const [catalogName = "", schemaName = "", name = ""] = fullName.split(".");
+  const [catalogName, schemaName, name] = splitFullName(fullName);
   const transport = useTransport();
   const client = createClient(ModelService, transport);
   const input = { model: { catalogName, schemaName, name } };
@@ -75,7 +76,7 @@ export function useListModelVersions(fullName: string) {
 }
 
 export function useGetModelVersion(fullName: string, version: number | string) {
-  const [catalogName = "", schemaName = "", name = ""] = fullName.split(".");
+  const [catalogName, schemaName, name] = splitFullName(fullName);
   const parsedVersion = parseModelVersion(version);
   return useQuery(
     ModelService.method.getModelVersion,

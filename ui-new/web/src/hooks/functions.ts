@@ -7,6 +7,7 @@ import {
 } from "@connectrpc/connect-query";
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { FunctionService } from "@/gen/uc/v1/function_pb";
+import { splitFullName } from "@/lib/uc";
 import { collectAllPages, useInvalidateMethod } from "@/hooks/query";
 
 export function useListFunctions(
@@ -38,7 +39,7 @@ export function useListFunctions(
 }
 
 export function useGetFunction(fullName: string) {
-  const [catalogName = "", schemaName = "", name = ""] = fullName.split(".");
+  const [catalogName, schemaName, name] = splitFullName(fullName);
   return useQuery(
     FunctionService.method.getFunction,
     { function: { catalogName, schemaName, name } },

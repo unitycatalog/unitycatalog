@@ -7,6 +7,7 @@ import {
 } from "@connectrpc/connect-query";
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { VolumeService } from "@/gen/uc/v1/volume_pb";
+import { splitFullName } from "@/lib/uc";
 import { collectAllPages, useInvalidateMethod } from "@/hooks/query";
 
 export function useListVolumes(
@@ -38,7 +39,7 @@ export function useListVolumes(
 }
 
 export function useGetVolume(fullName: string) {
-  const [catalogName = "", schemaName = "", name = ""] = fullName.split(".");
+  const [catalogName, schemaName, name] = splitFullName(fullName);
   return useQuery(
     VolumeService.method.getVolume,
     { volume: { catalogName, schemaName, name } },

@@ -6,8 +6,8 @@ vi.mock("@/lib/transport", () => ({
 
 import { proxyClient } from "@/lib/transport";
 import {
-  formatEpoch,
   prettyJson,
+  splitFullName,
   ucCall,
   ucJson,
   UCError,
@@ -101,12 +101,14 @@ describe("helpers", () => {
     });
   });
 
-  it("formatEpoch renders dates and an em dash for missing/invalid", () => {
-    expect(formatEpoch(0)).toBe("—");
-    expect(formatEpoch(undefined)).toBe("—");
-    expect(formatEpoch("")).toBe("—");
-    expect(formatEpoch("not-a-number")).toBe("—");
-    expect(formatEpoch(1_700_000_000_000)).not.toBe("—");
+  it("splitFullName returns every part, with empty strings for missing ones", () => {
+    expect(splitFullName("main.default.events")).toEqual([
+      "main",
+      "default",
+      "events",
+    ]);
+    expect(splitFullName("main.default")).toEqual(["main", "default", ""]);
+    expect(splitFullName("")).toEqual(["", "", ""]);
   });
 
   it("prettyJson pretty-prints valid JSON and passes through invalid", () => {
