@@ -497,6 +497,68 @@ def test_create_python_function_not_callable(client: DatabricksFunctionClient):
         client.create_python_function(func=scalar, catalog=CATALOG, schema=SCHEMA)
 
 
+async def async_concat(a: int, b: str) -> str:
+    """
+    Concatenates an integer and a string.
+
+    Args:
+        a: An integer.
+        b: A string.
+    """
+    return f"{a}{b}"
+
+
+async def async_suffix(b: str) -> str:
+    return f"{b}!"
+
+
+def concat_with_suffix(a: int, b: str) -> str:
+    """
+    Concatenates an integer and a suffixed string.
+
+    Args:
+        a: An integer.
+        b: A string.
+    """
+    return f"{a}{async_suffix(b)}"
+
+
+ASYNC_FUNCTION_ERROR = (
+    "Function '{}' is an async function. Async functions are not supported in Unity Catalog. "
+    "Define it with a regular 'def' instead of 'async def'."
+)
+
+
+def test_create_python_function_rejects_async_function(client: DatabricksFunctionClient):
+    client.create_function = MagicMock()
+
+    with pytest.raises(ValueError, match=re.escape(ASYNC_FUNCTION_ERROR.format("async_concat"))):
+        client.create_python_function(func=async_concat, catalog=CATALOG, schema=SCHEMA)
+
+    client.create_function.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("primary_func", "functions", "async_name"),
+    [
+        (async_concat, [], "async_concat"),
+        (concat_with_suffix, [async_suffix], "async_suffix"),
+    ],
+    ids=["async_primary", "async_helper"],
+)
+def test_create_wrapped_function_rejects_async_function(
+    client: DatabricksFunctionClient, primary_func, functions, async_name
+):
+    client.create_function = MagicMock()
+
+    with pytest.raises(ValueError, match=re.escape(ASYNC_FUNCTION_ERROR.format(async_name))):
+        client.create_wrapped_function(
+            primary_func=primary_func, functions=functions, catalog=CATALOG, schema=SCHEMA
+        )
+
+    client.create_function.assert_not_called()
+
+
 def test_function_with_invalid_list_return_type(client: DatabricksFunctionClient):
     def func_with_invalid_list_return(a: int) -> List:
         """A function returning a list without specifying the element type."""

@@ -1,5 +1,7 @@
+import asyncio
 import datetime
 import decimal
+import functools
 import re
 import textwrap
 import warnings
@@ -2551,3 +2553,73 @@ def test_dependencies_reject_backslash(dependency):
 )
 def test_identifiers_are_quoted_verbatim(identifier, expected):
     assert construct_credentials_statement([identifier]) == f"\nCREDENTIALS ({expected})"
+
+
+async def async_add(a: int, b: int) -> int:
+    """
+    Adds two integers.
+
+    Args:
+        a: The first integer.
+        b: The second integer.
+    """
+    return a + b
+
+
+async def async_count_up(n: int) -> int:
+    """
+    Yields the integers from 0 up to n.
+
+    Args:
+        n: The upper bound.
+    """
+    for i in range(n):
+        yield i
+
+
+def run_sync(async_func):
+    @functools.wraps(async_func)
+    def wrapper(*args, **kwargs):
+        return asyncio.run(async_func(*args, **kwargs))
+
+    return wrapper
+
+
+ASYNC_FUNCTION_ERROR = (
+    "Function '{}' is an async function. Async functions are not supported in Unity Catalog. "
+    "Define it with a regular 'def' instead of 'async def'."
+)
+ASYNC_WRAPPER_ERROR = (
+    "Function '{}' wraps an async function. Async functions are not supported in Unity Catalog. "
+    "Define the wrapped function with a regular 'def' instead of 'async def'."
+)
+
+
+@pytest.mark.parametrize(
+    "generate",
+    [
+        lambda func: generate_sql_function_body(func, "test_catalog", "test_schema"),
+        generate_function_info,
+    ],
+    ids=["generate_sql_function_body", "generate_function_info"],
+)
+@pytest.mark.parametrize(
+    ("func", "expected_error"),
+    [
+        (async_add, ASYNC_FUNCTION_ERROR.format("async_add")),
+        (async_count_up, ASYNC_FUNCTION_ERROR.format("async_count_up")),
+        (run_sync(async_add), ASYNC_WRAPPER_ERROR.format("async_add")),
+    ],
+    ids=["coroutine", "async_generator", "sync_wrapper_of_coroutine"],
+)
+def test_async_function_is_rejected(generate, func, expected_error):
+    with pytest.raises(ValueError, match=re.escape(expected_error)):
+        generate(func)
+
+
+def test_async_function_is_rejected_before_other_validation():
+    async def undocumented(a: int) -> int:
+        return a
+
+    with pytest.raises(ValueError, match=re.escape(ASYNC_FUNCTION_ERROR.format("undocumented"))):
+        generate_function_info(undocumented)

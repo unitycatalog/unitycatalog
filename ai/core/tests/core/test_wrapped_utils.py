@@ -1,3 +1,4 @@
+import re
 import textwrap
 
 import pydantic
@@ -212,3 +213,47 @@ def test_generate_wrapped_sql_function_body_with_doc():
     ).strip()
 
     assert wrapped_sql_body_with_doc == expected
+
+
+async def async_int_helper(a: int) -> int:
+    return a + 10
+
+
+async def async_wrap_func(a: int, b: str) -> str:
+    """
+    An async primary function.
+
+    Args:
+        a: An integer.
+        b: A string.
+    """
+    return f"{int_func_no_doc(a)} {str_func_no_doc(b)}"
+
+
+@pytest.mark.parametrize(
+    "generate",
+    [
+        generate_wrapped_function_info,
+        lambda primary_func, functions: generate_wrapped_sql_function_body(
+            primary_func, functions, "test_catalog", "test_schema"
+        ),
+    ],
+    ids=["generate_wrapped_function_info", "generate_wrapped_sql_function_body"],
+)
+@pytest.mark.parametrize(
+    ("primary_func", "functions", "async_name"),
+    [
+        (async_wrap_func, [int_func_no_doc, str_func_no_doc], "async_wrap_func"),
+        (wrap_func_no_doc, [async_int_helper, str_func_no_doc], "async_int_helper"),
+    ],
+    ids=["async_primary", "async_helper"],
+)
+def test_wrapped_async_function_is_rejected(generate, primary_func, functions, async_name):
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            f"Function '{async_name}' is an async function. Async functions are not supported in "
+            "Unity Catalog. Define it with a regular 'def' instead of 'async def'."
+        ),
+    ):
+        generate(primary_func, functions)
