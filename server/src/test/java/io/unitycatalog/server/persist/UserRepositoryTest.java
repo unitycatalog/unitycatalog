@@ -21,14 +21,8 @@ import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.model.UpdateUser;
 import io.unitycatalog.server.testdatabase.TempDatabase;
 import io.unitycatalog.server.testdatabase.TestDatabase;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.BeforeAll;
@@ -105,49 +99,6 @@ class UserRepositoryTest {
   }
 
   @Test
-  void createUserConcurrentDuplicateEmailsCreateOneRow() throws Exception {
-    int threads = 16;
-    ExecutorService executor = Executors.newFixedThreadPool(threads);
-    try {
-      // The race is probabilistic, so repeat it with fresh emails.
-      for (int round = 0; round < 5; round++) {
-        String email = "race-" + round + "@example.com";
-        CountDownLatch start = new CountDownLatch(1);
-        List<Future<ErrorCode>> attempts = new ArrayList<>();
-        for (int i = 0; i < threads; i++) {
-          attempts.add(
-              executor.submit(
-                  () -> {
-                    start.await();
-                    try {
-                      userRepository.createUser(
-                          CreateUser.builder().name("Racer").email(email).build());
-                      return null;
-                    } catch (BaseException e) {
-                      return e.getErrorCode();
-                    }
-                  }));
-        }
-        start.countDown();
-        List<ErrorCode> failures = new ArrayList<>();
-        for (Future<ErrorCode> attempt : attempts) {
-          failures.add(attempt.get());
-        }
-
-        assertThat(userRepository.listUsers(0, 1000, u -> email.equals(u.getEmail())))
-            .as("rows for %s", email)
-            .hasSize(1);
-        assertThat(failures).filteredOn(code -> code != null).hasSize(threads - 1);
-        assertThat(failures)
-            .filteredOn(code -> code != null)
-            .containsOnly(ErrorCode.ALREADY_EXISTS);
-      }
-    } finally {
-      executor.shutdownNow();
-    }
-  }
-
-  @Test
   void updateUserLosingTheEmailRaceIsAlreadyExists() {
     var a =
         userRepository.createUser(
@@ -174,6 +125,16 @@ class UserRepositoryTest {
                 assertThat(e).hasMessageContaining("User already exists: race-b@example.com");
               });
     }
+
+    // Creating a user hits the same race.
+    assertThatThrownBy(
+            () -> racing.createUser(CreateUser.builder().name("Race C").email("race-b@example.com").build()))
+        .isInstanceOf(BaseException.class)
+        .satisfies(
+            e -> {
+              assertThat(((BaseException) e).getErrorCode()).isEqualTo(ErrorCode.ALREADY_EXISTS);
+              assertThat(e).hasMessageContaining("User already exists: race-b@example.com");
+            });
   }
 
   @Test
