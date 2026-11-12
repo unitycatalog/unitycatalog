@@ -155,7 +155,11 @@ public class ErrorCodeTest {
   public void everyApiReportsStorageFailuresAsAGeneralError() throws Exception {
     SdkClientException storage = SdkClientException.create("Connect to storage.example.com failed");
     for (Throwable failure :
-        List.of(storage, new UncheckedIOException(new IOException("read failed", storage)))) {
+        List.of(
+            storage,
+            new UncheckedIOException(new IOException("read failed", storage)),
+            // Would be INVALID_ARGUMENT without the storage failure in its causes.
+            new IllegalArgumentException("bad location", storage))) {
       for (BaseExceptionHandler handler :
           List.of(
               GlobalExceptionHandler.INSTANCE,
