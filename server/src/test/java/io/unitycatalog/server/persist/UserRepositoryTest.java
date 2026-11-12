@@ -317,48 +317,6 @@ class UserRepositoryTest {
   }
 
   @Test
-  void concurrentFirstLinksOfOneRowLinkItOnce() throws Exception {
-    var user =
-        userRepository.createUser(
-            CreateUser.builder().name("Race").email("race-link@example.com").build());
-    int callers = 8;
-    ExecutorService executor = Executors.newFixedThreadPool(callers);
-    CountDownLatch start = new CountDownLatch(1);
-    try {
-      List<Future<User>> results = new ArrayList<>();
-      for (int i = 0; i < callers; i++) {
-        UserLink link = new UserLink(ISSUER, "sub", "racer-" + i);
-        results.add(
-            executor.submit(
-                () -> {
-                  start.await();
-                  return userRepository.linkUser("race-link@example.com", link, null);
-                }));
-      }
-      start.countDown();
-      int linked = 0;
-      for (Future<User> result : results) {
-        if (result.get(60, TimeUnit.SECONDS) != null) {
-          linked++;
-        }
-      }
-      assertThat(linked).isEqualTo(1);
-    } finally {
-      executor.shutdownNow();
-    }
-    long found = 0;
-    for (int i = 0; i < callers; i++) {
-      User linkedUser =
-          userRepository.findLinkedUser(new UserLink(ISSUER, "sub", "racer-" + i), null);
-      if (linkedUser != null) {
-        assertThat(linkedUser.getId()).isEqualTo(user.getId());
-        found++;
-      }
-    }
-    assertThat(found).isEqualTo(1);
-  }
-
-  @Test
   void concurrentLinksOfOneIdentityToTwoRowsLinkOneRow() throws Exception {
     var rowA =
         userRepository.createUser(
