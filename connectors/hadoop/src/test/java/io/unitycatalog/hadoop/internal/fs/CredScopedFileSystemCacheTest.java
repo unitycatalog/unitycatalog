@@ -7,11 +7,14 @@ import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.net.URI;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.junit.jupiter.api.AfterEach;
@@ -27,6 +30,9 @@ import org.junit.jupiter.api.Test;
 class CredScopedFileSystemCacheTest {
 
   private static final Path PATH = new Path("file:///tmp/any");
+  private static final int CACHE_MAX_SIZE =
+      CredScopedFileSystem.CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT;
+  private static final Duration GC_TIMEOUT = Duration.ofSeconds(10);
 
   private static final String CONTEXT_A =
       MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-a"));
@@ -223,11 +229,11 @@ class CredScopedFileSystemCacheTest {
     URI uri = URI.create("file:///tmp");
     CredScopedFileSystem held = init(uri, trackedConf("tid-held"));
 
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < CACHE_MAX_SIZE; i++) {
       init(uri, trackedConf("tid-other-" + i));
     }
 
-    assertThat(CredScopedFileSystem.CACHE.size()).isEqualTo(100);
+    assertThat(CredScopedFileSystem.CACHE.size()).isEqualTo(CACHE_MAX_SIZE);
     assertThat(held.getFileStatus(PATH)).isNotNull();
   }
 
@@ -261,6 +267,47 @@ class CredScopedFileSystemCacheTest {
 
     assertThat(delegate.closed).isFalse();
     assertThat(second.getFileStatus(PATH)).isNotNull();
+  }
+
+  @Test
+  void closingAWrapperFromNewInstanceRemovesItFromHadoopCache() throws Exception {
+    Configuration conf = trackedConf("tid-1");
+    conf.set("fs.s3a.impl", CredScopedFileSystem.class.getName());
+    conf.set("fs.s3a.impl.original", CloseTrackingFileSystem.class.getName());
+    int sizeBefore = hadoopCacheSize();
+
+    FileSystem fs = FileSystem.newInstance(URI.create("s3a://bucket/"), conf);
+    assertThat(fs).isInstanceOf(CredScopedFileSystem.class);
+    assertThat(hadoopCacheSize()).isEqualTo(sizeBefore + 1);
+
+    fs.close();
+    assertThat(hadoopCacheSize()).isEqualTo(sizeBefore);
+  }
+
+  @Test
+  void evictedDelegateIsClosedOnceItsNeverClosedWrapperIsGarbageCollected() throws Exception {
+    CloseTrackingFileSystem delegate = delegateOfDroppedWrapper(trackedConf("tid-gc"));
+    CredScopedFileSystem.clearCacheForTesting();
+    assertThat(delegate.closed).isFalse();
+
+    long deadline = System.nanoTime() + GC_TIMEOUT.toNanos();
+    while (!delegate.closed && System.nanoTime() < deadline) {
+      System.gc();
+      Thread.sleep(50);
+    }
+
+    assertThat(delegate.closed).isTrue();
+  }
+
+  private static CloseTrackingFileSystem delegateOfDroppedWrapper(Configuration conf)
+      throws Exception {
+    return (CloseTrackingFileSystem) init(URI.create("file:///tmp"), conf).getDelegate();
+  }
+
+  private static int hadoopCacheSize() throws Exception {
+    Method cacheSize = FileSystem.class.getDeclaredMethod("cacheSize");
+    cacheSize.setAccessible(true);
+    return (int) cacheSize.invoke(null);
   }
 
   private static Configuration trackedConf(String tableId) {
