@@ -122,9 +122,18 @@ jobs:
         run: |
           for class in MigrationStepRulesTest BaselineMatchesEntitiesTest; do
             report="$(find server/target -name "TEST-io.unitycatalog.server.migrate.$class.xml" | head -n 1)"
-            [ -n "$report" ]
-            grep -qE '<testsuite [^>]* tests="[1-9]' "$report"
-            grep -qE '<testsuite [^>]* skipped="0"' "$report"
+            if [ -z "$report" ]; then
+              echo "::error::$class did not run: no test report"
+              exit 1
+            fi
+            if ! grep -qE '<testsuite[^>]* tests="[1-9]' "$report"; then
+              echo "::error::$class ran no tests"
+              exit 1
+            fi
+            if ! grep -qE '<testsuite[^>]* skipped="0"' "$report"; then
+              echo "::error::$class skipped tests; is UC_TEST_MIGRATION_CHECKS set?"
+              exit 1
+            fi
           done
 
   # Databases already ran the merged schema steps, so a pull request may only add steps, and none
