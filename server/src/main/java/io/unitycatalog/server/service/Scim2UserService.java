@@ -239,10 +239,7 @@ public class Scim2UserService implements ScimService {
     return HttpResponse.of(HttpStatus.OK);
   }
 
-  /**
-   * The single name UC stores for a SCIM user: displayName, else name.formatted, else givenName and
-   * familyName joined by a space. Blank values are skipped; empty if none is left.
-   */
+  /** The single name UC stores for a SCIM user; empty if the request carries none. */
   private static Optional<String> userName(UserResource user) {
     Name name = user.getName();
     String formatted = name == null ? null : name.getFormatted();
