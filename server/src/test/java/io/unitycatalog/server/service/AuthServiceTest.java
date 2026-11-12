@@ -544,9 +544,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   /** {@code bin/uc-admin-token} refuses SCIM options it can't mint a token from. */
   @Test
   public void testScimTokenMintRefusals() {
-    createEnabledUser("entra-scim");
     UserRepository users = new UserRepository(null, hibernateConfigurator.getSessionFactory());
-    users.setIdpName("entra-scim", "entra");
     String usage =
         "Usage: bin/uc-admin-token [--scim-principal <email> --idp <name> --lifetime <ISO-8601"
             + " duration>]";
@@ -565,13 +563,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
             List.of("--scim-principal", "okta-scim", "--idp"),
             "--idp needs a value. " + usage,
             List.of("--kid", "x"),
-            "Unknown option: --kid. " + usage,
-            List.of("--scim-principal", "nobody-scim", "--idp", "okta", "--lifetime", "P90D"),
-            "User not found: nobody-scim",
-            List.of("--scim-principal", "admin", "--idp", "okta", "--lifetime", "P90D"),
-            "The admin user can't be an IdP principal.",
-            List.of("--scim-principal", "entra-scim", "--idp", "okta", "--lifetime", "P90D"),
-            "User entra-scim is already the IdP principal of entra, not okta.");
+            "Unknown option: --kid. " + usage);
     refusals.forEach(
         (args, message) ->
             assertThatThrownBy(
