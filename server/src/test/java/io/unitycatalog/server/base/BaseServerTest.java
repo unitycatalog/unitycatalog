@@ -17,6 +17,7 @@ import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionException;
 import java.util.function.Consumer;
@@ -214,5 +215,11 @@ public abstract class BaseServerTest {
   protected <T> T runBlockedByHeldWrite(Consumer<Session> heldWrite, Callable<T> operation)
       throws Exception {
     return testDatabase.runBlockedByHeldWrite(heldWrite, operation);
+  }
+
+  /** Sets one column of the {@code entity} row {@code id} in {@code session}, for a held write. */
+  protected static void setColumn(
+      Session session, Class<?> entity, UUID id, String attribute, Object value) {
+    TestDatabase.setColumn(session, entity, id, attribute, value);
   }
 }
