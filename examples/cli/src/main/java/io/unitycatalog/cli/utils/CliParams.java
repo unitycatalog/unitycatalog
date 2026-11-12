@@ -85,7 +85,9 @@ public enum CliParams {
       "azure_application_id"),
   AZURE_CLIENT_SECRET(
       "azure_client_secret",
-      "A client secret of the Azure service principal for credential",
+      "A client secret of the Azure service principal for credential. Instead of this flag, which"
+          + " leaves the secret in shell history, set UC_AZURE_CLIENT_SECRET or enter it when"
+          + " prompted",
       "azure_client_secret"),
   GCP_SERVICE_ACCOUNT_KEY_FILE(
       "gcp_service_account_key_file",

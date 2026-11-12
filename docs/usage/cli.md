@@ -71,9 +71,21 @@ bin/uc credential create \
 1. `name`: The name of the Credential.
 2. `azure_directory_id`: The directory (tenant) ID of the service principal.
 3. `azure_application_id`: The application (client) ID of the service principal.
-4. `azure_client_secret`: A client secret of the service principal.
+4. `azure_client_secret`: A client secret of the service principal. Optional, see below.
 
-The three Azure flags must be given together.
+`--azure_directory_id` and `--azure_application_id` must be given together. A secret given with
+`--azure_client_secret` stays in your shell history and is visible to other users in the process
+list, so prefer one of the other two ways. Without the flag, the CLI reads the secret from the
+`UC_AZURE_CLIENT_SECRET` environment variable, or else prompts for it without echoing what you
+type:
+
+```sh
+export UC_AZURE_CLIENT_SECRET=<client_secret>  # for example, set by a secret manager or CI
+bin/uc credential create \
+  --name <name> \
+  --azure_directory_id <directory_id> \
+  --azure_application_id <application_id>
+```
 
 Here's how to create a Credential for Google Cloud Storage from a service account key.
 

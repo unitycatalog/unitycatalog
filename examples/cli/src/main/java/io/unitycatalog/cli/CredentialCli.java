@@ -20,15 +20,19 @@ import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.GcpServiceAccountKeyRequest;
 import io.unitycatalog.client.model.ListCredentialsResponse;
 import io.unitycatalog.client.model.UpdateCredentialRequest;
+import java.io.Console;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
 
 public class CredentialCli {
 
+  private static final String AZURE_CLIENT_SECRET_ENV = "UC_AZURE_CLIENT_SECRET";
   private static ObjectWriter objectWriter;
 
   public static void handle(CommandLine cmd, ApiClient apiClient)
@@ -80,16 +84,53 @@ public class CredentialCli {
     if (params.stream().noneMatch(param -> json.has(param.getServerParam()))) {
       return Optional.empty();
     }
-    if (!params.stream().allMatch(param -> json.has(param.getServerParam()))) {
+    if (!json.has(CliParams.AZURE_DIRECTORY_ID.getServerParam())
+        || !json.has(CliParams.AZURE_APPLICATION_ID.getServerParam())) {
       throw new CliException(
-          "--azure_directory_id, --azure_application_id and --azure_client_secret must be set"
-              + " together.");
+          "An Azure credential needs both --azure_directory_id and --azure_application_id.");
     }
     return Optional.of(
         new AzureServicePrincipalRequest()
             .directoryId(json.getString(CliParams.AZURE_DIRECTORY_ID.getServerParam()))
             .applicationId(json.getString(CliParams.AZURE_APPLICATION_ID.getServerParam()))
-            .clientSecret(json.getString(CliParams.AZURE_CLIENT_SECRET.getServerParam())));
+            .clientSecret(
+                azureClientSecret(
+                    json.optString(CliParams.AZURE_CLIENT_SECRET.getServerParam(), null),
+                    System.getenv(),
+                    CredentialCli::promptForAzureClientSecret)));
+  }
+
+  /**
+   * The client secret from {@code --azure_client_secret}, else from {@code UC_AZURE_CLIENT_SECRET},
+   * else typed at a prompt that does not echo it. The variable and the prompt keep the secret out
+   * of shell history and the process list.
+   *
+   * @param prompt returns the typed secret, or null when there is no terminal to prompt on
+   */
+  public static String azureClientSecret(
+      String flag, Map<String, String> env, Supplier<char[]> prompt) {
+    if (flag != null) {
+      return flag;
+    }
+    // Trailing line breaks are dropped, as for UC_SERVER_CLIENT_SECRET.
+    String fromEnv = env.getOrDefault(AZURE_CLIENT_SECRET_ENV, "").replaceAll("[\\r\\n]+$", "");
+    if (!fromEnv.isEmpty()) {
+      return fromEnv;
+    }
+    char[] typed = prompt.get();
+    if (typed == null) {
+      throw new CliException(
+          "Set the Azure client secret in "
+              + AZURE_CLIENT_SECRET_ENV
+              + " or with --azure_client_secret, or run the command in a terminal to be prompted"
+              + " for it.");
+    }
+    return new String(typed);
+  }
+
+  private static char[] promptForAzureClientSecret() {
+    Console console = System.console();
+    return console == null ? null : console.readPassword("Azure client secret: ");
   }
 
   /** Reads the key from a service account's JSON key file, as downloaded from Google Cloud. */
