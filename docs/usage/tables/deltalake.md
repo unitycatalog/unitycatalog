@@ -195,8 +195,8 @@ Now use the following command to write some sample data to this table.
 bin/uc table write --full_name <catalog>.<schema>.<table>
 ```
 
-This is an experimental feature. Currently, this will only write sample data and supports a limited set of
-primitive data types (for example, `INT`, `STRING`, and `DOUBLE`). Types such as `TIMESTAMP` are not supported yet.
+This is an experimental feature. Currently, this will only write sample data, and only `BYTE`, `SHORT`, `INT`, `LONG`,
+`FLOAT`, `DOUBLE` and `STRING` columns are supported. Writing to a table with any other column type fails.
 
 ## How to Delete a Delta Table
 

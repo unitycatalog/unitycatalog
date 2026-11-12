@@ -460,8 +460,8 @@ bin/uc table write \
 1. `full_name`: The full name of the table, which is a concatenation of the catalog name,
    schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
 
-This is an experimental feature and only `INT`, `DOUBLE` and `STRING` columns are supported for writing sample
-data. Writing to a table with any other column type fails.
+This is an experimental feature and only `BYTE`, `SHORT`, `INT`, `LONG`, `FLOAT`, `DOUBLE` and `STRING` columns are
+supported for writing sample data. Writing to a table with any other column type fails.
 
 ### Delete a Table
 

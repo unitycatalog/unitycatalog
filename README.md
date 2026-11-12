@@ -206,7 +206,12 @@ Refer to [sbt docs](https://www.scala-sbt.org/1.x/docs/) for more commands.
   ```sh
   build/sbt clean compile
   ```
-- To compile and execute tests, run the following:
+- To compile and execute tests, run the following. It runs the same tests as `build/sbt test`, split
+  across parallel JVMs sized to the machine's CPUs and memory (see `dev/run-tests.py --help`):
+  ```sh
+  dev/run-tests.py
+  ```
+  On a weak machine, where the script picks only 1-2 JVMs, run the tests serially instead:
   ```sh
   build/sbt -J-Xmx2G clean test
   ```

@@ -8,6 +8,7 @@
 /version.sbt @tdas @yili-db @TimothyW553
 /build/ @tdas @yili-db @TimothyW553
 /project/ @tdas @yili-db @TimothyW553
+/dev/ @tdas @yili-db @TimothyW553
 
 # GitHub Actions and Workflows
 /.github/actions/ @tdas @yili-db @TimothyW553
@@ -41,6 +42,7 @@
 # Docs
 /docs/ @tdas @openinx @yili-db @TimothyW553
 /mkdocs.yml @tdas @openinx @yili-db @TimothyW553
+/README.md @tdas @yili-db @TimothyW553
 
 # UI
 /ui/ @tdas @yili-db
