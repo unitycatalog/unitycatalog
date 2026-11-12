@@ -105,9 +105,7 @@ public final class UcManagedDeltaContract {
 
   /**
    * Real {@code metaData.configuration} entries that carry the contract: the fixed-value and
-   * engine-generated properties and the UC table id. A request that sets or removes one of them on
-   * a MANAGED table is re-validated against the whole contract, so resending the stored value still
-   * succeeds.
+   * engine-generated properties and the UC table id.
    */
   public static final Set<String> CONTRACT_PROPERTY_KEYS = buildContractPropertyKeys();
 

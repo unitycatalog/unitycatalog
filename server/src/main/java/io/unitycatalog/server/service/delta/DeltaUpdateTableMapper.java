@@ -469,14 +469,6 @@ public final class DeltaUpdateTableMapper {
     return Optional.empty();
   }
 
-  private static Stream<String> touchedPropertyKeys(CollectedUpdates c) {
-    Set<String> setKeys =
-        c.setProperties.map(DeltaSetPropertiesUpdate::getUpdates).map(Map::keySet).orElse(Set.of());
-    List<String> removedKeys =
-        c.removeProperties.map(DeltaRemovePropertiesUpdate::getRemovals).orElse(List.of());
-    return Stream.concat(setKeys.stream(), removedKeys.stream());
-  }
-
   /**
    * True when the request changes the stored value of one of {@code keys}. Resending a stored
    * value, or removing a key that is not stored, is a no-op and does not trigger validation.
@@ -492,11 +484,7 @@ public final class DeltaUpdateTableMapper {
                 e ->
                     keys.contains(e.getKey())
                         && !Objects.equals(stored.get(e.getKey()), e.getValue()))
-        || removedKeys.stream()
-            .anyMatch(
-                k ->
-                    UcManagedDeltaContract.CONTRACT_INPUT_KEYS.contains(k)
-                        && stored.containsKey(k));
+        || removedKeys.stream().anyMatch(k -> stored.containsKey(k) && keys.contains(k));
   }
 
   /**
@@ -504,8 +492,14 @@ public final class DeltaUpdateTableMapper {
    * update applies, because the server derives those keys itself.
    */
   private static void rejectSyntheticPropertyChanges(CollectedUpdates c) {
+    Set<String> setKeys =
+        c.setProperties.map(DeltaSetPropertiesUpdate::getUpdates).map(Map::keySet).orElse(Set.of());
+    List<String> removedKeys =
+        c.removeProperties.map(DeltaRemovePropertiesUpdate::getRemovals).orElse(List.of());
     Optional<String> synthetic =
-        touchedPropertyKeys(c).filter(UcManagedDeltaContract::isSyntheticPropertyKey).findFirst();
+        Stream.concat(setKeys.stream(), removedKeys.stream())
+            .filter(UcManagedDeltaContract::isSyntheticPropertyKey)
+            .findFirst();
     if (synthetic.isPresent()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,

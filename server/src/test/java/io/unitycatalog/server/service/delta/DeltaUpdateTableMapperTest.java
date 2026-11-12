@@ -676,6 +676,65 @@ public class DeltaUpdateTableMapperTest {
   }
 
   @Test
+  public void removingNonIdContractInputDoesNotCheckTheTableId() {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = new HashMap<>(contractProperties(dao));
+    stored.put("io.unitycatalog.tableId", UUID.randomUUID().toString());
+    stored.put("delta.enableIcebergCompatV2", "true");
+    MutablePropertyMap props = propsFrom(stored);
+    DeltaUpdateTableMapper.applyUpdates(
+        null,
+        dao,
+        props,
+        collectUpdatesRequest(
+            new DeltaRemovePropertiesUpdate().removals(List.of("delta.enableIcebergCompatV2"))),
+        new ServerProperties());
+    assertThat(props.asMap()).doesNotContainKey("delta.enableIcebergCompatV2");
+  }
+
+  @Test
+  public void removingContractKeysThatAreNotStoredIsANoOp() {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = Map.of("k", "v");
+    MutablePropertyMap props = propsFrom(stored);
+    DeltaUpdateTableMapper.applyUpdates(
+        null,
+        dao,
+        props,
+        collectUpdatesRequest(
+            new DeltaRemovePropertiesUpdate()
+                .removals(List.of("delta.enableIcebergCompatV2", "delta.checkpointPolicy"))),
+        new ServerProperties());
+    assertThat(props.asMap()).isEqualTo(stored);
+  }
+
+  @ParameterizedTest(name = "\"{0}\"")
+  @ValueSource(strings = {"enabled", "ENABLED", "Supported"})
+  public void storedFeatureStatusesThatDeltaReadsAsSupportedSatisfyTheContract(String status) {
+    TableInfoDAO dao = managedDao();
+    Map<String, String> stored = new HashMap<>(contractProperties(dao));
+    stored.put("delta.feature.catalogManaged", status);
+    stored.put("delta.feature.clustering", status);
+    MutablePropertyMap props = propsFrom(stored);
+    DeltaUpdateTableMapper.applyUpdates(
+        null,
+        dao,
+        props,
+        collectUpdatesRequest(
+            new DeltaSetPropertiesUpdate().updates(Map.of("delta.enableIcebergCompatV2", "true")),
+            new DeltaSetDomainMetadataUpdate()
+                .updates(
+                    new DeltaDomainMetadataUpdates()
+                        .deltaClustering(
+                            new DeltaClusteringDomainMetadata()
+                                .clusteringColumns(List.of(List.of("id")))))),
+        new ServerProperties());
+    assertThat(props.asMap())
+        .containsEntry("delta.enableIcebergCompatV2", "true")
+        .containsEntry("clusteringColumns", "[[\"id\"]]");
+  }
+
+  @Test
   public void droppingIcebergCompatV2OfManagedTableWithoutDeletionVectorsIsRejected() {
     TableInfoDAO dao = managedDao();
     Map<String, String> stored =

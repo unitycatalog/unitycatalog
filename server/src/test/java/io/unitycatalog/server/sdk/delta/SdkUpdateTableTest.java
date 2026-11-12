@@ -72,6 +72,7 @@ import org.hibernate.Transaction;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Integration tests for the Delta {@code POST /v1/.../tables/{table}} update endpoint. Consolidated
@@ -1506,60 +1507,128 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     Files.createDirectories(Path.of(URI.create(storageLocation + "/" + relativePath)));
   }
 
-  @Test
-  public void testReservedPropertiesOfManagedTableCannotBeRemovedOrChanged() throws Exception {
-    Handle h = createDeltaManaged("tbl_reserved_props", Map.of("drop_me", "v"));
+  @ParameterizedTest(name = "{0}")
+  @ValueSource(
+      strings = {
+        "delta.feature.catalogManaged",
+        "io.unitycatalog.tableId",
+        "delta.enableInCommitTimestamps"
+      })
+  public void testRemovingProtectedPropertyOfManagedTableIsRejected(String key) throws Exception {
+    Handle h = createDeltaManaged("tbl_protected_" + key.replace('.', '_'), Map.of());
     Map<String, String> before = loadProperties(h.name());
-    List<String> reserved =
-        List.of(
-            TableProperties.FEATURE_PREFIX + TableFeature.CATALOG_MANAGED.specName(),
-            TableProperties.UC_TABLE_ID,
-            TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS);
-    for (String key : reserved) {
-      TestUtils.assertDeltaApiException(
-          () -> updateTable(h, new DeltaRemovePropertiesUpdate().removals(List.of(key))),
-          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-          key);
-    }
+    TestUtils.assertDeltaApiException(
+        () -> updateTable(h, new DeltaRemovePropertiesUpdate().removals(List.of(key))),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        key);
+    assertThat(loadProperties(h.name())).isEqualTo(before);
+  }
+
+  @Test
+  public void testChangingTableIdOfManagedTableIsRejected() throws Exception {
+    Handle h = createDeltaManaged("tbl_change_table_id", Map.of());
+    Map<String, String> before = loadProperties(h.name());
     String otherId = UUID.randomUUID().toString();
     TestUtils.assertDeltaApiException(
         () ->
             updateTable(
                 h,
-                new DeltaSetPropertiesUpdate()
-                    .updates(Map.of(TableProperties.UC_TABLE_ID, otherId))),
+                new DeltaSetPropertiesUpdate().updates(Map.of("io.unitycatalog.tableId", otherId))),
         DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
         "does not match");
     assertThat(loadProperties(h.name())).isEqualTo(before);
+  }
 
+  @Test
+  public void testOrdinaryPropertiesOfManagedTableCanBeChanged() throws Exception {
+    Handle h = createDeltaManaged("tbl_ordinary_props", Map.of("drop_me", "v"));
     Map<String, String> after =
         updateTable(
                 h,
-                new DeltaSetPropertiesUpdate().updates(Map.of("k", "v")),
+                new DeltaSetPropertiesUpdate()
+                    .updates(Map.of("k", "v", "io.unitycatalog.tableId", h.tableId().toString())),
                 new DeltaRemovePropertiesUpdate().removals(List.of("drop_me")))
             .getMetadata()
             .getProperties();
     assertThat(after).containsEntry("k", "v").doesNotContainKey("drop_me");
+  }
 
-    Handle external = createDeltaExternal("tbl_reserved_props_external");
-    Map<String, String> reservedValues =
+  @Test
+  public void testProtectedPropertiesOfExternalTableCanBeChanged() throws Exception {
+    Handle external = createDeltaExternal("tbl_protected_props_external");
+    Map<String, String> protectedValues =
         Map.of(
-            TableProperties.FEATURE_PREFIX + TableFeature.CATALOG_MANAGED.specName(),
+            "delta.feature.catalogManaged",
             "supported",
-            TableProperties.UC_TABLE_ID,
-            otherId,
-            TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS,
+            "io.unitycatalog.tableId",
+            UUID.randomUUID().toString(),
+            "delta.enableInCommitTimestamps",
             "true");
     Handle set =
         external.withEtag(
-            updateTable(external, new DeltaSetPropertiesUpdate().updates(reservedValues))
+            updateTable(external, new DeltaSetPropertiesUpdate().updates(protectedValues))
                 .getMetadata()
                 .getEtag());
     assertThat(
-            updateTable(set, new DeltaRemovePropertiesUpdate().removals(reserved))
+            updateTable(
+                    set,
+                    new DeltaRemovePropertiesUpdate()
+                        .removals(List.copyOf(protectedValues.keySet())))
                 .getMetadata()
                 .getProperties())
-        .doesNotContainKeys(reserved.toArray(String[]::new));
+        .doesNotContainKeys(protectedValues.keySet().toArray(String[]::new));
+  }
+
+  @Test
+  public void testReplayOfPropertyChangingCommitAfterLaterChangeReturnsNewestState()
+      throws Exception {
+    Handle h = createDeltaManaged("tbl_replay_property_commit", Map.of());
+    List<String> base = new ArrayList<>(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES);
+    base.add(TableFeature.ROW_TRACKING.specName());
+    List<String> withClustering = new ArrayList<>(base);
+    withClustering.add(TableFeature.CLUSTERING.specName());
+    DeltaLoadTableResponse r0 =
+        updateTable(
+            h,
+            new DeltaSetProtocolUpdate()
+                .protocol(
+                    new DeltaProtocol()
+                        .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
+                        .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
+                        .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
+                        .writerFeatures(withClustering)));
+    DeltaTableUpdate[] v1 = {
+      new DeltaAddCommitUpdate().commit(commit(1L, "00000001.json")),
+      new DeltaSetDomainMetadataUpdate()
+          .updates(
+              new DeltaDomainMetadataUpdates()
+                  .deltaClustering(
+                      new DeltaClusteringDomainMetadata()
+                          .clusteringColumns(List.of(List.of("id"))))),
+      new DeltaSetPropertiesUpdate().updates(Map.of("k", "v1"))
+    };
+    DeltaLoadTableResponse r1 = updateTable(h.withEtag(r0.getMetadata().getEtag()), v1);
+    DeltaLoadTableResponse r2 =
+        updateTable(
+            h.withEtag(r1.getMetadata().getEtag()),
+            new DeltaAddCommitUpdate().commit(commit(2L, "00000002.json")),
+            new DeltaSetProtocolUpdate()
+                .protocol(
+                    new DeltaProtocol()
+                        .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
+                        .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
+                        .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
+                        .writerFeatures(base)),
+            new DeltaRemoveDomainMetadataUpdate().domains(List.of("delta.clustering")),
+            new DeltaSetPropertiesUpdate().updates(Map.of("k", "v2")));
+
+    DeltaLoadTableResponse replay = updateTable(h.withEtag(r0.getMetadata().getEtag()), v1);
+
+    assertThat(replay.getLatestTableVersion()).isEqualTo(2L);
+    assertThat(replay.getMetadata().getProperties())
+        .isEqualTo(r2.getMetadata().getProperties())
+        .containsEntry("k", "v2")
+        .doesNotContainKey("clusteringColumns");
   }
 
   @Test

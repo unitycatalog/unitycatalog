@@ -52,6 +52,9 @@ public final class DeltaPropertyMapper {
   /** Value emitted under {@code delta.feature.<name>} for each declared feature. */
   private static final String FEATURE_SUPPORTED = "supported";
 
+  /** Older spelling of {@link #FEATURE_SUPPORTED} that Delta still reads as a supported feature. */
+  private static final String FEATURE_ENABLED = "enabled";
+
   /**
    * Builds the stored UC property map by layering client-supplied entries first, then overlaying
    * protocol- and domain-metadata-derived entries on top. The structured {@code protocol} and
@@ -161,19 +164,23 @@ public final class DeltaPropertyMapper {
   }
 
   /**
-   * Reads the {@code delta.feature.*} keys whose value is {@code supported} back out as a feature
-   * set, matching how the connector decides a table is catalog-managed. Safe to treat as
+   * Reads the {@code delta.feature.*} keys whose value is {@code supported} or {@code enabled}
+   * (ignoring case, as Delta reads them) back out as a feature set. Safe to treat as
    * writer-features since the Delta spec makes every reader-feature also a writer-feature.
    */
   public static Set<String> extractFeaturesFromProperties(Map<String, String> props) {
     Set<String> features = new HashSet<>();
     for (Map.Entry<String, String> entry : props.entrySet()) {
       if (entry.getKey().startsWith(TableProperties.FEATURE_PREFIX)
-          && FEATURE_SUPPORTED.equals(entry.getValue())) {
+          && isSupportedFeatureStatus(entry.getValue())) {
         features.add(entry.getKey().substring(TableProperties.FEATURE_PREFIX.length()));
       }
     }
     return features;
+  }
+
+  private static boolean isSupportedFeatureStatus(String value) {
+    return FEATURE_SUPPORTED.equalsIgnoreCase(value) || FEATURE_ENABLED.equalsIgnoreCase(value);
   }
 
   /**
