@@ -275,7 +275,7 @@ public class Scim2UserService implements ScimService {
   // Token exchange resolves an OAuth client to the user with that external id, so a SCIM token
   // that relinks an existing user could take it over. A null external id leaves it unchanged.
   // Okta's PUT resends the external id it set.
-  // TODO(PR 9 ownership): replace with the owner check (an IdP edits only rows it owns).
+  // TODO(#2202): replace with the owner check (an IdP edits only rows it owns).
   private void checkExternalIdUnchangedForScimToken(User user, String externalId) {
     if (!serverProperties.isAuthorizationEnabled()) {
       return;
@@ -293,7 +293,7 @@ public class Scim2UserService implements ScimService {
   // take it over. The match is exact, so a case variant is refused, and so are emails with no
   // primary value. A PUT that sends the stored email again as the primary email, or sends no
   // emails, is accepted: Okta's PUT resends the email it set. PATCH changes only active.
-  // TODO(PR 9 ownership): replace with the owner check (an IdP edits only rows it owns).
+  // TODO(#2202): replace with the owner check (an IdP edits only rows it owns).
   private void checkEmailUnchangedForScimToken(User user, UserResource userResource) {
     if (!serverProperties.isAuthorizationEnabled()) {
       return;

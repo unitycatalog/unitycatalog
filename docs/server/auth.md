@@ -517,7 +517,7 @@ bin/uc-admin-token --scim-principal okta-scim --idp okta --lifetime P90D
   `bin/uc --auth_token "$(bin/uc-admin-token)" user delete --id <id>`. This works once a delete removes the user: a
   user created again with the same email then gets a new id, so the old tokens never work again. Today a delete only
   disables the user, so creating it again gets 409.
-  <!-- TODO(PR 3): a user delete removes the row, so a user created again gets a new id. -->
+  <!-- TODO(#2207): a user delete removes the row, so a user created again gets a new id. -->
 
 ### Try to log in with no user in the local database
 
