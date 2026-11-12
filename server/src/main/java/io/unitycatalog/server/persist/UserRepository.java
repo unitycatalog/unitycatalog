@@ -322,7 +322,7 @@ public class UserRepository {
           session -> {
             // The owner is compared here, exactly: a MySQL database at its default collation
             // would match okta to Okta, and admin to Admin, in the query.
-            // TODO(PR 3): with two rows of this email, the read may pick another owner's row, and
+            // TODO(#2207): with two rows of this email, the read may pick another owner's row, and
             // this IdP's own row is then not linked (403). uc_users_email_key removes this.
             UserDAO userDAO = getUserByEmail(session, email);
             if (userDAO == null
@@ -403,7 +403,7 @@ public class UserRepository {
       return created;
     } catch (RuntimeException e) {
       // A concurrent first call of the same identity created its row first (uc_users_link_key).
-      // TODO(PR 3): uc_users_email_key also refuses a concurrent first call of another identity
+      // TODO(#2207): uc_users_email_key also refuses a concurrent first call of another identity
       // with the same email; until then both rows are created.
       if (ExceptionUtils.indexOfType(e, ConstraintViolationException.class) < 0) {
         throw e;
