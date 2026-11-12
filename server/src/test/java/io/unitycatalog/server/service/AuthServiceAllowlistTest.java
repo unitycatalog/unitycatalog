@@ -453,7 +453,7 @@ public class AuthServiceAllowlistTest {
               // The bootstrap admin is never linked.
               "admin",
               "person-admin",
-              // TODO(PR 11): no row yet; then the first call creates one.
+              // TODO(#2203): no row yet; then the first call creates one.
               "nobody@example.com",
               "person-nobody");
       for (Map.Entry<String, String> entry : notAllowed.entrySet()) {

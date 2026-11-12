@@ -221,7 +221,7 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
       user =
           Optional.ofNullable(userRepository.linkUser(email, link, jwt.getIssuedAtAsInstant()))
               .orElseGet(() -> userRepository.findLinkedUser(link, jwt.getIssuedAtAsInstant()));
-      // TODO(PR 11): with no row for this email, create one owned by this identity provider.
+      // TODO(#2203): with no row for this email, create one owned by this identity provider.
       if (user == null) {
         throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed: " + email);
       }
