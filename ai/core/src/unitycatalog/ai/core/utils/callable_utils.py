@@ -5,7 +5,7 @@ import json
 import re
 import warnings
 from dataclasses import dataclass
-from textwrap import dedent, fill, indent
+from textwrap import fill
 from types import UnionType
 from typing import (
     Any,
@@ -20,6 +20,13 @@ from typing import (
     get_type_hints,
 )
 
+from unitycatalog.ai.core.utils.code_layout import (
+    PRIMARY_INDENT,
+    classify_lines,
+    dedent_code,
+    shift_stored_body,
+    to_databricks_body,
+)
 from unitycatalog.ai.core.utils.docstring_utils import DocstringInfo, parse_docstring
 from unitycatalog.ai.core.utils.type_utils import (
     SQL_TYPE_TO_PYTHON_TYPE_MAPPING,
@@ -27,7 +34,6 @@ from unitycatalog.ai.core.utils.type_utils import (
 )
 
 FORBIDDEN_PARAMS = ["self", "cls"]
-PRIMARY_INDENT = " " * 4
 WRAPPED_INDENT = " " * 6
 # Mirrors the server-side minimum environment version that ships the `databricks.secrets`
 # module. Unity Catalog is the authority on this value; it is duplicated here only to fail
@@ -82,7 +88,7 @@ class FunctionBodyExtractor(ast.NodeVisitor):
         source_lines = self.source_code.splitlines(keepends=True)
         function_body_lines = source_lines[start_lineno - 1 : end_lineno]
 
-        self.function_body = dedent("".join(function_body_lines)).rstrip("\n")
+        self.function_body = dedent_code("".join(function_body_lines)).rstrip("\n")
 
         indents = [stmt.col_offset for stmt in body if stmt.col_offset is not None]
         if indents:
@@ -168,7 +174,7 @@ def extract_function_body(func: Callable[..., Any]) -> tuple[str, int]:
 
     """
     source_lines, _ = inspect.getsourcelines(func)
-    dedented_source = dedent("".join(source_lines))
+    dedented_source = dedent_code("".join(source_lines))
     func_name = func.__name__
 
     extractor = FunctionBodyExtractor(func_name, dedented_source)
@@ -197,7 +203,7 @@ def extract_wrapped_functions(functions: list[Callable[..., Any]]) -> str:
     sources = []
     for func in functions:
         src, _ = inspect.getsourcelines(func)
-        sources.append(dedent("".join(src)))
+        sources.append(dedent_code("".join(src)))
     return "\n".join(sources)
 
 
@@ -953,7 +959,9 @@ def create_sql_metadata(function_metadata: FunctionMetadata) -> SQLMetadata:
         sql_param = " ".join(sql_param_parts)
         sql_params.append(sql_param)
 
-    indented_body = indent(function_metadata.function_body, " " * function_metadata.indent_unit)
+    indented_body = to_databricks_body(
+        function_metadata.function_body, function_metadata.indent_unit
+    )
 
     func_comment = function_metadata.docstring_info.description.replace("'", '"')
 
@@ -1176,17 +1184,16 @@ def _parse_routine_definition(routine_definition: str) -> str:
     Normalize the indentation of a function body to a standard 4-space indent.
 
     This function processes a raw routine definition string by:
-      1. Dedenting the entire block (using textwrap.dedent) to remove any common
-         leading whitespace.
-      2. Splitting the dedented text into lines.
-      3. Determining the "standard" indent (i.e. the minimum nonzero indent among lines).
-      4. Calculating an indent factor as int(4 / indent_standard) to scale the original
+      1. Moving it with `shift_stored_body` so that its statements start at 4 spaces. Lines
+         that continue a multi-line string literal move by the same number of columns, which
+         restores their values. The remaining steps keep those lines as they are.
+      2. Determining the "standard" indent (i.e. the minimum nonzero indent, past those 4
+         spaces, among the lines that start a statement).
+      3. Calculating an indent factor as int(4 / indent_standard) to scale the original
          indentation to a 4-space baseline.
-      5. For each nonempty line, computing the new indent level as:
+      4. For each nonempty line outside a string literal, computing the new indent level as:
              new_indent = (original indent) * indent_factor
-         and reformatting the line with that indent (using line.strip() to remove trailing
-         whitespace).
-      6. Finally, reindenting the entire block by an additional 4 spaces (for overall nesting).
+         and reformatting the line with that indent after the 4 spaces.
 
     NB:
       - The methodology assumes that the smallest nonzero indent found in the block
@@ -1195,7 +1202,7 @@ def _parse_routine_definition(routine_definition: str) -> str:
         unit becomes 4 spaces. For example, if the original unit is 2 spaces, the factor will
         be 2 (i.e. 4 / 2), converting a 2-space indent to 4 spaces and a 6-space indent to 12 spaces.
       - If no nonzero indent is found (i.e. baseline is 0), the indent_factor defaults to 1,
-        and every nonempty line is given a fixed indent of 4 spaces.
+        and every nonempty line outside a string literal is given a fixed indent of 4 spaces.
       - This approach preserves the relative indentation of nested blocks while standardizing
         the overall appearance of the function body.
 
@@ -1203,24 +1210,35 @@ def _parse_routine_definition(routine_definition: str) -> str:
         routine_definition (str): The raw routine definition string with its original indentation.
 
     Returns:
-        str: The normalized function body, where each nonempty line is reindented based on a 4-space standard.
+        str: The normalized function body, where each nonempty line outside a string literal is reindented
+        based on a 4-space standard.
     """
-    dedented = dedent(routine_definition).rstrip()
-    lines = dedented.splitlines()
+    shifted = shift_stored_body(routine_definition.rstrip())
+    string_lines, statement_lines = classify_lines(shifted)
+    lines = shifted.split("\n")
+
+    def indent_past_primary(line: str) -> int:
+        return len(line) - len(line.lstrip()) - len(PRIMARY_INDENT)
 
     indent_standard = min(
-        [len(line) - len(line.lstrip()) for line in lines if len(line.lstrip()) < len(line)],
+        [
+            indent_past_primary(lines[index])
+            for index in statement_lines
+            if indent_past_primary(lines[index]) > 0
+        ],
         default=0,
     )
     indent_factor = 4 // indent_standard if indent_standard > 0 else 1
     normalized_lines = []
-    for line in lines:
-        if line.strip():
-            indent_level = (len(line) - len(line.lstrip())) * indent_factor
-            normalized_lines.append(" " * indent_level + line.strip())
+    for index, line in enumerate(lines):
+        if index in string_lines:
+            normalized_lines.append(line)
+        elif line.strip():
+            indent_level = indent_past_primary(line) * indent_factor
+            normalized_lines.append(PRIMARY_INDENT + " " * indent_level + line.lstrip())
         else:
             normalized_lines.append("")
-    return indent("\n".join(normalized_lines), PRIMARY_INDENT)
+    return "\n".join(normalized_lines)
 
 
 def dynamically_construct_python_function(
@@ -1293,8 +1311,5 @@ def get_callable_definition(function_info: "FunctionInfo") -> str:
     if function_info.input_params and function_info.input_params.parameters:
         param_names = [param.name for param in function_info.input_params.parameters]
     function_head = f"{function_info.name}({', '.join(param_names)})"
-    func_def = f"def {function_head}:\n"
-    for line in function_info.routine_definition.split("\n"):
-        func_def += f"    {line}\n"
-
-    return func_def
+    body = shift_stored_body(function_info.routine_definition)
+    return f"def {function_head}:\n{body}\n"

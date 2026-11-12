@@ -107,6 +107,12 @@ def test_none_returning_function():
     assert "The function execution has completed, but no output was produced" in result
 
 
+def test_whitespace_only_line_inside_string_is_kept():
+    src = 'def padded():\n    return """a\n    \nb"""\n'
+    succeeded, result = run_in_sandbox_subprocess(src, {})
+    assert (succeeded, result) == (True, "a\n    \nb")
+
+
 def test_non_callable_function():
     # run_in_sandbox_subprocess now expects a string containing function source.
     with pytest.raises(TypeError):

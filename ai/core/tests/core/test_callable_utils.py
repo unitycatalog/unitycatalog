@@ -20,13 +20,14 @@ from unitycatalog.ai.core.utils.callable_utils import (
     format_default_value,
     generate_sql_function_body,
     generate_wrapped_sql_function_body,
+    get_callable_definition,
 )
 from unitycatalog.ai.core.utils.callable_utils_oss import generate_function_info
 from unitycatalog.ai.core.utils.function_processing_utils import (
     process_function_parameter_defaults,
 )
 from unitycatalog.ai.core.utils.type_utils import SQL_TYPE_TO_PYTHON_TYPE_MAPPING
-from unitycatalog.client.models import FunctionInfo, FunctionParameterInfos
+from unitycatalog.client.models import FunctionInfo, FunctionParameterInfo, FunctionParameterInfos
 
 # ---------------------------
 # Tests for Simple Functions and Docstrings
@@ -357,6 +358,177 @@ AS $$
 $$;
     """
     assert sql_body.strip() == expected_sql.strip()
+
+
+def test_function_with_multiline_string_literal():
+    def render_letter(name: str) -> str:
+        """
+        Renders a letter.
+
+        Args:
+            name: the recipient
+        """
+        template = """Dear {name},
+Thanks.
+"""
+        return template.format(name=name)
+
+    sql_body = generate_sql_function_body(render_letter, "test_catalog", "test_schema")
+
+    expected_sql = '''
+CREATE FUNCTION `test_catalog`.`test_schema`.`render_letter`(name STRING COMMENT 'the recipient')
+RETURNS STRING
+LANGUAGE PYTHON
+COMMENT 'Renders a letter.'
+AS $$
+    template = """Dear {name},
+Thanks.
+"""
+    return template.format(name=name)
+$$;
+    '''
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_two_space_function_with_multiline_string_literal():
+    # fmt: off
+    def render_note(name: str) -> str:
+      """
+      Renders a note.
+
+      Args:
+          name: the recipient
+      """
+      note = """Hi {name},
+Bye.
+"""
+      return note.format(name=name)
+    # fmt: on
+
+    sql_body = generate_sql_function_body(render_note, "test_catalog", "test_schema")
+    body = sql_body.split("AS $$\n")[1].split("\n$$;")[0]
+    function_info = FunctionInfo(
+        name="render_note",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="name", type_text="STRING", type_name="STRING", type_json="", position=0
+                )
+            ]
+        ),
+        full_data_type="STRING",
+        routine_body="EXTERNAL",
+        routine_definition=body,
+    )
+    namespace = {}
+
+    exec(get_callable_definition(function_info), namespace)
+
+    assert body == '    note = """Hi {name},\nBye.\n"""\n    return note.format(name=name)'
+    assert namespace["render_note"]("Bo") == "Hi Bo,\nBye.\n"
+
+
+def stored_letter(name: str) -> str:
+    """
+    Renders a letter.
+
+    Args:
+        name: the recipient
+    """
+    template = """Dear {name},
+Thanks.
+"""
+    return template.format(name=name)
+
+
+def stored_query(name: str) -> str:
+    """
+    Renders a query.
+
+    Args:
+        name: the table
+    """
+    query = """
+        SELECT *
+        FROM {name}
+    """
+    return query.format(name=name)
+
+
+@pytest.mark.parametrize(
+    ("func", "stored_body"),
+    [
+        (
+            stored_letter,
+            '    template = """Dear {name},\nThanks.\n"""\n    return template.format(name=name)',
+        ),
+        (
+            stored_query,
+            'query = """\n    SELECT *\n    FROM {name}\n"""\nreturn query.format(name=name)',
+        ),
+    ],
+)
+def test_stored_body_layout_of_top_level_function(func, stored_body):
+    assert generate_function_info(func).routine_definition == stored_body
+
+
+STORED_BODY_CASES = [
+    # OSS body of a string at column 0.
+    (
+        '    template = """Dear {name},\nThanks.\n"""\n    return template.format(name=name)',
+        "Dear Bo,\nThanks.\n",
+    ),
+    # OSS body of a string indented like the code, with an empty line inside the string.
+    (
+        'template = """Dear {name},\n\n    Thanks.\n"""\nreturn template.format(name=name)',
+        "Dear Bo,\n\n        Thanks.\n    ",
+    ),
+    # OSS body of a string indented like the code.
+    (
+        'template = """Dear {name},\n    Thanks.\n"""\nreturn template.format(name=name)',
+        "Dear Bo,\n        Thanks.\n    ",
+    ),
+    # Databricks body of a string indented like the code.
+    (
+        '    template = """Dear {name},\n        Thanks.\n    """\n    return template.format(name=name)',
+        "Dear Bo,\n        Thanks.\n    ",
+    ),
+    # Databricks body of a string at column 0, with string lines indented like the body.
+    (
+        '        template = """Dear {name},\n    Thanks.\n    """\n        return template.format(name=name)',
+        "Dear Bo,\nThanks.\n",
+    ),
+    # Body written by hand, with a string line left of where the shift would move it.
+    (
+        '        template = """Dear {name},\nThanks."""\n        return template.format(name=name)',
+        "Dear Bo,\nThanks.",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "build_definition", [get_callable_definition, dynamically_construct_python_function]
+)
+@pytest.mark.parametrize(("stored_body", "expected"), STORED_BODY_CASES)
+def test_multiline_string_literal_survives_stored_body(build_definition, stored_body, expected):
+    function_info = FunctionInfo(
+        name="render_letter",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="name", type_text="STRING", type_name="STRING", type_json="", position=0
+                )
+            ]
+        ),
+        full_data_type="STRING",
+        routine_body="EXTERNAL",
+        routine_definition=stored_body,
+    )
+    namespace = {}
+
+    exec(build_definition(function_info), namespace)
+
+    assert namespace["render_letter"]("Bo") == expected
 
 
 def test_function_with_class():
@@ -2222,6 +2394,17 @@ test_cases = [
     ("\treturn a + b", "    return a + b"),
     # 10. All flush left.
     ("return a + b", "    return a + b"),
+    # 11. Lines inside a multi-line string move with the code, and trailing spaces on its
+    # opening line are kept.
+    (
+        '        x = """Dear  \n      Bo\n    """\n        return x',
+        '    x = """Dear  \n  Bo\n"""\n    return x',
+    ),
+    # 12. Comment and continuation lines left of the statements do not set the margin.
+    (
+        "    x = 1 + \\\n  2\n# note\n    return x",
+        "    x = 1 + \\\n    2\n    # note\n    return x",
+    ),
 ]
 
 
