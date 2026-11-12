@@ -230,6 +230,8 @@ public class MigrationStepRulesTest {
         "POSTGRESQL|CREATE INDEX i ON t (missing)|indexes t.missing, which the schema before the"
             + " step doesn't have",
         "POSTGRESQL|CREATE INDEX CONCURRENTLY i ON t (c)|creates an index CONCURRENTLY",
+        "POSTGRESQL|CREATE INDEX i ON t (c) WHERE CAST(c AS integer) > 0|creates a partial index,"
+            + " whose predicate this test can't check",
         "POSTGRESQL|CREATE UNIQUE INDEX i ON t (c)|creates a unique index",
         "MYSQL|CREATE FULLTEXT INDEX i ON t (c)|creates a fulltext index",
         "POSTGRESQL|ALTER TABLE t ALTER COLUMN c TYPE text|",
@@ -540,6 +542,10 @@ public class MigrationStepRulesTest {
       if (type != null) {
         return "creates a " + type.toLowerCase(Locale.ROOT) + " index";
       }
+      if (index.getWhere() != null) {
+        // PostgreSQL evaluates the predicate on every row, which can fail on rows already there.
+        return "creates a partial index, whose predicate this test can't check";
+      }
       return indexedColumnProblem(kind, index, before);
     }
     if (firstStep) {
@@ -559,7 +565,7 @@ public class MigrationStepRulesTest {
           // MySQL: ALTER TABLE t MODIFY c <type> [NULL | NOT NULL] [DEFAULT x] [COLLATE x], which
           // must restate the column's default and collation (typeChangesWiden checks they stay)
           case MODIFY ->
-              kind == DatabaseKind.MYSQL && columnSpecs(change).matches(MODIFY_SPECS.pattern());
+              kind == DatabaseKind.MYSQL && MODIFY_SPECS.matcher(columnSpecs(change)).matches();
           default -> false;
         };
     return allowed ? null : "is not an allowed change";
