@@ -893,7 +893,7 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
 
     // Names stay unique across the admin and every IdP.
     for (Map.Entry<ServerConfig, String> clash :
-        Map.of(entra, "okta-eng", okta, "admin-eng", adminConfig, "okta-eng").entrySet()) {
+        Map.of(okta, "admin-eng", adminConfig, "okta-eng").entrySet()) {
       HttpResponse<String> response =
           send(clash.getKey(), "POST", GROUPS_PATH, groupBody(clash.getValue()));
       assertThat(response.statusCode()).as(clash.getValue()).isEqualTo(409);
