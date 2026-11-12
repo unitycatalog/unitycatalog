@@ -56,7 +56,7 @@ import org.apache.hadoop.fs.FilterFileSystem;
  * underlying implementation backs it.
  *
  * <p>The cache owns each delegate, and every wrapper of the same scope shares it. Each wrapper
- * therefore wraps its own {@link Lease} on the delegate rather than the delegate itself, so closing
+ * therefore wraps its own {@code Lease} on the delegate rather than the delegate itself, so closing
  * a wrapper runs the regular {@link FileSystem#close()} bookkeeping but only releases the lease. A
  * delegate is closed once it has been evicted from the cache and no lease on it is still open. A
  * wrapper that is never closed releases its lease when it is garbage collected.
@@ -65,9 +65,7 @@ public class CredScopedFileSystem extends FilterFileSystem {
 
   private static final String CRED_SCOPED_FS_CACHE_MAX_SIZE =
       "unitycatalog.credScopedFs.cache.maxSize";
-
-  /** Visible for testing. */
-  static final int CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT = 100;
+  private static final int CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT = 100;
 
   private static final Cleaner CLEANER = Cleaner.create();
 
@@ -77,27 +75,19 @@ public class CredScopedFileSystem extends FilterFileSystem {
    * pools (e.g. AWS sdk-ScheduledExecutor threads). The maximum size bounds the cached delegates,
    * not the open ones: an evicted delegate stays open while a wrapper still uses it, and a cached
    * delegate stays open after its last wrapper closes until it is evicted. The maximum size can be
-   * tuned via the system property {@code unitycatalog.credScopedFs.cache.maxSize}.
+   * tuned via the system property {@code unitycatalog.credScopedFs.cache.maxSize}. Visible for
+   * testing.
    */
-  /** Visible for testing. */
-  static final BoundedKeyedCache<FileSystemCredId, SharedFileSystem> CACHE;
-
-  static {
-    int maxSize =
-        Integer.getInteger(CRED_SCOPED_FS_CACHE_MAX_SIZE, CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT);
-    CACHE = new BoundedKeyedCache<>(maxSize, SharedFileSystem::evict);
-  }
+  static final BoundedKeyedCache<FileSystemCredId, SharedFileSystem> CACHE =
+      new BoundedKeyedCache<>(
+          Integer.getInteger(CRED_SCOPED_FS_CACHE_MAX_SIZE, CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT),
+          SharedFileSystem::evict);
 
   private FileSystem delegate;
 
   /** Visible for testing only. Clears the static cache, closing delegates no open wrapper uses. */
   static void clearCacheForTesting() {
     CACHE.clear();
-  }
-
-  /** Visible for testing only. Returns the cached delegate filesystem. */
-  FileSystem getDelegate() {
-    return getRawFileSystem();
   }
 
   @Override

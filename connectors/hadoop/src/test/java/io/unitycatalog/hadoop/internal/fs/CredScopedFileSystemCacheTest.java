@@ -12,6 +12,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -30,8 +31,6 @@ import org.junit.jupiter.api.Test;
 class CredScopedFileSystemCacheTest {
 
   private static final Path PATH = new Path("file:///tmp/any");
-  private static final int CACHE_MAX_SIZE =
-      CredScopedFileSystem.CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT;
   private static final Duration GC_TIMEOUT = Duration.ofSeconds(10);
 
   private static final String CONTEXT_A =
@@ -80,7 +79,7 @@ class CredScopedFileSystemCacheTest {
     CredScopedFileSystem fs1 = init(uri, conf);
     CredScopedFileSystem fs2 = init(uri, conf);
 
-    assertThat(fs1.getDelegate()).isSameAs(fs2.getDelegate());
+    assertThat(fs1.getRawFileSystem()).isSameAs(fs2.getRawFileSystem());
   }
 
   @Test
@@ -92,11 +91,11 @@ class CredScopedFileSystemCacheTest {
     CredScopedFileSystem fsA = init(new URI("file:///tmp/a"), conf);
     CredScopedFileSystem fsB = init(new URI("file:///tmp/b"), conf);
 
-    assertThat(fsA.getDelegate()).isInstanceOf(RawLocalFileSystem.class);
-    assertThat(fsA.getDelegate()).isSameAs(fsB.getDelegate());
-    assertThat(fsA.getDelegate().getConf().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
+    assertThat(fsA.getRawFileSystem()).isInstanceOf(RawLocalFileSystem.class);
+    assertThat(fsA.getRawFileSystem()).isSameAs(fsB.getRawFileSystem());
+    assertThat(fsA.getRawFileSystem().getConf().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
         .isNull();
-    assertThat(fsA.getDelegate().getConf().get(UCHadoopConfConstants.S3A_CREDENTIALS_PROVIDER))
+    assertThat(fsA.getRawFileSystem().getConf().get(UCHadoopConfConstants.S3A_CREDENTIALS_PROVIDER))
         .isNull();
   }
 
@@ -107,7 +106,7 @@ class CredScopedFileSystemCacheTest {
     CredScopedFileSystem fsRead = init(uri, tableConf("tid-1", "READ"));
     CredScopedFileSystem fsWrite = init(uri, tableConf("tid-1", "WRITE"));
 
-    assertThat(fsRead.getDelegate()).isNotSameAs(fsWrite.getDelegate());
+    assertThat(fsRead.getRawFileSystem()).isNotSameAs(fsWrite.getRawFileSystem());
   }
 
   @Test
@@ -121,7 +120,7 @@ class CredScopedFileSystemCacheTest {
     CredScopedFileSystem fsRead = init(uri, confRead);
     CredScopedFileSystem fsWrite = init(uri, confWrite);
 
-    assertThat(fsRead.getDelegate()).isNotSameAs(fsWrite.getDelegate());
+    assertThat(fsRead.getRawFileSystem()).isNotSameAs(fsWrite.getRawFileSystem());
   }
 
   @Test
@@ -131,7 +130,7 @@ class CredScopedFileSystemCacheTest {
     CredScopedFileSystem fsTenantA = init(uri, tableConf("tid-1", "READ", CONTEXT_A));
     CredScopedFileSystem fsTenantB = init(uri, tableConf("tid-1", "READ", CONTEXT_B));
 
-    assertThat(fsTenantA.getDelegate()).isNotSameAs(fsTenantB.getDelegate());
+    assertThat(fsTenantA.getRawFileSystem()).isNotSameAs(fsTenantB.getRawFileSystem());
   }
 
   @Test
@@ -145,7 +144,7 @@ class CredScopedFileSystemCacheTest {
     CredScopedFileSystem fsA = init(uri, confA);
     CredScopedFileSystem fsB = init(uri, confB);
 
-    assertThat(fsA.getDelegate()).isNotSameAs(fsB.getDelegate());
+    assertThat(fsA.getRawFileSystem()).isNotSameAs(fsB.getRawFileSystem());
   }
 
   @Test
@@ -157,7 +156,7 @@ class CredScopedFileSystemCacheTest {
     CredScopedFileSystem fs1 = init(uri, conf);
     CredScopedFileSystem fs2 = init(uri, conf);
 
-    assertThat(fs1.getDelegate()).isSameAs(fs2.getDelegate());
+    assertThat(fs1.getRawFileSystem()).isSameAs(fs2.getRawFileSystem());
   }
 
   @Test
@@ -171,7 +170,7 @@ class CredScopedFileSystemCacheTest {
     CredScopedFileSystem fsA = init(uri, confA);
     CredScopedFileSystem fsB = init(uri, confB);
 
-    assertThat(fsA.getDelegate()).isNotSameAs(fsB.getDelegate());
+    assertThat(fsA.getRawFileSystem()).isNotSameAs(fsB.getRawFileSystem());
   }
 
   @Test
@@ -186,14 +185,14 @@ class CredScopedFileSystemCacheTest {
     CredScopedFileSystem fsA2 = init(new URI("file:///tmp/a/two"), conf);
     CredScopedFileSystem fsB = init(new URI("file:///tmp/b/one"), conf);
 
-    assertThat(fsA1.getDelegate()).isSameAs(fsA2.getDelegate());
-    assertThat(fsA1.getDelegate()).isNotSameAs(fsB.getDelegate());
+    assertThat(fsA1.getRawFileSystem()).isSameAs(fsA2.getRawFileSystem());
+    assertThat(fsA1.getRawFileSystem()).isNotSameAs(fsB.getRawFileSystem());
   }
 
   @Test
   void evictedDelegateWithoutOpenWrappersIsClosed() throws Exception {
     CredScopedFileSystem fs = init(URI.create("file:///tmp"), trackedConf("tid-evict"));
-    CloseTrackingFileSystem delegate = (CloseTrackingFileSystem) fs.getDelegate();
+    CloseTrackingFileSystem delegate = (CloseTrackingFileSystem) fs.getRawFileSystem();
     fs.close();
 
     CredScopedFileSystem.clearCacheForTesting();
@@ -229,11 +228,12 @@ class CredScopedFileSystemCacheTest {
     URI uri = URI.create("file:///tmp");
     CredScopedFileSystem held = init(uri, trackedConf("tid-held"));
 
-    for (int i = 0; i < CACHE_MAX_SIZE; i++) {
+    int maxSize = CredScopedFileSystem.CACHE.maxSize();
+    for (int i = 0; i < maxSize; i++) {
       init(uri, trackedConf("tid-other-" + i));
     }
 
-    assertThat(CredScopedFileSystem.CACHE.size()).isEqualTo(CACHE_MAX_SIZE);
+    assertThat(CredScopedFileSystem.CACHE.size()).isEqualTo(maxSize);
     assertThat(held.getFileStatus(PATH)).isNotNull();
   }
 
@@ -243,7 +243,7 @@ class CredScopedFileSystemCacheTest {
     Configuration conf = trackedConf("tid-1");
     CredScopedFileSystem first = init(uri, conf);
     CredScopedFileSystem second = init(uri, conf);
-    CloseTrackingFileSystem delegate = (CloseTrackingFileSystem) first.getDelegate();
+    CloseTrackingFileSystem delegate = (CloseTrackingFileSystem) first.getRawFileSystem();
 
     CredScopedFileSystem.clearCacheForTesting();
     first.close();
@@ -259,7 +259,7 @@ class CredScopedFileSystemCacheTest {
     Configuration conf = trackedConf("tid-1");
     CredScopedFileSystem first = init(uri, conf);
     CredScopedFileSystem second = init(uri, conf);
-    CloseTrackingFileSystem delegate = (CloseTrackingFileSystem) first.getDelegate();
+    CloseTrackingFileSystem delegate = (CloseTrackingFileSystem) first.getRawFileSystem();
 
     CredScopedFileSystem.clearCacheForTesting();
     first.close();
@@ -286,9 +286,13 @@ class CredScopedFileSystemCacheTest {
 
   @Test
   void evictedDelegateIsClosedOnceItsNeverClosedWrapperIsGarbageCollected() throws Exception {
-    CloseTrackingFileSystem delegate = delegateOfDroppedWrapper(trackedConf("tid-gc"));
+    AtomicReference<CredScopedFileSystem> onlyWrapper =
+        new AtomicReference<>(init(URI.create("file:///tmp"), trackedConf("tid-gc")));
+    CloseTrackingFileSystem delegate =
+        (CloseTrackingFileSystem) onlyWrapper.get().getRawFileSystem();
     CredScopedFileSystem.clearCacheForTesting();
     assertThat(delegate.closed).isFalse();
+    onlyWrapper.set(null);
 
     long deadline = System.nanoTime() + GC_TIMEOUT.toNanos();
     while (!delegate.closed && System.nanoTime() < deadline) {
@@ -297,11 +301,6 @@ class CredScopedFileSystemCacheTest {
     }
 
     assertThat(delegate.closed).isTrue();
-  }
-
-  private static CloseTrackingFileSystem delegateOfDroppedWrapper(Configuration conf)
-      throws Exception {
-    return (CloseTrackingFileSystem) init(URI.create("file:///tmp"), conf).getDelegate();
   }
 
   private static int hadoopCacheSize() throws Exception {

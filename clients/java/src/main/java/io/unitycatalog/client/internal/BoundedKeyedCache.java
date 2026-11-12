@@ -120,6 +120,10 @@ public final class BoundedKeyedCache<K, V> {
     evicted.forEach(evictionListener);
   }
 
+  public int maxSize() {
+    return maxSize;
+  }
+
   public int size() {
     synchronized (cacheLock) {
       return cache.size();

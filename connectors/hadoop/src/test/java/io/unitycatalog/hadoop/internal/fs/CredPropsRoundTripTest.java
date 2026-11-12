@@ -370,7 +370,7 @@ class CredPropsRoundTripTest {
       throws Exception {
     CredScopedFileSystem fs = new CredScopedFileSystem();
     fs.initialize(uri, conf);
-    Configuration delegateConf = fs.getDelegate().getConf();
+    Configuration delegateConf = fs.getRawFileSystem().getConf();
     // The encoder cache setting is not propagated to the decoded provider configuration.
     delegateConf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
     return delegateConf;
