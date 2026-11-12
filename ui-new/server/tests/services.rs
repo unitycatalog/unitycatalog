@@ -325,7 +325,7 @@ async fn create_function_uses_uc_request_envelope() {
 }
 
 #[tokio::test]
-async fn list_views_advances_past_table_only_pages() {
+async fn list_views_returns_filtered_empty_page_with_next_token() {
     let uc = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/api/2.1/unity-catalog/tables"))
@@ -339,21 +339,6 @@ async fn list_views_advances_past_table_only_pages() {
         .expect(1)
         .mount(&uc)
         .await;
-    Mock::given(method("GET"))
-        .and(path("/api/2.1/unity-catalog/tables"))
-        .and(query_param("page_token", "next"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "tables": [{
-                "name": "metrics",
-                "catalog_name": "main",
-                "schema_name": "default",
-                "table_type": "METRIC_VIEW"
-            }]
-        })))
-        .expect(1)
-        .mount(&uc)
-        .await;
-
     let response = build_app(uc.uri())
         .oneshot(rpc_request(
             "ViewService",
@@ -367,7 +352,57 @@ async fn list_views_advances_past_table_only_pages() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let json = body_json(response).await;
-    assert_eq!(json["views"][0]["fullName"], "main.default.metrics");
+    assert!(json.get("views").is_none());
+    assert_eq!(json["page"]["nextPageToken"], "next");
+}
+
+#[tokio::test]
+async fn list_tables_omits_metric_views() {
+    let uc = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/2.1/unity-catalog/tables"))
+        .and(query_param("catalog_name", "main"))
+        .and(query_param("schema_name", "default"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "tables": [
+                {
+                    "name": "events",
+                    "catalog_name": "main",
+                    "schema_name": "default",
+                    "table_type": "MANAGED"
+                },
+                {
+                    "name": "metrics",
+                    "catalog_name": "main",
+                    "schema_name": "default",
+                    "table_type": "METRIC_VIEW"
+                }
+            ]
+        })))
+        .expect(1)
+        .mount(&uc)
+        .await;
+
+    let response = build_app(uc.uri())
+        .oneshot(rpc_request(
+            "TableService",
+            "ListTables",
+            serde_json::json!({
+                "schema": {"catalogName": "main", "name": "default"}
+            }),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = body_json(response).await;
+    let names: Vec<_> = json["tables"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|table| table["fullName"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["main.default.events"]);
 }
 
 #[tokio::test]

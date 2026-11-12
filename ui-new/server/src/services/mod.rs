@@ -46,23 +46,6 @@ fn page_query(page: &PageRequest) -> Vec<(&'static str, String)> {
     query
 }
 
-fn continue_page(
-    query: &mut Vec<(&'static str, String)>,
-    next_page_token: &str,
-) -> Result<(), ConnectError> {
-    if query
-        .iter()
-        .any(|(key, value)| *key == "page_token" && value == next_page_token)
-    {
-        return Err(ConnectError::internal(
-            "Unity Catalog returned a repeated page token",
-        ));
-    }
-    query.retain(|(key, _)| *key != "page_token");
-    query.push(("page_token", next_page_token.to_string()));
-    Ok(())
-}
-
 fn properties_value(values: &Properties) -> Value {
     serde_json::to_value(&values.values).unwrap_or_else(|_| Value::Object(Default::default()))
 }

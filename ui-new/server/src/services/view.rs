@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use connectrpc::{ConnectError, RequestContext, Response, ServiceRequest, ServiceResult};
 use serde_json::{json, Map, Value};
 
-use super::{column_value, continue_page, dependencies_value, page_query, properties_value};
+use super::{column_value, dependencies_value, page_query, properties_value};
 use crate::mapping;
 use crate::proto::uc::v1::*;
 use crate::upstream::{path_segment, Upstream};
@@ -36,24 +36,15 @@ impl ViewService for ViewRpc {
             ("omit_columns", "true".to_string()),
             ("omit_properties", "true".to_string()),
         ]);
-        let (views, page) = loop {
-            let value = self.upstream.get(&ctx, "/tables", query.clone()).await?;
-            let views: Vec<_> = mapping::required_array(&value, "tables")?
-                .iter()
-                .filter(|table| {
-                    table.get("table_type").and_then(Value::as_str) == Some("METRIC_VIEW")
-                })
-                .map(mapping::metric_view_summary)
-                .collect();
-            let page = mapping::page(&value);
-            if !views.is_empty() || page.next_page_token.is_empty() {
-                break (views, page);
-            }
-            continue_page(&mut query, &page.next_page_token)?;
-        };
+        let value = self.upstream.get(&ctx, "/tables", query).await?;
+        let views = mapping::required_array(&value, "tables")?
+            .iter()
+            .filter(|table| table.get("table_type").and_then(Value::as_str) == Some("METRIC_VIEW"))
+            .map(mapping::metric_view_summary)
+            .collect();
         Ok(Response::new(ListViewsResponse {
             views,
-            page: page.into(),
+            page: mapping::page(&value).into(),
             ..Default::default()
         }))
     }

@@ -1,7 +1,7 @@
 use connectrpc::{ConnectError, RequestContext, Response, ServiceRequest, ServiceResult};
 use serde_json::{json, Map, Value};
 
-use super::{column_value, continue_page, data_source_format, page_query, properties_value};
+use super::{column_value, data_source_format, page_query, properties_value};
 use crate::mapping;
 use crate::proto::uc::v1::*;
 use crate::upstream::{path_segment, Upstream};
@@ -34,24 +34,15 @@ impl TableService for TableRpc {
             ("omit_columns", "true".to_string()),
             ("omit_properties", "true".to_string()),
         ]);
-        let (tables, page) = loop {
-            let value = self.upstream.get(&ctx, "/tables", query.clone()).await?;
-            let tables: Vec<_> = mapping::required_array(&value, "tables")?
-                .iter()
-                .filter(|table| {
-                    table.get("table_type").and_then(Value::as_str) != Some("METRIC_VIEW")
-                })
-                .map(mapping::table_summary)
-                .collect();
-            let page = mapping::page(&value);
-            if !tables.is_empty() || page.next_page_token.is_empty() {
-                break (tables, page);
-            }
-            continue_page(&mut query, &page.next_page_token)?;
-        };
+        let value = self.upstream.get(&ctx, "/tables", query).await?;
+        let tables = mapping::required_array(&value, "tables")?
+            .iter()
+            .filter(|table| table.get("table_type").and_then(Value::as_str) != Some("METRIC_VIEW"))
+            .map(mapping::table_summary)
+            .collect();
         Ok(Response::new(ListTablesResponse {
             tables,
-            page: page.into(),
+            page: mapping::page(&value).into(),
             ..Default::default()
         }))
     }

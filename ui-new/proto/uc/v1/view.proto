@@ -44,7 +44,7 @@ message ListViewsRequest {
 
 // ListViewsResponse contains one filtered page of metric views.
 //
-// The bridge advances past upstream pages containing only other table types.
+// A page can be empty after filtering other table types; callers follow page tokens.
 message ListViewsResponse {
   repeated MetricViewSummary views = 1;
   PageResponse page = 2;

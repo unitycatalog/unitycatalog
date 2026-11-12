@@ -73,7 +73,7 @@ message ListTablesRequest {
 
 // ListTablesResponse contains one filtered page of non-metric-view tables.
 //
-// The bridge advances past upstream pages containing only metric views.
+// A page can be empty after filtering metric views; callers follow page tokens.
 message ListTablesResponse {
   repeated TableSummary tables = 1;
   PageResponse page = 2;
