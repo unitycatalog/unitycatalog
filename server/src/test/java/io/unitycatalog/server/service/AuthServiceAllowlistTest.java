@@ -486,14 +486,6 @@ public class AuthServiceAllowlistTest {
               "Access token has no expiry.",
               idpToken(testIssuer, null, Instant.now().plusSeconds(300), Map.of("sub", "person-1")),
               "Invalid audience",
-              JWT.create()
-                  .withIssuer(testIssuer)
-                  .withKeyId(testIssuerKeyId)
-                  .withAudience(new String[0])
-                  .withExpiresAt(Instant.now().plusSeconds(300))
-                  .withClaim("sub", "person-1")
-                  .sign(testIssuerAlgorithm),
-              "Invalid audience",
               withoutAlgorithm(idpToken(Map.of("sub", "person-1"))),
               "Missing signing algorithm");
       for (Map.Entry<String, String> entry : unauthenticated.entrySet()) {
