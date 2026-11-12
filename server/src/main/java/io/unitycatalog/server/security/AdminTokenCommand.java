@@ -200,12 +200,10 @@ public final class AdminTokenCommand {
       } catch (DateTimeParseException e) {
         duration = null;
       }
-      if (duration == null || duration.isNegative() || duration.isZero()) {
+      if (duration == null || duration.compareTo(Duration.ofSeconds(1)) < 0) {
         throw new IllegalArgumentException(
-            "--lifetime must be a positive ISO-8601 duration, such as P90D: " + lifetime);
-      }
-      if (duration.compareTo(Duration.ofSeconds(1)) < 0) {
-        throw new IllegalArgumentException("--lifetime must be at least 1 second: " + lifetime);
+            "--lifetime must be an ISO-8601 duration of at least 1 second, such as P90D: "
+                + lifetime);
       }
       try {
         return Date.from(Instant.now().plus(duration));
