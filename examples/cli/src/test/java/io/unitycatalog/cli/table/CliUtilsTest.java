@@ -138,7 +138,7 @@ public class CliUtilsTest {
     }
     for (int row = 0; row < count; row++) {
       assertThat(vectors[0].getInt(row)).isEqualTo(row + 11);
-      assertThat(vectors[1].getByte(row)).isBetween((byte) 0, (byte) 127);
+      assertThat(vectors[1].getByte(row)).isNotNegative();
       assertThat(vectors[2].getShort(row)).isBetween((short) 0, (short) 999);
       assertThat(vectors[3].getInt(row)).isBetween(0, 999);
       assertThat(vectors[4].getLong(row)).isBetween(0L, 999L);

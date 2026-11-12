@@ -45,7 +45,7 @@ import java.util.stream.Collectors;
 /**
  * Helper class to write a sample Delta table. Generates random data conforming to the given schema
  * and writes it to the given table path. For adding more data types, add the corresponding methods
- * in the ColumnVectorUtil class. Most of the code in this class has been copied from <a
+ * in the ColumnVectorUtils class. Most of the code in this class has been copied from <a
  * href="https://github.com/delta-io/delta/blob/master/kernel/examples/kernel-examples/src/main/java/io/delta/kernel/examples/BaseTableWriter.java">BaseTableWriter.java</a>
  */
 public class DeltaKernelWriteUtils {
@@ -262,9 +262,5 @@ public class DeltaKernelWriteUtils {
 
   static ColumnVector shortVector(List<Short> data) {
     return ColumnVectorUtils.createVector(data, ShortType.SHORT, data::get);
-  }
-
-  static ColumnVector stringSingleValueVector(String value, int size) {
-    return ColumnVectorUtils.createSingleValueVector(value, size, StringType.STRING);
   }
 }

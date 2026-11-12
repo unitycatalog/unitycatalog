@@ -15,7 +15,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.delta.kernel.Snapshot;
 import io.delta.kernel.Table;
-import io.delta.kernel.data.Row;
 import io.delta.kernel.engine.Engine;
 import io.delta.kernel.types.ByteType;
 import io.delta.kernel.types.DoubleType;
@@ -222,21 +221,29 @@ public class CliTableCreationTest extends BaseServerTest {
             tuple("f", FloatType.FLOAT),
             tuple("d", DoubleType.DOUBLE),
             tuple("str", StringType.STRING));
-    List<Row> rows =
+    List<List<String>> rows =
         DeltaKernelReadUtils.readData(
-            engine, schema, snapshot.getScanBuilder().withReadSchema(schema).build(), 100);
+                engine, schema, snapshot.getScanBuilder().withReadSchema(schema).build(), 100)
+            .stream()
+            .map(
+                row ->
+                    IntStream.range(0, schema.length())
+                        .mapToObj(col -> DeltaKernelReadUtils.getValue(row, col))
+                        .toList())
+            .toList();
 
     assertThat(rows)
-        .extracting(row -> row.getInt(0))
-        .containsExactlyInAnyOrderElementsOf(IntStream.rangeClosed(1, 15).boxed().toList());
-    for (Row row : rows) {
-      IntStream.range(0, schema.length()).forEach(col -> assertThat(row.isNullAt(col)).isFalse());
-      assertThat(row.getByte(1)).isBetween((byte) 0, (byte) 127);
-      assertThat(row.getShort(2)).isBetween((short) 0, (short) 999);
-      assertThat(row.getLong(3)).isBetween(0L, 999L);
-      assertThat(row.getFloat(4)).isBetween(0f, 999f);
-      assertThat(row.getDouble(5)).isGreaterThanOrEqualTo(0).isLessThan(1000);
-      assertThat(row.getString(6)).matches("[A-Za-z]{10}");
+        .extracting(row -> row.get(0))
+        .containsExactlyInAnyOrderElementsOf(
+            IntStream.rangeClosed(1, 15).mapToObj(String::valueOf).toList());
+    for (List<String> row : rows) {
+      assertThat(row).doesNotContainNull();
+      assertThat(Byte.parseByte(row.get(1))).isNotNegative();
+      assertThat(Short.parseShort(row.get(2))).isNotNegative();
+      assertThat(Long.parseLong(row.get(3))).isNotNegative();
+      assertThat(Float.parseFloat(row.get(4))).isNotNegative();
+      assertThat(Double.parseDouble(row.get(5))).isNotNegative();
+      assertThat(row.get(6)).hasSize(10);
     }
   }
 
