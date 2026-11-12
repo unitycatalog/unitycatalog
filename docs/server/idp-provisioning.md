@@ -141,8 +141,10 @@ example `okta`) for rows the IdP creates or that a person's first sign-in create
 owns](auth.md#users-and-groups-an-identity-provider-owns).
 
 - **Names are unique.** User emails and group names are unique across all owners. If Okta creates a user or group whose
-  name already exists, Unity Catalog answers `409 Conflict` and Okta reports a provisioning error. Rename or delete
-  one side, then retry.
+  name already exists, Unity Catalog answers `409 Conflict` and Okta reports a provisioning error. Rename one side,
+  then retry. Deleting the group also frees its name. Deleting the user frees its email only once a delete removes the
+  user; today a delete only disables it, so the retry still gets 409.
+<!-- TODO(PR 3): a delete must remove the user row, so that deleting a user frees its email. -->
 - **Each side edits only its own rows.** The IdP can see and change only the rows it owns. The admin sees every row,
   but can't update, deactivate or delete a user that an IdP owns (`403`). A row created by the admin is invisible to
   the IdP, so a user the admin created by hand is not adopted by Okta; Okta tries to create it and gets a `409`.
