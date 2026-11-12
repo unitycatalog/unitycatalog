@@ -145,7 +145,7 @@ public class RepositoryUtils {
    */
   public static void updateByKey(
       Session session,
-      Object locked,
+      UuidEntity locked,
       Map<String, Object> key,
       Map<String, Object> set,
       Supplier<BaseException> notFound) {
@@ -154,12 +154,12 @@ public class RepositoryUtils {
     MutationQuery update =
         session.createMutationQuery(
             "update "
-                + Hibernate.getClass(locked).getSimpleName()
+                + session.getEntityName(locked)
                 + " set "
                 + assignments
                 + " where "
                 + predicate(key));
-    bindKey(update, (UUID) session.getIdentifier(locked), key);
+    bindKey(update, locked.getId(), key);
     set.forEach((attribute, value) -> update.setParameter("set_" + attribute, value));
     if (update.executeUpdate() == 0) {
       throw notFound.get();
