@@ -218,9 +218,6 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
     }
   }
 
-  /**
-   * An IdP provisioning a user, then hitting each error it can meet, as it sees them on the wire.
-   */
   @Test
   @SneakyThrows
   public void testScimErrorJourney() {
