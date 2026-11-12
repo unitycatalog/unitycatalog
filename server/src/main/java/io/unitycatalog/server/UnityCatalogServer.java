@@ -103,6 +103,7 @@ public class UnityCatalogServer implements AutoCloseable {
   private MetricsRegistries.PrometheusMetrics metrics;
 
   static {
+    useWoodstoxForStax();
     System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
     Configurator.initialize(null, "etc/conf/server.log4j2.properties");
   }
@@ -475,7 +476,6 @@ public class UnityCatalogServer implements AutoCloseable {
   }
 
   public static void main(String[] args) {
-    useWoodstoxForStax();
     OptionParser options = new OptionParser();
     options.parse(args);
     if (options.isUpgradeSchema()) {

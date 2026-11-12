@@ -425,6 +425,14 @@ lazy val server = (project in file("server"))
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
       // Delta Kernel validates set-columns schema evolution.
       "io.delta" % "delta-kernel-api" % deltaVersion,
+      // Keep OpenSharing's Delta Kernel transitives explicit in the published POM, without the
+      // older published Unity Catalog integrations that would shadow the server's own classes.
+      "io.delta" % "delta-kernel-defaults" % deltaVersion
+        exclude("io.unitycatalog", "unitycatalog-client")
+        exclude("io.unitycatalog", "unitycatalog-hadoop"),
+      "io.delta" % "delta-storage" % deltaVersion
+        exclude("io.unitycatalog", "unitycatalog-client")
+        exclude("io.unitycatalog", "unitycatalog-hadoop"),
 
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
       "com.github.ben-manes.caffeine" % "caffeine" % caffeineVersion,
@@ -469,8 +477,15 @@ lazy val server = (project in file("server"))
       // apache5-client instead, so declare apache-client explicitly
       "software.amazon.awssdk" % "apache-client" % awsSdkV2Version,
 
-      // Hadoop dependencies for ExternalLocationUtils
+      // Hadoop dependencies for ExternalLocationUtils and OpenSharing's published runtime.
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
+      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion % Runtime,
+      "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Runtime,
+      "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Runtime
+        exclude("com.microsoft.azure", "azure-storage")
+        exclude("com.microsoft.azure", "azure-keyvault-core")
+        exclude("org.eclipse.jetty", "jetty-util")
+        exclude("org.eclipse.jetty", "jetty-util-ajax"),
 
       // Embedded OpenSharing: shares and recipients, and the Delta Sharing protocol. It runs on the
       // Hibernate and the Armeria server above, and brings Delta Kernel's defaults, Parquet, and
@@ -518,6 +533,8 @@ lazy val server = (project in file("server"))
       "software.amazon.awssdk" % "sts" % awsSdkV2Version,
       "software.amazon.awssdk" % "kms" % awsSdkV2Version,
       "software.amazon.awssdk" % "auth" % awsSdkV2Version,
+      "io.delta" % "delta-kernel-defaults" % deltaVersion,
+      "io.delta" % "delta-storage" % deltaVersion,
       "io.netty" % "netty-all" % nettyVersion,
       "io.netty" % "netty-tcnative-classes" % nettyTcnativeVersion,
       "io.netty" % "netty-tcnative-boringssl-static" % nettyTcnativeVersion,
@@ -550,7 +567,7 @@ lazy val server = (project in file("server"))
       (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
     },
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
-    // Same StAX providers UnityCatalogServer.main sets, over hadoop-client-runtime's relocated one.
+    // Same StAX providers UnityCatalogServer sets when it loads, over hadoop-client-runtime's one.
     Test / javaOptions ++= Seq(
       "-Djavax.xml.stream.XMLInputFactory=com.ctc.wstx.stax.WstxInputFactory",
       "-Djavax.xml.stream.XMLOutputFactory=com.ctc.wstx.stax.WstxOutputFactory",
@@ -727,10 +744,10 @@ lazy val serverShaded = (project in file("server-shaded"))
       // ones Spark and Delta put on those classpaths. Only modules that the OpenSharing dependency
       // adds are left out; Delta Kernel's API and everything else the server had stays.
       val sharingOnlyModules = Set(
-        "analyticsaccelerator-s3", "azure-keyvault-core", "azure-storage", "commons-pool",
-        "delta-kernel-defaults", "delta-storage", "gcs-connector", "hadoop-aws", "hadoop-azure",
-        "hadoop-client-runtime", "hadoop-shaded-guava", "jetty-util", "jetty-util-ajax", "jts-core",
-        "parquet-column", "parquet-common", "parquet-encoding", "parquet-format-structures",
+        "analyticsaccelerator-s3", "commons-pool", "delta-kernel-defaults", "delta-storage",
+        "gcs-connector", "hadoop-aws", "hadoop-azure", "hadoop-client-runtime",
+        "hadoop-shaded-guava", "jts-core", "parquet-column", "parquet-common",
+        "parquet-encoding", "parquet-format-structures",
         "parquet-hadoop", "parquet-jackson", "s3-transfer-manager", "wildfly-openssl", "zstd-jni")
       val compileClasspath = (server / Compile / fullClasspath).value
         .filterNot(entry => entry.get(moduleID.key).exists(m => sharingOnlyModules(m.name)))
