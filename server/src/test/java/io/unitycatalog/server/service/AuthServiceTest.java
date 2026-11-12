@@ -651,7 +651,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   /**
    * A SCIM token can't PUT, PATCH or DELETE an IdP principal, its own or another IdP's, so one IdP
    * can't lock out or revive another; the admin still can. A principal the admin created is not
-   * found for the token; one that an IdP created is refused.
+   * found for the token.
    */
   @Test
   public void testScimTokenCannotChangeIdpPrincipals() throws Exception {
