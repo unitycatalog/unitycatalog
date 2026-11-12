@@ -21,6 +21,7 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.externallocation.ExternalLocationOperations;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.testdatabase.TestDatabase;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.Optional;
@@ -163,7 +164,9 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
     TestUtils.assertApiException(
         () ->
             runBlockedByHeldWrite(
-                held -> setColumn(held, CredentialDAO.class, id, "name", "drop_race_renamed"),
+                held ->
+                    TestDatabase.setColumn(
+                        held, CredentialDAO.class, id, "name", "drop_race_renamed"),
                 () -> {
                   credentialOperations.deleteCredential("drop_race", Optional.empty());
                   return null;
@@ -181,7 +184,7 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
     UUID id = UUID.fromString(createCredential("edit_race").getId());
 
     runBlockedByHeldWrite(
-        held -> setColumn(held, CredentialDAO.class, id, "comment", "held comment"),
+        held -> TestDatabase.setColumn(held, CredentialDAO.class, id, "comment", "held comment"),
         () ->
             credentialOperations.updateCredential(
                 "edit_race", new UpdateCredentialRequest().newName("edited")));
