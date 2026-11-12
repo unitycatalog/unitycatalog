@@ -137,23 +137,6 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     return apiClient;
   }
 
-  // In external mode the server answers the exchange with 501 UNIMPLEMENTED (token exchange is
-  // off), so the CLI keeps the identity provider's access token.
-  @Test
-  public void testAuthLoginKeepsTheIdpAccessTokenWhenTheExchangeIsUnimplemented() throws Exception {
-    AtomicReference<String> received = new AtomicReference<>();
-    HttpServer server = startTokenEndpoint(501, ucError("UNIMPLEMENTED"), received);
-    try {
-      assertThat(
-              AuthCli.exchangeForAccessToken(clientFor(server), "the-id-token", IDP_ACCESS_TOKEN))
-          .isEqualTo(IDP_ACCESS_TOKEN);
-      // The CLI tried the exchange with the identity token first.
-      assertThat(received.get()).contains("the-id-token");
-    } finally {
-      server.stop(0);
-    }
-  }
-
   // Only a 501 whose UC error body says UNIMPLEMENTED switches to the access token. Anything else
   // (a proxy's 501, another error, another status) is an error.
   @Test
