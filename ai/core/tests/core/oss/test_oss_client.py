@@ -1386,6 +1386,32 @@ async def test_unchanged_function_reuses_cached_callable(mocked_store_client, us
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize("deleted_by_this_client", [True, False])
+async def test_changed_function_is_rebuilt_once_then_reused(
+    mocked_store_client, use_async, deleted_by_this_client
+):
+    function_name = f"{CATALOG}.{SCHEMA}.count_calls"
+    counter = 'globals()["calls"] = globals().get("calls", 0) + 1\nreturn globals()["calls"]'
+    serve_functions(mocked_store_client, stored_python_function(function_name, counter, "INT"))
+    before = [
+        (await execute(mocked_store_client, use_async, function_name, {})).value for _ in range(2)
+    ]
+
+    if deleted_by_this_client:
+        mocked_store_client.delete_function(function_name)
+    serve_functions(
+        mocked_store_client,
+        stored_python_function(function_name, counter + " * 10", "INT"),
+    )
+    after = [
+        (await execute(mocked_store_client, use_async, function_name, {})).value for _ in range(3)
+    ]
+
+    assert (before, after) == ([1, 2], [10, 20, 30])
+
+
+@pytest.mark.asyncio
 async def test_to_dict(uc_client):
     client_dict = uc_client.to_dict()
     assert isinstance(client_dict, dict)
