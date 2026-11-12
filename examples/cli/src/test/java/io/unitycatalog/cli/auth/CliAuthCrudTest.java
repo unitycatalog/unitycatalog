@@ -6,14 +6,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
 import io.unitycatalog.cli.AuthCli;
 import io.unitycatalog.cli.utils.Oauth2CliExchange;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
@@ -32,7 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 public class CliAuthCrudTest extends BaseAuthCRUDTest {
@@ -107,18 +104,12 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     return "{\"error_code\":\"" + errorCode + "\",\"message\":\"Token exchange is disabled\"}";
   }
 
-  /**
-   * Starts a server whose {@code /auth/tokens} answers with the given status and body, and passes
-   * the request body it received to {@code received}.
-   */
-  private HttpServer startTokenEndpoint(int status, String body, AtomicReference<String> received)
-      throws IOException {
+  /** Starts a server whose {@code /auth/tokens} answers with the given status and body. */
+  private HttpServer startTokenEndpoint(int status, String body) throws IOException {
     HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
     server.createContext(
         "/api/1.0/unity-control/auth/tokens",
         exchange -> {
-          received.set(
-              new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
           byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
           exchange.sendResponseHeaders(status, bytes.length);
           exchange.getResponseBody().write(bytes);
@@ -155,7 +146,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
             new Reply(501, "<html>501 Not Implemented</html>"),
             new Reply(501, ucError("INTERNAL")),
             new Reply(500, ucError("UNIMPLEMENTED")))) {
-      HttpServer server = startTokenEndpoint(reply.status(), reply.body(), new AtomicReference<>());
+      HttpServer server = startTokenEndpoint(reply.status(), reply.body());
       try {
         assertThatThrownBy(
                 () ->
