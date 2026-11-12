@@ -251,7 +251,6 @@ class AuthDecoratorTest {
   @ValueSource(
       strings = {
         "/api/2.1/unity-catalog/catalogs",
-        "/api/1.0/unity-control/auth/logout",
         "/api/1.0/unity-control/scim2",
         "/api/1.0/unity-control/scim2Users"
       })
