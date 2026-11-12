@@ -9,8 +9,12 @@ import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.UpdateCatalog;
 import io.unitycatalog.client.model.UpdateSchema;
+import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.TestUtils;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -167,5 +171,54 @@ public abstract class BaseSchemaCRUDTest extends BaseSchemaCRUDTestEnv {
     SchemaInfo renamed = schemaOperations.getSchema(TestUtils.CATALOG_NAME + ".renamed_schema");
     assertThat(renamed.getSchemaId()).isEqualTo(id.toString());
     assertThat(renamed.getComment()).isEqualTo("held comment");
+  }
+
+  /** An update that waits for a concurrent rename of the schema misses it and changes nothing. */
+  @Test
+  public void updateRacingARenameIsNotFound() throws Exception {
+    UUID id = UUID.fromString(createCatalogAndSchema(Optional.empty()).getSchemaId());
+    String comment = schemaOperations.getSchema(TestUtils.SCHEMA_FULL_NAME).getComment();
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held -> setColumn(held, SchemaInfoDAO.class, id, "name", "renamed_schema"),
+                () ->
+                    schemaOperations.updateSchema(
+                        TestUtils.SCHEMA_FULL_NAME, new UpdateSchema().comment("lost"))),
+        ErrorCode.SCHEMA_NOT_FOUND,
+        "Schema not found");
+
+    SchemaInfo renamed = schemaOperations.getSchema(TestUtils.CATALOG_NAME + ".renamed_schema");
+    assertThat(renamed.getSchemaId()).isEqualTo(id.toString());
+    assertThat(renamed.getComment()).isEqualTo(comment);
+  }
+
+  /**
+   * A properties update that waits for a concurrent one replaces the properties that one committed,
+   * not the ones it saw before the wait (stale under MySQL's REPEATABLE READ).
+   */
+  @Test
+  public void propertiesUpdateReplacesConcurrentlyCommittedProperties() throws Exception {
+    UUID id = UUID.fromString(createCatalogAndSchema(Optional.empty()).getSchemaId());
+    schemaOperations.updateSchema(
+        TestUtils.SCHEMA_FULL_NAME, new UpdateSchema().properties(Map.of("a", "1")));
+
+    runBlockedByHeldWrite(
+        held -> {
+          // Like an update in flight: it holds the schema row and swaps property "a" for "b".
+          setColumn(held, SchemaInfoDAO.class, id, "updatedBy", "held");
+          held.createMutationQuery(
+                  "delete from PropertyDAO p where p.entityId = :id and p.key = 'a'")
+              .setParameter("id", id)
+              .executeUpdate();
+          PropertyDAO.from(Map.of("b", "2"), id, Constants.SCHEMA).forEach(held::persist);
+        },
+        () ->
+            schemaOperations.updateSchema(
+                TestUtils.SCHEMA_FULL_NAME, new UpdateSchema().properties(Map.of("c", "3"))));
+
+    assertThat(schemaOperations.getSchema(TestUtils.SCHEMA_FULL_NAME).getProperties())
+        .isEqualTo(Map.of("c", "3"));
   }
 }
