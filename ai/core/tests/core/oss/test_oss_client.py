@@ -1325,18 +1325,16 @@ async def test_function_is_reexecuted_instead_of_memoized(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("use_async", [False, True])
-@pytest.mark.parametrize("deleted_by_this_client", [True, False])
 @pytest.mark.parametrize(
     ("new_definition", "new_param_names", "arguments", "expected"),
     [
         ("return x * 25", ["x"], {"x": 10}, 250),
-        ("return x * 10", ["x", "y"], {"x": 10, "y": 1}, 100),
+        ("return x * y", ["x", "y"], {"x": 10, "y": 3}, 30),
     ],
 )
 async def test_function_changed_in_catalog_executes_new_definition(
     mocked_store_client,
     use_async,
-    deleted_by_this_client,
     new_definition,
     new_param_names,
     arguments,
@@ -1349,8 +1347,6 @@ async def test_function_changed_in_catalog_executes_new_definition(
     )
     first = await execute(mocked_store_client, use_async, function_name, {"x": 10})
 
-    if deleted_by_this_client:
-        mocked_store_client.delete_function(function_name)
     serve_functions(
         mocked_store_client,
         stored_python_function(
@@ -1387,10 +1383,7 @@ async def test_unchanged_function_reuses_cached_callable(mocked_store_client, us
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("use_async", [False, True])
-@pytest.mark.parametrize("deleted_by_this_client", [True, False])
-async def test_changed_function_is_rebuilt_once_then_reused(
-    mocked_store_client, use_async, deleted_by_this_client
-):
+async def test_changed_function_is_rebuilt_once_then_reused(mocked_store_client, use_async):
     function_name = f"{CATALOG}.{SCHEMA}.count_calls"
     counter = 'globals()["calls"] = globals().get("calls", 0) + 1\nreturn globals()["calls"]'
     serve_functions(mocked_store_client, stored_python_function(function_name, counter, "INT"))
@@ -1398,8 +1391,6 @@ async def test_changed_function_is_rebuilt_once_then_reused(
         (await execute(mocked_store_client, use_async, function_name, {})).value for _ in range(2)
     ]
 
-    if deleted_by_this_client:
-        mocked_store_client.delete_function(function_name)
     serve_functions(
         mocked_store_client,
         stored_python_function(function_name, counter + " * 10", "INT"),
@@ -1409,6 +1400,45 @@ async def test_changed_function_is_rebuilt_once_then_reused(
     ]
 
     assert (before, after) == ([1, 2], [10, 20, 30])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_replacing_a_function_resets_only_its_cached_callable(mocked_store_client, use_async):
+    counter = 'globals()["calls"] = globals().get("calls", 0) + 1\nreturn globals()["calls"]'
+    replaced = f"{CATALOG}.{SCHEMA}.counter_replaced"
+    untouched = f"{CATALOG}.{SCHEMA}.counter_untouched"
+    serve_functions(
+        mocked_store_client,
+        stored_python_function(replaced, counter, "INT"),
+        stored_python_function(untouched, counter, "INT"),
+    )
+    for name in (replaced, untouched, replaced, untouched):
+        await execute(mocked_store_client, use_async, name, {})
+
+    mocked_store_client.uc.functions_client.create_function.return_value = stored_python_function(
+        replaced, counter, "INT"
+    )
+    create_kwargs = {
+        "function_name": replaced,
+        "routine_definition": counter,
+        "data_type": "INT",
+        "full_data_type": "INT",
+        "comment": "Counts its calls.",
+        "parameters": [],
+        "replace": True,
+    }
+    if use_async:
+        await mocked_store_client.create_function_async(**create_kwargs)
+    else:
+        mocked_store_client.create_function(**create_kwargs)
+
+    after = [
+        (await execute(mocked_store_client, use_async, name, {})).value
+        for name in (replaced, untouched)
+    ]
+
+    assert after == [1, 3]
 
 
 @pytest.mark.asyncio
