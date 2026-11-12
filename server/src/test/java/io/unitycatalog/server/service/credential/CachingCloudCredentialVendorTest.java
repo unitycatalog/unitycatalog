@@ -16,6 +16,8 @@ import static org.mockito.Mockito.when;
 
 import com.google.auth.oauth2.AccessToken;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
@@ -62,6 +64,7 @@ import software.amazon.awssdk.services.sts.model.Credentials;
 public class CachingCloudCredentialVendorTest {
 
   private static final NormalizedURL LOC = NormalizedURL.from("s3://bucket/tableA");
+  private static final String AZURE_LOC = "abfss://container@account.dfs.core.windows.net/t";
   private static final long T0 = 1_000_000_000_000L;
   private static final long ONE_HOUR_MS = 3_600_000L;
 
@@ -158,6 +161,7 @@ public class CachingCloudCredentialVendorTest {
   private static CredentialContext ctx(
       String roleArn, String externalId, Set<CredentialContext.Privilege> privileges) {
     CredentialDAO dao = mock(CredentialDAO.class);
+    when(dao.getCredentialType()).thenReturn(CredentialDAO.CredentialType.AWS_IAM_ROLE);
     when(dao.getAwsIamRoleResponse())
         .thenReturn(new AwsIamRoleResponse().roleArn(roleArn).externalId(externalId));
     return CredentialContext.create(LOC, privileges, Optional.of(dao));
@@ -165,6 +169,21 @@ public class CachingCloudCredentialVendorTest {
 
   private static String accessKey(TemporaryCredentials credentials) {
     return credentials.getAwsTempCredentials().getAccessKeyId();
+  }
+
+  /**
+   * The Azure vendor refuses a credential, so its error reaches the caller, not one from reading an
+   * Azure credential as an AWS role for the key.
+   */
+  @Test
+  void azureCredentialIsPassedToTheAzureVendor() {
+    BaseException unimplemented = new BaseException(ErrorCode.UNIMPLEMENTED, "not supported yet");
+    when(azure.vendAzureCredential(any())).thenThrow(unimplemented);
+    CredentialContext context = azureCredential(AZURE_LOC);
+
+    assertThat(assertThrows(BaseException.class, () -> cache().vendCredential(context)))
+        .isSameAs(unimplemented);
+    verify(context.getCredentialDAO().get(), times(0)).getAwsIamRoleResponse();
   }
 
   @Test
@@ -204,7 +223,18 @@ public class CachingCloudCredentialVendorTest {
             perBucket("s3://bucket/data"),
             perBucket("s3://bucket/data", "s3://bucket/other")),
         Arguments.of(
-            "per-bucket config instead of a credential", original, perBucket(LOC.toString())));
+            "per-bucket config instead of a credential", original, perBucket(LOC.toString())),
+        // An Azure or GCS credential has no role, so only its type tells it apart.
+        Arguments.of(
+            "an Azure credential instead of per-bucket config",
+            perBucket(AZURE_LOC),
+            azureCredential(AZURE_LOC)));
+  }
+
+  private static CredentialContext azureCredential(String location) {
+    CredentialDAO dao = mock(CredentialDAO.class);
+    when(dao.getCredentialType()).thenReturn(CredentialDAO.CredentialType.AZURE_SERVICE_PRINCIPAL);
+    return CredentialContext.create(NormalizedURL.from(location), READ_ONLY, Optional.of(dao));
   }
 
   /** A READ_ONLY context for {@code location} with no credential DAO (per-bucket config). */

@@ -1,0 +1,2 @@
+- check uc_credentials (((credential_type)::text = 'AWS_IAM_ROLE'::text))
++ check uc_credentials (((credential_type)::text = ANY ((ARRAY['AWS_IAM_ROLE'::character varying, 'AZURE_SERVICE_PRINCIPAL'::character varying, 'GCP_SERVICE_ACCOUNT_KEY'::character varying])::text[])))

@@ -15,6 +15,7 @@ import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.UriScheme;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Date;
@@ -60,6 +61,19 @@ public class ExternalLocationRepository {
     return credentialDAO;
   }
 
+  /**
+   * Rejects a credential that cannot reach the URL's cloud, such as an AWS role for an abfss://
+   * URL. Vending would otherwise fail on every request for the location, long after it was set up.
+   */
+  private static void validateCredentialReachesUrl(CredentialDAO credentialDAO, NormalizedURL url) {
+    ValidationUtils.checkArgument(
+        credentialDAO.getCredentialType().supports(UriScheme.fromURI(url.toUri())),
+        "Storage credential '%s' (%s) cannot be used for %s.",
+        credentialDAO.getName(),
+        credentialDAO.getCredentialType(),
+        url);
+  }
+
   public ExternalLocationInfo addExternalLocation(CreateExternalLocation createExternalLocation) {
     ValidationUtils.validateSqlObjectName(createExternalLocation.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
@@ -79,6 +93,7 @@ public class ExternalLocationRepository {
 
           CredentialDAO credentialDAO =
               validateAndGetCredentialDAO(session, createExternalLocation.getCredentialName());
+          validateCredentialReachesUrl(credentialDAO, url);
           UUID externalLocationId = UUID.randomUUID();
           ExternalLocationDAO externalLocationDAO =
               ExternalLocationDAO.builder()
@@ -183,19 +198,23 @@ public class ExternalLocationRepository {
           if (updateExternalLocation.getComment() != null) {
             existingLocation.setComment(updateExternalLocation.getComment());
           }
-          String credentialName;
+          CredentialDAO credentialDAO;
           if (updateExternalLocation.getCredentialName() != null) {
             // Setting a new credential
-            credentialName = updateExternalLocation.getCredentialName();
-            CredentialDAO credentialDAO = validateAndGetCredentialDAO(session, credentialName);
+            credentialDAO =
+                validateAndGetCredentialDAO(session, updateExternalLocation.getCredentialName());
             existingLocation.setCredentialId(credentialDAO.getId());
           } else {
-            // Keep the current credential
-            credentialName =
-                repositories
-                    .getCredentialRepository()
-                    .getCredentialName(session, existingLocation.getCredentialId());
+            // Keep the current credential, which is null if it was force-deleted
+            credentialDAO = session.get(CredentialDAO.class, existingLocation.getCredentialId());
           }
+          if (credentialDAO != null
+              && (updateExternalLocation.getUrl() != null
+                  || updateExternalLocation.getCredentialName() != null)) {
+            validateCredentialReachesUrl(
+                credentialDAO, NormalizedURL.from(existingLocation.getUrl()));
+          }
+          String credentialName = credentialDAO == null ? null : credentialDAO.getName();
 
           existingLocation.setUpdatedAt(new Date());
           existingLocation.setUpdatedBy(callerId);
