@@ -979,8 +979,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
         .isEqualTo(HttpStatus.OK);
 
     // 6. Okta pushes the group again, replacing its members (a custom app's PUT): the admin's
-    // member
-    // stays, and Okta still sees only its own.
+    // member stays, and Okta still sees only its own.
     assertThat(
             groupsAs(
                     okta,
