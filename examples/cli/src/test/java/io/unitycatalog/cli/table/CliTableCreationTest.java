@@ -13,7 +13,20 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.delta.kernel.Snapshot;
+import io.delta.kernel.Table;
+import io.delta.kernel.engine.Engine;
+import io.delta.kernel.types.ByteType;
+import io.delta.kernel.types.DoubleType;
+import io.delta.kernel.types.FloatType;
+import io.delta.kernel.types.IntegerType;
+import io.delta.kernel.types.LongType;
+import io.delta.kernel.types.ShortType;
+import io.delta.kernel.types.StringType;
+import io.delta.kernel.types.StructField;
+import io.delta.kernel.types.StructType;
 import io.unitycatalog.cli.catalog.CliCatalogOperations;
+import io.unitycatalog.cli.delta.DeltaKernelReadUtils;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
 import io.unitycatalog.cli.schema.CliSchemaOperations;
 import io.unitycatalog.cli.utils.CliException;
@@ -30,14 +43,15 @@ import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
-import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,7 +60,7 @@ public class CliTableCreationTest extends BaseServerTest {
 
   private CatalogOperations catalogOperations;
   private SchemaOperations schemaOperations;
-  private TableOperations tableOperations;
+  private CliTableOperations tableOperations;
 
   private static final List<ColumnInfo> COLUMNS =
       List.of(
@@ -169,6 +183,68 @@ public class CliTableCreationTest extends BaseServerTest {
     assertThat(fields)
         .extracting(field -> field.get("name").asText(), field -> field.get("type").asText())
         .containsExactly(tuple("price", "decimal(10,2)"), tuple("amount", "decimal(10,0)"));
+  }
+
+  @Test
+  public void testWriteTableAndReadBackSupportedColumnTypes() throws IOException, ApiException {
+    Path tableDir = testDirectoryRoot.resolve("table");
+    tableOperations.createTable(
+        new CreateTable()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name(TABLE_NAME)
+            .tableType(TableType.EXTERNAL)
+            .storageLocation(tableDir.toUri().toString())
+            .columns(
+                List.of(
+                    new ColumnInfo().name("id").typeName(ColumnTypeName.INT),
+                    new ColumnInfo().name("b").typeName(ColumnTypeName.BYTE),
+                    new ColumnInfo().name("s").typeName(ColumnTypeName.SHORT),
+                    new ColumnInfo().name("l").typeName(ColumnTypeName.LONG),
+                    new ColumnInfo().name("f").typeName(ColumnTypeName.FLOAT),
+                    new ColumnInfo().name("d").typeName(ColumnTypeName.DOUBLE),
+                    new ColumnInfo().name("str").typeName(ColumnTypeName.STRING))));
+
+    tableOperations.writeTable(TABLE_FULL_NAME);
+
+    String storageLocation = tableOperations.getTable(TABLE_FULL_NAME).getStorageLocation();
+    Engine engine = DeltaKernelUtils.getEngine(URI.create(storageLocation), null);
+    Snapshot snapshot = Table.forPath(engine, storageLocation).getLatestSnapshot(engine);
+    StructType schema = snapshot.getSchema();
+    assertThat(schema.fields())
+        .extracting(StructField::getName, StructField::getDataType)
+        .containsExactly(
+            tuple("id", IntegerType.INTEGER),
+            tuple("b", ByteType.BYTE),
+            tuple("s", ShortType.SHORT),
+            tuple("l", LongType.LONG),
+            tuple("f", FloatType.FLOAT),
+            tuple("d", DoubleType.DOUBLE),
+            tuple("str", StringType.STRING));
+    List<List<String>> rows =
+        DeltaKernelReadUtils.readData(
+                engine, schema, snapshot.getScanBuilder().withReadSchema(schema).build(), 100)
+            .stream()
+            .map(
+                row ->
+                    IntStream.range(0, schema.length())
+                        .mapToObj(col -> DeltaKernelReadUtils.getValue(row, col))
+                        .toList())
+            .toList();
+
+    assertThat(rows)
+        .extracting(row -> row.get(0))
+        .containsExactlyInAnyOrderElementsOf(
+            IntStream.rangeClosed(1, 15).mapToObj(String::valueOf).toList());
+    for (List<String> row : rows) {
+      assertThat(row).doesNotContainNull();
+      assertThat(Byte.parseByte(row.get(1))).isNotNegative();
+      assertThat(Short.parseShort(row.get(2))).isNotNegative();
+      assertThat(Long.parseLong(row.get(3))).isNotNegative();
+      assertThat(Float.parseFloat(row.get(4))).isNotNegative();
+      assertThat(Double.parseDouble(row.get(5))).isNotNegative();
+      assertThat(row.get(6)).hasSize(10);
+    }
   }
 
   @Test
