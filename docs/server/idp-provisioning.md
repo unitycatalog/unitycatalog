@@ -108,17 +108,8 @@ Unity Catalog uses the person's email as the SCIM `userName`, so the username Ok
 app's **Sign On** tab, set **Application username format** to a format that gives the person's email (see [Okta's
 article on this setting](https://support.okta.com/help/s/article/Update-application-username-using-an-expression-language?language=en_US)).
 
-<!-- TODO(PR 2): the user requests below must work as Okta sends them: the userName filter with startIndex and
-count, PUT with the full user (also to set active), and PATCH with {"op":"replace","value":{"active":false}}. -->
-Okta sends these requests to Unity Catalog. An app you create with the wizard sends `PUT` for every update. An app
-from the Okta Integration Network sends `PATCH` instead to set `active` and to change a group. See Okta's [SCIM 2.0
-guide](https://developer.okta.com/docs/api/openapi/okta-scim/guides/scim-20/).
-
-| Resource | Requests |
-| --- | --- |
-| Users | `GET /Users?filter=userName eq "..."`, `POST /Users`, `PUT /Users/{id}` to update the user and to set `active` |
-| Groups | `POST /Groups`, `PUT /Groups/{id}` to change members and to rename, `DELETE /Groups/{id}` |
-
+<!-- TODO(PR 2): the user requests Okta sends must work: the userName filter with startIndex and count, PUT with the
+full user (also to set active), and PATCH with {"op":"replace","value":{"active":false}}. -->
 Okta never sends `DELETE` for a user. When you unassign a user, Okta deactivates the row. When you assign the user
 again, Okta reactivates the same row, and the person's next sign-in links it again (see [First
 sign-in](#first-sign-in)). Unity Catalog does not store the `password` that Okta sends in `POST /Users`.
