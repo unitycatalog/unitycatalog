@@ -215,7 +215,7 @@ public class GroupRepository {
             });
   }
 
-  // TODO(#PR3): use UniqueViolations.flushOrAlreadyExists once PR 3 merges.
+  // TODO(#PR3): use UniqueViolations.flushOrAlreadyExists.
   /**
    * Writes the pending changes now, so a taken name fails here and not at commit. Hibernate marks
    * the violation as UNIQUE on H2 and MySQL but not on PostgreSQL, so SQLSTATE 23505 (unique
