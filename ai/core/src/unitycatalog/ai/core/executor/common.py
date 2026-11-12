@@ -47,7 +47,8 @@ TERMINATED_MESSAGE_TEMPLATE = (
     "you are certain that your function is behaving as expected:\n"
     "\t1. EXECUTOR_MAX_CPU_TIME_LIMIT: Maximum CPU execution time limit for the executor "
     "measured in CPU seconds (total CPU execution time, not wall-clock time).\n"
-    "\t2. EXECUTOR_MAX_MEMORY_LIMIT: Maximum memory limit for the executor measured in MB. "
+    "\t2. EXECUTOR_MAX_MEMORY_LIMIT: Maximum virtual memory, measured in MB, that the function "
+    "can allocate on top of the address space the sandbox process inherits. "
     "The default value is 100 MB. Note that this restriction is only applicable to Linux environments "
     "and has no functional use in Mac OSX or Windows.\n"
 )
@@ -56,8 +57,14 @@ EXITED_WITHOUT_RESULT_MESSAGE_TEMPLATE = (
     "The function execution process exited with code {exit_code} before it could report a result. "
     "This can happen when the function exits the process itself, or when the process runs out of "
     "memory while reporting its result or error. If the function needs more memory, increase the "
-    "EXECUTOR_MAX_MEMORY_LIMIT environment variable. Any error raised in the process was written to "
-    "its standard error output.\n"
+    "EXECUTOR_MAX_MEMORY_LIMIT environment variable. Errors raised by the function are normally "
+    "reported as its result, so a traceback may appear on the standard error output of the "
+    "process only when it could not send its result.\n"
+)
+
+UNREADABLE_RESULT_MESSAGE_TEMPLATE = (
+    "The function execution process exited with code {exit_code}, but its result could not be "
+    "read: {error}\n"
 )
 
 IMPORT_DISALLOWED_MESSAGE_TEMPLATE = (

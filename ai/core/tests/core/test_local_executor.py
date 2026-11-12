@@ -4,6 +4,8 @@ import importlib
 import logging
 import mmap
 import multiprocessing
+import os
+import struct
 import sys
 import time
 
@@ -276,7 +278,10 @@ linux_only = pytest.mark.skipif(
 
 @pytest.fixture
 def parent_address_space_above_memory_limit():
-    reservation = mmap.mmap(-1, 1024 * MB, flags=mmap.MAP_PRIVATE, prot=mmap.PROT_READ)
+    try:
+        reservation = mmap.mmap(-1, 1024 * MB, flags=mmap.MAP_PRIVATE, prot=mmap.PROT_READ)
+    except OSError as e:
+        pytest.skip(f"Unable to reserve 1 GB of address space: {e}")
     yield
     reservation.close()
 
@@ -343,6 +348,43 @@ def test_unpicklable_result_reports_the_pickling_error():
     assert "pickle" in result.lower()
 
 
+def write_partial_result_frame_and_exit(sender):
+    os.write(sender.fileno(), struct.pack("!i", 100) + b"partial")
+    os._exit(0)
+
+
+def test_partial_result_is_reported_as_unreadable():
+    ctx = multiprocessing.get_context("fork")
+    receiver, sender = ctx.Pipe(duplex=False)
+    process = ctx.Process(target=write_partial_result_frame_and_exit, args=(sender,))
+    process.start()
+    sender.close()
+
+    succeeded, result = local_executor._receive_result(receiver, process)
+
+    assert not succeeded
+    assert "exited with code 0, but its result could not be read: OSError" in result
+
+
+def fail_to_unpickle():
+    raise ValueError("cannot rebuild this object")
+
+
+class UnpicklableInParent:
+    def __reduce__(self):
+        return fail_to_unpickle, ()
+
+
+def test_result_that_cannot_be_unpickled_is_reported_as_unreadable():
+    def unreadable_result():
+        return UnpicklableInParent()
+
+    succeeded, result = run_in_sandbox(unreadable_result, {})
+
+    assert not succeeded
+    assert "its result could not be read: ValueError: cannot rebuild this object" in result
+
+
 def test_process_exiting_without_result_reports_its_exit_code():
     def exit_process():
         import os
@@ -361,14 +403,21 @@ def read_memory_limit():
     return resource.getrlimit(resource.RLIMIT_AS)
 
 
-def test_memory_limit_is_not_applied_when_address_space_size_is_unknown(monkeypatch, tmp_path):
+def test_memory_limit_is_not_applied_when_address_space_size_is_unknown(
+    monkeypatch, tmp_path, caplog
+):
     resource = pytest.importorskip("resource")
     monkeypatch.setattr(local_executor, "_STATM_PATH", str(tmp_path / "missing"))
+    original_limits = resource.getrlimit(resource.RLIMIT_AS)
 
+    with caplog.at_level(logging.INFO, logger=local_executor.__name__):
+        local_executor._limit_resources(cpu_time_limit=resource.RLIM_INFINITY, memory_limit=1)
     succeeded, result = run_in_sandbox(read_memory_limit, {})
 
+    assert "cannot read the current address space size" in caplog.text
+    assert resource.getrlimit(resource.RLIMIT_AS) == original_limits
     assert succeeded, result
-    assert result == resource.getrlimit(resource.RLIMIT_AS)
+    assert result == original_limits
 
 
 @linux_only

@@ -1,5 +1,19 @@
 # Changelog for Unity Catalog AI releases
 
+## Unreleased
+
+### Behavior Changes
+
+- **Sandbox memory limit is relative to the inherited address space**: In the `sandbox` execution mode, `EXECUTOR_MAX_MEMORY_LIMIT` (added in 0.3.0) is now the extra virtual memory, in MB, that the function can allocate on top of the address space the forked sandbox process inherits from your application. It used to be an absolute cap on the whole process, so functions could not allocate anything once your application used more memory than the limit. An existing lower limit is never raised, and no memory limit is applied when the current address space size cannot be read. The `local` execution mode of `DatabricksFunctionClient` is unchanged and still caps the whole subprocess.
+
+### Bug Fixes
+
+- Fixed sandbox results being lost, with a misleading "no output was produced" message, when the application uses more memory than `EXECUTOR_MAX_MEMORY_LIMIT`. The sandbox now reports the exit code when the process exits without a result, and reports a result that cannot be read as a failure instead of raising.
+
+### Change Log
+
+- Keep sandbox results from being lost when the parent uses a lot of memory by @maharanay22 in #2218
+
 ## Unity Catalog AI 0.4.0
 
 The 0.4.0 release of Unity Catalog AI includes a new framework integration, LangChain v1 compatibility, expanded Databricks client options, and dependency/security improvements.
