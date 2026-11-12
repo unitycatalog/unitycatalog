@@ -29,6 +29,7 @@ import com.linecorp.armeria.server.annotation.RequestConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
 import com.linecorp.armeria.server.metric.MetricCollectingService;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.opensharing.http.ApiJson;
 import io.unitycatalog.server.auth.decorator.AuthorizationGateConverter;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -43,6 +44,7 @@ import io.unitycatalog.server.service.UnityCatalogRestService;
 import io.unitycatalog.server.service.delta.DeltaApiMappers;
 import io.unitycatalog.server.service.delta.DeltaApiService;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
+import io.unitycatalog.server.service.sharing.OpenSharingProviderService;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.ParameterizedType;
 import java.util.List;
@@ -112,6 +114,7 @@ public class ArmeriaServerBuilder {
   private final JacksonResponseConverterFunction icebergResponseConverter;
   private final ObjectMapper deltaMapper;
   private final JacksonResponseConverterFunction deltaResponseConverter;
+  private final JacksonResponseConverterFunction openSharingResponseConverter;
 
   ArmeriaServerBuilder(
       int port,
@@ -164,6 +167,7 @@ public class ArmeriaServerBuilder {
     this.icebergResponseConverter = new JacksonResponseConverterFunction(icebergMapper);
     this.deltaMapper = DeltaApiMappers.MAPPER;
     this.deltaResponseConverter = new JacksonResponseConverterFunction(deltaMapper);
+    this.openSharingResponseConverter = new JacksonResponseConverterFunction(ApiJson.MAPPER);
   }
 
   /** Registers a control-plane auth service at {@code controlPath + relativePath}. */
@@ -193,6 +197,15 @@ public class ArmeriaServerBuilder {
   /** Registers a UC Delta REST service (Delta mapper) under the base path. */
   ArmeriaServerBuilder annotate(String relativePath, DeltaApiService service) {
     register(ServiceProtocol.DELTA, relativePath, service);
+    return this;
+  }
+
+  /**
+   * Registers embedded OpenSharing's provider API under the base path, with OpenSharing's own
+   * mapper and error dialect.
+   */
+  ArmeriaServerBuilder annotate(String relativePath, OpenSharingProviderService service) {
+    register(ServiceProtocol.OPENSHARING, relativePath, service);
     return this;
   }
 
@@ -335,7 +348,8 @@ public class ArmeriaServerBuilder {
     SCIM(true),
     UC(false),
     ICEBERG(false),
-    DELTA(false);
+    DELTA(false),
+    OPENSHARING(false);
 
     private final boolean underControlPath;
 
@@ -372,6 +386,7 @@ public class ArmeriaServerBuilder {
           // other dialects still surface the raw converter message.
           case ICEBERG -> new MalformedBodyRejectingConverter(bodyConverter(icebergMapper));
           case DELTA -> bodyConverter(deltaMapper);
+          case OPENSHARING -> bodyConverter(ApiJson.MAPPER);
         };
     // Auth and UC services have no response converter; they return HttpResponse.ofJson directly.
     List<JacksonResponseConverterFunction> responseConverters =
@@ -380,6 +395,7 @@ public class ArmeriaServerBuilder {
           case SCIM -> List.of(scimResponseConverter);
           case ICEBERG -> List.of(icebergResponseConverter);
           case DELTA -> List.of(deltaResponseConverter);
+          case OPENSHARING -> List.of(openSharingResponseConverter);
         };
     // The service names its own dialect, so both paths use the same value: exceptionHandlers()
     // covers exceptions thrown inside the handler, the per-service decorator covers those thrown by
