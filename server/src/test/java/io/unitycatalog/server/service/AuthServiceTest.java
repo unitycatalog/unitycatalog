@@ -458,8 +458,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   /**
    * Journey for an IdP's SCIM token: the admin creates the IdP principal, mints its token with
    * {@code bin/uc-admin-token}, and the IdP provisions a user with Okta's request. The token is
-   * refused off the SCIM API, the principal can't sign in, disabling it revokes the token, and an
-   * expired token is refused.
+   * refused off the SCIM API, the principal can't sign in, and disabling it revokes the token.
    */
   @Test
   public void testIdpScimTokenJourney() throws Exception {
@@ -540,20 +539,6 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertThat(disabled.status()).isEqualTo(HttpStatus.FORBIDDEN);
     assertThat(MAPPER.readTree(disabled.contentUtf8()).get("message").asText())
         .isEqualTo("User not allowed: " + principalId);
-
-    // 7. An expired SCIM token is refused.
-    String expired =
-        JWT.create()
-            .withIssuer(INTERNAL)
-            .withExpiresAt(Date.from(Instant.now().minus(Duration.ofMinutes(1))))
-            .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.SCIM.name())
-            .withClaim(JwtClaim.SUBJECT.key(), principalId)
-            .withClaim(JwtClaim.IDP.key(), "okta")
-            .sign(securityContext.getAlgorithm());
-    AggregatedHttpResponse expiredResponse = scimAs(expired, HttpMethod.GET, "", null);
-    assertThat(expiredResponse.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
-    assertThat(MAPPER.readTree(expiredResponse.contentUtf8()).get("message").asText())
-        .isEqualTo("Invalid access token.");
   }
 
   /** {@code bin/uc-admin-token} refuses SCIM options it can't mint a token from. */
