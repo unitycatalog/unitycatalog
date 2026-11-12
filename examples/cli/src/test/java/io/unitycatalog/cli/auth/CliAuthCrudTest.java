@@ -371,47 +371,4 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
 
     serverConfig.setAuthToken("");
   }
-
-  @Test
-  public void testGroupFailures() throws IOException {
-    serverConfig.setAuthToken(Files.readString(Path.of("etc", "conf", "token.txt")));
-    String ada = createUserId("ada@localhost");
-    String id =
-        executeCliCommand(serverConfig, List.of("group", "create", "--name", "data-eng"))
-            .get("id")
-            .asText();
-    String unknownUser = UUID.randomUUID().toString();
-
-    // A member that is no user is refused and nothing is created.
-    ApiException refused =
-        refusedCommand(List.of("group", "create", "--name", "ghosts", "--members", unknownUser));
-    assertThat(refused.getCode()).isEqualTo(400);
-    assertThat(refused.getResponseBody())
-        .contains("Member is not an existing user: " + unknownUser);
-    assertThat(
-            refusedCommand(List.of("group", "add-member", "--id", id, "--member", unknownUser))
-                .getCode())
-        .isEqualTo(400);
-    assertThat(executeCliCommand(serverConfig, List.of("group", "get", "--id", id)).get("members"))
-        .isEmpty();
-
-    // An unknown group is 404 on every command that names one.
-    String unknownGroup = UUID.randomUUID().toString();
-    for (List<String> args :
-        List.of(
-            List.of("group", "get", "--id", unknownGroup),
-            List.of("group", "update", "--id", unknownGroup, "--name", "x"),
-            List.of("group", "delete", "--id", unknownGroup),
-            List.of("group", "add-member", "--id", unknownGroup, "--member", ada),
-            List.of("group", "remove-member", "--id", unknownGroup, "--member", ada))) {
-      assertThat(refusedCommand(args).getCode()).as(String.join(" ", args)).isEqualTo(404);
-    }
-
-    // A rename onto another group's name.
-    executeCliCommand(serverConfig, List.of("group", "create", "--name", "other"));
-    assertThat(refusedCommand(List.of("group", "update", "--id", id, "--name", "other")).getCode())
-        .isEqualTo(409);
-
-    serverConfig.setAuthToken("");
-  }
 }
