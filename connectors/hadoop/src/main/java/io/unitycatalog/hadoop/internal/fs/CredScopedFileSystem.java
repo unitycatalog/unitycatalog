@@ -163,6 +163,7 @@ public class CredScopedFileSystem extends FilterFileSystem {
       closeIfUnused();
     }
 
+    // TODO(#2191): close the delegate outside the monitor.
     private void closeIfUnused() {
       if (evicted && openWrappers == 0) {
         CloseableUtils.closeQuietly(fs);
