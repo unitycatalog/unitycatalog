@@ -494,4 +494,31 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
   private static String modelFullName(String name) {
     return CATALOG_NAME + "." + SCHEMA_NAME + "." + name;
   }
+
+  /** A comment update that waits for a concurrent finalize keeps the version READY. */
+  @Test
+  public void updateVersionKeepsAConcurrentFinalize() throws Exception {
+    createModel("update_race");
+    ModelVersionInfo version =
+        modelOperations.createModelVersion(
+            new CreateModelVersion()
+                .catalogName(CATALOG_NAME)
+                .schemaName(SCHEMA_NAME)
+                .modelName("update_race")
+                .source(MV_SOURCE));
+    UUID id = UUID.fromString(version.getId());
+    String fullName = modelFullName("update_race");
+
+    runBlockedByHeldWrite(
+        held ->
+            setColumn(
+                held, ModelVersionInfoDAO.class, id, "status", ModelVersionStatus.READY.toString()),
+        () ->
+            modelOperations.updateModelVersion(
+                fullName, version.getVersion(), new UpdateModelVersion().comment("updated")));
+
+    ModelVersionInfo updated = modelOperations.getModelVersion(fullName, version.getVersion());
+    assertThat(updated.getComment()).isEqualTo("updated");
+    assertThat(updated.getStatus()).isEqualTo(ModelVersionStatus.READY);
+  }
 }
