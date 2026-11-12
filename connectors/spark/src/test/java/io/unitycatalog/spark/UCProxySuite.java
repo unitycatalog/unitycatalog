@@ -14,6 +14,7 @@ import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.ListSchemasResponse;
 import io.unitycatalog.client.model.ListTablesResponse;
 import io.unitycatalog.client.model.SchemaInfo;
@@ -25,7 +26,11 @@ import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.SupportsNamespaces;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
+import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.Metadata;
+import org.apache.spark.sql.types.MetadataBuilder;
 import org.apache.spark.sql.types.StructField;
+import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -357,5 +362,64 @@ public class UCProxySuite {
     StructField field = ((UCProxy) proxy).toStructField(columnWithStoredComment(null));
     assertThat(field.getComment().isEmpty()).isTrue();
     assertThat(field.metadata().getString("k")).isEqualTo("v");
+  }
+
+  private static ColumnInfo intColumn(String name, int position, String typeJson) {
+    return new ColumnInfo()
+        .name(name)
+        .typeName(ColumnTypeName.INT)
+        .typeText("int")
+        .typeJson(typeJson)
+        .nullable(true)
+        .position(position);
+  }
+
+  @Test
+  public void testLoadTableWithUnreadableTypeJsonKeepsOtherColumnsMetadata() throws Exception {
+    TableInfo ucTable =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("t_bad_json")
+            .tableId("table-id-t_bad_json")
+            .tableType(TableType.EXTERNAL)
+            .storageLocation("file:/tmp/uc/t_bad_json")
+            .dataSourceFormat(DataSourceFormat.PARQUET)
+            .columns(
+                List.of(
+                    intColumn("malformed", 0, "{not json"),
+                    intColumn(
+                        "unrepresentable",
+                        1,
+                        "{\"name\":\"unrepresentable\",\"type\":\"integer\",\"nullable\":true,"
+                            + "\"metadata\":{\"mixed\":[1,\"a\"]}}"),
+                    intColumn(
+                        "defaulted",
+                        2,
+                        "{\"name\":\"defaulted\",\"type\":\"integer\",\"nullable\":true,"
+                            + "\"metadata\":{\"CURRENT_DEFAULT\":\"42\","
+                            + "\"EXISTS_DEFAULT\":\"42\"}}")));
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.t_bad_json"),
+            eq(true),
+            eq(true),
+            /* includeBrowse= */ eq(false)))
+        .thenReturn(ucTable);
+
+    StructType schema = proxy.loadTable(Identifier.of(NAMESPACE, "t_bad_json")).schema();
+
+    Metadata nullComment = new MetadataBuilder().putNull("comment").build();
+    Metadata defaultMetadata =
+        new MetadataBuilder()
+            .withMetadata(nullComment)
+            .putString("CURRENT_DEFAULT", "42")
+            .putString("EXISTS_DEFAULT", "42")
+            .build();
+    assertThat(schema)
+        .isEqualTo(
+            new StructType()
+                .add("malformed", DataTypes.IntegerType, true, nullComment)
+                .add("unrepresentable", DataTypes.IntegerType, true, nullComment)
+                .add("defaulted", DataTypes.IntegerType, true, defaultMetadata));
   }
 }
