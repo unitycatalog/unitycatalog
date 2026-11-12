@@ -68,7 +68,7 @@ bin/uc-admin-token --scim-principal okta-scim --idp okta --lifetime P90D
 file, so stop the server before you run it, then start it again. H2 is meant for development only. See
 [Give an identity provider a SCIM token](auth.md#give-an-identity-provider-a-scim-token) for the other conditions.
 
-<!-- TODO(PR 3): a delete must remove the user row, so that a user created again with the same email gets a new id
+<!-- TODO(#2207): a delete must remove the user row, so that a user created again with the same email gets a new id
 and the old SCIM tokens stay invalid. Today a delete only disables the user. -->
 To pause the IdP, disable its principal. To revoke its tokens for good, delete it. This works once a delete removes the
 user: a user created again with the same email then gets a new id. Today a delete only disables the user, so creating it
@@ -109,7 +109,7 @@ Unity Catalog uses the person's email as the SCIM `userName`, so the username Ok
 app's **Sign On** tab, set **Application username format** to a format that gives the person's email (see [Okta's
 article on this setting](https://support.okta.com/help/s/article/Update-application-username-using-an-expression-language?language=en_US)).
 
-<!-- TODO(PR 2): the user requests Okta sends must work: the userName filter with startIndex and count, PUT with the
+<!-- TODO(#2206): the user requests Okta sends must work: the userName filter with startIndex and count, PUT with the
 full user (also to set active), and PATCH with {"op":"replace","value":{"active":false}}. -->
 Okta never sends `DELETE` for a user. When you unassign a user, Okta deactivates the row. When you assign the user
 again, Okta reactivates the same row, and the person's next sign-in links it again (see [First
@@ -130,7 +130,7 @@ The groups Okta pushes are owned by `okta`. Rename or delete them in Okta: the a
 them in Unity Catalog. The admin can still add and remove members, in a separate member list (see [Name clashes and
 ownership](#name-clashes-and-ownership)).
 
-<!-- TODO(PR 7): grants to a group name must apply to the group's members. -->
+<!-- TODO(#2210): grants to a group name must apply to the group's members. -->
 Grant privileges to the pushed groups and to users in the usual way. See [Users and Privileges](users-privileges.md).
 
 ## Name clashes and ownership
@@ -144,11 +144,11 @@ owns](auth.md#users-and-groups-an-identity-provider-owns).
   name already exists, Unity Catalog answers `409 Conflict` and Okta reports a provisioning error. Rename one side,
   then retry. Deleting the group also frees its name. Deleting the user frees its email only once a delete removes the
   user; today a delete only disables it, so the retry still gets 409.
-<!-- TODO(PR 3): a delete must remove the user row, so that deleting a user frees its email. -->
+<!-- TODO(#2207): a delete must remove the user row, so that deleting a user frees its email. -->
 - **Each side edits only its own rows.** The IdP can see and change only the rows it owns. The admin sees every row,
   but can't update, deactivate or delete a user that an IdP owns (`403`). A row created by the admin is invisible to
   the IdP, so a user the admin created by hand is not adopted by Okta; Okta tries to create it and gets a `409`.
-<!-- TODO(PR 3): a delete must remove the user row; today it only disables the user, so Okta's create gets 409. -->
+<!-- TODO(#2207): a delete must remove the user row; today it only disables the user, so Okta's create gets 409. -->
 - **Existing users.** Users that existed before you upgraded belong to `admin`. To move such a user under Okta, delete
   the user in Unity Catalog, let Okta create it again, and grant its privileges again. This works once a delete removes
   the user; today a delete only disables it, so Okta's create gets 409.
@@ -157,7 +157,7 @@ A group has two member lists: the members the IdP pushed, and the members an adm
 in either. When Okta pushes a group, it changes only its own list, so a member that an admin added stays after the
 next push.
 
-<!-- TODO(PR 7): a grant must resolve its principal as a user's email first, then a group's name. -->
+<!-- TODO(#2210): a grant must resolve its principal as a user's email first, then a group's name. -->
 When you grant a privilege to a name, Unity Catalog looks for a user with that email first and a group with that name
 second. A user whose email equals a group's name therefore shadows the group for grants. If this happens, rename the
 group (in Okta, for a pushed group) to manage its grants.
@@ -176,9 +176,9 @@ mode](auth.md#external-authentication-mode) for the full rules.
 A person who signs in through a configured IdP but has no user row gets one, owned by that IdP. The new user has no
 access until you grant them privileges directly or through a group.
 
-<!-- TODO(PR 12): in external mode, bin/uc auth login must print the IdP's access token when the token exchange
+<!-- TODO(#2199): in external mode, bin/uc auth login must print the IdP's access token when the token exchange
 answers 501. -->
-<!-- TODO(PR 13): ui-new must show "Sign in with Okta" when OKTA_AUTH_ENABLED, OKTA_ISSUER and OKTA_CLIENT_ID are set,
+<!-- TODO(#2200): ui-new must show "Sign in with Okta" when OKTA_AUTH_ENABLED, OKTA_ISSUER and OKTA_CLIENT_ID are set,
 and send the Okta access token when the token exchange is disabled. -->
 - **CLI.** Run `bin/uc auth login`. In external mode it prints the IdP's access token, because the exchange is disabled.
   Pass that token to later commands with `bin/uc --auth_token <token>`.
@@ -192,7 +192,7 @@ tokens work only for the bootstrap admin token and the SCIM principal's token.
 
 ## Deactivating a person
 
-<!-- TODO(PR 2): PUT /Users/{id} with the full user and active false, and PATCH /Users/{id} with
+<!-- TODO(#2206): PUT /Users/{id} with the full user and active false, and PATCH /Users/{id} with
 {"op":"replace","value":{"active":false}}, must disable the user. -->
 Deactivate the person in Okta, or unassign them from the app. Okta sends `active: false` in `PUT /Users/{id}` (`PATCH`
 for an Okta Integration Network app), and the server disables the user. From the next request it refuses every token
