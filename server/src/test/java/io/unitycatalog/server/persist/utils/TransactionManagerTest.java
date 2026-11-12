@@ -167,6 +167,7 @@ public class TransactionManagerTest {
                       false))
           .isInstanceOf(BaseException.class)
           .hasMessage("Failed to access storage.")
+          .hasCause(storageFailure)
           .extracting(e -> ((BaseException) e).getErrorCode())
           .isEqualTo(ErrorCode.INTERNAL);
       verify(transaction).rollback();

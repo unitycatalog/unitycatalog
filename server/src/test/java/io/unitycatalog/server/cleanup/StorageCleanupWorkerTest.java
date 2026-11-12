@@ -13,6 +13,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.observability.UcMetric;
 import io.unitycatalog.server.observability.UcMetricConstants;
 import io.unitycatalog.server.observability.UnityCatalogMetrics;
@@ -50,6 +52,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import software.amazon.awssdk.services.sts.model.StsException;
 
 @SuppressWarnings("unchecked")
 class StorageCleanupWorkerTest {
@@ -189,6 +192,20 @@ class StorageCleanupWorkerTest {
     when(fileIO.listPrefix(PREFIX)).thenReturn(List.of(new FileInfo(PREFIX + "remaining", 1, 1)));
     assertThat(worker.runOnce()).isTrue();
     verifyFailure("Storage cleanup failed: IllegalStateException");
+  }
+
+  @Test
+  void recordsTheCauseOfAGeneralError() {
+    // For example a failed AssumeRole while vending the cleanup credentials.
+    doThrow(
+            new BaseException(
+                ErrorCode.INTERNAL,
+                "Failed to vend temporary storage credentials.",
+                StsException.builder().message("secret").build()))
+        .when(fileIO)
+        .deletePrefix(PREFIX);
+    assertThat(worker.runOnce()).isTrue();
+    verifyFailure("Storage cleanup failed: INTERNAL caused by StsException");
   }
 
   @Test

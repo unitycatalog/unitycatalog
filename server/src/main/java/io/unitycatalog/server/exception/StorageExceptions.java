@@ -3,13 +3,13 @@ package io.unitycatalog.server.exception;
 import software.amazon.awssdk.core.exception.SdkException;
 
 /**
- * Failures of the server's own AWS SDK calls, such as to S3 or STS. Their messages come from the
- * storage or STS service and can name its endpoint, so callers get a general error. The failure is
- * kept as the cause, for the caller to log. Azure and GCS failures are not covered.
+ * Failures of the server's own AWS SDK calls, such as to S3. Their messages, from the SDK or the
+ * storage service, can name its endpoint, so callers get a general error. The failure is kept as
+ * the cause, for the caller to log. Azure and GCS failures are not covered.
  */
 public final class StorageExceptions {
   /** The message callers get when the server's storage access fails. */
-  public static final String GENERAL_MESSAGE = "Failed to access storage.";
+  private static final String GENERAL_MESSAGE = "Failed to access storage.";
 
   // Bounds the walk over causes, which a cycle would otherwise make endless.
   private static final int MAX_CAUSE_DEPTH = 64;
@@ -41,9 +41,6 @@ public final class StorageExceptions {
    * @return an INTERNAL error that carries no storage detail in its message
    */
   public static BaseException toGeneralError(Throwable e) {
-    BaseException error = new BaseException(ErrorCode.INTERNAL, GENERAL_MESSAGE, e);
-    // As BaseExceptionHandler.wrapException does: error responses then show the cause's trace.
-    error.setStackTrace(new StackTraceElement[0]);
-    return error;
+    return BaseExceptionHandler.wrapException(ErrorCode.INTERNAL, GENERAL_MESSAGE, e);
   }
 }

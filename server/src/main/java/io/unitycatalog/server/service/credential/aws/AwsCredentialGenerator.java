@@ -121,8 +121,8 @@ public interface AwsCredentialGenerator {
       try {
         return stsClient.assumeRole(roleRequestBuilder.build()).credentials();
       } catch (SdkException e) {
-        // The STS response is the cause, which the exception handler logs; the caller gets a
-        // general message.
+        // The SDK failure is the cause, which the exception handler logs. This names the failed
+        // step more precisely than StorageExceptions' general message.
         throw new BaseException(
             ErrorCode.INTERNAL, "Failed to vend temporary storage credentials.", e);
       }

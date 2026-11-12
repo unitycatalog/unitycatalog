@@ -164,7 +164,7 @@ public class ErrorCodeTest {
         AggregatedHttpResponse response = errorResponse(handler, failure);
         assertThat(response.status().code()).isEqualTo(500);
         assertThat(response.contentUtf8())
-            .contains(StorageExceptions.GENERAL_MESSAGE)
+            .contains("Failed to access storage.")
             .doesNotContain("storage.example.com");
       }
     }
