@@ -176,8 +176,8 @@ access until you grant them privileges directly or through a group.
 answers 501. -->
 <!-- TODO(PR 13): ui-new must show "Sign in with Okta" when OKTA_AUTH_ENABLED, OKTA_ISSUER and OKTA_CLIENT_ID are set,
 and send the Okta access token when the token exchange is disabled. -->
-- **CLI.** Run `bin/uc auth login`. In external mode it prints the IdP's access token instead of exchanging it. Pass
-  that token to later commands with `bin/uc --auth_token <token>`.
+- **CLI.** Run `bin/uc auth login`. In external mode it prints the IdP's access token, because the exchange is disabled.
+  Pass that token to later commands with `bin/uc --auth_token <token>`.
 - **UI.** The new UI shows a **Sign in with Okta** button when its bridge has `OKTA_AUTH_ENABLED=true`, `OKTA_ISSUER`
   (the same authorization server as `issuer` above) and `OKTA_CLIENT_ID` (an Okta single-page app that uses PKCE).
 - **Existing token.** You can also pass an IdP access token yourself with `bin/uc --auth_token <token>`, or paste it
