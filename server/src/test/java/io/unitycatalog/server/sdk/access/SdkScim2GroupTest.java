@@ -702,11 +702,8 @@ public class SdkScim2GroupTest extends SdkAccessControlBaseCRUDTest {
           .getSingleResult();
       Future<HttpResponse<String>> delete =
           pool.submit(() -> send(adminConfig, "DELETE", GROUPS_PATH + "/" + id, null));
-      try {
-        delete.get(200, TimeUnit.MILLISECONDS);
-      } catch (TimeoutException e) {
-        // The delete has cleared the grants and waits for the row lock, as it should.
-      }
+      // The delete has cleared the grants and waits for the row lock.
+      awaitWaitingOrDone(delete, 1);
       grantPermissions(
           "racing", SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
       tx.commit();
