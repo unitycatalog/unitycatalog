@@ -202,4 +202,26 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
             .purpose(CredentialPurpose.STORAGE)
             .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN)));
   }
+
+  /** An update that waits for a concurrent rename of the credential misses it, changing nothing. */
+  @Test
+  public void updateRacingARenameIsNotFound() throws Exception {
+    UUID id = UUID.fromString(createCredential("update_race").getId());
+
+    TestUtils.assertApiException(
+        () ->
+            runBlockedByHeldWrite(
+                held ->
+                    TestDatabase.setColumn(
+                        held, CredentialDAO.class, id, "name", "update_race_renamed"),
+                () ->
+                    credentialOperations.updateCredential(
+                        "update_race", new UpdateCredentialRequest().comment("lost"))),
+        ErrorCode.NOT_FOUND,
+        "Storage credential not found");
+
+    CredentialInfo renamed = credentialOperations.getCredential("update_race_renamed");
+    assertThat(renamed.getId()).isEqualTo(id.toString());
+    assertThat(renamed.getComment()).isEqualTo(COMMENT);
+  }
 }
