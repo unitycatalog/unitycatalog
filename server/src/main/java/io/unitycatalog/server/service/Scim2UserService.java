@@ -258,7 +258,7 @@ public class Scim2UserService implements ScimService {
         .map(Scim2UserService::checkNameLength);
   }
 
-  /** The name column is varchar(255); a longer name is refused as a bad request, not a 500. */
+  /** A longer name is refused as a bad request, not a 500. */
   private static String checkNameLength(String name) {
     if (name.length() > MAX_NAME_LENGTH) {
       throw new Scim2RuntimeException(
