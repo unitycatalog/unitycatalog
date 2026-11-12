@@ -184,4 +184,28 @@ describe("OwnerDeleteAction", () => {
       screen.getByRole("button", { name: "Delete permanently" }),
     ).toBeDisabled();
   });
+
+  it("keeps focus in the dialog and returns it to the trigger on Escape", async () => {
+    render(
+      <OwnerDeleteAction
+        entityName="events"
+        entityType="table"
+        owner="owner@example.com"
+        onDelete={vi.fn()}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "Delete" });
+
+    await userEvent.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "Delete table?" });
+    expect(screen.getByLabelText("Enter events to confirm")).toHaveFocus();
+    for (let step = 0; step < 4; step += 1) {
+      await userEvent.tab();
+      expect(dialog).toContainElement(document.activeElement as HTMLElement);
+    }
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
 });

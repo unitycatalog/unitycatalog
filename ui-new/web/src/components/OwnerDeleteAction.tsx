@@ -1,8 +1,18 @@
 import { useState } from "react";
-import { Trash2, X } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useOptionalAuth } from "@/context/auth-context";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
 export default function OwnerDeleteAction({
@@ -52,67 +62,40 @@ export default function OwnerDeleteAction({
   };
 
   return (
-    <>
-      <Button
-        variant="destructive"
-        size="sm"
-        onClick={() => setDialogOpen(true)}
-      >
-        <Trash2 className="h-4 w-4" />
-        Delete
-      </Button>
-      {open && (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"
-          role="presentation"
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="delete-title"
-            className="w-full max-w-md rounded-lg border bg-background p-5 shadow-xl"
+    <Dialog open={open} onOpenChange={setDialogOpen}>
+      <DialogTrigger asChild>
+        <Button variant="destructive" size="sm">
+          <Trash2 className="h-4 w-4" />
+          Delete
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Delete {entityType}?</DialogTitle>
+          <DialogDescription>
+            This cannot be undone. Enter <strong>{entityName}</strong> to
+            confirm.
+          </DialogDescription>
+        </DialogHeader>
+        <Input
+          value={confirmation}
+          onChange={(event) => setConfirmation(event.target.value)}
+          aria-label={`Enter ${entityName} to confirm`}
+          autoComplete="off"
+        />
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </DialogClose>
+          <Button
+            variant="destructive"
+            disabled={confirmation !== entityName || deleting}
+            onClick={remove}
           >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 id="delete-title" className="font-semibold">
-                  Delete {entityType}?
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  This cannot be undone. Enter <strong>{entityName}</strong> to
-                  confirm.
-                </p>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Close"
-                onClick={() => setDialogOpen(false)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <Input
-              className="mt-4"
-              value={confirmation}
-              onChange={(event) => setConfirmation(event.target.value)}
-              aria-label={`Enter ${entityName} to confirm`}
-              autoComplete="off"
-            />
-            <div className="mt-4 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                disabled={confirmation !== entityName || deleting}
-                onClick={remove}
-              >
-                {deleting ? "Deleting…" : "Delete permanently"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+            {deleting ? "Deleting…" : "Delete permanently"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
