@@ -1,6 +1,7 @@
 package io.unitycatalog.server.migrate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.testdatabase.TempDatabase;
@@ -100,6 +101,14 @@ public class MigrationStepRulesTest {
       Pattern.compile(
           "([-+]) column (\\S+) type=(.+) size=(\\d+) (?:scale=(\\d+) )?.*nullable=(YES|NO) .*");
 
+  /**
+   * {@code build/sbt updateSchemaDumps} sets this to write the effect files. The checks that read
+   * them skip that run, since its test classpath predates the files it writes; the next test run
+   * checks them.
+   */
+  private static final boolean WRITES_EFFECTS =
+      "true".equals(System.getenv("UC_UPDATE_SCHEMA_EFFECTS"));
+
   @TempDatabase(empty = true)
   TestDatabase db;
 
@@ -114,7 +123,6 @@ public class MigrationStepRulesTest {
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
     DatabaseKind kind = DatabaseKind.of(db.dataSource());
     Path folder = EFFECTS.resolve(kind.folder());
-    boolean update = "true".equals(System.getenv("UC_UPDATE_SCHEMA_EFFECTS"));
     List<String> problems = new ArrayList<>();
     SchemaSnapshot before = SchemaSnapshot.NONE;
     for (String step : migrator.steps()) {
@@ -122,7 +130,7 @@ public class MigrationStepRulesTest {
       SchemaSnapshot after = SchemaSnapshot.of(db.dataSource());
       String expected = String.join("\n", before.changesTo(after)) + "\n";
       Path file = folder.resolve("V" + step + ".txt");
-      if (update) {
+      if (WRITES_EFFECTS) {
         Files.createDirectories(folder);
         Files.writeString(file, expected);
       } else if (!Files.exists(file) || !Files.readString(file).equals(expected)) {
@@ -146,6 +154,7 @@ public class MigrationStepRulesTest {
    */
   @Test
   void eachStepIsOneAllowedStatement() throws IOException {
+    assumeFalse(WRITES_EFFECTS, "checks the effect files on the next test run");
     DatabaseKind kind = DatabaseKind.of(db.dataSource());
     List<String> problems = new ArrayList<>();
     Map<String, List<String>> sentByStep = UpgradeTestUtils.sentStatements(db);
@@ -305,6 +314,7 @@ public class MigrationStepRulesTest {
    */
   @Test
   void typeChangesWiden() throws IOException {
+    assumeFalse(WRITES_EFFECTS, "checks the effect files on the next test run");
     List<String> problems = new ArrayList<>();
     for (DatabaseKind kind : DatabaseKind.values()) {
       try (Stream<Path> files = Files.list(EFFECTS.resolve(kind.folder()))) {
@@ -338,7 +348,9 @@ public class MigrationStepRulesTest {
             + " nullable=YES|",
         // pgjdbc reports numeric(4,-2), which rounds to hundreds, with scale 2046 (-2 in 11 bits).
         "POSTGRESQL|type=numeric size=4 scale=2046 nullable=YES|type=numeric size=4 scale=0"
-            + " nullable=YES|not wider",
+            + " nullable=YES|numeric(4,-2) to numeric(4,0), which is not wider",
+        "POSTGRESQL|type=numeric size=4 scale=2046 nullable=YES|type=numeric size=6 scale=0"
+            + " nullable=YES|",
         "POSTGRESQL|type=numeric size=4 scale=2046 nullable=YES|type=numeric size=6 scale=2046"
             + " nullable=YES|",
         // H2 names an enum's members in its type: keeping them all and adding one widens it.
@@ -470,7 +482,13 @@ public class MigrationStepRulesTest {
     if (isUnbounded(kind, column)) {
       return Long.MAX_VALUE;
     }
-    return column.group(5) == null ? 0 : Long.parseLong(column.group(5));
+    if (column.group(5) == null) {
+      return 0;
+    }
+    long scale = Long.parseLong(column.group(5));
+    // pgjdbc reports a negative scale in 11 bits, so -2 reads as 2046 (PostgreSQL allows -1000 to
+    // 1000).
+    return kind == DatabaseKind.POSTGRESQL && scale >= 1024 ? scale - 2048 : scale;
   }
 
   private static String shape(DatabaseKind kind, Matcher column) {
@@ -480,7 +498,7 @@ public class MigrationStepRulesTest {
     return column.group(3)
         + "("
         + column.group(4)
-        + (column.group(5) == null ? "" : "," + column.group(5))
+        + (column.group(5) == null ? "" : "," + scale(kind, column))
         + ")";
   }
 
