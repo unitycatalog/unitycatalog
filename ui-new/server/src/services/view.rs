@@ -170,8 +170,9 @@ impl ViewService for ViewRpc {
 fn metric_fields(
     definition: &str,
 ) -> Result<HashMap<String, (&'static str, String)>, ConnectError> {
-    let yaml: serde_yaml::Value = serde_yaml::from_str(definition)
-        .map_err(|_| ConnectError::invalid_argument("Invalid metric view YAML definition"))?;
+    let yaml: serde_yaml::Value = serde_yaml::from_str(definition).map_err(|error| {
+        ConnectError::invalid_argument(format!("Invalid metric view YAML definition: {error}"))
+    })?;
     let mut fields = HashMap::new();
     collect_metric_fields(&yaml, "dimensions", "dimension", &mut fields)?;
     collect_metric_fields(&yaml, "measures", "measure", &mut fields)?;

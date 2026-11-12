@@ -138,7 +138,12 @@ async fn create_view_rejects_invalid_metric_yaml() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let json = body_json(response).await;
     assert_eq!(json["code"], "invalid_argument");
-    assert_eq!(json["message"], "Invalid metric view YAML definition");
+    let message = json["message"].as_str().unwrap();
+    assert!(
+        message.starts_with("Invalid metric view YAML definition: ")
+            && message.contains(" at line "),
+        "{message}"
+    );
 }
 
 #[tokio::test]
