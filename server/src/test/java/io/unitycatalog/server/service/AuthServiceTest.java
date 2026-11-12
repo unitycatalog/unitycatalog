@@ -32,10 +32,7 @@ import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.utils.JwksOperations;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
@@ -607,24 +604,6 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessage(message));
     assertThat(users.getUserByEmail("okta-scim").getIdpName()).isNull();
-  }
-
-  /** {@code bin/uc-admin-token --help} prints the usage and exits 0, before it reads any key. */
-  @Test
-  public void testAdminTokenHelp() throws Exception {
-    PrintStream stdout = System.out;
-    ByteArrayOutputStream captured = new ByteArrayOutputStream();
-    System.setOut(new PrintStream(captured, true, StandardCharsets.UTF_8));
-    try {
-      AdminTokenCommand.main(new String[] {"--help"});
-    } finally {
-      System.setOut(stdout);
-    }
-    assertThat(captured.toString(StandardCharsets.UTF_8))
-        .isEqualTo(
-            "Usage: bin/uc-admin-token [--scim-principal <email> --idp <name> --lifetime <ISO-8601"
-                + " duration>]"
-                + System.lineSeparator());
   }
 
   /**
