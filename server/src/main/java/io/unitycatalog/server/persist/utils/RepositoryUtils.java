@@ -131,7 +131,7 @@ public class RepositoryUtils {
    * delete of the parent and the create are serialized and a create after the delete finds no
    * parent.
    */
-  public static <T> T lockSharedByKey(
+  public static <T extends UuidEntity> T lockSharedByKey(
       Session session,
       Class<T> type,
       UUID id,
