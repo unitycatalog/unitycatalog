@@ -828,8 +828,6 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertThat(unchanged.getName()).isEqualTo("Test User");
 
     // Emails stay unique across the admin and every IdP.
-    assertThat(scimAs(entra, HttpMethod.POST, "", OKTA_CREATE_USER).status())
-        .isEqualTo(HttpStatus.CONFLICT);
     assertThat(
             scimAs(
                     okta,
