@@ -53,6 +53,7 @@ import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.delta.DeltaApiService;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
+import io.unitycatalog.server.service.sharing.OpenSharingLifecycle;
 import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
@@ -416,6 +417,7 @@ public class UnityCatalogServer implements AutoCloseable {
         armeriaServerBuilder, authorizer, repositories, fileOperations, serverProperties);
     addDeltaApiServices(
         armeriaServerBuilder, authorizer, repositories, serverProperties, storageCredentialVendor);
+    addOpenSharingApiServices(armeriaServerBuilder, authorizer, repositories, serverProperties);
   }
 
   private void addIcebergApiServices(
@@ -446,6 +448,20 @@ public class UnityCatalogServer implements AutoCloseable {
     DeltaApiService deltaApiService =
         new DeltaApiService(authorizer, repositories, serverProperties, storageCredentialVendor);
     armeriaServerBuilder.annotate("", deltaApiService);
+  }
+
+  private void addOpenSharingApiServices(
+      ArmeriaServerBuilder armeriaServerBuilder,
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties) {
+    if (!serverProperties.isOpenSharingEnabled()) {
+      return;
+    }
+    LOGGER.info("Adding embedded OpenSharing services...");
+    OpenSharingLifecycle openSharing =
+        OpenSharingLifecycle.start(serverProperties, repositories, authorizer);
+    armeriaServerBuilder.annotate("opensharing/provider", openSharing.providerService());
   }
 
   private void addSecurityDecorators(
