@@ -1,6 +1,7 @@
 package io.unitycatalog.server.migrate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import io.unitycatalog.server.migrate.SchemaMigrator.DatabaseKind;
 import io.unitycatalog.server.testdatabase.TempDatabase;
@@ -100,6 +101,14 @@ public class MigrationStepRulesTest {
       Pattern.compile(
           "([-+]) column (\\S+) type=(.+) size=(\\d+) (?:scale=(\\d+) )?.*nullable=(YES|NO) .*");
 
+  /**
+   * {@code build/sbt updateSchemaDumps} sets this to write the effect files. The checks that read
+   * them skip that run, since its test classpath predates the files it writes; the next test run
+   * checks them.
+   */
+  private static final boolean WRITES_EFFECTS =
+      "true".equals(System.getenv("UC_UPDATE_SCHEMA_EFFECTS"));
+
   @TempDatabase(empty = true)
   TestDatabase db;
 
@@ -114,7 +123,6 @@ public class MigrationStepRulesTest {
     SchemaMigrator migrator = new SchemaMigrator(db.dataSource());
     DatabaseKind kind = DatabaseKind.of(db.dataSource());
     Path folder = EFFECTS.resolve(kind.folder());
-    boolean update = "true".equals(System.getenv("UC_UPDATE_SCHEMA_EFFECTS"));
     List<String> problems = new ArrayList<>();
     SchemaSnapshot before = SchemaSnapshot.NONE;
     for (String step : migrator.steps()) {
@@ -122,7 +130,7 @@ public class MigrationStepRulesTest {
       SchemaSnapshot after = SchemaSnapshot.of(db.dataSource());
       String expected = String.join("\n", before.changesTo(after)) + "\n";
       Path file = folder.resolve("V" + step + ".txt");
-      if (update) {
+      if (WRITES_EFFECTS) {
         Files.createDirectories(folder);
         Files.writeString(file, expected);
       } else if (!Files.exists(file) || !Files.readString(file).equals(expected)) {
@@ -146,6 +154,7 @@ public class MigrationStepRulesTest {
    */
   @Test
   void eachStepIsOneAllowedStatement() throws IOException {
+    assumeFalse(WRITES_EFFECTS, "checks the effect files on the next test run");
     DatabaseKind kind = DatabaseKind.of(db.dataSource());
     List<String> problems = new ArrayList<>();
     Map<String, List<String>> sentByStep = UpgradeTestUtils.sentStatements(db);
@@ -305,6 +314,7 @@ public class MigrationStepRulesTest {
    */
   @Test
   void typeChangesWiden() throws IOException {
+    assumeFalse(WRITES_EFFECTS, "checks the effect files on the next test run");
     List<String> problems = new ArrayList<>();
     for (DatabaseKind kind : DatabaseKind.values()) {
       try (Stream<Path> files = Files.list(EFFECTS.resolve(kind.folder()))) {
