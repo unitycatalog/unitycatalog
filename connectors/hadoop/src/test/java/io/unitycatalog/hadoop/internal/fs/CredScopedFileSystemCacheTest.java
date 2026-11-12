@@ -12,6 +12,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -267,6 +268,9 @@ class CredScopedFileSystemCacheTest {
 
     assertThat(delegate.closed).isFalse();
     assertThat(second.getFileStatus(PATH)).isNotNull();
+
+    second.close();
+    assertThat(delegate.closeCount.get()).isEqualTo(1);
   }
 
   @Test
@@ -317,6 +321,7 @@ class CredScopedFileSystemCacheTest {
 
   /** Local filesystem stand-in that, like cloud filesystems, rejects calls once closed. */
   public static class CloseTrackingFileSystem extends RawLocalFileSystem {
+    final AtomicInteger closeCount = new AtomicInteger();
     volatile boolean closed;
 
     @Override
@@ -329,6 +334,7 @@ class CredScopedFileSystemCacheTest {
 
     @Override
     public void close() throws IOException {
+      closeCount.incrementAndGet();
       closed = true;
       super.close();
     }
