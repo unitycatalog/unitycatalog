@@ -41,11 +41,13 @@ import org.junit.jupiter.params.provider.CsvSource;
  *       changes nothing on that database. The first step, the 0.7.0 baseline, may create any table
  *       and index.
  *   <li>The statement is one of the changes {@link #refusal} allows, read with JSqlParser from what
- *       Flyway sent: create a table, create a plain index (not unique, fulltext or spatial) on
- *       columns short enough for an index entry, add a column (NOT NULL only with a DEFAULT,
- *       without a key or CHECK rule), change a column's type, or drop its NOT NULL. A type change
- *       must widen the column, and no change makes an existing nullable column NOT NULL ({@link
- *       #typeChangesWiden}).
+ *       Flyway sent: create a table, create a plain index (not unique, fulltext or spatial) whose
+ *       PostgreSQL index entry, INCLUDE columns too, fits 2,704 bytes, add a column (NOT NULL only
+ *       with a DEFAULT, without a key or CHECK rule), change a column's type, or drop its NOT NULL.
+ *   <li>A type change widens the column, keeps its default, collation and enum or set members, and
+ *       no change makes an existing nullable column NOT NULL ({@link #typeChangesWiden}). Adding a
+ *       Java enum constant is supported on MySQL and H2, where the type holds the members; on
+ *       PostgreSQL it means replacing a CHECK constraint, which no allowed change does yet.
  *   <li>Each step has an effect file that lists its change ({@link #eachStepHasItsEffectFile}).
  *   <li>Every step exists for all three databases, as a versioned SQL file.
  * </ul>
@@ -197,10 +199,24 @@ public class MigrationStepRulesTest {
         "POSTGRESQL|CREATE INDEX i ON t (c, body)|has an index entry of up to 8589935624 bytes,"
             + " over the 2704 bytes PostgreSQL allows",
         // The limit is for the whole key: two 600-character columns can hold 4,800 bytes.
-        "POSTGRESQL|CREATE INDEX i ON t (a, b)|has an index entry of up to 4816 bytes, over the"
+        "POSTGRESQL|CREATE INDEX i ON t (a, b)|has an index entry of up to 4824 bytes, over the"
             + " 2704 bytes PostgreSQL allows",
         "POSTGRESQL|CREATE INDEX i ON t (a, id)|",
         // An entry adds an 8-byte header and a 4-byte length per text value, rounded up to 8.
+        // An INCLUDE column is stored in the entry as well.
+        "POSTGRESQL|CREATE INDEX i ON t (c) INCLUDE (long)|has an index entry of up to 263176"
+            + " bytes, over the 2704 bytes PostgreSQL allows",
+        // PostgreSQL's bit(n) holds n bits; MySQL's bit is at most 8 bytes.
+        "POSTGRESQL|CREATE INDEX i ON t (bits)|has an index entry of up to 2768 bytes, over the"
+            + " 2704 bytes PostgreSQL allows",
+        "POSTGRESQL|CREATE INDEX i ON t (flag)|",
+        "MYSQL|CREATE INDEX i ON t (flag)|",
+        // Each column is padded to 8 bytes before the next one, here before the int8.
+        "POSTGRESQL|CREATE INDEX i ON t (a40, big, c630)|has an index entry of up to 2712 bytes,"
+            + " over the 2704 bytes PostgreSQL allows",
+        "H2|CREATE INDEX i ON t (bin)|",
+        "H2|CREATE INDEX i ON t (binbig)|has an index entry of up to 100016 bytes, over the 2704"
+            + " bytes PostgreSQL allows",
         "POSTGRESQL|CREATE INDEX i ON t (c676)|has an index entry of up to 2720 bytes, over the"
             + " 2704 bytes PostgreSQL allows",
         "POSTGRESQL|CREATE INDEX i ON t (c673)|",
@@ -243,7 +259,14 @@ public class MigrationStepRulesTest {
                 "column t.data type=bytea size=2147483647 nullable=YES default=null",
                 "column t.json type=jsonb size=2147483647 nullable=YES default=null",
                 "column t.c676 type=varchar size=676 nullable=YES default=null",
-                "column t.c673 type=varchar size=673 nullable=YES default=null"));
+                "column t.c673 type=varchar size=673 nullable=YES default=null",
+                "column t.bits type=bit size=22000 nullable=YES default=null",
+                "column t.flag type=bit size=1 nullable=YES default=null",
+                "column t.a40 type=varchar size=40 nullable=YES default=null",
+                "column t.big type=int8 size=19 nullable=YES default=null",
+                "column t.c630 type=varchar size=630 nullable=YES default=null",
+                "column t.bin type=binary varying size=100 nullable=YES default=null",
+                "column t.binbig type=binary varying size=100000 nullable=YES default=null"));
     assertThat(refusalOfSent(sql, kind, false, before)).isEqualTo(refusal);
   }
 
@@ -311,6 +334,14 @@ public class MigrationStepRulesTest {
             + "|type=numeric size=10 scale=2 nullable=YES|not wider",
         "POSTGRESQL|type=numeric size=10 scale=2 nullable=YES|type=numeric size=0 scale=0"
             + " nullable=YES|",
+        // pgjdbc reports numeric(4,-2), which rounds to hundreds, with scale 2046 (-2 in 11 bits).
+        "POSTGRESQL|type=numeric size=4 scale=2046 nullable=YES|type=numeric size=4 scale=0"
+            + " nullable=YES|not wider",
+        "POSTGRESQL|type=numeric size=4 scale=2046 nullable=YES|type=numeric size=6 scale=2046"
+            + " nullable=YES|",
+        // H2 names an enum's members in its type: keeping them all and adding one widens it.
+        "H2|type=enum('A') size=1 nullable=YES|type=enum('A', 'B') size=1 nullable=YES|",
+        "H2|type=enum('A', 'B') size=1 nullable=YES|type=enum('A') size=1 nullable=YES|not wider",
         // A MySQL MODIFY that does not restate the default or collation drops it.
         "MYSQL|type=varchar size=10 nullable=NO default=x"
             + "|type=varchar size=20 nullable=NO default=null|changes its default from x to null",
@@ -403,10 +434,20 @@ public class MigrationStepRulesTest {
     return dropped.isEmpty() ? null : "drops the values " + dropped;
   }
 
+  /**
+   * Whether H2 enum type {@code to} keeps every member of {@code from} (H2 names them in the type).
+   */
+  private static boolean keepsEnumMembers(String from, String to) {
+    return from.startsWith("enum(")
+        && to.startsWith("enum(")
+        && members(" values=" + to).containsAll(members(" values=" + from));
+  }
+
   /** The enum or set members in a column line, or none. */
   private static List<String> members(String line) {
     Matcher values = VALUES.matcher(line);
-    return values.find() ? List.of(values.group(1).split("','")) : List.of();
+    // MySQL separates members with ',', H2 with ', '.
+    return values.find() ? List.of(values.group(1).split("',\\s*'")) : List.of();
   }
 
   /** PostgreSQL reports a {@code numeric} without precision, which holds any number, as size 0. */
@@ -448,7 +489,10 @@ public class MigrationStepRulesTest {
     }
     String from = before.group(3);
     String to = after.group(3);
-    boolean wider = from.equals(to) || WIDER.get(kind).getOrDefault(from, Set.of()).contains(to);
+    boolean wider =
+        from.equals(to)
+            || WIDER.get(kind).getOrDefault(from, Set.of()).contains(to)
+            || keepsEnumMembers(from, to);
     // A number keeps its digits before the decimal point and its scale.
     boolean fewerDigits = integerDigits(kind, after) < integerDigits(kind, before);
     if (!wider || fewerDigits || scale(kind, after) < scale(kind, before)) {
@@ -496,7 +540,7 @@ public class MigrationStepRulesTest {
       if (type != null) {
         return "creates a " + type.toLowerCase(Locale.ROOT) + " index";
       }
-      return indexedColumnProblem(index, before);
+      return indexedColumnProblem(kind, index, before);
     }
     if (firstStep) {
       return "the first step only creates tables and indexes";
@@ -528,12 +572,11 @@ public class MigrationStepRulesTest {
   private static final long MAX_INDEX_ENTRY_BYTES = 2704;
 
   /**
-   * The most bytes a PostgreSQL index entry over {@code keyBytes} of data takes: an 8-byte header,
-   * a 4-byte length before each of {@code variableColumns} values, all rounded up to 8.
+   * The most bytes a column of {@code bytes} takes in a PostgreSQL index entry: a 4-byte length
+   * before a {@code variable} value, rounded up to 8 to cover the padding before the next column.
    */
-  private static long indexEntryBytes(long keyBytes, int variableColumns) {
-    long bytes = 8 + keyBytes + 4L * variableColumns;
-    return (bytes + 7) / 8 * 8;
+  private static long entryBytes(long bytes, boolean variable) {
+    return (bytes + (variable ? 4 : 0) + 7) / 8 * 8;
   }
 
   /** The bytes each fixed-width type, as the snapshot names it, takes in an index entry. */
@@ -559,7 +602,10 @@ public class MigrationStepRulesTest {
    * The most bytes a value of {@code type} with {@code size} takes in an index entry: 4 per
    * character for text, the size for binary; null for a type this test can't bound.
    */
-  private static Long maxBytes(String type, long size) {
+  private static Long maxBytes(DatabaseKind kind, String type, long size) {
+    if (isPostgresqlBits(kind, type)) {
+      return 4 + (size + 7) / 8; // a 4-byte bit count, then the bits
+    }
     if (FIXED_WIDTH_BYTES.containsKey(type)) {
       return FIXED_WIDTH_BYTES.get(type);
     }
@@ -578,16 +624,33 @@ public class MigrationStepRulesTest {
     return null;
   }
 
+  /** PostgreSQL's {@code bit(n)} and {@code varbit} hold n bits; the snapshot reports n as size. */
+  private static boolean isPostgresqlBits(DatabaseKind kind, String type) {
+    return kind == DatabaseKind.POSTGRESQL && (type.equals("bit") || type.equals("varbit"));
+  }
+
+  /** Whether a value of {@code type} has a length before it in an index entry. */
+  private static boolean isVariableWidth(DatabaseKind kind, String type) {
+    return isPostgresqlBits(kind, type)
+        || !(FIXED_WIDTH_BYTES.containsKey(type) || type.startsWith("enum"));
+  }
+
   /**
    * Why rows already in the database could fail {@code index}, against the schema {@code before}
    * the step: its key can be longer than an index entry (a MySQL prefix length counts as that many
    * characters), or it holds a type or expression this test can't bound; or null.
    */
-  private static String indexedColumnProblem(CreateIndex index, SchemaSnapshot before) {
+  private static String indexedColumnProblem(
+      DatabaseKind kind, CreateIndex index, SchemaSnapshot before) {
     String table = unquoted(index.getTable().getName());
-    long keyBytes = 0;
-    int variableColumns = 0;
-    for (Index.ColumnParams element : index.getIndex().getColumns()) {
+    List<Index.ColumnParams> elements = new ArrayList<>(index.getIndex().getColumns());
+    // PostgreSQL stores INCLUDE columns in the entry too.
+    for (String name :
+        index.getIncludeColumns() == null ? List.<String>of() : index.getIncludeColumns()) {
+      elements.add(new Index.ColumnParams(name));
+    }
+    long indexEntryBytes = 8; // the entry's header
+    for (Index.ColumnParams element : elements) {
       // JSqlParser keeps a MySQL prefix length as "(100)", a sort order as "DESC", and a
       // function's arguments (an expression) as "(c)".
       List<String> params = element.params == null ? List.of() : element.params;
@@ -610,19 +673,15 @@ public class MigrationStepRulesTest {
               .filter(p -> p.startsWith("("))
               .map(p -> 4 * Long.parseLong(p.substring(1, p.length() - 1)))
               .findFirst()
-              .orElseGet(() -> maxBytes(line.group(3), Long.parseLong(line.group(4))));
+              .orElseGet(() -> maxBytes(kind, line.group(3), Long.parseLong(line.group(4))));
       if (bytes == null) {
         return "indexes " + column + " (" + line.group(3) + "), which this test can't size";
       }
-      keyBytes += bytes;
-      if (!FIXED_WIDTH_BYTES.containsKey(line.group(3)) && !line.group(3).startsWith("enum")) {
-        variableColumns++;
-      }
+      indexEntryBytes += entryBytes(bytes, isVariableWidth(kind, line.group(3)));
     }
-    long entryBytes = indexEntryBytes(keyBytes, variableColumns);
-    if (entryBytes > MAX_INDEX_ENTRY_BYTES) {
+    if (indexEntryBytes > MAX_INDEX_ENTRY_BYTES) {
       return "has an index entry of up to "
-          + entryBytes
+          + indexEntryBytes
           + " bytes, over the "
           + MAX_INDEX_ENTRY_BYTES
           + " bytes PostgreSQL allows";
